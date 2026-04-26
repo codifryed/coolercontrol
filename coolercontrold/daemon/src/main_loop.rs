@@ -151,6 +151,17 @@ pub async fn run(
                 debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
             }
         }
+        // run_token has been cancelled. Signal each repo to abort
+        // in-flight queued work so the moro scope's spawned preload
+        // tasks self-bail instead of holding the scope open while we
+        // wait. Critical for hwmon: a slow device's mid-tick preload
+        // would otherwise keep the scope alive long enough for
+        // liqctld's watch_child grace window to fire and force-kill
+        // the python service before liquidctl_repo::shutdown could
+        // /quit it cleanly.
+        for repo in repos.iter() {
+            repo.abort_pending().await;
+        }
         engine.apply_lcd_shutdown_images().await;
         Ok(())
     })

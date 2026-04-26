@@ -918,6 +918,13 @@ impl HwmonRepo {
     /// "place quicker and more important channel extractions first"
     /// invariant from commit f02ed25d.
     async fn preload_device_statuses(&self, type_index: TypeIndex, driver: &Rc<HwmonDriverInfo>) {
+        // Bail before doing any work if shutdown was already signalled
+        // (via abort_pending or hwmon's own shutdown method). The main
+        // loop's moro scope is waiting on us; staying here just delays
+        // the daemon's shutdown sequence.
+        if self.shutdown_token.is_cancelled() {
+            return;
+        }
         // Clear the fresh-this-tick flags at the start of this
         // preload attempt. The snapshot timeout arm reads the flags
         // as they get set by the per-channel upserts.
@@ -956,6 +963,12 @@ impl HwmonRepo {
             #[allow(clippy::cast_possible_truncation)]
             let start = (tick as usize) % channel_count;
             for offset in 0..channel_count {
+                // Check before each channel so a long permit-acquire
+                // wait or a slow sysfs read does not stretch the tick
+                // past the start of shutdown.
+                if self.shutdown_token.is_cancelled() {
+                    return;
+                }
                 let channel = typed_channels[(start + offset) % channel_count];
                 let acquired = self
                     .read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
@@ -1000,7 +1013,12 @@ impl HwmonRepo {
         let semaphore = self.device_permits.get(&type_index).expect(
             "invariant: device_permits entry exists for every registered device type_index",
         );
+        // The shutdown arm short-circuits a permit-waiting channel so
+        // we do not burn the full device_read_permit_timeout before
+        // the next iteration's bail check fires. Returning `true`
+        // here avoids triggering log_slow_device for an aborted tick.
         let acquire = tokio::select! {
+            () = self.shutdown_token.cancelled() => return true,
             () = sleep(self.device_read_permit_timeout) => None,
             permit = semaphore.acquire() => permit.ok(),
         };
@@ -1884,6 +1902,19 @@ impl Repository for HwmonRepo {
         Ok(())
     }
 
+    async fn abort_pending(&self) {
+        // Cancel as soon as the main loop notices shutdown so spawned
+        // preload tasks self-bail and writer tasks exit their
+        // notified-await, freeing device permits before the moro scope
+        // drops. Without this, a slow device's in-flight preload kept
+        // the scope alive long enough for liqctld's watch_child grace
+        // window to fire and force-kill the python service before
+        // liquidctl_repo::shutdown could /quit it cleanly.
+        // CancellationToken::cancel is idempotent, so the duplicate
+        // call inside `shutdown` below is harmless.
+        self.shutdown_token.cancel();
+    }
+
     async fn shutdown(&self) -> Result<()> {
         // Stop accepting new coalesced writes and unblock any pending
         // ones before the reset loop runs. Without this, a wedged
@@ -2747,6 +2778,168 @@ mod preload_tests {
                 observed_free.get(),
                 "external observer never saw the permit free during preload"
             );
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn abort_pending_cancels_shutdown_token() {
+        // Verifies the new Repository::abort_pending hook fires the
+        // hwmon shutdown_token. The main loop relies on this so
+        // spawned preload tasks self-bail before its moro scope
+        // drops at shutdown.
+        cc_fs::test_runtime(async {
+            let repo = new_test_repo();
+            assert!(
+                repo.shutdown_token.is_cancelled().not(),
+                "shutdown_token starts uncancelled"
+            );
+            repo.abort_pending().await;
+            assert!(
+                repo.shutdown_token.is_cancelled(),
+                "abort_pending must cancel shutdown_token"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_device_statuses_bails_when_shutdown_cancelled() {
+        // Verifies the entry guard: once the shutdown token has been
+        // cancelled, preload_device_statuses returns without reading
+        // any channel and without upserting into preloaded_statuses.
+        // This is what shortens the moro scope's wait at shutdown.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // given: shutdown already in progress.
+            repo.abort_pending().await;
+
+            // when:
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: no upserts landed for this type_index.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                assert!(
+                    preloaded
+                        .get(&TEST_TYPE_INDEX)
+                        .is_none_or(|(channels, temps)| channels.is_empty() && temps.is_empty()),
+                    "no channel/temp upserts must occur after shutdown_token is cancelled"
+                );
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_device_statuses_bails_after_seeded_cache_when_cancelled() {
+        // Verifies that once the cache has been seeded by an earlier
+        // tick, a subsequent preload after shutdown_token is
+        // cancelled does NOT overwrite the seeded values, even if
+        // the underlying sysfs files have changed. Confirms the
+        // entry guard short-circuits the read loop entirely.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // given: one good preload seeds the cache.
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            // change the underlying value so a re-read would update
+            // the cache entry; if the bail-out skips the read, we
+            // expect the original 1200 to remain.
+            cc_fs::write(base.join("fan1_input"), b"3000".to_vec())
+                .await
+                .unwrap();
+
+            // when: shutdown begins, then a preload runs.
+            repo.abort_pending().await;
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: the cached value reflects the first preload, not
+            // the second's would-be reading.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                assert_eq!(channels.len(), 1);
+                assert_eq!(channels[0].name, "fan1");
+                assert_eq!(
+                    channels[0].rpm,
+                    Some(1200),
+                    "post-shutdown preload must not overwrite the seeded cache"
+                );
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_channel_returns_true_on_shutdown_cancel() {
+        // Verifies the shutdown arm in read_one_channel's permit
+        // select returns true (treated as "permit acquired" so the
+        // caller does not flag it as a slow-device timeout) and does
+        // not reach the underlying sysfs read.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            // Intentionally do NOT create pwm1 / fan1_input. If the
+            // function reached the read path it would log warnings
+            // and the absence of an upsert would be ambiguous.
+            let channel = fan_channel_with_paths(1, "fan1", base);
+            let driver = driver_with_channels(base, vec![channel.clone()]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // given: shutdown already in progress.
+            repo.abort_pending().await;
+
+            // when:
+            let acquired = repo
+                .read_one_channel(
+                    TEST_TYPE_INDEX,
+                    &driver,
+                    &channel,
+                    &HwmonChannelType::Fan,
+                    false,
+                )
+                .await;
+
+            // then: select chose the shutdown arm; no upsert occurred.
+            assert!(
+                acquired,
+                "shutdown arm must return true so log_slow_device is not triggered"
+            );
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                assert!(
+                    preloaded
+                        .get(&TEST_TYPE_INDEX)
+                        .is_none_or(|(channels, temps)| channels.is_empty() && temps.is_empty()),
+                    "no upsert must occur on the shutdown-cancel arm"
+                );
+            }
             teardown(&ctx).await;
         });
     }
