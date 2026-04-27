@@ -974,6 +974,7 @@ impl HwmonRepo {
             "invariant: preload_in_flight entry exists for every registered device type_index",
         );
         if flag.replace(true) {
+            self.tick_staleness_and_log(type_index, &driver.name);
             return;
         }
         let _coalesce_guard = PreloadInFlightGuard {
