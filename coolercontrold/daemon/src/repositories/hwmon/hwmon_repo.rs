@@ -35,7 +35,12 @@
 //!   At most one in-flight (writer's local frame) and one waiting
 //!   (mailbox) entry per channel: a new write supersedes any waiting
 //!   one and resolves the older waiter Ok, since the new target is
-//!   what the hardware will see. Other apply paths (`reset`,
+//!   what the hardware will see. When a drain wave holds entries for
+//!   multiple channels, the writer orders them by a per-channel
+//!   `last_processed` counter so a never-serviced (or longest-ago
+//!   serviced) channel goes first; this keeps an always-first-in-
+//!   tick channel from running ahead of sparser ones under sustained
+//!   pile-up on slow devices. Other apply paths (`reset`,
 //!   `manual_control`, `speed_profile`) take the permit directly;
 //!   FIFO preserves caller-visible order.
 //! - **`duty_cache`** — only for devices flagged slow at init by
@@ -294,12 +299,10 @@ pub struct HwmonDriverInfo {
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
 const PENDING_INITIAL_CAPACITY: usize = 8;
 
-/// One pending fan-duty write per channel. A newer write supersedes
-/// any earlier waiting write: the old waiter resolves Ok (its target
-/// is replaced by the latest, which is what will be applied) and the
-/// new caller takes the slot. Bounds the per-channel queue at one
-/// in-flight (in the writer task's local frame) plus one waiting (in
-/// the mailbox), regardless of how fast callers stack up.
+/// One pending fan-duty write per channel. A newer write for the
+/// same channel updates this slot in place: the latest target wins
+/// and the old waiter resolves Ok (its target is replaced by the
+/// latest, which is what will be applied).
 struct PendingWrite {
     target_duty: Duty,
     waiter: oneshot::Sender<Result<(), String>>,
@@ -307,7 +310,11 @@ struct PendingWrite {
 
 /// Per-device coalescing inbox. `pending` is borrowed sync (no
 /// `.await` across the borrow); safe for `RefCell` on the single-
-/// threaded runtime.
+/// threaded runtime. `HashMap` keeps the cap-at-1 supersession
+/// O(1) and lets the writer drain the whole snapshot in one swap;
+/// the writer task then orders multi-entry waves by a per-channel
+/// `last_processed` counter so never-serviced channels jump the
+/// queue ahead of channels already serviced in this run.
 struct WriterMailbox {
     pending: RefCell<HashMap<ChannelName, PendingWrite>>,
     notify: Notify,
@@ -1123,10 +1130,22 @@ struct WriterTask {
 
 /// Drains the mailbox until shutdown. Each iteration swaps `pending`
 /// with a reused empty buffer so concurrent enqueues run next round
-/// rather than silently merging into the in-flight drain.
+/// rather than silently merging into the in-flight drain. After the
+/// swap, multi-entry waves are reordered by per-channel
+/// `last_processed` so never-serviced channels jump ahead of
+/// channels already serviced this run. Without this, a slow device
+/// where each tick spawns a fresh task that walks channels in a
+/// fixed order will keep re-servicing the head channel while the
+/// tail starves; the counter ensures every channel rotates through
+/// the head over successive multi-entry waves.
 async fn run_writer_task(task: WriterTask) {
     let mut buffer: HashMap<ChannelName, PendingWrite> =
         HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
+    let mut entries: Vec<(ChannelName, PendingWrite)> =
+        Vec::with_capacity(PENDING_INITIAL_CAPACITY);
+    let mut last_processed: HashMap<ChannelName, u64> =
+        HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
+    let mut process_counter: u64 = 0;
     loop {
         tokio::select! {
             () = task.mailbox.notify.notified() => {}
@@ -1136,11 +1155,35 @@ async fn run_writer_task(task: WriterTask) {
             }
         }
         debug_assert!(buffer.is_empty(), "buffer must start each iteration empty");
+        debug_assert!(entries.is_empty(), "entries scratch must start empty");
         swap_pending_into(&task.mailbox, &mut buffer);
-        for (channel_name, pending) in buffer.drain() {
-            run_one_pending_write(&task, channel_name, pending).await;
+        order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
+        for (channel_name, pending) in entries.drain(..) {
+            run_one_pending_write(&task, channel_name.clone(), pending).await;
+            // Increment first so any "processed" value is >= 1 and
+            // distinguishable from the never-serviced default of 0.
+            process_counter = process_counter.wrapping_add(1);
+            last_processed.insert(channel_name, process_counter);
         }
     }
+}
+
+/// Drains `buffer` into `entries` ordered ascending by
+/// `last_processed`. Channels with no entry in the map have never
+/// been serviced and sort to the head via `unwrap_or(0)`; among
+/// already-serviced channels, the one whose write happened longest
+/// ago goes next. Single-entry waves short-circuit since order is
+/// trivial there.
+fn order_entries_by_starvation(
+    buffer: &mut HashMap<ChannelName, PendingWrite>,
+    entries: &mut Vec<(ChannelName, PendingWrite)>,
+    last_processed: &HashMap<ChannelName, u64>,
+) {
+    entries.extend(buffer.drain());
+    if entries.len() <= 1 {
+        return;
+    }
+    entries.sort_by_key(|(name, _)| last_processed.get(name.as_str()).copied().unwrap_or(0));
 }
 
 fn swap_pending_into(mailbox: &WriterMailbox, buffer: &mut HashMap<ChannelName, PendingWrite>) {
@@ -1191,7 +1234,7 @@ fn cancel_remaining_waiters(mailbox: &WriterMailbox) {
 async fn run_one_pending_write(
     task: &WriterTask,
     channel_name: ChannelName,
-    pending: PendingWrite,
+    mut pending: PendingWrite,
 ) {
     debug_assert!(
         pending.target_duty <= 100,
@@ -1222,6 +1265,29 @@ async fn run_one_pending_write(
             return;
         }
     };
+    // Refresh the target right before issuing the write. On a slow
+    // device the buffer takes long enough to drain that the engine's
+    // next tick has often already enqueued a newer target for this
+    // channel; without this swap we would commit a stale duty to
+    // hardware (visible as fans bumping to outdated values), then
+    // immediately overwrite it on the next wave. Sync borrow only;
+    // released before the await.
+    let fresh = {
+        let mut mailbox_pending = task.mailbox.pending.borrow_mut();
+        mailbox_pending.remove(channel_name.as_str())
+    };
+    if let Some(fresh) = fresh {
+        let _ = pending.waiter.send(Ok(()));
+        pending = fresh;
+    }
+    // Re-check write-skip with the (possibly updated) target so a
+    // refreshed value that already matches preloaded duty does not
+    // cost a sysfs write.
+    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+        let _ = pending.waiter.send(Ok(()));
+        drop(permit);
+        return;
+    }
     debug!(
         "Applying HWMON device: {driver_name} channel: {channel_name}; \
          Fixed Speed: {}",
@@ -3146,11 +3212,15 @@ mod coalescer_tests {
     #[test]
     #[serial]
     fn coalescer_only_surviving_waiter_sees_write_error() {
-        // Goal: when the hardware write fails, only the surviving
-        // (latest) waiter sees the error. Older callers were already
-        // resolved Ok at supersession time; their target was never
-        // attempted, so reporting the failure to them would be a lie
-        // and would also multiply the same error log per channel.
+        // Goal: when the hardware write fails, only the final
+        // surviving waiter sees the error. Older callers were
+        // resolved Ok at supersession time, including the entry
+        // already pulled into the writer's local buffer: the post-
+        // permit re-check absorbs the freshest mailbox entry, so
+        // the in-flight value is replaced before it ever hits
+        // hardware. Reporting the failure to a superseded waiter
+        // would be a lie since its target was never attempted, and
+        // would multiply the same error log per channel.
         cc_fs::test_runtime(async {
             // Skip seeding pwm1: set_pwm_duty's write fails because
             // the parent path doesn't exist.
@@ -3172,8 +3242,8 @@ mod coalescer_tests {
             let permit_hold = permit_sem.acquire().await.unwrap();
 
             // h1 is drained into the writer's local frame and blocks
-            // on acquire; h2 and h3 land in the mailbox, with h3
-            // superseding h2.
+            // on acquire; h2 and h3 land in the mailbox, h3
+            // supersedes h2 there.
             let h1 = enqueue_write(&repo, &uid, "fan1", 30);
             sleep(Duration::from_millis(20)).await;
             let h2 = enqueue_write(&repo, &uid, "fan1", 40);
@@ -3190,10 +3260,14 @@ mod coalescer_tests {
             let r1 = h1.await.unwrap();
             let r3 = h3.await.unwrap();
             assert!(
-                r1.is_err(),
-                "in-flight write must fail when path is invalid"
+                r1.is_ok(),
+                "in-flight value is superseded by the post-permit re-check; \
+                 only the surviving target hits hardware"
             );
-            assert!(r3.is_err(), "surviving waiter must see the actual error");
+            assert!(
+                r3.is_err(),
+                "surviving waiter (the freshest value at write time) sees the actual error"
+            );
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
@@ -3447,6 +3521,153 @@ mod coalescer_tests {
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
         });
+    }
+
+    #[test]
+    #[serial]
+    fn writer_swaps_in_freshest_target_before_writing() {
+        // Goal: a value pulled into the writer's local buffer is
+        // replaced by a newer mailbox entry for the same channel
+        // when the permit becomes available, so we never write a
+        // stale duty that the engine has already overridden. On
+        // slow devices this is what keeps the buffer's 1.6s drain
+        // window from manifesting as fans bumping to outdated
+        // values before the next wave catches up. The pwm file
+        // must end at the latest target, with the in-flight
+        // waiter resolved Ok via the re-check supersession.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+
+            // Stale value goes into the writer's local frame and
+            // blocks on the held permit. Then a fresh value lands
+            // in the mailbox. After the permit drops the writer
+            // re-checks the mailbox, swaps the fresh value in, and
+            // commits only that fresh write to hardware.
+            let h_stale = enqueue_write(&repo, &uid, "fan1", 20);
+            sleep(Duration::from_millis(30)).await;
+            let h_fresh = enqueue_write(&repo, &uid, "fan1", 80);
+            sleep(Duration::from_millis(20)).await;
+
+            drop(permit_hold);
+            assert!(
+                h_stale.await.unwrap().is_ok(),
+                "in-flight stale value must be superseded by re-check"
+            );
+            assert!(
+                h_fresh.await.unwrap().is_ok(),
+                "freshest target must be the one actually written"
+            );
+
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm.trim(),
+                duty_to_pwm_value(80).to_string(),
+                "pwm must reflect the fresh target, not the stale one"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    fn pending_with_duty(duty: u8) -> PendingWrite {
+        let (tx, _rx) = oneshot::channel();
+        PendingWrite {
+            target_duty: duty,
+            waiter: tx,
+        }
+    }
+
+    fn populate_buffer(buffer: &mut HashMap<ChannelName, PendingWrite>, names: &[&str]) {
+        for name in names {
+            buffer.insert((*name).to_string(), pending_with_duty(10));
+        }
+    }
+
+    #[test]
+    fn order_entries_by_starvation_promotes_never_serviced() {
+        // Goal: a never-serviced channel jumps ahead of channels
+        // that have already been serviced this run, regardless of
+        // hash iteration order. This is the core of the fairness
+        // fix: under multi-tick pile-up on a slow device, fan1-fan5
+        // get serviced first by tick 1; fan6/7/8 enter the queue
+        // only after a few waves and must overtake the recurring
+        // tick 2 fan1, fan2 entries.
+        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(4);
+        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(4);
+        populate_buffer(&mut buffer, &["fan1", "fan2", "fan6", "fan7"]);
+        let mut last_processed: HashMap<ChannelName, u64> = HashMap::new();
+        // fan1 and fan2 have been serviced; fan6 and fan7 have not.
+        last_processed.insert("fan1".to_string(), 1);
+        last_processed.insert("fan2".to_string(), 2);
+        order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
+        let order: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        // The exact ordering of the two never-serviced channels is
+        // sort-stable but unspecified by the API; what matters is
+        // that both come before any serviced channel and that the
+        // older-serviced channel comes before the newer one.
+        assert!(
+            order[0] == "fan6" || order[0] == "fan7",
+            "never-serviced channel must lead, got {order:?}"
+        );
+        assert!(
+            order[1] == "fan6" || order[1] == "fan7",
+            "second slot must also be never-serviced, got {order:?}"
+        );
+        assert_eq!(
+            order[2], "fan1",
+            "older-serviced (counter=1) goes before newer"
+        );
+        assert_eq!(order[3], "fan2", "newest-serviced trails the rest");
+    }
+
+    #[test]
+    fn order_entries_by_starvation_short_circuits_for_zero_or_one_entry() {
+        // Goal: the single-entry case is the common case; sort must
+        // be a no-op there to keep the writer's per-wave overhead
+        // off the hot path.
+        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(1);
+        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(1);
+        let last_processed: HashMap<ChannelName, u64> = HashMap::new();
+        order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
+        assert!(entries.is_empty(), "empty buffer drains to empty entries");
+        buffer.insert("fan1".to_string(), pending_with_duty(50));
+        order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "fan1");
+    }
+
+    #[test]
+    fn order_entries_by_starvation_breaks_tie_with_oldest_first() {
+        // Goal: among channels that have all been serviced, the one
+        // serviced longest ago wins the slot. Verifies the ascending
+        // sort key is the counter and not its negation or the
+        // hashing order.
+        let mut entries: Vec<(ChannelName, PendingWrite)> = Vec::with_capacity(3);
+        let mut buffer: HashMap<ChannelName, PendingWrite> = HashMap::with_capacity(3);
+        populate_buffer(&mut buffer, &["fan1", "fan2", "fan3"]);
+        let mut last_processed: HashMap<ChannelName, u64> = HashMap::new();
+        last_processed.insert("fan1".to_string(), 30);
+        last_processed.insert("fan2".to_string(), 10);
+        last_processed.insert("fan3".to_string(), 20);
+        order_entries_by_starvation(&mut buffer, &mut entries, &last_processed);
+        let order: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(order, vec!["fan2", "fan3", "fan1"]);
     }
 
     #[test]
