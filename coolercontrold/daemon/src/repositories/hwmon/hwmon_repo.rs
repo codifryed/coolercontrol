@@ -32,8 +32,12 @@
 //!   engine enqueue here instead of taking the permit directly. A
 //!   per-device writer task drains and coalesces them so a burst of
 //!   targets for the same channel collapses to one sysfs write.
-//!   Other apply paths (`reset`, `manual_control`, `speed_profile`)
-//!   take the permit directly; FIFO preserves caller-visible order.
+//!   At most one in-flight (writer's local frame) and one waiting
+//!   (mailbox) entry per channel: a new write supersedes any waiting
+//!   one and resolves the older waiter Ok, since the new target is
+//!   what the hardware will see. Other apply paths (`reset`,
+//!   `manual_control`, `speed_profile`) take the permit directly;
+//!   FIFO preserves caller-visible order.
 //! - **`duty_cache`** — only for devices flagged slow at init by
 //!   `detect_slow_and_seed_duty_cache`. Caches `last_known` PWM duty
 //!   so the preload can skip the slow PWM read between verifies, and
@@ -287,25 +291,18 @@ pub struct HwmonDriverInfo {
     pub apple_smc: AppleMacSMC,
 }
 
-/// On overflow the oldest waiter is dropped with a "superseded"
-/// error so a runaway slider cannot grow `PendingWrite::waiters`
-/// unboundedly.
-const MAX_WAITERS_PER_PENDING_WRITE: usize = 64;
-
-const PENDING_WAITERS_INITIAL_CAPACITY: usize = 2;
-
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
 const PENDING_INITIAL_CAPACITY: usize = 8;
 
-const _: () = assert!(MAX_WAITERS_PER_PENDING_WRITE > 0);
-const _: () = assert!(PENDING_WAITERS_INITIAL_CAPACITY <= MAX_WAITERS_PER_PENDING_WRITE);
-
-/// One pending fan-duty write per channel. Newer writes replace
-/// `target_duty` and merge their sender into `waiters` so the writer
-/// task issues one hardware write and fans the result to all callers.
+/// One pending fan-duty write per channel. A newer write supersedes
+/// any earlier waiting write: the old waiter resolves Ok (its target
+/// is replaced by the latest, which is what will be applied) and the
+/// new caller takes the slot. Bounds the per-channel queue at one
+/// in-flight (in the writer task's local frame) plus one waiting (in
+/// the mailbox), regardless of how fast callers stack up.
 struct PendingWrite {
     target_duty: Duty,
-    waiters: Vec<oneshot::Sender<Result<(), String>>>,
+    waiter: oneshot::Sender<Result<(), String>>,
 }
 
 /// Per-device coalescing inbox. `pending` is borrowed sync (no
@@ -1154,8 +1151,11 @@ fn drain_pending(mailbox: &WriterMailbox) -> HashMap<ChannelName, PendingWrite> 
     mem::take(&mut *mailbox.pending.borrow_mut())
 }
 
-/// Inserts/merges into `pending`, returns the receiver. Borrow of
-/// `pending` is released before the caller awaits.
+/// Inserts a fresh pending write, replacing any waiting one for the
+/// same channel. Borrow of `pending` is released before the caller
+/// awaits. The superseded waiter resolves Ok because the latest
+/// target supplants its intent and is what the writer will apply;
+/// callers only see Err when the actual hardware write fails.
 fn enqueue_pending_write(
     mailbox: &Rc<WriterMailbox>,
     channel_name: &str,
@@ -1163,25 +1163,17 @@ fn enqueue_pending_write(
 ) -> oneshot::Receiver<Result<(), String>> {
     debug_assert!(target_duty <= 100, "caller must validate target_duty");
     let (tx, rx) = oneshot::channel();
-    let mut pending = mailbox.pending.borrow_mut();
-    let entry = pending
-        .entry(channel_name.to_string())
-        .or_insert_with(|| PendingWrite {
-            target_duty,
-            waiters: Vec::with_capacity(PENDING_WAITERS_INITIAL_CAPACITY),
-        });
-    entry.target_duty = target_duty;
-    if entry.waiters.len() >= MAX_WAITERS_PER_PENDING_WRITE {
-        // Drop the oldest sender; surviving waiters still reflect
-        // the latest target.
-        let oldest = entry.waiters.remove(0);
-        let _ = oldest.send(Err(
-            "HWMon write superseded by newer write (waiter list overflow)".to_string(),
-        ));
+    let new_pending = PendingWrite {
+        target_duty,
+        waiter: tx,
+    };
+    let superseded = {
+        let mut pending = mailbox.pending.borrow_mut();
+        pending.insert(channel_name.to_string(), new_pending)
+    };
+    if let Some(superseded) = superseded {
+        let _ = superseded.waiter.send(Ok(()));
     }
-    debug_assert!(entry.waiters.len() < MAX_WAITERS_PER_PENDING_WRITE);
-    entry.waiters.push(tx);
-    debug_assert!(entry.waiters.is_empty().not());
     rx
 }
 
@@ -1190,10 +1182,9 @@ fn enqueue_pending_write(
 fn cancel_remaining_waiters(mailbox: &WriterMailbox) {
     let entries = drain_pending(mailbox);
     for (_, pending) in entries {
-        fan_out_error(
-            pending.waiters,
-            "HWMon writer cancelled: daemon shutting down",
-        );
+        let _ = pending.waiter.send(Err(
+            "HWMon writer cancelled: daemon shutting down".to_string()
+        ));
     }
 }
 
@@ -1206,13 +1197,9 @@ async fn run_one_pending_write(
         pending.target_duty <= 100,
         "enqueue_pending_write validates"
     );
-    debug_assert!(
-        pending.waiters.is_empty().not(),
-        "drained entries always carry at least one waiter"
-    );
     // Write-skip: target already matches preloaded duty.
     if current_duty_matches_target(task, &channel_name, pending.target_duty) {
-        fan_out_result(pending.waiters, &Ok(()));
+        let _ = pending.waiter.send(Ok(()));
         return;
     }
     let driver_name = task.driver.name.as_str();
@@ -1231,7 +1218,7 @@ async fn run_one_pending_write(
     let permit = match acquire {
         Ok(permit) => permit,
         Err(message) => {
-            fan_out_error(pending.waiters, &message);
+            let _ = pending.waiter.send(Err(message));
             return;
         }
     };
@@ -1264,7 +1251,7 @@ async fn run_one_pending_write(
                 });
         }
     }
-    fan_out_result(pending.waiters, &result);
+    let _ = pending.waiter.send(result);
 }
 
 /// True when the channel's preloaded duty already equals
@@ -1285,18 +1272,6 @@ fn current_duty_matches_target(task: &WriterTask, channel_name: &str, target_dut
     let current_u8 = current_duty.round().clamp(0.0, 100.0) as Duty;
     debug_assert!(current_u8 <= 100, "ChannelStatus.duty must be 0..=100");
     current_u8 == target_duty
-}
-
-fn fan_out_error(waiters: Vec<oneshot::Sender<Result<(), String>>>, message: &str) {
-    for waiter in waiters {
-        let _ = waiter.send(Err(message.to_string()));
-    }
-}
-
-fn fan_out_result(waiters: Vec<oneshot::Sender<Result<(), String>>>, result: &Result<(), String>) {
-    for waiter in waiters {
-        let _ = waiter.send(result.clone());
-    }
 }
 
 /// Per-driver branch matching what `apply_setting_speed_fixed`
@@ -3101,11 +3076,12 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
-    fn coalescer_pending_merges_waiters_per_channel() {
+    fn coalescer_pending_supersedes_waiting_per_channel() {
         // Goal: once the writer is blocked on acquire (in-flight
-        // first write), additional writes to the same channel
-        // accumulate as a single pending entry with their waiters
-        // merged. The mailbox bound stays at one entry per channel.
+        // first write), additional writes to the same channel keep
+        // the mailbox at one pending entry holding the latest target
+        // and exactly one waiter. Older waiters resolve Ok on the
+        // spot since the latest write supplants their intent.
         cc_fs::test_runtime(async {
             let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
             let dir = base.join("dev");
@@ -3129,8 +3105,9 @@ mod coalescer_tests {
             let h0 = enqueue_write(&repo, &uid, "fan1", 10);
             sleep(Duration::from_millis(30)).await;
 
-            // Subsequent writes accumulate in the mailbox's pending
-            // map because the writer is still blocked.
+            // Subsequent writes overwrite the single waiting slot;
+            // the prior waiter resolves Ok immediately so its task
+            // unblocks instead of stacking behind the latest.
             let h1 = enqueue_write(&repo, &uid, "fan1", 20);
             let h2 = enqueue_write(&repo, &uid, "fan1", 30);
             let h3 = enqueue_write(&repo, &uid, "fan1", 40);
@@ -3142,13 +3119,18 @@ mod coalescer_tests {
                 assert_eq!(pending.len(), 1, "one channel, one pending entry");
                 let entry = pending.get("fan1").expect("entry must exist");
                 assert_eq!(entry.target_duty, 50, "latest target wins");
-                assert_eq!(entry.waiters.len(), 4, "four waiters merged");
+            }
+
+            // Superseded handles resolve Ok before the permit is
+            // released; only the surviving waiter blocks on the
+            // hardware write.
+            for handle in [h1, h2, h3] {
+                handle.await.unwrap().unwrap();
             }
 
             drop(permit_hold);
-            for handle in [h0, h1, h2, h3, h4] {
-                handle.await.unwrap().unwrap();
-            }
+            h0.await.unwrap().unwrap();
+            h4.await.unwrap().unwrap();
             let pwm_after = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
             assert_eq!(
                 pwm_after.trim(),
@@ -3163,10 +3145,12 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
-    fn coalescer_responders_all_see_same_error() {
-        // Goal: when the hardware write fails, every waiter merged
-        // into the surviving entry receives the same error so no
-        // caller is misled into thinking its write succeeded.
+    fn coalescer_only_surviving_waiter_sees_write_error() {
+        // Goal: when the hardware write fails, only the surviving
+        // (latest) waiter sees the error. Older callers were already
+        // resolved Ok at supersession time; their target was never
+        // attempted, so reporting the failure to them would be a lie
+        // and would also multiply the same error log per channel.
         cc_fs::test_runtime(async {
             // Skip seeding pwm1: set_pwm_duty's write fails because
             // the parent path doesn't exist.
@@ -3186,23 +3170,30 @@ mod coalescer_tests {
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
+
+            // h1 is drained into the writer's local frame and blocks
+            // on acquire; h2 and h3 land in the mailbox, with h3
+            // superseding h2.
             let h1 = enqueue_write(&repo, &uid, "fan1", 30);
+            sleep(Duration::from_millis(20)).await;
             let h2 = enqueue_write(&repo, &uid, "fan1", 40);
             let h3 = enqueue_write(&repo, &uid, "fan1", 50);
-            sleep(Duration::from_millis(20)).await;
-            drop(permit_hold);
 
+            // h2 was superseded by h3 before the writer ran; it
+            // resolves Ok without waiting for the hardware.
+            assert!(
+                h2.await.unwrap().is_ok(),
+                "superseded waiter must resolve Ok"
+            );
+
+            drop(permit_hold);
             let r1 = h1.await.unwrap();
-            let r2 = h2.await.unwrap();
             let r3 = h3.await.unwrap();
-            assert!(r1.is_err(), "write must fail when path is invalid");
-            assert!(r2.is_err());
-            assert!(r3.is_err());
-            let m1 = r1.unwrap_err().to_string();
-            let m2 = r2.unwrap_err().to_string();
-            let m3 = r3.unwrap_err().to_string();
-            assert_eq!(m1, m2);
-            assert_eq!(m2, m3);
+            assert!(
+                r1.is_err(),
+                "in-flight write must fail when path is invalid"
+            );
+            assert!(r3.is_err(), "surviving waiter must see the actual error");
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
@@ -3394,13 +3385,14 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
-    fn coalescer_waiters_overflow_drops_oldest() {
-        // Goal: if more than MAX_WAITERS_PER_PENDING_WRITE waiters
-        // pile up on one channel, the oldest senders are dropped
-        // with an overflow error so the merged list stays bounded.
-        // Newer waiters survive and observe the eventual result.
+    fn coalescer_pending_capped_at_one_waiter_under_flood() {
+        // Goal: a flood of writes to one channel cannot grow the
+        // pending entry past a single waiter. Each new write
+        // supersedes the previous waiting one, which resolves Ok on
+        // the spot. Bounds the per-channel queue at one in-flight
+        // plus one waiting regardless of caller pressure.
         cc_fs::test_runtime(async {
-            const EXTRAS: usize = 5;
+            const FLOOD: usize = 200;
             let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
@@ -3419,50 +3411,38 @@ mod coalescer_tests {
             let permit_hold = permit_sem.acquire().await.unwrap();
 
             // First write so the writer drains it and blocks on
-            // acquire. Subsequent writes then accumulate into the
-            // mailbox's pending entry without being drained.
+            // acquire. Subsequent writes then collapse onto the
+            // mailbox's pending slot without being drained.
             let h_first = enqueue_write(&repo, &uid, "fan1", 1);
             sleep(Duration::from_millis(30)).await;
 
-            // Push enough additional writes to overflow the cap.
-            let total = MAX_WAITERS_PER_PENDING_WRITE + EXTRAS;
-            let mut handles = Vec::with_capacity(total);
-            for i in 0..total {
+            let mut handles = Vec::with_capacity(FLOOD);
+            for i in 0..FLOOD {
                 let duty = u8::try_from((i % 99) + 1).unwrap();
                 handles.push(enqueue_write(&repo, &uid, "fan1", duty));
             }
             sleep(Duration::from_millis(50)).await;
-            assert_eq!(
-                repo.writers
-                    .get(&1)
-                    .unwrap()
-                    .pending
-                    .borrow()
-                    .get("fan1")
-                    .expect("pending entry should hold the merged waiters")
-                    .waiters
-                    .len(),
-                MAX_WAITERS_PER_PENDING_WRITE,
-                "merged waiters must not exceed the bound"
-            );
-            drop(permit_hold);
 
-            // h_first is in-flight and unaffected by overflow.
-            h_first.await.unwrap().unwrap();
-            let mut overflow_count = 0_usize;
-            let mut ok_count = 0_usize;
-            for handle in handles {
-                match handle.await.unwrap() {
-                    Ok(()) => ok_count += 1,
-                    Err(err) if err.to_string().contains("superseded") => overflow_count += 1,
-                    Err(err) => panic!("unexpected error: {err}"),
-                }
+            {
+                let pending = repo.writers.get(&1).unwrap().pending.borrow();
+                assert_eq!(pending.len(), 1, "one channel, one pending entry");
+                let entry = pending.get("fan1").expect("pending entry must exist");
+                let last_duty = u8::try_from(((FLOOD - 1) % 99) + 1).unwrap();
+                assert_eq!(entry.target_duty, last_duty, "latest target wins");
             }
-            assert_eq!(
-                overflow_count, EXTRAS,
-                "exactly EXTRAS oldest must overflow"
-            );
-            assert_eq!(ok_count, MAX_WAITERS_PER_PENDING_WRITE);
+
+            // All but the last caller were superseded and resolve
+            // Ok before the permit is released; the last one is the
+            // surviving waiter and only completes after the writer
+            // drains the mailbox post-permit.
+            let surviving = handles.pop().expect("flood must produce handles");
+            for handle in handles {
+                handle.await.unwrap().unwrap();
+            }
+
+            drop(permit_hold);
+            h_first.await.unwrap().unwrap();
+            surviving.await.unwrap().unwrap();
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
