@@ -30,31 +30,43 @@
 //! and writes for that device must hold it; only one operation
 //! is in flight at a time.
 //!
-//! Crucially, the permit is held *per channel*, not per
-//! whole-device-preload: `preload_device_statuses` acquires the
-//! permit inside `read_one_channel`, runs that one channel's read,
-//! and releases. This lets the writer task slip in between
-//! channel reads, so on a slow device worst-case write latency
-//! is one channel-read time rather than `N_channels * read_time`.
-//! Reads are idempotent, so the snapshot semantics survive the
-//! handoff (channels were already read sequentially; the change
-//! is just a release point between each).
+//! `preload_device_statuses` holds the permit across the *whole*
+//! pass (Power → Temp → Fan), so a queued write batch cannot
+//! starve mid-pass channel reads. Writes pile up on the
+//! semaphore's FIFO waiter list during the read pass and run as
+//! a coalesced batch the moment the pass releases the permit.
+//! `preload_in_flight` (a per-device flag) coalesces overlapping
+//! preload spawns: a tick that arrives while the previous tick's
+//! pass is still running is a no-op for that device, so the queue
+//! depth stays at one.
 //!
 //! ## Two timeouts on the permit
 //!
-//! Read permit: `poll_rate * READ_PERMIT_RATIO` (0.7), so 700 ms
-//! at the default 1 s tick. Applied per channel inside the
-//! preload loop: a channel that cannot acquire within this
-//! budget skips this tick. The cache + per-channel staleness
-//! counter + failsafe layer (see `failsafe.rs`) cover missed
-//! reads without surfacing noise to the UI. The slow-device log
-//! fires once per device per tick if any channel times out.
+//! Read permit and write permit are both `poll_rate *
+//! MISSING_STATUS_THRESHOLD` (8 s at the default 1 s tick). The
+//! symmetry is intentional: with read coalescing in place a
+//! preload that has registered on the FIFO waiter list will
+//! eventually win the permit even through a long write batch, so
+//! a smaller read budget would only cause the read to drop out of
+//! its FIFO position and re-register at the back next tick — the
+//! exact priority inversion the original write-vs-read starvation
+//! bug exhibited.
 //!
-//! Write permit: `poll_rate * MISSING_STATUS_THRESHOLD` (8), so
-//! 8 s at the default tick. Set well above the steady-state read
-//! window so a write is allowed to wait for a stuck reader to
-//! finish or fail; if 8 s elapses the device is genuinely wedged
-//! and the write is reported.
+//! On read-permit timeout the tick skips reads entirely, ticks
+//! per-channel staleness once, and logs the slow-device line. The
+//! cache + per-channel staleness counter + failsafe layer (see
+//! `failsafe.rs`) cover missed reads without surfacing noise to
+//! the UI.
+//!
+//! On write-permit timeout the write is reported as a TIMEOUT
+//! error to the engine; the device is genuinely wedged.
+//!
+//! Separately, a much smaller `slow_device_init_threshold`
+//! (`poll_rate * 0.7`, 700 ms at default) gates the init-time
+//! slow-device detection in `detect_slow_and_seed_duty_cache`.
+//! That threshold is independent of the steady-state permit
+//! budgets — it is just "is the wall-clock for a happy-path
+//! initial extract long enough to want the duty cache?"
 //!
 //! See `main_loop.rs` for the full three-layer timing model
 //! (`poll_rate`, `SNAPSHOT_TIMEOUT_MS`, this module's permit
@@ -65,15 +77,12 @@
 //! Two call sites apply `apply_device_command_delay(delay_millis)`,
 //! both inside the permit window so the next op observes the gap:
 //!
-//! - **Read path** — fired *once* per preload tick, after all
-//!   per-channel reads complete, via
-//!   `spawn_command_delay_holder`. The holder is a detached task
-//!   that re-acquires the permit and holds it for `delay_millis`,
-//!   queueing behind any in-flight per-channel acquires. Reads
-//!   count as one batched "command" for the device's settle
-//!   window — paying the delay N times per tick on an N-channel
-//!   device would compound badly with the per-channel handoff,
-//!   so we keep the original "once per preload" semantic.
+//! - **Read path** — fired *once* per preload tick, after the
+//!   whole-pass permit drops, via `spawn_command_delay_holder`.
+//!   The holder is a detached task that re-acquires the permit
+//!   and holds it for `delay_millis`, queueing ahead of waiters
+//!   that landed during the pass. Reads count as one batched
+//!   "command" for the device's settle window.
 //!
 //! - **Write path** — fired *per write* inside the writer task.
 //!   Each duty write to a channel pays its own settle window
@@ -166,10 +175,9 @@
 //! `tick_count: Cell<u64>` increments once per `preload_statuses`
 //! call. `preload_device_statuses` rotates the iteration starting
 //! index by `tick_count % N_channels` independently for each of
-//! the Power, Temp, and Fan passes. Removes the FIFO bias that
-//! would otherwise cause later-iteration channels to
-//! disproportionately time out under sustained slow-device
-//! contention.
+//! the Power, Temp, and Fan passes. Matters when a slow sysfs
+//! read or a shutdown bail truncates the pass: rotation avoids
+//! permanently last-serving the same channel.
 //!
 //! ## Shutdown
 //!
@@ -214,26 +222,35 @@ use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
 use tokio::time::{sleep, timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
-/// Fraction of `poll_rate` a device preload is allowed before the
-/// slow-device arm fires. This is the per-device "layer 3" budget
-/// in the timing model documented at the top of `main_loop`; it is
-/// independent of `SNAPSHOT_TIMEOUT_MS` and may exceed it. A read
-/// above the snapshot budget just has its values appear in the
-/// next snapshot; the per-channel staleness counter ticks while
-/// the read is overdue, and the failsafe layer covers reads that
-/// stay slow for `MISSING_STATUS_THRESHOLD` consecutive ticks.
-///
-/// Anchored so that at the minimum poll rate (0.5 s) the budget
-/// reproduces the original 350 ms value, preserving historical
-/// behavior on the fastest poll setting.
-const READ_PERMIT_RATIO: f64 = 0.7;
+/// Fraction of `poll_rate` used as the wall-clock threshold for the
+/// init-time slow-device detection in `detect_slow_and_seed_duty_cache`.
+/// Devices whose initial extract block exceeds this threshold are
+/// recorded in `slow_devices` and get a duty cache. Anchored at 0.7
+/// so at the minimum poll rate (0.5 s) the threshold is 350 ms,
+/// matching the original heuristic from before the read-permit /
+/// init-threshold split.
+const SLOW_DEVICE_INIT_RATIO: f64 = 0.7;
 
-/// Derives the read permit timeout from `poll_rate`. Pure helper so
-/// the ratio is testable without constructing a full `HwmonRepo`.
+/// Derives the slow-device init detection threshold from `poll_rate`.
+/// Pure helper so the ratio is testable without constructing a full
+/// `HwmonRepo`.
+fn slow_device_init_threshold_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * SLOW_DEVICE_INIT_RATIO)
+}
+
+/// Derives the read permit timeout from `poll_rate`. Symmetric with
+/// `device_write_permit_timeout_for`: with per-device read coalescing
+/// in place (one preload-per-device in flight at a time), a read can
+/// safely wait through any write batch the write permit also tolerates
+/// without risking a queue of stacked preloads. Pure helper so the
+/// formula is testable without constructing a full `HwmonRepo`.
+#[allow(clippy::cast_precision_loss)]
 fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
-    Duration::from_secs_f64(poll_rate * READ_PERMIT_RATIO)
+    Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
 /// Derives the write permit timeout from `poll_rate`. Pure helper so
@@ -248,10 +265,12 @@ fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
 }
 
 /// Fraction of `poll_rate` allowed for the drivetemp ATA power-state
-/// ioctl. Kept strictly below `READ_PERMIT_RATIO` so on timeout there
-/// is still budget for the fallback temp read before the outer read
-/// permit arm fires. Hardware-healthy ATA power-state checks complete
-/// in milliseconds; any value >> that is a wedged controller.
+/// ioctl. The ioctl runs before the device permit acquire, so this
+/// just bounds how long a wedged ATA controller can stall the
+/// pre-acquire path; kept strictly below `SLOW_DEVICE_INIT_RATIO` so
+/// at the minimum poll rate (0.5 s) it still has headroom for the
+/// fallback temp read before any later threshold fires. Healthy ATA
+/// power-state checks complete in milliseconds.
 const DRIVETEMP_IOCTL_RATIO: f64 = 0.4;
 
 /// Derives the drivetemp ioctl timeout from `poll_rate`. Pure helper
@@ -565,6 +584,17 @@ pub struct HwmonRepo {
     /// Used to avoid logging a device-delay warning more than once and not on startup
     delay_logged: HashMap<TypeIndex, Cell<u8>>,
 
+    /// Per-device "preload in flight" flag. Skip-the-tick coalesce:
+    /// `fire_preloads` is fire-and-forget, so on a slow device whose
+    /// read pass exceeds `poll_rate` every successive tick would
+    /// otherwise stack a fresh `preload_device_statuses` task on the
+    /// device permit. Set at the start of `preload_device_statuses`,
+    /// cleared via RAII so a panic / cancellation cannot wedge
+    /// subsequent ticks. One entry per registered `type_index`,
+    /// populated together with `device_permits` and `delay_logged`,
+    /// never removed for the repo's lifetime.
+    preload_in_flight: HashMap<TypeIndex, Rc<Cell<bool>>>,
+
     /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
 
@@ -581,6 +611,14 @@ pub struct HwmonRepo {
     /// lifetime; see `device_read_permit_timeout`.
     device_write_permit_timeout: Duration,
 
+    /// Snapshot of the init-time slow-device detection threshold.
+    /// Separate from `device_read_permit_timeout` because the permit
+    /// timeout is now symmetric with the write permit (`poll_rate *
+    /// MISSING_STATUS_THRESHOLD`), while the init threshold stays at
+    /// the smaller historical `poll_rate * 0.7` so init-slow devices
+    /// still get the duty cache.
+    slow_device_init_threshold: Duration,
+
     /// Snapshot of the drivetemp ioctl timeout. Constant for the
     /// repo's lifetime; bounds the `HDIO_DRIVE_CMD` ioctl that runs
     /// on the blocking pool during each preload tick.
@@ -595,6 +633,7 @@ impl HwmonRepo {
         let poll_rate = config.get_settings().map(|s| s.poll_rate).unwrap_or(1.0);
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
+        let slow_device_init_threshold = slow_device_init_threshold_for(poll_rate);
         let drivetemp_ioctl_timeout = drivetemp_ioctl_timeout_for(poll_rate);
         Self {
             config,
@@ -608,6 +647,7 @@ impl HwmonRepo {
             slow_devices: HashSet::new(),
             duty_cache: HashMap::new(),
             delay_logged: HashMap::new(),
+            preload_in_flight: HashMap::new(),
             lc_hwmon_paths: lc_locations
                 .into_iter()
                 .filter(|loc| loc.contains("hwmon/hwmon"))
@@ -617,6 +657,7 @@ impl HwmonRepo {
             device_delays: HashMap::new(),
             device_read_permit_timeout,
             device_write_permit_timeout,
+            slow_device_init_threshold,
             drivetemp_ioctl_timeout,
         }
     }
@@ -854,6 +895,8 @@ impl HwmonRepo {
                 }),
             );
             self.delay_logged.insert(type_index, Cell::new(0));
+            self.preload_in_flight
+                .insert(type_index, Rc::new(Cell::new(false)));
             self.devices.insert(
                 device.uid.clone(),
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
@@ -896,23 +939,20 @@ impl HwmonRepo {
     }
 
     /// Reads channel and temp statuses for one device and upserts them
-    /// into the preloaded cache per channel as each read completes.
-    /// Acquires the device permit *per channel* (not for the whole
-    /// device) so writes enqueued mid-preload can interleave between
-    /// channel reads instead of waiting for the entire device's
-    /// channel set. Worst-case write latency drops from
-    /// `N_channels * read_time` to ~one channel's read time.
+    /// into the preloaded cache. Holds the device permit once across
+    /// the whole pass (Power → Temp → Fan) so a queued write batch
+    /// cannot starve mid-pass channel reads. Coalesces overlapping
+    /// invocations: if the previous tick's preload is still running
+    /// for this device, this call is a no-op (skip-the-tick).
     ///
-    /// Fast channels on the device become visible to downstream the
-    /// same tick they are read, even if a later channel on the same
-    /// device is slow. Failing reads leave their cache entries
-    /// untouched so downstream keeps seeing the last known good
-    /// value, not a fabricated 0. Each upsert also flips a
-    /// pre-allocated `fresh_this_tick` bool inside `FailsafeStatusData`
-    /// so the snapshot timeout arm in `main_loop.rs` can recognize
-    /// partial upserts as fresh instead of ticking every channel
-    /// blindly. Staleness and failsafe substitution are handled per
-    /// channel in `tick_staleness_and_log`, invoked at end-of-tick.
+    /// Each successful read upserts into `preloaded_statuses` and
+    /// flips a pre-allocated `fresh_this_tick` bool inside
+    /// `FailsafeStatusData`, so a snapshot fired before all channels
+    /// finish still sees per-channel freshness. Failing reads leave
+    /// their cache entries untouched so downstream keeps the last
+    /// known good value, not a fabricated 0. Staleness and failsafe
+    /// substitution are handled per channel in `tick_staleness_and_log`,
+    /// invoked at end-of-tick.
     ///
     /// Channel order is power → temp → fan, matching the historical
     /// "place quicker and more important channel extractions first"
@@ -925,28 +965,70 @@ impl HwmonRepo {
         if self.shutdown_token.is_cancelled() {
             return;
         }
-        // Clear the fresh-this-tick flags at the start of this
-        // preload attempt. The snapshot timeout arm reads the flags
-        // as they get set by the per-channel upserts.
-        // `is_failsafed` and `stale_ticks` persist across preloads.
+        // Coalesce overlapping preloads. The previous tick's pass is
+        // still running for this device, so spawning another one would
+        // just stack on the device permit and grow the queue. The RAII
+        // guard clears the flag on every exit (including panic) so a
+        // dropped task cannot wedge subsequent ticks.
+        let flag = self.preload_in_flight.get(&type_index).expect(
+            "invariant: preload_in_flight entry exists for every registered device type_index",
+        );
+        if flag.replace(true) {
+            return;
+        }
+        let _coalesce_guard = PreloadInFlightGuard {
+            flag: Rc::clone(flag),
+        };
+
+        // Clear fresh-this-tick flags at the start of this preload
+        // attempt. The snapshot timeout arm reads the flags as they
+        // get set by the per-channel upserts. `is_failsafed` and
+        // `stale_ticks` persist across preloads.
         self.reset_fresh_this_tick(type_index);
 
         let drivetemp_suspended =
             drivetemp::is_suspended(driver.block_dev_path.as_ref(), self.drivetemp_ioctl_timeout)
                 .await;
+
+        // Whole-device permit hold: writes wait for the full read
+        // pass instead of interleaving per-channel. The previous
+        // per-channel handoff let a queued write batch starve channel
+        // reads mid-pass and trip per-channel staleness on temp /
+        // power channels (no cache fallback). FIFO discipline on the
+        // semaphore ensures any writer's `acquire` queued during the
+        // read pass wins as soon as we drop the permit at the end.
+        let semaphore = self.device_permits.get(&type_index).expect(
+            "invariant: device_permits entry exists for every registered device type_index",
+        );
+        let permit_acquire = tokio::select! {
+            () = self.shutdown_token.cancelled() => return,
+            () = sleep(self.device_read_permit_timeout) => None,
+            permit = semaphore.acquire() => permit.ok(),
+        };
+        let Some(permit) = permit_acquire else {
+            // Permit timed out: the previous tick's preload or a
+            // long write batch is still holding it. Skip reads for
+            // this tick; staleness still ticks so a sustained slow-
+            // device condition trips the failsafe layer at the right
+            // time, and no command-delay holder is spawned because
+            // no reads ran.
+            self.log_slow_device(type_index, &driver.name);
+            self.tick_staleness_and_log(type_index, &driver.name);
+            return;
+        };
+
         let tick = self.tick_count.get();
-        let mut any_permit_timeout = false;
         for ch_type in [
             HwmonChannelType::Power,
             HwmonChannelType::Temp,
             HwmonChannelType::Fan,
         ] {
-            // Round-robin start index per channel type: the same
-            // tick rotates Power, Temp, and Fan independently
-            // because each type has its own channel count. This
-            // removes the FIFO bias under sustained slow-device
-            // contention (later-iteration channels were
-            // disproportionately timing out every tick).
+            // Round-robin start index per channel type: the same tick
+            // rotates Power, Temp, and Fan independently because each
+            // type has its own channel count. Preserved from the per-
+            // channel-permit era so a slow channel cannot become
+            // permanently last-served if reads occasionally exceed
+            // the tick budget.
             let typed_channels: Vec<&HwmonChannelInfo> = driver
                 .channels
                 .iter()
@@ -963,45 +1045,35 @@ impl HwmonRepo {
             #[allow(clippy::cast_possible_truncation)]
             let start = (tick as usize) % channel_count;
             for offset in 0..channel_count {
-                // Check before each channel so a long permit-acquire
-                // wait or a slow sysfs read does not stretch the tick
-                // past the start of shutdown.
+                // Check before each channel so a slow sysfs read
+                // does not stretch the tick past the start of
+                // shutdown.
                 if self.shutdown_token.is_cancelled() {
                     return;
                 }
                 let channel = typed_channels[(start + offset) % channel_count];
-                let acquired = self
-                    .read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
+                self.read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
                     .await;
-                if acquired.not() {
-                    any_permit_timeout = true;
-                }
             }
         }
 
-        // Single end-of-preload command delay: reads count as one
-        // batched "command" for the device's settle window, matching
-        // the original spawn_command_delay_holder semantic. The
-        // holder re-acquires the permit and holds it for delay_ms,
-        // so subsequent writes (and the next tick's preload) queue
-        // behind it. Per-channel writes pay their own delay inside
-        // the writer task; this only governs the read side.
+        // Drop the permit before spawning the delay holder so any
+        // queued waiter (write or next tick's preload) can grab it
+        // first; the holder will queue behind them via FIFO. Reads
+        // count as one batched "command" for the device's settle
+        // window.
+        drop(permit);
         self.spawn_command_delay_holder(type_index, self.device_delay(&driver.u_id));
-
-        if any_permit_timeout {
-            self.log_slow_device(type_index, &driver.name);
-        }
         self.tick_staleness_and_log(type_index, &driver.name);
     }
 
-    /// Acquires the device permit with the read-permit timeout
-    /// and runs the type-appropriate per-channel read, upserting
-    /// the result. Returns `true` if the permit was acquired
-    /// (regardless of read success), `false` if the acquire timed
-    /// out. The per-device command delay is NOT applied here; it
-    /// fires once at the end of `preload_device_statuses` so
-    /// reads count as one batched "command" rather than paying
-    /// the delay N times per tick.
+    /// Runs the type-appropriate per-channel read and upserts the
+    /// result. Caller (`preload_device_statuses`) is responsible for
+    /// holding the device permit; this function performs no permit
+    /// acquire of its own. The per-device command delay is NOT
+    /// applied here either; it fires once at the end of the preload
+    /// pass so reads count as one batched "command" rather than
+    /// paying the delay N times per tick.
     async fn read_one_channel(
         &self,
         type_index: TypeIndex,
@@ -1009,22 +1081,7 @@ impl HwmonRepo {
         channel: &HwmonChannelInfo,
         ch_type: &HwmonChannelType,
         drivetemp_suspended: bool,
-    ) -> bool {
-        let semaphore = self.device_permits.get(&type_index).expect(
-            "invariant: device_permits entry exists for every registered device type_index",
-        );
-        // The shutdown arm short-circuits a permit-waiting channel so
-        // we do not burn the full device_read_permit_timeout before
-        // the next iteration's bail check fires. Returning `true`
-        // here avoids triggering log_slow_device for an aborted tick.
-        let acquire = tokio::select! {
-            () = self.shutdown_token.cancelled() => return true,
-            () = sleep(self.device_read_permit_timeout) => None,
-            permit = semaphore.acquire() => permit.ok(),
-        };
-        let Some(_permit) = acquire else {
-            return false;
-        };
+    ) {
         match ch_type {
             HwmonChannelType::Power => {
                 if let Some(status) = power::read_one_power_status(driver, channel).await {
@@ -1052,7 +1109,6 @@ impl HwmonRepo {
             }
             _ => {}
         }
-        true
     }
 
     /// Slow-device-aware fan-channel read. For fast devices: real
@@ -1291,9 +1347,9 @@ impl HwmonRepo {
     }
 
     /// If the just-completed init extract block ran longer than
-    /// the device's read-permit budget, mark the device as slow
-    /// and seed its duty cache from the initial fan reads. The
-    /// cache's `next_verify_at` values are staggered evenly across
+    /// the slow-device init threshold, mark the device as slow and
+    /// seed its duty cache from the initial fan reads. The cache's
+    /// `next_verify_at` values are staggered evenly across
     /// `DUTY_CACHE_VERIFY_INTERVAL` so verification reads arrive
     /// one-channel-at-a-time rather than all at once. No-op for
     /// fast devices.
@@ -1304,13 +1360,13 @@ impl HwmonRepo {
         driver_name: &str,
         channel_statuses: &[ChannelStatus],
     ) {
-        if (extract_elapsed > self.device_read_permit_timeout).not() {
+        if (extract_elapsed > self.slow_device_init_threshold).not() {
             return;
         }
         info!(
             "Slow HWMon device detected: {driver_name} took {extract_elapsed:?} for initial \
              reads (budget {:?}); enabling duty cache.",
-            self.device_read_permit_timeout
+            self.slow_device_init_threshold
         );
         self.slow_devices.insert(type_index);
         let fan_count = channel_statuses
@@ -1408,6 +1464,22 @@ impl HwmonRepo {
             };
             tokio::task::spawn_local(run_writer_task(task));
         }
+    }
+}
+
+/// RAII guard that clears the `preload_in_flight` flag on drop.
+/// Used by `preload_device_statuses` so the flag clears on every
+/// exit (including panic / task cancellation), since `fire_preloads`
+/// cancels the snapshot timeout token before the spawned scope
+/// finishes and a leaked flag would coalesce-skip every subsequent
+/// tick on that device.
+struct PreloadInFlightGuard {
+    flag: Rc<Cell<bool>>,
+}
+
+impl Drop for PreloadInFlightGuard {
+    fn drop(&mut self) {
+        self.flag.set(false);
     }
 }
 
@@ -1861,13 +1933,12 @@ impl Repository for HwmonRepo {
                 let type_index = device_lock.borrow().type_index;
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    // The device permit is now acquired per channel
-                    // inside preload_device_statuses so the writer
-                    // task can interleave between channel reads on
-                    // a slow device. Slow-device logging and per-
-                    // channel staleness ticking happen inside the
-                    // per-channel loop, so no outer timeout arm is
-                    // needed here.
+                    // preload_device_statuses self-coalesces via the
+                    // preload_in_flight flag, so an overlap from a
+                    // prior tick whose pass is still running is a
+                    // no-op for that device. Slow-device logging and
+                    // staleness ticking live inside the function;
+                    // no outer timeout arm needed here.
                     self.preload_device_statuses(type_index, driver).await;
                 });
             }
@@ -2269,11 +2340,15 @@ mod preload_tests {
     fn new_test_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
         let mut repo = HwmonRepo::new(config, vec![]);
-        // preload_device_statuses now acquires the device permit per
-        // channel; tests need an entry for TEST_TYPE_INDEX or the
-        // expect inside read_one_channel fires.
+        // preload_device_statuses requires a device_permits, a
+        // preload_in_flight, and a delay_logged entry for
+        // TEST_TYPE_INDEX or one of its expect()s fires (invariant:
+        // one entry per registered type_index).
         repo.device_permits
             .insert(TEST_TYPE_INDEX, Rc::new(Semaphore::new(1)));
+        repo.preload_in_flight
+            .insert(TEST_TYPE_INDEX, Rc::new(Cell::new(false)));
+        repo.delay_logged.insert(TEST_TYPE_INDEX, Cell::new(0));
         repo
     }
 
@@ -2717,13 +2792,12 @@ mod preload_tests {
 
     #[test]
     #[serial]
-    fn preload_releases_permit_between_channels() {
-        // Goal: per-channel permit handoff. After preload_device_statuses
-        // returns, the device permit must be free, and the path the
-        // function takes through the channels acquires and releases
-        // it once per channel rather than holding it across the
-        // whole device. This is what lets a writer slip in between
-        // channel reads on a slow device.
+    fn preload_holds_permit_across_all_channels() {
+        // Goal: whole-pass permit hold. Reads of all channels run
+        // under a single device-permit acquire, so a write or a
+        // racing observer cannot slip in between channels and starve
+        // the read pass mid-flight. After preload_device_statuses
+        // returns the permit must be free again.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             let base = &ctx.test_base_path;
@@ -2745,38 +2819,224 @@ mod preload_tests {
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
-            // Run a preload while concurrently observing the
-            // permit. Between channel reads the permit must be
-            // briefly acquirable from the outside.
+            // Race an observer that tries to acquire the permit
+            // continuously. With per-channel handoff (old behavior)
+            // it would observe the permit free between channels.
+            // With whole-pass hold the observer must never see the
+            // permit free until preload returns.
             let sem = Rc::clone(repo.device_permits.get(&TEST_TYPE_INDEX).unwrap());
-            let observed_free = Rc::new(Cell::new(false));
-            let observed_free_clone = Rc::clone(&observed_free);
+            let observed_free_during = Rc::new(Cell::new(false));
+            let observed_free_during_clone = Rc::clone(&observed_free_during);
+            let stop = Rc::new(Cell::new(false));
+            let stop_clone = Rc::clone(&stop);
             let observer = tokio::task::spawn_local(async move {
-                for _ in 0_u32..50 {
+                while stop_clone.get().not() {
                     if sem.try_acquire().is_ok() {
-                        observed_free_clone.set(true);
+                        observed_free_during_clone.set(true);
                         return;
                     }
                     tokio::task::yield_now().await;
                 }
             });
             repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            stop.set(true);
             observer.await.unwrap();
 
-            // After preload returns the permit must be unconditionally
-            // free; the per-channel acquires were the last to hold it.
+            assert!(
+                observed_free_during.get().not(),
+                "observer must NOT see the permit free during preload \
+                 (whole-pass hold)"
+            );
             let sem = repo.device_permits.get(&TEST_TYPE_INDEX).unwrap();
             assert!(
                 sem.try_acquire().is_ok(),
                 "device permit must be free after preload_device_statuses returns"
             );
-            // Permit was at least transiently free during the preload
-            // itself, demonstrating per-channel handoff. The check is
-            // intentionally weak (one observation is enough) to keep
-            // it stable in CI.
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn overlapping_preloads_are_coalesced() {
+        // Goal: when preload_device_statuses is invoked while a
+        // previous tick's pass is still running for the same device,
+        // the new call must return immediately without acquiring the
+        // permit, reading sysfs, or upserting into preloaded_statuses.
+        // We simulate the "in-flight" condition by setting the flag
+        // directly so the test stays deterministic.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // given: a previous tick's preload is still running.
+            let flag = Rc::clone(repo.preload_in_flight.get(&TEST_TYPE_INDEX).unwrap());
+            flag.set(true);
+
+            // when:
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: no upsert landed for this type_index.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                assert!(
+                    preloaded
+                        .get(&TEST_TYPE_INDEX)
+                        .is_none_or(|(channels, temps)| channels.is_empty() && temps.is_empty()),
+                    "coalesced preload must not upsert any channel/temp"
+                );
+            }
+            // and: the flag stays true (the call that found it set
+            // must not clear it; only the holding call's RAII guard
+            // does that).
             assert!(
-                observed_free.get(),
-                "external observer never saw the permit free during preload"
+                flag.get(),
+                "the coalesced caller must not clear a flag it did not set"
+            );
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalesced_preload_flag_clears_after_completion() {
+        // Goal: the RAII guard inside preload_device_statuses must
+        // clear preload_in_flight on every normal exit, otherwise
+        // every subsequent tick on the same device would coalesce-
+        // skip and never read the device again.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            assert!(
+                repo.preload_in_flight
+                    .get(&TEST_TYPE_INDEX)
+                    .unwrap()
+                    .get()
+                    .not(),
+                "flag must start cleared"
+            );
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            assert!(
+                repo.preload_in_flight
+                    .get(&TEST_TYPE_INDEX)
+                    .unwrap()
+                    .get()
+                    .not(),
+                "RAII guard must clear flag on normal completion"
+            );
+            // And a follow-up preload on the same device proceeds
+            // (does NOT coalesce-skip), proving the flag really
+            // cleared.
+            cc_fs::write(base.join("fan1_input"), b"1800".to_vec())
+                .await
+                .unwrap();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+                assert_eq!(
+                    fan1.rpm,
+                    Some(1800),
+                    "second preload must run, not coalesce-skip"
+                );
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_permit_timeout_skips_reads_and_ticks_staleness() {
+        // Goal: when the device permit is held externally and the
+        // preload's outer acquire times out, the function must not
+        // upsert any channel, must log slow-device, and must still
+        // tick per-channel staleness so a sustained slow condition
+        // eventually trips the failsafe overlay.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let mut repo = new_test_repo();
+            // Shorten the read permit timeout so the test does not
+            // wait the full poll_rate * MISSING_STATUS_THRESHOLD (8 s
+            // at default poll). Mirrors the pattern in
+            // shutdown_continues_after_permit_timeout_on_earlier_device.
+            repo.device_read_permit_timeout = Duration::from_millis(100);
+            // Seed with a fan1 status so failsafe channel_state has
+            // an entry to tick on the timeout path.
+            let seed_status = ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                ..Default::default()
+            };
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[seed_status], &[]);
+
+            // given: hold the permit externally for the entire test.
+            let sem = Rc::clone(repo.device_permits.get(&TEST_TYPE_INDEX).unwrap());
+            let _holder = sem.try_acquire().expect("permit must start free");
+
+            // when: preload races against a held permit and times out.
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: no upsert (timeout branch returned without reads).
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                assert!(
+                    preloaded
+                        .get(&TEST_TYPE_INDEX)
+                        .is_none_or(|(channels, temps)| channels.is_empty() && temps.is_empty()),
+                    "permit-timeout preload must not upsert any channel"
+                );
+            }
+            // and: slow-device log counter incremented.
+            assert!(
+                repo.delay_logged.get(&TEST_TYPE_INDEX).unwrap().get() >= 1,
+                "permit-timeout must invoke log_slow_device"
+            );
+            // and: per-channel staleness was ticked (fan1 stale_ticks > 0).
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map.get(&TEST_TYPE_INDEX).unwrap();
+                assert!(
+                    fsd.channel_state["fan1"].stale_ticks > 0,
+                    "per-channel staleness must tick on permit-timeout"
+                );
+            }
+            // and: coalesce flag cleared even on the timeout path.
+            assert!(
+                repo.preload_in_flight
+                    .get(&TEST_TYPE_INDEX)
+                    .unwrap()
+                    .get()
+                    .not(),
+                "RAII guard must clear flag on the permit-timeout exit"
             );
             teardown(&ctx).await;
         });
@@ -2893,56 +3153,6 @@ mod preload_tests {
             teardown(&ctx).await;
         });
     }
-
-    #[test]
-    #[serial]
-    fn read_one_channel_returns_true_on_shutdown_cancel() {
-        // Verifies the shutdown arm in read_one_channel's permit
-        // select returns true (treated as "permit acquired" so the
-        // caller does not flag it as a slow-device timeout) and does
-        // not reach the underlying sysfs read.
-        cc_fs::test_runtime(async {
-            let ctx = setup().await;
-            let base = &ctx.test_base_path;
-            // Intentionally do NOT create pwm1 / fan1_input. If the
-            // function reached the read path it would log warnings
-            // and the absence of an upsert would be ambiguous.
-            let channel = fan_channel_with_paths(1, "fan1", base);
-            let driver = driver_with_channels(base, vec![channel.clone()]);
-            let repo = new_test_repo();
-            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
-
-            // given: shutdown already in progress.
-            repo.abort_pending().await;
-
-            // when:
-            let acquired = repo
-                .read_one_channel(
-                    TEST_TYPE_INDEX,
-                    &driver,
-                    &channel,
-                    &HwmonChannelType::Fan,
-                    false,
-                )
-                .await;
-
-            // then: select chose the shutdown arm; no upsert occurred.
-            assert!(
-                acquired,
-                "shutdown arm must return true so log_slow_device is not triggered"
-            );
-            {
-                let preloaded = repo.preloaded_statuses.borrow();
-                assert!(
-                    preloaded
-                        .get(&TEST_TYPE_INDEX)
-                        .is_none_or(|(channels, temps)| channels.is_empty() && temps.is_empty()),
-                    "no upsert must occur on the shutdown-cancel arm"
-                );
-            }
-            teardown(&ctx).await;
-        });
-    }
 }
 
 #[cfg(test)]
@@ -2950,26 +3160,29 @@ mod permit_timeout_tests {
     use super::*;
 
     #[test]
-    fn read_permit_timeout_matches_legacy_at_min_poll_rate() {
-        // Regression: at poll_rate = 0.5 s the formula must reproduce
-        // the previous hard-coded 350 ms value.
-        assert_eq!(
-            device_read_permit_timeout_for(0.5),
-            Duration::from_millis(350)
-        );
+    fn read_permit_timeout_is_symmetric_with_write_permit() {
+        // Read and write permit timeouts are deliberately symmetric.
+        // With per-device read coalescing, a preload that registers
+        // on the FIFO waiter list eventually wins through any write
+        // batch the writer is allowed to perform; a smaller read
+        // budget would cause it to drop FIFO position and re-queue
+        // at the back next tick.
+        for poll_rate in [0.5_f64, 1.0, 5.0] {
+            assert_eq!(
+                device_read_permit_timeout_for(poll_rate),
+                device_write_permit_timeout_for(poll_rate),
+                "read and write permit timeouts must match at poll_rate={poll_rate}"
+            );
+        }
     }
 
     #[test]
     fn read_permit_timeout_scales_with_poll_rate() {
-        // The budget must widen proportionally for slower polls.
-        assert_eq!(
-            device_read_permit_timeout_for(1.0),
-            Duration::from_millis(700)
-        );
-        assert_eq!(
-            device_read_permit_timeout_for(5.0),
-            Duration::from_millis(3500)
-        );
+        // poll_rate * MISSING_STATUS_THRESHOLD (8) at every valid
+        // poll rate.
+        assert_eq!(device_read_permit_timeout_for(0.5), Duration::from_secs(4));
+        assert_eq!(device_read_permit_timeout_for(1.0), Duration::from_secs(8));
+        assert_eq!(device_read_permit_timeout_for(5.0), Duration::from_secs(40));
     }
 
     #[test]
@@ -2991,27 +3204,52 @@ mod permit_timeout_tests {
     }
 
     #[test]
+    fn slow_device_init_threshold_matches_legacy_at_min_poll_rate() {
+        // Regression: at poll_rate = 0.5 s the threshold must
+        // reproduce the previous hard-coded 350 ms value, the
+        // historical heuristic for "slow at init".
+        assert_eq!(
+            slow_device_init_threshold_for(0.5),
+            Duration::from_millis(350)
+        );
+    }
+
+    #[test]
+    fn slow_device_init_threshold_scales_with_poll_rate() {
+        // poll_rate * 0.7 at every valid poll rate.
+        assert_eq!(
+            slow_device_init_threshold_for(1.0),
+            Duration::from_millis(700)
+        );
+        assert_eq!(
+            slow_device_init_threshold_for(5.0),
+            Duration::from_millis(3500)
+        );
+    }
+
+    #[test]
     fn drivetemp_ioctl_timeout_scales_with_poll_rate() {
         // The ioctl budget must scale proportionally with poll_rate
         // so a slow drivetemp check cannot consume more than its
-        // share of the overall read permit at any valid poll rate.
+        // share of the pre-acquire path's wall-clock budget at any
+        // valid poll rate.
         assert_eq!(drivetemp_ioctl_timeout_for(0.5), Duration::from_millis(200));
         assert_eq!(drivetemp_ioctl_timeout_for(1.0), Duration::from_millis(400));
         assert_eq!(drivetemp_ioctl_timeout_for(5.0), Duration::from_secs(2));
     }
 
     #[test]
-    fn drivetemp_ioctl_timeout_always_strictly_less_than_read_permit() {
-        // Invariant: on ioctl timeout the fallback temp read must
-        // still have budget left before the outer read permit arm
-        // fires. Ratios 0.4 vs 0.7 preserve 3/7 headroom at every
-        // poll rate.
+    fn drivetemp_ioctl_timeout_strictly_less_than_slow_device_init_threshold() {
+        // Invariant: the ioctl budget must leave headroom under the
+        // slow-device init threshold so a slow ATA controller cannot
+        // single-handedly classify the device as init-slow. Ratios
+        // 0.4 vs 0.7 preserve 3/7 headroom at every poll rate.
         for poll_rate in [0.5_f64, 1.0, 5.0] {
             let ioctl = drivetemp_ioctl_timeout_for(poll_rate);
-            let read = device_read_permit_timeout_for(poll_rate);
+            let init_threshold = slow_device_init_threshold_for(poll_rate);
             assert!(
-                ioctl < read,
-                "ioctl must be < read permit at poll_rate={poll_rate}"
+                ioctl < init_threshold,
+                "ioctl must be < slow_device_init_threshold at poll_rate={poll_rate}"
             );
         }
     }
@@ -3192,6 +3430,8 @@ mod coalescer_tests {
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.preload_in_flight
+            .insert(type_index, Rc::new(Cell::new(false)));
         if delay_millis > 0 {
             repo.device_delays.insert(uid.clone(), delay_millis);
         }
@@ -3838,6 +4078,8 @@ mod slow_device_tests {
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.preload_in_flight
+            .insert(type_index, Rc::new(Cell::new(false)));
         if slow {
             repo.slow_devices.insert(type_index);
             let mut entries = HashMap::new();
@@ -4382,6 +4624,8 @@ mod prepare_for_sleep_tests {
         repo.device_permits
             .insert(type_index, Rc::new(Semaphore::new(1)));
         repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.preload_in_flight
+            .insert(type_index, Rc::new(Cell::new(false)));
         repo.devices
             .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
     }
@@ -4568,6 +4812,8 @@ mod shutdown_tests {
         repo.device_permits
             .insert(type_index, Rc::new(Semaphore::new(1)));
         repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.preload_in_flight
+            .insert(type_index, Rc::new(Cell::new(false)));
         repo.devices
             .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
     }
