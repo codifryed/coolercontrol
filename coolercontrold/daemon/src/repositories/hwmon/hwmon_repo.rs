@@ -19,176 +19,47 @@
 //! `HWMon` repository: device discovery, status reads, and fan
 //! writes for sysfs-exposed sensors.
 //!
-//! This module owns three coupled concurrency primitives per
-//! device. Together they bound how long any one operation can
-//! stall the daemon and ensure a slow device does not pile up
-//! work.
+//! Per-device concurrency model:
 //!
-//! ## Per-device permit (`device_permits: HashMap<TypeIndex, Rc<Semaphore>>`)
+//! - **`device_permits`** — one `Semaphore(1)` per device serializes
+//!   all sysfs reads and writes. `preload_device_statuses` holds it
+//!   across the whole read pass; the writer task takes it per write.
+//!   FIFO ordering is what gives queued reads/writes their turn.
+//! - **`preload_in_flight`** — per-device flag that coalesces
+//!   overlapping preload ticks (skip-the-tick) so the permit waiter
+//!   list never accumulates more than one preload.
+//! - **`writers` (`WriterMailbox`)** — fan-duty writes from the
+//!   engine enqueue here instead of taking the permit directly. A
+//!   per-device writer task drains and coalesces them so a burst of
+//!   targets for the same channel collapses to one sysfs write.
+//!   Other apply paths (`reset`, `manual_control`, `speed_profile`)
+//!   take the permit directly; FIFO preserves caller-visible order.
+//! - **`duty_cache`** — only for devices flagged slow at init by
+//!   `detect_slow_and_seed_duty_cache`. Caches `last_known` PWM duty
+//!   so the preload can skip the slow PWM read between verifies, and
+//!   the writer can early-return when the target already matches.
 //!
-//! One `Rc<Semaphore>` of capacity 1 per device. All sysfs reads
-//! and writes for that device must hold it; only one operation
-//! is in flight at a time.
+//! Timing budgets:
 //!
-//! `preload_device_statuses` holds the permit across the *whole*
-//! pass (Power → Temp → Fan), so a queued write batch cannot
-//! starve mid-pass channel reads. Writes pile up on the
-//! semaphore's FIFO waiter list during the read pass and run as
-//! a coalesced batch the moment the pass releases the permit.
-//! `preload_in_flight` (a per-device flag) coalesces overlapping
-//! preload spawns: a tick that arrives while the previous tick's
-//! pass is still running is a no-op for that device, so the queue
-//! depth stays at one.
+//! - Read and write permit timeouts are symmetric at `poll_rate *
+//!   MISSING_STATUS_THRESHOLD` (8 s default). With read coalescing
+//!   in place, asymmetry would just cause reads to drop FIFO
+//!   position under sustained write contention.
+//! - `slow_device_init_threshold` (`poll_rate * 0.7`) is unrelated:
+//!   the wall-clock cutoff at init for "slow enough to want the duty
+//!   cache".
+//! - See `main_loop.rs` for how these compose with `poll_rate` and
+//!   `SNAPSHOT_TIMEOUT_MS`.
 //!
-//! ## Two timeouts on the permit
+//! Failure handling: missed reads leave preloaded entries untouched
+//! and tick a per-channel staleness counter (see `failsafe.rs`);
+//! after `MISSING_STATUS_THRESHOLD` consecutive misses the failsafe
+//! overlay substitutes safe values. Coalesced ticks do NOT tick
+//! staleness — the wait is itself the read attempt.
 //!
-//! Read permit and write permit are both `poll_rate *
-//! MISSING_STATUS_THRESHOLD` (8 s at the default 1 s tick). The
-//! symmetry is intentional: with read coalescing in place a
-//! preload that has registered on the FIFO waiter list will
-//! eventually win the permit even through a long write batch, so
-//! a smaller read budget would only cause the read to drop out of
-//! its FIFO position and re-register at the back next tick — the
-//! exact priority inversion the original write-vs-read starvation
-//! bug exhibited.
-//!
-//! On read-permit timeout the tick skips reads entirely, ticks
-//! per-channel staleness once, and logs the slow-device line. The
-//! cache + per-channel staleness counter + failsafe layer (see
-//! `failsafe.rs`) cover missed reads without surfacing noise to
-//! the UI.
-//!
-//! On write-permit timeout the write is reported as a TIMEOUT
-//! error to the engine; the device is genuinely wedged.
-//!
-//! Separately, a much smaller `slow_device_init_threshold`
-//! (`poll_rate * 0.7`, 700 ms at default) gates the init-time
-//! slow-device detection in `detect_slow_and_seed_duty_cache`.
-//! That threshold is independent of the steady-state permit
-//! budgets — it is just "is the wall-clock for a happy-path
-//! initial extract long enough to want the duty cache?"
-//!
-//! See `main_loop.rs` for the full three-layer timing model
-//! (`poll_rate`, `SNAPSHOT_TIMEOUT_MS`, this module's permit
-//! timeouts) and how they relate.
-//!
-//! ## Per-device command delay
-//!
-//! Two call sites apply `apply_device_command_delay(delay_millis)`,
-//! both inside the permit window so the next op observes the gap:
-//!
-//! - **Read path** — fired *once* per preload tick, after the
-//!   whole-pass permit drops, via `spawn_command_delay_holder`.
-//!   The holder is a detached task that re-acquires the permit
-//!   and holds it for `delay_millis`, queueing ahead of waiters
-//!   that landed during the pass. Reads count as one batched
-//!   "command" for the device's settle window.
-//!
-//! - **Write path** — fired *per write* inside the writer task.
-//!   Each duty write to a channel pays its own settle window
-//!   before the permit is released, since back-to-back fan
-//!   writes on the same channel can otherwise overrun the
-//!   device's command pacing.
-//!
-//! The default `delay_millis = 0` makes both call sites no-ops;
-//! only manually-configured delays (rare, for misbehaving
-//! hardware) actually pay this cost.
-//!
-//! ## Per-device write coalescer (`writers: HashMap<TypeIndex, Rc<WriterMailbox>>`)
-//!
-//! Fan-duty writes do NOT take the permit directly from the API
-//! actor or the engine commanders. They enqueue into a
-//! `WriterMailbox` (one per device): a `RefCell<HashMap<ChannelName, PendingWrite>>`
-//! plus a `Notify`. A single per-device writer task spawned at
-//! init drains the mailbox under the permit. Each iteration:
-//!
-//! 1. `select!` on `notify.notified()` / `shutdown.cancelled()`.
-//! 2. Swap pending into a reused buffer (no per-tick allocation).
-//! 3. For each `(channel, PendingWrite)`: take the permit (with
-//!    the write-permit timeout), run the sysfs write, apply the
-//!    per-device command delay, drop the permit, fan the result
-//!    to every merged waiter via their `oneshot::Sender`s.
-//!
-//! `apply_setting_speed_fixed` validates, inserts-or-replaces the
-//! pending entry for the channel, pushes its `oneshot::Sender`
-//! onto the waiter list, signals `notify_one`, and awaits its
-//! receiver. Newer writes to the same channel overwrite
-//! `target_duty` and merge their senders into the existing
-//! waiter list, so a burst collapses to one hardware write at the
-//! latest value with all callers observing the same `Result`.
-//!
-//! Bound: `MAX_WAITERS_PER_PENDING_WRITE` (64). On overflow the
-//! oldest sender is dropped with a "superseded" error so the
-//! merged list stays bounded under any client behavior.
-//!
-//! ## Why coalescing only for fan-duty writes
-//!
-//! `apply_setting_speed_fixed` is the tick-driven hot path
-//! (graph / mix / overlay commanders enqueue one write per
-//! channel per tick). The other apply paths (`reset`,
-//! `manual_control`, `speed_profile`) fire rarely and take the
-//! permit directly. Caller-visible ordering across them is
-//! preserved by the Semaphore's FIFO discipline: a caller that
-//! awaits a direct-path apply before issuing a coalesced write
-//! sees the direct-path operation observed by hardware first.
-//!
-//! ## Slow-device caching (read-side)
-//!
-//! At startup, `map_into_our_device_model` times the per-device
-//! init extract block (fans + power + temps). When the wall clock
-//! exceeds `device_read_permit_timeout`, the device is recorded
-//! in `slow_devices` and gets a `duty_cache: HashMap<ChannelName,
-//! DutyCacheEntry>`. The cache holds `last_known: Duty` and
-//! `next_verify_at: Instant`. The preload's Fan branch checks the
-//! cache: while `Instant::now() < next_verify_at`, it skips the
-//! slow PWM read and reads only RPM via `read_one_fan_rpm_only`,
-//! synthesizing the channel status from the cached duty. When
-//! the verify window elapses (every `DUTY_CACHE_VERIFY_INTERVAL`,
-//! default 30 s, staggered evenly per channel at init) it does a
-//! real read and refreshes both fields. Fast devices skip this
-//! path entirely.
-//!
-//! On every successful sysfs duty write, the writer task updates
-//! `last_known` (but not `next_verify_at`); on `manual_control`,
-//! `reset`, or `speed_profile` the entry is dropped via
-//! `invalidate_duty_cache_entry` because duty control has just
-//! been transferred to or from the device's own firmware.
-//!
-//! ## Write-skip via `preloaded_statuses`
-//!
-//! Before the writer task issues a sysfs duty write, it looks up
-//! the channel's current duty in the shared `preloaded_statuses`
-//! cache (already populated by every preload tick at init and on
-//! each successful read). If the cached duty equals the target,
-//! the writer fans `Ok(())` to all merged waiters and returns
-//! without touching sysfs. This eliminates the 8 × ~475 ms of
-//! redundant rewrites per tick under a steady-state graph
-//! profile on the user's slow device, and incurs only a hash-map
-//! lookup on fast devices. No extra sysfs reads — the
-//! `preloaded_statuses` snapshot is at most one tick stale, and
-//! engine commanders write at most one duty per channel per
-//! tick, so there is no within-tick double-write that would make
-//! that staleness observable.
-//!
-//! ## Round-robin channel start index
-//!
-//! `tick_count: Cell<u64>` increments once per `preload_statuses`
-//! call. `preload_device_statuses` rotates the iteration starting
-//! index by `tick_count % N_channels` independently for each of
-//! the Power, Temp, and Fan passes. Matters when a slow sysfs
-//! read or a shutdown bail truncates the pass: rotation avoids
-//! permanently last-serving the same channel.
-//!
-//! ## Shutdown
-//!
-//! `HwmonRepo::shutdown` fires `shutdown_token.cancel()` first so
-//! every per-device writer task observes its cancel arm, drains
-//! its mailbox by signalling each waiter with a "cancelled" error,
-//! and exits. The existing per-channel reset-to-default loop runs
-//! after, taking the permit directly. Late callers reaching
-//! `apply_setting_speed_fixed` after the cancel see
-//! `is_cancelled()` and return early so no `oneshot::Sender` is
-//! orphaned on a writer task that has already exited.
+//! Shutdown: `shutdown_token.cancel()` unblocks writer tasks and the
+//! preload entry guard; the per-channel reset-to-default loop then
+//! runs synchronously taking the permit directly.
 
 use crate::cc_fs;
 use crate::config::Config;
