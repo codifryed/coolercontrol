@@ -1700,12 +1700,13 @@ impl Repository for HwmonRepo {
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
-        // Reject after shutdown so a late call cannot orphan a
-        // sender on a writer task that has already exited.
+        // Skip after shutdown so a late call cannot orphan a sender on
+        // a writer task that has already exited. Returns Ok so the
+        // caller's failure path does not log at error level for what
+        // is just shutdown noise.
         if self.shutdown_token.is_cancelled() {
-            return Err(anyhow!(
-                "HWMon writer cancelled: daemon shutting down ({device_uid}:{channel_name})"
-            ));
+            debug!("HWMon writer skipped during shutdown: {device_uid}:{channel_name}");
+            return Ok(());
         }
         let (hwmon_driver, _, type_index) = self.get_hwmon_info(device_uid, channel_name)?;
         let mailbox = self.writers.get(&type_index).with_context(|| {
@@ -1718,11 +1719,28 @@ impl Repository for HwmonRepo {
         mailbox.notify.notify_one();
         match rx.await {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(message)) => Err(anyhow!(message)),
-            Err(_recv) => Err(anyhow!(
-                "HWMon writer for {}:{channel_name} no longer running",
-                hwmon_driver.name
-            )),
+            Ok(Err(message)) => {
+                if self.shutdown_token.is_cancelled() {
+                    debug!("HWMon writer skipped during shutdown: {message}");
+                    Ok(())
+                } else {
+                    Err(anyhow!(message))
+                }
+            }
+            Err(_recv) => {
+                if self.shutdown_token.is_cancelled() {
+                    debug!(
+                        "HWMon writer for {}:{channel_name} stopped during shutdown",
+                        hwmon_driver.name
+                    );
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "HWMon writer for {}:{channel_name} no longer running",
+                        hwmon_driver.name
+                    ))
+                }
+            }
         }
     }
 
@@ -3454,9 +3472,10 @@ mod coalescer_tests {
     #[test]
     #[serial]
     fn coalescer_cancellation_drops_pending_writes() {
-        // Goal: when the repo's shutdown token fires, the writer
-        // task drains pending entries and signals every waiter with
-        // a cancelled error so callers do not hang past daemon exit.
+        // Goal: shutdown must promptly resolve every queued waiter so
+        // callers do not hang past daemon exit. Resolution is Ok(())
+        // (not an error) so the engine's error-log path stays quiet
+        // during shutdown.
         cc_fs::test_runtime(async {
             let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
             let dir = base.join("dev");
@@ -3485,12 +3504,9 @@ mod coalescer_tests {
             repo.shutdown_token.cancel();
             // Permit stays held; writer must still resolve waiters
             // because its cancel-arm fires before any acquire.
-            let r1 = h1.await.unwrap().unwrap_err().to_string();
-            let r2 = h2.await.unwrap().unwrap_err().to_string();
-            let r3 = h3.await.unwrap().unwrap_err().to_string();
-            assert!(r1.contains("cancelled"), "{r1}");
-            assert!(r2.contains("cancelled"), "{r2}");
-            assert!(r3.contains("cancelled"), "{r3}");
+            assert!(h1.await.unwrap().is_ok(), "shutdown waiter must resolve Ok");
+            assert!(h2.await.unwrap().is_ok(), "shutdown waiter must resolve Ok");
+            assert!(h3.await.unwrap().is_ok(), "shutdown waiter must resolve Ok");
 
             drop(permit_hold);
             let _ = cc_fs::remove_dir_all(&base).await;
