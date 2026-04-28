@@ -26,6 +26,7 @@ import queue
 import signal
 import socket
 import sys
+import threading
 import time
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -425,10 +426,21 @@ class ScreenRequest(BaseModel):
 
 
 class _DeviceJob:
-    def __init__(self, future: Future, fn: Callable, **kwargs) -> None:
+    def __init__(
+        self,
+        future: Future,
+        fn: Callable,
+        dedup_key: Optional[str] = None,
+        **kwargs,
+    ) -> None:
         self.future = future
         self.fn = fn
         self.kwargs = kwargs
+        # When set, this job is coalescable: the worker pulls the latest
+        # entry for this key from `_pending_writes` rather than running
+        # the marker itself, so a newer submission for the same channel
+        # can supersede an earlier one.
+        self.dedup_key: Optional[str] = dedup_key
 
     def run(self) -> None:
         if not self.future.set_running_or_notify_cancel():
@@ -443,15 +455,34 @@ class _DeviceJob:
             self.future.set_result(result)
 
 
-def _queue_worker(dev_queue: queue.SimpleQueue) -> None:
+def _queue_worker(executor: "DeviceExecutor", device_id: int) -> None:
+    """Drain one device's queue. For markers carrying a `dedup_key`,
+    pop the *latest* job from `executor._pending_writes` and run that
+    instead of the marker itself; this is what makes a newer write
+    supersede an earlier waiting one.
+    """
+    dev_queue = executor._device_queues[device_id]
     try:
         while True:
-            device_job: _DeviceJob = dev_queue.get()
+            marker: _DeviceJob = dev_queue.get()
             # our logic for stoping the queue loop
-            if device_job is None:
+            if marker is None:
                 return
-            device_job.run()
-            del device_job
+            dedup_key = marker.dedup_key
+            if dedup_key is not None:
+                with executor._lock:
+                    pending = executor._pending_writes.get(device_id)
+                    job = pending.pop(dedup_key, None) if pending else None
+                if job is None:
+                    # Already resolved: a later submission popped it via
+                    # supersession before we got here, or the marker
+                    # raced shutdown. Either way, nothing to run.
+                    continue
+                job.run()
+                del job
+            else:
+                marker.run()
+            del marker
     except BaseException as exc:
         sys.stderr.write(f"Exception in worker: {exc}\n")
 
@@ -464,10 +495,25 @@ class DeviceExecutor:
     This enables us to talk in parallel to multiple devices,
     but keep communication for each device synchronous,
     which results in a pretty big speedup for people who have multiple devices.
+
+    Per-channel coalescing: control writes (set_fixed_speed,
+    set_speed_profile, set_color, set_screen) submit through
+    `submit_write(device_id, dedup_key, ...)`. At most one pending
+    write per `(device, dedup_key)` is queued; a newer submission
+    replaces the older one and resolves the older `Future` with
+    `None` (success) — the latest target is what the device will see,
+    so the older caller's intent has been honored. Non-coalescable
+    ops (connect, initialize, get_status, disconnect, etc.) keep
+    going through `submit` and run FIFO.
     """
 
     def __init__(self) -> None:
         self._device_queues: Dict[int, queue.SimpleQueue] = {}
+        # device_id -> {dedup_key -> latest _DeviceJob}; bounded at one
+        # entry per (device, dedup_key) by submit_write supersession.
+        self._pending_writes: Dict[int, Dict[str, _DeviceJob]] = {}
+        # Guards _pending_writes only. Held briefly; never across run().
+        self._lock: threading.Lock = threading.Lock()
         self._thread_pool: ThreadPoolExecutor = None
 
     def set_number_of_devices(self, number_of_devices: int) -> None:
@@ -475,9 +521,9 @@ class DeviceExecutor:
             return  # don't set any workers if there are no devices
         self._thread_pool = ThreadPoolExecutor(max_workers=number_of_devices)
         for dev_id in range(1, number_of_devices + 1):
-            dev_queue = queue.SimpleQueue()
-            self._device_queues[dev_id] = dev_queue
-            self._thread_pool.submit(_queue_worker, dev_queue)
+            self._device_queues[dev_id] = queue.SimpleQueue()
+            self._pending_writes[dev_id] = {}
+            self._thread_pool.submit(_queue_worker, self, dev_id)
 
     def submit(self, device_id: int, fn: Callable, **kwargs) -> Future:
         future = Future()
@@ -485,7 +531,45 @@ class DeviceExecutor:
         self._device_queues[device_id].put(device_job)
         return future
 
+    def submit_write(
+        self,
+        device_id: int,
+        dedup_key: str,
+        fn: Callable,
+        **kwargs,
+    ) -> Future:
+        """Coalescable submission: a newer write for the same
+        `(device_id, dedup_key)` supersedes any earlier waiting one.
+        The superseded `Future` resolves with `None` (success) since
+        the latest target replaces it before any device I/O.
+        """
+        future = Future()
+        new_job = _DeviceJob(future, fn, dedup_key=dedup_key, **kwargs)
+        superseded: Optional[_DeviceJob] = None
+        enqueue_marker = False
+        with self._lock:
+            pending = self._pending_writes.setdefault(device_id, {})
+            superseded = pending.get(dedup_key)
+            pending[dedup_key] = new_job
+            # First submission for this dedup_key gets a marker on the
+            # queue; subsequent submissions update pending in place so
+            # the queue cannot grow past one marker per key per device.
+            enqueue_marker = superseded is None
+        if superseded is not None:
+            try:
+                superseded.future.set_result(None)
+            except concurrent.futures.InvalidStateError:
+                # Future already finished (cancelled or set elsewhere);
+                # nothing useful we can do here.
+                pass
+        if enqueue_marker:
+            self._device_queues[device_id].put(new_job)
+        return future
+
     def device_queue_empty(self, device_id: int) -> bool:
+        with self._lock:
+            if self._pending_writes.get(device_id):
+                return False
         return self._device_queues[device_id].empty()
 
     def shutdown(self) -> None:
@@ -495,6 +579,8 @@ class DeviceExecutor:
             # blocks until all threads are no longer processing work
             self._thread_pool.shutdown()
         self._device_queues.clear()
+        with self._lock:
+            self._pending_writes.clear()
 
 
 #####################################################################
@@ -1020,8 +1106,12 @@ class DeviceService:
             log.debug(
                 f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) "
             )
-            status_job = self.device_executor.submit(
-                device_id, lc_device.set_fixed_speed, **speed_kwargs
+            # `set_fixed_speed` and `set_speed_profile` are mutually
+            # exclusive on the same channel, so they share one dedup
+            # namespace: the latest of either wins.
+            dedup_key = f"speed:{speed_kwargs['channel']}"
+            status_job = self.device_executor.submit_write(
+                device_id, dedup_key, lc_device.set_fixed_speed, **speed_kwargs
             )
             # maximum timeout for setting data on the device:
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
@@ -1048,8 +1138,11 @@ class DeviceService:
             log.debug(
                 f"LC #{device_id} {lc_device.__class__.__name__}.set_speed_profile({speed_kwargs}) "
             )
-            status_job = self.device_executor.submit(
-                device_id, lc_device.set_speed_profile, **speed_kwargs
+            # Same dedup namespace as `set_fixed_speed` since both
+            # control the channel's speed and supersede each other.
+            dedup_key = f"speed:{speed_kwargs['channel']}"
+            status_job = self.device_executor.submit_write(
+                device_id, dedup_key, lc_device.set_speed_profile, **speed_kwargs
             )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
@@ -1110,8 +1203,9 @@ class DeviceService:
             log.debug(
                 f"LC #{device_id} {lc_device.__class__.__name__}.set_color({color_kwargs}) "
             )
-            status_job = self.device_executor.submit(
-                device_id, lc_device.set_color, **color_kwargs
+            dedup_key = f"color:{color_kwargs['channel']}"
+            status_job = self.device_executor.submit_write(
+                device_id, dedup_key, lc_device.set_color, **color_kwargs
             )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
@@ -1136,8 +1230,15 @@ class DeviceService:
                 f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) "
             )
             start_screen_update = time.time()
-            screen_job = self.device_executor.submit(
-                device_id, lc_device.set_screen, **screen_kwargs
+            # `mode` is part of the dedup key because LCD modes carry
+            # different `value` payloads (liquid stat, static image
+            # path, gif path); a queued static image must not be
+            # clobbered by a later liquid-mode command and vice versa.
+            # Coalescing only kicks in for repeats of the same mode,
+            # which is the static-image upload buildup case.
+            dedup_key = f"screen:{screen_kwargs['channel']}:{screen_kwargs['mode']}"
+            screen_job = self.device_executor.submit_write(
+                device_id, dedup_key, lc_device.set_screen, **screen_kwargs
             )
             # after setting the screen, sometimes an immediate status request comes back with 0,
             #  so we wait a small amount
