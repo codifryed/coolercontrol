@@ -184,6 +184,7 @@ async fn process_log_output(
 ) {
     let mut lvl = log::Level::Info;
     let mut kraken_bucket_error_logged = false;
+    let mut aquacomputer_pwm_logged = false;
     while let Some(unread_line) = merged_lines.next().await {
         let Ok(line) = unread_line else {
             warn!("Failed to read log line from liqctld: {unread_line:?}");
@@ -204,8 +205,14 @@ async fn process_log_output(
             } else if stripped
                 .starts_with("required PWM functionality is not available in aquacomputer_d5next")
             {
-                // Aquacomputer warning that is info level for us
+                // The device keeps working, but liquidctl repeats
+                // this warning every write. Log once at Info and
+                // drop subsequent occurrences.
+                if aquacomputer_pwm_logged {
+                    continue;
+                }
                 lvl = log::Level::Info;
+                aquacomputer_pwm_logged = true;
             }
             stripped
         } else if let Some(mut stripped) = line.strip_prefix("ERROR") {

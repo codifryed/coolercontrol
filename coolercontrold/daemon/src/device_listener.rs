@@ -477,7 +477,7 @@ fn notify_device_added(name: &str, notification_handle: &NotificationHandle) {
 fn notify_device_removed(name: &str, notification_handle: &NotificationHandle) {
     warn!(
         "Known device removed: {name}. \
-         Sensors will be set to failsafe levels. Restart the daemon to update the device list."
+         Restart the daemon to update the device list."
     );
     notifier::notify_all_sessions(
         "Device Removed",

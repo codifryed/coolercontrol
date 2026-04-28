@@ -16,6 +16,48 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+//! Main daemon loop and the timing layers it orchestrates.
+//!
+//! Each tick has three independent wall-clock budgets, one per
+//! invariant. They do *not* derive from each other; changing one
+//! does not (and must not) implicitly resize the others.
+//!
+//! 1. `poll_rate` (configurable, 0.5..=5.0 s, default 1.0 s).
+//!    Interval between ticks. Sets how often device state is
+//!    sampled and the engine's processors run.
+//!
+//! 2. `SNAPSHOT_TIMEOUT_MS` (this module, fixed 400 ms). Hard
+//!    cap on how long a tick waits for device preloads before
+//!    forcing a snapshot. Bounds engine reaction time so a
+//!    wedged device cannot delay the engine's response to a
+//!    temperature change. Constant on purpose: a user picking
+//!    a slow poll for low CPU usage does not also want a slow
+//!    engine reaction.
+//!
+//! 3. Per-device read permit timeout (in each repository,
+//!    scales with `poll_rate`). Cap on how long the *next*
+//!    tick's preload waits to acquire a device's permit while
+//!    the previous tick's reads are still in flight. Allowed
+//!    to exceed `SNAPSHOT_TIMEOUT_MS`: a slow read just lands
+//!    in the next snapshot. The repo's per-channel staleness
+//!    counter ticks while a read is overdue, and after
+//!    `MISSING_STATUS_THRESHOLD` consecutive misses the
+//!    failsafe layer substitutes safe defaults so the engine
+//!    never hands stale values to a processor.
+//!
+//! Worst-case engine reaction latency to a temperature change
+//! is `poll_rate + SNAPSHOT_TIMEOUT_MS` (the change can happen
+//! just after a tick fires, the next tick may take up to the
+//! snapshot timeout before processors run). With defaults that
+//! is 1.4 s; at minimum poll rate it is 0.9 s. Both are well
+//! below CPU/GPU thermal time constants, so this latency does
+//! not bound control quality.
+//!
+//! Healthy reads complete in tens of milliseconds, so layer 2
+//! almost never triggers in practice; when it does, at least
+//! one device is wedged and the engine should not be waiting
+//! for it.
+
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
@@ -26,7 +68,6 @@ use crate::Repos;
 use anyhow::{Context, Result};
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
-use std::cell::LazyCell;
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -34,6 +75,9 @@ use tokio::time;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
+/// Hard cap on how long the main loop waits for device preloads
+/// before forcing a snapshot. See module-level doc for the full
+/// timing model and why this is independent of `poll_rate`.
 const SNAPSHOT_TIMEOUT_MS: u64 = 400;
 const WAKE_PAUSE_MINIMUM_S: u64 = 1;
 // setting (temp) images is pretty quick, <2s, but gifs can take significantly longer >3-4s
@@ -56,8 +100,8 @@ pub async fn run(
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
-    let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_TIMEOUT_MS));
     let poll_rate = config.get_settings()?.poll_rate;
+    let snapshot_timeout_duration = Duration::from_millis(SNAPSHOT_TIMEOUT_MS);
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone(), scope)
@@ -74,9 +118,16 @@ pub async fn run(
                 let snapshot_timeout_token = CancellationToken::new();
                 fire_preloads(&repos, snapshot_timeout_token.clone(), scope);
                 tokio::select! {
-                    // This ensures that our status snapshots are taken a regular intervals,
-                    // regardless of how long a particular device's status preload takes.
-                    () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
+                    // Bounds the engine's reaction time. If the
+                    // sleep arm wins, at least one device is
+                    // taking longer than the snapshot budget and
+                    // we proceed with whatever the cache holds so
+                    // the snapshot/processor phase fires on time.
+                    // Late-arriving reads complete in the
+                    // background and land in the next tick's
+                    // snapshot. See the module-level doc for the
+                    // full timing model.
+                    () = sleep(snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
                 fire_snapshots_and_processes(&repos, &engine, &mut lcd_update_trigger, &status_handle, scope).await;
@@ -286,5 +337,37 @@ impl LCDUpdateTrigger {
         } else {
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: the snapshot timeout must stay at the historical
+    /// 400 ms value. It bounds engine reaction latency to a
+    /// temperature change to `poll_rate + SNAPSHOT_TIMEOUT_MS` and
+    /// is what guarantees a wedged device cannot push that out.
+    /// See the module-level doc for the full rationale.
+    #[test]
+    fn snapshot_timeout_holds_at_legacy_400ms() {
+        assert_eq!(SNAPSHOT_TIMEOUT_MS, 400);
+    }
+
+    /// Sanity bound on worst-case engine reaction latency at the
+    /// minimum poll rate. If either the snapshot timeout or the
+    /// minimum supported poll rate is changed, this bound forces
+    /// a deliberate review: thermal control quality depends on
+    /// this latency staying well below CPU/GPU thermal time
+    /// constants.
+    #[test]
+    fn worst_case_reaction_latency_at_min_poll_rate_under_one_second() {
+        let min_poll_rate = Duration::from_millis(500);
+        let worst_case = min_poll_rate + Duration::from_millis(SNAPSHOT_TIMEOUT_MS);
+        assert!(
+            worst_case < Duration::from_secs(1),
+            "worst-case latency {worst_case:?} must stay sub-second \
+             at the minimum poll rate"
+        );
     }
 }

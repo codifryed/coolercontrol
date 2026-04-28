@@ -65,22 +65,31 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
     Ok(freqs)
 }
 
+/// Extract frequency statuses. Failed reads are omitted from the
+/// returned vector rather than reported as 0 MHz so downstream does not
+/// see a fabricated frequency.
 pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let mut freqs = vec![];
+    let freq_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Freq)
+        .count();
+    let mut freqs = Vec::with_capacity(freq_channel_count);
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Freq {
             continue;
         }
-        let freq = cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
+        let result = cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
             .await
             .and_then(check_parsing_64)
-            .map(hertz_to_megahertz)
-            .unwrap_or_default();
-        freqs.push(ChannelStatus {
-            name: channel.name.clone(),
-            freq: Some(freq),
-            ..Default::default()
-        });
+            .map(hertz_to_megahertz);
+        if let Ok(freq) = result {
+            freqs.push(ChannelStatus {
+                name: channel.name.clone(),
+                freq: Some(freq),
+                ..Default::default()
+            });
+        }
     }
     freqs
 }
@@ -88,29 +97,31 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
 #[allow(dead_code)]
 pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
     let mut freq_tasks = vec![];
-    moro_local::async_scope!(|scope| {
+    moro_local::async_scope!(|scope| -> Vec<Result<ChannelStatus, anyhow::Error>> {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Freq {
                 continue;
             }
             let freq_task = scope.spawn(async {
-                let freq =
+                let result =
                     cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
                         .await
                         .and_then(check_parsing_64)
-                        .map(hertz_to_megahertz)
-                        .unwrap_or_default();
-                ChannelStatus {
+                        .map(hertz_to_megahertz);
+                result.map(|freq| ChannelStatus {
                     name: channel.name.clone(),
                     freq: Some(freq),
                     ..Default::default()
-                }
+                })
             });
             freq_tasks.push(freq_task);
         }
         join_all(freq_tasks).await
     })
     .await
+    .into_iter()
+    .filter_map(Result::ok)
+    .collect()
 }
 
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
@@ -160,4 +171,200 @@ async fn get_freq_channel_label(base_path: &Path, channel_number: &u8) -> Option
 
 fn get_freq_channel_name(channel_number: u8) -> String {
     format!("freq{channel_number}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::ops::Not;
+    use std::path::Path;
+    use uuid::Uuid;
+
+    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct HwmonFileContext {
+        test_base_path: PathBuf,
+    }
+
+    async fn setup() -> HwmonFileContext {
+        let test_base_path =
+            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
+                .to_path_buf();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
+        HwmonFileContext { test_base_path }
+    }
+
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn extract_freq_all_channels_succeed() {
+        // Verifies freq channels return real MHz values when readable.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two freq channels, both readable (hertz values).
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("freq1_input"),
+                b"3500000000".to_vec(), // 3500 MHz
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                test_base_path.join("freq2_input"),
+                b"1800000000".to_vec(), // 1800 MHz
+            )
+            .await
+            .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        number: 1,
+                        name: "freq1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        number: 2,
+                        name: "freq2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let freqs = extract_freq_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(freqs.len(), 2);
+            assert_eq!(freqs[0].name, "freq1");
+            assert_eq!(freqs[0].freq, Some(3500));
+            assert_eq!(freqs[1].name, "freq2");
+            assert_eq!(freqs[1].freq, Some(1800));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_freq_skips_failed_reads() {
+        // Verifies a missing sysfs file omits the entry entirely rather
+        // than fabricating a 0 MHz reading.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: single freq channel with no sysfs file.
+            let test_base_path = &ctx.test_base_path;
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    number: 1,
+                    name: "freq1".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // when:
+            let freqs = extract_freq_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(freqs.len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_freq_partial_failure_skips_only_failing_channels() {
+        // Verifies that when one freq channel reads successfully and
+        // another fails, only the successful one is returned.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two freq channels, only the first one readable.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("freq1_input"),
+                b"2500000000".to_vec(), // 2500 MHz
+            )
+            .await
+            .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        number: 1,
+                        name: "freq1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        number: 2,
+                        name: "freq2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let freqs = extract_freq_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(freqs.len(), 1);
+            assert_eq!(freqs[0].name, "freq1");
+            assert_eq!(freqs[0].freq, Some(2500));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_freq_ignores_non_freq_channels() {
+        // Verifies non-Freq channels are ignored so their sysfs paths are
+        // never queried here.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: one Freq and one non-Freq channel.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("freq1_input"), b"1000000000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        number: 1,
+                        name: "freq1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Fan,
+                        number: 1,
+                        name: "fan1".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let freqs = extract_freq_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(freqs.len(), 1);
+            assert_eq!(freqs[0].name, "freq1");
+            // Sanity: only one entry despite two channels.
+            assert!(freqs.iter().any(|f| f.name == "fan1").not());
+        });
+    }
 }

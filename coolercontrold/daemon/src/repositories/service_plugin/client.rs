@@ -40,14 +40,24 @@ use anyhow::{anyhow, Result};
 use log::error;
 use std::collections::HashMap;
 use std::default::Default;
-use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tonic::transport::Channel;
 use tonic::Request;
 
-static DEVICE_SERVICE_WAIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
+use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
+
+/// Derives the service-plugin wait timeout from `poll_rate`. Pure
+/// helper so the formula is testable without a live gRPC client.
+/// `MISSING_STATUS_THRESHOLD` is a small `usize` (8) that fits within
+/// `u8::MAX`, so the cast to `f64` is lossless.
+#[allow(clippy::cast_precision_loss)]
+fn service_wait_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
 
 /// Our client wrapper for Device Service plugins.
 /// This handles CC's device service contract by only allowing a single request at a time per device,
@@ -58,6 +68,12 @@ pub struct DeviceServiceClient {
     service_id: ServiceId,
     client_address: String,
     poll_rate: f64,
+
+    /// Snapshot of the service-plugin wait timeout. `poll_rate` only
+    /// changes on daemon restart, so this value is constant for the
+    /// client's lifetime and is computed once in `new` to avoid per-
+    /// retry f64 math on the hot path.
+    service_wait_timeout: Duration,
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
@@ -99,10 +115,12 @@ impl DeviceServiceClient {
         client: device_service_client::DeviceServiceClient<Channel>,
     ) -> Self {
         let service_client = Mutex::new(client);
+        let service_wait_timeout = service_wait_timeout_for(poll_rate);
         Self {
             service_id,
             client_address,
             poll_rate,
+            service_wait_timeout,
             service_client,
             device_clients: HashMap::new(),
             device_ids: HashMap::new(),
@@ -149,7 +167,7 @@ impl DeviceServiceClient {
 
     pub async fn health(&self) -> Result<HealthResponse> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to get health status. \
                 There may be significant issues handling this device service plugin due to extreme lag.",
                 self.service_id
@@ -166,7 +184,7 @@ impl DeviceServiceClient {
 
     pub async fn list_devices(&self) -> Result<Vec<(ServiceDeviceID, Device)>> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to list devices. \
                 There may be significant issues handling this device service plugin due to extreme lag.",
                 self.service_id
@@ -183,7 +201,7 @@ impl DeviceServiceClient {
 
     pub async fn initialize_device(&self, device_uid: &DeviceUID) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to initialize devices. \
                 There may be significant issues handling this device service plugin due to extreme lag.",
                 self.service_id
@@ -202,7 +220,7 @@ impl DeviceServiceClient {
 
     pub async fn shutdown(&self) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to shutdown service. \
                 There may be significant issues handling this device service plugin due to extreme lag.",
                 self.service_id
@@ -378,7 +396,7 @@ impl DeviceServiceClient {
         device_uid: &DeviceUID,
     ) -> Result<(Vec<ChannelStatus>, Vec<TempStatus>)> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to get device: {device_uid} status. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -440,7 +458,7 @@ impl DeviceServiceClient {
 
     pub async fn reset_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to reset device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -462,7 +480,7 @@ impl DeviceServiceClient {
         channel_name: &str,
     ) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to enable manual fan control for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -485,7 +503,7 @@ impl DeviceServiceClient {
         duty: Duty,
     ) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set fixed duty for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -510,7 +528,7 @@ impl DeviceServiceClient {
         speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set speed profile for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -543,7 +561,7 @@ impl DeviceServiceClient {
         lighting: &LightingSettings,
     ) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set lighting for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -581,7 +599,7 @@ impl DeviceServiceClient {
         lcd: &LcdSettings,
     ) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set LCD for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -608,7 +626,7 @@ impl DeviceServiceClient {
     #[allow(dead_code)]
     pub async fn custom_function_one(&self) -> Result<()> {
         tokio::select! {
-            () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to apply custom function. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
@@ -645,4 +663,25 @@ fn safe_u8(value: u32) -> u8 {
         return 255;
     }
     value as u8
+}
+
+#[cfg(test)]
+mod wait_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn wait_timeout_matches_legacy_at_default_poll_rate() {
+        // Regression: at the default poll_rate = 1.0 s the formula
+        // must reproduce the previous hard-coded 8 s value.
+        assert_eq!(service_wait_timeout_for(1.0), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn wait_timeout_scales_with_poll_rate() {
+        // The wait must track MISSING_STATUS_THRESHOLD * poll_rate so
+        // a stalled service bail is coincident with a remote client
+        // being declared unresponsive.
+        assert_eq!(service_wait_timeout_for(0.5), Duration::from_secs(4));
+        assert_eq!(service_wait_timeout_for(5.0), Duration::from_secs(40));
+    }
 }
