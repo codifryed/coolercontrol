@@ -338,6 +338,7 @@ fn main() -> Result<()> {
                     .map(|s| s.device_listener_enabled)
                     .unwrap_or(true);
                 let _device_listener = device_listener::DeviceListener::new(
+                    &config,
                     Rc::clone(&all_devices),
                     lc_repo,
                     notification_handle.clone(),

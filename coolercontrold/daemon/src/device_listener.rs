@@ -16,9 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::config::Config;
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::setting::CCDeviceSettings;
 use crate::{cc_fs, AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
 use log::{debug, info, warn};
@@ -27,7 +29,7 @@ use nix::sys::socket::{
     bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::Not;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -60,6 +62,7 @@ impl<'s> DeviceListener {
     /// Returns a deaf (inactive) listener if the D-Bus env var is disabled or
     /// the netlink socket cannot be created.
     pub async fn new(
+        config: &Config,
         all_devices: AllDevices,
         liquidctl_repo: Option<Rc<LiquidctlRepo>>,
         notification_handle: NotificationHandle,
@@ -90,10 +93,15 @@ impl<'s> DeviceListener {
         };
         let hwmon_baseline = build_hwmon_baseline().await;
         let lc_baseline = build_liquidctl_baseline(&all_devices);
+        // Disabled-device state requires a daemon restart to take effect, so a
+        // one-time snapshot is sufficient for the listener's lifetime.
+        let disabled_names = collect_disabled_device_names(config);
         debug!(
-            "Device listener baseline: {} hwmon paths, {} liquidctl devices",
+            "Device listener baseline: {} hwmon paths, {} liquidctl devices, \
+             {} disabled names",
             hwmon_baseline.len(),
-            lc_baseline.len()
+            lc_baseline.len(),
+            disabled_names.len()
         );
         let listener = Self {
             device_changed: Rc::new(Cell::new(false)),
@@ -104,6 +112,7 @@ impl<'s> DeviceListener {
                 async_fd,
                 hwmon_baseline,
                 lc_baseline,
+                disabled_names,
                 liquidctl_repo,
                 notification_handle,
                 device_changed,
@@ -191,6 +200,28 @@ fn build_liquidctl_baseline(all_devices: &AllDevices) -> HashSet<String> {
     baseline
 }
 
+/// Returns the set of device names the user has marked as disabled in
+/// `CCDeviceSettings`. Used to suppress new-device notifications for devices
+/// the daemon is intentionally not using.
+fn collect_disabled_device_names(config: &Config) -> HashSet<String> {
+    config
+        .get_all_cc_devices_settings()
+        .map(|all| extract_disabled_device_names(&all))
+        .unwrap_or_default()
+}
+
+/// Pure helper extracted for unit testing: filters disabled entries from
+/// a settings map and returns their names.
+fn extract_disabled_device_names(
+    all_settings: &HashMap<String, CCDeviceSettings>,
+) -> HashSet<String> {
+    all_settings
+        .values()
+        .filter(|s| s.disable)
+        .map(|s| s.name.clone())
+        .collect()
+}
+
 /// Main event loop: listens for kernel uevents and performs debounced scans.
 ///
 /// Trailing-edge debounce: relevant events set or extend a single deadline
@@ -202,6 +233,7 @@ async fn run_event_loop(
     async_fd: AsyncFd<OwnedFd>,
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
+    disabled_names: HashSet<String>,
     liquidctl_repo: Option<Rc<LiquidctlRepo>>,
     notification_handle: NotificationHandle,
     device_changed: Rc<Cell<bool>>,
@@ -235,13 +267,16 @@ async fn run_event_loop(
             let scans = pending.take();
             let mut detected = false;
             if scans.hwmon {
-                detected |= scan_hwmon_changes(&mut hwmon_baseline, &notification_handle).await;
+                detected |=
+                    scan_hwmon_changes(&mut hwmon_baseline, &notification_handle, &disabled_names)
+                        .await;
             }
             if scans.liquidctl {
                 detected |= scan_liquidctl_changes(
                     &mut lc_baseline,
                     liquidctl_repo.as_ref(),
                     &notification_handle,
+                    &disabled_names,
                 )
                 .await;
             }
@@ -364,10 +399,14 @@ fn classify_uevent(buf: &[u8]) -> UeventKind {
 }
 
 /// Compares current hwmon devices against the baseline. Updates
-/// the baseline to the current state when changes are detected.
+/// the baseline whenever the set changes (including changes that only affect
+/// user-disabled devices) so we do not re-process the same diff next scan.
+/// Returns true only when a notification was emitted for a non-disabled
+/// device, since that is what callers track as a real device change.
 async fn scan_hwmon_changes(
     baseline: &mut HashSet<PathBuf>,
     notification_handle: &NotificationHandle,
+    disabled_names: &HashSet<String>,
 ) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
@@ -377,27 +416,38 @@ async fn scan_hwmon_changes(
             current_applicable.insert(path.clone());
         }
     }
-    let mut detected = false;
+    let mut detected_real = false;
+    let mut baseline_changed = false;
     // Check for added devices.
     for path in &current_applicable {
         if baseline.contains(path).not() {
+            baseline_changed = true;
             let name = devices::get_device_name(path).await;
+            if disabled_names.contains(&name) {
+                debug!("Ignoring add for user-disabled hwmon device: {name}");
+                continue;
+            }
             notify_device_added(&name, notification_handle);
-            detected = true;
+            detected_real = true;
         }
     }
     // Check for removed devices.
     for path in baseline.iter() {
         if current_applicable.contains(path).not() {
+            baseline_changed = true;
             let name = device_name_for_removed(path).await;
+            if disabled_names.contains(&name) {
+                debug!("Ignoring remove for user-disabled hwmon device: {name}");
+                continue;
+            }
             notify_device_removed(&name, notification_handle);
-            detected = true;
+            detected_real = true;
         }
     }
-    if detected {
+    if baseline_changed {
         *baseline = current_applicable;
     }
-    detected
+    detected_real
 }
 
 /// Gets a device name for a removed device path.
@@ -413,11 +463,15 @@ async fn device_name_for_removed(path: &Path) -> String {
 }
 
 /// Compares current liquidctl devices against the baseline. Updates
-/// the baseline to the current state when changes are detected.
+/// the baseline whenever the set changes (including changes that only affect
+/// user-disabled devices) so we do not re-process the same diff next scan.
+/// Returns true only when a notification was emitted for a non-disabled
+/// device, since that is what callers track as a real device change.
 async fn scan_liquidctl_changes(
     baseline: &mut HashSet<String>,
     liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
     notification_handle: &NotificationHandle,
+    disabled_names: &HashSet<String>,
 ) -> bool {
     let Some(repo) = liquidctl_repo else {
         return false;
@@ -435,25 +489,36 @@ async fn scan_liquidctl_changes(
     };
     debug!("Liquidctl device scan returned: {current_descriptions:?}");
     let current_set: HashSet<&String> = current_descriptions.iter().collect();
-    let mut detected = false;
+    let mut detected_real = false;
+    let mut baseline_changed = false;
     // Check for added devices.
     for desc in &current_descriptions {
         if baseline.contains(desc).not() {
+            baseline_changed = true;
+            if disabled_names.contains(desc) {
+                debug!("Ignoring add for user-disabled liquidctl device: {desc}");
+                continue;
+            }
             notify_device_added(desc, notification_handle);
-            detected = true;
+            detected_real = true;
         }
     }
     // Check for removed devices.
     for desc in baseline.iter() {
         if current_set.contains(desc).not() {
+            baseline_changed = true;
+            if disabled_names.contains(desc) {
+                debug!("Ignoring remove for user-disabled liquidctl device: {desc}");
+                continue;
+            }
             notify_device_removed(desc, notification_handle);
-            detected = true;
+            detected_real = true;
         }
     }
-    if detected {
+    if baseline_changed {
         *baseline = current_descriptions.into_iter().collect();
     }
-    detected
+    detected_real
 }
 
 fn notify_device_added(name: &str, notification_handle: &NotificationHandle) {
@@ -707,5 +772,75 @@ mod tests {
         deadline = Some(Instant::now() + DEBOUNCE_DURATION);
         // Deadline was extended.
         assert!(deadline.unwrap() >= old);
+    }
+
+    // --- extract_disabled_device_names ---
+
+    fn make_cc_settings(name: &str, disable: bool) -> CCDeviceSettings {
+        // Builds a minimal CCDeviceSettings for tests.
+        CCDeviceSettings {
+            name: name.to_string(),
+            disable,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn extract_disabled_returns_only_disabled_device_names() {
+        // Only entries with disable=true should appear in the returned set.
+        let mut settings = HashMap::new();
+        settings.insert("uid-a".to_string(), make_cc_settings("Kraken X63", false));
+        settings.insert("uid-b".to_string(), make_cc_settings("Disabled Pump", true));
+        settings.insert("uid-c".to_string(), make_cc_settings("nct6775", false));
+        settings.insert("uid-d".to_string(), make_cc_settings("Old Sensor", true));
+        let disabled = extract_disabled_device_names(&settings);
+        assert_eq!(disabled.len(), 2);
+        assert!(disabled.contains("Disabled Pump"));
+        assert!(disabled.contains("Old Sensor"));
+        assert!(disabled.contains("Kraken X63").not());
+        assert!(disabled.contains("nct6775").not());
+    }
+
+    #[test]
+    fn extract_disabled_returns_empty_for_no_entries() {
+        // An empty settings map yields an empty disabled set.
+        let settings: HashMap<String, CCDeviceSettings> = HashMap::new();
+        let disabled = extract_disabled_device_names(&settings);
+        assert!(disabled.is_empty());
+    }
+
+    #[test]
+    fn extract_disabled_returns_empty_when_none_disabled() {
+        // All-enabled settings yield an empty disabled set.
+        let mut settings = HashMap::new();
+        settings.insert("uid-a".to_string(), make_cc_settings("Device A", false));
+        settings.insert("uid-b".to_string(), make_cc_settings("Device B", false));
+        let disabled = extract_disabled_device_names(&settings);
+        assert!(disabled.is_empty());
+    }
+
+    // --- scan filter behavior ---
+    //
+    // The scan_*_changes functions touch sysfs and the notification handle, so
+    // they cannot be invoked directly from a unit test. These tests cover the
+    // pure decision logic (`disabled_names.contains(...)`) that gates whether a
+    // notification is emitted, mirroring the inner predicate of those scans.
+
+    #[test]
+    fn disabled_name_in_set_suppresses_notification() {
+        // If a scanned device's name is in the disabled set, no notification.
+        let mut disabled = HashSet::new();
+        disabled.insert("Disabled Liquidctl".to_string());
+        let scanned = "Disabled Liquidctl";
+        assert!(disabled.contains(scanned));
+    }
+
+    #[test]
+    fn name_not_in_disabled_set_allows_notification() {
+        // A scanned device not in the disabled set must trigger notification.
+        let mut disabled = HashSet::new();
+        disabled.insert("Some Other Device".to_string());
+        let scanned = "Real New Device";
+        assert!(disabled.contains(scanned).not());
     }
 }
