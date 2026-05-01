@@ -26,7 +26,7 @@ use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
-use log::{debug, info, trace};
+use log::{debug, info, log_enabled, trace, warn};
 use regex::Regex;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
@@ -91,24 +91,46 @@ where
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        let temp_path = match channel.temp_path.as_ref() {
-            Some(path) => path,
-            None => &driver.path.join(format_temp_input!(channel.number)),
-        };
-        let result = cc_fs::read_sysfs(temp_path)
-            .await
-            .and_then(check_parsing_32)
-            // hwmon temps are in millidegrees:
-            .map(|degrees| f64::from(degrees) / 1000.0f64);
-        match result {
-            Ok(temp) => sink(TempStatus {
-                name: channel.name.clone(),
-                temp,
-            }),
-            Err(_) => any_failure = true,
+        match read_one_temp_status(driver, channel).await {
+            Some(status) => sink(status),
+            None => any_failure = true,
         }
     }
     any_failure
+}
+
+/// Reads the temp file for one channel and returns the resulting
+/// `TempStatus`, or `None` if the read failed. Pulled out so the
+/// preload loop can acquire the device permit per channel and
+/// avoid holding it across the whole device's temp set.
+pub async fn read_one_temp_status(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+) -> Option<TempStatus> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
+    let temp_path = match channel.temp_path.as_ref() {
+        Some(path) => path,
+        None => &driver.path.join(format_temp_input!(channel.number)),
+    };
+    cc_fs::read_sysfs(temp_path)
+        .await
+        .and_then(check_parsing_32)
+        // hwmon temps are in millidegrees:
+        .map(|degrees| f64::from(degrees) / 1000.0f64)
+        .inspect(|temp| debug!("hwmon read {}: {temp} C", temp_path.display()))
+        .inspect_err(|err| {
+            if log_enabled!(log::Level::Debug) {
+                warn!(
+                    "Could not read temp value at {} ; {err}",
+                    temp_path.display()
+                );
+            }
+        })
+        .ok()
+        .map(|temp| TempStatus {
+            name: channel.name.clone(),
+            temp,
+        })
 }
 
 /// Buffered wrapper over `stream_temp_statuses` for callers that want

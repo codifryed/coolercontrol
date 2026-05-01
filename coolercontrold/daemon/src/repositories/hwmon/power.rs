@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{trace, warn};
+use log::{debug, log_enabled, trace, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
@@ -118,21 +118,45 @@ where
         if channel.hwmon_type != HwmonChannelType::Power {
             continue;
         }
-        // In the Power case, channel.name is the real name of the sysfs file.
-        let result = cc_fs::read_sysfs(driver.path.join(&channel.name))
-            .await
-            .and_then(check_parsing_64)
-            .map(convert_micro_watts_to_watts);
-        match result {
-            Ok(watts) => sink(ChannelStatus {
-                name: channel.name.clone(),
-                watts: Some(watts),
-                ..Default::default()
-            }),
-            Err(_) => any_failure = true,
+        match read_one_power_status(driver, channel).await {
+            Some(status) => sink(status),
+            None => any_failure = true,
         }
     }
     any_failure
+}
+
+/// Reads the power-input file for one channel and returns the
+/// resulting `ChannelStatus`, or `None` if the read failed.
+/// Pulled out so the preload loop can acquire the device permit
+/// per channel and avoid holding it across the whole device's
+/// power-channel set.
+pub async fn read_one_power_status(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+) -> Option<ChannelStatus> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
+    // In the Power case, channel.name is the real name of the sysfs file.
+    let power_path = driver.path.join(&channel.name);
+    cc_fs::read_sysfs(&power_path)
+        .await
+        .and_then(check_parsing_64)
+        .map(convert_micro_watts_to_watts)
+        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path.display()))
+        .inspect_err(|err| {
+            if log_enabled!(log::Level::Debug) {
+                warn!(
+                    "Could not read power value at {} ; {err}",
+                    power_path.display()
+                );
+            }
+        })
+        .ok()
+        .map(|watts| ChannelStatus {
+            name: channel.name.clone(),
+            watts: Some(watts),
+            ..Default::default()
+        })
 }
 
 /// Buffered wrapper over `stream_power_status` for callers that want

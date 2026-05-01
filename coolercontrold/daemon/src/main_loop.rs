@@ -151,6 +151,17 @@ pub async fn run(
                 debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
             }
         }
+        // run_token has been cancelled. Signal each repo to abort
+        // in-flight queued work so the moro scope's spawned preload
+        // tasks self-bail instead of holding the scope open while we
+        // wait. Critical for hwmon: a slow device's mid-tick preload
+        // would otherwise keep the scope alive long enough for
+        // liqctld's watch_child grace window to fire and force-kill
+        // the python service before liquidctl_repo::shutdown could
+        // /quit it cleanly.
+        for repo in repos.iter() {
+            repo.abort_pending().await;
+        }
         engine.apply_lcd_shutdown_images().await;
         Ok(())
     })
@@ -280,7 +291,8 @@ async fn wake_from_sleep(
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         engine.reinitialize_devices().await;
-        mode_controller.apply_all_saved_device_settings().await;
+        moro_local::async_scope!(|scope| mode_controller.apply_all_saved_device_settings(scope))
+            .await;
     }
     engine.reinitialize_all_status_histories()?;
     sleep_listener.resuming(false);

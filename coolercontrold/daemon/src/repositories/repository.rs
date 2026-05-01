@@ -50,6 +50,16 @@ pub trait Repository {
     /// device status history with the last polled status
     async fn update_statuses(&self) -> Result<()>;
 
+    /// Hint to the repository to abort in-flight or queued work so
+    /// the main loop's moro scope can exit promptly when shutdown
+    /// is requested. The default no-op suits repositories with no
+    /// long-running queue. Repositories that own permits or
+    /// background tasks (hwmon) should override this to fire their
+    /// internal cancellation token. `shutdown` still runs
+    /// afterwards and performs final hardware resets (returning
+    /// fans to auto control, etc.).
+    async fn abort_pending(&self) {}
+
     async fn shutdown(&self) -> Result<()>;
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()>;
