@@ -189,6 +189,7 @@ export default {
             time24h: '24小時制',
             time12h: '12小時制',
             frequencyPrecision: '頻率精度',
+            startupPage: '啟動頁面',
             sidebarToCollapse: '側邊欄折疊方式',
             entitiesBelowSensors: '實體顯示在傳感器下方',
             dashboardLineSize: '儀表板線條大小',
@@ -231,6 +232,7 @@ export default {
                 introduction: '開始應用程式介紹導覽。',
                 timeFormat: '時間格式：12小時（AM/PM）或24小時',
                 frequencyPrecision: '調整顯示頻率值的精確度。',
+                startupPage: '應用程式載入後顯示的頁面。',
                 eyeCandy: '啟用視覺動畫，例如旋轉的風扇圖示。\n這將使用一些額外的 GPU 資源。',
                 sidebarCollapse:
                     '是否在側邊欄顯示選單摺疊圖示，\n或使用空白側邊欄區域來展開或摺疊主選單。',
@@ -409,6 +411,7 @@ export default {
         appInfo: {
             title: '資訊與工具',
             noWarranty: '本程序不提供任何保證。',
+            changeStartupPage: '在設定中變更啟動頁面',
             daemonStatus: '後台服務狀態',
             acknowledgeIssues: '確認問題',
             status: '狀態',
@@ -1223,6 +1226,11 @@ export default {
         channelViewType: {
             control: '控制',
             dashboard: '儀表板',
+        },
+        startupPage: {
+            appInfo: '資訊與工具',
+            homeDashboard: '主儀表板',
+            controls: '控制項',
         },
         alertState: {
             active: '激活',

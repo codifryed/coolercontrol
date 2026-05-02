@@ -191,6 +191,7 @@ export default {
             time24h: '24시간',
             time12h: '12시간',
             frequencyPrecision: '주파수 정밀도',
+            startupPage: '시작 페이지',
             sidebarToCollapse: '사이드바 접기',
             entitiesBelowSensors: '센서 아래 개체',
             dashboardLineSize: '대시보드 선 크기',
@@ -233,6 +234,7 @@ export default {
                 introduction: '애플리케이션 소개 투어를 시작합니다.',
                 timeFormat: '시간 형식: 12시간 (AM/PM) 또는 24시간',
                 frequencyPrecision: '표시되는 주파수 값의 정밀도를 조정하세요.',
+                startupPage: '애플리케이션 로드 후 표시되는 페이지입니다.',
                 eyeCandy:
                     '회전하는 팬 아이콘과 같은 시각적 애니메이션을 활성화합니다.\n이 기능은 추가적인 GPU 리소스를 사용합니다.',
                 sidebarCollapse:
@@ -496,6 +498,7 @@ export default {
         appInfo: {
             title: '정보 및 도구',
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
+            changeStartupPage: '설정에서 시작 페이지 변경',
             daemonStatus: '데몬 상태',
             acknowledgeIssues: '문제 인지',
             status: '상태',
@@ -1243,6 +1246,11 @@ export default {
         channelViewType: {
             control: '제어',
             dashboard: '대시보드',
+        },
+        startupPage: {
+            appInfo: '정보 및 도구',
+            homeDashboard: '홈 대시보드',
+            controls: '제어',
         },
         alertState: {
             active: '활성',

@@ -191,6 +191,7 @@ export default {
             time24h: '24 ساعة',
             time12h: '12 ساعة',
             frequencyPrecision: 'دقة التردد',
+            startupPage: 'صفحة البدء',
             sidebarToCollapse: 'الشريط الجانبي للطي',
             entitiesBelowSensors: 'الكيانات أسفل المستشعرات',
             dashboardLineSize: 'حجم خط لوحة المعلومات',
@@ -233,6 +234,7 @@ export default {
                 introduction: 'بدء جولة تعريفية للتطبيق.',
                 timeFormat: 'تنسيق الوقت: 12 ساعة (صباحًا/مساءً) أو 24 ساعة',
                 frequencyPrecision: 'ضبط دقة قيم التردد المعروضة.',
+                startupPage: 'الصفحة المعروضة بعد تحميل التطبيق.',
                 eyeCandy:
                     'تمكين الرسوم المتحركة المرئية مثل أيقونات المراوح الدوارة.\nسيستخدم هذا بعض موارد وحدة معالجة الرسومات الإضافية.',
                 sidebarCollapse:
@@ -497,6 +499,7 @@ export default {
         appInfo: {
             title: 'معلومات وأدوات',
             noWarranty: 'يأتي هذا البرنامج بدون أي ضمان على الإطلاق.',
+            changeStartupPage: 'تغيير صفحة البدء من الإعدادات',
             daemonStatus: 'حالة الخدمة',
             acknowledgeIssues: 'الإقرار بالمشكلات',
             status: 'الحالة',
@@ -1243,6 +1246,11 @@ export default {
         channelViewType: {
             control: 'تحكم',
             dashboard: 'لوحة معلومات',
+        },
+        startupPage: {
+            appInfo: 'معلومات وأدوات',
+            homeDashboard: 'لوحة المعلومات الرئيسية',
+            controls: 'عناصر التحكم',
         },
         alertState: {
             active: 'نشط',

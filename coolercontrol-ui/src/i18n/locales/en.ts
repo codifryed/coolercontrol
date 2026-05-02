@@ -191,6 +191,7 @@ export default {
             time24h: '24hr',
             time12h: '12hr',
             frequencyPrecision: 'Frequency Precision',
+            startupPage: 'Startup Page',
             sidebarToCollapse: 'Sidebar to Collapse',
             entitiesBelowSensors: 'Entities below Sensors',
             dashboardLineSize: 'Dashboard Line Size',
@@ -233,6 +234,7 @@ export default {
                 introduction: 'Start the application introduction tour.',
                 timeFormat: 'Time format: 12-hour (AM/PM) or 24-hour',
                 frequencyPrecision: 'Adjust the precision of displayed frequency values.',
+                startupPage: 'The page shown after the application loads.',
                 eyeCandy:
                     'Enable visual animations like spinning fan icons.\nThis will use some additional GPU resources.',
                 sidebarCollapse:
@@ -502,6 +504,7 @@ export default {
         appInfo: {
             title: 'Info & Tools',
             noWarranty: 'This program comes with absolutely no warranty.',
+            changeStartupPage: 'Change the startup page in Settings',
             daemonStatus: 'Daemon Status',
             acknowledgeIssues: 'Acknowledge Issues',
             status: 'Status',
@@ -1253,6 +1256,11 @@ export default {
         channelViewType: {
             control: 'Control',
             dashboard: 'Dashboard',
+        },
+        startupPage: {
+            appInfo: 'Info & Tools',
+            homeDashboard: 'Home Dashboard',
+            controls: 'Controls',
         },
         alertState: {
             active: 'Active',

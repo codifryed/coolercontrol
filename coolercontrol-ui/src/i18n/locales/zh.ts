@@ -189,6 +189,7 @@ export default {
             time24h: '24小时制',
             time12h: '12小时制',
             frequencyPrecision: '频率精度',
+            startupPage: '启动页面',
             sidebarToCollapse: '侧边栏折叠方式',
             entitiesBelowSensors: '实体显示在传感器下方',
             dashboardLineSize: '仪表盘线条大小',
@@ -231,6 +232,7 @@ export default {
                 introduction: '启动应用程序引导教程。',
                 timeFormat: '时间格式：12小时制（上午/下午）或24小时制',
                 frequencyPrecision: '调整显示的频率值精度。',
+                startupPage: '应用程序加载后显示的页面。',
                 eyeCandy: '启用视觉动画，例如旋转的风扇图标。\n这将使用一些额外的 GPU 资源。',
                 sidebarCollapse:
                     '是否在侧边栏中显示菜单折叠图标，\n或使用空侧边栏区域展开或折叠主菜单。',
@@ -408,6 +410,7 @@ export default {
         appInfo: {
             title: '信息与工具',
             noWarranty: '本程序不提供任何保证。',
+            changeStartupPage: '在设置中更改启动页面',
             daemonStatus: '后台服务状态',
             acknowledgeIssues: '确认问题',
             status: '状态',
@@ -1223,6 +1226,11 @@ export default {
         channelViewType: {
             control: '控制',
             dashboard: '仪表盘',
+        },
+        startupPage: {
+            appInfo: '信息与工具',
+            homeDashboard: '主仪表盘',
+            controls: '控制器',
         },
         alertState: {
             active: '激活',

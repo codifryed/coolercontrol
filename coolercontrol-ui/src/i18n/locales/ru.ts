@@ -193,6 +193,7 @@ export default {
             time24h: '24 часа',
             time12h: '12 часов',
             frequencyPrecision: 'Точность частоты',
+            startupPage: 'Стартовая страница',
             sidebarToCollapse: 'Сворачивание боковой панели',
             entitiesBelowSensors: 'Элементы под датчиками',
             dashboardLineSize: 'Размер линий на панели',
@@ -235,6 +236,7 @@ export default {
                 introduction: 'Запустить ознакомительный тур по приложению.',
                 timeFormat: 'Формат времени: 12-часовой (AM/PM) или 24-часовой',
                 frequencyPrecision: 'Настроить точность отображаемых значений частоты.',
+                startupPage: 'Страница, отображаемая после загрузки приложения.',
                 eyeCandy:
                     'Включить визуальные анимации, такие как вращающиеся значки вентиляторов.\nЭто потребует дополнительных ресурсов GPU.',
                 sidebarCollapse:
@@ -505,6 +507,7 @@ export default {
         appInfo: {
             title: 'Информация и инструменты',
             noWarranty: 'Эта программа поставляется абсолютно без гарантий.',
+            changeStartupPage: 'Изменить стартовую страницу в Настройках',
             daemonStatus: 'Статус демона',
             acknowledgeIssues: 'Подтвердить проблемы',
             status: 'Статус',
@@ -1255,6 +1258,11 @@ export default {
         channelViewType: {
             control: 'Управление',
             dashboard: 'Панель',
+        },
+        startupPage: {
+            appInfo: 'Информация и инструменты',
+            homeDashboard: 'Домашняя панель',
+            controls: 'Управление',
         },
         alertState: {
             active: 'Активный',

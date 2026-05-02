@@ -23,6 +23,7 @@ import {
     mdiArrowCollapseVertical,
     mdiArrowExpandVertical,
     mdiCircle,
+    mdiCogOutline,
     mdiGit,
     mdiHelpCircleOutline,
     mdiNewBox,
@@ -359,6 +360,19 @@ onBeforeUnmount(() => {
                 </a>
             </h3>
             <p class="text-sm italic">{{ t('views.appInfo.noWarranty') }}</p>
+            <p class="mt-2 text-sm flex flex-row items-center gap-1">
+                <router-link
+                    :to="{ name: 'settings', params: { tabNumber: '0' } }"
+                    class="text-accent hover:underline flex flex-row items-center gap-1"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :path="mdiCogOutline"
+                        :size="deviceStore.getREMSize(1.0)"
+                    />
+                    {{ t('views.appInfo.changeStartupPage') }}
+                </router-link>
+            </p>
             <div class="mt-8 grid gap-8 xl:grid-cols-[auto_auto] xl:w-fit">
                 <div
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"

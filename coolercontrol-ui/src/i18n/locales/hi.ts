@@ -191,6 +191,7 @@ export default {
             time24h: '24 घंटे',
             time12h: '12 घंटे',
             frequencyPrecision: 'आवृत्ति सटीकता',
+            startupPage: 'स्टार्टअप पेज',
             sidebarToCollapse: 'संकुचित करने के लिए साइडबार',
             entitiesBelowSensors: 'सेंसर के नीचे एंटिटीज',
             dashboardLineSize: 'डैशबोर्ड रेखा आकार',
@@ -331,6 +332,7 @@ export default {
         introduction: 'एप्लिकेशन परिचय टूर शुरू करें।',
         timeFormat: 'समय प्रारूप: 12-घंटे (AM/PM) या 24-घंटे',
         frequencyPrecision: 'प्रदर्शित आवृत्ति मानों की सटीकता समायोजित करें।',
+        startupPage: 'एप्लिकेशन लोड होने के बाद दिखाया जाने वाला पेज।',
         eyeCandy:
             'घूमते पंखे के आइकन जैसे विज़ुअल एनिमेशन सक्षम करें।\nइससे कुछ अतिरिक्त GPU संसाधनों का उपयोग होगा।',
         sidebarCollapse:
@@ -442,6 +444,7 @@ export default {
         appInfo: {
             title: 'जानकारी और उपकरण',
             noWarranty: 'इस प्रोग्राम के साथ बिल्कुल कोई वारंटी नहीं है।',
+            changeStartupPage: 'सेटिंग्स में स्टार्टअप पेज बदलें',
             daemonStatus: 'डेमॉन स्थिति',
             acknowledgeIssues: 'समस्याओं को स्वीकार करें',
             status: 'स्थिति',
@@ -1255,6 +1258,11 @@ export default {
         channelViewType: {
             control: 'नियंत्रण',
             dashboard: 'डैशबोर्ड',
+        },
+        startupPage: {
+            appInfo: 'जानकारी और उपकरण',
+            homeDashboard: 'मुख्य डैशबोर्ड',
+            controls: 'कंट्रोल',
         },
         alertState: {
             active: 'सक्रिय',

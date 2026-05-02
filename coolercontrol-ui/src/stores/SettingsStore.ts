@@ -28,6 +28,7 @@ import {
     DeviceUISettingsDTO,
     MenuOrderIds,
     SensorAndChannelSettings,
+    StartupPage,
     TagSettings,
     ThemeMode,
     UISettingsDTO,
@@ -137,6 +138,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const gpuStressBackend: Ref<'stress_ng' | 'built_in'> = ref('built_in')
     const ramStressBackend: Ref<'stress_ng' | 'built_in'> = ref('stress_ng')
     const driveStressBackend: Ref<'stress_ng' | 'built_in'> = ref('built_in')
+    const startupPage: Ref<StartupPage> = ref(StartupPage.AppInfo)
     const tags: Ref<Map<string, TagSettings>> = ref(new Map<string, TagSettings>())
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
@@ -241,6 +243,7 @@ export const useSettingsStore = defineStore('settings', () => {
         gpuStressBackend.value = uiSettings.gpuStressBackend ?? 'built_in'
         ramStressBackend.value = uiSettings.ramStressBackend ?? 'stress_ng'
         driveStressBackend.value = uiSettings.driveStressBackend ?? 'built_in'
+        startupPage.value = uiSettings.startupPage ?? StartupPage.AppInfo
         tags.value.clear()
         if (uiSettings.tagNames.length === uiSettings.tagColors.length) {
             for (const [i, name] of uiSettings.tagNames.entries()) {
@@ -920,6 +923,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 gpuStressBackend,
                 ramStressBackend,
                 driveStressBackend,
+                startupPage,
                 tags.value,
             ],
             _.debounce(
@@ -979,6 +983,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.gpuStressBackend = gpuStressBackend.value
                     uiSettings.ramStressBackend = ramStressBackend.value
                     uiSettings.driveStressBackend = driveStressBackend.value
+                    uiSettings.startupPage = startupPage.value
                     tags.value.forEach((tagSettings, name) => {
                         uiSettings.tagNames.push(name)
                         uiSettings.tagColors.push(tagSettings.color)
@@ -1326,6 +1331,7 @@ export const useSettingsStore = defineStore('settings', () => {
         gpuStressBackend,
         ramStressBackend,
         driveStressBackend,
+        startupPage,
         allDaemonDeviceSettings,
         ccSettings,
         ccDeviceSettings,

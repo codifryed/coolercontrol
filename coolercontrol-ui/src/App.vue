@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { RouterView, useRouter } from 'vue-router'
 import { Ref, onMounted, ref, inject } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -30,7 +30,7 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import { ElLoading, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
-import { ThemeMode } from '@/models/UISettings.ts'
+import { StartupPage, ThemeMode } from '@/models/UISettings.ts'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboarding'
 import { Emitter, EventType } from 'mitt'
@@ -44,6 +44,7 @@ const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
+const router = useRouter()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
@@ -425,6 +426,16 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
+    // Honor the configured startup page, but only when the user landed on the
+    // default root route (no deep link).
+    if (router.currentRoute.value.name === 'system-overview') {
+        const startup = settingsStore.startupPage
+        if (startup === StartupPage.AppInfo) {
+            await router.replace({ name: 'app-info' })
+        } else if (startup === StartupPage.Controls) {
+            await router.replace({ name: 'system-controls' })
+        }
+    }
     applyCustomTheme()
     await daemonState.init()
     await deviceStore.loadAllPlugins()

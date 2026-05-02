@@ -191,6 +191,7 @@ export default {
             time24h: '24時間',
             time12h: '12時間',
             frequencyPrecision: '周波数の精度',
+            startupPage: '起動時のページ',
             sidebarToCollapse: '折りたたむサイドバー',
             entitiesBelowSensors: 'センサーの下にエンティティを表示',
             dashboardLineSize: 'ダッシュボードの線のサイズ',
@@ -245,6 +246,7 @@ export default {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',
                 frequencyPrecision: '表示される周波数値の精度を調整します。',
+                startupPage: 'アプリケーション読み込み後に表示されるページ。',
                 eyeCandy:
                     '回転するファンアイコンなどのビジュアルアニメーションを有効にします。\nこれにより追加のGPUリソースが使用されます。',
                 sidebarCollapse:
@@ -548,6 +550,7 @@ export default {
         appInfo: {
             title: '情報とツール',
             noWarranty: 'このプログラムは絶対に保証がありません。',
+            changeStartupPage: '設定で起動時のページを変更',
             daemonStatus: 'デーモンステータス',
             acknowledgeIssues: '問題を確認',
             status: 'ステータス',
@@ -1260,6 +1263,11 @@ export default {
         channelViewType: {
             control: '制御',
             dashboard: 'ダッシュボード',
+        },
+        startupPage: {
+            appInfo: '情報とツール',
+            homeDashboard: 'ホームダッシュボード',
+            controls: 'コントロール',
         },
         alertState: {
             active: 'アクティブ',

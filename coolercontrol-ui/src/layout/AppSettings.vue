@@ -33,7 +33,12 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { CustomThemeSettings, defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
+import {
+    CustomThemeSettings,
+    defaultCustomTheme,
+    StartupPage,
+    ThemeMode,
+} from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
@@ -159,6 +164,11 @@ const lineThicknessOptions = ref([
     { optionSize: 3, value: 1.5 },
     { optionSize: 4, value: 2.0 },
     { optionSize: 6, value: 3.0 },
+])
+const startupPageOptions = computed(() => [
+    { value: StartupPage.AppInfo, label: t('models.startupPage.appInfo') },
+    { value: StartupPage.HomeDashboard, label: t('models.startupPage.homeDashboard') },
+    { value: StartupPage.Controls, label: t('models.startupPage.controls') },
 ])
 const customThemeAccent: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.accent))
 const customThemeBgOne: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.bgOne))
@@ -474,6 +484,35 @@ onUnmounted(() => {
                                             :label="t('layout.settings.startTour')"
                                             class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
                                             @click="emitter.emit('start-tour')"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.right="t('layout.settings.tooltips.startupPage')">
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        {{ t('layout.settings.startupPage') }}
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 leading-none border-border-one border-l-2 border-b-2"
+                                    >
+                                        <Select
+                                            v-model="settingsStore.startupPage"
+                                            :options="startupPageOptions"
+                                            option-label="label"
+                                            option-value="value"
+                                            class="w-full h-10"
+                                            scroll-height="100%"
+                                            :pt="{
+                                                input: { class: 'text-center' },
+                                                trigger: {
+                                                    class: 'flex justify-center items-center',
+                                                },
+                                                label: { class: 'text-center w-full' },
+                                                panel: {
+                                                    class: 'border-2 border-border-one rounded-lg shadow-lg bg-bg-one',
+                                                },
+                                            }"
                                         />
                                     </td>
                                 </tr>

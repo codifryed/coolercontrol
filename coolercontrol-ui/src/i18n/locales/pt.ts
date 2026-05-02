@@ -193,6 +193,7 @@ export default {
             time24h: '24 horas',
             time12h: '12 horas',
             frequencyPrecision: 'Precisão de frequência',
+            startupPage: 'Página inicial',
             sidebarToCollapse: 'Barra lateral para recolher',
             entitiesBelowSensors: 'Entidades abaixo dos sensores',
             dashboardLineSize: 'Tamanho da linha do painel',
@@ -340,6 +341,7 @@ export default {
         introduction: 'Iniciar o tour de introdução do aplicativo.',
         timeFormat: 'Formato de hora: 12 horas (AM/PM) ou 24 horas',
         frequencyPrecision: 'Ajustar a precisão dos valores de frequência exibidos.',
+        startupPage: 'A página exibida após o carregamento do aplicativo.',
         eyeCandy:
             'Ativar animações visuais como ícones de ventoinhas girando.\nIsto utilizará alguns recursos adicionais da GPU.',
         sidebarCollapse:
@@ -436,6 +438,7 @@ export default {
         appInfo: {
             title: 'Info e Ferramentas',
             noWarranty: 'Este programa é fornecido sem absolutamente nenhuma garantia.',
+            changeStartupPage: 'Alterar a página inicial nas Configurações',
             daemonStatus: 'Status do Daemon',
             acknowledgeIssues: 'Reconhecer Problemas',
             status: 'Status',
@@ -1295,6 +1298,11 @@ export default {
         channelViewType: {
             control: 'Controle',
             dashboard: 'Painel',
+        },
+        startupPage: {
+            appInfo: 'Info e Ferramentas',
+            homeDashboard: 'Painel inicial',
+            controls: 'Controles',
         },
         alertState: {
             active: 'Ativo',
