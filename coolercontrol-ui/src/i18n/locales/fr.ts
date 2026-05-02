@@ -533,6 +533,8 @@ export default {
             connected: 'Connecté',
             disconnected: 'Déconnecté',
             helpfulLinks: 'Liens Utiles',
+            tutorial: 'Tutoriel',
+            tutorialDesc: "Faites une visite guidée de l'application",
             gettingStarted: 'Premiers Pas',
             helpSettingUp: 'Aide à la configuration du contrôle des ventilateurs',
             hardwareSupport: 'Support Matériel',

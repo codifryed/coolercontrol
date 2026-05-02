@@ -521,6 +521,8 @@ export default {
             connected: 'Подключено',
             disconnected: 'Отключено',
             helpfulLinks: 'Полезные ссылки',
+            tutorial: 'Обучение',
+            tutorialDesc: 'Пройдите интерактивный тур по приложению',
             gettingStarted: 'Начало работы',
             helpSettingUp: 'Помощь в настройке управления вентиляторами',
             hardwareSupport: 'Поддержка оборудования',

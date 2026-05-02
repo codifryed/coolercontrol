@@ -518,6 +518,8 @@ export default {
             connected: 'Connected',
             disconnected: 'Disconnected',
             helpfulLinks: 'Helpful Links',
+            tutorial: 'Tutorial',
+            tutorialDesc: 'Take a guided tour of the application',
             gettingStarted: 'Getting Started',
             helpSettingUp: 'Help setting up fan control',
             hardwareSupport: 'Hardware Support',

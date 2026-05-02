@@ -425,6 +425,8 @@ export default {
             connected: '已連接',
             disconnected: '未連接',
             helpfulLinks: '有用鏈接',
+            tutorial: '教程',
+            tutorialDesc: '應用程式引導教程',
             gettingStarted: '入門指南',
             helpSettingUp: '風扇控制設置幫助',
             hardwareSupport: '硬體支援',

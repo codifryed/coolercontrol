@@ -458,6 +458,8 @@ export default {
             connected: 'कनेक्टेड',
             disconnected: 'डिस्कनेक्टेड',
             helpfulLinks: 'उपयोगी लिंक',
+            tutorial: 'ट्यूटोरियल',
+            tutorialDesc: 'एप्लिकेशन का निर्देशित दौरा करें',
             gettingStarted: 'शुरू करना',
             helpSettingUp: 'पंखा नियंत्रण सेट करने में सहायता',
             hardwareSupport: 'हार्डवेयर समर्थन',

@@ -513,6 +513,8 @@ export default {
             connected: 'متصل',
             disconnected: 'غير متصل',
             helpfulLinks: 'روابط مفيدة',
+            tutorial: 'الدرس التوضيحي',
+            tutorialDesc: 'جولة إرشادية في التطبيق',
             gettingStarted: 'البدء',
             helpSettingUp: 'المساعدة في إعداد التحكم بالمروحة',
             hardwareSupport: 'دعم الأجهزة',

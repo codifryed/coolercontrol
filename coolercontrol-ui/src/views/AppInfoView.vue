@@ -24,6 +24,7 @@ import {
     mdiArrowExpandVertical,
     mdiCircle,
     mdiCogOutline,
+    mdiCompassOutline,
     mdiGit,
     mdiHelpCircleOutline,
     mdiNewBox,
@@ -31,7 +32,8 @@ import {
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { Emitter, EventType } from 'mitt'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
@@ -47,6 +49,7 @@ const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
 const daemonState = useDaemonState()
 const settingsStore = useSettingsStore()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const { t } = useI18n()
 
 const healthCheck = await deviceStore.health()
@@ -474,6 +477,23 @@ onBeforeUnmount(() => {
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')
                     }}</span>
+                    <p class="mt-4 text-wrap flex flex-row items-center">
+                        <a
+                            href="#"
+                            class="text-accent cursor-pointer"
+                            @click.prevent="emitter.emit('start-tour')"
+                        >
+                            <div class="flex flex-row items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    class="mr-2"
+                                    :path="mdiCompassOutline"
+                                    :size="deviceStore.getREMSize(2.0)"
+                                />
+                                {{ t('views.appInfo.tutorial') }}
+                            </div> </a
+                        >&nbsp;- {{ t('views.appInfo.tutorialDesc') }}
+                    </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
                             target="_blank"

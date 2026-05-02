@@ -564,6 +564,8 @@ export default {
             connected: '接続済み',
             disconnected: '切断',
             helpfulLinks: '役立つリンク',
+            tutorial: 'チュートリアル',
+            tutorialDesc: 'アプリケーションのガイド付きツアー',
             gettingStarted: '開始方法',
             helpSettingUp: 'ファン制御の設定ヘルプ',
             hardwareSupport: 'ハードウェアサポート',

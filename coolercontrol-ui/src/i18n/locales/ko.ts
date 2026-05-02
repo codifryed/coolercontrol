@@ -512,6 +512,8 @@ export default {
             connected: '연결됨',
             disconnected: '연결 해제됨',
             helpfulLinks: '유용한 링크',
+            tutorial: '튜토리얼',
+            tutorialDesc: '애플리케이션의 가이드 투어',
             gettingStarted: '시작하기',
             helpSettingUp: '팬 제어 설정 도움말',
             hardwareSupport: '하드웨어 지원',

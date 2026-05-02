@@ -526,6 +526,8 @@ export default {
             connected: 'Verbunden',
             disconnected: 'Nicht verbunden',
             helpfulLinks: 'Hilfreiche Links',
+            tutorial: 'Tutorial',
+            tutorialDesc: 'Eine geführte Tour durch die Anwendung',
             gettingStarted: 'Erste Schritte',
             helpSettingUp: 'Hilfe bei der Einrichtung der Lüftersteuerung',
             hardwareSupport: 'Hardware-Unterstützung',
