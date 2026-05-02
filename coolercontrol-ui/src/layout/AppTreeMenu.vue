@@ -588,6 +588,7 @@ const customSensorsTree = (): any => {
         return {
             // deviceUID is used to sort the menu items and custom-sensors has a deviceUID
             id: deviceUID,
+            tourAnchor: 'custom-sensors',
             label: t('layout.menu.customSensors'),
             icon: mdiFlaskRoundBottom,
             name: null, // devices should not have names
@@ -1752,6 +1753,7 @@ onUnmounted(() => {
                     <!--Root Elements-->
                     <div
                         :id="item.id"
+                        :data-tour-anchor="item.tourAnchor"
                         class="flex group h-full w-full items-center justify-between outline-none"
                     >
                         <div class="flex flex-row items-center min-w-0">

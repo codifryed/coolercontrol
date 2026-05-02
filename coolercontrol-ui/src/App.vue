@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { RouterView, useRouter } from 'vue-router'
-import { Ref, onMounted, ref, inject } from 'vue'
+import { Ref, onMounted, ref, inject, nextTick } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -104,242 +104,103 @@ const applyCustomTheme = (): void => {
 
 const onboardingWrapper = ref(null)
 const { start, finish } = useVOnboarding(onboardingWrapper)
-emitter.on('start-tour', start)
-const steps = [
-    {
-        attachTo: { element: '#logo' },
-        content: {
-            title: t('components.onboarding.welcome'),
-            description: 'Filled by template - special message',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
+
+type TourMode = 'basic' | 'thorough'
+const tourMode: Ref<TourMode | null> = ref(null)
+const steps: Ref<any[]> = ref([])
+const isTransitioningMode = ref(false)
+
+const POPPER_RIGHT = { popper: { placement: 'right' } }
+const GETTING_STARTED_URL =
+    'https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure'
+
+const makeStep = (selector: string, key: string): any => ({
+    attachTo: { element: selector },
+    content: {
+        title: t(`components.onboarding.${key}`),
+        description: t(`components.onboarding.${key}Desc`),
     },
-    // {
-    //     attachTo: { element: '#system-menu' },
-    //     content: {
-    //         title: 'System Menu',
-    //         description:
-    //             "This is the start of the main menu where this system's devices and sensors can be viewed and controlled.",
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    {
-        attachTo: { element: '#dashboards' },
-        content: {
-            title: t('components.onboarding.dashboards'),
-            description: t('components.onboarding.dashboardsDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#profiles' },
-        content: {
-            title: t('components.onboarding.profiles'),
-            description: t('components.onboarding.profilesDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#functions' },
-        content: {
-            title: t('components.onboarding.functions'),
-            description: t('components.onboarding.functionsDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    // {
-    //     attachTo: { element: '#custom-sensors' },
-    //     content: {
-    //         title: 'Custom Sensors',
-    //         description:
-    //             'Custom Sensors allow you to combine existing sensor data in various ways, ' +
-    //             'and enable you to use your own custom scripted sensor output.',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    // {
-    //     attachTo: { element: '#modes' },
-    //     content: {
-    //         title: 'Modes',
-    //         description:
-    //             'Modes are saved collections of your settings, allowing you to switch ' +
-    //             'between silent and performance modes easily',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    // {
-    //     attachTo: { element: '#alerts' },
-    //     content: {
-    //         title: 'Alerts',
-    //         description: 'Alerts will notify you when sensors values exceed chosen thresholds',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    {
-        attachTo: { element: '#logo' },
-        content: {
-            title: t('components.onboarding.appInfo'),
-            description: t('components.onboarding.appInfoDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#add' },
-        content: {
-            title: t('components.onboarding.quickAdd'),
-            description: t('components.onboarding.quickAddDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#dashboard-quick' },
-        content: {
-            title: t('components.onboarding.dashboardQuick'),
-            description: t('components.onboarding.dashboardQuickDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#controls' },
-        content: {
-            title: t('components.onboarding.controls'),
-            description: t('components.onboarding.controlsDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    // {
-    //     attachTo: { element: '#modes-quick' },
-    //     content: {
-    //         title: 'Modes Quick Menu',
-    //         description: 'This is a menu to quickly switch between your saved Modes.',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    // {
-    //     attachTo: { element: '#collapse-menu' },
-    //     content: {
-    //         title: 'Collapse / Expand Main Menu',
-    //         description: 'Use this to expand or collapse the main menu.',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    // {
-    //     attachTo: { element: '#alerts-quick' },
-    //     content: {
-    //         title: 'Alerts Overview',
-    //         description: 'This is where you can view all the alert statuses and logs.',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    {
-        attachTo: { element: '#settings' },
-        content: {
-            title: t('components.onboarding.settings'),
-            description: t('components.onboarding.settingsDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    // {
-    //     attachTo: { element: '#access' },
-    //     content: {
-    //         title: 'Access Menu',
-    //         description: 'This is where you manage your password and verify your access level.',
-    //     },
-    //     options: {
-    //         popper: {
-    //             placement: 'right',
-    //         },
-    //     },
-    // },
-    {
-        attachTo: { element: '#restart' },
-        content: {
-            title: t('components.onboarding.restartMenu'),
-            description: t('components.onboarding.restartMenuDesc'),
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#logo' },
-        content: {
-            title: t('components.onboarding.thatsIt'),
-            description: 'filled by template - special message',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-]
+    options: POPPER_RIGHT,
+})
+
+const welcomeStep = (): any => ({
+    attachTo: { element: '#logo' },
+    content: { kind: 'welcome' },
+    options: POPPER_RIGHT,
+})
+
+const finishStep = (): any => ({
+    attachTo: { element: '#logo' },
+    content: { kind: 'finish' },
+    options: POPPER_RIGHT,
+})
+
+const filterPresent = (list: any[]): any[] =>
+    list.filter((s) => document.querySelector(s.attachTo.element) !== null)
+
+const buildBasicSteps = (): any[] =>
+    filterPresent([
+        makeStep('#logo', 'appInfo'),
+        makeStep('#controls', 'controls'),
+        makeStep('#profiles', 'profiles'),
+        makeStep('#functions', 'functions'),
+        finishStep(),
+    ])
+
+const buildThoroughSteps = (): any[] =>
+    filterPresent([
+        makeStep('#logo', 'appInfo'),
+        makeStep('#system-menu', 'systemMenu'),
+        makeStep('#dashboards', 'dashboards'),
+        makeStep('#profiles', 'profiles'),
+        makeStep('#functions', 'functions'),
+        makeStep('#modes', 'modes'),
+        makeStep('#alerts', 'alerts'),
+        makeStep('[data-tour-anchor="custom-sensors"]', 'customSensors'),
+        makeStep('#add', 'quickAdd'),
+        makeStep('#dashboard-quick', 'dashboardQuick'),
+        makeStep('#controls', 'controls'),
+        makeStep('#modes-quick', 'modesQuick'),
+        makeStep('#alerts-quick', 'alertsQuick'),
+        makeStep('#settings', 'settings'),
+        makeStep('#access', 'access'),
+        makeStep('#restart', 'restartMenu'),
+        makeStep('#collapse-menu', 'collapseMenu'),
+        finishStep(),
+    ])
+
+const startTour = (): void => {
+    tourMode.value = null
+    steps.value = [welcomeStep()]
+    start()
+}
+
+const chooseTourMode = async (mode: TourMode): Promise<void> => {
+    tourMode.value = mode
+    isTransitioningMode.value = true
+    finish()
+    steps.value = mode === 'thorough' ? buildThoroughSteps() : buildBasicSteps()
+    await nextTick()
+    start()
+    await nextTick()
+    isTransitioningMode.value = false
+}
+
+const skipTour = (): void => {
+    finish()
+}
+
+const openGettingStartedDocs = (): void => {
+    window.open(GETTING_STARTED_URL, '_blank')
+    finish()
+}
+
+const onTourFinished = (): void => {
+    if (isTransitioningMode.value) return
+    settingsStore.showOnboarding = false
+}
+
+emitter.on('start-tour', startTour)
 
 /**
  * This is the Startup procedure for the UI application:
@@ -443,7 +304,7 @@ onMounted(async () => {
     loading.close()
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
-    if (settingsStore.showOnboarding) start()
+    if (settingsStore.showOnboarding) startTour()
     let signalLoadFinished = async (): Promise<void> => {
         if (deviceStore.isQtApp()) {
             // Helps with Qt startup handling, i.e. startInTray
@@ -647,112 +508,201 @@ onMounted(async () => {
         :options="{
             autoFinishByExit: true,
             scrollToStep: { enabled: !settingsStore.showOnboarding },
-            // scrollToStep: { enabled: true },
-            // overlay: {
-            //     preventOverlayInteraction: settingsStore.showOnboarding,
-            // },
         }"
-        @finish="settingsStore.showOnboarding = false"
+        @finish="onTourFinished"
     >
         <template #default="{ previous, next, step, isFirst, isLast }">
             <VOnboardingStep>
                 <div class="bg-bg-two shadow rounded-lg border-2 border-border-one">
                     <div class="px-4 py-5 sm:p-6">
-                        <div class="sm:flex sm:justify-between">
-                            <div v-if="step.content">
-                                <h3
-                                    v-if="step.content.title"
-                                    class="text-2xl leading-6 text-text-color"
-                                >
-                                    {{ step.content.title }}
+                        <!-- Welcome step: intro + 3-button mode choice -->
+                        <template v-if="step.content?.kind === 'welcome'">
+                            <div class="relative max-w-2xl">
+                                <button
+                                    @click="skipTour"
+                                    class="absolute right-0 top-0 text-text-color-secondary font-medium text-base pi pi-times outline-0"
+                                />
+                                <h3 class="text-2xl leading-6 text-text-color">
+                                    {{ t('components.onboarding.welcome') }}
                                 </h3>
-                                <div
-                                    v-if="step.content.description"
-                                    class="mt-4 max-w-xl text-base text-text-color-secondary"
+                                <p
+                                    class="mt-4 text-base text-text-color-secondary leading-relaxed"
                                 >
-                                    <div v-if="isFirst">
-                                        <p class="mt-4">
-                                            {{ t('components.onboarding.beforeStart') }}
-                                            <br />
-                                            <a
-                                                href="https://docs.coolercontrol.org/hardware-support.html"
-                                                target="_blank"
-                                                class="text-accent outline-0 underline"
+                                    {{ t('components.onboarding.gettingStartedIntro') }}
+                                </p>
+                                <div
+                                    class="mt-4 p-3 rounded-md bg-accent/10 border-l-4 border-accent"
+                                >
+                                    <p
+                                        class="text-text-color-secondary font-semibold leading-snug"
+                                    >
+                                        {{ t('views.appInfo.helpSettingUp') }}
+                                    </p>
+                                    <ol
+                                        class="mt-3 ml-2 pl-6 list-decimal text-sm text-text-color-secondary space-y-1"
+                                    >
+                                        <li>
+                                            <i18n-t
+                                                keypath="views.appInfo.gettingStartedStep1"
+                                                tag="span"
                                             >
-                                                {{
-                                                    t('components.onboarding.settingUpDrivers')
-                                                }} </a
-                                            >.
-                                        </p>
-                                        <br />
-                                        <p>
-                                            {{ t('components.onboarding.fansNotShowing')
-                                            }}<br /><br />
-
-                                            {{ t('components.onboarding.checkDocs') }}
-                                            <a
-                                                href="https://docs.coolercontrol.org/hardware-support.html"
-                                                target="_blank"
-                                                class="text-accent outline-0"
+                                                <template #profile>
+                                                    <strong>{{
+                                                        t(
+                                                            'views.appInfo.gettingStartedGraphProfile',
+                                                        )
+                                                    }}</strong>
+                                                </template>
+                                            </i18n-t>
+                                        </li>
+                                        <li>
+                                            <i18n-t
+                                                keypath="views.appInfo.gettingStartedStep2"
+                                                tag="span"
                                             >
-                                                {{ t('components.onboarding.checkingDocs') }}
-                                            </a>
-                                            <br /><br />
-                                            <span class="italic">{{
-                                                t('components.onboarding.startTourAgain')
-                                            }}</span>
-                                            <br /><br />
-                                            {{ t('components.onboarding.letsStart') }}
-                                        </p>
-                                    </div>
-                                    <div v-else-if="isLast">
-                                        <p>
-                                            {{ t('components.onboarding.ready') }}
-                                            <br />
-                                            <a
-                                                href="https://docs.coolercontrol.org/hardware-support.html"
-                                                target="_blank"
-                                                class="text-accent outline-0"
-                                            >
-                                                {{ t('components.onboarding.checkingDocs') }}
-                                            </a>
-                                        </p>
-                                        <br />
-                                        {{ t('components.onboarding.startNow') }}
-                                    </div>
-                                    <p v-else>{{ step.content.description }}</p>
+                                                <template #controls>
+                                                    <strong>{{
+                                                        t(
+                                                            'views.appInfo.gettingStartedControlsPage',
+                                                        )
+                                                    }}</strong>
+                                                </template>
+                                            </i18n-t>
+                                        </li>
+                                        <li>
+                                            {{ t('views.appInfo.gettingStartedStep3') }}
+                                        </li>
+                                    </ol>
+                                </div>
+                                <div class="mt-4 flex flex-col gap-2 text-sm">
+                                    <a
+                                        target="_blank"
+                                        :href="GETTING_STARTED_URL"
+                                        class="text-accent outline-0"
+                                    >
+                                        <span class="pi pi-external-link mr-2" />
+                                        {{ t('views.appInfo.gettingStarted') }}
+                                    </a>
+                                    <a
+                                        target="_blank"
+                                        href="https://docs.coolercontrol.org/hardware-support.html"
+                                        class="text-accent outline-0"
+                                    >
+                                        <span class="pi pi-external-link mr-2" />
+                                        {{ t('views.appInfo.hardwareSupport') }}
+                                    </a>
+                                </div>
+                                <p
+                                    class="mt-4 text-sm italic text-text-color-secondary"
+                                >
+                                    {{ t('components.onboarding.startTourAgain') }}
+                                </p>
+                                <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                                    <button
+                                        @click="chooseTourMode('basic')"
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none"
+                                    >
+                                        {{ t('components.onboarding.quickTour') }}
+                                    </button>
+                                    <button
+                                        @click="chooseTourMode('thorough')"
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none"
+                                    >
+                                        {{ t('components.onboarding.thoroughTour') }}
+                                    </button>
+                                    <button
+                                        @click="skipTour"
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-lg border border-border-one bg-bg-two hover:bg-bg-one px-4 py-2 font-medium text-text-color-secondary shadow-sm focus:outline-none"
+                                    >
+                                        {{ t('components.onboarding.maybeLater') }}
+                                    </button>
                                 </div>
                             </div>
-                            <div
-                                class="mt-5 space-x-4 sm:mt-0 sm:ml-6 sm:flex sm:flex-shrink-0 sm:items-end relative"
-                            >
-                                <!--<span class="absolute right-0 bottom-full mb-2 mr-2 text-text-color-secondary font-medium text-xs">{{ `${index + 1}/${steps.length}` }}</span>-->
+                        </template>
+                        <!-- Finish step: docs link + finish buttons -->
+                        <template v-else-if="step.content?.kind === 'finish'">
+                            <div class="relative max-w-xl">
                                 <button
-                                    @click="finish"
-                                    class="absolute right-0 bottom-full mb-[-1.0rem] text-text-color-secondary font-medium text-base pi pi-times outline-0"
+                                    @click="skipTour"
+                                    class="absolute right-0 top-0 text-text-color-secondary font-medium text-base pi pi-times outline-0"
                                 />
-                                <template v-if="!isFirst">
+                                <h3 class="text-2xl leading-6 text-text-color">
+                                    {{ t('components.onboarding.thatsIt') }}
+                                </h3>
+                                <p
+                                    class="mt-4 text-base text-text-color-secondary leading-relaxed"
+                                >
+                                    {{ t('components.onboarding.startNow') }}
+                                </p>
+                                <div class="mt-6 flex flex-col sm:flex-row gap-3">
                                     <button
-                                        @click="previous"
+                                        @click="openGettingStartedDocs"
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none"
+                                    >
+                                        <span class="pi pi-external-link mr-2" />
+                                        {{ t('components.onboarding.openGettingStarted') }}
+                                    </button>
+                                    <button
+                                        @click="skipTour"
+                                        type="button"
+                                        class="inline-flex items-center justify-center rounded-lg border border-border-one bg-bg-two hover:bg-bg-one px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none"
+                                    >
+                                        {{ t('components.onboarding.finishLater') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <!-- Middle steps: title + description + Previous/Next -->
+                        <template v-else>
+                            <div class="sm:flex sm:justify-between">
+                                <div v-if="step.content">
+                                    <h3
+                                        v-if="step.content.title"
+                                        class="text-2xl leading-6 text-text-color"
+                                    >
+                                        {{ step.content.title }}
+                                    </h3>
+                                    <div
+                                        v-if="step.content.description"
+                                        class="mt-4 max-w-xl text-base text-text-color-secondary"
+                                    >
+                                        <p>{{ step.content.description }}</p>
+                                    </div>
+                                </div>
+                                <div
+                                    class="mt-5 space-x-4 sm:mt-0 sm:ml-6 sm:flex sm:flex-shrink-0 sm:items-end relative"
+                                >
+                                    <button
+                                        @click="skipTour"
+                                        class="absolute right-0 bottom-full mb-[-1.0rem] text-text-color-secondary font-medium text-base pi pi-times outline-0"
+                                    />
+                                    <template v-if="!isFirst">
+                                        <button
+                                            @click="previous"
+                                            type="button"
+                                            class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
+                                        >
+                                            {{ t('common.previous') || 'Previous' }}
+                                        </button>
+                                    </template>
+                                    <button
+                                        @click="next"
                                         type="button"
                                         class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
                                     >
-                                        {{ t('common.previous') || 'Previous' }}
+                                        {{
+                                            isLast
+                                                ? t('common.finish') || 'Finish'
+                                                : t('common.next') || 'Next'
+                                        }}
                                     </button>
-                                </template>
-                                <button
-                                    @click="next"
-                                    type="button"
-                                    class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
-                                >
-                                    {{
-                                        isLast
-                                            ? t('common.finish') || 'Finish'
-                                            : t('common.next') || 'Next'
-                                    }}
-                                </button>
+                                </div>
                             </div>
-                        </div>
+                        </template>
                     </div>
                 </div>
             </VOnboardingStep>
