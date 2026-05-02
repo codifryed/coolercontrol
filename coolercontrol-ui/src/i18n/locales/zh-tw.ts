@@ -50,6 +50,8 @@ export default {
         previous: '上一步',
         apply: '應用',
         defaults: '預設值',
+        unmanaged: '未管理',
+        readOnly: '唯讀',
         rename: '重命名',
         password: '密碼',
         currentPassword: '目前密碼',
@@ -602,7 +604,7 @@ export default {
             manualDuty: '手動風扇轉速',
             profileToApply: '要應用的設定檔',
             automaticOrManual: '自動或手動',
-            driverNoSupportControl: '當前安裝的驅動程序不支持此通道的控制。',
+            driverNoSupportControl: '唯讀通道。當前驅動程式不支援設定此通道的速度。',
             amdOverdriveNotEnabled:
                 'AMD GPU 超頻未啟用。請在此裝置的進階設定中啟用（需要重新啟動）。',
             controlOrView: '控制或查看',

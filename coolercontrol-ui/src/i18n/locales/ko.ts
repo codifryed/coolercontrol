@@ -50,6 +50,8 @@ export default {
         previous: '이전',
         apply: '적용',
         defaults: '기본',
+        unmanaged: '관리 안 됨',
+        readOnly: '읽기 전용',
         rename: '이름 바꾸기',
         password: '비밀번호',
         currentPassword: '현재 비밀번호',
@@ -426,7 +428,8 @@ export default {
             manualDuty: '수동 점유',
             profileToApply: '적용할 프로파일',
             automaticOrManual: '자동 또는 수동',
-            driverNoSupportControl: '현재 설치된 드라이버는 이 채널 제어를 지원하지 않습니다.',
+            driverNoSupportControl:
+                '읽기 전용 채널입니다. 현재 드라이버는 이 채널의 속도 설정을 지원하지 않습니다.',
             amdOverdriveNotEnabled:
                 'AMD GPU 오버드라이브가 활성화되지 않았습니다. 이 장치의 고급 설정에서 활성화하세요 (재부팅 필요).',
             controlOrView: '제어 또는 보기',

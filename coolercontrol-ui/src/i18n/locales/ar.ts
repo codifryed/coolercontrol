@@ -50,6 +50,8 @@ export default {
         previous: 'السابق',
         apply: 'تطبيق',
         defaults: 'الافتراضي',
+        unmanaged: 'غير مُدار',
+        readOnly: 'للقراءة فقط',
         rename: 'إعادة تسمية',
         password: 'كلمة المرور',
         currentPassword: 'كلمة المرور الحالية',
@@ -427,7 +429,8 @@ export default {
             manualDuty: 'واجب يدوي',
             profileToApply: 'ملف التعريف المراد تطبيقه',
             automaticOrManual: 'تلقائي أو يدوي',
-            driverNoSupportControl: 'برنامج التشغيل المثبت حاليًا لا يدعم التحكم في هذه القناة.',
+            driverNoSupportControl:
+                'قناة للقراءة فقط. برنامج التشغيل الحالي لا يدعم ضبط سرعة هذه القناة.',
             amdOverdriveNotEnabled:
                 'لم يتم تفعيل AMD GPU overdrive. قم بتفعيله في الإعدادات المتقدمة لهذا الجهاز (يتطلب إعادة التشغيل).',
             controlOrView: 'تحكم أو عرض',

@@ -50,6 +50,8 @@ export default {
         previous: 'Anterior',
         apply: 'Aplicar',
         defaults: 'Predeterminados',
+        unmanaged: 'Sin gestión',
+        readOnly: 'Solo lectura',
         rename: 'Renombrar',
         password: 'Contraseña',
         currentPassword: 'Contraseña actual',
@@ -436,7 +438,7 @@ export default {
             profileToApply: 'Perfil a aplicar',
             automaticOrManual: 'Automático o Manual',
             driverNoSupportControl:
-                'El controlador actualmente instalado no soporta el control de este canal.',
+                'Canal de solo lectura. El controlador actual no admite ajustar la velocidad de este canal.',
             amdOverdriveNotEnabled:
                 'AMD GPU overdrive no está habilitado. Habilítelo en la configuración avanzada de este dispositivo (requiere reinicio).',
             controlOrView: 'Controlar o Ver',

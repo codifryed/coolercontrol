@@ -50,6 +50,8 @@ export default {
         previous: 'Anterior',
         apply: 'Aplicar',
         defaults: 'Padrões',
+        unmanaged: 'Não gerenciado',
+        readOnly: 'Somente leitura',
         rename: 'Renomear',
         password: 'Senha',
         currentPassword: 'Senha atual',
@@ -750,7 +752,7 @@ export default {
             profileToApply: 'Perfil a aplicar',
             automaticOrManual: 'Automático ou Manual',
             driverNoSupportControl:
-                'O driver atualmente instalado não suporta o controle deste canal.',
+                'Canal somente leitura. O driver atual não suporta definir a velocidade deste canal.',
             amdOverdriveNotEnabled:
                 'AMD GPU overdrive não está habilitado. Habilite nas Configurações Avançadas deste dispositivo (requer reinicialização).',
             controlOrView: 'Controlar ou Visualizar',

@@ -749,6 +749,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: duty,
                     rpm: rpm,
+                    isSpeedChannel: true,
                     isControllable: isControllable,
                     menus: [Menu.COLOR, Menu.RENAME, Menu.IS_CONTROLLABLE],
                     subMenus:
@@ -1351,7 +1352,7 @@ onUnmounted(() => {
                                 </div>
                                 <div
                                     v-if="
-                                        childItem.isControllable ||
+                                        childItem.isSpeedChannel ||
                                         childItem.hasMode ||
                                         settingsStore.getChannelTags(
                                             childItem.deviceUID,
@@ -1361,9 +1362,11 @@ onUnmounted(() => {
                                     class="mt-0.5 flex items-center gap-x-1"
                                 >
                                     <menu-control-view
-                                        v-if="childItem.isControllable"
+                                        v-if="childItem.isSpeedChannel"
                                         :device-u-i-d="childItem.deviceUID"
                                         :channel-name="childItem.name"
+                                        :is-controllable="childItem.isControllable"
+                                        :is-active="isActive"
                                         :class="{ 'text-text-color-secondary': !isActive }"
                                     />
                                     <menu-mode-view
@@ -2017,7 +2020,7 @@ onUnmounted(() => {
                                     </div>
                                     <div
                                         v-if="
-                                            childItem.isControllable ||
+                                            childItem.isSpeedChannel ||
                                             childItem.hasMode ||
                                             settingsStore.getChannelTags(
                                                 childItem.deviceUID,
@@ -2027,9 +2030,11 @@ onUnmounted(() => {
                                         class="mt-0.5 flex items-center gap-x-1"
                                     >
                                         <menu-control-view
-                                            v-if="childItem.isControllable"
+                                            v-if="childItem.isSpeedChannel"
                                             :device-u-i-d="childItem.deviceUID"
                                             :channel-name="childItem.name"
+                                            :is-controllable="childItem.isControllable"
+                                            :is-active="isActive"
                                             :class="{ 'text-text-color-secondary': !isActive }"
                                         />
                                         <menu-mode-view

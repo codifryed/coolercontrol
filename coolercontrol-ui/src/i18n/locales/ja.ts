@@ -50,6 +50,8 @@ export default {
         previous: '前へ',
         apply: '適用',
         defaults: 'デフォルト',
+        unmanaged: '未管理',
+        readOnly: '読み取り専用',
         rename: '名前変更',
         password: 'パスワード',
         currentPassword: '現在のパスワード',
@@ -478,7 +480,7 @@ export default {
             profileToApply: '適用するプロファイル',
             automaticOrManual: '自動または手動',
             driverNoSupportControl:
-                '現在インストールされているドライバーはこのチャンネルの制御をサポートしていません。',
+                '読み取り専用チャンネルです。現在のドライバーはこのチャンネルの速度設定をサポートしていません。',
             amdOverdriveNotEnabled:
                 'AMD GPU オーバードライブが有効になっていません。このデバイスの詳細設定で有効にしてください（再起動が必要）。',
             controlOrView: '制御または表示',

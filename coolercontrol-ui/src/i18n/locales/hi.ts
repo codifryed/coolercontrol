@@ -50,6 +50,8 @@ export default {
         previous: 'पिछला',
         apply: 'लागू करें',
         defaults: 'डिफ़ॉल्ट',
+        unmanaged: 'अप्रबंधित',
+        readOnly: 'केवल पढ़ने योग्य',
         rename: 'नाम बदलें',
         password: 'पासवर्ड',
         currentPassword: 'वर्तमान पासवर्ड',
@@ -621,7 +623,7 @@ export default {
             profileToApply: 'लागू करने के लिए प्रोफाइल',
             automaticOrManual: 'स्वचालित या मैनुअल',
             driverNoSupportControl:
-                'वर्तमान में स्थापित ड्राइवर इस चैनल के नियंत्रण का समर्थन नहीं करता है।',
+                'केवल पढ़ने योग्य चैनल। वर्तमान ड्राइवर इस चैनल की गति सेट करने का समर्थन नहीं करता।',
             amdOverdriveNotEnabled:
                 'AMD GPU ओवरड्राइव सक्षम नहीं है। इसे इस डिवाइस की उन्नत सेटिंग्स में सक्षम करें (रीबूट आवश्यक)।',
             controlOrView: 'नियंत्रण या देखें',

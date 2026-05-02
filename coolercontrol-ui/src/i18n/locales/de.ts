@@ -50,6 +50,8 @@ export default {
         previous: 'Zurück',
         apply: 'Anwenden',
         defaults: 'Standardwerte',
+        unmanaged: 'Ungesteuert',
+        readOnly: 'Schreibgeschützt',
         rename: 'Umbenennen',
         password: 'Passwort',
         currentPassword: 'Aktuelles Passwort',
@@ -437,7 +439,7 @@ export default {
             profileToApply: 'Anzuwendendes Profil',
             automaticOrManual: 'Automatisch oder Manuell',
             driverNoSupportControl:
-                'Der aktuell installierte Treiber unterstützt nicht die Steuerung dieses Kanals.',
+                'Schreibgeschützter Kanal. Der aktuelle Treiber unterstützt das Setzen der Drehzahl dieses Kanals nicht.',
             amdOverdriveNotEnabled:
                 'AMD GPU Overdrive ist nicht aktiviert. Aktivieren Sie es in den erweiterten Einstellungen dieses Geräts (Neustart erforderlich).',
             controlOrView: 'Steuern oder Anzeigen',
