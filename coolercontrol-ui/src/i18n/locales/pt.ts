@@ -462,7 +462,7 @@ export default {
             gettingStartedStep1:
                 'Crie um {profile} em Perfis de ventoinha e ajuste a curva da ventoinha.',
             gettingStartedStep2:
-                'Atribua-o na {controls} (ou na página da ventoinha) — Perfis não são aplicados automaticamente.',
+                'Atribua-o na {controls} (ou na página da ventoinha). Perfis não são aplicados automaticamente.',
             gettingStartedStep3: 'Reutilize o mesmo Perfil em quantas ventoinhas quiser.',
             helpSettingUp: 'Ajuda para Configurar Controle de Ventiladores',
             hardwareSupport: 'Suporte de Hardware',
@@ -983,45 +983,66 @@ export default {
         },
         onboarding: {
             welcome: 'Bem-vindo ao CoolerControl!',
-            beforeStart: 'Antes de começar, uma das coisas mais importantes a saber é sobre',
-            settingUpDrivers: 'configurar seus drivers de hardware',
-            fansNotShowing:
-                'Se seus ventiladores ou dispositivos não aparecem ou não podem ser controlados, isso geralmente se deve a drivers de kernel ausentes ou desatualizados.',
-            checkDocs:
-                'Antes de abrir um problema, confirme que todos os drivers foram carregados corretamente',
-            checkingDocs: 'consultando a documentação de Suporte de Hardware',
+            gettingStartedIntro:
+                'Escolha um tour para se orientar. O Tour Rápido cobre o essencial em poucos passos. O Tour Completo guia você por cada menu e botão.',
             startTourAgain:
-                'Nota: você pode iniciar este tour novamente a qualquer momento na página de configurações.',
-            letsStart: 'Certo, vamos começar!',
-            dashboards: 'Painéis',
-            dashboardsDesc:
-                'Os Painéis permitem criar visualizações personalizadas com gráficos para monitorar temperaturas, velocidades de ventiladores e outros dados de sensores em tempo real.',
+                'Você pode iniciar este tour novamente a qualquer momento na página Informações e Ferramentas.',
+            quickTour: 'Tour Rápido',
+            thoroughTour: 'Tour Completo',
+            maybeLater: 'Talvez mais tarde',
+            openGettingStarted: 'Abrir Documentação de Introdução',
+            finishLater: 'Vou fazer sozinho',
+            appInfo: 'Informações e Ferramentas',
+            appInfoDesc:
+                'Veja informações do app, status do daemon, logs, links úteis e ferramentas de teste de carga. Um indicador no logo alerta sobre problemas.',
             controls: 'Controles',
             controlsDesc:
-                'Os Controles permitem ajustar velocidades de ventiladores, aplicar Perfis e gerenciar dispositivos de refrigeração.',
+                'Ajuste velocidades de ventiladores, aplique Perfis e gerencie cada canal detectado em um só lugar.',
             profiles: 'Perfis',
             profilesDesc:
-                'Os Perfis definem curvas de ventilador que respondem a mudanças de temperatura. Reutilize o mesmo Perfil em vários dispositivos.',
+                'Os Perfis definem como um ventilador responde às mudanças de temperatura. Os Perfis Gráficos permitem desenhar curvas personalizadas e podem ser reutilizados em vários dispositivos.',
             functions: 'Funções',
             functionsDesc:
                 'As Funções são aplicadas aos Perfis para suavizar as transições de velocidade do ventilador e reduzir o ruído.',
-            appInfo: 'Informações do Aplicativo e Ferramentas',
-            appInfoDesc:
-                'Clique no logo para ver info do app, status do daemon, logs e ferramentas de carga térmica. Um indicador de status alerta sobre problemas.',
+            systemMenu: 'Menu do Sistema',
+            systemMenuDesc:
+                'O menu principal lista os dispositivos e sensores deste sistema. Cada seção pode ser expandida para ver seus canais e controles atribuídos.',
+            dashboards: 'Painéis',
+            dashboardsDesc:
+                'Os Painéis permitem criar visualizações personalizadas com gráficos para monitorar temperaturas, velocidades de ventiladores e outros dados de sensores em tempo real.',
+            modes: 'Modos',
+            modesDesc:
+                'Os Modos são coleções salvas de suas configurações. Alterne entre configurações como Silencioso e Desempenho com um único clique.',
+            alerts: 'Alertas',
+            alertsDesc:
+                'Os Alertas notificam quando os valores dos sensores ultrapassam os limites que você escolhe, permitindo reagir antes que os problemas se agravem.',
+            customSensors: 'Sensores Personalizados',
+            customSensorsDesc:
+                'Os Sensores Personalizados combinam dados de sensores existentes de várias maneiras, ou executam sua própria saída por script como fonte de temperatura.',
             quickAdd: 'Adição Rápida',
             quickAddDesc: 'Crie rapidamente novos Painéis, Perfis, Funções e mais.',
             dashboardQuick: 'Menu Rápido do Painel',
             dashboardQuickDesc:
                 'Acesse qualquer painel, mesmo quando o menu principal estiver recolhido.',
+            modesQuick: 'Menu Rápido de Modos',
+            modesQuickDesc: 'Alterne entre seus Modos salvos de qualquer lugar do aplicativo.',
+            alertsQuick: 'Visão Geral de Alertas',
+            alertsQuickDesc:
+                'Veja o estado atual de cada alerta e inspecione sua atividade recente.',
             settings: 'Configurações',
             settingsDesc:
                 'Configure preferências de interface, opções do daemon e comportamento do sistema.',
+            access: 'Acesso',
+            accessDesc: 'Gerencie sua senha e confirme seu nível de acesso atual.',
             restartMenu: 'Menu de Reinicialização',
             restartMenuDesc:
                 'Recarregue a interface ou reinicie o daemon do sistema quando necessário.',
+            collapseMenu: 'Recolher Menu',
+            collapseMenuDesc:
+                'Expanda ou recolha o menu principal para dar mais espaço ao restante do app.',
             thatsIt: 'É isso!',
-            ready: 'Se dispositivos estão faltando ou não podem ser controlados, tente',
-            startNow: 'Tudo pronto!',
+            startNow:
+                'Está tudo pronto. Abra a documentação de Introdução para saber mais, ou comece a configurar seus dispositivos.',
         },
         axisOptions: {
             title: 'Opções de Eixo',

@@ -50,7 +50,7 @@ const deviceStore = useDeviceStore()
 const daemonState = useDaemonState()
 const settingsStore = useSettingsStore()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-const { t } = useI18n()
+const { t } = useI18n({ useScope: 'global' })
 
 const healthCheck = await deviceStore.health()
 const convertLogsToHtml = computed((): string => {

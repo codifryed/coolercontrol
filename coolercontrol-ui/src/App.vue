@@ -38,7 +38,7 @@ import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loade
 import FloatLabel from 'primevue/floatlabel'
 import { useI18n } from 'vue-i18n'
 
-const { t, locale } = useI18n()
+const { t, locale } = useI18n({ useScope: 'global' })
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
@@ -525,49 +525,35 @@ onMounted(async () => {
                                 <h3 class="text-2xl leading-6 text-text-color">
                                     {{ t('components.onboarding.welcome') }}
                                 </h3>
-                                <p
-                                    class="mt-4 text-base text-text-color-secondary leading-relaxed"
-                                >
+                                <p class="mt-4 text-base text-text-color-secondary leading-relaxed">
                                     {{ t('components.onboarding.gettingStartedIntro') }}
                                 </p>
                                 <div
                                     class="mt-4 p-3 rounded-md bg-accent/10 border-l-4 border-accent"
                                 >
-                                    <p
-                                        class="text-text-color-secondary font-semibold leading-snug"
-                                    >
+                                    <p class="text-text-color-secondary font-semibold leading-snug">
                                         {{ t('views.appInfo.helpSettingUp') }}
                                     </p>
                                     <ol
                                         class="mt-3 ml-2 pl-6 list-decimal text-sm text-text-color-secondary space-y-1"
                                     >
                                         <li>
-                                            <i18n-t
-                                                keypath="views.appInfo.gettingStartedStep1"
-                                                tag="span"
-                                            >
-                                                <template #profile>
-                                                    <strong>{{
-                                                        t(
-                                                            'views.appInfo.gettingStartedGraphProfile',
-                                                        )
-                                                    }}</strong>
-                                                </template>
-                                            </i18n-t>
+                                            {{
+                                                t('views.appInfo.gettingStartedStep1', {
+                                                    profile: t(
+                                                        'views.appInfo.gettingStartedGraphProfile',
+                                                    ),
+                                                })
+                                            }}
                                         </li>
                                         <li>
-                                            <i18n-t
-                                                keypath="views.appInfo.gettingStartedStep2"
-                                                tag="span"
-                                            >
-                                                <template #controls>
-                                                    <strong>{{
-                                                        t(
-                                                            'views.appInfo.gettingStartedControlsPage',
-                                                        )
-                                                    }}</strong>
-                                                </template>
-                                            </i18n-t>
+                                            {{
+                                                t('views.appInfo.gettingStartedStep2', {
+                                                    controls: t(
+                                                        'views.appInfo.gettingStartedControlsPage',
+                                                    ),
+                                                })
+                                            }}
                                         </li>
                                         <li>
                                             {{ t('views.appInfo.gettingStartedStep3') }}
@@ -592,9 +578,7 @@ onMounted(async () => {
                                         {{ t('views.appInfo.hardwareSupport') }}
                                     </a>
                                 </div>
-                                <p
-                                    class="mt-4 text-sm italic text-text-color-secondary"
-                                >
+                                <p class="mt-4 text-sm italic text-text-color-secondary">
                                     {{ t('components.onboarding.startTourAgain') }}
                                 </p>
                                 <div class="mt-6 flex flex-col sm:flex-row gap-3">
@@ -632,9 +616,7 @@ onMounted(async () => {
                                 <h3 class="text-2xl leading-6 text-text-color">
                                     {{ t('components.onboarding.thatsIt') }}
                                 </h3>
-                                <p
-                                    class="mt-4 text-base text-text-color-secondary leading-relaxed"
-                                >
+                                <p class="mt-4 text-base text-text-color-secondary leading-relaxed">
                                     {{ t('components.onboarding.startNow') }}
                                 </p>
                                 <div class="mt-6 flex flex-col sm:flex-row gap-3">

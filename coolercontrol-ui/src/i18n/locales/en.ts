@@ -531,7 +531,7 @@ export default {
             gettingStartedControlsPage: 'Controls Page',
             gettingStartedStep1: 'Create a {profile} in Fan Profiles and shape your fan curve.',
             gettingStartedStep2:
-                "Assign it on the {controls} (or the fan's own page) — Profiles are not auto-applied.",
+                "Assign it on the {controls} (or the fan's own page). Profiles are not auto-applied.",
             gettingStartedStep3: 'Reuse the same Profile on as many fans as you want.',
             hardwareSupport: 'Hardware Support',
             hardwareSupportDesc: 'Supported devices and driver installation',
@@ -961,42 +961,62 @@ export default {
         },
         onboarding: {
             welcome: 'Welcome to CoolerControl!',
-            beforeStart: 'Before we get started, one of the most important things to know about is',
-            settingUpDrivers: 'setting up your hardware drivers',
-            fansNotShowing:
-                'If your fans or devices are not showing up or cannot be controlled, this is often due to missing or outdated kernel drivers.',
-            checkDocs:
-                'Before opening an issue, please confirm that all drivers have been properly loaded by',
-            checkingDocs: 'checking the Hardware Support documentation',
-            startTourAgain:
-                'Note: you can start this tour again at any time from the settings page.',
-            letsStart: "Ok, let's get started!",
-            dashboards: 'Dashboards',
-            dashboardsDesc:
-                'Dashboards let you create custom views with charts and graphs to monitor temperatures, fan speeds, and other sensor data in real-time.',
+            gettingStartedIntro:
+                'Pick a tour to get oriented. The Quick Tour covers the essentials in a few steps. The Thorough Tour walks through every menu and button.',
+            startTourAgain: 'You can start this tour again at any time from the Info & Tools page.',
+            quickTour: 'Quick Tour',
+            thoroughTour: 'Thorough Tour',
+            maybeLater: 'Maybe Later',
+            openGettingStarted: 'Open Getting Started Docs',
+            finishLater: "I'll Do It Myself",
+            appInfo: 'Info & Tools',
+            appInfoDesc:
+                'View app info, daemon status, logs, helpful links, and stress test tools. A badge on the logo alerts you to any issues.',
             controls: 'Controls',
             controlsDesc:
-                'Controls let you adjust fan speeds, apply Profiles, and manage cooling devices.',
+                'Adjust fan speeds, apply Profiles, and manage every detected channel from one place.',
             profiles: 'Profiles',
             profilesDesc:
-                'Profiles define fan curves that respond to temperature changes. Reuse the same Profile across multiple devices.',
+                'Profiles define how a fan responds to temperature changes. Graph Profiles let you draw custom fan curves and can be reused across multiple devices.',
             functions: 'Functions',
             functionsDesc:
-                'Functions are applied to Profiles to smooth out fan speed transitions and reduce noise.',
-            appInfo: 'Application Info & Tools',
-            appInfoDesc:
-                'Click the logo to view app info, daemon status, logs, and thermal load tools. A status badge here alerts you to any issues.',
+                'Functions are applied to Profiles to smooth fan speed transitions and reduce noise.',
+            systemMenu: 'System Menu',
+            systemMenuDesc:
+                "The main menu lists this system's devices and sensors. Each section can be expanded to view its channels and assigned controls.",
+            dashboards: 'Dashboards',
+            dashboardsDesc:
+                'Dashboards let you create custom views with charts and graphs to monitor temperatures, fan speeds, and other sensor data in real time.',
+            modes: 'Modes',
+            modesDesc:
+                'Modes are saved collections of your settings. Switch between configurations like Silent and Performance with a single click.',
+            alerts: 'Alerts',
+            alertsDesc:
+                'Alerts notify you when sensor values exceed the thresholds you choose, so you can react before issues become problems.',
+            customSensors: 'Custom Sensors',
+            customSensorsDesc:
+                'Custom Sensors combine existing sensor data in different ways, or run your own scripted output as a temperature source.',
             quickAdd: 'Quick Add',
             quickAddDesc: 'Quickly create new Dashboards, Profiles, Functions, and more.',
             dashboardQuick: 'Dashboard Quick Menu',
             dashboardQuickDesc: 'Jump to any dashboard, even when the main menu is collapsed.',
+            modesQuick: 'Modes Quick Menu',
+            modesQuickDesc: 'Switch between your saved Modes from anywhere in the app.',
+            alertsQuick: 'Alerts Overview',
+            alertsQuickDesc:
+                'View the current status of every alert and inspect their recent activity.',
             settings: 'Settings',
             settingsDesc: 'Configure UI preferences, daemon options, and system behavior.',
+            access: 'Access',
+            accessDesc: 'Manage your password and confirm your current access level.',
             restartMenu: 'Restart Menu',
             restartMenuDesc: 'Reload the UI or restart the system daemon when needed.',
+            collapseMenu: 'Collapse Menu',
+            collapseMenuDesc:
+                'Expand or collapse the main menu to give the rest of the app more room.',
             thatsIt: "That's it!",
-            ready: 'If devices are missing or uncontrollable, try',
-            startNow: "You're all set!",
+            startNow:
+                "You're all set. Open the Getting Started docs to learn more, or jump in and start configuring your devices.",
         },
         axisOptions: {
             title: 'Axis Options',

@@ -525,7 +525,7 @@ export default {
             gettingStartedControlsPage: '제어 페이지',
             gettingStartedStep1: '팬 프로파일에서 {profile}을 만들고 팬 곡선을 조정하세요.',
             gettingStartedStep2:
-                '{controls}(또는 팬의 자체 페이지)에서 할당하세요 — 프로파일은 자동 적용되지 않습니다.',
+                '{controls}(또는 팬의 자체 페이지)에서 할당하세요. 프로파일은 자동 적용되지 않습니다.',
             gettingStartedStep3: '동일한 프로파일을 여러 팬에 재사용할 수 있습니다.',
             helpSettingUp: '팬 제어 설정 도움말',
             hardwareSupport: '하드웨어 지원',
@@ -952,42 +952,63 @@ export default {
             locations: '위치',
         },
         onboarding: {
-            welcome: 'CoolerControl에 오신 것을 환영합니다!!',
-            beforeStart: '시작하기 전에 가장 중요한 것 중 하나는 바로 다음과 같습니다',
-            settingUpDrivers: '하드웨어 드라이버 설정',
-            fansNotShowing:
-                '팬이나 장치가 표시되지 않거나 제어할 수 없는 경우, 이는 종종 커널 드라이버가 없거나 오래되었기 때문입니다.',
-            checkDocs: '이슈를 제기하기 전에 모든 드라이버가 제대로 로드되었는지 확인해 주세요',
-            checkingDocs: '하드웨어 지원 문서 확인',
-            startTourAgain: '참고: 설정 페이지에서 언제든지 이 투어를 다시 시작할 수 있습니다.',
-            letsStart: '자, 그럼 시작해 볼까요!',
-            dashboards: '대시보드',
-            dashboardsDesc:
-                '대시보드를 사용하면 차트와 그래프를 포함한 커스텀 보기를 만들어 온도, 팬 속도, 기타 센서 데이터를 실시간으로 모니터링할 수 있습니다.',
+            welcome: 'CoolerControl에 오신 것을 환영합니다!',
+            gettingStartedIntro:
+                '투어를 선택하여 둘러보세요. 빠른 투어는 몇 단계로 기본 사항을 다룹니다. 전체 투어는 모든 메뉴와 버튼을 안내합니다.',
+            startTourAgain: '정보 및 도구 페이지에서 언제든지 이 투어를 다시 시작할 수 있습니다.',
+            quickTour: '빠른 투어',
+            thoroughTour: '전체 투어',
+            maybeLater: '나중에',
+            openGettingStarted: '시작하기 문서 열기',
+            finishLater: '직접 해보기',
+            appInfo: '정보 및 도구',
+            appInfoDesc:
+                '앱 정보, 데몬 상태, 로그, 유용한 링크 및 스트레스 테스트 도구를 확인하세요. 로고에 표시되는 배지가 문제를 알려줍니다.',
             controls: '제어',
             controlsDesc:
-                '제어 기능을 통해 팬 속도를 조절하고, 프로파일을 적용하고, 냉각 장치를 관리할 수 있습니다.',
+                '한 곳에서 팬 속도를 조절하고, 프로파일을 적용하고, 감지된 모든 채널을 관리할 수 있습니다.',
             profiles: '프로파일',
             profilesDesc:
-                '프로파일은 온도 변화에 따라 팬 속도 곡선을 정의합니다. 여러 장치에서 동일한 프로파일을 재사용할 수 있습니다.',
+                '프로파일은 팬이 온도 변화에 어떻게 반응하는지 정의합니다. 그래프 프로파일을 사용하면 사용자 정의 팬 곡선을 그릴 수 있으며 여러 장치에서 재사용할 수 있습니다.',
             functions: '기능',
             functionsDesc:
                 '프로파일에 기능을 적용하여 팬 속도 전환을 부드럽게 하고 소음을 줄입니다.',
-            appInfo: '애플리케이션 정보 및 도구',
-            appInfoDesc:
-                '로고를 클릭하면 앱 정보, 데몬 상태, 로그 및 열 부하 도구를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
+            systemMenu: '시스템 메뉴',
+            systemMenuDesc:
+                '주 메뉴에는 이 시스템의 장치와 센서가 나열됩니다. 각 섹션을 확장하여 채널과 할당된 제어를 볼 수 있습니다.',
+            dashboards: '대시보드',
+            dashboardsDesc:
+                '대시보드를 사용하면 차트와 그래프를 포함한 커스텀 보기를 만들어 온도, 팬 속도, 기타 센서 데이터를 실시간으로 모니터링할 수 있습니다.',
+            modes: '모드',
+            modesDesc:
+                '모드는 저장된 설정 모음입니다. 한 번의 클릭으로 무음 및 성능과 같은 구성 사이를 전환할 수 있습니다.',
+            alerts: '알림',
+            alertsDesc:
+                '알림은 센서 값이 선택한 임계값을 초과할 때 알려주므로 문제가 커지기 전에 대응할 수 있습니다.',
+            customSensors: '사용자 정의 센서',
+            customSensorsDesc:
+                '사용자 정의 센서는 기존 센서 데이터를 다양한 방식으로 결합하거나, 자체 스크립트 출력을 온도 소스로 실행합니다.',
             quickAdd: '빠른 추가',
             quickAddDesc: '대시보드, 프로파일, 기능 등을 빠르게 생성하세요.',
             dashboardQuick: '대시보드 빠른 메뉴',
             dashboardQuickDesc:
                 '메인 메뉴가 접혀 있는 경우에도 모든 대시보드로 바로 이동할 수 있습니다.',
+            modesQuick: '모드 빠른 메뉴',
+            modesQuickDesc: '앱 어디에서나 저장된 모드 사이를 전환할 수 있습니다.',
+            alertsQuick: '알림 개요',
+            alertsQuickDesc: '모든 알림의 현재 상태를 확인하고 최근 활동을 점검하세요.',
             settings: '설정',
             settingsDesc: 'UI 기본 설정, 데몬 옵션 및 시스템 동작을 구성합니다.',
+            access: '액세스',
+            accessDesc: '비밀번호를 관리하고 현재 액세스 수준을 확인하세요.',
             restartMenu: '메뉴 재시작',
             restartMenuDesc: '필요할 때 UI를 다시 로드하거나 시스템 데몬을 다시 시작하세요.',
+            collapseMenu: '메뉴 접기',
+            collapseMenuDesc:
+                '주 메뉴를 확장하거나 접어 앱의 나머지 부분에 더 많은 공간을 제공합니다.',
             thatsIt: '그게 다입니다!',
-            ready: '장치가 없거나 제어할 수 없는 경우 다음을 시도해 보세요',
-            startNow: '이제 다 됐어요!',
+            startNow:
+                '준비가 끝났습니다. 자세히 알아보려면 시작하기 문서를 열거나, 바로 장치 구성을 시작하세요.',
         },
         axisOptions: {
             title: '축 옵션',

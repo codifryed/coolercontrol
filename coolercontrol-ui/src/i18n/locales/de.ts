@@ -539,7 +539,7 @@ export default {
             gettingStartedStep1:
                 'Erstelle ein {profile} in den Lüfterprofilen und gestalte die Lüfterkurve.',
             gettingStartedStep2:
-                'Weise es auf der {controls} (oder direkt auf der Lüfter-Seite) zu — Profile werden nicht automatisch angewendet.',
+                'Weise es auf der {controls} (oder direkt auf der Lüfter-Seite) zu. Profile werden nicht automatisch angewendet.',
             gettingStartedStep3: 'Verwende dasselbe Profil für beliebig viele Lüfter.',
             helpSettingUp: 'Hilfe bei der Einrichtung der Lüftersteuerung',
             hardwareSupport: 'Hardware-Unterstützung',
@@ -985,45 +985,66 @@ export default {
         },
         onboarding: {
             welcome: 'Willkommen bei CoolerControl!',
-            beforeStart:
-                'Bevor wir beginnen, ist eine der wichtigsten Dinge, die Sie wissen sollten,',
-            settingUpDrivers: 'das Einrichten Ihrer Hardware-Treiber',
-            fansNotShowing:
-                'Wenn Ihre Lüfter oder Geräte nicht angezeigt werden oder nicht gesteuert werden können, liegt dies oft an fehlenden oder veralteten Kernel-Treibern.',
-            checkDocs:
-                'Bevor Sie ein Problem melden, stellen Sie bitte sicher, dass alle Treiber ordnungsgemäß geladen wurden, indem Sie',
-            checkingDocs: 'die Hardware-Support-Dokumentation überprüfen',
+            gettingStartedIntro:
+                'Wählen Sie eine Tour, um sich einen Überblick zu verschaffen. Die schnelle Tour deckt die Grundlagen in wenigen Schritten ab. Die ausführliche Tour führt Sie durch jedes Menü und jede Schaltfläche.',
             startTourAgain:
-                'Hinweis: Sie können diese Tour jederzeit über die Einstellungsseite erneut starten.',
-            letsStart: 'Ok, lass uns beginnen!',
-            dashboards: 'Dashboards',
-            dashboardsDesc:
-                'Dashboards ermöglichen benutzerdefinierte Ansichten mit Diagrammen zur Echtzeitüberwachung von Temperaturen, Lüftergeschwindigkeiten und anderen Sensordaten.',
+                'Sie können diese Tour jederzeit über die Seite Info & Werkzeuge erneut starten.',
+            quickTour: 'Schnelle Tour',
+            thoroughTour: 'Ausführliche Tour',
+            maybeLater: 'Vielleicht später',
+            openGettingStarted: 'Erste-Schritte-Dokumentation öffnen',
+            finishLater: 'Ich komme alleine zurecht',
+            appInfo: 'Info & Werkzeuge',
+            appInfoDesc:
+                'Zeigt App-Info, Daemon-Status, Logs, hilfreiche Links und Stresstest-Werkzeuge an. Ein Symbol auf dem Logo warnt Sie bei Problemen.',
             controls: 'Steuerungen',
             controlsDesc:
-                'Steuerungen ermöglichen die Anpassung von Lüftergeschwindigkeiten, das Anwenden von Profilen und die Verwaltung von Kühlgeräten.',
+                'Passen Sie Lüftergeschwindigkeiten an, wenden Sie Profile an und verwalten Sie alle erkannten Kanäle an einem Ort.',
             profiles: 'Profile',
             profilesDesc:
-                'Profile definieren Lüfterkurven, die auf Temperaturänderungen reagieren. Dasselbe Profil kann auf mehreren Geräten wiederverwendet werden.',
+                'Profile legen fest, wie ein Lüfter auf Temperaturänderungen reagiert. Mit Graph-Profilen können Sie eigene Lüfterkurven zeichnen und auf mehreren Geräten wiederverwenden.',
             functions: 'Funktionen',
             functionsDesc:
                 'Funktionen werden auf Profile angewendet, um Lüftergeschwindigkeitsübergänge zu glätten und Geräusche zu reduzieren.',
-            appInfo: 'Anwendungsinfo & Werkzeuge',
-            appInfoDesc:
-                'Klicken Sie auf das Logo, um App-Info, Daemon-Status, Logs und thermische Lastwerkzeuge anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
+            systemMenu: 'Systemmenü',
+            systemMenuDesc:
+                'Das Hauptmenü listet die Geräte und Sensoren dieses Systems auf. Jeder Bereich kann erweitert werden, um Kanäle und zugewiesene Steuerungen anzuzeigen.',
+            dashboards: 'Dashboards',
+            dashboardsDesc:
+                'Dashboards ermöglichen benutzerdefinierte Ansichten mit Diagrammen zur Echtzeitüberwachung von Temperaturen, Lüftergeschwindigkeiten und anderen Sensordaten.',
+            modes: 'Modi',
+            modesDesc:
+                'Modi sind gespeicherte Sammlungen Ihrer Einstellungen. Wechseln Sie mit einem Klick zwischen Konfigurationen wie Leise und Leistung.',
+            alerts: 'Warnungen',
+            alertsDesc:
+                'Warnungen benachrichtigen Sie, wenn Sensorwerte die von Ihnen gewählten Schwellenwerte überschreiten, damit Sie reagieren können, bevor Probleme entstehen.',
+            customSensors: 'Benutzerdefinierte Sensoren',
+            customSensorsDesc:
+                'Benutzerdefinierte Sensoren kombinieren vorhandene Sensordaten auf verschiedene Weise oder führen Ihre eigene skriptgesteuerte Ausgabe als Temperaturquelle aus.',
             quickAdd: 'Schnelles Hinzufügen',
             quickAddDesc: 'Schnelles Erstellen neuer Dashboards, Profile, Funktionen und mehr.',
             dashboardQuick: 'Dashboard-Schnellmenü',
             dashboardQuickDesc:
                 'Springen Sie zu jedem Dashboard, auch wenn das Hauptmenü eingeklappt ist.',
+            modesQuick: 'Modi-Schnellmenü',
+            modesQuickDesc: 'Wechseln Sie überall in der App zwischen Ihren gespeicherten Modi.',
+            alertsQuick: 'Warnungsübersicht',
+            alertsQuickDesc:
+                'Sehen Sie den aktuellen Status jeder Warnung und prüfen Sie ihre letzte Aktivität.',
             settings: 'Einstellungen',
             settingsDesc:
                 'Konfigurieren Sie UI-Einstellungen, Daemon-Optionen und Systemverhalten.',
+            access: 'Zugriff',
+            accessDesc:
+                'Verwalten Sie Ihr Passwort und bestätigen Sie Ihre aktuelle Zugriffsebene.',
             restartMenu: 'Neustart-Menü',
             restartMenuDesc: 'UI neu laden oder Systemdaemon bei Bedarf neu starten.',
+            collapseMenu: 'Menü einklappen',
+            collapseMenuDesc:
+                'Erweitern oder reduzieren Sie das Hauptmenü, um dem Rest der App mehr Platz zu geben.',
             thatsIt: "Das war's!",
-            ready: 'Wenn Geräte fehlen oder nicht steuerbar sind, versuchen Sie',
-            startNow: 'Alles bereit!',
+            startNow:
+                'Sie sind startklar. Öffnen Sie die Erste-Schritte-Dokumentation, um mehr zu erfahren, oder legen Sie los und konfigurieren Sie Ihre Geräte.',
         },
         axisOptions: {
             title: 'Achsenoptionen',
