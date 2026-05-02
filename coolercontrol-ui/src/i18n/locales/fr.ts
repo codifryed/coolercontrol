@@ -444,7 +444,10 @@ export default {
                 'Il y a des changements non enregistrés apportés à ce canal de contrôle.',
             manualDuty: 'Cycle Manuel',
             profileToApply: 'Profil à appliquer',
-            automaticOrManual: 'Automatique ou Manuel',
+            controlModeAutomaticTooltip: 'Appliquer un Profil de ventilateur à ce canal',
+            controlModeManualTooltip: 'Définir un cycle de service fixe manuellement',
+            controlModeUnmanagedTooltip:
+                "Ne plus gérer ce canal, laissant le matériel ou pilote de l'appareil décider",
             driverNoSupportControl:
                 'Canal en lecture seule. Le pilote actuel ne prend pas en charge le réglage de la vitesse de ce canal.',
             amdOverdriveNotEnabled:
@@ -1059,7 +1062,7 @@ export default {
                 manualSpeed: 'Vitesse Manuelle',
                 createNewProfile: 'Nouveau Profil',
                 existingProfile: 'Choisir un Profil',
-                resetSettings: 'Réinitialiser par Défaut',
+                resetSettings: 'Réinitialiser à Non géré',
                 chooseProfileNameType: 'Choisir un Nom et un Type de Profil',
                 newDefaultProfile: 'Nouveau Profil par Défaut',
                 profileCreatedApplied: 'Profil créé et appliqué',

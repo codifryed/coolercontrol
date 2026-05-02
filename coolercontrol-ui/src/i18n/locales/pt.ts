@@ -749,7 +749,10 @@ export default {
             unsavedChangesMessage: 'Há alterações não salvas feitas neste canal de controle.',
             manualDuty: 'Duty Manual',
             profileToApply: 'Perfil a aplicar',
-            automaticOrManual: 'Automático ou Manual',
+            controlModeAutomaticTooltip: 'Aplicar um Perfil de ventoinha a este canal',
+            controlModeManualTooltip: 'Definir uma porcentagem de ciclo fixa manualmente',
+            controlModeUnmanagedTooltip:
+                'Parar de gerenciar este canal, deixando o hardware ou driver do dispositivo decidir',
             driverNoSupportControl:
                 'Canal somente leitura. O driver atual não suporta definir a velocidade deste canal.',
             amdOverdriveNotEnabled:
@@ -1082,7 +1085,7 @@ export default {
                 manualSpeed: 'Velocidade Manual',
                 createNewProfile: 'Novo Perfil',
                 existingProfile: 'Escolher Perfil',
-                resetSettings: 'Redefinir para Padrão',
+                resetSettings: 'Redefinir para Não gerenciado',
                 chooseProfileNameType: 'Escolher Nome e Tipo do Perfil',
                 newDefaultProfile: 'Novo Perfil Padrão',
                 profileCreatedApplied: 'Perfil Criado e Aplicado',

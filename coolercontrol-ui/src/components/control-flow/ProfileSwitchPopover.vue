@@ -27,7 +27,7 @@ import { ProfileType, getProfileDisplayName } from '@/models/Profile'
 import type { UID } from '@/models/Device'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiCheck, mdiGauge, mdiPlusBoxOutline } from '@mdi/js'
+import { mdiCancel, mdiCheck, mdiGauge, mdiPlusBoxOutline } from '@mdi/js'
 
 const props = defineProps<{
     deviceUID: UID
@@ -104,7 +104,7 @@ defineExpose({ toggle })
             </div>
             <div class="max-h-60 overflow-y-auto">
                 <div
-                    v-for="profile in settingsStore.profiles"
+                    v-for="profile in settingsStore.profiles.filter((p) => p.uid !== '0')"
                     :key="profile.uid"
                     class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-surface-hover"
                     :class="profile.uid === currentProfileUID ? 'bg-accent/10' : ''"
@@ -145,6 +145,25 @@ defineExpose({ toggle })
                     <svg-icon type="mdi" :path="mdiGauge" class="size-4" />
                     <span class="text-sm font-medium">
                         {{ t('components.wizards.fanControl.manualSpeed') }}
+                    </span>
+                </div>
+                <div
+                    class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-surface-hover"
+                    :class="currentProfileUID === '0' ? 'bg-accent/10' : ''"
+                    @click="selectProfile('0')"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :path="currentProfileUID === '0' ? mdiCheck : mdiCancel"
+                        class="size-4 shrink-0"
+                        :class="
+                            currentProfileUID === '0'
+                                ? 'text-accent'
+                                : 'text-text-color-secondary/60'
+                        "
+                    />
+                    <span class="flex-1 truncate text-sm italic text-text-color-secondary/60">
+                        {{ t('common.unmanaged') }}
                     </span>
                 </div>
             </div>

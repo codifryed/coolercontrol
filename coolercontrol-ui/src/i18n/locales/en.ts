@@ -431,7 +431,10 @@ export default {
             unsavedChangesMessage: 'There are unsaved changes made to this control channel.',
             manualDuty: 'Manual Duty',
             profileToApply: 'Profile to apply',
-            automaticOrManual: 'Automatic or Manual',
+            controlModeAutomaticTooltip: 'Apply a fan Profile to control this channel',
+            controlModeManualTooltip: 'Set a fixed duty percentage manually',
+            controlModeUnmanagedTooltip:
+                "Stop managing this channel, letting the device's hardware or driver decide",
             driverNoSupportControl:
                 "Read-only channel. The current driver does not support setting this channel's speed.",
             amdOverdriveNotEnabled:
@@ -1033,7 +1036,7 @@ export default {
                 manualSpeed: 'Manual Speed',
                 createNewProfile: 'New Profile',
                 existingProfile: 'Choose Profile',
-                resetSettings: 'Reset to Default',
+                resetSettings: 'Reset to Unmanaged',
                 chooseProfileNameType: 'Choose a Profile Name and Type',
                 newDefaultProfile: 'New Default Profile',
                 profileCreatedApplied: 'Profile Created and Applied',

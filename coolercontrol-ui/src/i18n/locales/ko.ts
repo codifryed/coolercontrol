@@ -427,7 +427,10 @@ export default {
             unsavedChangesMessage: '이 제어 채널에 저장되지 않은 변경 사항이 있습니다.',
             manualDuty: '수동 점유',
             profileToApply: '적용할 프로파일',
-            automaticOrManual: '자동 또는 수동',
+            controlModeAutomaticTooltip: '이 채널에 팬 프로파일 적용',
+            controlModeManualTooltip: '고정 듀티 백분율을 수동으로 설정',
+            controlModeUnmanagedTooltip:
+                '이 채널의 관리를 중지하고 장치의 하드웨어 또는 드라이버에 맡깁니다',
             driverNoSupportControl:
                 '읽기 전용 채널입니다. 현재 드라이버는 이 채널의 속도 설정을 지원하지 않습니다.',
             amdOverdriveNotEnabled:
@@ -1024,7 +1027,7 @@ export default {
                 manualSpeed: '수동 속도',
                 createNewProfile: '새 프로파일',
                 existingProfile: '프로파일 선택',
-                resetSettings: '기본값으로 재설정',
+                resetSettings: '관리 안 됨으로 재설정',
                 chooseProfileNameType: '프로파일 이름과 유형 선택',
                 newDefaultProfile: '새 기본 프로파일',
                 profileCreatedApplied: '프로파일 생성 및 적용됨',

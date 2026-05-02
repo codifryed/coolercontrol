@@ -478,7 +478,10 @@ export default {
             unsavedChangesMessage: 'このコントロールチャンネルに未保存の変更があります。',
             manualDuty: '手動デューティ',
             profileToApply: '適用するプロファイル',
-            automaticOrManual: '自動または手動',
+            controlModeAutomaticTooltip: 'ファンプロファイルをこのチャンネルに適用',
+            controlModeManualTooltip: '固定のデューティ比を手動で設定',
+            controlModeUnmanagedTooltip:
+                'このチャンネルの管理を停止し、デバイスのハードウェアやドライバーに任せます',
             driverNoSupportControl:
                 '読み取り専用チャンネルです。現在のドライバーはこのチャンネルの速度設定をサポートしていません。',
             amdOverdriveNotEnabled:
@@ -1048,7 +1051,7 @@ export default {
                 manualSpeed: '手動速度',
                 createNewProfile: '新規プロファイル',
                 existingProfile: 'プロファイルを選択',
-                resetSettings: 'デフォルトにリセット',
+                resetSettings: '未管理にリセット',
                 chooseProfileNameType: 'プロファイル名とタイプを選択',
                 newDefaultProfile: '新しいデフォルトプロファイル',
                 profileCreatedApplied: 'プロファイルが作成され適用されました',

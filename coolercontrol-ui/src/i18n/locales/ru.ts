@@ -434,7 +434,10 @@ export default {
             unsavedChangesMessage: 'Есть несохраненные изменения в этом канале управления.',
             manualDuty: 'Ручная настройка',
             profileToApply: 'Профиль для применения',
-            automaticOrManual: 'Автоматический или ручной',
+            controlModeAutomaticTooltip: 'Применить профиль вентилятора к этому каналу',
+            controlModeManualTooltip: 'Установить фиксированный процент рабочего цикла вручную',
+            controlModeUnmanagedTooltip:
+                'Прекратить управление этим каналом, оставив решение за оборудованием или драйвером устройства',
             driverNoSupportControl:
                 'Канал только для чтения. Текущий драйвер не поддерживает установку скорости этого канала.',
             amdOverdriveNotEnabled:
@@ -1042,7 +1045,7 @@ export default {
                 manualSpeed: 'Ручная скорость',
                 createNewProfile: 'Новый профиль',
                 existingProfile: 'Выбрать профиль',
-                resetSettings: 'Сбросить по умолчанию',
+                resetSettings: 'Сбросить в Без управления',
                 chooseProfileNameType: 'Выберите имя и тип профиля',
                 newDefaultProfile: 'Новый профиль по умолчанию',
                 profileCreatedApplied: 'Профиль создан и применен',

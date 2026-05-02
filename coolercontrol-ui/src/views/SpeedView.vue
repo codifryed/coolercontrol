@@ -21,12 +21,16 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiAlertOutline,
+    mdiCancel,
+    mdiChartLineVariant,
     mdiContentSaveOutline,
     mdiInformationSlabCircleOutline,
+    mdiPercent,
     mdiSitemapOutline,
     mdiTuneVerticalVariant,
 } from '@mdi/js'
 import Select from 'primevue/select'
+import SelectButton from 'primevue/selectbutton'
 import {
     defineAsyncComponent,
     inject,
@@ -91,8 +95,10 @@ const fanControlWizard = defineAsyncComponent(
 
 const contextIsDirty: Ref<boolean> = ref(false)
 
-let startingManualControlEnabled = false
-let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
+type ControlMode = 'manual' | 'automatic' | 'unmanaged'
+
+let startingControlMode: ControlMode = 'unmanaged'
+let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as fallback
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
     settingsStore.allDaemonDeviceSettings.get(props.deviceUID)?.settings.get(props.channelName)
 const uiChannelSetting: SensorAndChannelSettings = settingsStore.allUIDeviceSettings
@@ -122,15 +128,19 @@ const speedWarningTooltip = (): string => {
 
 if (channelIsControllable()) {
     if (startingDeviceSetting?.speed_fixed != null) {
-        startingManualControlEnabled = true
-    } else if (startingDeviceSetting?.profile_uid != null) {
+        startingControlMode = 'manual'
+    } else if (
+        startingDeviceSetting?.profile_uid != null &&
+        startingDeviceSetting.profile_uid !== '0'
+    ) {
+        startingControlMode = 'automatic'
         startingProfile = settingsStore.profiles.find(
             (profile) => profile.uid === startingDeviceSetting!.profile_uid,
         )!
     }
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
-const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
+const controlMode: Ref<ControlMode> = ref(startingControlMode)
 const chosenViewType: Ref<ChannelViewType> = ref(
     channelIsControllable() ? uiChannelSetting.viewType : ChannelViewType.Dashboard,
 )
@@ -249,24 +259,48 @@ for (const device of deviceStore.allDevices()) {
 
 const getProfileOptions = (): any[] => {
     if (channelIsControllable()) {
-        return settingsStore.profiles
+        return settingsStore.profiles.filter((profile) => profile.uid !== '0')
     } else {
-        return [settingsStore.profiles.find((profile) => profile.uid === '0')]
+        return []
     }
 }
 
-const getManualProfileOptions = () => [
-    { value: false, label: t('views.speed.automatic') },
-    { value: true, label: t('views.speed.manual') },
+const getControlModeOptions = () => [
+    {
+        value: 'automatic' as ControlMode,
+        label: t('views.speed.automatic'),
+        icon: mdiChartLineVariant,
+        tooltip: t('views.speed.controlModeAutomaticTooltip'),
+    },
+    {
+        value: 'manual' as ControlMode,
+        label: t('views.speed.manual'),
+        icon: mdiPercent,
+        tooltip: t('views.speed.controlModeManualTooltip'),
+    },
+    {
+        value: 'unmanaged' as ControlMode,
+        label: t('common.unmanaged'),
+        icon: mdiCancel,
+        tooltip: t('views.speed.controlModeUnmanagedTooltip'),
+    },
 ]
 
 const saveSetting = async () => {
-    if (manualControlEnabled.value) {
+    if (controlMode.value === 'manual') {
         if (manualDuty.value == null) {
             return
         }
         const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
         await settingsStore.saveDaemonDeviceSettingManual(
+            props.deviceUID,
+            props.channelName,
+            setting,
+        )
+        contextIsDirty.value = false
+    } else if (controlMode.value === 'unmanaged') {
+        const setting = new DeviceSettingWriteProfileDTO('0')
+        await settingsStore.saveDaemonDeviceSettingProfile(
             props.deviceUID,
             props.channelName,
             setting,
@@ -372,7 +406,12 @@ const openFanControlWizard = () => {
         data: {
             deviceUID: props.deviceUID,
             channelName: props.channelName,
-            selectedProfileUID: manualControlEnabled.value ? undefined : selectedProfile.value.uid,
+            selectedProfileUID:
+                controlMode.value === 'manual'
+                    ? undefined
+                    : controlMode.value === 'unmanaged'
+                      ? '0'
+                      : selectedProfile.value.uid,
         },
     })
 }
@@ -380,13 +419,20 @@ const openFanControlWizard = () => {
 onMounted(() => {
     // @ts-ignore
     document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
-    watch(manualControlEnabled, async (newValue: boolean): Promise<void> => {
+    watch(controlMode, async (newValue: ControlMode): Promise<void> => {
         // needed if not enabled on UI mount:
-        if (newValue) {
+        if (newValue === 'manual') {
             await nextTick(async () => {
                 // @ts-ignore
                 document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
             })
+        }
+        // when switching to automatic, ensure a real (non-default) profile is selected
+        if (newValue === 'automatic' && selectedProfile.value.uid === '0') {
+            const firstRealProfile = settingsStore.profiles.find((p) => p.uid !== '0')
+            if (firstRealProfile != null) {
+                selectedProfile.value = firstRealProfile
+            }
         }
     })
 
@@ -402,7 +448,7 @@ onMounted(() => {
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
 
-    watch([manualControlEnabled, manualDuty, selectedProfile], () => {
+    watch([controlMode, manualDuty, selectedProfile], () => {
         contextIsDirty.value = true
     })
     watch(selectedProfile, () => {
@@ -459,7 +505,7 @@ onUnmounted(() => {
             <div
                 v-if="
                     chosenViewType === ChannelViewType.Control &&
-                    !manualControlEnabled &&
+                    controlMode === 'automatic' &&
                     hasChannelExtensionSettings()
                 "
                 class="p-2 pr-0 flex flex-row"
@@ -474,7 +520,7 @@ onUnmounted(() => {
                 />
             </div>
             <div
-                v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"
+                v-if="chosenViewType === ChannelViewType.Control && controlMode === 'manual'"
                 class="p-2 pr-0"
             >
                 <InputNumber
@@ -508,11 +554,13 @@ onUnmounted(() => {
                 />
             </div>
             <div
-                v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
+                v-else-if="
+                    chosenViewType === ChannelViewType.Control && controlMode === 'unmanaged'
+                "
                 class="flex flex-row"
             >
                 <div
-                    v-if="channelIsControllable() && selectedProfile.uid === '0'"
+                    v-if="channelIsControllable()"
                     class="ml-2 mr-0 pr-0 flex flex-row leading-none items-center"
                     v-tooltip.bottom="{
                         value: t('views.speed.defaultProfileInfo'),
@@ -526,6 +574,13 @@ onUnmounted(() => {
                         :size="deviceStore.getREMSize(1.5)"
                     />
                 </div>
+            </div>
+            <div
+                v-else-if="
+                    chosenViewType === ChannelViewType.Control && controlMode === 'automatic'
+                "
+                class="flex flex-row"
+            >
                 <div class="p-2 pr-0">
                     <Select
                         v-model="selectedProfile"
@@ -594,19 +649,30 @@ onUnmounted(() => {
                 />
             </div>
             <div class="p-2 pr-0 flex flex-row">
-                <Select
+                <SelectButton
                     v-if="chosenViewType === ChannelViewType.Control"
-                    v-model="manualControlEnabled"
-                    :options="getManualProfileOptions()"
+                    v-model="controlMode"
+                    :options="getControlModeOptions()"
                     option-label="label"
                     option-value="value"
-                    class="w-32 mr-3"
-                    placeholder="Control Type"
-                    checkmark
-                    dropdown-icon="pi pi-cog"
-                    scroll-height="40rem"
-                    v-tooltip.bottom="t('views.speed.automaticOrManual')"
-                />
+                    :allow-empty="false"
+                    :aria-labelledby="t('views.speed.controlOrView')"
+                    class="mr-3 h-[2.375rem]"
+                >
+                    <template #option="{ option }">
+                        <span
+                            v-tooltip.bottom="{ value: option.tooltip, escape: false }"
+                            class="flex items-center justify-center"
+                            :aria-label="option.label"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="option.icon"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                        </span>
+                    </template>
+                </SelectButton>
                 <div
                     v-if="!channelIsControllable()"
                     class="pr-4 py-2 flex flex-row leading-none items-center"
@@ -655,12 +721,20 @@ onUnmounted(() => {
         </div>
     </div>
     <div class="flex flex-col">
-        <div v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled">
+        <div v-if="chosenViewType === ChannelViewType.Control && controlMode === 'manual'">
             <SpeedFixedChart
                 :duty="manualDuty"
                 :current-device-u-i-d="props.deviceUID"
                 :current-sensor-name="props.channelName"
                 :key="'manual' + props.deviceUID + props.channelName"
+            />
+        </div>
+        <div v-else-if="chosenViewType === ChannelViewType.Control && controlMode === 'unmanaged'">
+            <SpeedFixedChart
+                :default-profile="true"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="'unmanaged' + props.deviceUID + props.channelName"
             />
         </div>
         <div v-else-if="chosenViewType === ChannelViewType.Control">

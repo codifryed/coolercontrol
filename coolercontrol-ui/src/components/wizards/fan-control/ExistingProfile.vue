@@ -50,11 +50,15 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const router = useRouter()
 
-const selectedProfile: Ref<Profile> = ref(
-    settingsStore.profiles.find((profile) => profile.uid === props.selectedProfileUID)!,
-)
+const getProfileOptions = (): any[] =>
+    settingsStore.profiles.filter((profile) => profile.uid !== '0')
 
-const getProfileOptions = (): any[] => settingsStore.profiles
+const selectedProfile: Ref<Profile> = ref(
+    // If the channel was Unmanaged ('0'), it has no real profile to "edit"; fall back to first non-default.
+    settingsStore.profiles.find(
+        (profile) => profile.uid === props.selectedProfileUID && profile.uid !== '0',
+    ) ?? getProfileOptions()[0],
+)
 
 const saveSetting = async () => {
     const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)

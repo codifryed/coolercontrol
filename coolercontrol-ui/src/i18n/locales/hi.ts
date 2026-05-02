@@ -620,7 +620,10 @@ export default {
             unsavedChangesMessage: 'इस नियंत्रण चैनल में असहेजे परिवर्तन किए गए हैं।',
             manualDuty: 'मैनुअल ड्यूटी',
             profileToApply: 'लागू करने के लिए प्रोफाइल',
-            automaticOrManual: 'स्वचालित या मैनुअल',
+            controlModeAutomaticTooltip: 'इस चैनल पर फैन प्रोफ़ाइल लागू करें',
+            controlModeManualTooltip: 'एक निश्चित ड्यूटी प्रतिशत मैन्युअल रूप से सेट करें',
+            controlModeUnmanagedTooltip:
+                'इस चैनल का प्रबंधन बंद करें, डिवाइस के हार्डवेयर या ड्राइवर को तय करने दें',
             driverNoSupportControl:
                 'केवल पढ़ने योग्य चैनल। वर्तमान ड्राइवर इस चैनल की गति सेट करने का समर्थन नहीं करता।',
             amdOverdriveNotEnabled:
@@ -1035,7 +1038,7 @@ export default {
                 manualSpeed: 'मैनुअल गति',
                 createNewProfile: 'नई प्रोफ़ाइल',
                 existingProfile: 'प्रोफ़ाइल चुनें',
-                resetSettings: 'डिफ़ॉल्ट पर रीसेट',
+                resetSettings: 'अप्रबंधित पर रीसेट',
                 chooseProfileNameType: 'प्रोफ़ाइल नाम और प्रकार चुनें',
                 newDefaultProfile: 'नई डिफ़ॉल्ट प्रोफ़ाइल',
                 profileCreatedApplied: 'प्रोफ़ाइल बनाई गई और लागू की गई',

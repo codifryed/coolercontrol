@@ -437,7 +437,10 @@ export default {
             unsavedChangesMessage: 'Es gibt ungespeicherte Änderungen an diesem Steuerungskanal.',
             manualDuty: 'Manuelle Auslastung',
             profileToApply: 'Anzuwendendes Profil',
-            automaticOrManual: 'Automatisch oder Manuell',
+            controlModeAutomaticTooltip: 'Ein Lüfterprofil auf diesen Kanal anwenden',
+            controlModeManualTooltip: 'Einen festen Tastgrad manuell einstellen',
+            controlModeUnmanagedTooltip:
+                'Diesen Kanal nicht steuern und Hardware oder Treiber des Geräts entscheiden lassen',
             driverNoSupportControl:
                 'Schreibgeschützter Kanal. Der aktuelle Treiber unterstützt das Setzen der Drehzahl dieses Kanals nicht.',
             amdOverdriveNotEnabled:
@@ -1060,7 +1063,7 @@ export default {
                 manualSpeed: 'Manuelle Geschwindigkeit',
                 createNewProfile: 'Neues Profil',
                 existingProfile: 'Profil wählen',
-                resetSettings: 'Auf Standard zurücksetzen',
+                resetSettings: 'Auf Ungesteuert zurücksetzen',
                 chooseProfileNameType: 'Wählen Sie einen Profilnamen und einen Typ',
                 newDefaultProfile: 'Neues Standardprofil',
                 profileCreatedApplied: 'Profil erstellt und angewendet',

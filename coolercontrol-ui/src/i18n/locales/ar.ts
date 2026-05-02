@@ -428,7 +428,10 @@ export default {
             unsavedChangesMessage: 'هناك تغييرات غير محفوظة تم إجراؤها على قناة التحكم هذه.',
             manualDuty: 'واجب يدوي',
             profileToApply: 'ملف التعريف المراد تطبيقه',
-            automaticOrManual: 'تلقائي أو يدوي',
+            controlModeAutomaticTooltip: 'تطبيق ملف تعريف مروحة للتحكم في هذه القناة',
+            controlModeManualTooltip: 'تعيين نسبة مئوية ثابتة يدويًا',
+            controlModeUnmanagedTooltip:
+                'إيقاف إدارة هذه القناة، تاركًا الأمر لجهاز أو برنامج التشغيل',
             driverNoSupportControl:
                 'قناة للقراءة فقط. برنامج التشغيل الحالي لا يدعم ضبط سرعة هذه القناة.',
             amdOverdriveNotEnabled:
@@ -1024,7 +1027,7 @@ export default {
                 manualSpeed: 'السرعة اليدوية',
                 createNewProfile: 'ملف جديد',
                 existingProfile: 'اختيار ملف',
-                resetSettings: 'إعادة التعيين للافتراضي',
+                resetSettings: 'إعادة التعيين إلى غير مُدار',
                 chooseProfileNameType: 'اختر اسم ملف التعريف ونوعه',
                 newDefaultProfile: 'الملف الشخصي الافتراضي الجديد',
                 profileCreatedApplied: 'تم إنشاء الملف الشخصي وتطبيقه',
