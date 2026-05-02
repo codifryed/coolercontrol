@@ -603,7 +603,7 @@ onUnmounted(() => {
                 <div
                     v-if="!channelIsControllable()"
                     class="pr-4 py-2 flex flex-row leading-none items-center"
-                    v-tooltip.bottom="speedWarningTooltip"
+                    v-tooltip.bottom="speedWarningTooltip()"
                 >
                     <svg-icon
                         type="mdi"
