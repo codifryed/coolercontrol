@@ -513,7 +513,6 @@ export default {
             editProfile: '编辑配置文件',
             deleteProfile: '删除配置文件',
             noProfiles: '尚未配置配置文件',
-            systemDefault: '系统默认',
             profileType: '配置文件类型',
             fixedDuty: '固定风扇速度',
             selectedPointDuty: '选中点的风扇速度',
@@ -534,7 +533,7 @@ export default {
             newProfile: '新配置文件',
             tooltip: {
                 profileType:
-                    '配置文件类型:<br/>- 默认: 保留当前设备设置<br/>&nbsp;&nbsp;(BIOS/固件)<br/>- 固定: 设置恒定的速度<br/>- 曲线: 可自定义的风扇曲线<br/>- 混合: 组合多个配置文件<br/>- 叠加: 对现有配置文件的输出应用偏移量',
+                    '配置文件类型:<br/>- 默认: 未管理，将控制权交还给设备驱动程序<br/>- 固定: 设置恒定的速度<br/>- 曲线: 可自定义的风扇曲线<br/>- 混合: 组合多个配置文件<br/>- 叠加: 对现有配置文件的输出应用偏移量',
             },
             profileDeleted: '配置文件已删除',
             profileDuplicated: '配置文件已复制',
@@ -608,7 +607,7 @@ export default {
             controlOrView: '控制或查看',
             applySetting: '应用设置',
             defaultProfileInfo:
-                '默认配置文件指示CoolerControl停止管理此风扇<br/>并恢复原始驱动程序设置。<br/><br/><b>警告：</b>许多驱动程序<i>没有</i>自动风扇控制功能。<br/>在这些设备上，风扇将保持在其最后设定的速度，<br/>没有主动管理。',
+                '选择"未管理"会指示CoolerControl停止控制此风扇，<br/>并将控制权交还给设备驱动程序。<br/><br/><b>警告：</b>许多驱动程序<i>没有</i>自动风扇控制功能。<br/>在这些设备上，风扇将保持在其最后设定的速度。',
         },
         modes: {
             createMode: '创建模式',

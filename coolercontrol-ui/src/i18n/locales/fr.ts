@@ -452,7 +452,7 @@ export default {
             controlOrView: 'Contrôler ou Afficher',
             applySetting: 'Appliquer le Paramètre',
             defaultProfileInfo:
-                "Le Profil par défaut indique à CoolerControl d'arrêter de gérer<br/>ce ventilateur et de restaurer les paramètres d'origine du pilote.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie sans gestion active.",
+                "Sélectionner « Non géré » indique à CoolerControl d'arrêter de contrôler<br/>ce ventilateur et de rendre le contrôle au pilote du périphérique.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie.",
         },
         customSensors: {
             newSensor: 'Nouveau Capteur',
@@ -629,7 +629,6 @@ export default {
             editProfile: 'Modifier le profil',
             deleteProfile: 'Supprimer le profil',
             noProfiles: 'Aucun profil configuré',
-            systemDefault: 'Système par défaut',
             profileType: 'Type de profil',
             fixedDuty: 'Vitesse de ventilateur fixe',
             selectedPointDuty: 'Puissance du point sélectionné',
@@ -650,7 +649,7 @@ export default {
             newProfile: 'Nouveau profil',
             tooltip: {
                 profileType:
-                    "Types de profils:<br/>- Par défaut: conserve les paramètres actuels de l'appareil<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
+                    "Types de profils:<br/>- Par défaut: Non géré, rend le contrôle au pilote du périphérique<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
             },
             profileDeleted: 'Profil supprimé',
             profileDuplicated: 'Profil dupliqué',

@@ -445,7 +445,7 @@ export default {
             controlOrView: 'Steuern oder Anzeigen',
             applySetting: 'Einstellung anwenden',
             defaultProfileInfo:
-                'Das Standardprofil weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die ursprünglichen Treibereinstellungen wiederherzustellen.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit<br/>ohne aktive Steuerung.',
+                'Die Auswahl von "Ungesteuert" weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die Kontrolle an den Gerätetreiber zurückzugeben.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit.',
         },
         customSensors: {
             newSensor: 'Neuer Sensor',
@@ -621,7 +621,6 @@ export default {
             editProfile: 'Profil bearbeiten',
             deleteProfile: 'Profil löschen',
             noProfiles: 'Keine Profile konfiguriert',
-            systemDefault: 'Systemstandard',
             profileType: 'Profiltyp',
             fixedDuty: 'Feste Lüftergeschwindigkeit',
             selectedPointDuty: 'Ausgewählter Punkt Leistung',
@@ -642,7 +641,7 @@ export default {
             newProfile: 'Neues Profil',
             tooltip: {
                 profileType:
-                    'Profiltypen:<br/>- Standard: Beibehaltung der aktuellen Geräteeinstellungen<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
+                    'Profiltypen:<br/>- Standard: Ungesteuert, gibt die Kontrolle an den Gerätetreiber zurück<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
             },
             profileDeleted: 'Profil gelöscht',
             profileDuplicated: 'Profil dupliziert',

@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiArrowLeft, mdiContentSaveOutline } from '@mdi/js'
 import Select from 'primevue/select'
 import { UID } from '@/models/Device.ts'
-import { Profile } from '@/models/Profile.ts'
+import { Profile, getProfileDisplayName } from '@/models/Profile.ts'
 import { ref, Ref } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import Button from 'primevue/button'
@@ -80,13 +80,20 @@ const saveSetting = async () => {
                 <Select
                     v-model="selectedProfile"
                     :options="getProfileOptions()"
-                    option-label="name"
                     placeholder="Profile"
                     class="w-full mr-4 h-11 !justify-end"
                     checkmark
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="40rem"
-                />
+                >
+                    <template #value="{ value }">
+                        <span v-if="value">{{ getProfileDisplayName(value) }}</span>
+                        <span v-else>Profile</span>
+                    </template>
+                    <template #option="{ option }">
+                        {{ getProfileDisplayName(option) }}
+                    </template>
+                </Select>
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">

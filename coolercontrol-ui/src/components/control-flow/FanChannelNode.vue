@@ -53,7 +53,7 @@ const showSwapButton = computed(() => flowViewMode === 'detail')
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
-    if (props.data.profileUID === '0') return t('models.profile.profileType.default')
+    if (props.data.profileUID === '0') return t('common.unmanaged')
     return settingsStore.profiles.find((p) => p.uid === props.data.profileUID)?.name
 })
 

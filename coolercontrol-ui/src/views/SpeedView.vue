@@ -37,7 +37,7 @@ import {
     type Ref,
     watch,
 } from 'vue'
-import { Profile, ProfileType } from '@/models/Profile'
+import { Profile, ProfileType, getProfileDisplayName } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
@@ -530,14 +530,21 @@ onUnmounted(() => {
                     <Select
                         v-model="selectedProfile"
                         :options="getProfileOptions()"
-                        option-label="name"
                         placeholder="Profile"
                         class="w-full mr-4 h-full"
                         checkmark
                         dropdown-icon="pi pi-chart-line"
                         scroll-height="40rem"
                         v-tooltip.bottom="t('views.speed.profileToApply')"
-                    />
+                    >
+                        <template #value="{ value }">
+                            <span v-if="value">{{ getProfileDisplayName(value) }}</span>
+                            <span v-else>Profile</span>
+                        </template>
+                        <template #option="{ option }">
+                            {{ getProfileDisplayName(option) }}
+                        </template>
+                    </Select>
                 </div>
             </div>
             <div

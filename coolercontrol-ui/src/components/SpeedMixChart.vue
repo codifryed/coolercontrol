@@ -23,7 +23,7 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { FunctionType, Profile, ProfileType } from '@/models/Profile'
+import { FunctionType, Profile, ProfileType, getProfileDisplayName } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -199,7 +199,7 @@ const calcLineShadowSize = (profileIndex: number): number => {
 }
 
 const profileTitle = (): string => {
-    let title = `Applied Profile: ${props.profile.name}`
+    let title = `Applied Profile: ${getProfileDisplayName(props.profile)}`
     if (deviceStore.isSafariWebKit()) {
         // add some extra length for WebKit to keep default profile text all linkable
         title = title + '                      '

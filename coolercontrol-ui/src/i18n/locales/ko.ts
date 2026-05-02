@@ -435,7 +435,7 @@ export default {
             controlOrView: '제어 또는 보기',
             applySetting: '설성 적용',
             defaultProfileInfo:
-                '기본 프로파일은 CoolerControl에 이 팬의 관리를 중지하고<br/>원래 드라이버 설정을 복원하도록 지시합니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 활성 관리 없이<br/>마지막으로 설정된 속도로 유지됩니다.',
+                '"관리 안 됨"을 선택하면 CoolerControl이 이 팬의 제어를 중지하고<br/>제어 권한을 장치 드라이버에 다시 넘깁니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 마지막으로 설정된 속도로 유지됩니다.',
         },
         customSensors: {
             newSensor: '새 센서',
@@ -606,7 +606,6 @@ export default {
             editProfile: '프로파일 편집',
             deleteProfile: '프로파일 삭제',
             noProfiles: '구성된 프로파일이 없음',
-            systemDefault: '시스템 기본값',
             profileType: '프로파일 유형',
             fixedDuty: '고정 팬 속도',
             selectedPointDuty: '선택된 지점 점유',
@@ -627,7 +626,7 @@ export default {
             newProfile: '새 프로파일',
             tooltip: {
                 profileType:
-                    '프로파일 유형:<br/>- 기본값: 현재 장치 설정을 유지<br/>&nbsp;&nbsp;(바이오스/펌웨어)<br/>- 고정: 일정한 속도 설정<br/>- 그래프: 커스텀 가능한 팬 속도 곡선<br/>- 혼합: 여러 프로파일 결합<br/>- 오버레이: 기존 프로파일의 출력 오프셋',
+                    '프로파일 유형:<br/>- 기본값: 관리 안 됨, 제어 권한을 장치 드라이버에 다시 넘김<br/>- 고정: 일정한 속도 설정<br/>- 그래프: 커스텀 가능한 팬 속도 곡선<br/>- 혼합: 여러 프로파일 결합<br/>- 오버레이: 기존 프로파일의 출력 오프셋',
             },
             profileDeleted: '프로파일 삭제됨',
             profileDuplicated: '프로파일 중복됨',

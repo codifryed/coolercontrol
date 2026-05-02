@@ -147,10 +147,21 @@ export class Profile {
     }
 
     static createDefault(): Profile {
-        const profile = new Profile('Default Profile', ProfileType.Default)
+        const profile = new Profile('Unmanaged', ProfileType.Default)
         profile.uid = '0' // this indicates a special once-only non-deleteable default profile that we always need to have available
         return profile
     }
+}
+
+/**
+ * Returns the user-facing display name for a profile. The default profile (UID '0')
+ * is rendered using the localized `common.unmanaged` string so non-English users see
+ * the term in their language across every surface, regardless of what the daemon has
+ * persisted for the `name` field.
+ */
+export function getProfileDisplayName(profile: { uid: UID; name: string }): string {
+    if (profile.uid === '0') return i18n.global.t('common.unmanaged')
+    return profile.name
 }
 
 export enum ProfileType {

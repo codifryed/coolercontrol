@@ -444,7 +444,7 @@ export default {
             controlOrView: 'Controlar o Ver',
             applySetting: 'Aplicar Configuración',
             defaultProfileInfo:
-                'El Perfil Predeterminado indica a CoolerControl que deje de gestionar<br/>este ventilador y restaure la configuración original del controlador.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada sin gestión activa.',
+                'Seleccionar "Sin gestión" indica a CoolerControl que deje de controlar<br/>este ventilador y devuelva el control al controlador del dispositivo.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada.',
         },
         customSensors: {
             newSensor: 'Nuevo Sensor',
@@ -618,7 +618,6 @@ export default {
             editProfile: 'Editar Perfil',
             deleteProfile: 'Eliminar Perfil',
             noProfiles: 'No hay perfiles configurados',
-            systemDefault: 'Predeterminado del Sistema',
             profileType: 'Tipo de Perfil',
             fixedDuty: 'Velocidad Fija del Ventilador',
             selectedPointDuty: 'Velocidad del Punto Seleccionado',
@@ -639,7 +638,7 @@ export default {
             newProfile: 'Nuevo Perfil',
             tooltip: {
                 profileType:
-                    'Tipos de Perfiles:<br/>- Predeterminado: Conserva la configuración actual del dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fijo: Establece una velocidad constante<br/>- Gráfico: Curva de ventilador personalizable<br/>- Mezcla: Combina múltiples perfiles<br/>- Superposición: aplica un desplazamiento a la salida de un perfil existente',
+                    'Tipos de Perfiles:<br/>- Predeterminado: Sin gestión, devuelve el control al controlador del dispositivo<br/>- Fijo: Establece una velocidad constante<br/>- Gráfico: Curva de ventilador personalizable<br/>- Mezcla: Combina múltiples perfiles<br/>- Superposición: aplica un desplazamiento a la salida de un perfil existente',
             },
             profileDeleted: 'Perfil Eliminado',
             profileDuplicated: 'Perfil Duplicado',

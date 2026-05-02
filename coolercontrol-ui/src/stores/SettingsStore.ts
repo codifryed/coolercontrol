@@ -442,7 +442,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const profilesDTO = await deviceStore.daemonClient.loadProfiles()
         if (profilesDTO.profiles.find((profile: Profile) => profile.uid === '0') == null) {
             throw new Error(
-                'Default Profile not present in daemon Response. We should not continue.',
+                'Unmanaged profile (UID 0) not present in daemon Response. We should not continue.',
             )
         }
         profiles.value.length = 0

@@ -101,7 +101,7 @@ const initTableData = () => {
                     settingType = 'Profile'
                     settingInfo =
                         channelModeSetting.profile_uid === '0'
-                            ? 'Default Profile'
+                            ? t('common.unmanaged')
                             : (settingsStore.profiles.find(
                                   (profile) => profile.uid === channelModeSetting.profile_uid,
                               )?.name ?? 'Unknown')

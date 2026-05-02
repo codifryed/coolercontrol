@@ -439,7 +439,7 @@ export default {
             controlOrView: 'Control or View',
             applySetting: 'Apply Setting',
             defaultProfileInfo:
-                'The Default Profile tells CoolerControl to stop managing this fan<br/>and restore the original driver settings.<br/><br/><b>Warning:</b> Many drivers do <i>not</i> have automatic fan control.<br/>On those devices, the fan will stay at its last set speed<br/>with no active management.',
+                "Selecting Unmanaged tells CoolerControl to stop controlling this fan<br/>and hand it back to the device's driver.<br/><br/><b>Warning:</b> Many drivers do <i>not</i> have automatic fan control.<br/>On those devices, the fan will stay at its last set speed.",
         },
         customSensors: {
             newSensor: 'New Sensor',
@@ -613,7 +613,6 @@ export default {
             editProfile: 'Edit Profile',
             deleteProfile: 'Delete Profile',
             noProfiles: 'No profiles configured',
-            systemDefault: 'System Default',
             profileType: 'Profile Type',
             fixedDuty: 'Fixed Fan Speed',
             selectedPointDuty: 'Selected Point Duty',
@@ -634,7 +633,7 @@ export default {
             newProfile: 'New Profile',
             tooltip: {
                 profileType:
-                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles<br/>- Overlay: offset the output of an existing profile',
+                    "Profile Types:<br/>- Default: Unmanaged, hands control back to the device's driver<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles<br/>- Overlay: offset the output of an existing profile",
             },
             profileDeleted: 'Profile Deleted',
             profileDuplicated: 'Profile Duplicated',

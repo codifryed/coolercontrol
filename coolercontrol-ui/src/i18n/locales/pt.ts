@@ -560,7 +560,6 @@ export default {
             editProfile: 'Editar Perfil',
             deleteProfile: 'Excluir Perfil',
             noProfiles: 'Nenhum perfil configurado',
-            systemDefault: 'Padrão do Sistema',
             profileType: 'Tipo de Perfil',
             fixedDuty: 'Velocidade Fixa do Ventilador',
             selectedPointDuty: 'Duty do Ponto Selecionado',
@@ -581,7 +580,7 @@ export default {
             newProfile: 'Novo Perfil',
             tooltip: {
                 profileType:
-                    'Tipos de Perfil:<br/>- Padrão: Mantém as configurações atuais do dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventoinha personalizável<br/>- Mistura: Combina vários perfis<br/>- Sobreposição: aplica um deslocamento à saída de um perfil existente',
+                    'Tipos de Perfil:<br/>- Padrão: Não gerenciado, devolve o controle ao driver do dispositivo<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventoinha personalizável<br/>- Mistura: Combina vários perfis<br/>- Sobreposição: aplica um deslocamento à saída de um perfil existente',
             },
             profileDeleted: 'Perfil Excluído',
             profileDuplicated: 'Perfil Duplicado',
@@ -758,7 +757,7 @@ export default {
             controlOrView: 'Controlar ou Visualizar',
             applySetting: 'Aplicar Configuração',
             defaultProfileInfo:
-                'O Perfil Padrão instrui o CoolerControl a parar de gerenciar<br/>este ventilador e restaurar as configurações originais do driver.<br/><br/><b>Aviso:</b> Muitos drivers <i>não</i> possuem controle automático de ventilador.<br/>Nesses dispositivos, o ventilador permanecerá em sua última velocidade<br/>definida sem gerenciamento ativo.',
+                'Selecionar "Não gerenciado" instrui o CoolerControl a parar de controlar<br/>este ventilador e devolver o controle ao driver do dispositivo.<br/><br/><b>Aviso:</b> Muitos drivers <i>não</i> possuem controle automático de ventilador.<br/>Nesses dispositivos, o ventilador permanecerá em sua última velocidade definida.',
         },
         customSensors: {
             newSensor: 'Novo Sensor',

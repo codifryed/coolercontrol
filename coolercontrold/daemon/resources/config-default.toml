@@ -46,7 +46,7 @@
 # -------------------------------
 [[profiles]]
 uid = "0"
-name = "Default Profile"
+name = "Unmanaged"
 p_type = "Default"
 function = "0"
 

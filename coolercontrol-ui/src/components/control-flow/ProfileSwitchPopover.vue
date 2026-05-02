@@ -23,7 +23,7 @@ import { useDialog } from 'primevue/usedialog'
 import Popover from 'primevue/popover'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings'
-import { ProfileType } from '@/models/Profile'
+import { ProfileType, getProfileDisplayName } from '@/models/Profile'
 import type { UID } from '@/models/Device'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
@@ -118,7 +118,7 @@ defineExpose({ toggle })
                     />
                     <div v-else class="size-4 shrink-0" />
                     <span class="flex-1 truncate text-sm text-text-color">
-                        {{ profile.name }}
+                        {{ getProfileDisplayName(profile) }}
                     </span>
                     <span
                         class="rounded px-1.5 py-0.5 text-[10px] font-medium"

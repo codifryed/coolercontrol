@@ -514,7 +514,6 @@ export default {
             editProfile: '編輯設定檔',
             deleteProfile: '刪除設定檔',
             noProfiles: '尚未設定設定檔',
-            systemDefault: '系統預設',
             profileType: '設定檔類型',
             fixedDuty: '固定風扇速度',
             selectedPointDuty: '選取點的風扇速度',
@@ -535,7 +534,7 @@ export default {
             newProfile: '新設定檔',
             tooltip: {
                 profileType:
-                    '設定檔類型:<br/>- 預設: 保留當前裝置設定<br/>&nbsp;&nbsp;(BIOS/韌體)<br/>- 固定: 設定恆定的速度<br/>- 圖表: 可自訂的風扇曲線<br/>- 混合: 組合多個設定檔<br/>- 疊加: 對現有設定檔的輸出套用偏移量',
+                    '設定檔類型:<br/>- 預設: 未管理，將控制權交還給裝置驅動程式<br/>- 固定: 設定恆定的速度<br/>- 圖表: 可自訂的風扇曲線<br/>- 混合: 組合多個設定檔<br/>- 疊加: 對現有設定檔的輸出套用偏移量',
             },
             profileDeleted: '設定檔已刪除',
             profileDuplicated: '設定檔已複製',
@@ -610,7 +609,7 @@ export default {
             controlOrView: '控制或查看',
             applySetting: '應用設置',
             defaultProfileInfo:
-                '預設設定檔指示CoolerControl停止管理此風扇<br/>並恢復原始驅動程式設定。<br/><br/><b>警告：</b>許多驅動程式<i>沒有</i>自動風扇控制功能。<br/>在這些裝置上，風扇將保持在其最後設定的速度，<br/>沒有主動管理。',
+                '選擇「未管理」會指示CoolerControl停止控制此風扇，<br/>並將控制權交還給裝置驅動程式。<br/><br/><b>警告：</b>許多驅動程式<i>沒有</i>自動風扇控制功能。<br/>在這些裝置上，風扇將保持在其最後設定的速度。',
         },
         modes: {
             createMode: '創建模式',

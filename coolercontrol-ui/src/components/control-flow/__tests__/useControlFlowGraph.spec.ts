@@ -165,7 +165,7 @@ describe('useControlFlowGraph', () => {
             {
                 uid: '0',
                 p_type: ProfileType.Default,
-                name: 'Default Profile',
+                name: 'Unmanaged',
                 function_uid: '0',
                 member_profile_uids: [],
                 speed_profile: [],

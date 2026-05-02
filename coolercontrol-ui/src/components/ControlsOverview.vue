@@ -27,6 +27,7 @@ import Divider from 'primevue/divider'
 import { defineAsyncComponent, onMounted, Ref, ref } from 'vue'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
+import { getProfileDisplayName } from '@/models/Profile'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDialog } from 'primevue/usedialog'
 import { useI18n } from 'vue-i18n'
@@ -139,7 +140,7 @@ const initWidgetData = () => {
             // Profile data
             // Set default to when no settings have been set/blank, so are the default:
             let profileUID: string | undefined = '0'
-            let profileLabel: string | undefined = 'Default Profile'
+            let profileLabel: string | undefined = t('common.unmanaged')
             let profileTo: any | undefined = undefined
             if (deviceDaemonSettings?.settings.get(channelName) != null) {
                 if (deviceDaemonSettings?.settings.get(channelName)!.speed_fixed != null) {
@@ -151,7 +152,7 @@ const initWidgetData = () => {
                     const profile = settingsStore.profiles.find(
                         (profile) => profile.uid === profileUID,
                     )!
-                    profileLabel = profile.name
+                    profileLabel = getProfileDisplayName(profile)
                     profileTo =
                         profileUID === '0'
                             ? undefined
