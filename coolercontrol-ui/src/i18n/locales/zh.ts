@@ -128,7 +128,7 @@ export default {
         },
         settings: {
             title: '设置',
-            general: '通用',
+            userInterface: '用户界面',
             device: '设备和传感器',
             daemon: '后台服务',
             devices: {

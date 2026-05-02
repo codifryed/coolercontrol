@@ -129,7 +129,7 @@ export default {
         },
         settings: {
             title: '설정',
-            general: '일반',
+            userInterface: '사용자 인터페이스',
             device: '장치',
             daemon: '데몬',
             devices: {

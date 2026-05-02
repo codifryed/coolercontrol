@@ -133,7 +133,7 @@ export default {
         },
         settings: {
             title: 'Einstellungen',
-            general: 'Allgemein',
+            userInterface: 'Benutzeroberfläche',
             device: 'Geräte',
             daemon: 'Daemon',
             devices: {

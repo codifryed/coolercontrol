@@ -129,7 +129,7 @@ export default {
         },
         settings: {
             title: '設定',
-            general: '一般',
+            userInterface: 'ユーザーインターフェース',
             device: 'デバイスとセンサー',
             daemon: 'デーモン',
             devices: {

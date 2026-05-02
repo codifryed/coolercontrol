@@ -420,7 +420,7 @@ onUnmounted(() => {
                             :path="mdiViewQuiltOutline"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        {{ t('layout.settings.general') }}
+                        {{ t('layout.settings.userInterface') }}
                     </Tab>
                     <Tab
                         value="4"

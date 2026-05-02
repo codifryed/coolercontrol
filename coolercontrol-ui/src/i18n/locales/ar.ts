@@ -129,7 +129,7 @@ export default {
         },
         settings: {
             title: 'الإعدادات',
-            general: 'عام',
+            userInterface: 'واجهة المستخدم',
             device: 'الأجهزة والمستشعرات',
             daemon: 'شيطان',
             devices: {

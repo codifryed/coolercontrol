@@ -129,7 +129,7 @@ export default {
         },
         settings: {
             title: 'सेटिंग्स',
-            general: 'सामान्य',
+            userInterface: 'यूज़र इंटरफ़ेस',
             device: 'उपकरण और सेंसर',
             daemon: 'डेमॉन',
             devices: {

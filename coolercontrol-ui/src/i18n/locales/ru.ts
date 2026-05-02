@@ -131,7 +131,7 @@ export default {
         },
         settings: {
             title: 'Настройки',
-            general: 'Общие',
+            userInterface: 'Пользовательский интерфейс',
             device: 'Устройства',
             daemon: 'Демон',
             devices: {

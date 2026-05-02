@@ -128,7 +128,7 @@ export default {
         },
         settings: {
             title: '設定',
-            general: '一般',
+            userInterface: '使用者介面',
             device: '裝置和傳感器',
             daemon: '後台服務',
             devices: {
