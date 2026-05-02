@@ -19,6 +19,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 // @ts-ignore
 import AppLayout from '@/layout/AppLayout.vue'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import { StartupPage } from '@/models/UISettings'
 
 const router = createRouter({
     // For our use case, using the hash history allows users to bookmark links
@@ -34,8 +36,8 @@ const router = createRouter({
                 {
                     path: '',
                     name: 'system-overview',
-                    component: () => import('@/views/DashboardView.vue'),
-                    props: true,
+                    component: () => import('@/views/AppInfoView.vue'),
+                    props: false,
                 },
                 {
                     path: 'controls',
@@ -146,6 +148,30 @@ const router = createRouter({
             ],
         },
     ],
+})
+
+// Redirect the default root route to the user's configured startup page.
+// Skipped on initial load (settings not yet loaded); App.vue handles that case
+// after settings init. Subsequent navigations to "/" honor the setting.
+// AppInfo is the default fallback; the empty path's component is AppInfoView,
+// so when startupPage === AppInfo we just stay put without a redirect.
+router.beforeEach((to) => {
+    if (to.name !== 'system-overview') return true
+    const settingsStore = useSettingsStore()
+    if (!settingsStore.settingsLoaded) return true
+    if (settingsStore.startupPage === StartupPage.Controls) {
+        return { name: 'system-controls' }
+    }
+    if (
+        settingsStore.startupPage === StartupPage.HomeDashboard &&
+        settingsStore.homeDashboard != null
+    ) {
+        return {
+            name: 'dashboards',
+            params: { dashboardUID: settingsStore.homeDashboard },
+        }
+    }
+    return true
 })
 
 export default router

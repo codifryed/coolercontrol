@@ -138,6 +138,7 @@ const finishStep = (): any => ({
 const filterPresent = (list: any[]): any[] =>
     list.filter((s) => document.querySelector(s.attachTo.element) !== null)
 
+//todo: reorder and add:
 const buildBasicSteps = (): any[] =>
     filterPresent([
         makeStep('#logo', 'appInfo'),
@@ -288,13 +289,17 @@ onMounted(async () => {
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
     // Honor the configured startup page, but only when the user landed on the
-    // default root route (no deep link).
+    // default root route (no deep link). The empty path's component is
+    // AppInfoView, so AppInfo needs no redirect; Controls and HomeDashboard do.
     if (router.currentRoute.value.name === 'system-overview') {
         const startup = settingsStore.startupPage
-        if (startup === StartupPage.AppInfo) {
-            await router.replace({ name: 'app-info' })
-        } else if (startup === StartupPage.Controls) {
+        if (startup === StartupPage.Controls) {
             await router.replace({ name: 'system-controls' })
+        } else if (startup === StartupPage.HomeDashboard && settingsStore.homeDashboard != null) {
+            await router.replace({
+                name: 'dashboards',
+                params: { dashboardUID: settingsStore.homeDashboard },
+            })
         }
     }
     applyCustomTheme()
