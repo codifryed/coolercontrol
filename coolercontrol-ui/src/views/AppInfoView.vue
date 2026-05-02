@@ -477,6 +477,51 @@ onBeforeUnmount(() => {
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')
                     }}</span>
+                    <div class="mt-4 -ml-1 p-3 rounded-md bg-accent/10 border-l-4 border-accent">
+                        <p class="text-wrap flex flex-row items-center">
+                            <a
+                                target="_blank"
+                                href="https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure"
+                                class="text-accent text-lg font-semibold"
+                            >
+                                <div class="flex flex-row items-center">
+                                    <svg-icon
+                                        type="mdi"
+                                        class="mr-2"
+                                        :path="mdiHelpCircleOutline"
+                                        :size="deviceStore.getREMSize(2.0)"
+                                    />
+                                    {{ t('views.appInfo.gettingStarted') }}
+                                </div> </a
+                            >&nbsp;- {{ t('views.appInfo.helpSettingUp') }}
+                        </p>
+                        <ol
+                            class="mt-3 ml-2 pl-6 list-decimal text-sm text-text-color-secondary space-y-1"
+                        >
+                            <li>
+                                <i18n-t keypath="views.appInfo.gettingStartedStep1" tag="span">
+                                    <template #profile>
+                                        <strong>{{
+                                            t('views.appInfo.gettingStartedGraphProfile')
+                                        }}</strong>
+                                    </template>
+                                </i18n-t>
+                            </li>
+                            <li>
+                                <i18n-t keypath="views.appInfo.gettingStartedStep2" tag="span">
+                                    <template #controls>
+                                        <router-link
+                                            :to="{ name: 'system-controls' }"
+                                            class="text-accent hover:underline"
+                                        >
+                                            {{ t('views.appInfo.gettingStartedControlsPage') }}
+                                        </router-link>
+                                    </template>
+                                </i18n-t>
+                            </li>
+                            <li>{{ t('views.appInfo.gettingStartedStep3') }}</li>
+                        </ol>
+                    </div>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
                             href="#"
@@ -490,26 +535,9 @@ onBeforeUnmount(() => {
                                     :path="mdiCompassOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                {{ t('views.appInfo.tutorial') }}
+                                {{ t('views.appInfo.uiTour') }}
                             </div> </a
-                        >&nbsp;- {{ t('views.appInfo.tutorialDesc') }}
-                    </p>
-                    <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a
-                            target="_blank"
-                            href="https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure"
-                            class="text-accent"
-                        >
-                            <div class="flex flex-row items-center">
-                                <svg-icon
-                                    type="mdi"
-                                    class="mr-2"
-                                    :path="mdiHelpCircleOutline"
-                                    :size="deviceStore.getREMSize(2.0)"
-                                />
-                                {{ t('views.appInfo.gettingStarted') }}
-                            </div> </a
-                        >&nbsp;- {{ t('views.appInfo.helpSettingUp') }}
+                        >&nbsp;- {{ t('views.appInfo.uiTourDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a

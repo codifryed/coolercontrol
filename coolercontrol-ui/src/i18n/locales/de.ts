@@ -526,9 +526,16 @@ export default {
             connected: 'Verbunden',
             disconnected: 'Nicht verbunden',
             helpfulLinks: 'Hilfreiche Links',
-            tutorial: 'Tutorial',
-            tutorialDesc: 'Eine geführte Tour durch die Anwendung',
+            uiTour: 'UI-Tour',
+            uiTourDesc: 'Eine geführte Tour durch die Anwendung',
             gettingStarted: 'Erste Schritte',
+            gettingStartedGraphProfile: 'Graph-Profil',
+            gettingStartedControlsPage: 'Steuerungsseite',
+            gettingStartedStep1:
+                'Erstelle ein {profile} in den Lüfterprofilen und gestalte die Lüfterkurve.',
+            gettingStartedStep2:
+                'Weise es auf der {controls} (oder direkt auf der Lüfter-Seite) zu — Profile werden nicht automatisch angewendet.',
+            gettingStartedStep3: 'Verwende dasselbe Profil für beliebig viele Lüfter.',
             helpSettingUp: 'Hilfe bei der Einrichtung der Lüftersteuerung',
             hardwareSupport: 'Hardware-Unterstützung',
             hardwareSupportDesc: 'Unterstützte Geräte und Treiberinstallation',

@@ -452,9 +452,16 @@ export default {
             connected: 'Conectado',
             disconnected: 'Desconectado',
             helpfulLinks: 'Links Úteis',
-            tutorial: 'Tutorial',
-            tutorialDesc: 'Faça um tour guiado pelo aplicativo',
+            uiTour: 'Tour da Interface',
+            uiTourDesc: 'Faça um tour guiado pelo aplicativo',
             gettingStarted: 'Primeiros Passos',
+            gettingStartedGraphProfile: 'Perfil de Gráfico',
+            gettingStartedControlsPage: 'Página de Controles',
+            gettingStartedStep1:
+                'Crie um {profile} em Perfis de ventoinha e ajuste a curva da ventoinha.',
+            gettingStartedStep2:
+                'Atribua-o na {controls} (ou na página da ventoinha) — Perfis não são aplicados automaticamente.',
+            gettingStartedStep3: 'Reutilize o mesmo Perfil em quantas ventoinhas quiser.',
             helpSettingUp: 'Ajuda para Configurar Controle de Ventiladores',
             hardwareSupport: 'Suporte de Hardware',
             hardwareSupportDesc: 'Dispositivos suportados e instalação de drivers',

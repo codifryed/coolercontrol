@@ -564,9 +564,16 @@ export default {
             connected: '接続済み',
             disconnected: '切断',
             helpfulLinks: '役立つリンク',
-            tutorial: 'チュートリアル',
-            tutorialDesc: 'アプリケーションのガイド付きツアー',
+            uiTour: 'UIツアー',
+            uiTourDesc: 'アプリケーションのガイド付きツアー',
             gettingStarted: '開始方法',
+            gettingStartedGraphProfile: 'グラフプロファイル',
+            gettingStartedControlsPage: 'コントロールページ',
+            gettingStartedStep1:
+                'ファンプロファイルで{profile}を作成し、ファンカーブを設定します。',
+            gettingStartedStep2:
+                '{controls}（またはファン自体のページ）から割り当てます — プロファイルは自動適用されません。',
+            gettingStartedStep3: '同じプロファイルを複数のファンで再利用できます。',
             helpSettingUp: 'ファン制御の設定ヘルプ',
             hardwareSupport: 'ハードウェアサポート',
             hardwareSupportDesc: 'サポートされているデバイスとドライバのインストール',

@@ -521,9 +521,17 @@ export default {
             connected: 'Подключено',
             disconnected: 'Отключено',
             helpfulLinks: 'Полезные ссылки',
-            tutorial: 'Обучение',
-            tutorialDesc: 'Пройдите интерактивный тур по приложению',
+            uiTour: 'Тур по интерфейсу',
+            uiTourDesc: 'Пройдите интерактивный тур по приложению',
             gettingStarted: 'Начало работы',
+            gettingStartedGraphProfile: 'Графический профиль',
+            gettingStartedControlsPage: 'странице Управление',
+            gettingStartedStep1:
+                'Создайте {profile} в Профилях вентиляторов и настройте кривую вентилятора.',
+            gettingStartedStep2:
+                'Назначьте его на {controls} (или на странице самого вентилятора) — Профили не применяются автоматически.',
+            gettingStartedStep3:
+                'Используйте один и тот же Профиль для любого количества вентиляторов.',
             helpSettingUp: 'Помощь в настройке управления вентиляторами',
             hardwareSupport: 'Поддержка оборудования',
             hardwareSupportDesc: 'Поддерживаемые устройства и установка драйверов',

@@ -533,9 +533,17 @@ export default {
             connected: 'Connecté',
             disconnected: 'Déconnecté',
             helpfulLinks: 'Liens Utiles',
-            tutorial: 'Tutoriel',
-            tutorialDesc: "Faites une visite guidée de l'application",
+            uiTour: "Visite de l'interface",
+            uiTourDesc: "Faites une visite guidée de l'application",
             gettingStarted: 'Premiers Pas',
+            gettingStartedGraphProfile: 'Profil graphique',
+            gettingStartedControlsPage: 'page Contrôles',
+            gettingStartedStep1:
+                'Créez un {profile} dans les Profils de ventilateur et façonnez la courbe.',
+            gettingStartedStep2:
+                'Assignez-le sur la {controls} (ou la page du ventilateur) — les Profils ne sont pas appliqués automatiquement.',
+            gettingStartedStep3:
+                'Réutilisez le même Profil sur autant de ventilateurs que vous le souhaitez.',
             helpSettingUp: 'Aide à la configuration du contrôle des ventilateurs',
             hardwareSupport: 'Support Matériel',
             hardwareSupportDesc: 'Appareils pris en charge et installation des pilotes',
