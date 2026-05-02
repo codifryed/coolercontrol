@@ -59,7 +59,7 @@ const display = computed<{ text: string; isPlaceholder: boolean }>(() => {
 <template>
     <div
         class="flex leading-tight tree-text"
-        :class="{ 'italic text-text-color-secondary': display.isPlaceholder }"
+        :class="{ 'italic text-text-color-secondary/60': display.isPlaceholder }"
     >
         {{ display.text }}
     </div>
