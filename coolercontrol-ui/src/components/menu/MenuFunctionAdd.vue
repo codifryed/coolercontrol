@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiFunctionVariant } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { defineAsyncComponent, inject } from 'vue'
+import { defineAsyncComponent, inject, onBeforeUnmount } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
@@ -63,6 +63,7 @@ const addFunction = async (): Promise<void> => {
 }
 // be able to add a function from the side menu add button:
 emitter.on('function-add', addFunction)
+onBeforeUnmount(() => emitter.off('function-add', addFunction))
 </script>
 
 <template>
