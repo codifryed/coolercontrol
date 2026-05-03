@@ -25,7 +25,6 @@ import {
     mdiCircle,
     mdiCogOutline,
     mdiCompassOutline,
-    mdiGit,
     mdiHelpCircleOutline,
     mdiNewBox,
     mdiToolboxOutline,
