@@ -157,12 +157,10 @@ defineExpose({ toggle })
                         :path="currentProfileUID === '0' ? mdiCheck : mdiCancel"
                         class="size-4 shrink-0"
                         :class="
-                            currentProfileUID === '0'
-                                ? 'text-accent'
-                                : 'text-text-color-secondary/60'
+                            currentProfileUID === '0' ? 'text-accent' : 'text-text-color-secondary'
                         "
                     />
-                    <span class="flex-1 truncate text-sm italic text-text-color-secondary/60">
+                    <span class="flex-1 truncate text-sm text-text-color-secondary">
                         {{ t('common.unmanaged') }}
                     </span>
                 </div>
