@@ -83,7 +83,7 @@ const applyFunctionToProfiles = async (): Promise<void> => {
     for (const profile of chosenProfiles.value) {
         // we route away from profiles currently open to avoid UI conflicts
         if (route.params != null && route.params.profileUID === profile.profileUID) {
-            await router.push({ name: 'system-overview' })
+            await router.push({ name: 'startup-page' })
         }
         settingsStore.profiles.find((p) => p.uid === profile.profileUID)!.function_uid =
             props.functionUID

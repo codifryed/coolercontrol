@@ -878,7 +878,7 @@ emitter.on('dashboard-add-menu', addDashboardMenu)
 
 const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
     dashboardParent!.children = dashboardParent!.children.filter(
@@ -894,7 +894,7 @@ const homeDashboardSet = async (): Promise<void> => {
                 ? mdiHomeAnalytics
                 : mdiChartBoxOutline
     })
-    await router.push({ name: 'system-overview' })
+    await router.push({ name: 'startup-page' })
 }
 const updateDashboardName = (dashboardUID: UID, name: string): void => {
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
@@ -934,7 +934,7 @@ const activeModesChange = async (_: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
 }
 emitter.on('active-modes-change-menu', activeModesChange)
@@ -977,7 +977,7 @@ emitter.on('mode-add-menu', addModeMenu)
 
 const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const modesParent = data.value.find((item: any) => item.id === 'modes')!
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
@@ -1025,7 +1025,7 @@ emitter.on('profile-add-menu', addProfileMenu)
 
 const deleteProfile = async (profileUID: UID): Promise<void> => {
     if (route.params != null && route.params.profileUID === profileUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const profilesParent = data.value.find((item: any) => item.id === 'profiles')!
     profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
@@ -1074,7 +1074,7 @@ emitter.on('function-add-menu', addFunctionMenu)
 
 const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const functionsParent = data.value.find((item: any) => item.id === 'functions')!
     functionsParent.children = functionsParent.children.filter(
@@ -1128,7 +1128,7 @@ emitter.on('alert-add-menu', addAlertMenu)
 
 const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
     alertsParent.children = alertsParent.children.filter((item: any) => item.id !== alertUID)

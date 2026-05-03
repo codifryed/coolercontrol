@@ -140,7 +140,6 @@ export const useSettingsStore = defineStore('settings', () => {
     const driveStressBackend: Ref<'stress_ng' | 'built_in'> = ref('built_in')
     const startupPage: Ref<StartupPage> = ref(StartupPage.AppInfo)
     const tags: Ref<Map<string, TagSettings>> = ref(new Map<string, TagSettings>())
-    const settingsLoaded: Ref<boolean> = ref(false)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         await loadCCSettings()
@@ -301,7 +300,6 @@ export const useSettingsStore = defineStore('settings', () => {
         await getActiveModes()
 
         await startWatchingToSaveChanges()
-        settingsLoaded.value = true
     }
 
     async function loadCCSettings(): Promise<void> {
@@ -1334,7 +1332,6 @@ export const useSettingsStore = defineStore('settings', () => {
         ramStressBackend,
         driveStressBackend,
         startupPage,
-        settingsLoaded,
         allDaemonDeviceSettings,
         ccSettings,
         ccDeviceSettings,

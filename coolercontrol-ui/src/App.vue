@@ -291,15 +291,12 @@ onMounted(async () => {
     // Honor the configured startup page, but only when the user landed on the
     // default root route (no deep link). The empty path's component is
     // AppInfoView, so AppInfo needs no redirect; Controls and HomeDashboard do.
-    if (router.currentRoute.value.name === 'system-overview') {
+    if (router.currentRoute.value.name === 'startup-page') {
         const startup = settingsStore.startupPage
         if (startup === StartupPage.Controls) {
             await router.replace({ name: 'system-controls' })
-        } else if (startup === StartupPage.HomeDashboard && settingsStore.homeDashboard != null) {
-            await router.replace({
-                name: 'dashboards',
-                params: { dashboardUID: settingsStore.homeDashboard },
-            })
+        } else if (startup === StartupPage.HomeDashboard) {
+            await router.replace({ name: 'dashboards' })
         }
     }
     applyCustomTheme()

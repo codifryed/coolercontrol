@@ -35,7 +35,7 @@ const router = createRouter({
             children: [
                 {
                     path: '',
-                    name: 'system-overview',
+                    name: 'startup-page',
                     component: () => import('@/views/AppInfoView.vue'),
                     props: false,
                 },
@@ -156,20 +156,13 @@ const router = createRouter({
 // AppInfo is the default fallback; the empty path's component is AppInfoView,
 // so when startupPage === AppInfo we just stay put without a redirect.
 router.beforeEach((to) => {
-    if (to.name !== 'system-overview') return true
+    if (to.name !== 'startup-page') return true
     const settingsStore = useSettingsStore()
-    if (!settingsStore.settingsLoaded) return true
     if (settingsStore.startupPage === StartupPage.Controls) {
         return { name: 'system-controls' }
     }
-    if (
-        settingsStore.startupPage === StartupPage.HomeDashboard &&
-        settingsStore.homeDashboard != null
-    ) {
-        return {
-            name: 'dashboards',
-            params: { dashboardUID: settingsStore.homeDashboard },
-        }
+    if (settingsStore.startupPage === StartupPage.HomeDashboard) {
+        return { name: 'dashboards' }
     }
     return true
 })

@@ -81,7 +81,7 @@ hotkeys('ctrl+,', () => {
     return false
 })
 hotkeys('ctrl+h', () => {
-    router.push({ name: 'system-overview' })
+    router.push({ name: 'startup-page' })
     return false
 })
 hotkeys('ctrl+a', () => {
@@ -536,12 +536,10 @@ onBeforeUnmount(() => {
                     <Button
                         class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                         @click="
-                            settingsStore.homeDashboard != null
-                                ? router.push({
-                                      name: 'dashboards',
-                                      params: { dashboardUID: settingsStore.homeDashboard },
-                                  })
-                                : null
+                            router.push({
+                                name: 'dashboards',
+                                params: { dashboardUID: settingsStore.homeDashboard },
+                            })
                         "
                     >
                         <svg-icon

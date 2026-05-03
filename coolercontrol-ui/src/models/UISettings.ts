@@ -91,7 +91,7 @@ export enum ChannelViewType {
 
 export enum StartupPage {
     AppInfo = 'app-info',
-    HomeDashboard = 'system-overview',
+    HomeDashboard = 'dashboards',
     Controls = 'system-controls',
 }
 
