@@ -139,10 +139,17 @@ const filterPresent = (list: any[]): any[] =>
     list.filter((s) => document.querySelector(s.attachTo.element) !== null)
 
 //todo: reorder and add:
+
 const buildBasicSteps = (): any[] =>
     filterPresent([
         makeStep('#logo', 'appInfo'),
+        makeStep('#add', 'quickAdd'),
+        makeStep('#dashboard-quick', 'dashboardQuick'),
         makeStep('#controls', 'controls'),
+        makeStep('#alerts-quick', 'alertsQuick'),
+        makeStep('#settings', 'settings'),
+        makeStep('#restart', 'restartMenu'),
+        makeStep('#system-menu', 'systemMenu'),
         makeStep('#profiles', 'profiles'),
         makeStep('#functions', 'functions'),
         finishStep(),
@@ -151,6 +158,15 @@ const buildBasicSteps = (): any[] =>
 const buildThoroughSteps = (): any[] =>
     filterPresent([
         makeStep('#logo', 'appInfo'),
+        makeStep('#add', 'quickAdd'),
+        makeStep('#dashboard-quick', 'dashboardQuick'),
+        makeStep('#controls', 'controls'),
+        makeStep('#modes-quick', 'modesQuick'),
+        makeStep('#collapse-menu', 'collapseMenu'),
+        makeStep('#alerts-quick', 'alertsQuick'),
+        makeStep('#settings', 'settings'),
+        makeStep('#access', 'access'),
+        makeStep('#restart', 'restartMenu'),
         makeStep('#system-menu', 'systemMenu'),
         makeStep('#dashboards', 'dashboards'),
         makeStep('#profiles', 'profiles'),
@@ -158,15 +174,6 @@ const buildThoroughSteps = (): any[] =>
         makeStep('#modes', 'modes'),
         makeStep('#alerts', 'alerts'),
         makeStep('[data-tour-anchor="custom-sensors"]', 'customSensors'),
-        makeStep('#add', 'quickAdd'),
-        makeStep('#dashboard-quick', 'dashboardQuick'),
-        makeStep('#controls', 'controls'),
-        makeStep('#modes-quick', 'modesQuick'),
-        makeStep('#alerts-quick', 'alertsQuick'),
-        makeStep('#settings', 'settings'),
-        makeStep('#access', 'access'),
-        makeStep('#restart', 'restartMenu'),
-        makeStep('#collapse-menu', 'collapseMenu'),
         finishStep(),
     ])
 
