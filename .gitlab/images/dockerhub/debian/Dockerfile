@@ -58,7 +58,6 @@ ENV CC_DEVICE_EVENTS=OFF
 ENV CC_SENSORS_DETECT=OFF
 ENV CC_TLS=OFF
 ENV CC_DATA_DIR=/etc/coolercontrol
-ENV CC_PLUGINS_DIR=/etc/coolercontrol/plugins
 
 RUN apt update && apt install -y --no-install-recommends \
     libusb-1.0-0 \
