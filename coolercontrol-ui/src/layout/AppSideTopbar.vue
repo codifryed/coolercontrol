@@ -538,16 +538,16 @@ onBeforeUnmount(() => {
                         @click="
                             router.push({
                                 name: 'dashboards',
-                                params: { dashboardUID: settingsStore.homeDashboard },
                             })
                         "
                     >
                         <svg-icon
                             :class="{
                                 'text-accent':
-                                    router.currentRoute.value.fullPath === '/' ||
-                                    router.currentRoute.value.params.dashboardUID ===
-                                        settingsStore.homeDashboard,
+                                    router.currentRoute.value.name === 'dashboards' &&
+                                    (router.currentRoute.value.params.dashboardUID ===
+                                        settingsStore.homeDashboard ||
+                                        router.currentRoute.value.params.dashboardUID == null),
                             }"
                             type="mdi"
                             :path="mdiHomeAnalytics"
@@ -567,7 +567,9 @@ onBeforeUnmount(() => {
                                             'text-accent':
                                                 router.currentRoute.value.params.dashboardUID ===
                                                     item.uid ||
-                                                (router.currentRoute.value.fullPath === '/' &&
+                                                (router.currentRoute.value.name === 'dashboards' &&
+                                                    router.currentRoute.value.params.dashboardUID ==
+                                                        null &&
                                                     item.uid === settingsStore.homeDashboard),
                                         }"
                                         :path="
@@ -583,7 +585,9 @@ onBeforeUnmount(() => {
                                             'text-accent':
                                                 router.currentRoute.value.params.dashboardUID ===
                                                     item.uid ||
-                                                (router.currentRoute.value.fullPath === '/' &&
+                                                (router.currentRoute.value.name === 'dashboards' &&
+                                                    router.currentRoute.value.params.dashboardUID ==
+                                                        null &&
                                                     item.uid === settingsStore.homeDashboard),
                                         }"
                                     >
