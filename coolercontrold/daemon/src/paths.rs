@@ -61,21 +61,12 @@ static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().j
 const DEFAULT_DATA_DIR: &str = "/var/lib/coolercontrol";
 
 static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    if let Ok(dir) = std::env::var(ENV_DATA_DIR) {
-        return PathBuf::from(dir);
-    }
-    plugins_dir()
-        .parent()
-        .map_or_else(|| PathBuf::from(DEFAULT_DATA_DIR), Path::to_path_buf)
+    PathBuf::from(std::env::var(ENV_DATA_DIR).unwrap_or_else(|_| DEFAULT_DATA_DIR.to_string()))
 });
 
-// -- plugins --
-const DEFAULT_PLUGINS_DIR: &str = "/var/lib/coolercontrol/plugins";
-
+// -- plugins (defaults under data_dir; overridable via CC_PLUGINS_DIR) --
 static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    PathBuf::from(
-        std::env::var(ENV_PLUGINS_DIR).unwrap_or_else(|_| DEFAULT_PLUGINS_DIR.to_string()),
-    )
+    std::env::var(ENV_PLUGINS_DIR).map_or_else(|_| data_dir().join("plugins"), PathBuf::from)
 });
 
 static LEGACY_PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("plugins"));
@@ -370,7 +361,7 @@ mod tests {
 
     #[test]
     fn data_dir_defaults_to_var_lib() {
-        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+        if std::env::var(ENV_DATA_DIR).is_err() {
             assert_eq!(data_dir(), Path::new("/var/lib/coolercontrol"));
         }
     }
@@ -397,8 +388,16 @@ mod tests {
 
     #[test]
     fn plugins_dir_defaults_to_var_lib() {
-        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+        if std::env::var(ENV_PLUGINS_DIR).is_err() && std::env::var(ENV_DATA_DIR).is_err() {
             assert_eq!(plugins_dir(), Path::new("/var/lib/coolercontrol/plugins"));
+        }
+    }
+
+    #[test]
+    fn plugins_dir_starts_with_data_dir_by_default() {
+        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+            assert!(plugins_dir().starts_with(data_dir()));
+            assert_eq!(plugins_dir().file_name().unwrap(), "plugins");
         }
     }
 
