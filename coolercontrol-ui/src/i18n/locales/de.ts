@@ -1031,6 +1031,9 @@ export default {
             alertsQuick: 'Warnungsübersicht',
             alertsQuickDesc:
                 'Sehen Sie den aktuellen Status jeder Warnung und prüfen Sie ihre letzte Aktivität.',
+            pluginsQuick: 'Plugin-Übersicht',
+            pluginsQuickDesc:
+                'Durchsuchen Sie installierte Plugins und springen Sie überall in der App zu einem davon.',
             settings: 'Einstellungen',
             settingsDesc:
                 'Konfigurieren Sie UI-Einstellungen, Daemon-Optionen und Systemverhalten.',

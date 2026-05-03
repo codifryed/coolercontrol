@@ -976,6 +976,8 @@ export default {
             modesQuickDesc: '在应用任何位置切换您保存的模式。',
             alertsQuick: '警报概览',
             alertsQuickDesc: '查看每个警报的当前状态并检查最近的活动。',
+            pluginsQuick: '插件概览',
+            pluginsQuickDesc: '浏览已安装的插件，并可从应用任何位置跳转到任意插件。',
             settings: '设置',
             settingsDesc: '配置界面偏好、后台服务选项和系统行为。',
             access: '访问',

@@ -164,6 +164,7 @@ const buildThoroughSteps = (): any[] =>
         makeStep('#modes-quick', 'modesQuick'),
         makeStep('#collapse-menu', 'collapseMenu'),
         makeStep('#alerts-quick', 'alertsQuick'),
+        makeStep('#plugins-quick', 'pluginsQuick'),
         makeStep('#settings', 'settings'),
         makeStep('#access', 'access'),
         makeStep('#restart', 'restartMenu'),

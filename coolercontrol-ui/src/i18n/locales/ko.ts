@@ -997,6 +997,9 @@ export default {
             modesQuickDesc: '앱 어디에서나 저장된 모드 사이를 전환할 수 있습니다.',
             alertsQuick: '알림 개요',
             alertsQuickDesc: '모든 알림의 현재 상태를 확인하고 최근 활동을 점검하세요.',
+            pluginsQuick: '플러그인 개요',
+            pluginsQuickDesc:
+                '설치된 플러그인을 둘러보고 앱 어디에서나 원하는 플러그인으로 이동하세요.',
             settings: '설정',
             settingsDesc: 'UI 기본 설정, 데몬 옵션 및 시스템 동작을 구성합니다.',
             access: '액세스',

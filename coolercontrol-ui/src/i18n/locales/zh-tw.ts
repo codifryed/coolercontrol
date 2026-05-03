@@ -977,6 +977,8 @@ export default {
             modesQuickDesc: '在應用任何位置切換您儲存的模式。',
             alertsQuick: '警示概覽',
             alertsQuickDesc: '查看每個警示的目前狀態並檢視最近的活動。',
+            pluginsQuick: '外掛概覽',
+            pluginsQuickDesc: '瀏覽已安裝的外掛，並可從應用任何位置跳轉到任意外掛。',
             settings: '設置',
             settingsDesc: '設定介面偏好、後台服務選項和系統行為。',
             access: '存取',

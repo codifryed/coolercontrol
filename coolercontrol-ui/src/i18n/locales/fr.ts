@@ -1032,6 +1032,9 @@ export default {
             alertsQuick: 'Aperçu des Alertes',
             alertsQuickDesc:
                 "Affichez l'état actuel de chaque alerte et inspectez leur activité récente.",
+            pluginsQuick: 'Aperçu des Plugins',
+            pluginsQuickDesc:
+                "Parcourez les plugins installés et accédez à n'importe lequel depuis n'importe où dans l'application.",
             settings: 'Paramètres',
             settingsDesc:
                 "Configurez les préférences de l'interface, les options du daemon et le comportement du système.",

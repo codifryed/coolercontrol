@@ -1005,6 +1005,9 @@ export default {
             alertsQuick: 'Alerts Overview',
             alertsQuickDesc:
                 'View the current status of every alert and inspect their recent activity.',
+            pluginsQuick: 'Plugins Overview',
+            pluginsQuickDesc:
+                'Browse installed plugins and jump to any of them from anywhere in the app.',
             settings: 'Settings',
             settingsDesc: 'Configure UI preferences, daemon options, and system behavior.',
             access: 'Access',

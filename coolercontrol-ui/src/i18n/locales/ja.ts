@@ -1020,6 +1020,9 @@ export default {
             modesQuickDesc: 'アプリのどこからでも保存済みのモードを切り替えられます。',
             alertsQuick: 'アラート概要',
             alertsQuickDesc: 'すべてのアラートの現在の状態を表示し、最近の動作を確認できます。',
+            pluginsQuick: 'プラグイン概要',
+            pluginsQuickDesc:
+                'インストール済みのプラグインを参照し、アプリのどこからでも任意のプラグインに移動できます。',
             settings: '設定',
             settingsDesc: 'UIの設定、デーモンオプション、システム動作を設定。',
             access: 'アクセス',
