@@ -1190,8 +1190,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'Unauthorized',
-            detail: 'You need to be logged in to complete this action',
+            summary: 'Session expired',
+            detail: 'Your session has expired. Reloading to log in again.',
         },
         login: {
             success: {

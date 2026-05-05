@@ -84,6 +84,7 @@ export const useDeviceStore = defineStore('device', () => {
     const showLoginMessageThreshold: number = 3_000 // ms
     let chromeNetworkErrorCount: number = 0
     const chromeNetworkErrorThreshold: number = 7
+    let sessionExpiredHandled: boolean = false
     const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
@@ -348,14 +349,22 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function unauthorizedCallback(error: any): Promise<void> {
-        if (error.response.status === 401 || error.response.status === 403) {
-            toast.add({
-                severity: 'error',
-                summary: t('device_store.unauthorized.summary'),
-                detail: t('device_store.unauthorized.detail'),
-                life: 3000,
-            })
+        if (error.response?.status === 401) {
+            handleSessionExpired()
         }
+    }
+
+    function handleSessionExpired(): void {
+        if (sessionExpiredHandled) return
+        sessionExpiredHandled = true
+        loggedIn.value = false
+        toast.add({
+            severity: 'warn',
+            summary: t('device_store.unauthorized.summary'),
+            detail: t('device_store.unauthorized.detail'),
+            life: 3000,
+        })
+        setTimeout(() => reloadUI(true), 500)
     }
 
     async function requestPasswd(retryCount: number = 1): Promise<boolean> {
@@ -921,8 +930,7 @@ export const useDeviceStore = defineStore('device', () => {
                     }
                     if (err.message === 'Unauthorized') {
                         console.warn('SSE status returned 401 - reloading for re-authentication.')
-                        thisStore.loggedIn = false
-                        daemonState.setConnected(true) // triggers UI reload for login
+                        thisStore.handleSessionExpired()
                         throw err // stop retries
                     }
                     daemonState.setConnected(false)
@@ -1225,6 +1233,7 @@ export const useDeviceStore = defineStore('device', () => {
         handshake,
         login,
         logout,
+        handleSessionExpired,
         health,
         logs,
         acknowledgeIssues,
