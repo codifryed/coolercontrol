@@ -83,8 +83,9 @@ export default {
     }),
     messageText: {
         class: [
-            // Font and Text
-            'text-base leading-none',
+            // Font and Text. `leading-snug` keeps single-line toasts compact
+            // while still being readable when the detail spans multiple lines.
+            'text-base leading-snug',
             'ml-2',
             'flex-1',
         ],
@@ -93,7 +94,9 @@ export default {
         class: 'font-bold block',
     },
     detail: ({ props }) => ({
-        class: ['block', { 'mt-2': props.message.summary }],
+        // `whitespace-pre-line` honors `\n` in the detail string so daemon
+        // errors that list multiple offending references render as a list.
+        class: ['block whitespace-pre-line', { 'mt-2': props.message.summary }],
     }),
     closeButton: {
         class: [

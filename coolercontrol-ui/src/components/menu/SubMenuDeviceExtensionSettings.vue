@@ -95,13 +95,13 @@ const toggleDirectAccess = _.debounce(() => {
                 props.deviceUID,
             )!
             ccSetting.extensions.direct_access = directAccess.value
-            const successful = await deviceStore.daemonClient.saveCCDeviceSettings(
+            const result = await deviceStore.daemonClient.saveCCDeviceSettings(
                 ccSetting.uid,
                 ccSetting,
             )
             // give the system a moment to make sure the setting has been saved ^
             await deviceStore.sleep(50)
-            if (successful) {
+            if (result === true) {
                 toast.add({
                     severity: 'success',
                     summary: t('layout.settings.success'),
@@ -114,8 +114,8 @@ const toggleDirectAccess = _.debounce(() => {
                 toast.add({
                     severity: 'error',
                     summary: t('common.error'),
-                    detail: t('layout.settings.devices.unknownError'),
-                    life: 4000,
+                    detail: result.error || t('layout.settings.devices.unknownError'),
+                    life: 6000,
                 })
             }
         },
@@ -146,13 +146,13 @@ const toggleUseHwmon = _.debounce(() => {
                     ? deviceSettings.name
                     : ccSetting.name
             ccSetting.disable = true
-            const successful = await deviceStore.daemonClient.saveCCDeviceSettings(
+            const result = await deviceStore.daemonClient.saveCCDeviceSettings(
                 ccSetting.uid,
                 ccSetting,
             )
             // give the system a moment to make sure the setting has been saved ^
             await deviceStore.sleep(50)
-            if (successful) {
+            if (result === true) {
                 toast.add({
                     severity: 'success',
                     summary: t('layout.settings.success'),
@@ -162,11 +162,13 @@ const toggleUseHwmon = _.debounce(() => {
                 await deviceStore.daemonClient.shutdownDaemon()
                 await deviceStore.waitAndReload()
             } else {
+                // Reset the toggle so the UI reflects the daemon's rejected state.
+                useHwmon.value = !useHwmon.value
                 toast.add({
                     severity: 'error',
                     summary: t('common.error'),
-                    detail: t('layout.settings.devices.unknownError'),
-                    life: 4000,
+                    detail: result.error || t('layout.settings.devices.unknownError'),
+                    life: 0,
                 })
             }
         },
@@ -191,12 +193,12 @@ const updateDelayMillis = _.debounce(() => {
                 props.deviceUID,
             )!
             ccSetting.extensions.delay_millis = delayMillis.value ?? 0
-            const successful = await deviceStore.daemonClient.saveCCDeviceSettings(
+            const result = await deviceStore.daemonClient.saveCCDeviceSettings(
                 ccSetting.uid,
                 ccSetting,
             )
             await deviceStore.sleep(50)
-            if (successful) {
+            if (result === true) {
                 toast.add({
                     severity: 'success',
                     summary: t('layout.settings.success'),
@@ -209,8 +211,8 @@ const updateDelayMillis = _.debounce(() => {
                 toast.add({
                     severity: 'error',
                     summary: t('common.error'),
-                    detail: t('layout.settings.devices.unknownError'),
-                    life: 4000,
+                    detail: result.error || t('layout.settings.devices.unknownError'),
+                    life: 6000,
                 })
             }
         },

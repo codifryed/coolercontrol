@@ -462,12 +462,15 @@ export default class DaemonClient {
     }
 
     /**
-     * Persists and applies general CoolerControl settings for a specific device
+     * Persists and applies general CoolerControl settings for a specific device.
+     * Returns `true` on success or an `ErrorResponse` carrying the daemon's
+     * message on failure (e.g. when a disable would orphan a Profile temp source
+     * or a Custom Sensor source).
      */
     async saveCCDeviceSettings(
         deviceUID: UID,
         ccDeviceSettings: CoolerControlDeviceSettingsDTO,
-    ): Promise<boolean> {
+    ): Promise<true | ErrorResponse> {
         try {
             const response = await this.getClient().put(
                 `/settings/devices/${deviceUID}`,
@@ -475,9 +478,14 @@ export default class DaemonClient {
             )
             this.logDaemonResponse(response, 'Save CC Settings for a device')
             return true
-        } catch (err) {
+        } catch (err: any) {
             this.logError(err)
-            return false
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
         }
     }
 
