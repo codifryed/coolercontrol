@@ -848,7 +848,7 @@ mod tests {
         assert_eq!(result, Some(70)); // Max of 70, 40
     }
 
-    /// Verify that missing last_applied_duties for a member returns None (not silent).
+    /// Verify that missing `last_applied_duties` for a member returns None (not silent).
     #[test]
     fn missing_last_applied_duty_returns_none() {
         // Member graph_b has no output and no last_applied fallback.
@@ -1131,7 +1131,7 @@ mod tests {
     /// Verify a child Mix with Fixed sub-members processes correctly.
     /// Reproduces the scenario where a Fixed profile is a member of a child Mix
     /// (nested Mix). The child's Fixed member duty should come from its
-    /// NormalizedMixProfile, not from a graph cache lookup.
+    /// `NormalizedMixProfile`, not from a graph cache lookup.
     #[test]
     fn child_mix_with_fixed_sub_member() {
         let child = NormalizedMixProfile {
@@ -1203,7 +1203,7 @@ mod tests {
         assert!(state.should_apply(60).not()); // same again: suppress
     }
 
-    /// Verify the safety latch fires after DEFAULT_SAFETY_LATCH_COUNT suppressed ticks.
+    /// Verify the safety latch fires after `DEFAULT_SAFETY_LATCH_COUNT` suppressed ticks.
     #[test]
     fn dedup_safety_latch_reapplies() {
         let mut state = OutputDedupState::new();

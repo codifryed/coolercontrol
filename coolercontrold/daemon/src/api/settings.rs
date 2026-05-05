@@ -272,12 +272,12 @@ mod tests {
 
     /// Builds a DTO with all fields set to None (partial update with no changes).
     fn empty_dto() -> CoolerControlSettingsDto {
-        CoolerControlSettingsDto::from(CoolerControlSettings::default()).into_all_none()
+        CoolerControlSettingsDto::all_none()
     }
 
     impl CoolerControlSettingsDto {
-        /// Returns a copy with every field set to None.
-        fn into_all_none(self) -> Self {
+        /// Returns a DTO with every field set to None.
+        fn all_none() -> Self {
             Self {
                 apply_on_boot: None,
                 no_init: None,
