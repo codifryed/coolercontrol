@@ -246,12 +246,15 @@ impl ApiActor<SettingMessage> for SettingActor {
                         .unwrap_or_default();
                     let profiles = self.config.get_profiles().await?;
                     let custom_sensors = self.config.get_custom_sensors()?;
+                    let channel_labels =
+                        build_temp_channel_labels(&self.all_devices, &device_uid, &update);
                     verify_disable_does_not_orphan_temp_sources(
                         &device_uid,
                         &update,
                         &current_settings,
                         &profiles,
                         &custom_sensors,
+                        &channel_labels,
                     )?;
                     self.config.set_cc_settings_for_device(&device_uid, &update);
                     // check for disabled devices and channels and remove their settings:
@@ -382,18 +385,53 @@ impl SettingHandle {
     }
 }
 
+/// Build a `temp_name` -> human label map for the device being acted upon.
+/// Pulls from the live device's `TempInfo` / `ChannelInfo`, then overlays any
+/// user-supplied label coming in on the update so the most recent label wins.
+/// Falls back to an empty map when the device is not registered (blacklisted
+/// devices may still own settings without a live record).
+fn build_temp_channel_labels(
+    all_devices: &AllDevices,
+    device_uid: &DeviceUID,
+    update: &CCDeviceSettings,
+) -> HashMap<String, String> {
+    let mut labels = HashMap::with_capacity(16);
+    if let Some(device_lock) = all_devices.get(device_uid) {
+        let lock = device_lock.borrow();
+        for (name, info) in &lock.info.temps {
+            labels.insert(name.clone(), info.label.clone());
+        }
+        for (name, info) in &lock.info.channels {
+            if let Some(label) = info.label.as_ref() {
+                labels.insert(name.clone(), label.clone());
+            }
+        }
+    }
+    for (name, settings) in &update.channel_settings {
+        if let Some(label) = settings.label.as_ref().filter(|l| l.is_empty().not()) {
+            labels.insert(name.clone(), label.clone());
+        }
+    }
+    labels
+}
+
 /// Reject a `CCDeviceSettings` update if applying it would orphan any saved
 /// Graph Profile `temp_source` or Custom Sensor source.
 ///
 /// Delta semantics: only references made *newly* broken by this update are
 /// reported. References already pointing at a previously-disabled channel are
 /// the user's existing problem and do not block unrelated edits.
+///
+/// `channel_labels` maps each `temp_name` on the device being disabled to its
+/// human label; the error message uses the label when present and falls back
+/// to the raw name otherwise.
 fn verify_disable_does_not_orphan_temp_sources(
     device_uid: &DeviceUID,
     update: &CCDeviceSettings,
     current: &CCDeviceSettings,
     profiles: &[Profile],
     custom_sensors: &[CustomSensor],
+    channel_labels: &HashMap<String, String>,
 ) -> Result<(), CCError> {
     let newly_disabled_device = update.disable && current.disable.not();
     let already_disabled: HashSet<&str> = current
@@ -418,7 +456,13 @@ fn verify_disable_does_not_orphan_temp_sources(
         }
         newly_disabled_device || newly_disabled_channels.contains(source.temp_name.as_str())
     };
-    let mut broken_profiles: Vec<(&str, &str)> = Vec::with_capacity(profiles.len());
+    let label_for = |temp_name: &str| -> String {
+        channel_labels
+            .get(temp_name)
+            .cloned()
+            .unwrap_or_else(|| temp_name.to_string())
+    };
+    let mut broken_profiles: Vec<(String, String)> = Vec::with_capacity(profiles.len());
     for profile in profiles {
         if profile.p_type != ProfileType::Graph {
             continue;
@@ -427,16 +471,16 @@ fn verify_disable_does_not_orphan_temp_sources(
             continue;
         };
         if is_broken(source) {
-            broken_profiles.push((profile.name.as_str(), source.temp_name.as_str()));
+            broken_profiles.push((profile.name.clone(), label_for(&source.temp_name)));
         }
     }
-    let mut broken_sensors: Vec<(&str, &str)> = Vec::with_capacity(custom_sensors.len());
+    let mut broken_sensors: Vec<(String, String)> = Vec::with_capacity(custom_sensors.len());
     for sensor in custom_sensors {
         for sensor_source in &sensor.sources {
             if is_broken(&sensor_source.temp_source) {
                 broken_sensors.push((
-                    sensor.id.as_str(),
-                    sensor_source.temp_source.temp_name.as_str(),
+                    sensor.id.clone(),
+                    label_for(&sensor_source.temp_source.temp_name),
                 ));
             }
         }
@@ -450,8 +494,8 @@ fn verify_disable_does_not_orphan_temp_sources(
 }
 
 fn build_orphan_error_message(
-    broken_profiles: &[(&str, &str)],
-    broken_sensors: &[(&str, &str)],
+    broken_profiles: &[(String, String)],
+    broken_sensors: &[(String, String)],
 ) -> String {
     let mut msg = String::with_capacity(256);
     msg.push_str("Cannot disable: the following references would break. Update them first.");
@@ -533,6 +577,10 @@ mod tests {
         }
     }
 
+    fn no_labels() -> HashMap<String, String> {
+        HashMap::new()
+    }
+
     fn assert_user_error_contains(result: Result<(), CCError>, needle: &str) {
         match result {
             Err(CCError::UserError { msg }) => assert!(
@@ -556,6 +604,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         assert_user_error_contains(result.clone(), "CPU Curve");
         assert_user_error_contains(result, "Tctl");
@@ -574,6 +623,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         assert_user_error_contains(result, "GPU Aggressive");
     }
@@ -591,6 +641,7 @@ mod tests {
             &current,
             &[],
             &sensors,
+            &no_labels(),
         );
         assert_user_error_contains(result, "MyMix");
     }
@@ -607,6 +658,7 @@ mod tests {
             &current,
             &[],
             &sensors,
+            &no_labels(),
         );
         assert_user_error_contains(result, "MyMix");
     }
@@ -624,6 +676,7 @@ mod tests {
             &current,
             &profiles,
             &sensors,
+            &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
             panic!("expected UserError, got {result:?}");
@@ -651,6 +704,7 @@ mod tests {
             &current,
             &profiles,
             &sensors,
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -668,6 +722,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -686,6 +741,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -708,6 +764,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -730,6 +787,7 @@ mod tests {
             &current,
             &[],
             &[file_sensor],
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -750,12 +808,68 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
             panic!("expected UserError, got {result:?}");
         };
         assert!(msg.contains("Profile_One"), "missing Profile_One: {msg}");
         assert!(msg.contains("Profile_Two"), "missing Profile_Two: {msg}");
+    }
+
+    #[test]
+    fn error_message_substitutes_human_label_for_raw_temp_name() {
+        // When channel_labels has an entry for the broken temp_name, the error
+        // message must show the label (e.g. "CPU Tctl Temperature") instead of
+        // the raw kernel name ("Tctl") that most users do not recognize. The
+        // raw name should NOT appear in the message when a label is available.
+        let current = settings(&[("Tctl", false)], false);
+        let update = settings(&[("Tctl", true)], false);
+        let profiles = vec![graph_profile("CPU Curve", DEVICE_A, "Tctl")];
+        let sensors = vec![mix_sensor("MyMix", DEVICE_A, "Tctl")];
+        let mut labels = HashMap::new();
+        labels.insert("Tctl".to_string(), "CPU Tctl Temperature".to_string());
+        let result = verify_disable_does_not_orphan_temp_sources(
+            &DEVICE_A.to_string(),
+            &update,
+            &current,
+            &profiles,
+            &sensors,
+            &labels,
+        );
+        let Err(CCError::UserError { msg }) = result else {
+            panic!("expected UserError, got {result:?}");
+        };
+        assert!(
+            msg.contains("CPU Tctl Temperature"),
+            "label missing from msg: {msg}"
+        );
+        assert!(
+            msg.contains("\"Tctl\"").not(),
+            "raw temp_name leaked into msg: {msg}"
+        );
+    }
+
+    #[test]
+    fn error_message_falls_back_to_raw_name_when_label_missing() {
+        // No labels supplied: the error message uses the raw temp_name.
+        // This is the path hit when the device is blacklisted / not registered
+        // and the actor cannot resolve labels from `info.temps`.
+        let current = settings(&[("Tctl", false)], false);
+        let update = settings(&[("Tctl", true)], false);
+        let profiles = vec![graph_profile("CPU Curve", DEVICE_A, "Tctl")];
+        let result = verify_disable_does_not_orphan_temp_sources(
+            &DEVICE_A.to_string(),
+            &update,
+            &current,
+            &profiles,
+            &[],
+            &no_labels(),
+        );
+        let Err(CCError::UserError { msg }) = result else {
+            panic!("expected UserError, got {result:?}");
+        };
+        assert!(msg.contains("\"Tctl\""), "raw temp_name missing: {msg}");
     }
 
     #[test]
