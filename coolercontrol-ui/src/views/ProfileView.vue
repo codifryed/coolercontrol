@@ -2239,7 +2239,7 @@ function onKnobMouseup(e: MouseEvent) {
     </div>
     <div id="profile-display" class="flex flex-col h-full">
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
-            {{ t('views.profiles.systemDefault') }}
+            {{ t('common.unmanaged') }}
         </div>
         <div
             v-else-if="showDutyKnob"

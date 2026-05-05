@@ -309,7 +309,7 @@ impl Default for Profile {
         Self {
             uid: DEFAULT_PROFILE_UID.to_string(),
             p_type: ProfileType::Default,
-            name: "Default Profile".to_string(),
+            name: "Unmanaged".to_string(),
             speed_fixed: None,
             speed_profile: None,
             temp_source: None,

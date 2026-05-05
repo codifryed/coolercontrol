@@ -50,6 +50,8 @@ export default {
         previous: '前へ',
         apply: '適用',
         defaults: 'デフォルト',
+        unmanaged: '未管理',
+        readOnly: '読み取り専用',
         rename: '名前変更',
         password: 'パスワード',
         currentPassword: '現在のパスワード',
@@ -129,7 +131,7 @@ export default {
         },
         settings: {
             title: '設定',
-            general: '一般',
+            userInterface: 'ユーザーインターフェース',
             device: 'デバイスとセンサー',
             daemon: 'デーモン',
             devices: {
@@ -191,6 +193,7 @@ export default {
             time24h: '24時間',
             time12h: '12時間',
             frequencyPrecision: '周波数の精度',
+            startupPage: '起動時のページ',
             sidebarToCollapse: '折りたたむサイドバー',
             entitiesBelowSensors: 'センサーの下にエンティティを表示',
             dashboardLineSize: 'ダッシュボードの線のサイズ',
@@ -245,6 +248,7 @@ export default {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',
                 frequencyPrecision: '表示される周波数値の精度を調整します。',
+                startupPage: 'アプリケーション読み込み後に表示されるページ。',
                 eyeCandy:
                     '回転するファンアイコンなどのビジュアルアニメーションを有効にします。\nこれにより追加のGPUリソースが使用されます。',
                 sidebarCollapse:
@@ -474,15 +478,18 @@ export default {
             unsavedChangesMessage: 'このコントロールチャンネルに未保存の変更があります。',
             manualDuty: '手動デューティ',
             profileToApply: '適用するプロファイル',
-            automaticOrManual: '自動または手動',
+            controlModeAutomaticTooltip: 'ファンプロファイルをこのチャンネルに適用',
+            controlModeManualTooltip: '固定のデューティ比を手動で設定',
+            controlModeUnmanagedTooltip:
+                'このチャンネルの管理を停止し、デバイスのハードウェアやドライバーに任せます',
             driverNoSupportControl:
-                '現在インストールされているドライバーはこのチャンネルの制御をサポートしていません。',
+                '読み取り専用チャンネルです。現在のドライバーはこのチャンネルの速度設定をサポートしていません。',
             amdOverdriveNotEnabled:
                 'AMD GPU オーバードライブが有効になっていません。このデバイスの詳細設定で有効にしてください（再起動が必要）。',
             controlOrView: '制御または表示',
             applySetting: '設定を適用',
             defaultProfileInfo:
-                'デフォルトプロファイルは、CoolerControlにこのファンの管理を停止し、<br/>元のドライバー設定を復元するよう指示します。<br/><br/><b>警告：</b>多くのドライバーには自動ファン制御機能が<i>ありません</i>。<br/>そのようなデバイスでは、ファンはアクティブな管理なしに<br/>最後に設定された速度のまま動作し続けます。',
+                '「未管理」を選択すると、CoolerControlはこのファンの制御を停止し、<br/>制御をデバイスのドライバーに戻します。<br/><br/><b>警告：</b>多くのドライバーには自動ファン制御機能が<i>ありません</i>。<br/>そのようなデバイスでは、ファンは最後に設定された速度のまま動作し続けます。',
         },
         customSensors: {
             newSensor: '新しいセンサー',
@@ -548,6 +555,7 @@ export default {
         appInfo: {
             title: '情報とツール',
             noWarranty: 'このプログラムは絶対に保証がありません。',
+            changeStartupPage: '設定で起動時のページを変更',
             daemonStatus: 'デーモンステータス',
             acknowledgeIssues: '問題を確認',
             status: 'ステータス',
@@ -561,7 +569,16 @@ export default {
             connected: '接続済み',
             disconnected: '切断',
             helpfulLinks: '役立つリンク',
+            uiTour: 'UIツアー',
+            uiTourDesc: 'アプリケーションのガイド付きツアー',
             gettingStarted: '開始方法',
+            gettingStartedGraphProfile: 'グラフプロファイル',
+            gettingStartedControlsPage: 'コントロールページ',
+            gettingStartedStep1:
+                'ファンプロファイルで{profile}を作成し、ファンカーブを設定します。',
+            gettingStartedStep2:
+                '{controls}（またはファン自体のページ）から割り当てます。プロファイルは自動適用されません。',
+            gettingStartedStep3: '同じプロファイルを複数のファンで再利用できます。',
             helpSettingUp: 'ファン制御の設定ヘルプ',
             hardwareSupport: 'ハードウェアサポート',
             hardwareSupportDesc: 'サポートされているデバイスとドライバのインストール',
@@ -645,7 +662,6 @@ export default {
             editProfile: 'プロファイルを編集',
             deleteProfile: 'プロファイルを削除',
             noProfiles: '設定されたプロファイルがありません',
-            systemDefault: 'システムデフォルト',
             profileType: 'プロファイルタイプ',
             fixedDuty: '固定ファン速度',
             selectedPointDuty: '選択したポイントのデューティ',
@@ -666,7 +682,7 @@ export default {
             newProfile: '新しいプロファイル',
             tooltip: {
                 profileType:
-                    'プロファイル種類:<br/>- デフォルト: 現在のデバイス設定を保持<br/>&nbsp;&nbsp;(BIOS/ファームウェア)<br/>- 固定: 一定の速度を設定<br/>- グラフ: カスタマイズ可能なファンカーブ<br/>- ミックス: 複数のプロファイルを組み合わせる<br/>- オーバーレイ: 既存のプロファイルの出力にオフセットを適用',
+                    'プロファイル種類:<br/>- デフォルト: 未管理、制御をデバイスのドライバーに戻す<br/>- 固定: 一定の速度を設定<br/>- グラフ: カスタマイズ可能なファンカーブ<br/>- ミックス: 複数のプロファイルを組み合わせる<br/>- オーバーレイ: 既存のプロファイルの出力にオフセットを適用',
             },
             profileDeleted: 'プロファイルが削除されました',
             profileDuplicated: 'プロファイルが複製されました',
@@ -960,42 +976,65 @@ export default {
         },
         onboarding: {
             welcome: 'CoolerControlへようこそ！',
-            beforeStart: '始める前に、知っておくべき最も重要なことの1つは',
-            settingUpDrivers: 'ハードウェアドライバーの設定',
-            fansNotShowing:
-                'ファンやデバイスが表示されない、または制御できない場合、カーネルドライバーが不足または古いことが原因であることが多いです。',
-            checkDocs:
-                '問題を開く前に、すべてのドライバーが適切に読み込まれていることを確認してください',
-            checkingDocs: 'ハードウェアサポート文書を確認することで',
-            startTourAgain: '注：設定ページからいつでもこのツアーを再開できます。',
-            letsStart: 'さあ、始めましょう！',
-            dashboards: 'ダッシュボード',
-            dashboardsDesc:
-                'ダッシュボードでは、カスタムビューを作成し、チャートで温度、ファン速度、その他のセンサーデータをリアルタイムで監視できます。',
+            gettingStartedIntro:
+                'ツアーを選んで概要を把握しましょう。クイックツアーは数ステップで基本をカバーします。詳細ツアーはすべてのメニューとボタンを案内します。',
+            startTourAgain: '情報とツールページからいつでもこのツアーを再開できます。',
+            quickTour: 'クイックツアー',
+            thoroughTour: '詳細ツアー',
+            maybeLater: '後で',
+            openGettingStarted: 'はじめに文書を開く',
+            finishLater: '自分でやってみる',
+            appInfo: '情報とツール',
+            appInfoDesc:
+                'アプリ情報、デーモンステータス、ログ、便利なリンク、ストレステストツールを表示します。ロゴ上のバッジが問題をお知らせします。',
             controls: 'コントロール',
             controlsDesc:
-                'コントロールでは、ファン速度の調整、プロファイルの適用、冷却デバイスの管理ができます。',
+                'ファン速度を調整し、プロファイルを適用し、検出されたすべてのチャネルを一箇所で管理できます。',
             profiles: 'プロファイル',
             profilesDesc:
-                'プロファイルは温度変化に応じたファンカーブを定義します。同じプロファイルを複数のデバイスで再利用できます。',
+                'プロファイルはファンが温度変化にどのように反応するかを定義します。グラフプロファイルでは独自のファンカーブを描き、複数のデバイスで再利用できます。',
             functions: '機能',
             functionsDesc:
                 '機能はプロファイルに適用され、ファン速度の遷移をスムーズにし、ノイズを低減します。',
-            appInfo: 'アプリケーション情報とツール',
-            appInfoDesc:
-                'ロゴをクリックしてアプリ情報、デーモンステータス、ログおよび熱負荷ツールを表示。ステータスバッジが問題をお知らせします。',
+            systemMenu: 'システムメニュー',
+            systemMenuDesc:
+                'メインメニューはこのシステムのデバイスとセンサーを一覧表示します。各セクションを展開すると、チャネルや割り当てられたコントロールが表示されます。',
+            dashboards: 'ダッシュボード',
+            dashboardsDesc:
+                'ダッシュボードでは、カスタムビューを作成し、チャートで温度、ファン速度、その他のセンサーデータをリアルタイムで監視できます。',
+            modes: 'モード',
+            modesDesc:
+                'モードは保存された設定の集まりです。サイレントとパフォーマンスのような構成をワンクリックで切り替えられます。',
+            alerts: 'アラート',
+            alertsDesc:
+                'アラートは、選択したしきい値をセンサー値が超えたときに通知します。問題が大きくなる前に対応できます。',
+            customSensors: 'カスタムセンサー',
+            customSensorsDesc:
+                'カスタムセンサーは既存のセンサーデータをさまざまな方法で組み合わせたり、独自のスクリプト出力を温度ソースとして実行できます。',
             quickAdd: 'クイック追加',
             quickAddDesc: '新しいダッシュボード、プロファイル、機能などをすばやく作成。',
             dashboardQuick: 'ダッシュボードクイックメニュー',
             dashboardQuickDesc:
                 'メインメニューが折りたたまれていても、任意のダッシュボードにジャンプ。',
+            modesQuick: 'モードクイックメニュー',
+            modesQuickDesc: 'アプリのどこからでも保存済みのモードを切り替えられます。',
+            alertsQuick: 'アラート概要',
+            alertsQuickDesc: 'すべてのアラートの現在の状態を表示し、最近の動作を確認できます。',
+            pluginsQuick: 'プラグイン概要',
+            pluginsQuickDesc:
+                'インストール済みのプラグインを参照し、アプリのどこからでも任意のプラグインに移動できます。',
             settings: '設定',
             settingsDesc: 'UIの設定、デーモンオプション、システム動作を設定。',
+            access: 'アクセス',
+            accessDesc: 'パスワードを管理し、現在のアクセスレベルを確認します。',
             restartMenu: '再起動メニュー',
             restartMenuDesc: '必要に応じてUIをリロードまたはシステムデーモンを再起動。',
+            collapseMenu: 'メニューを折りたたむ',
+            collapseMenuDesc:
+                'メインメニューを展開または折りたたんで、アプリの他の部分に広いスペースを与えます。',
             thatsIt: 'それだけです！',
-            ready: 'デバイスが見つからない、または制御できない場合は',
-            startNow: '準備完了！',
+            startNow:
+                '準備完了です。詳しく学ぶには「はじめに」文書を開くか、そのままデバイスの設定を始めてください。',
         },
         axisOptions: {
             title: '軸オプション',
@@ -1035,7 +1074,7 @@ export default {
                 manualSpeed: '手動速度',
                 createNewProfile: '新規プロファイル',
                 existingProfile: 'プロファイルを選択',
-                resetSettings: 'デフォルトにリセット',
+                resetSettings: '未管理にリセット',
                 chooseProfileNameType: 'プロファイル名とタイプを選択',
                 newDefaultProfile: '新しいデフォルトプロファイル',
                 profileCreatedApplied: 'プロファイルが作成され適用されました',
@@ -1260,6 +1299,11 @@ export default {
         channelViewType: {
             control: '制御',
             dashboard: 'ダッシュボード',
+        },
+        startupPage: {
+            appInfo: '情報とツール',
+            homeDashboard: 'ホームダッシュボード',
+            controls: 'コントロール',
         },
         alertState: {
             active: 'アクティブ',

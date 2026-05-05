@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiPlusBoxMultipleOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { defineAsyncComponent, inject } from 'vue'
+import { defineAsyncComponent, inject, onBeforeUnmount } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
@@ -66,6 +66,7 @@ const addProfile = async (): Promise<void> => {
 }
 // to be able to add a profile from the side menu add button:
 emitter.on('profile-add', addProfile)
+onBeforeUnmount(() => emitter.off('profile-add', addProfile))
 </script>
 
 <template>

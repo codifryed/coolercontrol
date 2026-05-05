@@ -24,7 +24,7 @@ import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
-import { defineAsyncComponent, inject } from 'vue'
+import { defineAsyncComponent, inject, onBeforeUnmount } from 'vue'
 import { Emitter, EventType } from 'mitt'
 
 interface Props {}
@@ -48,6 +48,7 @@ const addAlert = (): void => {
     })
 }
 emitter.on('alert-add', addAlert)
+onBeforeUnmount(() => emitter.off('alert-add', addAlert))
 </script>
 
 <template>

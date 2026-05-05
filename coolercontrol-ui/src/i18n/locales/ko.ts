@@ -50,6 +50,8 @@ export default {
         previous: '이전',
         apply: '적용',
         defaults: '기본',
+        unmanaged: '관리 안 됨',
+        readOnly: '읽기 전용',
         rename: '이름 바꾸기',
         password: '비밀번호',
         currentPassword: '현재 비밀번호',
@@ -129,7 +131,7 @@ export default {
         },
         settings: {
             title: '설정',
-            general: '일반',
+            userInterface: '사용자 인터페이스',
             device: '장치',
             daemon: '데몬',
             devices: {
@@ -191,6 +193,7 @@ export default {
             time24h: '24시간',
             time12h: '12시간',
             frequencyPrecision: '주파수 정밀도',
+            startupPage: '시작 페이지',
             sidebarToCollapse: '사이드바 접기',
             entitiesBelowSensors: '센서 아래 개체',
             dashboardLineSize: '대시보드 선 크기',
@@ -233,6 +236,7 @@ export default {
                 introduction: '애플리케이션 소개 투어를 시작합니다.',
                 timeFormat: '시간 형식: 12시간 (AM/PM) 또는 24시간',
                 frequencyPrecision: '표시되는 주파수 값의 정밀도를 조정하세요.',
+                startupPage: '애플리케이션 로드 후 표시되는 페이지입니다.',
                 eyeCandy:
                     '회전하는 팬 아이콘과 같은 시각적 애니메이션을 활성화합니다.\n이 기능은 추가적인 GPU 리소스를 사용합니다.',
                 sidebarCollapse:
@@ -423,14 +427,18 @@ export default {
             unsavedChangesMessage: '이 제어 채널에 저장되지 않은 변경 사항이 있습니다.',
             manualDuty: '수동 점유',
             profileToApply: '적용할 프로파일',
-            automaticOrManual: '자동 또는 수동',
-            driverNoSupportControl: '현재 설치된 드라이버는 이 채널 제어를 지원하지 않습니다.',
+            controlModeAutomaticTooltip: '이 채널에 팬 프로파일 적용',
+            controlModeManualTooltip: '고정 듀티 백분율을 수동으로 설정',
+            controlModeUnmanagedTooltip:
+                '이 채널의 관리를 중지하고 장치의 하드웨어 또는 드라이버에 맡깁니다',
+            driverNoSupportControl:
+                '읽기 전용 채널입니다. 현재 드라이버는 이 채널의 속도 설정을 지원하지 않습니다.',
             amdOverdriveNotEnabled:
                 'AMD GPU 오버드라이브가 활성화되지 않았습니다. 이 장치의 고급 설정에서 활성화하세요 (재부팅 필요).',
             controlOrView: '제어 또는 보기',
             applySetting: '설성 적용',
             defaultProfileInfo:
-                '기본 프로파일은 CoolerControl에 이 팬의 관리를 중지하고<br/>원래 드라이버 설정을 복원하도록 지시합니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 활성 관리 없이<br/>마지막으로 설정된 속도로 유지됩니다.',
+                '"관리 안 됨"을 선택하면 CoolerControl이 이 팬의 제어를 중지하고<br/>제어 권한을 장치 드라이버에 다시 넘깁니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 마지막으로 설정된 속도로 유지됩니다.',
         },
         customSensors: {
             newSensor: '새 센서',
@@ -496,6 +504,7 @@ export default {
         appInfo: {
             title: '정보 및 도구',
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
+            changeStartupPage: '설정에서 시작 페이지 변경',
             daemonStatus: '데몬 상태',
             acknowledgeIssues: '문제 인지',
             status: '상태',
@@ -509,7 +518,15 @@ export default {
             connected: '연결됨',
             disconnected: '연결 해제됨',
             helpfulLinks: '유용한 링크',
+            uiTour: 'UI 투어',
+            uiTourDesc: '애플리케이션의 가이드 투어',
             gettingStarted: '시작하기',
+            gettingStartedGraphProfile: '그래프 프로파일',
+            gettingStartedControlsPage: '제어 페이지',
+            gettingStartedStep1: '팬 프로파일에서 {profile}을 만들고 팬 곡선을 조정하세요.',
+            gettingStartedStep2:
+                '{controls}(또는 팬의 자체 페이지)에서 할당하세요. 프로파일은 자동 적용되지 않습니다.',
+            gettingStartedStep3: '동일한 프로파일을 여러 팬에 재사용할 수 있습니다.',
             helpSettingUp: '팬 제어 설정 도움말',
             hardwareSupport: '하드웨어 지원',
             hardwareSupportDesc: '지원되는 장치 및 드라이버 설치',
@@ -592,7 +609,6 @@ export default {
             editProfile: '프로파일 편집',
             deleteProfile: '프로파일 삭제',
             noProfiles: '구성된 프로파일이 없음',
-            systemDefault: '시스템 기본값',
             profileType: '프로파일 유형',
             fixedDuty: '고정 팬 속도',
             selectedPointDuty: '선택된 지점 점유',
@@ -613,7 +629,7 @@ export default {
             newProfile: '새 프로파일',
             tooltip: {
                 profileType:
-                    '프로파일 유형:<br/>- 기본값: 현재 장치 설정을 유지<br/>&nbsp;&nbsp;(바이오스/펌웨어)<br/>- 고정: 일정한 속도 설정<br/>- 그래프: 커스텀 가능한 팬 속도 곡선<br/>- 혼합: 여러 프로파일 결합<br/>- 오버레이: 기존 프로파일의 출력 오프셋',
+                    '프로파일 유형:<br/>- 기본값: 관리 안 됨, 제어 권한을 장치 드라이버에 다시 넘김<br/>- 고정: 일정한 속도 설정<br/>- 그래프: 커스텀 가능한 팬 속도 곡선<br/>- 혼합: 여러 프로파일 결합<br/>- 오버레이: 기존 프로파일의 출력 오프셋',
             },
             profileDeleted: '프로파일 삭제됨',
             profileDuplicated: '프로파일 중복됨',
@@ -936,42 +952,66 @@ export default {
             locations: '위치',
         },
         onboarding: {
-            welcome: 'CoolerControl에 오신 것을 환영합니다!!',
-            beforeStart: '시작하기 전에 가장 중요한 것 중 하나는 바로 다음과 같습니다',
-            settingUpDrivers: '하드웨어 드라이버 설정',
-            fansNotShowing:
-                '팬이나 장치가 표시되지 않거나 제어할 수 없는 경우, 이는 종종 커널 드라이버가 없거나 오래되었기 때문입니다.',
-            checkDocs: '이슈를 제기하기 전에 모든 드라이버가 제대로 로드되었는지 확인해 주세요',
-            checkingDocs: '하드웨어 지원 문서 확인',
-            startTourAgain: '참고: 설정 페이지에서 언제든지 이 투어를 다시 시작할 수 있습니다.',
-            letsStart: '자, 그럼 시작해 볼까요!',
-            dashboards: '대시보드',
-            dashboardsDesc:
-                '대시보드를 사용하면 차트와 그래프를 포함한 커스텀 보기를 만들어 온도, 팬 속도, 기타 센서 데이터를 실시간으로 모니터링할 수 있습니다.',
+            welcome: 'CoolerControl에 오신 것을 환영합니다!',
+            gettingStartedIntro:
+                '투어를 선택하여 둘러보세요. 빠른 투어는 몇 단계로 기본 사항을 다룹니다. 전체 투어는 모든 메뉴와 버튼을 안내합니다.',
+            startTourAgain: '정보 및 도구 페이지에서 언제든지 이 투어를 다시 시작할 수 있습니다.',
+            quickTour: '빠른 투어',
+            thoroughTour: '전체 투어',
+            maybeLater: '나중에',
+            openGettingStarted: '시작하기 문서 열기',
+            finishLater: '직접 해보기',
+            appInfo: '정보 및 도구',
+            appInfoDesc:
+                '앱 정보, 데몬 상태, 로그, 유용한 링크 및 스트레스 테스트 도구를 확인하세요. 로고에 표시되는 배지가 문제를 알려줍니다.',
             controls: '제어',
             controlsDesc:
-                '제어 기능을 통해 팬 속도를 조절하고, 프로파일을 적용하고, 냉각 장치를 관리할 수 있습니다.',
+                '한 곳에서 팬 속도를 조절하고, 프로파일을 적용하고, 감지된 모든 채널을 관리할 수 있습니다.',
             profiles: '프로파일',
             profilesDesc:
-                '프로파일은 온도 변화에 따라 팬 속도 곡선을 정의합니다. 여러 장치에서 동일한 프로파일을 재사용할 수 있습니다.',
+                '프로파일은 팬이 온도 변화에 어떻게 반응하는지 정의합니다. 그래프 프로파일을 사용하면 사용자 정의 팬 곡선을 그릴 수 있으며 여러 장치에서 재사용할 수 있습니다.',
             functions: '기능',
             functionsDesc:
                 '프로파일에 기능을 적용하여 팬 속도 전환을 부드럽게 하고 소음을 줄입니다.',
-            appInfo: '애플리케이션 정보 및 도구',
-            appInfoDesc:
-                '로고를 클릭하면 앱 정보, 데몬 상태, 로그 및 열 부하 도구를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
+            systemMenu: '시스템 메뉴',
+            systemMenuDesc:
+                '주 메뉴에는 이 시스템의 장치와 센서가 나열됩니다. 각 섹션을 확장하여 채널과 할당된 제어를 볼 수 있습니다.',
+            dashboards: '대시보드',
+            dashboardsDesc:
+                '대시보드를 사용하면 차트와 그래프를 포함한 커스텀 보기를 만들어 온도, 팬 속도, 기타 센서 데이터를 실시간으로 모니터링할 수 있습니다.',
+            modes: '모드',
+            modesDesc:
+                '모드는 저장된 설정 모음입니다. 한 번의 클릭으로 무음 및 성능과 같은 구성 사이를 전환할 수 있습니다.',
+            alerts: '알림',
+            alertsDesc:
+                '알림은 센서 값이 선택한 임계값을 초과할 때 알려주므로 문제가 커지기 전에 대응할 수 있습니다.',
+            customSensors: '사용자 정의 센서',
+            customSensorsDesc:
+                '사용자 정의 센서는 기존 센서 데이터를 다양한 방식으로 결합하거나, 자체 스크립트 출력을 온도 소스로 실행합니다.',
             quickAdd: '빠른 추가',
             quickAddDesc: '대시보드, 프로파일, 기능 등을 빠르게 생성하세요.',
             dashboardQuick: '대시보드 빠른 메뉴',
             dashboardQuickDesc:
                 '메인 메뉴가 접혀 있는 경우에도 모든 대시보드로 바로 이동할 수 있습니다.',
+            modesQuick: '모드 빠른 메뉴',
+            modesQuickDesc: '앱 어디에서나 저장된 모드 사이를 전환할 수 있습니다.',
+            alertsQuick: '알림 개요',
+            alertsQuickDesc: '모든 알림의 현재 상태를 확인하고 최근 활동을 점검하세요.',
+            pluginsQuick: '플러그인 개요',
+            pluginsQuickDesc:
+                '설치된 플러그인을 둘러보고 앱 어디에서나 원하는 플러그인으로 이동하세요.',
             settings: '설정',
             settingsDesc: 'UI 기본 설정, 데몬 옵션 및 시스템 동작을 구성합니다.',
+            access: '액세스',
+            accessDesc: '비밀번호를 관리하고 현재 액세스 수준을 확인하세요.',
             restartMenu: '메뉴 재시작',
             restartMenuDesc: '필요할 때 UI를 다시 로드하거나 시스템 데몬을 다시 시작하세요.',
+            collapseMenu: '메뉴 접기',
+            collapseMenuDesc:
+                '주 메뉴를 확장하거나 접어 앱의 나머지 부분에 더 많은 공간을 제공합니다.',
             thatsIt: '그게 다입니다!',
-            ready: '장치가 없거나 제어할 수 없는 경우 다음을 시도해 보세요',
-            startNow: '이제 다 됐어요!',
+            startNow:
+                '준비가 끝났습니다. 자세히 알아보려면 시작하기 문서를 열거나, 바로 장치 구성을 시작하세요.',
         },
         axisOptions: {
             title: '축 옵션',
@@ -1011,7 +1051,7 @@ export default {
                 manualSpeed: '수동 속도',
                 createNewProfile: '새 프로파일',
                 existingProfile: '프로파일 선택',
-                resetSettings: '기본값으로 재설정',
+                resetSettings: '관리 안 됨으로 재설정',
                 chooseProfileNameType: '프로파일 이름과 유형 선택',
                 newDefaultProfile: '새 기본 프로파일',
                 profileCreatedApplied: '프로파일 생성 및 적용됨',
@@ -1243,6 +1283,11 @@ export default {
         channelViewType: {
             control: '제어',
             dashboard: '대시보드',
+        },
+        startupPage: {
+            appInfo: '정보 및 도구',
+            homeDashboard: '홈 대시보드',
+            controls: '제어',
         },
         alertState: {
             active: '활성',

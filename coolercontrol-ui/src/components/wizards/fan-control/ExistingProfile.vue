@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiArrowLeft, mdiContentSaveOutline } from '@mdi/js'
 import Select from 'primevue/select'
 import { UID } from '@/models/Device.ts'
-import { Profile } from '@/models/Profile.ts'
+import { Profile, getProfileDisplayName } from '@/models/Profile.ts'
 import { ref, Ref } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import Button from 'primevue/button'
@@ -50,11 +50,15 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const router = useRouter()
 
-const selectedProfile: Ref<Profile> = ref(
-    settingsStore.profiles.find((profile) => profile.uid === props.selectedProfileUID)!,
-)
+const getProfileOptions = (): any[] =>
+    settingsStore.profiles.filter((profile) => profile.uid !== '0')
 
-const getProfileOptions = (): any[] => settingsStore.profiles
+const selectedProfile: Ref<Profile> = ref(
+    // If the channel was Unmanaged ('0'), it has no real profile to "edit"; fall back to first non-default.
+    settingsStore.profiles.find(
+        (profile) => profile.uid === props.selectedProfileUID && profile.uid !== '0',
+    ) ?? getProfileOptions()[0],
+)
 
 const saveSetting = async () => {
     const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
@@ -80,13 +84,20 @@ const saveSetting = async () => {
                 <Select
                     v-model="selectedProfile"
                     :options="getProfileOptions()"
-                    option-label="name"
                     placeholder="Profile"
                     class="w-full mr-4 h-11 !justify-end"
                     checkmark
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="40rem"
-                />
+                >
+                    <template #value="{ value }">
+                        <span v-if="value">{{ getProfileDisplayName(value) }}</span>
+                        <span v-else>Profile</span>
+                    </template>
+                    <template #option="{ option }">
+                        {{ getProfileDisplayName(option) }}
+                    </template>
+                </Select>
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">

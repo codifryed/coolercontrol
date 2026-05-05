@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiChartBoxPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { defineAsyncComponent, inject } from 'vue'
+import { defineAsyncComponent, inject, onBeforeUnmount } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
@@ -55,6 +55,7 @@ const addDashboard = async (): Promise<void> => {
 // be able to add a dashboard from the side menu add button:
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 emitter.on('dashboard-add', addDashboard)
+onBeforeUnmount(() => emitter.off('dashboard-add', addDashboard))
 </script>
 
 <template>

@@ -189,7 +189,7 @@ const applyProfileToChannels = async (): Promise<void> => {
             route.params.deviceUID === channel.deviceUID &&
             route.params.channelName === channel.channelName
         ) {
-            await router.push({ name: 'system-overview' })
+            await router.push({ name: 'startup-page' })
         }
         await settingsStore.saveDaemonDeviceSettingProfile(
             channel.deviceUID,

@@ -23,14 +23,16 @@ import {
     mdiArrowCollapseVertical,
     mdiArrowExpandVertical,
     mdiCircle,
-    mdiGit,
+    mdiCogOutline,
+    mdiCompassOutline,
     mdiHelpCircleOutline,
     mdiNewBox,
     mdiToolboxOutline,
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { Emitter, EventType } from 'mitt'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
@@ -46,7 +48,8 @@ const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
 const daemonState = useDaemonState()
 const settingsStore = useSettingsStore()
-const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const { t } = useI18n({ useScope: 'global' })
 
 const healthCheck = await deviceStore.health()
 const convertLogsToHtml = computed((): string => {
@@ -359,6 +362,19 @@ onBeforeUnmount(() => {
                 </a>
             </h3>
             <p class="text-sm italic">{{ t('views.appInfo.noWarranty') }}</p>
+            <p class="mt-2 text-sm flex flex-row items-center gap-1">
+                <router-link
+                    :to="{ name: 'settings', params: { tabNumber: '0' } }"
+                    class="text-accent hover:underline flex flex-row items-center gap-1"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :path="mdiCogOutline"
+                        :size="deviceStore.getREMSize(1.0)"
+                    />
+                    {{ t('views.appInfo.changeStartupPage') }}
+                </router-link>
+            </p>
             <div class="mt-8 grid gap-8 xl:grid-cols-[auto_auto] xl:w-fit">
                 <div
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
@@ -460,22 +476,67 @@ onBeforeUnmount(() => {
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')
                     }}</span>
+                    <div class="mt-4 -ml-1 p-3 rounded-md bg-accent/10 border-l-4 border-accent">
+                        <p class="text-wrap flex flex-row items-center">
+                            <a
+                                target="_blank"
+                                href="https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure"
+                                class="text-accent text-lg font-semibold"
+                            >
+                                <div class="flex flex-row items-center">
+                                    <svg-icon
+                                        type="mdi"
+                                        class="mr-2"
+                                        :path="mdiHelpCircleOutline"
+                                        :size="deviceStore.getREMSize(2.0)"
+                                    />
+                                    {{ t('views.appInfo.gettingStarted') }}
+                                </div> </a
+                            >&nbsp;- {{ t('views.appInfo.helpSettingUp') }}
+                        </p>
+                        <ol
+                            class="mt-3 ml-2 pl-6 list-decimal text-sm text-text-color-secondary space-y-1"
+                        >
+                            <li>
+                                <i18n-t keypath="views.appInfo.gettingStartedStep1" tag="span">
+                                    <template #profile>
+                                        <strong>{{
+                                            t('views.appInfo.gettingStartedGraphProfile')
+                                        }}</strong>
+                                    </template>
+                                </i18n-t>
+                            </li>
+                            <li>
+                                <i18n-t keypath="views.appInfo.gettingStartedStep2" tag="span">
+                                    <template #controls>
+                                        <router-link
+                                            :to="{ name: 'system-controls' }"
+                                            class="text-accent hover:underline"
+                                        >
+                                            {{ t('views.appInfo.gettingStartedControlsPage') }}
+                                        </router-link>
+                                    </template>
+                                </i18n-t>
+                            </li>
+                            <li>{{ t('views.appInfo.gettingStartedStep3') }}</li>
+                        </ol>
+                    </div>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
-                            target="_blank"
-                            href="https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure"
-                            class="text-accent"
+                            href="#"
+                            class="text-accent cursor-pointer"
+                            @click.prevent="emitter.emit('start-tour')"
                         >
                             <div class="flex flex-row items-center">
                                 <svg-icon
                                     type="mdi"
                                     class="mr-2"
-                                    :path="mdiHelpCircleOutline"
+                                    :path="mdiCompassOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                {{ t('views.appInfo.gettingStarted') }}
+                                {{ t('views.appInfo.uiTour') }}
                             </div> </a
-                        >&nbsp;- {{ t('views.appInfo.helpSettingUp') }}
+                        >&nbsp;- {{ t('views.appInfo.uiTourDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
@@ -495,27 +556,6 @@ onBeforeUnmount(() => {
                         >&nbsp;- {{ t('views.appInfo.hardwareSupportDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a target="_blank" :href="healthCheck.links.repository" class="text-accent">
-                            <div class="flex flex-row items-center">
-                                <svg-icon
-                                    type="mdi"
-                                    class="mr-2"
-                                    :path="mdiGit"
-                                    :size="deviceStore.getREMSize(2.0)"
-                                />
-                                {{ t('views.appInfo.gitRepository') }}
-                            </div> </a
-                        >&nbsp;- {{ t('views.appInfo.gitRepositoryDesc') }}
-                    </p>
-                    <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
-                            <div class="flex flex-row items-center">
-                                <span class="mr-2 pi pi-discord text-[2.0rem]" />
-                                Discord
-                            </div> </a
-                        >&nbsp;- {{ t('views.appInfo.discordDesc') }}
-                    </p>
-                    <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
                             target="_blank"
                             href="https://gitlab.com/coolercontrol/coolercontrol/-/releases"
@@ -531,6 +571,27 @@ onBeforeUnmount(() => {
                                 {{ t('views.appInfo.whatsNew') }}
                             </div> </a
                         >&nbsp;- {{ t('views.appInfo.whatsNewDesc') }}
+                    </p>
+                    <!--                    <p class="mt-4 text-wrap flex flex-row items-center">-->
+                    <!--                        <a target="_blank" :href="healthCheck.links.repository" class="text-accent">-->
+                    <!--                            <div class="flex flex-row items-center">-->
+                    <!--                                <svg-icon-->
+                    <!--                                    type="mdi"-->
+                    <!--                                    class="mr-2"-->
+                    <!--                                    :path="mdiGit"-->
+                    <!--                                    :size="deviceStore.getREMSize(2.0)"-->
+                    <!--                                />-->
+                    <!--                                {{ t('views.appInfo.gitRepository') }}-->
+                    <!--                            </div> </a-->
+                    <!--                        >&nbsp;- {{ t('views.appInfo.gitRepositoryDesc') }}-->
+                    <!--                    </p>-->
+                    <p class="mt-4 text-wrap flex flex-row items-center">
+                        <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
+                            <div class="flex flex-row items-center">
+                                <span class="mr-2 pi pi-discord text-[2.0rem]" />
+                                Discord
+                            </div> </a
+                        >&nbsp;- {{ t('views.appInfo.discordDesc') }}
                     </p>
                 </div>
                 <!-- Stress Test -->

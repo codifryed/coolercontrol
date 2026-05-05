@@ -50,6 +50,8 @@ export default {
         previous: 'Zurück',
         apply: 'Anwenden',
         defaults: 'Standardwerte',
+        unmanaged: 'Ungesteuert',
+        readOnly: 'Schreibgeschützt',
         rename: 'Umbenennen',
         password: 'Passwort',
         currentPassword: 'Aktuelles Passwort',
@@ -133,7 +135,7 @@ export default {
         },
         settings: {
             title: 'Einstellungen',
-            general: 'Allgemein',
+            userInterface: 'Benutzeroberfläche',
             device: 'Geräte',
             daemon: 'Daemon',
             devices: {
@@ -195,6 +197,7 @@ export default {
             time24h: '24 Stunden',
             time12h: '12 Stunden',
             frequencyPrecision: 'Frequenzgenauigkeit',
+            startupPage: 'Startseite',
             sidebarToCollapse: 'Seitenleiste zum Einklappen',
             entitiesBelowSensors: 'Entitäten unter Sensoren',
             dashboardLineSize: 'Dashboard-Liniengröße',
@@ -238,6 +241,7 @@ export default {
                 timeFormat: 'Zeitformat: 12-Stunden (AM/PM) oder 24-Stunden',
                 frequencyPrecision:
                     'Stellen Sie die Genauigkeit der angezeigten Frequenzwerte ein.',
+                startupPage: 'Die Seite, die nach dem Laden der Anwendung angezeigt wird.',
                 eyeCandy:
                     'Visuelle Animationen wie drehende Lüftersymbole aktivieren.\nDies beansprucht zusätzliche GPU-Ressourcen.',
                 sidebarCollapse:
@@ -433,15 +437,18 @@ export default {
             unsavedChangesMessage: 'Es gibt ungespeicherte Änderungen an diesem Steuerungskanal.',
             manualDuty: 'Manuelle Auslastung',
             profileToApply: 'Anzuwendendes Profil',
-            automaticOrManual: 'Automatisch oder Manuell',
+            controlModeAutomaticTooltip: 'Ein Lüfterprofil auf diesen Kanal anwenden',
+            controlModeManualTooltip: 'Einen festen Tastgrad manuell einstellen',
+            controlModeUnmanagedTooltip:
+                'Diesen Kanal nicht steuern und Hardware oder Treiber des Geräts entscheiden lassen',
             driverNoSupportControl:
-                'Der aktuell installierte Treiber unterstützt nicht die Steuerung dieses Kanals.',
+                'Schreibgeschützter Kanal. Der aktuelle Treiber unterstützt das Setzen der Drehzahl dieses Kanals nicht.',
             amdOverdriveNotEnabled:
                 'AMD GPU Overdrive ist nicht aktiviert. Aktivieren Sie es in den erweiterten Einstellungen dieses Geräts (Neustart erforderlich).',
             controlOrView: 'Steuern oder Anzeigen',
             applySetting: 'Einstellung anwenden',
             defaultProfileInfo:
-                'Das Standardprofil weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die ursprünglichen Treibereinstellungen wiederherzustellen.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit<br/>ohne aktive Steuerung.',
+                'Die Auswahl von "Ungesteuert" weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die Kontrolle an den Gerätetreiber zurückzugeben.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit.',
         },
         customSensors: {
             newSensor: 'Neuer Sensor',
@@ -510,6 +517,7 @@ export default {
         appInfo: {
             title: 'Info & Werkzeuge',
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',
+            changeStartupPage: 'Startseite in den Einstellungen ändern',
             daemonStatus: 'Daemon-Status',
             acknowledgeIssues: 'Probleme bestätigen',
             status: 'Status',
@@ -523,7 +531,16 @@ export default {
             connected: 'Verbunden',
             disconnected: 'Nicht verbunden',
             helpfulLinks: 'Hilfreiche Links',
+            uiTour: 'UI-Tour',
+            uiTourDesc: 'Eine geführte Tour durch die Anwendung',
             gettingStarted: 'Erste Schritte',
+            gettingStartedGraphProfile: 'Graph-Profil',
+            gettingStartedControlsPage: 'Steuerungsseite',
+            gettingStartedStep1:
+                'Erstelle ein {profile} in den Lüfterprofilen und gestalte die Lüfterkurve.',
+            gettingStartedStep2:
+                'Weise es auf der {controls} (oder direkt auf der Lüfter-Seite) zu. Profile werden nicht automatisch angewendet.',
+            gettingStartedStep3: 'Verwende dasselbe Profil für beliebig viele Lüfter.',
             helpSettingUp: 'Hilfe bei der Einrichtung der Lüftersteuerung',
             hardwareSupport: 'Hardware-Unterstützung',
             hardwareSupportDesc: 'Unterstützte Geräte und Treiberinstallation',
@@ -607,7 +624,6 @@ export default {
             editProfile: 'Profil bearbeiten',
             deleteProfile: 'Profil löschen',
             noProfiles: 'Keine Profile konfiguriert',
-            systemDefault: 'Systemstandard',
             profileType: 'Profiltyp',
             fixedDuty: 'Feste Lüftergeschwindigkeit',
             selectedPointDuty: 'Ausgewählter Punkt Leistung',
@@ -628,7 +644,7 @@ export default {
             newProfile: 'Neues Profil',
             tooltip: {
                 profileType:
-                    'Profiltypen:<br/>- Standard: Beibehaltung der aktuellen Geräteeinstellungen<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
+                    'Profiltypen:<br/>- Standard: Ungesteuert, gibt die Kontrolle an den Gerätetreiber zurück<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
             },
             profileDeleted: 'Profil gelöscht',
             profileDuplicated: 'Profil dupliziert',
@@ -969,45 +985,69 @@ export default {
         },
         onboarding: {
             welcome: 'Willkommen bei CoolerControl!',
-            beforeStart:
-                'Bevor wir beginnen, ist eine der wichtigsten Dinge, die Sie wissen sollten,',
-            settingUpDrivers: 'das Einrichten Ihrer Hardware-Treiber',
-            fansNotShowing:
-                'Wenn Ihre Lüfter oder Geräte nicht angezeigt werden oder nicht gesteuert werden können, liegt dies oft an fehlenden oder veralteten Kernel-Treibern.',
-            checkDocs:
-                'Bevor Sie ein Problem melden, stellen Sie bitte sicher, dass alle Treiber ordnungsgemäß geladen wurden, indem Sie',
-            checkingDocs: 'die Hardware-Support-Dokumentation überprüfen',
+            gettingStartedIntro:
+                'Wählen Sie eine Tour, um sich einen Überblick zu verschaffen. Die schnelle Tour deckt die Grundlagen in wenigen Schritten ab. Die ausführliche Tour führt Sie durch jedes Menü und jede Schaltfläche.',
             startTourAgain:
-                'Hinweis: Sie können diese Tour jederzeit über die Einstellungsseite erneut starten.',
-            letsStart: 'Ok, lass uns beginnen!',
-            dashboards: 'Dashboards',
-            dashboardsDesc:
-                'Dashboards ermöglichen benutzerdefinierte Ansichten mit Diagrammen zur Echtzeitüberwachung von Temperaturen, Lüftergeschwindigkeiten und anderen Sensordaten.',
+                'Sie können diese Tour jederzeit über die Seite Info & Werkzeuge erneut starten.',
+            quickTour: 'Schnelle Tour',
+            thoroughTour: 'Ausführliche Tour',
+            maybeLater: 'Vielleicht später',
+            openGettingStarted: 'Erste-Schritte-Dokumentation öffnen',
+            finishLater: 'Ich komme alleine zurecht',
+            appInfo: 'Info & Werkzeuge',
+            appInfoDesc:
+                'Zeigt App-Info, Daemon-Status, Logs, hilfreiche Links und Stresstest-Werkzeuge an. Ein Symbol auf dem Logo warnt Sie bei Problemen.',
             controls: 'Steuerungen',
             controlsDesc:
-                'Steuerungen ermöglichen die Anpassung von Lüftergeschwindigkeiten, das Anwenden von Profilen und die Verwaltung von Kühlgeräten.',
+                'Passen Sie Lüftergeschwindigkeiten an, wenden Sie Profile an und verwalten Sie alle erkannten Kanäle an einem Ort.',
             profiles: 'Profile',
             profilesDesc:
-                'Profile definieren Lüfterkurven, die auf Temperaturänderungen reagieren. Dasselbe Profil kann auf mehreren Geräten wiederverwendet werden.',
+                'Profile legen fest, wie ein Lüfter auf Temperaturänderungen reagiert. Mit Graph-Profilen können Sie eigene Lüfterkurven zeichnen und auf mehreren Geräten wiederverwenden.',
             functions: 'Funktionen',
             functionsDesc:
                 'Funktionen werden auf Profile angewendet, um Lüftergeschwindigkeitsübergänge zu glätten und Geräusche zu reduzieren.',
-            appInfo: 'Anwendungsinfo & Werkzeuge',
-            appInfoDesc:
-                'Klicken Sie auf das Logo, um App-Info, Daemon-Status, Logs und thermische Lastwerkzeuge anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
+            systemMenu: 'Systemmenü',
+            systemMenuDesc:
+                'Das Hauptmenü listet die Geräte und Sensoren dieses Systems auf. Jeder Bereich kann erweitert werden, um Kanäle und zugewiesene Steuerungen anzuzeigen.',
+            dashboards: 'Dashboards',
+            dashboardsDesc:
+                'Dashboards ermöglichen benutzerdefinierte Ansichten mit Diagrammen zur Echtzeitüberwachung von Temperaturen, Lüftergeschwindigkeiten und anderen Sensordaten.',
+            modes: 'Modi',
+            modesDesc:
+                'Modi sind gespeicherte Sammlungen Ihrer Einstellungen. Wechseln Sie mit einem Klick zwischen Konfigurationen wie Leise und Leistung.',
+            alerts: 'Warnungen',
+            alertsDesc:
+                'Warnungen benachrichtigen Sie, wenn Sensorwerte die von Ihnen gewählten Schwellenwerte überschreiten, damit Sie reagieren können, bevor Probleme entstehen.',
+            customSensors: 'Benutzerdefinierte Sensoren',
+            customSensorsDesc:
+                'Benutzerdefinierte Sensoren kombinieren vorhandene Sensordaten auf verschiedene Weise oder führen Ihre eigene skriptgesteuerte Ausgabe als Temperaturquelle aus.',
             quickAdd: 'Schnelles Hinzufügen',
             quickAddDesc: 'Schnelles Erstellen neuer Dashboards, Profile, Funktionen und mehr.',
             dashboardQuick: 'Dashboard-Schnellmenü',
             dashboardQuickDesc:
                 'Springen Sie zu jedem Dashboard, auch wenn das Hauptmenü eingeklappt ist.',
+            modesQuick: 'Modi-Schnellmenü',
+            modesQuickDesc: 'Wechseln Sie überall in der App zwischen Ihren gespeicherten Modi.',
+            alertsQuick: 'Warnungsübersicht',
+            alertsQuickDesc:
+                'Sehen Sie den aktuellen Status jeder Warnung und prüfen Sie ihre letzte Aktivität.',
+            pluginsQuick: 'Plugin-Übersicht',
+            pluginsQuickDesc:
+                'Durchsuchen Sie installierte Plugins und springen Sie überall in der App zu einem davon.',
             settings: 'Einstellungen',
             settingsDesc:
                 'Konfigurieren Sie UI-Einstellungen, Daemon-Optionen und Systemverhalten.',
+            access: 'Zugriff',
+            accessDesc:
+                'Verwalten Sie Ihr Passwort und bestätigen Sie Ihre aktuelle Zugriffsebene.',
             restartMenu: 'Neustart-Menü',
             restartMenuDesc: 'UI neu laden oder Systemdaemon bei Bedarf neu starten.',
+            collapseMenu: 'Menü einklappen',
+            collapseMenuDesc:
+                'Erweitern oder reduzieren Sie das Hauptmenü, um dem Rest der App mehr Platz zu geben.',
             thatsIt: "Das war's!",
-            ready: 'Wenn Geräte fehlen oder nicht steuerbar sind, versuchen Sie',
-            startNow: 'Alles bereit!',
+            startNow:
+                'Sie sind startklar. Öffnen Sie die Erste-Schritte-Dokumentation, um mehr zu erfahren, oder legen Sie los und konfigurieren Sie Ihre Geräte.',
         },
         axisOptions: {
             title: 'Achsenoptionen',
@@ -1047,7 +1087,7 @@ export default {
                 manualSpeed: 'Manuelle Geschwindigkeit',
                 createNewProfile: 'Neues Profil',
                 existingProfile: 'Profil wählen',
-                resetSettings: 'Auf Standard zurücksetzen',
+                resetSettings: 'Auf Ungesteuert zurücksetzen',
                 chooseProfileNameType: 'Wählen Sie einen Profilnamen und einen Typ',
                 newDefaultProfile: 'Neues Standardprofil',
                 profileCreatedApplied: 'Profil erstellt und angewendet',
@@ -1275,6 +1315,11 @@ export default {
         channelViewType: {
             control: 'Steuerung',
             dashboard: 'Dashboard',
+        },
+        startupPage: {
+            appInfo: 'Info & Werkzeuge',
+            homeDashboard: 'Start-Dashboard',
+            controls: 'Steuerungen',
         },
         alertState: {
             active: 'Aktiv',

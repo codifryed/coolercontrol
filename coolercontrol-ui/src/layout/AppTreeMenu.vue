@@ -588,6 +588,7 @@ const customSensorsTree = (): any => {
         return {
             // deviceUID is used to sort the menu items and custom-sensors has a deviceUID
             id: deviceUID,
+            tourAnchor: 'custom-sensors',
             label: t('layout.menu.customSensors'),
             icon: mdiFlaskRoundBottom,
             name: null, // devices should not have names
@@ -749,6 +750,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: duty,
                     rpm: rpm,
+                    isSpeedChannel: true,
                     isControllable: isControllable,
                     menus: [Menu.COLOR, Menu.RENAME, Menu.IS_CONTROLLABLE],
                     subMenus:
@@ -876,7 +878,7 @@ emitter.on('dashboard-add-menu', addDashboardMenu)
 
 const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
     dashboardParent!.children = dashboardParent!.children.filter(
@@ -892,7 +894,7 @@ const homeDashboardSet = async (): Promise<void> => {
                 ? mdiHomeAnalytics
                 : mdiChartBoxOutline
     })
-    await router.push({ name: 'system-overview' })
+    await router.push({ name: 'startup-page' })
 }
 const updateDashboardName = (dashboardUID: UID, name: string): void => {
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
@@ -932,7 +934,7 @@ const activeModesChange = async (_: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
 }
 emitter.on('active-modes-change-menu', activeModesChange)
@@ -975,7 +977,7 @@ emitter.on('mode-add-menu', addModeMenu)
 
 const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const modesParent = data.value.find((item: any) => item.id === 'modes')!
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
@@ -1023,7 +1025,7 @@ emitter.on('profile-add-menu', addProfileMenu)
 
 const deleteProfile = async (profileUID: UID): Promise<void> => {
     if (route.params != null && route.params.profileUID === profileUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const profilesParent = data.value.find((item: any) => item.id === 'profiles')!
     profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
@@ -1072,7 +1074,7 @@ emitter.on('function-add-menu', addFunctionMenu)
 
 const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const functionsParent = data.value.find((item: any) => item.id === 'functions')!
     functionsParent.children = functionsParent.children.filter(
@@ -1126,7 +1128,7 @@ emitter.on('alert-add-menu', addAlertMenu)
 
 const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {
-        await router.push({ name: 'system-overview' })
+        await router.push({ name: 'startup-page' })
     }
     const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
     alertsParent.children = alertsParent.children.filter((item: any) => item.id !== alertUID)
@@ -1351,7 +1353,7 @@ onUnmounted(() => {
                                 </div>
                                 <div
                                     v-if="
-                                        childItem.isControllable ||
+                                        childItem.isSpeedChannel ||
                                         childItem.hasMode ||
                                         settingsStore.getChannelTags(
                                             childItem.deviceUID,
@@ -1361,9 +1363,11 @@ onUnmounted(() => {
                                     class="mt-0.5 flex items-center gap-x-1"
                                 >
                                     <menu-control-view
-                                        v-if="childItem.isControllable"
+                                        v-if="childItem.isSpeedChannel"
                                         :device-u-i-d="childItem.deviceUID"
                                         :channel-name="childItem.name"
+                                        :is-controllable="childItem.isControllable"
+                                        :is-active="isActive"
                                         :class="{ 'text-text-color-secondary': !isActive }"
                                     />
                                     <menu-mode-view
@@ -1749,6 +1753,7 @@ onUnmounted(() => {
                     <!--Root Elements-->
                     <div
                         :id="item.id"
+                        :data-tour-anchor="item.tourAnchor"
                         class="flex group h-full w-full items-center justify-between outline-none"
                     >
                         <div class="flex flex-row items-center min-w-0">
@@ -2017,7 +2022,7 @@ onUnmounted(() => {
                                     </div>
                                     <div
                                         v-if="
-                                            childItem.isControllable ||
+                                            childItem.isSpeedChannel ||
                                             childItem.hasMode ||
                                             settingsStore.getChannelTags(
                                                 childItem.deviceUID,
@@ -2027,9 +2032,11 @@ onUnmounted(() => {
                                         class="mt-0.5 flex items-center gap-x-1"
                                     >
                                         <menu-control-view
-                                            v-if="childItem.isControllable"
+                                            v-if="childItem.isSpeedChannel"
                                             :device-u-i-d="childItem.deviceUID"
                                             :channel-name="childItem.name"
+                                            :is-controllable="childItem.isControllable"
+                                            :is-active="isActive"
                                             :class="{ 'text-text-color-secondary': !isActive }"
                                         />
                                         <menu-mode-view

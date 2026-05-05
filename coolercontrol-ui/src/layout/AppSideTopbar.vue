@@ -81,7 +81,7 @@ hotkeys('ctrl+,', () => {
     return false
 })
 hotkeys('ctrl+h', () => {
-    router.push({ name: 'system-overview' })
+    router.push({ name: 'startup-page' })
     return false
 })
 hotkeys('ctrl+a', () => {
@@ -535,14 +535,19 @@ onBeforeUnmount(() => {
                 >
                     <Button
                         class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                        @click="router.push({ name: 'system-overview' })"
+                        @click="
+                            router.push({
+                                name: 'dashboards',
+                            })
+                        "
                     >
                         <svg-icon
                             :class="{
                                 'text-accent':
-                                    router.currentRoute.value.fullPath === '/' ||
-                                    router.currentRoute.value.params.dashboardUID ===
-                                        settingsStore.homeDashboard,
+                                    router.currentRoute.value.name === 'dashboards' &&
+                                    (router.currentRoute.value.params.dashboardUID ===
+                                        settingsStore.homeDashboard ||
+                                        router.currentRoute.value.params.dashboardUID == null),
                             }"
                             type="mdi"
                             :path="mdiHomeAnalytics"
@@ -562,7 +567,9 @@ onBeforeUnmount(() => {
                                             'text-accent':
                                                 router.currentRoute.value.params.dashboardUID ===
                                                     item.uid ||
-                                                (router.currentRoute.value.fullPath === '/' &&
+                                                (router.currentRoute.value.name === 'dashboards' &&
+                                                    router.currentRoute.value.params.dashboardUID ==
+                                                        null &&
                                                     item.uid === settingsStore.homeDashboard),
                                         }"
                                         :path="
@@ -578,7 +585,9 @@ onBeforeUnmount(() => {
                                             'text-accent':
                                                 router.currentRoute.value.params.dashboardUID ===
                                                     item.uid ||
-                                                (router.currentRoute.value.fullPath === '/' &&
+                                                (router.currentRoute.value.name === 'dashboards' &&
+                                                    router.currentRoute.value.params.dashboardUID ==
+                                                        null &&
                                                     item.uid === settingsStore.homeDashboard),
                                         }"
                                     >

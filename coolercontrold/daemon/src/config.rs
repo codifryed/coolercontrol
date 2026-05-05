@@ -1465,6 +1465,12 @@ impl Config {
             profiles.push(Profile::default());
             self.set_profile(Profile::default())?;
             self.save_config_file().await?;
+        } else {
+            // Migrate legacy default profile name to the user-facing "Unmanaged" label.
+            profiles
+                .iter_mut()
+                .filter(|p| p.uid == *DEFAULT_PROFILE_UID && p.name == *"Default Profile")
+                .for_each(|p| p.name = "Unmanaged".to_string());
         }
         Ok(profiles)
     }
@@ -2529,6 +2535,108 @@ mod tests {
             config.set_disabled_plugins(&ids);
             let result = config.get_disabled_plugins();
             assert_eq!(result, ids);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_default_profile_legacy_name_migration() {
+        // Legacy installs persist `name = "Default Profile"` for UID "0".
+        // get_profiles() must rewrite it to "Unmanaged" on load.
+        cc_fs::test_runtime(async {
+            use crate::setting::{Profile, DEFAULT_PROFILE_UID};
+
+            let path = Path::new("/tmp/config-default-profile-legacy.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-default-profile-legacy.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            // Force the legacy name onto the shipped default profile.
+            let mut legacy = Profile::default();
+            legacy.name = "Default Profile".to_string();
+            assert_eq!(legacy.uid, *DEFAULT_PROFILE_UID);
+            config.update_profile(legacy).unwrap();
+
+            let profiles = config.get_profiles().await.unwrap();
+            let default_profile = profiles
+                .iter()
+                .find(|p| p.uid == *DEFAULT_PROFILE_UID)
+                .expect("default profile should be present");
+            assert_eq!(default_profile.name, "Unmanaged");
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_default_profile_unmanaged_name_idempotent() {
+        // Running the migration on a config that already has "Unmanaged" must not
+        // double-rewrite or otherwise mutate the name.
+        cc_fs::test_runtime(async {
+            use crate::setting::{Profile, DEFAULT_PROFILE_UID};
+
+            let path = Path::new("/tmp/config-default-profile-idempotent.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-default-profile-idempotent.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            // Profile::default() now produces name = "Unmanaged"; the shipped
+            // config already matches so no migration is needed.
+            let already_renamed = Profile::default();
+            assert_eq!(already_renamed.name, "Unmanaged");
+
+            let profiles = config.get_profiles().await.unwrap();
+            let default_profile = profiles
+                .iter()
+                .find(|p| p.uid == *DEFAULT_PROFILE_UID)
+                .expect("default profile should be present");
+            assert_eq!(default_profile.name, "Unmanaged");
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_default_profile_custom_name_preserved() {
+        // If a user has somehow given UID "0" a custom name (e.g. by hand-editing
+        // config.toml), the migration must leave that custom name untouched.
+        cc_fs::test_runtime(async {
+            use crate::setting::{Profile, DEFAULT_PROFILE_UID};
+
+            let path = Path::new("/tmp/config-default-profile-custom.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-default-profile-custom.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            let mut custom = Profile::default();
+            custom.name = "My Custom Default".to_string();
+            config.update_profile(custom).unwrap();
+
+            let profiles = config.get_profiles().await.unwrap();
+            let default_profile = profiles
+                .iter()
+                .find(|p| p.uid == *DEFAULT_PROFILE_UID)
+                .expect("default profile should be present");
+            assert_eq!(default_profile.name, "My Custom Default");
 
             cc_fs::remove_file(path).await.unwrap();
         });

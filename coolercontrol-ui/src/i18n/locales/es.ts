@@ -50,6 +50,8 @@ export default {
         previous: 'Anterior',
         apply: 'Aplicar',
         defaults: 'Predeterminados',
+        unmanaged: 'Sin gestión',
+        readOnly: 'Solo lectura',
         rename: 'Renombrar',
         password: 'Contraseña',
         currentPassword: 'Contraseña actual',
@@ -132,7 +134,7 @@ export default {
         },
         settings: {
             title: 'Configuración',
-            general: 'General',
+            userInterface: 'Interfaz de Usuario',
             device: 'Dispositivos',
             daemon: 'Daemon',
             devices: {
@@ -194,6 +196,7 @@ export default {
             time24h: '24 horas',
             time12h: '12 horas',
             frequencyPrecision: 'Precisión de frecuencia',
+            startupPage: 'Página de inicio',
             sidebarToCollapse: 'Barra lateral a contraer',
             entitiesBelowSensors: 'Entidades debajo de sensores',
             dashboardLineSize: 'Tamaño de línea del panel',
@@ -236,6 +239,7 @@ export default {
                 introduction: 'Iniciar el recorrido de introducción de la aplicación.',
                 timeFormat: 'Formato de hora: 12 horas (AM/PM) o 24 horas',
                 frequencyPrecision: 'Ajustar la precisión de los valores de frecuencia mostrados.',
+                startupPage: 'La página que se muestra después de cargar la aplicación.',
                 eyeCandy:
                     'Habilitar animaciones visuales como iconos de ventiladores giratorios.\nEsto utilizará algunos recursos adicionales de la GPU.',
                 sidebarCollapse:
@@ -432,15 +436,18 @@ export default {
             unsavedChangesMessage: 'Hay cambios no guardados realizados en este canal de control.',
             manualDuty: 'Ciclo Manual',
             profileToApply: 'Perfil a aplicar',
-            automaticOrManual: 'Automático o Manual',
+            controlModeAutomaticTooltip: 'Aplicar un Perfil de ventilador a este canal',
+            controlModeManualTooltip: 'Establecer un porcentaje de ciclo fijo manualmente',
+            controlModeUnmanagedTooltip:
+                'Dejar de gestionar este canal, dejando que el hardware o controlador del dispositivo decida',
             driverNoSupportControl:
-                'El controlador actualmente instalado no soporta el control de este canal.',
+                'Canal de solo lectura. El controlador actual no admite ajustar la velocidad de este canal.',
             amdOverdriveNotEnabled:
                 'AMD GPU overdrive no está habilitado. Habilítelo en la configuración avanzada de este dispositivo (requiere reinicio).',
             controlOrView: 'Controlar o Ver',
             applySetting: 'Aplicar Configuración',
             defaultProfileInfo:
-                'El Perfil Predeterminado indica a CoolerControl que deje de gestionar<br/>este ventilador y restaure la configuración original del controlador.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada sin gestión activa.',
+                'Seleccionar "Sin gestión" indica a CoolerControl que deje de controlar<br/>este ventilador y devuelva el control al controlador del dispositivo.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada.',
         },
         customSensors: {
             newSensor: 'Nuevo Sensor',
@@ -507,6 +514,7 @@ export default {
         appInfo: {
             title: 'Info y Herramientas',
             noWarranty: 'Este programa viene sin absolutamente ninguna garantía.',
+            changeStartupPage: 'Cambiar la página de inicio en Ajustes',
             daemonStatus: 'Estado del Daemon',
             acknowledgeIssues: 'Reconocer Problemas',
             status: 'Estado',
@@ -520,7 +528,16 @@ export default {
             connected: 'Conectado',
             disconnected: 'Desconectado',
             helpfulLinks: 'Enlaces Útiles',
+            uiTour: 'Recorrido por la UI',
+            uiTourDesc: 'Realice un recorrido guiado por la aplicación',
             gettingStarted: 'Primeros Pasos',
+            gettingStartedGraphProfile: 'Perfil de Gráfico',
+            gettingStartedControlsPage: 'Página de Controles',
+            gettingStartedStep1:
+                'Cree un {profile} en Perfiles de ventilador y ajuste la curva del ventilador.',
+            gettingStartedStep2:
+                'Asígnelo en la {controls} (o en la página del ventilador). Los Perfiles no se aplican automáticamente.',
+            gettingStartedStep3: 'Reutilice el mismo Perfil en tantos ventiladores como desee.',
             helpSettingUp: 'Ayuda para configurar el control de ventiladores',
             hardwareSupport: 'Soporte de Hardware',
             hardwareSupportDesc: 'Dispositivos compatibles e instalación de controladores',
@@ -604,7 +621,6 @@ export default {
             editProfile: 'Editar Perfil',
             deleteProfile: 'Eliminar Perfil',
             noProfiles: 'No hay perfiles configurados',
-            systemDefault: 'Predeterminado del Sistema',
             profileType: 'Tipo de Perfil',
             fixedDuty: 'Velocidad Fija del Ventilador',
             selectedPointDuty: 'Velocidad del Punto Seleccionado',
@@ -625,7 +641,7 @@ export default {
             newProfile: 'Nuevo Perfil',
             tooltip: {
                 profileType:
-                    'Tipos de Perfiles:<br/>- Predeterminado: Conserva la configuración actual del dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fijo: Establece una velocidad constante<br/>- Gráfico: Curva de ventilador personalizable<br/>- Mezcla: Combina múltiples perfiles<br/>- Superposición: aplica un desplazamiento a la salida de un perfil existente',
+                    'Tipos de Perfiles:<br/>- Predeterminado: Sin gestión, devuelve el control al controlador del dispositivo<br/>- Fijo: Establece una velocidad constante<br/>- Gráfico: Curva de ventilador personalizable<br/>- Mezcla: Combina múltiples perfiles<br/>- Superposición: aplica un desplazamiento a la salida de un perfil existente',
             },
             profileDeleted: 'Perfil Eliminado',
             profileDuplicated: 'Perfil Duplicado',
@@ -953,45 +969,70 @@ export default {
         },
         onboarding: {
             welcome: '¡Bienvenido a CoolerControl!',
-            beforeStart: 'Antes de comenzar, una de las cosas más importantes a saber es sobre',
-            settingUpDrivers: 'configurar sus controladores de hardware',
-            fansNotShowing:
-                'Si sus ventiladores o dispositivos no aparecen o no se pueden controlar, esto suele deberse a controladores del kernel faltantes o desactualizados.',
-            checkDocs:
-                'Antes de abrir un problema, confirme que todos los controladores se han cargado correctamente',
-            checkingDocs: 'consultando la documentación de Soporte de Hardware',
+            gettingStartedIntro:
+                'Elija un recorrido para orientarse. El Recorrido Rápido cubre lo esencial en pocos pasos. El Recorrido Detallado lo guía por cada menú y botón.',
             startTourAgain:
-                'Nota: puede iniciar este recorrido nuevamente en cualquier momento desde la página de configuración.',
-            letsStart: '¡Bien, comencemos!',
-            dashboards: 'Paneles',
-            dashboardsDesc:
-                'Los paneles permiten crear vistas personalizadas con gráficos para monitorear temperaturas, velocidades de ventiladores y otros datos de sensores en tiempo real.',
+                'Puede iniciar este recorrido nuevamente en cualquier momento desde la página Información y Herramientas.',
+            quickTour: 'Recorrido Rápido',
+            thoroughTour: 'Recorrido Detallado',
+            maybeLater: 'Quizás más tarde',
+            openGettingStarted: 'Abrir Documentación de Inicio',
+            finishLater: 'Lo haré yo mismo',
+            appInfo: 'Información y Herramientas',
+            appInfoDesc:
+                'Vea información de la app, estado del daemon, registros, enlaces útiles y herramientas de prueba de carga. Una insignia en el logo le alerta sobre problemas.',
             controls: 'Controles',
             controlsDesc:
-                'Los controles permiten ajustar velocidades de ventiladores, aplicar Perfiles y gestionar dispositivos de refrigeración.',
+                'Ajuste velocidades de ventiladores, aplique Perfiles y gestione cada canal detectado desde un solo lugar.',
             profiles: 'Perfiles',
             profilesDesc:
-                'Los perfiles definen curvas de ventilador que responden a cambios de temperatura. Reutilice el mismo Perfil en múltiples dispositivos.',
+                'Los Perfiles definen cómo responde un ventilador a los cambios de temperatura. Los Perfiles Gráficos le permiten dibujar curvas personalizadas y reutilizarlas en múltiples dispositivos.',
             functions: 'Funciones',
             functionsDesc:
-                'Las funciones se aplican a los Perfiles para suavizar las transiciones de velocidad del ventilador y reducir el ruido.',
-            appInfo: 'Información de la Aplicación y Herramientas',
-            appInfoDesc:
-                'Haga clic en el logo para ver info de la app, estado del daemon, registros y herramientas de carga térmica. Una insignia de estado le alerta sobre problemas.',
+                'Las Funciones se aplican a los Perfiles para suavizar las transiciones de velocidad del ventilador y reducir el ruido.',
+            systemMenu: 'Menú del Sistema',
+            systemMenuDesc:
+                'El menú principal lista los dispositivos y sensores de este sistema. Cada sección puede expandirse para ver sus canales y controles asignados.',
+            dashboards: 'Paneles',
+            dashboardsDesc:
+                'Los Paneles permiten crear vistas personalizadas con gráficos para monitorear temperaturas, velocidades de ventiladores y otros datos de sensores en tiempo real.',
+            modes: 'Modos',
+            modesDesc:
+                'Los Modos son colecciones guardadas de sus configuraciones. Cambie entre configuraciones como Silencioso y Rendimiento con un solo clic.',
+            alerts: 'Alertas',
+            alertsDesc:
+                'Las Alertas le notifican cuando los valores de los sensores superan los umbrales que elija, para que pueda reaccionar antes de que se conviertan en problemas.',
+            customSensors: 'Sensores Personalizados',
+            customSensorsDesc:
+                'Los Sensores Personalizados combinan datos de sensores existentes de diferentes maneras, o ejecutan su propia salida con script como fuente de temperatura.',
             quickAdd: 'Agregar Rápido',
             quickAddDesc: 'Cree rápidamente nuevos Paneles, Perfiles, Funciones y más.',
             dashboardQuick: 'Menú Rápido de Panel',
             dashboardQuickDesc:
                 'Salte a cualquier panel, incluso cuando el menú principal esté contraído.',
+            modesQuick: 'Menú Rápido de Modos',
+            modesQuickDesc:
+                'Cambie entre sus Modos guardados desde cualquier lugar de la aplicación.',
+            alertsQuick: 'Resumen de Alertas',
+            alertsQuickDesc:
+                'Vea el estado actual de cada alerta e inspeccione su actividad reciente.',
+            pluginsQuick: 'Resumen de Plugins',
+            pluginsQuickDesc:
+                'Explore los plugins instalados y acceda a cualquiera de ellos desde cualquier lugar de la aplicación.',
             settings: 'Configuración',
             settingsDesc:
                 'Configure preferencias de interfaz, opciones del daemon y comportamiento del sistema.',
+            access: 'Acceso',
+            accessDesc: 'Gestione su contraseña y confirme su nivel de acceso actual.',
             restartMenu: 'Menú de Reinicio',
             restartMenuDesc:
                 'Recargue la interfaz o reinicie el daemon del sistema cuando sea necesario.',
+            collapseMenu: 'Contraer Menú',
+            collapseMenuDesc:
+                'Expanda o contraiga el menú principal para dar más espacio al resto de la app.',
             thatsIt: '¡Eso es todo!',
-            ready: 'Si faltan dispositivos o no se pueden controlar, intente',
-            startNow: '¡Todo listo!',
+            startNow:
+                'Ya está todo listo. Abra la documentación de Inicio para aprender más, o comience a configurar sus dispositivos.',
         },
         axisOptions: {
             title: 'Opciones de Ejes',
@@ -1031,7 +1072,7 @@ export default {
                 manualSpeed: 'Velocidad Manual',
                 createNewProfile: 'Nuevo Perfil',
                 existingProfile: 'Elegir Perfil',
-                resetSettings: 'Restablecer a Predeterminado',
+                resetSettings: 'Restablecer a Sin gestión',
                 chooseProfileNameType: 'Elegir un Nombre y Tipo de Perfil',
                 newDefaultProfile: 'Nuevo Perfil Predeterminado',
                 profileCreatedApplied: 'Perfil Creado y Aplicado',
@@ -1264,6 +1305,11 @@ export default {
         channelViewType: {
             control: 'Control',
             dashboard: 'Panel',
+        },
+        startupPage: {
+            appInfo: 'Info y Herramientas',
+            homeDashboard: 'Panel principal',
+            controls: 'Controles',
         },
         alertState: {
             active: 'Activo',

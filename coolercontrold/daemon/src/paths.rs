@@ -28,10 +28,21 @@ use std::sync::LazyLock;
 
 use crate::{ENV_CONFIG_DIR, ENV_DATA_DIR, ENV_PLUGINS_DIR};
 
+// -- config dir (independent of data_dir) --
 const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
-
 static CONFIG_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     PathBuf::from(std::env::var(ENV_CONFIG_DIR).unwrap_or_else(|_| DEFAULT_CONFIG_DIR.to_string()))
+});
+
+// -- data dir (runtime state, independent of config_dir) --
+const DEFAULT_DATA_DIR: &str = "/var/lib/coolercontrol";
+static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    PathBuf::from(std::env::var(ENV_DATA_DIR).unwrap_or_else(|_| DEFAULT_DATA_DIR.to_string()))
+});
+
+// -- plugins (defaults under data_dir; overridable via CC_PLUGINS_DIR) --
+static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    std::env::var(ENV_PLUGINS_DIR).map_or_else(|_| data_dir().join("plugins"), PathBuf::from)
 });
 
 // -- config --
@@ -45,38 +56,17 @@ static UI_CONFIG_BACKUP: LazyLock<PathBuf> =
 static PASSWD_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".passwd"));
 static TOKENS_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".tokens"));
 
+// -- features --
+static ALERT_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("alerts.json"));
+static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("modes.json"));
+static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("detect.toml"));
+
 // -- auth (runtime session state in /var/lib) --
 static SESSION_KEY_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join(".session_key"));
 static SESSIONS_DIR: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join("sessions"));
 
 // -- alert logs (runtime state in /var/lib; separate from alert config in /etc) --
 static ALERT_LOGS_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join("alert-logs.json"));
-
-// -- features --
-static ALERT_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("alerts.json"));
-static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("modes.json"));
-static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("detect.toml"));
-
-// -- data dir (runtime state, independent of config_dir) --
-const DEFAULT_DATA_DIR: &str = "/var/lib/coolercontrol";
-
-static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    if let Ok(dir) = std::env::var(ENV_DATA_DIR) {
-        return PathBuf::from(dir);
-    }
-    plugins_dir()
-        .parent()
-        .map_or_else(|| PathBuf::from(DEFAULT_DATA_DIR), Path::to_path_buf)
-});
-
-// -- plugins --
-const DEFAULT_PLUGINS_DIR: &str = "/var/lib/coolercontrol/plugins";
-
-static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    PathBuf::from(
-        std::env::var(ENV_PLUGINS_DIR).unwrap_or_else(|_| DEFAULT_PLUGINS_DIR.to_string()),
-    )
-});
 
 static LEGACY_PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("plugins"));
 
@@ -370,7 +360,7 @@ mod tests {
 
     #[test]
     fn data_dir_defaults_to_var_lib() {
-        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+        if std::env::var(ENV_DATA_DIR).is_err() {
             assert_eq!(data_dir(), Path::new("/var/lib/coolercontrol"));
         }
     }
@@ -397,8 +387,16 @@ mod tests {
 
     #[test]
     fn plugins_dir_defaults_to_var_lib() {
-        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+        if std::env::var(ENV_PLUGINS_DIR).is_err() && std::env::var(ENV_DATA_DIR).is_err() {
             assert_eq!(plugins_dir(), Path::new("/var/lib/coolercontrol/plugins"));
+        }
+    }
+
+    #[test]
+    fn plugins_dir_starts_with_data_dir_by_default() {
+        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+            assert!(plugins_dir().starts_with(data_dir()));
+            assert_eq!(plugins_dir().file_name().unwrap(), "plugins");
         }
     }
 

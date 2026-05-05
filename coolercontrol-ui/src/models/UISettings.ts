@@ -89,6 +89,29 @@ export enum ChannelViewType {
     Dashboard = 'Dashboard',
 }
 
+export enum StartupPage {
+    AppInfo = 'app-info',
+    HomeDashboard = 'dashboards',
+    Controls = 'system-controls',
+}
+
+/**
+ * Returns the localized display name for a StartupPage value.
+ */
+export function getStartupPageDisplayName(page: StartupPage): string {
+    const { t } = i18n.global
+    switch (page) {
+        case StartupPage.AppInfo:
+            return t('models.startupPage.appInfo')
+        case StartupPage.HomeDashboard:
+            return t('models.startupPage.homeDashboard')
+        case StartupPage.Controls:
+            return t('models.startupPage.controls')
+        default:
+            return String(page)
+    }
+}
+
 /**
  * 获取ChannelViewType的本地化显示名称
  * @param type ChannelViewType枚举值
@@ -208,4 +231,5 @@ export class UISettingsDTO {
     gpuStressBackend: 'stress_ng' | 'built_in' = 'built_in'
     ramStressBackend: 'stress_ng' | 'built_in' = 'built_in'
     driveStressBackend: 'stress_ng' | 'built_in' = 'built_in'
+    startupPage: StartupPage = StartupPage.AppInfo
 }

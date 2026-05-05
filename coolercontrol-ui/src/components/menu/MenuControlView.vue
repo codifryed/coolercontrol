@@ -21,34 +21,47 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { computed } from 'vue'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceUID: UID
     channelName: string
+    isControllable?: boolean
+    isActive?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+    isControllable: true,
+    isActive: false,
+})
 const settingsStore = useSettingsStore()
-const controlSetting = computed(() => {
+const { t } = useI18n()
+
+const display = computed<{ text: string; isPlaceholder: boolean }>(() => {
+    if (!props.isControllable) {
+        return { text: t('common.readOnly'), isPlaceholder: true }
+    }
     const deviceSetting: DeviceSettingReadDTO | undefined = settingsStore.allDaemonDeviceSettings
         .get(props.deviceUID)
         ?.settings.get(props.channelName)
     if (deviceSetting?.speed_fixed != null) {
-        return `${deviceSetting!.speed_fixed}%`
-    } else if (deviceSetting?.profile_uid != null) {
-        return (
-            settingsStore.profiles.find((profile) => profile.uid === deviceSetting!.profile_uid)
-                ?.name ?? 'Unknown'
-        )
-    } else {
-        // Nothing has been set, so settings are blank/default
-        return 'Default Profile'
+        return { text: `${deviceSetting.speed_fixed}%`, isPlaceholder: false }
     }
+    if (deviceSetting?.profile_uid != null && deviceSetting.profile_uid !== '0') {
+        const name =
+            settingsStore.profiles.find((profile) => profile.uid === deviceSetting.profile_uid)
+                ?.name ?? 'Unknown'
+        return { text: name, isPlaceholder: false }
+    }
+    return { text: t('common.unmanaged'), isPlaceholder: true }
 })
 </script>
 <template>
-    <div class="flex leading-tight tree-text">
-        {{ controlSetting }}
+    <div
+        class="flex leading-tight tree-text"
+        :class="{ 'italic text-text-color-secondary/60': display.isPlaceholder }"
+    >
+        {{ display.text }}
     </div>
 </template>
 

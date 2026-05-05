@@ -17,7 +17,7 @@
  */
 
 import type { Profile } from '@/models/Profile'
-import { ProfileType } from '@/models/Profile'
+import { ProfileType, getProfileDisplayName } from '@/models/Profile'
 import type { Device, UID } from '@/models/Device'
 import { DeviceType } from '@/models/Device'
 import type { DeviceUISettings } from '@/models/UISettings'
@@ -65,7 +65,7 @@ function traceChain(
 
     steps.push({
         type: 'profile',
-        name: profile.name,
+        name: getProfileDisplayName(profile),
         subtype: profile.p_type,
     })
 

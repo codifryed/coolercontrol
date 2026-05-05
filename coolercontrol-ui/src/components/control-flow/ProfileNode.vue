@@ -120,7 +120,7 @@ const typeBadgeClass: Record<string, string> = {
         <div class="flex items-center gap-2 rounded-t-lg border-t-[3px] border-accent px-3 py-2">
             <svg-icon type="mdi" :path="mdiChartLine" class="size-5 text-text-color" />
             <div class="flex-1 truncate text-sm font-semibold text-text-color">
-                {{ data.profileName }}
+                {{ data.isDefault ? t('common.unmanaged') : data.profileName }}
             </div>
             <span
                 class="rounded px-1.5 py-0.5 text-xs font-medium"

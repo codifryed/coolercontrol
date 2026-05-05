@@ -50,6 +50,8 @@ export default {
         previous: 'Précédent',
         apply: 'Appliquer',
         defaults: 'Par défaut',
+        unmanaged: 'Non géré',
+        readOnly: 'Lecture seule',
         rename: 'Renommer',
         password: 'Mot de passe',
         currentPassword: 'Mot de passe actuel',
@@ -132,7 +134,7 @@ export default {
         },
         settings: {
             title: 'Paramètres',
-            general: 'Général',
+            userInterface: 'Interface utilisateur',
             device: 'Appareils',
             daemon: 'Daemon',
             devices: {
@@ -194,6 +196,7 @@ export default {
             time24h: '24 heures',
             time12h: '12 heures',
             frequencyPrecision: 'Précision de la fréquence',
+            startupPage: 'Page de démarrage',
             sidebarToCollapse: 'Barre latérale à réduire',
             entitiesBelowSensors: 'Entités sous les capteurs',
             dashboardLineSize: 'Taille des lignes du tableau de bord',
@@ -241,6 +244,7 @@ export default {
                 introduction: "Commencer le tour d'introduction de l'application.",
                 timeFormat: "Format de l'heure : 12 heures (AM/PM) ou 24 heures",
                 frequencyPrecision: 'Ajuster la précision des valeurs de fréquence affichées.',
+                startupPage: "La page affichée après le chargement de l'application.",
                 eyeCandy:
                     'Activer les animations visuelles comme les icônes de ventilateurs en rotation.\nCela utilisera des ressources GPU supplémentaires.',
                 sidebarCollapse:
@@ -440,15 +444,18 @@ export default {
                 'Il y a des changements non enregistrés apportés à ce canal de contrôle.',
             manualDuty: 'Cycle Manuel',
             profileToApply: 'Profil à appliquer',
-            automaticOrManual: 'Automatique ou Manuel',
+            controlModeAutomaticTooltip: 'Appliquer un Profil de ventilateur à ce canal',
+            controlModeManualTooltip: 'Définir un cycle de service fixe manuellement',
+            controlModeUnmanagedTooltip:
+                "Ne plus gérer ce canal, laissant le matériel ou pilote de l'appareil décider",
             driverNoSupportControl:
-                'Le pilote actuellement installé ne prend pas en charge le contrôle de ce canal.',
+                'Canal en lecture seule. Le pilote actuel ne prend pas en charge le réglage de la vitesse de ce canal.',
             amdOverdriveNotEnabled:
                 "AMD GPU overdrive n'est pas activé. Activez-le dans les paramètres avancés de cet appareil (redémarrage requis).",
             controlOrView: 'Contrôler ou Afficher',
             applySetting: 'Appliquer le Paramètre',
             defaultProfileInfo:
-                "Le Profil par défaut indique à CoolerControl d'arrêter de gérer<br/>ce ventilateur et de restaurer les paramètres d'origine du pilote.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie sans gestion active.",
+                "Sélectionner « Non géré » indique à CoolerControl d'arrêter de contrôler<br/>ce ventilateur et de rendre le contrôle au pilote du périphérique.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie.",
         },
         customSensors: {
             newSensor: 'Nouveau Capteur',
@@ -517,6 +524,7 @@ export default {
         appInfo: {
             title: 'Info & Outils',
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',
+            changeStartupPage: 'Modifier la page de démarrage dans les paramètres',
             daemonStatus: 'État du Daemon',
             acknowledgeIssues: 'Reconnaître les Problèmes',
             status: 'État',
@@ -530,7 +538,17 @@ export default {
             connected: 'Connecté',
             disconnected: 'Déconnecté',
             helpfulLinks: 'Liens Utiles',
+            uiTour: "Visite de l'interface",
+            uiTourDesc: "Faites une visite guidée de l'application",
             gettingStarted: 'Premiers Pas',
+            gettingStartedGraphProfile: 'Profil graphique',
+            gettingStartedControlsPage: 'page Contrôles',
+            gettingStartedStep1:
+                'Créez un {profile} dans les Profils de ventilateur et façonnez la courbe.',
+            gettingStartedStep2:
+                'Assignez-le sur la {controls} (ou la page du ventilateur). Les Profils ne sont pas appliqués automatiquement.',
+            gettingStartedStep3:
+                'Réutilisez le même Profil sur autant de ventilateurs que vous le souhaitez.',
             helpSettingUp: 'Aide à la configuration du contrôle des ventilateurs',
             hardwareSupport: 'Support Matériel',
             hardwareSupportDesc: 'Appareils pris en charge et installation des pilotes',
@@ -614,7 +632,6 @@ export default {
             editProfile: 'Modifier le profil',
             deleteProfile: 'Supprimer le profil',
             noProfiles: 'Aucun profil configuré',
-            systemDefault: 'Système par défaut',
             profileType: 'Type de profil',
             fixedDuty: 'Vitesse de ventilateur fixe',
             selectedPointDuty: 'Puissance du point sélectionné',
@@ -635,7 +652,7 @@ export default {
             newProfile: 'Nouveau profil',
             tooltip: {
                 profileType:
-                    "Types de profils:<br/>- Par défaut: conserve les paramètres actuels de l'appareil<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
+                    "Types de profils:<br/>- Par défaut: Non géré, rend le contrôle au pilote du périphérique<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
             },
             profileDeleted: 'Profil supprimé',
             profileDuplicated: 'Profil dupliqué',
@@ -967,45 +984,70 @@ export default {
         },
         onboarding: {
             welcome: 'Bienvenue dans CoolerControl !',
-            beforeStart: "Avant de commencer, l'une des choses les plus importantes à savoir est",
-            settingUpDrivers: 'la configuration de vos pilotes matériels',
-            fansNotShowing:
-                "Si vos ventilateurs ou appareils n'apparaissent pas ou ne peuvent pas être contrôlés, cela est souvent dû à des pilotes du noyau manquants ou obsolètes.",
-            checkDocs:
-                "Avant d'ouvrir un problème, veuillez confirmer que tous les pilotes ont été correctement chargés en",
-            checkingDocs: 'consultant la documentation de Support Matériel',
+            gettingStartedIntro:
+                "Choisissez une visite pour vous orienter. La Visite Rapide couvre l'essentiel en quelques étapes. La Visite Complète vous guide à travers chaque menu et chaque bouton.",
             startTourAgain:
-                'Remarque : vous pouvez recommencer cette visite à tout moment depuis la page des paramètres.',
-            letsStart: "D'accord, commençons !",
-            dashboards: 'Tableaux de Bord',
-            dashboardsDesc:
-                'Les tableaux de bord permettent de créer des vues personnalisées avec des graphiques pour surveiller les températures, vitesses de ventilateurs et autres données en temps réel.',
+                'Vous pouvez recommencer cette visite à tout moment depuis la page Infos & Outils.',
+            quickTour: 'Visite Rapide',
+            thoroughTour: 'Visite Complète',
+            maybeLater: 'Peut-être plus tard',
+            openGettingStarted: 'Ouvrir la Documentation',
+            finishLater: 'Je vais me débrouiller',
+            appInfo: 'Infos & Outils',
+            appInfoDesc:
+                "Affiche les infos de l'app, le statut du daemon, les journaux, les liens utiles et les outils de test de charge. Un badge sur le logo vous alerte en cas de problème.",
             controls: 'Contrôles',
             controlsDesc:
-                'Les contrôles permettent de régler les vitesses des ventilateurs, appliquer des profils et gérer les dispositifs de refroidissement.',
+                'Réglez les vitesses des ventilateurs, appliquez des Profils et gérez chaque canal détecté depuis un seul endroit.',
             profiles: 'Profils',
             profilesDesc:
-                'Les profils définissent des courbes de ventilateur qui réagissent aux changements de température. Réutilisez le même profil sur plusieurs appareils.',
+                'Les Profils définissent comment un ventilateur réagit aux changements de température. Les Profils Graphiques permettent de dessiner des courbes personnalisées et peuvent être réutilisés sur plusieurs appareils.',
             functions: 'Fonctions',
             functionsDesc:
-                'Les fonctions sont appliquées aux profils pour lisser les transitions de vitesse des ventilateurs et réduire le bruit.',
-            appInfo: "Informations sur l'Application et les Outils",
-            appInfoDesc:
-                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon, les journaux et les outils de charge thermique. Un badge de statut vous alerte en cas de problème.",
+                'Les Fonctions sont appliquées aux Profils pour lisser les transitions de vitesse des ventilateurs et réduire le bruit.',
+            systemMenu: 'Menu Système',
+            systemMenuDesc:
+                'Le menu principal liste les appareils et capteurs de ce système. Chaque section peut être développée pour afficher ses canaux et contrôles assignés.',
+            dashboards: 'Tableaux de Bord',
+            dashboardsDesc:
+                'Les Tableaux de Bord permettent de créer des vues personnalisées avec des graphiques pour surveiller les températures, vitesses de ventilateurs et autres données de capteurs en temps réel.',
+            modes: 'Modes',
+            modesDesc:
+                'Les Modes sont des collections enregistrées de vos paramètres. Basculez entre des configurations comme Silencieux et Performance en un clic.',
+            alerts: 'Alertes',
+            alertsDesc:
+                'Les Alertes vous notifient lorsque les valeurs des capteurs dépassent les seuils que vous choisissez, vous permettant de réagir avant que des problèmes surviennent.',
+            customSensors: 'Capteurs Personnalisés',
+            customSensorsDesc:
+                'Les Capteurs Personnalisés combinent les données existantes de différentes manières, ou exécutent votre propre script comme source de température.',
             quickAdd: 'Ajout Rapide',
             quickAddDesc:
                 'Créez rapidement de nouveaux tableaux de bord, profils, fonctions et plus.',
             dashboardQuick: 'Menu Rapide du Tableau de Bord',
             dashboardQuickDesc:
                 "Accédez à n'importe quel tableau de bord, même lorsque le menu principal est réduit.",
+            modesQuick: 'Menu Rapide des Modes',
+            modesQuickDesc:
+                "Basculez entre vos Modes enregistrés depuis n'importe où dans l'application.",
+            alertsQuick: 'Aperçu des Alertes',
+            alertsQuickDesc:
+                "Affichez l'état actuel de chaque alerte et inspectez leur activité récente.",
+            pluginsQuick: 'Aperçu des Plugins',
+            pluginsQuickDesc:
+                "Parcourez les plugins installés et accédez à n'importe lequel depuis n'importe où dans l'application.",
             settings: 'Paramètres',
             settingsDesc:
                 "Configurez les préférences de l'interface, les options du daemon et le comportement du système.",
+            access: 'Accès',
+            accessDesc: "Gérez votre mot de passe et confirmez votre niveau d'accès actuel.",
             restartMenu: 'Menu de Redémarrage',
             restartMenuDesc: "Rechargez l'interface ou redémarrez le daemon système si nécessaire.",
+            collapseMenu: 'Réduire le Menu',
+            collapseMenuDesc:
+                "Développez ou réduisez le menu principal pour donner plus de place au reste de l'app.",
             thatsIt: "C'est tout !",
-            ready: 'Si des appareils sont manquants ou non contrôlables, essayez',
-            startNow: 'Tout est prêt !',
+            startNow:
+                'Vous êtes prêt. Ouvrez la documentation pour en savoir plus, ou lancez-vous et configurez vos appareils.',
         },
         axisOptions: {
             title: "Options d'Axe",
@@ -1045,7 +1087,7 @@ export default {
                 manualSpeed: 'Vitesse Manuelle',
                 createNewProfile: 'Nouveau Profil',
                 existingProfile: 'Choisir un Profil',
-                resetSettings: 'Réinitialiser par Défaut',
+                resetSettings: 'Réinitialiser à Non géré',
                 chooseProfileNameType: 'Choisir un Nom et un Type de Profil',
                 newDefaultProfile: 'Nouveau Profil par Défaut',
                 profileCreatedApplied: 'Profil créé et appliqué',
@@ -1279,6 +1321,11 @@ export default {
         channelViewType: {
             control: 'Contrôle',
             dashboard: 'Tableau de Bord',
+        },
+        startupPage: {
+            appInfo: 'Info & Outils',
+            homeDashboard: "Tableau de bord d'accueil",
+            controls: 'Contrôles',
         },
         alertState: {
             active: 'Actif',

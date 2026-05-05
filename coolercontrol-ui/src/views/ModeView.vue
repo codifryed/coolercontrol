@@ -28,6 +28,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Mode } from '@/models/Mode.ts'
 import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
+import { getProfileDisplayName } from '@/models/Profile.ts'
 import Button from 'primevue/button'
 import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
@@ -99,12 +100,15 @@ const initTableData = () => {
                     settingInfo = `${channelModeSetting.speed_fixed}%`
                 } else if (channelModeSetting.profile_uid != null) {
                     settingType = 'Profile'
+                    const profile = settingsStore.profiles.find(
+                        (p) => p.uid === channelModeSetting.profile_uid,
+                    )
                     settingInfo =
-                        channelModeSetting.profile_uid === '0'
-                            ? 'Default Profile'
-                            : (settingsStore.profiles.find(
-                                  (profile) => profile.uid === channelModeSetting.profile_uid,
-                              )?.name ?? 'Unknown')
+                        profile != null
+                            ? getProfileDisplayName(profile)
+                            : channelModeSetting.profile_uid === '0'
+                              ? t('common.unmanaged')
+                              : 'Unknown'
                 }
             } else if (channelInfo.lighting_modes.length > 0) {
                 if (channelModeSetting == null) {

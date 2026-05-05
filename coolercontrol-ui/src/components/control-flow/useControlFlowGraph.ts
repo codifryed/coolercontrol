@@ -21,7 +21,7 @@ import { MarkerType, type Node, type Edge } from '@vue-flow/core'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceType, type UID } from '@/models/Device'
-import { ProfileType } from '@/models/Profile'
+import { ProfileType, getProfileDisplayName } from '@/models/Profile'
 import type { CustomSensor } from '@/models/CustomSensor'
 import type { ChainSummary } from './computeChainSummary'
 
@@ -210,7 +210,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 position: { x: 0, y: 0 },
                 data: {
                     profileUID: profile.uid,
-                    profileName: profile.name,
+                    profileName: getProfileDisplayName(profile),
                     profileType: profile.p_type,
                     speedFixed: profile.speed_fixed,
                     mixFunctionType: profile.mix_function_type,
