@@ -896,8 +896,11 @@ export default {
             newPasswordTitle: 'Enter A New Password',
             invalidPassword: 'Invalid Password',
             forgotPassword: 'Forgot password?',
-            passwordHelp:
-                'Forgot your password? Reset it with:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Then refresh the UI to set a new password.',
+            forgotPasswordHelpIntro:
+                'Run this command in a terminal as root, then click Reload UI:',
+            forgotPasswordCopyCommand: 'Copy command',
+            forgotPasswordCommandCopied: 'Command copied to clipboard',
+            forgotPasswordReloadButton: 'Reload UI',
             continueButton: 'Continue',
             backButton: 'Back',
             passwordMismatch: 'Passwords do not match',

@@ -898,8 +898,11 @@ export default {
             newPasswordTitle: 'एक नया पासवर्ड दर्ज करें',
             invalidPassword: 'अमान्य पासवर्ड',
             forgotPassword: 'पासवर्ड भूल गए?',
-            passwordHelp:
-                'पासवर्ड भूल गए? इसे रीसेट करें:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>फिर नया पासवर्ड सेट करने के लिए UI को रिफ्रेश करें।',
+            forgotPasswordHelpIntro:
+                'इस कमांड को टर्मिनल में रूट के रूप में चलाएं, फिर UI रीलोड पर क्लिक करें:',
+            forgotPasswordCopyCommand: 'कमांड कॉपी करें',
+            forgotPasswordCommandCopied: 'कमांड क्लिपबोर्ड पर कॉपी हो गया',
+            forgotPasswordReloadButton: 'UI रीलोड',
             continueButton: 'जारी रखें',
             backButton: 'वापस',
             passwordMismatch: 'पासवर्ड मेल नहीं खाते',
@@ -1192,8 +1195,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'अनधिकृत',
-            detail: 'इस कार्रवाई को पूरा करने के लिए आपको लॉग इन होना आवश्यक है',
+            summary: 'सत्र समाप्त हो गया',
+            detail: 'आपका सत्र समाप्त हो गया है। फिर से लॉग इन करने के लिए रीलोड किया जा रहा है।',
         },
         login: {
             success: {

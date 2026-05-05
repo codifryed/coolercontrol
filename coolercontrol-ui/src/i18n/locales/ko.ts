@@ -887,8 +887,11 @@ export default {
             newPasswordTitle: '새 비밀번호 입력',
             invalidPassword: '잘못된 비밀번호',
             forgotPassword: '비밀번호를 잊으셨나요?',
-            passwordHelp:
-                '비밀번호를 잊으셨나요? 다음 명령어로 재설정하세요:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>그런 다음 UI를 새로고침하여 새 비밀번호를 설정하세요.',
+            forgotPasswordHelpIntro:
+                '터미널에서 root 권한으로 이 명령어를 실행한 후 UI 다시 로드를 클릭하세요:',
+            forgotPasswordCopyCommand: '명령어 복사',
+            forgotPasswordCommandCopied: '명령어가 클립보드에 복사되었습니다',
+            forgotPasswordReloadButton: 'UI 다시 로드',
             continueButton: '계속',
             backButton: '뒤로',
             passwordMismatch: '비밀번호가 일치하지 않습니다',
@@ -1182,8 +1185,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: '권한 없음',
-            detail: '이 작업을 완료하려면 로그인해야 함',
+            summary: '세션 만료됨',
+            detail: '세션이 만료되었습니다. 다시 로그인하기 위해 다시 로드 중입니다.',
         },
         login: {
             success: {

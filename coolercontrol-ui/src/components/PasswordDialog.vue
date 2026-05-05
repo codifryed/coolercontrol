@@ -23,9 +23,38 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import FloatLabel from 'primevue/floatlabel'
 import { useI18n } from 'vue-i18n'
+import { useToast } from 'primevue/usetoast'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const { t } = useI18n()
+const toast = useToast()
+const deviceStore = useDeviceStore()
+
+const RESET_COMMAND = 'sudo coolercontrold --reset-password'
+const showForgotPasswordHelp: Ref<boolean> = ref(false)
+
+const toggleForgotPasswordHelp = (): void => {
+    showForgotPasswordHelp.value = !showForgotPasswordHelp.value
+}
+
+const copyResetCommand = async (): Promise<void> => {
+    try {
+        await navigator.clipboard.writeText(RESET_COMMAND)
+        toast.add({
+            severity: 'success',
+            summary: t('components.password.forgotPasswordCommandCopied'),
+            life: 1500,
+        })
+    } catch {
+        // Clipboard write may fail (insecure context, permissions); silently
+        // ignore — the command is still visible for manual selection.
+    }
+}
+
+const reloadAfterReset = (): void => {
+    deviceStore.reloadUI(true)
+}
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
 const promptMessage: string | undefined = dialogRef.value.data.promptMessage
@@ -283,16 +312,41 @@ nextTick(async () => {
             <br />
             <span
                 v-if="step === 2 || !setPasswd"
-                class="text-text-color-secondary text-sm underline underline-offset-2 select-none"
-                v-tooltip.bottom="{
-                    value: t('components.password.passwordHelp'),
-                    autoHide: false,
-                    escape: false,
-                    hideDelay: 800,
-                }"
+                class="text-text-color-secondary text-sm underline underline-offset-2 select-none cursor-pointer"
+                role="button"
+                tabindex="0"
+                @click="toggleForgotPasswordHelp"
+                @keydown.enter.prevent="toggleForgotPasswordHelp"
+                @keydown.space.prevent="toggleForgotPasswordHelp"
             >
                 {{ t('components.password.forgotPassword') }}
             </span>
+            <div
+                v-if="showForgotPasswordHelp && (step === 2 || !setPasswd)"
+                class="w-full mt-3 flex flex-col gap-2"
+            >
+                <p class="text-text-color-secondary text-sm">
+                    {{ t('components.password.forgotPasswordHelpIntro') }}
+                </p>
+                <div
+                    class="flex items-center gap-2 bg-bg-two border border-border-one rounded px-2 py-1"
+                >
+                    <code class="flex-1 font-mono text-sm select-all break-all">{{
+                        RESET_COMMAND
+                    }}</code>
+                    <Button
+                        text
+                        size="small"
+                        icon="pi pi-copy"
+                        :aria-label="t('components.password.forgotPasswordCopyCommand')"
+                        v-tooltip.top="t('components.password.forgotPasswordCopyCommand')"
+                        @click="copyResetCommand"
+                    />
+                </div>
+                <Button class="bg-accent/80 hover:!bg-accent/100 mt-1" @click="reloadAfterReset">
+                    {{ t('components.password.forgotPasswordReloadButton') }}
+                </Button>
+            </div>
         </footer>
     </form>
 </template>

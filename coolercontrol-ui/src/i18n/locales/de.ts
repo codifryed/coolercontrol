@@ -919,8 +919,11 @@ export default {
             newPasswordTitle: 'Geben Sie ein neues Passwort ein',
             invalidPassword: 'Ungültiges Passwort',
             forgotPassword: 'Passwort vergessen?',
-            passwordHelp:
-                'Passwort vergessen? Setzen Sie es zurück mit:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Aktualisieren Sie dann die UI, um ein neues Passwort festzulegen.',
+            forgotPasswordHelpIntro:
+                'Führen Sie diesen Befehl als Root im Terminal aus und klicken Sie dann auf "UI neu laden":',
+            forgotPasswordCopyCommand: 'Befehl kopieren',
+            forgotPasswordCommandCopied: 'Befehl in die Zwischenablage kopiert',
+            forgotPasswordReloadButton: 'UI neu laden',
             continueButton: 'Weiter',
             backButton: 'Zurück',
             passwordMismatch: 'Passwörter stimmen nicht überein',
@@ -1213,8 +1216,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'Nicht autorisiert',
-            detail: 'Sie müssen angemeldet sein, um diese Aktion abzuschließen',
+            summary: 'Sitzung abgelaufen',
+            detail: 'Ihre Sitzung ist abgelaufen. Die Seite wird neu geladen, um sich erneut anzumelden.',
         },
         login: {
             success: {

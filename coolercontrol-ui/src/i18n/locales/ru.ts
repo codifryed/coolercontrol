@@ -903,8 +903,11 @@ export default {
             newPasswordTitle: 'Введите новый пароль',
             invalidPassword: 'Неверный пароль',
             forgotPassword: 'Забыли пароль?',
-            passwordHelp:
-                'Забыли пароль? Сбросьте его командой:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Затем обновите интерфейс, чтобы установить новый пароль.',
+            forgotPasswordHelpIntro:
+                'Выполните эту команду в терминале от имени root, затем нажмите "Перезагрузить UI":',
+            forgotPasswordCopyCommand: 'Скопировать команду',
+            forgotPasswordCommandCopied: 'Команда скопирована в буфер обмена',
+            forgotPasswordReloadButton: 'Перезагрузить UI',
             continueButton: 'Продолжить',
             backButton: 'Назад',
             passwordMismatch: 'Пароли не совпадают',
@@ -1195,8 +1198,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'Не авторизовано',
-            detail: 'Вам необходимо войти в систему для выполнения этого действия',
+            summary: 'Сессия истекла',
+            detail: 'Ваша сессия истекла. Перезагрузка для повторного входа.',
         },
         login: {
             success: {

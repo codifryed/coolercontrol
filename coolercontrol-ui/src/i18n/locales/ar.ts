@@ -889,8 +889,11 @@ export default {
             newPasswordTitle: 'أدخل كلمة مرور جديدة',
             invalidPassword: 'كلمة مرور غير صالحة',
             forgotPassword: 'هل نسيت كلمة المرور؟',
-            passwordHelp:
-                'هل نسيت كلمة المرور؟ أعد تعيينها بتشغيل:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>ثم قم بتحديث واجهة المستخدم لتعيين كلمة مرور جديدة.',
+            forgotPasswordHelpIntro:
+                'قم بتشغيل هذا الأمر في الطرفية كمستخدم جذر، ثم انقر على إعادة تحميل واجهة المستخدم:',
+            forgotPasswordCopyCommand: 'نسخ الأمر',
+            forgotPasswordCommandCopied: 'تم نسخ الأمر إلى الحافظة',
+            forgotPasswordReloadButton: 'إعادة تحميل واجهة المستخدم',
             continueButton: 'متابعة',
             backButton: 'رجوع',
             passwordMismatch: 'كلمات المرور غير متطابقة',
@@ -1172,8 +1175,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'غير مصرح',
-            detail: 'تحتاج إلى تسجيل الدخول لإكمال هذا الإجراء',
+            summary: 'انتهت الجلسة',
+            detail: 'انتهت صلاحية جلستك. جارٍ إعادة التحميل لتسجيل الدخول مرة أخرى.',
         },
         login: {
             success: {
