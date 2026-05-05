@@ -104,6 +104,7 @@ const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
+const SESSION_COOKIE_EXPIRATION: time::Duration = time::Duration::days(365);
 
 type Port = u16;
 type SessionStoreType = CachingSessionStore<MemorySessionStore, FileSessionStore>;
@@ -182,7 +183,7 @@ pub async fn start_server<'s>(
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
-        .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
+        .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively
