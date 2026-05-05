@@ -75,6 +75,7 @@ import { useI18n } from 'vue-i18n'
 import OverlayProfileEditorChart from '@/components/OverlayProfileEditorChart.vue'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import { useProfileLimitInfo, type LimitInfo } from '@/composables/useProfileLimitInfo.ts'
 
 echarts.use([
     GridComponent,
@@ -105,6 +106,7 @@ const colors = useThemeColorsStore()
 const toast = useToast()
 const confirm = useConfirm()
 const { t } = useI18n()
+const { getLimitInfo } = useProfileLimitInfo()
 
 const contextIsDirty: Ref<boolean> = ref(false)
 const tableDataKey: Ref<number> = ref(0)
@@ -133,6 +135,7 @@ interface AvailableTemp {
     tempFrontendName: string
     lineColor: string
     temp: string
+    limitInfo: LimitInfo | null
 }
 
 interface AvailableTempSources {
@@ -140,6 +143,7 @@ interface AvailableTempSources {
     deviceName: string
     profileMinLength: number
     profileMaxLength: number
+    amdGpuOverdrive?: boolean
     tempMin: number
     tempMax: number
     temps: Array<AvailableTemp>
@@ -150,6 +154,7 @@ interface CurrentTempSource {
     deviceName: string
     profileMinLength: number
     profileMaxLength: number
+    amdGpuOverdrive?: boolean
     tempMin: number
     tempMax: number
     tempName: string
@@ -170,6 +175,7 @@ const fillTempSources = () => {
             deviceName: deviceSettings.name,
             profileMinLength: device.info.profile_min_length,
             profileMaxLength: device.info.profile_max_length,
+            amdGpuOverdrive: device.info.amd_gpu_overdrive,
             tempMin: device.info.temp_min,
             tempMax: device.info.temp_max,
             temps: [],
@@ -181,6 +187,11 @@ const fillTempSources = () => {
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
                 temp: temp.temp.toFixed(1),
+                limitInfo: getLimitInfo({
+                    profileMaxLength: deviceSource.profileMaxLength,
+                    amdGpuOverdrive: deviceSource.amdGpuOverdrive,
+                    tempName: temp.name,
+                }),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -206,6 +217,7 @@ const getCurrentTempSource = (
             deviceName: tmpDevice.deviceName,
             profileMinLength: tmpDevice.profileMinLength,
             profileMaxLength: tmpDevice.profileMaxLength,
+            amdGpuOverdrive: tmpDevice.amdGpuOverdrive,
             tempMin: tmpDevice.tempMin,
             tempMax: tmpDevice.tempMax,
             tempName: tmpTemp.tempName,
@@ -221,6 +233,7 @@ let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
 )
 
 const chosenTemp: Ref<AvailableTemp | undefined> = ref()
+const selectedLimitInfo = computed<LimitInfo | null>(() => chosenTemp.value?.limitInfo ?? null)
 const chosenFunction: Ref<Function> = ref(
     settingsStore.functions.find((f) => f.uid === currentProfile.value.function_uid)!,
 )
@@ -2108,7 +2121,19 @@ function onKnobMouseup(e: MouseEvent) {
                                         :style="{ color: slotProps.option.lineColor }"
                                     />{{ slotProps.option.tempFrontendName }}
                                 </div>
-                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                                <div class="flex items-center gap-3">
+                                    <span
+                                        v-if="slotProps.option.limitInfo != null"
+                                        class="text-xs opacity-70"
+                                        v-tooltip.left="slotProps.option.limitInfo.message"
+                                    >
+                                        {{ slotProps.option.limitInfo.badge }}
+                                    </span>
+                                    <span
+                                        >{{ slotProps.option.temp }}
+                                        {{ t('common.tempUnit') }}</span
+                                    >
+                                </div>
                             </div>
                         </template>
                     </Select>
@@ -2174,7 +2199,7 @@ function onKnobMouseup(e: MouseEvent) {
         </div>
     </div>
     <!-- The UI Display: -->
-    <div v-if="showGraph" class="flex">
+    <div v-if="showGraph" class="flex flex-col w-full">
         <div class="flex flex-row justify-between mt-4 w-full">
             <InputNumber
                 :placeholder="t('components.axisOptions.min')"
@@ -2235,6 +2260,17 @@ function onKnobMouseup(e: MouseEvent) {
                     <span class="pi pi-minus" />
                 </template>
             </InputNumber>
+        </div>
+        <div
+            v-if="selectedLimitInfo != null"
+            class="flex flex-row items-center justify-center mt-2 mx-4 gap-2 text-sm opacity-70"
+        >
+            <svg-icon
+                type="mdi"
+                :path="mdiInformationSlabCircleOutline"
+                :size="deviceStore.getREMSize(1.0)"
+            />
+            <span>{{ selectedLimitInfo.message }}</span>
         </div>
     </div>
     <div id="profile-display" class="flex flex-col h-full">
