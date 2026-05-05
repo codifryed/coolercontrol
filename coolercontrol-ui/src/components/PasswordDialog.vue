@@ -311,7 +311,7 @@ nextTick(async () => {
             </Button>
             <br />
             <span
-                v-if="step === 2 || !setPasswd"
+                v-if="!autoFilledCurrentPasswd"
                 class="text-text-color-secondary text-sm underline underline-offset-2 select-none cursor-pointer"
                 role="button"
                 tabindex="0"
@@ -322,7 +322,7 @@ nextTick(async () => {
                 {{ t('components.password.forgotPassword') }}
             </span>
             <div
-                v-if="showForgotPasswordHelp && (step === 2 || !setPasswd)"
+                v-if="showForgotPasswordHelp && !autoFilledCurrentPasswd"
                 class="w-full mt-3 flex flex-col gap-2"
             >
                 <p class="text-text-color-secondary text-sm">
