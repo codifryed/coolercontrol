@@ -874,8 +874,10 @@ export default {
             newPasswordTitle: '輸入新密碼',
             invalidPassword: '密碼無效',
             forgotPassword: '忘記密碼？',
-            passwordHelp:
-                '忘記密碼？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然後刷新UI以設置新密碼。',
+            forgotPasswordHelpIntro: '以 root 身分在終端機中執行此命令，然後點擊重新載入 UI：',
+            forgotPasswordCopyCommand: '複製命令',
+            forgotPasswordCommandCopied: '命令已複製到剪貼簿',
+            forgotPasswordReloadButton: '重新載入 UI',
             continueButton: '繼續',
             backButton: '返回',
             passwordMismatch: '密碼不匹配',
@@ -1155,8 +1157,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: '未授權',
-            detail: '您需要登錄才能完成此操作',
+            summary: '工作階段已過期',
+            detail: '您的工作階段已過期。正在重新載入以重新登入。',
         },
         login: {
             success: {

@@ -872,8 +872,10 @@ export default {
             newPasswordTitle: '输入新密码',
             invalidPassword: '密码无效',
             forgotPassword: '忘记密码？',
-            passwordHelp:
-                '忘记密码？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然后刷新UI以设置新密码。',
+            forgotPasswordHelpIntro: '以 root 身份在终端中运行此命令，然后点击重新加载 UI：',
+            forgotPasswordCopyCommand: '复制命令',
+            forgotPasswordCommandCopied: '命令已复制到剪贴板',
+            forgotPasswordReloadButton: '重新加载 UI',
             continueButton: '继续',
             backButton: '返回',
             passwordMismatch: '密码不匹配',
@@ -1154,8 +1156,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: '未授权',
-            detail: '您需要登录才能完成此操作',
+            summary: '会话已过期',
+            detail: '您的会话已过期。正在重新加载以重新登录。',
         },
         login: {
             success: {

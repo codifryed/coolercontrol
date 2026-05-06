@@ -2559,8 +2559,10 @@ mod tests {
             };
 
             // Force the legacy name onto the shipped default profile.
-            let mut legacy = Profile::default();
-            legacy.name = "Default Profile".to_string();
+            let legacy = Profile {
+                name: "Default Profile".to_string(),
+                ..Profile::default()
+            };
             assert_eq!(legacy.uid, *DEFAULT_PROFILE_UID);
             config.update_profile(legacy).unwrap();
 
@@ -2627,8 +2629,10 @@ mod tests {
                 document: RefCell::new(document),
             };
 
-            let mut custom = Profile::default();
-            custom.name = "My Custom Default".to_string();
+            let custom = Profile {
+                name: "My Custom Default".to_string(),
+                ..Profile::default()
+            };
             config.update_profile(custom).unwrap();
 
             let profiles = config.get_profiles().await.unwrap();
@@ -2667,13 +2671,13 @@ mod tests {
             );
 
             // Verify the key is actually removed from the document
-            let doc = config.document.borrow();
-            assert!(
-                doc["settings"].get("disabled_plugins").is_none(),
-                "key should be removed from document"
-            );
-
-            drop(doc);
+            {
+                let doc = config.document.borrow();
+                assert!(
+                    doc["settings"].get("disabled_plugins").is_none(),
+                    "key should be removed from document"
+                );
+            }
             cc_fs::remove_file(path).await.unwrap();
         });
     }

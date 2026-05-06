@@ -38,7 +38,6 @@ mod stress_test;
 mod tls;
 mod tokens;
 
-use crate::admin;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DetectHandle, DeviceHandle, FunctionHandle,
@@ -56,6 +55,7 @@ use crate::paths;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
+use crate::{admin, cc_fs};
 use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
@@ -81,9 +81,10 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::Not;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -97,13 +98,18 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::service::PrivateCookie;
-use tower_sessions::{CachingSessionStore, ExpiredDeletion, Expiry, SessionManagerLayer};
+use tower_sessions::session::Id;
+use tower_sessions::{
+    CachingSessionStore, ExpiredDeletion, Expiry, SessionManagerLayer, SessionStore,
+};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
+const PASSWD_WATCH_INTERVAL_SECS: u64 = 5;
+const SESSION_COOKIE_EXPIRATION: time::Duration = time::Duration::days(365);
 
 type Port = u16;
 type SessionStoreType = CachingSessionStore<MemorySessionStore, FileSessionStore>;
@@ -174,6 +180,18 @@ pub async fn start_server<'s>(
     let file_store = FileSessionStore::new(sessions_dir);
     let memory_store = MemorySessionStore::new(10);
     let expired_deletion_store = file_store.clone();
+    // Watch the password file for external modification (e.g. CLI
+    // `--reset-password` against a running daemon) and clear the
+    // in-memory session cache so cached sessions stop working
+    // immediately. The on-disk session files are already removed by
+    // the CLI's `clear_session_files`; without this, cached sessions
+    // would keep authenticating until LRU eviction or expiry.
+    main_scope.spawn(watch_passwd_file(
+        paths::passwd_file().to_path_buf(),
+        memory_store.clone(),
+        cancel_token.clone(),
+        Duration::from_secs(PASSWD_WATCH_INTERVAL_SECS),
+    ));
     let caching_store = CachingSessionStore::new(memory_store, file_store);
     let session_layer = SessionManagerLayer::new(caching_store)
         .with_name(SESSION_COOKIE_NAME)
@@ -182,7 +200,7 @@ pub async fn start_server<'s>(
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
-        .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
+        .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively
@@ -324,6 +342,48 @@ async fn run_all_api_servers(
             log::error!("API server task error: {e}");
         }
     }
+}
+
+/// Polls the password file's mtime and clears the in-memory session
+/// cache on change. The CLI `--reset-password` runs in a separate
+/// process that cannot reach the running daemon's `MemorySessionStore`,
+/// so this watcher closes the gap between disk-side cleanup
+/// (`clear_session_files`) and in-memory cache invalidation.
+///
+/// Lives on the main thread runtime alongside `main_loop` to keep
+/// wakeups coalesced. Shuts down with the rest of the structured
+/// concurrency tree via `cancel_token`.
+async fn watch_passwd_file(
+    passwd_file: std::path::PathBuf,
+    memory_store: MemorySessionStore,
+    cancel_token: CancellationToken,
+    interval: Duration,
+) {
+    let mut last_mtime = passwd_file_mtime(&passwd_file);
+    while cancel_token.is_cancelled().not() {
+        tokio::select! {
+            biased;
+            () = cancel_token.cancelled() => break,
+            () = tokio::time::sleep(interval) => {
+                let current_mtime = passwd_file_mtime(&passwd_file);
+                if current_mtime == last_mtime {
+                    continue;
+                }
+                last_mtime = current_mtime;
+                // `MemorySessionStore::delete` clears all entries by
+                // design (single-user system); the Id argument is
+                // unused. Errors here are unreachable because the
+                // implementation only locks a sync mutex and clears
+                // the map.
+                let _ = SessionStore::delete(&memory_store, &Id::default()).await;
+                info!("Password changed externally, cleared session cache.");
+            }
+        }
+    }
+}
+
+fn passwd_file_mtime(path: &Path) -> Option<SystemTime> {
+    cc_fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
 async fn security_headers_middleware(req: Request, next: middleware::Next) -> Response {
@@ -1433,5 +1493,110 @@ mod tests {
         assert!(validate_name_string("Ünïcödé Nàmé").is_ok());
         assert!(validate_name_string("日本語").is_ok());
         assert!(validate_name_string("émojis 🎉").is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_watch_passwd_file_clears_cache_on_mtime_change() {
+        // Goal: verify that the watcher clears the in-memory session
+        // cache when the password file's mtime changes (simulating a
+        // CLI `--reset-password` against a running daemon).
+        use std::collections::HashMap;
+        use time::OffsetDateTime;
+        use tower_sessions::session::Record;
+
+        let dir = tempfile::tempdir().unwrap();
+        let passwd_file = dir.path().join("passwd");
+        std::fs::write(&passwd_file, b"original-hash").unwrap();
+        // Initial mtime needs to be old enough that a rewrite below
+        // produces a strictly different mtime even on filesystems with
+        // 1s mtime resolution.
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        let store = MemorySessionStore::new(10);
+        let mut record = Record {
+            id: Id::default(),
+            data: HashMap::default(),
+            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+        };
+        store.create(&mut record).await.unwrap();
+        let stored_id = record.id;
+        assert!(
+            store.load(&stored_id).await.unwrap().is_some(),
+            "Session should exist before reset."
+        );
+
+        let cancel_token = CancellationToken::new();
+        let watcher_handle = tokio::spawn(watch_passwd_file(
+            passwd_file.clone(),
+            store.clone(),
+            cancel_token.clone(),
+            Duration::from_millis(50),
+        ));
+        // Let the watcher run its initial mtime read before we mutate
+        // the file. Without this, the watcher's first read sees the
+        // post-mutation mtime as its baseline and never detects a
+        // change.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Simulate `coolercontrold --reset-password`: rewrite the file.
+        std::fs::write(&passwd_file, b"default-hash").unwrap();
+
+        // Poll until the watcher catches the change. Bound the wait so
+        // a regression cannot hang the test runner.
+        let mut cleared = false;
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if store.load(&stored_id).await.unwrap().is_none() {
+                cleared = true;
+                break;
+            }
+        }
+        cancel_token.cancel();
+        let _ = watcher_handle.await;
+        assert!(
+            cleared,
+            "Session cache should be cleared after password file mtime changes."
+        );
+    }
+
+    #[tokio::test]
+    async fn test_watch_passwd_file_no_clear_when_unchanged() {
+        // Goal: verify that the watcher leaves the cache alone when
+        // the password file is untouched, so we do not invalidate
+        // sessions on every poll.
+        use std::collections::HashMap;
+        use time::OffsetDateTime;
+        use tower_sessions::session::Record;
+
+        let dir = tempfile::tempdir().unwrap();
+        let passwd_file = dir.path().join("passwd");
+        std::fs::write(&passwd_file, b"hash").unwrap();
+
+        let store = MemorySessionStore::new(10);
+        let mut record = Record {
+            id: Id::default(),
+            data: HashMap::default(),
+            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+        };
+        store.create(&mut record).await.unwrap();
+        let stored_id = record.id;
+
+        let cancel_token = CancellationToken::new();
+        let watcher_handle = tokio::spawn(watch_passwd_file(
+            passwd_file,
+            store.clone(),
+            cancel_token.clone(),
+            Duration::from_millis(20),
+        ));
+
+        // Let several poll cycles run without modifying the file.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        cancel_token.cancel();
+        let _ = watcher_handle.await;
+
+        assert!(
+            store.load(&stored_id).await.unwrap().is_some(),
+            "Session should still be present when password file is unchanged."
+        );
     }
 }

@@ -918,8 +918,11 @@ export default {
             newPasswordTitle: 'Entrez Un Nouveau Mot de Passe',
             invalidPassword: 'Mot de Passe Invalide',
             forgotPassword: 'Mot de passe oublié ?',
-            passwordHelp:
-                "Mot de passe oublié ? Réinitialisez-le avec :<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Puis actualisez l'UI pour définir un nouveau mot de passe.",
+            forgotPasswordHelpIntro:
+                "Exécutez cette commande dans un terminal en tant que root, puis cliquez sur Recharger l'UI :",
+            forgotPasswordCopyCommand: 'Copier la commande',
+            forgotPasswordCommandCopied: 'Commande copiée dans le presse-papiers',
+            forgotPasswordReloadButton: "Recharger l'UI",
             continueButton: 'Continuer',
             backButton: 'Retour',
             passwordMismatch: 'Les mots de passe ne correspondent pas',
@@ -1219,8 +1222,8 @@ export default {
     },
     device_store: {
         unauthorized: {
-            summary: 'Non Autorisé',
-            detail: 'Vous devez être connecté pour effectuer cette action',
+            summary: 'Session expirée',
+            detail: 'Votre session a expiré. Rechargement pour se reconnecter.',
         },
         login: {
             success: {
