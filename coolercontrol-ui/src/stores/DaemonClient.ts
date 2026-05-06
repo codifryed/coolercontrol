@@ -115,7 +115,8 @@ export default class DaemonClient {
             retryCondition: async (error: any): Promise<boolean> => {
                 if (
                     error.response &&
-                    (error.response.status === 401 || error.response.status === 403)
+                    (error.response.status === 401 || error.response.status === 403) &&
+                    !this.isAuthEndpoint(error.config?.url)
                 ) {
                     await this.unauthorizedCallback(error)
                 }
@@ -125,6 +126,15 @@ export default class DaemonClient {
                 console.error('Error communicating with CoolerControl Daemon. Retry #' + retryCount)
             },
         })
+    }
+
+    // Endpoints whose 401 is expected during normal flows: verify-session
+    // returns 401 when no session cookie exists yet (first load), and login
+    // returns 401 on a wrong password. Treating either as a session-expired
+    // event would trigger reloadUI in a tight loop and rate-limit the daemon.
+    private isAuthEndpoint(url: string | undefined): boolean {
+        if (url == null) return false
+        return url.endsWith('/login') || url.endsWith('/verify-session')
     }
 
     private logError(err: any): void {
