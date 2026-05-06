@@ -656,6 +656,10 @@ export default {
             moveTable: '다른 모서리로 이동',
             addPointAfter: '이후에 포인트 추가',
             removePoint: '포인트 제거',
+            curvePointLimitBadge: '최대 {n}점',
+            curveLimitedByAmdGpu:
+                'AMD GPU 하드웨어 팬 커브에 의해 커브가 {n}개 점으로 제한됩니다.',
+            curveLimitedByFirmware: '장치 펌웨어 팬 커브에 의해 커브가 {n}개 점으로 제한됩니다.',
         },
         controls: {
             viewType: '보기 유형',

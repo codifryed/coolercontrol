@@ -710,6 +710,11 @@ export default {
             moveTable: '他のコーナーに移動',
             addPointAfter: '後にポイントを追加',
             removePoint: 'ポイントを削除',
+            curvePointLimitBadge: '最大{n}点',
+            curveLimitedByAmdGpu:
+                'カーブはAMD GPUハードウェアファンカーブにより{n}点に制限されています。',
+            curveLimitedByFirmware:
+                'カーブはデバイスファームウェアファンカーブにより{n}点に制限されています。',
         },
         controls: {
             viewType: 'ビュータイプ',

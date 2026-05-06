@@ -668,6 +668,11 @@ export default {
             moveTable: 'Переместить в другой угол',
             addPointAfter: 'Добавить точку после',
             removePoint: 'Удалить точку',
+            curvePointLimitBadge: 'макс. {n} тчк',
+            curveLimitedByAmdGpu:
+                'Кривая ограничена {n} точками аппаратной кривой вентилятора AMD GPU.',
+            curveLimitedByFirmware:
+                'Кривая ограничена {n} точками кривой вентилятора прошивки устройства.',
         },
         controls: {
             viewType: 'Тип отображения',

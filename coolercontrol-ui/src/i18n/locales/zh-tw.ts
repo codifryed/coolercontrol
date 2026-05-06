@@ -561,6 +561,9 @@ export default {
             moveTable: '移動到其他角落',
             addPointAfter: '在後面添加點',
             removePoint: '刪除點',
+            curvePointLimitBadge: '最多 {n} 點',
+            curveLimitedByAmdGpu: '曲線被 AMD GPU 硬體風扇曲線限制為 {n} 點。',
+            curveLimitedByFirmware: '曲線被裝置韌體風扇曲線限制為 {n} 點。',
         },
         customSensors: {
             newSensor: '新傳感器',
