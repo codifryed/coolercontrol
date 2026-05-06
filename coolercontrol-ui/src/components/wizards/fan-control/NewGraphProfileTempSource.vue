@@ -211,9 +211,7 @@ watch(rawStore.currentDeviceStatus, () => {
                                 >
                                     {{ slotProps.option.limitInfo.badge }}
                                 </span>
-                                <span
-                                    >{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</span
-                                >
+                                <span>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</span>
                             </div>
                         </div>
                     </template>

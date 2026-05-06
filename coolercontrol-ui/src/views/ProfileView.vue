@@ -2224,7 +2224,7 @@ function onKnobMouseup(e: MouseEvent) {
                     <span class="pi pi-minus" />
                 </template>
             </InputNumber>
-            <div class="flex flex-row">
+            <div class="flex flex-row items-center">
                 <div
                     class="p-2 mx-4 leading-none items-center"
                     v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
@@ -2236,6 +2236,9 @@ function onKnobMouseup(e: MouseEvent) {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </div>
+                <span v-if="selectedLimitInfo != null" class="text-sm opacity-70">
+                    {{ selectedLimitInfo.message }}
+                </span>
             </div>
             <InputNumber
                 :placeholder="t('components.axisOptions.max')"
@@ -2260,17 +2263,6 @@ function onKnobMouseup(e: MouseEvent) {
                     <span class="pi pi-minus" />
                 </template>
             </InputNumber>
-        </div>
-        <div
-            v-if="selectedLimitInfo != null"
-            class="flex flex-row items-center justify-center mt-2 mx-4 gap-2 text-sm opacity-70"
-        >
-            <svg-icon
-                type="mdi"
-                :path="mdiInformationSlabCircleOutline"
-                :size="deviceStore.getREMSize(1.0)"
-            />
-            <span>{{ selectedLimitInfo.message }}</span>
         </div>
     </div>
     <div id="profile-display" class="flex flex-col h-full">
