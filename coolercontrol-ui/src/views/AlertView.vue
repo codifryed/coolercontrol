@@ -396,7 +396,7 @@ onMounted(async () => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
-                    v-tooltip.bottom="t('views.alerts.saveAlert')"
+                    v-tooltip.top="t('views.alerts.saveAlert')"
                     :disabled="chosenChannelSource == null || chosenName.length === 0"
                     @click="saveAlert"
                 >

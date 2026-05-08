@@ -603,7 +603,7 @@ onBeforeUnmount(() => {
                                     t('views.appInfo.stressTest')
                                 }}</span>
                                 <svg-icon
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('views.appInfo.stressTestTooltip'),
                                     }"
@@ -708,7 +708,7 @@ onBeforeUnmount(() => {
                                 <tr>
                                     <td class="pr-4">
                                         <span
-                                            v-tooltip.right="{
+                                            v-tooltip.top="{
                                                 escape: false,
                                                 value: t('views.appInfo.gpuStressTooltip'),
                                             }"
@@ -876,7 +876,7 @@ onBeforeUnmount(() => {
                                 <tr>
                                     <td class="pr-4">
                                         <span
-                                            v-tooltip.right="{
+                                            v-tooltip.top="{
                                                 escape: false,
                                                 value: t('views.appInfo.driveStressTooltip'),
                                             }"

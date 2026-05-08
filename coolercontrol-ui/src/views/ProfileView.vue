@@ -2007,7 +2007,7 @@ function onKnobMouseup(e: MouseEvent) {
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
-                    v-tooltip.bottom="t('views.profiles.applyMixFunction')"
+                    v-tooltip.top="t('views.profiles.applyMixFunction')"
                 />
                 <MultiSelect
                     v-model="chosenMemberProfiles"
@@ -2017,7 +2017,7 @@ function onKnobMouseup(e: MouseEvent) {
                     class="max-w-48"
                     scroll-height="40rem"
                     dropdown-icon="pi pi-chart-line"
-                    v-tooltip.bottom="t('views.profiles.profilesToMix')"
+                    v-tooltip.top="t('views.profiles.profilesToMix')"
                     :invalid="chosenMemberProfiles.length < 2"
                 />
             </div>
@@ -2038,7 +2038,7 @@ function onKnobMouseup(e: MouseEvent) {
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
                     :disabled="chosenOverlayMemberProfile == null"
-                    v-tooltip.bottom="t('views.profiles.staticOffset')"
+                    v-tooltip.top="t('views.profiles.staticOffset')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -2057,7 +2057,7 @@ function onKnobMouseup(e: MouseEvent) {
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
-                    v-tooltip.bottom="t('views.profiles.offsetType')"
+                    v-tooltip.top="t('views.profiles.offsetType')"
                 />
                 <Select
                     v-model="chosenOverlayMemberProfile"
@@ -2068,7 +2068,7 @@ function onKnobMouseup(e: MouseEvent) {
                     scroll-height="40rem"
                     dropdown-icon="pi pi-chart-line"
                     :invalid="chosenOverlayMemberProfile == null"
-                    v-tooltip.bottom="t('views.profiles.baseProfile')"
+                    v-tooltip.top="t('views.profiles.baseProfile')"
                 />
             </div>
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-wrap justify-end">
@@ -2082,7 +2082,7 @@ function onKnobMouseup(e: MouseEvent) {
                         checkmark
                         dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
-                        v-tooltip.bottom="t('views.profiles.functionToApply')"
+                        v-tooltip.top="t('views.profiles.functionToApply')"
                     />
                 </div>
                 <div class="p-2 pr-0">
@@ -2100,7 +2100,7 @@ function onKnobMouseup(e: MouseEvent) {
                         scroll-height="40rem"
                         :invalid="chosenTemp == null || tempSourceInvalid"
                         dropdown-icon="pi pi-inbox"
-                        v-tooltip.bottom="{ escape: false, value: t('views.profiles.tempSource') }"
+                        v-tooltip.top="{ escape: false, value: t('views.profiles.tempSource') }"
                     >
                         <template #optiongroup="slotProps">
                             <div class="flex items-center">
@@ -2125,7 +2125,7 @@ function onKnobMouseup(e: MouseEvent) {
                                     <span
                                         v-if="slotProps.option.limitInfo != null"
                                         class="text-xs opacity-70"
-                                        v-tooltip.left="slotProps.option.limitInfo.message"
+                                        v-tooltip.top="slotProps.option.limitInfo.message"
                                     >
                                         {{ slotProps.option.limitInfo.badge }}
                                     </span>
@@ -2155,7 +2155,7 @@ function onKnobMouseup(e: MouseEvent) {
                     :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="t('views.profiles.fixedDuty')"
+                    v-tooltip.top="t('views.profiles.fixedDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -2176,7 +2176,7 @@ function onKnobMouseup(e: MouseEvent) {
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
-                    v-tooltip.bottom="{
+                    v-tooltip.top="{
                         escape: false,
                         value: t('views.profiles.tooltip.profileType'),
                     }"
@@ -2185,7 +2185,7 @@ function onKnobMouseup(e: MouseEvent) {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
-                    v-tooltip.bottom="t('views.profiles.saveProfile')"
+                    v-tooltip.top="t('views.profiles.saveProfile')"
                     @click="saveProfileState"
                 >
                     <svg-icon
@@ -2215,7 +2215,7 @@ function onKnobMouseup(e: MouseEvent) {
                 button-layout="horizontal"
                 :input-style="{ width: '5rem' }"
                 :disabled="selectedTempSource == null"
-                v-tooltip.right="t('views.profiles.minProfileTemp')"
+                v-tooltip.top="t('views.profiles.minProfileTemp')"
             >
                 <template #incrementicon>
                     <span class="pi pi-plus" />
@@ -2254,7 +2254,7 @@ function onKnobMouseup(e: MouseEvent) {
                 button-layout="horizontal"
                 :input-style="{ width: '5rem' }"
                 :disabled="selectedTempSource == null"
-                v-tooltip.left="t('views.profiles.maxProfileTemp')"
+                v-tooltip.top="t('views.profiles.maxProfileTemp')"
             >
                 <template #incrementicon>
                     <span class="pi pi-plus" />

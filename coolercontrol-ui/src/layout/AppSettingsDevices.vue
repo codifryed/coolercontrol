@@ -360,7 +360,7 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                         </a>
                     </td>
                 </tr>
-                <tr v-tooltip.right="t('layout.settings.devices.selectTooltip')">
+                <tr v-tooltip.top="t('layout.settings.devices.selectTooltip')">
                     <td class="flex justify-between py-4">
                         <div
                             class="flex flex-row w-full my-1 mx-4 leading-none text-center items-center"

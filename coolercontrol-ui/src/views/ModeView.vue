@@ -193,12 +193,12 @@ onMounted(async () => {
         </div>
         <div
             class="p-2"
-            v-tooltip.bottom="{ value: t('views.mode.currentlyActive'), disabled: !isActivated }"
+            v-tooltip.top="{ value: t('views.mode.currentlyActive'), disabled: !isActivated }"
         >
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                 label="Save"
-                v-tooltip.bottom="t('views.mode.activateMode')"
+                v-tooltip.top="t('views.mode.activateMode')"
                 :disabled="isActivated"
                 @click="activateMode"
             >

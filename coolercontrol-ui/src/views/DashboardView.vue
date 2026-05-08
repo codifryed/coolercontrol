@@ -337,7 +337,7 @@ onUnmounted(() => {
             <div
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="t('views.dashboard.mouseActions')"
+                v-tooltip.top="t('views.dashboard.mouseActions')"
             >
                 <svg-icon
                     type="mdi"
@@ -347,7 +347,7 @@ onUnmounted(() => {
             </div>
             <div
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="t('views.dashboard.fullPage')"
+                v-tooltip.top="t('views.dashboard.fullPage')"
                 @click="toggleFullPage"
             >
                 <svg-icon type="mdi" :path="mdiOverscan" :size="deviceStore.getREMSize(1.25)" />
@@ -364,7 +364,7 @@ onUnmounted(() => {
                     option-label="name"
                     option-value="name"
                     scroll-height="16rem"
-                    v-tooltip.bottom="t('views.dashboard.filterByTag')"
+                    v-tooltip.top="t('views.dashboard.filterByTag')"
                 >
                     <template #option="slotProps">
                         <div class="flex items-center gap-x-2">
@@ -400,7 +400,7 @@ onUnmounted(() => {
                     option-group-label="deviceName"
                     option-group-children="sensors"
                     scroll-height="40rem"
-                    v-tooltip.bottom="t('views.dashboard.filterBySensor')"
+                    v-tooltip.top="t('views.dashboard.filterBySensor')"
                     @update:model-value="updateDashboardSensorsFilter"
                 >
                     <template #optiongroup="slotProps">
@@ -435,7 +435,7 @@ onUnmounted(() => {
                     scroll-height="16rem"
                     option-label="text"
                     option-value="value"
-                    v-tooltip.bottom="t('views.dashboard.filterByDataType')"
+                    v-tooltip.top="t('views.dashboard.filterByDataType')"
                 />
             </div>
             <div
@@ -456,7 +456,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="t('views.dashboard.timeRange')"
+                    v-tooltip.top="t('views.dashboard.timeRange')"
                 >
                     <template #incrementbuttonicon>
                         <span class="pi pi-plus" />
@@ -478,7 +478,7 @@ onUnmounted(() => {
                     scroll-height="400px"
                     option-label="text"
                     option-value="value"
-                    v-tooltip.bottom="t('views.dashboard.chartType')"
+                    v-tooltip.top="t('views.dashboard.chartType')"
                 />
             </div>
         </div>
@@ -490,7 +490,7 @@ onUnmounted(() => {
                 class="flex flex-row pt-0.5 fixed left-0 top-0 z-50 w-full justify-between"
             >
                 <div />
-                <div v-tooltip.left="t('views.dashboard.exitFullPage')" @click="toggleFullPage">
+                <div v-tooltip.top="t('views.dashboard.exitFullPage')" @click="toggleFullPage">
                     <svg-icon
                         type="mdi"
                         class="text-text-color-secondary"

@@ -470,7 +470,7 @@ onUnmounted(() => {
                 <Button
                     v-if="!isInsideControlFlow"
                     class="!p-2 w-12 h-[2.375rem]"
-                    v-tooltip.bottom="t('views.controls.controlFlow')"
+                    v-tooltip.top="t('views.controls.controlFlow')"
                     @click="
                         router.push({
                             name: 'channel-control-flow',
@@ -490,7 +490,7 @@ onUnmounted(() => {
                 </Button>
                 <Button
                     class="!p-2 w-12 h-[2.375rem] bg-accent/80 hover:!bg-accent"
-                    v-tooltip.bottom="t('components.wizards.fanControl.fanControlWizard')"
+                    v-tooltip.top="t('components.wizards.fanControl.fanControlWizard')"
                     :disabled="!channelIsControllable()"
                     @click="openFanControlWizard"
                 >
@@ -536,7 +536,7 @@ onUnmounted(() => {
                     :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '8rem' }"
-                    v-tooltip.bottom="t('views.speed.manualDuty')"
+                    v-tooltip.top="t('views.speed.manualDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -562,7 +562,7 @@ onUnmounted(() => {
                 <div
                     v-if="channelIsControllable()"
                     class="ml-2 mr-0 pr-0 flex flex-row leading-none items-center"
-                    v-tooltip.bottom="{
+                    v-tooltip.top="{
                         value: t('views.speed.defaultProfileInfo'),
                         escape: false,
                     }"
@@ -590,7 +590,7 @@ onUnmounted(() => {
                         checkmark
                         dropdown-icon="pi pi-chart-line"
                         scroll-height="40rem"
-                        v-tooltip.bottom="t('views.speed.profileToApply')"
+                        v-tooltip.top="t('views.speed.profileToApply')"
                     >
                         <template #value="{ value }">
                             <span v-if="value">{{ getProfileDisplayName(value) }}</span>
@@ -623,7 +623,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="t('views.dashboard.timeRange')"
+                    v-tooltip.top="t('views.dashboard.timeRange')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -645,7 +645,7 @@ onUnmounted(() => {
                     option-value="value"
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="t('views.dashboard.chartType')"
+                    v-tooltip.top="t('views.dashboard.chartType')"
                 />
             </div>
             <div class="p-2 pr-0 flex flex-row">
@@ -661,7 +661,7 @@ onUnmounted(() => {
                 >
                     <template #option="{ option }">
                         <span
-                            v-tooltip.bottom="{ value: option.tooltip, escape: false }"
+                            v-tooltip.top="{ value: option.tooltip, escape: false }"
                             class="flex items-center justify-center"
                             :aria-label="option.label"
                         >
@@ -676,7 +676,7 @@ onUnmounted(() => {
                 <div
                     v-if="!channelIsControllable()"
                     class="pr-4 py-2 flex flex-row leading-none items-center"
-                    v-tooltip.bottom="speedWarningTooltip()"
+                    v-tooltip.top="speedWarningTooltip()"
                 >
                     <svg-icon
                         type="mdi"
@@ -696,7 +696,7 @@ onUnmounted(() => {
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
                     @change="viewTypeChanged"
-                    v-tooltip.bottom="t('views.speed.controlOrView')"
+                    v-tooltip.top="t('views.speed.controlOrView')"
                 />
             </div>
             <div class="p-2 flex flex-row">
@@ -704,7 +704,7 @@ onUnmounted(() => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.apply')"
-                    v-tooltip.bottom="t('views.speed.applySetting')"
+                    v-tooltip.top="t('views.speed.applySetting')"
                     @click="saveSetting"
                     :disabled="
                         !channelIsControllable() || chosenViewType === ChannelViewType.Dashboard

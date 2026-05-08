@@ -340,7 +340,7 @@ onMounted(async () => {
                     checkmark
                     :placeholder="t('views.customSensors.type')"
                     class="w-full mr-3 h-11 bg-bg-one !justify-end"
-                    v-tooltip.bottom="t('views.customSensors.howCalculateValue')"
+                    v-tooltip.top="t('views.customSensors.howCalculateValue')"
                     @change="changeMixFunction"
                     option-label="label"
                     option-value="value"
@@ -363,7 +363,7 @@ onMounted(async () => {
                     <Button
                         class="mt-2 w-full h-11"
                         :label="t('views.customSensors.browse')"
-                        v-tooltip.bottom="t('views.customSensors.browseCustomSensorFile')"
+                        v-tooltip.top="t('views.customSensors.browseCustomSensorFile')"
                         @click="fileBrowse"
                     >
                         <svg-icon
@@ -391,7 +391,7 @@ onMounted(async () => {
                     :max="100"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.right="{
+                    v-tooltip.top="{
                         escape: false,
                         value: t('views.customSensors.offsetTooltip'),
                     }"
@@ -426,7 +426,7 @@ onMounted(async () => {
                         scroll-height="40rem"
                         dropdown-icon="pi pi-microchip"
                         :placeholder="t('views.customSensors.tempSources')"
-                        v-tooltip.bottom="{
+                        v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),
                         }"
@@ -519,7 +519,7 @@ onMounted(async () => {
                         scroll-height="40rem"
                         dropdown-icon="pi pi-microchip"
                         :placeholder="t('views.customSensors.tempSource')"
-                        v-tooltip.bottom="{
+                        v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),
                         }"

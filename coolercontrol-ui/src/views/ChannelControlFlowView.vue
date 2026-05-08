@@ -205,7 +205,7 @@ const channelLabel = computed(() => {
                 text
                 rounded
                 class="!p-1"
-                v-tooltip.bottom="t('views.controls.backToOverview')"
+                v-tooltip.top="t('views.controls.backToOverview')"
                 @click="router.push({ name: 'system-controls' })"
             >
                 <svg-icon type="mdi" :path="mdiArrowLeft" :size="deviceStore.getREMSize(1.25)" />

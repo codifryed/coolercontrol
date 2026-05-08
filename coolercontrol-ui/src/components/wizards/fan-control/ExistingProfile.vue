@@ -112,7 +112,7 @@ const saveSetting = async () => {
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32"
                 label="Apply"
-                v-tooltip.bottom="'Apply'"
+                v-tooltip.top="'Apply'"
                 @click="saveSetting"
             >
                 <svg-icon

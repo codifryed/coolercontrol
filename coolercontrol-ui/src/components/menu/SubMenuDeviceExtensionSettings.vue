@@ -289,7 +289,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t('components.deviceExtensionSettings.directAccessDesc')
                                     "
                                 >
@@ -316,7 +316,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t('components.deviceExtensionSettings.useHwmonDesc')
                                     "
                                 >
@@ -343,7 +343,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4 pb-2">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t('components.deviceExtensionSettings.overdriveDesc')
                                     "
                                 >
@@ -376,7 +376,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t(
                                             'components.deviceExtensionSettings.thinkPadFanControlDesc',
                                         )
@@ -404,7 +404,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t(
                                             'components.deviceExtensionSettings.thinkPadFullSpeedDesc',
                                         )
@@ -431,7 +431,7 @@ const popoverClose = (): void => {
                         <td class="w-64 text-end pl-4">
                             <div class="flex flex-row leading-none items-center">
                                 <div
-                                    v-tooltip.bottom="
+                                    v-tooltip.top="
                                         t('components.deviceExtensionSettings.commandDelayDesc')
                                     "
                                 >

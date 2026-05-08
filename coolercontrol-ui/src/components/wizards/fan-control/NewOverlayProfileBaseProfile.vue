@@ -113,7 +113,7 @@ const nextStep = () => {
                     scroll-height="40rem"
                     dropdown-icon="pi pi-chart-line"
                     :invalid="chosenOverlayMemberProfile == null"
-                    v-tooltip.bottom="t('views.profiles.baseProfile')"
+                    v-tooltip.top="t('views.profiles.baseProfile')"
                 />
             </div>
             <div class="mt-0 flex flex-col">
@@ -130,7 +130,7 @@ const nextStep = () => {
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
-                    v-tooltip.bottom="t('views.profiles.offsetType')"
+                    v-tooltip.top="t('views.profiles.offsetType')"
                 />
             </div>
             <div class="mt-0 flex flex-col" v-if="chosenOverlayOffsetType === 'static'">

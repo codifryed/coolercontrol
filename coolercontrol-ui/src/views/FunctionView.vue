@@ -370,7 +370,7 @@ onUnmounted(() => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
-                    v-tooltip.bottom="t('views.functions.saveFunction')"
+                    v-tooltip.top="t('views.functions.saveFunction')"
                     @click="saveFunctionState"
                 >
                     <svg-icon

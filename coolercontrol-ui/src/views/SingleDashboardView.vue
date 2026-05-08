@@ -171,7 +171,7 @@ onUnmounted(() => {
             <div
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="t('views.singleDashboard.chartMouseActions')"
+                v-tooltip.top="t('views.singleDashboard.chartMouseActions')"
             >
                 <svg-icon
                     type="mdi"
@@ -197,7 +197,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="t('views.singleDashboard.timeRange')"
+                    v-tooltip.top="t('views.singleDashboard.timeRange')"
                 >
                     <template #incrementbuttonicon>
                         <span class="pi pi-plus" />
@@ -219,7 +219,7 @@ onUnmounted(() => {
                     scroll-height="400px"
                     option-label="text"
                     option-value="value"
-                    v-tooltip.bottom="t('views.singleDashboard.chartType')"
+                    v-tooltip.top="t('views.singleDashboard.chartType')"
                 />
             </div>
         </div>
