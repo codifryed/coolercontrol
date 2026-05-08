@@ -804,6 +804,10 @@ export default {
             thresholdHopping: 'しきい値ホッピング',
             thresholdHoppingTooltip:
                 'ファン速度が30秒以上変化しない場合、ステップサイズとヒステリシス制限が一時的にバイパスされます。\nこれにより、保守的なしきい値設定でもファンが最終的に目標速度に達することが保証されます。',
+            stepOverrides: 'ステップオーバーライド',
+            bypassMinAtExtremes: '常に 0% / 100% を適用',
+            bypassMinAtExtremesTooltip:
+                '有効にすると、変化が最小ステップサイズより小さい場合でも、0% または 100% のターゲットデューティが適用されます。\nファンを完全に停止させるか、最大 RPM に到達させるのに便利です。デフォルトでは無効です。',
             unsavedChanges: 'この機能に未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
             functionError: 'この機能を更新しようとしてエラーが発生しました',

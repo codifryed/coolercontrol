@@ -768,6 +768,10 @@ export default {
             thresholdHopping: 'Schwellenwert-Überspringen',
             thresholdHoppingTooltip:
                 'Wenn die Lüftergeschwindigkeit 30+ Sekunden unverändert bleibt, werden Schrittgröße und Hysterese-Limits vorübergehend umgangen.\nDies stellt sicher, dass Lüfter schließlich ihre Zielgeschwindigkeit erreichen, auch bei konservativen Schwellenwerteinstellungen.',
+            stepOverrides: 'Schritt-Überschreibungen',
+            bypassMinAtExtremes: 'Immer 0% / 100% anwenden',
+            bypassMinAtExtremesTooltip:
+                'Wenn aktiviert, werden Ziel-Drehzahlen von 0% oder 100% auch dann angewendet, wenn die Änderung kleiner als die minimale Schrittgröße ist.\nNützlich, um sicherzustellen, dass Lüfter vollständig stoppen oder die maximale Drehzahl erreichen. Standardmäßig deaktiviert.',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Funktion.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
             functionError: 'Fehler beim Versuch, diese Funktion zu aktualisieren',

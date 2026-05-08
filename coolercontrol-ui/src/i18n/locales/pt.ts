@@ -704,6 +704,10 @@ export default {
             thresholdHopping: 'Salto de Limite',
             thresholdHoppingTooltip:
                 'Quando a velocidade do ventilador permanece inalterada por 30+ segundos, os limites de tamanho de passo e histerese são temporariamente ignorados.\nIsso garante que os ventiladores eventualmente atinjam sua velocidade alvo, mesmo com configurações de limite conservadoras.',
+            stepOverrides: 'Substituições de passo',
+            bypassMinAtExtremes: 'Sempre aplicar 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                'Quando ativado, os ciclos de trabalho alvo de 0% ou 100% são aplicados mesmo quando a mudança é menor que o tamanho de passo mínimo.\nÚtil para garantir que os ventiladores parem completamente ou atinjam a RPM máxima. Desativado por padrão.',
             unsavedChanges: 'Há alterações não salvas feitas nesta Função.',
             unsavedChangesHeader: 'Alterações Não Salvas',
             functionError: 'Erro ao tentar atualizar esta função',

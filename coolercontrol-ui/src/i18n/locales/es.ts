@@ -765,6 +765,10 @@ export default {
             thresholdHopping: 'Salto de Umbral',
             thresholdHoppingTooltip:
                 'Cuando la velocidad del ventilador permanece sin cambios durante 30+ segundos, los límites de tamaño de paso e histéresis se omiten temporalmente.\nEsto asegura que los ventiladores eventualmente alcancen su velocidad objetivo, incluso con configuraciones de umbral conservadoras.',
+            stepOverrides: 'Anulaciones de paso',
+            bypassMinAtExtremes: 'Aplicar siempre 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                'Cuando está habilitado, los ciclos de trabajo objetivo de 0% o 100% se aplican incluso cuando el cambio es menor que el tamaño de paso mínimo.\nÚtil para garantizar que los ventiladores se detengan completamente o alcancen las RPM máximas. Deshabilitado por defecto.',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Función.',
             unsavedChangesHeader: 'Cambios no guardados',
             functionError: 'Error al intentar actualizar esta función',
