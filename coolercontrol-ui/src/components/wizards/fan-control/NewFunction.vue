@@ -214,7 +214,7 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr v-tooltip.right="t('views.functions.fixedStepSizeTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b-2"
                             >
                                 {{ t('views.functions.fixedStepSize') }}
                             </td>
@@ -230,7 +230,7 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b-2"
                             >
                                 {{ t('views.functions.asymmetric') }}
                             </td>
@@ -256,7 +256,7 @@ const updateSymmetricStepSize = () => {
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b-2"
                             >
                                 {{
                                     chosenFixedStepSize
@@ -299,7 +299,7 @@ const updateSymmetricStepSize = () => {
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b-2"
                             >
                                 {{
                                     chosenAsymmetric
@@ -339,7 +339,7 @@ const updateSymmetricStepSize = () => {
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b-2"
                             >
                                 {{
                                     chosenFixedStepSize
@@ -376,7 +376,7 @@ const updateSymmetricStepSize = () => {
                             v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.stepSizeMaxDecreasing') }}
                             </td>
@@ -412,7 +412,7 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.thresholdHopping') }}
                             </td>
@@ -424,7 +424,7 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr v-tooltip.right="t('views.functions.bypassMinAtExtremesTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.bypassMinAtExtremes') }}
                             </td>
@@ -447,7 +447,7 @@ const updateSymmetricStepSize = () => {
                             v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.hysteresisThreshold') }}
                             </td>
@@ -481,7 +481,7 @@ const updateSymmetricStepSize = () => {
                             v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.hysteresisDelay') }}
                             </td>
@@ -512,7 +512,7 @@ const updateSymmetricStepSize = () => {
                             v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.onlyDownward') }}
                             </td>
@@ -535,7 +535,7 @@ const updateSymmetricStepSize = () => {
                             v-tooltip.right="t('views.functions.windowSizeTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.windowSize') }}
                             </td>
