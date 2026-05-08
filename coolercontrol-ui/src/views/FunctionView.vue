@@ -398,7 +398,7 @@ onUnmounted(() => {
                     option-value="value"
                     option-label="label"
                     list-style="max-height: 100%"
-                    v-tooltip.right="{
+                    v-tooltip.top="{
                         escape: false,
                         value: t('views.functions.functionTypeTooltip'),
                     }"
@@ -415,7 +415,7 @@ onUnmounted(() => {
                             {{ t('views.functions.stepSizeTitle') }}
                         </th>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.fixedStepSizeTooltip')">
+                    <tr v-tooltip.top="t('views.functions.fixedStepSizeTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
@@ -431,7 +431,7 @@ onUnmounted(() => {
                             />
                         </td>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
+                    <tr v-tooltip.top="t('views.functions.asymmetricTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
@@ -448,7 +448,7 @@ onUnmounted(() => {
                         </td>
                     </tr>
                     <tr
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenFixedStepSize
                                 ? chosenAsymmetric
                                     ? t('views.functions.stepSizeFixedIncreasingTooltip')
@@ -495,7 +495,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="!chosenFixedStepSize"
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenAsymmetric
                                 ? t('views.functions.stepSizeMaxIncreasingTooltip')
                                 : t('views.functions.stepSizeMaxTooltip')
@@ -534,7 +534,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="chosenAsymmetric"
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenFixedStepSize
                                 ? t('views.functions.stepSizeFixedDecreasingTooltip')
                                 : t('views.functions.stepSizeMinDecreasingTooltip')
@@ -573,7 +573,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="chosenAsymmetric && !chosenFixedStepSize"
-                        v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
+                        v-tooltip.top="t('views.functions.stepSizeMaxDecreasingTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
@@ -610,7 +610,7 @@ onUnmounted(() => {
                             {{ t('views.functions.stepOverrides') }}
                         </th>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
+                    <tr v-tooltip.top="t('views.functions.thresholdHoppingTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
@@ -622,7 +622,7 @@ onUnmounted(() => {
                             <el-switch v-model="chosenThresholdHopping" size="large" />
                         </td>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.bypassMinAtExtremesTooltip')">
+                    <tr v-tooltip.top="t('views.functions.bypassMinAtExtremesTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
@@ -644,7 +644,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
+                        v-tooltip.top="t('views.functions.hysteresisThresholdTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
@@ -678,7 +678,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
+                        v-tooltip.top="t('views.functions.hysteresisDelayTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
@@ -709,7 +709,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
+                        v-tooltip.top="t('views.functions.onlyDownwardTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
@@ -732,7 +732,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
+                        v-tooltip.top="t('views.functions.windowSizeTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
