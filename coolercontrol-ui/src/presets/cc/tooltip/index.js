@@ -72,7 +72,9 @@ export default {
             'whitespace-pre-line',
             'break-words',
             'border',
-            'border-border-one',
+            'border-accent/60',
+            'shadow-lg',
+            'shadow-black/50',
         ],
     },
 }
