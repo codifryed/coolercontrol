@@ -534,7 +534,7 @@ export default {
             maxValueTooltip: 'Valores acima disso acionarão o alerta.',
             minValueTooltip: 'Valores abaixo disso acionarão o alerta.',
             warmupDurationTooltip:
-                'Durante quanto tempo uma condição deve permanecer ativa antes de o alerta ser considerado ativo. É verificado apenas em intervalos regulares de poll-rate e, por isso, pode não ter exatamente essa duração.',
+                'Durante quanto tempo uma condição deve permanecer ativa antes de o alerta ser considerado ativo.\nÉ verificado apenas em intervalos regulares de poll-rate\ne, por isso, pode não ter exatamente essa duração.',
             greaterThan: 'maior que',
             lessThan: 'menor que',
             newAlert: 'Novo Alerta',
@@ -553,7 +553,7 @@ export default {
                 'Ativar áudio de notificação de área de trabalho quando o alerta for acionado.\n(Se suportado)',
             shutdownOnActivation: 'desligar na ativação',
             shutdownOnActivationTooltip:
-                'Ativar o desligamento do sistema quando o alerta for acionado.\nO desligamento do sistema começará um minuto após o alerta ser acionado e será cancelado se o alerta for recuperado.',
+                'Ativar o desligamento do sistema quando o alerta for acionado.\nO desligamento do sistema começará um minuto após o alerta ser acionado\ne será cancelado se o alerta for recuperado.',
         },
         profiles: {
             createProfile: 'Criar Perfil',

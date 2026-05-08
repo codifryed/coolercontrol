@@ -491,7 +491,7 @@ export default {
             maxValueTooltip: '超過此值將觸發警報。',
             minValueTooltip: '低於此值將觸發警報。',
             warmupDurationTooltip:
-                '條件必須保持多長時間才會將警報視為有效。該值僅按固定的輪詢頻率間隔進行檢查，因此可能不完全是這個長度。',
+                '條件必須保持多長時間才會將警報視為有效。\n該值僅按固定的輪詢頻率間隔進行檢查，\n因此可能不完全是這個長度。',
             greaterThan: '大於',
             lessThan: '小於',
             newAlert: '新警報',
@@ -507,7 +507,7 @@ export default {
             desktopNotifyAudioTooltip: '當警報觸發時啟用桌面通知音訊。\n（如果支援）',
             shutdownOnActivation: '啟動時關機',
             shutdownOnActivationTooltip:
-                '當警報觸發時啟用系統關機。\n系統將在警報觸發一分鐘後開始關機，如果警報恢復則取消關機。',
+                '當警報觸發時啟用系統關機。\n系統將在警報觸發一分鐘後開始關機，\n如果警報恢復則取消關機。',
         },
         profiles: {
             createProfile: '建立設定檔',

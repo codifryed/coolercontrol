@@ -598,7 +598,7 @@ export default {
             maxValueTooltip: 'Werte über diesem lösen die Warnung aus.',
             minValueTooltip: 'Werte unter diesem lösen die Warnung aus.',
             warmupDurationTooltip:
-                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt. Die Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen und kann daher von dieser Länge abweichen.',
+                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt.\nDie Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen\nund kann daher von dieser Länge abweichen.',
             greaterThan: 'größer als',
             lessThan: 'kleiner als',
             newAlert: 'Neue Warnung',
@@ -617,7 +617,7 @@ export default {
                 'Desktop-Benachrichtigungston aktivieren, wenn die Warnung ausgelöst wird.\n(Falls unterstützt)',
             shutdownOnActivation: 'Herunterfahren bei Aktivierung',
             shutdownOnActivationTooltip:
-                'System-Herunterfahren aktivieren, wenn die Warnung ausgelöst wird.\nDas System wird eine Minute nach Auslösung der Warnung heruntergefahren und abgebrochen, wenn die Warnung wiederhergestellt wird.',
+                'System-Herunterfahren aktivieren, wenn die Warnung ausgelöst wird.\nDas System wird eine Minute nach Auslösung der Warnung heruntergefahren\nund abgebrochen, wenn die Warnung wiederhergestellt wird.',
         },
         profiles: {
             createProfile: 'Profil erstellen',
