@@ -142,6 +142,7 @@ mod tests {
             only_downward: None,
             sample_window: None,
             threshold_hopping: true,
+            bypass_min_at_extremes: false,
         }
     }
 
