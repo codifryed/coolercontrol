@@ -103,6 +103,7 @@ const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const chosenThresholdHopping: Ref<boolean> = ref(currentFunction.value.threshold_hopping)
+const chosenBypassMinAtExtremes: Ref<boolean> = ref(currentFunction.value.bypass_min_at_extremes)
 
 const nextStep = async (): Promise<void> => {
     if (currentFunction.value.uid === '0') {
@@ -136,6 +137,7 @@ const nextStep = async (): Promise<void> => {
     currentFunction.value.only_downward =
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
     currentFunction.value.threshold_hopping = chosenThresholdHopping.value
+    currentFunction.value.bypass_min_at_extremes = chosenBypassMinAtExtremes.value
 
     emit('newFunction', currentFunction.value)
     emit('nextStep', 13)
@@ -400,6 +402,38 @@ const updateSymmetricStepSize = () => {
                                 </InputNumber>
                             </td>
                         </tr>
+                        <tr>
+                            <th
+                                colspan="2"
+                                class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
+                            >
+                                {{ t('views.functions.stepOverrides') }}
+                            </th>
+                        </tr>
+                        <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.thresholdHopping') }}
+                            </td>
+                            <td
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <el-switch v-model="chosenThresholdHopping" size="large" />
+                            </td>
+                        </tr>
+                        <tr v-tooltip.right="t('views.functions.bypassMinAtExtremesTooltip')">
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.bypassMinAtExtremes') }}
+                            </td>
+                            <td
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <el-switch v-model="chosenBypassMinAtExtremes" size="large" />
+                            </td>
+                        </tr>
                         <tr v-if="selectedType === FunctionType.Standard">
                             <th
                                 colspan="2"
@@ -488,7 +522,7 @@ const updateSymmetricStepSize = () => {
                                 <el-switch v-model="chosenOnlyDownward" size="large" />
                             </td>
                         </tr>
-                        <tr>
+                        <tr v-if="selectedType === FunctionType.ExponentialMovingAvg">
                             <th
                                 colspan="2"
                                 class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
@@ -524,18 +558,6 @@ const updateSymmetricStepSize = () => {
                                         <span class="pi pi-minus" />
                                     </template>
                                 </InputNumber>
-                            </td>
-                        </tr>
-                        <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
-                            <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                            >
-                                {{ t('views.functions.thresholdHopping') }}
-                            </td>
-                            <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
-                            >
-                                <el-switch v-model="chosenThresholdHopping" size="large" />
                             </td>
                         </tr>
                     </tbody>
