@@ -433,12 +433,12 @@ onUnmounted(() => {
                     </tr>
                     <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.asymmetric') }}
                         </td>
                         <td
-                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <el-switch
                                 v-model="chosenAsymmetric"
@@ -459,7 +459,7 @@ onUnmounted(() => {
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenFixedStepSize
@@ -472,7 +472,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepDutyMinimum"
@@ -502,7 +502,7 @@ onUnmounted(() => {
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenAsymmetric
@@ -511,7 +511,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepDutyMaximum"
@@ -541,7 +541,7 @@ onUnmounted(() => {
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenFixedStepSize
@@ -550,7 +550,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepSizeMinDecreasing"
@@ -576,12 +576,12 @@ onUnmounted(() => {
                         v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.stepSizeMaxDecreasing') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepSizeMaxDecreasing"
@@ -624,12 +624,12 @@ onUnmounted(() => {
                     </tr>
                     <tr v-tooltip.right="t('views.functions.bypassMinAtExtremesTooltip')">
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.bypassMinAtExtremes') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <el-switch v-model="chosenBypassMinAtExtremes" size="large" />
                         </td>
@@ -681,12 +681,12 @@ onUnmounted(() => {
                         v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.hysteresisDelay') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenDelay"
@@ -712,12 +712,12 @@ onUnmounted(() => {
                         v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.onlyDownward') }}
                         </td>
                         <td
-                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <el-switch v-model="chosenOnlyDownward" size="large" />
                         </td>
