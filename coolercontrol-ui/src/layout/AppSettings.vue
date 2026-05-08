@@ -535,9 +535,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
-                                        t('layout.settings.tooltips.frequencyPrecision')
-                                    "
+                                    v-tooltip.top="t('layout.settings.tooltips.frequencyPrecision')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"

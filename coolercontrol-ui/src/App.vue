@@ -461,10 +461,7 @@ onMounted(async () => {
                 <small class="ml-3 font-light text-sm text-text-color-secondary">{{
                     t('common.protocol')
                 }}</small>
-                <div
-                    class="flex flex-row items-center"
-                    v-tooltip.top="t('views.error.sslTooltip')"
-                >
+                <div class="flex flex-row items-center" v-tooltip.top="t('views.error.sslTooltip')">
                     <el-switch v-model="daemonSslEnabled" size="large" />
                     <span class="ml-2 m-1">{{ t('common.sslTls') }}</span>
                 </div>
