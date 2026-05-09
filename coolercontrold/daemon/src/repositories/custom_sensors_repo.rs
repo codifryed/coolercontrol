@@ -19,9 +19,9 @@
 use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 use std::string::ToString;
@@ -34,6 +34,7 @@ use crate::device::{
     Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, Temp, TempInfo, TempName,
     TempStatus, UID,
 };
+use crate::repositories::failsafe::MISSING_TEMP_FAILSAFE;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomSensorType, LcdSettings, LightingSettings,
@@ -60,6 +61,11 @@ pub struct CustomSensorsRepo {
     /// samples from `time_window_seconds / poll_rate`, avoiding any wall-clock comparisons.
     /// `poll_rate` is fixed at runtime, so a plain `f64` is enough.
     poll_rate: f64,
+    /// Set of sensor IDs currently emitting `MISSING_TEMP_FAILSAFE` because their source is
+    /// structurally absent (device removed, temp renamed, history empty, child not yet
+    /// processed). Membership drives once-per-occurrence entry / recovery logging so a flaky
+    /// or misconfigured source does not flood the log every poll.
+    failsafing_sensors: RefCell<HashSet<String>>,
 }
 
 impl CustomSensorsRepo {
@@ -78,6 +84,7 @@ impl CustomSensorsRepo {
             sensors: RefCell::new(Vec::new()),
             relationships: RefCell::new(HashMap::new()),
             poll_rate,
+            failsafing_sensors: RefCell::new(HashSet::new()),
         })
     }
 
@@ -135,6 +142,11 @@ impl CustomSensorsRepo {
             // Make sure the file exists and temp is properly formatted
             Self::get_custom_sensor_file_temp(&custom_sensor).await?;
         }
+        // A reconfigured sensor starts fresh: drop any prior failsafing state so the
+        // first tick after the update logs a transition cleanly if it failsafes again.
+        self.failsafing_sensors
+            .borrow_mut()
+            .remove(&custom_sensor.id);
         self.config.update_custom_sensor(custom_sensor.clone())?;
         {
             let mut sensors = self.sensors.borrow_mut();
@@ -187,6 +199,11 @@ impl CustomSensorsRepo {
         self.sensors
             .borrow_mut()
             .retain(|cs| cs.id != custom_sensor_id);
+        // Drop any failsafing state for the deleted sensor so a future sensor reusing the
+        // same id (rare but legal) does not silently inherit "currently failsafing".
+        self.failsafing_sensors
+            .borrow_mut()
+            .remove(custom_sensor_id);
         self.update_device_info_temps();
         self.reconstruct_relationships();
         Ok(())
@@ -264,9 +281,14 @@ impl CustomSensorsRepo {
                 }
             }
             CustomSensorType::File => {
-                Self::get_custom_sensor_file_temp(sensor).await?; // make sure it's valid
-                let current_temp_status =
-                    Self::process_custom_sensor_data_file_current(sensor).await;
+                // Single read: verify the file is readable and use the value for the current
+                // tick. Older history positions are placeholder 0s by design (File sensors
+                // have no real history before creation; not a failsafe substitution).
+                let current_temp = Self::get_custom_sensor_file_temp(sensor).await?;
+                let current_temp_status = TempStatus {
+                    name: sensor.id.clone(),
+                    temp: current_temp,
+                };
                 let status_history_last_index = history.len() - 1;
                 for (index, status) in history.iter_mut().enumerate() {
                     if index == status_history_last_index {
@@ -379,86 +401,50 @@ impl CustomSensorsRepo {
         }
     }
 
-    /// The function processes current sensor data by mixing the current temperature values from
-    /// different sources based on a specified mixing function.
-    ///
-    /// Arguments:
-    ///
-    /// * `sensor`: The `sensor` parameter is of type `&CustomSensor`, which is a reference to a
-    ///   `CustomSensor` object.
-    ///
-    /// Returns: an `TempStatus`
+    /// Builds the current-tick `TempStatus` for a Mix or Offset Custom Sensor. If any source
+    /// is structurally absent (device removed, temp renamed, child not yet processed this
+    /// tick), short-circuits to `MISSING_TEMP_FAILSAFE` so a fan curve driven by this sensor
+    /// reacts to the missing reading rather than silently reporting a fake-cool value.
     fn process_custom_sensor_data_current(
         &self,
         sensor: &CustomSensor,
         custom_temps: &[TempStatus],
     ) -> TempStatus {
-        let mut temp_data = Vec::new();
+        let mut temp_data = Vec::with_capacity(sensor.sources.len());
         for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
-            let some_temp = match self.get_temp_source_temp(temp_source, custom_temps) {
-                Ok(some_temp) => some_temp,
-                Err(err) => {
-                    error!(
-                        "Temp not found for Custom Sensor: {}:{} - {err}",
-                        temp_source.device_uid, temp_source.temp_name
-                    );
-                    continue;
-                }
-            };
-            if some_temp.is_none() {
-                error!(
-                    "Temp not found for Custom Sensor: {}:{}",
+            let Ok(Some(temp)) = self.get_temp_source_temp(temp_source, custom_temps) else {
+                let reason = format!(
+                    "source missing: {}:{}",
                     temp_source.device_uid, temp_source.temp_name
                 );
-                continue;
-            }
+                return self.emit_failsafe(&sensor.id, &reason);
+            };
             temp_data.push(TempData {
-                temp: some_temp.unwrap(),
+                temp,
                 weight: f64::from(custom_temp_source_data.weight),
             });
         }
         if temp_data.is_empty() {
-            temp_data.push(TempData {
-                temp: 0.,
-                weight: 1.,
-            });
-            debug!(
-                "No temp data found for Custom Sensor: {}. Filling with zeros",
-                sensor.id
-            );
+            // Validation forbids this for Mix/Offset, but defensively failsafe rather than
+            // emitting a misleading cool value if a malformed sensor ever slips through.
+            return self.emit_failsafe(&sensor.id, "no sources configured");
         }
         match sensor.cs_type {
             CustomSensorType::Mix => {
                 let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
-                TempStatus {
-                    name: sensor.id.clone(),
-                    temp: custom_temp,
-                }
+                self.emit_real_temp(&sensor.id, custom_temp)
             }
             CustomSensorType::Offset => {
                 let custom_temp = Self::process_offset_temp_data(sensor.offset, &temp_data);
-                TempStatus {
-                    name: sensor.id.clone(),
-                    temp: custom_temp,
-                }
+                self.emit_real_temp(&sensor.id, custom_temp)
             }
-            CustomSensorType::File => {
+            CustomSensorType::File | CustomSensorType::TimeAverage => {
+                // Defensive: dispatch in update_statuses routes File through file_sensors and
+                // TimeAverage through process_time_average_current, so neither reaches here.
                 debug!(
-                    "Indexed processing triggered for Invalid sensor type: {}",
-                    sensor.cs_type
-                );
-                TempStatus {
-                    name: sensor.id.clone(),
-                    temp: 0.,
-                }
-            }
-            CustomSensorType::TimeAverage => {
-                // TimeAverage is processed via process_time_average_current; this branch should
-                // not be reached. Defensive return so the match stays exhaustive.
-                debug!(
-                    "process_custom_sensor_data_current called with TimeAverage sensor: {}",
-                    sensor.id
+                    "process_custom_sensor_data_current called with unexpected cs_type {} for {}",
+                    sensor.cs_type, sensor.id
                 );
                 TempStatus {
                     name: sensor.id.clone(),
@@ -470,8 +456,9 @@ impl CustomSensorsRepo {
 
     /// Processes a `TimeAverage` Custom Sensor for the current tick. Reads the last
     /// `time_window_seconds / poll_rate` samples from the source's `status_history` and emits
-    /// their arithmetic mean. Always emits a `TempStatus`: the mean if the source exists,
-    /// `0` as the fallback if the source device has been removed (matches `Mix`/`Offset`).
+    /// their arithmetic mean. If the source is structurally absent (no samples collectible)
+    /// or the sensor is misconfigured, emits `MISSING_TEMP_FAILSAFE` so downstream control
+    /// reacts to the missing reading rather than serving a fake-cool value.
     fn process_time_average_current(
         &self,
         sensor: &CustomSensor,
@@ -481,15 +468,14 @@ impl CustomSensorsRepo {
         debug_assert_eq!(sensor.sources.len(), 1);
         let window_seconds = sensor.time_window_seconds.unwrap_or(0);
         if window_seconds == 0 {
-            // Misconfigured (validation should have caught this). Defensive zero emission.
+            // Invariant break: validation enforces 1..=60. Per-tick error log keeps every
+            // line of evidence if this ever fires; emit_failsafe additionally logs the
+            // sensor entering failsafe state once.
             error!(
-                "TimeAverage Custom Sensor {} has no time_window_seconds set; emitting 0",
+                "TimeAverage Custom Sensor {} has no time_window_seconds set",
                 sensor.id
             );
-            return TempStatus {
-                name: sensor.id.clone(),
-                temp: 0.,
-            };
+            return self.emit_failsafe(&sensor.id, "missing time_window_seconds");
         }
         let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
         let temps = self.collect_recent_source_temps(
@@ -497,10 +483,9 @@ impl CustomSensorsRepo {
             custom_temps,
             sample_count,
         );
-        let mean = Self::compute_time_average(&temps).unwrap_or(0.);
-        TempStatus {
-            name: sensor.id.clone(),
-            temp: mean,
+        match Self::compute_time_average(&temps) {
+            Some(mean) => self.emit_real_temp(&sensor.id, mean),
+            None => self.emit_failsafe(&sensor.id, "no source samples available"),
         }
     }
 
@@ -736,13 +721,15 @@ impl CustomSensorsRepo {
         (temp_data[0].temp + Temp::from(offset.unwrap())).clamp(0.0, 150.0)
     }
 
-    async fn process_custom_sensor_data_file_current(sensor: &CustomSensor) -> TempStatus {
-        let current_temp = Self::get_custom_sensor_file_temp(sensor)
-            .await
-            .unwrap_or(0.);
-        TempStatus {
-            name: sensor.id.clone(),
-            temp: current_temp,
+    /// Reads the current temp for a File-type Custom Sensor. On unreadable / malformed file,
+    /// emits `MISSING_TEMP_FAILSAFE` (and a once-per-occurrence warn log), so a fan curve
+    /// driven by the file sensor reacts to the lost source rather than a fake-cool value.
+    /// Live-tick path only; backfill reads `get_custom_sensor_file_temp` directly so it
+    /// does not interact with the failsafing-state set.
+    async fn process_custom_sensor_data_file_current(&self, sensor: &CustomSensor) -> TempStatus {
+        match Self::get_custom_sensor_file_temp(sensor).await {
+            Ok(temp) => self.emit_real_temp(&sensor.id, temp),
+            Err(_) => self.emit_failsafe(&sensor.id, "file unreadable"),
         }
     }
 
@@ -935,6 +922,49 @@ impl CustomSensorsRepo {
             }
         }
     }
+
+    /// Inserts `sensor_id` into the failsafing-sensors set. Returns `true` if this is the
+    /// first time this sensor entered failsafe (caller should emit a `warn!` line); `false`
+    /// if it was already failsafing on a previous tick.
+    fn note_failsafing_sensor(&self, sensor_id: &str) -> bool {
+        self.failsafing_sensors
+            .borrow_mut()
+            .insert(sensor_id.to_string())
+    }
+
+    /// Removes `sensor_id` from the failsafing-sensors set. Returns `true` if it was present
+    /// (caller should emit a recovery `info!` line); `false` if it was not failsafing.
+    fn clear_failsafing_sensor(&self, sensor_id: &str) -> bool {
+        self.failsafing_sensors.borrow_mut().remove(sensor_id)
+    }
+
+    /// Builds the failsafe `TempStatus` and emits the entry log line on the first occurrence.
+    /// `reason` is included in the log so a future operator can tell the cs_type-specific
+    /// cause apart (for example "all sources missing" vs "file unreadable").
+    fn emit_failsafe(&self, sensor_id: &str, reason: &str) -> TempStatus {
+        if self.note_failsafing_sensor(sensor_id) {
+            warn!(
+                "Custom Sensor {sensor_id} entering failsafe ({MISSING_TEMP_FAILSAFE}°C): {reason}"
+            );
+        }
+        TempStatus {
+            name: sensor_id.to_string(),
+            temp: MISSING_TEMP_FAILSAFE,
+        }
+    }
+
+    /// Wraps a real-value `TempStatus` and emits the recovery log line on the first
+    /// non-failsafing tick after a failsafe state. Cheap to call on every successful tick:
+    /// `HashSet::remove` returns `false` when the id is absent.
+    fn emit_real_temp(&self, sensor_id: &str, temp: f64) -> TempStatus {
+        if self.clear_failsafing_sensor(sensor_id) {
+            info!("Custom Sensor {sensor_id} recovered from failsafe");
+        }
+        TempStatus {
+            name: sensor_id.to_string(),
+            temp,
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -1064,7 +1094,7 @@ impl Repository for CustomSensorsRepo {
                 }
             });
         for sensor in &file_sensors {
-            let temp_status = Self::process_custom_sensor_data_file_current(sensor).await;
+            let temp_status = self.process_custom_sensor_data_file_current(sensor).await;
             custom_temps.push(temp_status);
         }
         self.sensors
@@ -1184,10 +1214,19 @@ struct TempData {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
+    use crate::device::{
+        Device, DeviceInfo, DeviceType, Status, TempInfo, TempName, TempStatus, UID,
+    };
     use crate::repositories::custom_sensors_repo::{CustomSensorsRepo, TempData};
-    use crate::repositories::repository::Repository;
-    use crate::setting::{CustomSensor, CustomSensorType, CustomTempSourceData, TempSource};
+    use crate::repositories::failsafe::MISSING_TEMP_FAILSAFE;
+    use crate::repositories::repository::{DeviceLock, Repository};
+    use crate::setting::{
+        CustomSensor, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
+        TempSource,
+    };
     use serial_test::serial;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::ops::Not;
     use std::path::Path;
     use std::rc::Rc;
@@ -1583,9 +1622,11 @@ mod tests {
                 file_path: Some(test_file),
                 ..Default::default()
             };
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
 
             // when:
-            let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
+            let temp = repo.process_custom_sensor_data_file_current(&sensor).await;
 
             // then:
             assert_eq!(temp.name, cs_name);
@@ -1593,9 +1634,11 @@ mod tests {
         });
     }
 
+    // An unreadable file emits MISSING_TEMP_FAILSAFE (not 0.) so a fan curve driven by
+    // this sensor reacts to the lost source rather than a fake-cool value. The sensor is
+    // also recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
     #[test]
     #[serial]
-    #[allow(clippy::float_cmp)]
     fn test_file_temp_status_invalid() {
         cc_fs::test_runtime(async {
             // given:
@@ -1607,13 +1650,16 @@ mod tests {
                 file_path: Some(test_file),
                 ..Default::default()
             };
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
 
             // when:
-            let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
+            let temp = repo.process_custom_sensor_data_file_current(&sensor).await;
 
             // then:
             assert_eq!(temp.name, cs_name);
-            assert_eq!(temp.temp, 0.);
+            assert!((temp.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains(&cs_name));
         });
     }
 
@@ -2508,5 +2554,456 @@ mod tests {
     #[test]
     fn time_average_window_sample_count_max_window() {
         assert_eq!(CustomSensorsRepo::window_sample_count(60, 1.0), 60);
+    }
+
+    // ==================== failsafe state tracking helpers ====================
+
+    // note_failsafing_sensor returns true only on the first insert per sensor id.
+    // Mirrors HashSet::insert semantics: subsequent inserts of an existing key return
+    // false. The bool is what gates the once-per-occurrence warn log so the caller
+    // can distinguish "newly entered failsafe" from "already failsafing".
+    #[test]
+    #[serial]
+    fn note_failsafing_returns_true_only_first_time() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            assert!(repo.note_failsafing_sensor("sensor1"));
+            assert!(repo.note_failsafing_sensor("sensor1").not());
+            assert!(repo.note_failsafing_sensor("sensor1").not());
+            assert!(repo.note_failsafing_sensor("sensor2"));
+        });
+    }
+
+    // clear_failsafing_sensor returns true only when the sensor was actually in the
+    // failsafing set. Calling clear on a sensor that is not failsafing is a no-op
+    // and returns false, which is the gate the caller uses to skip the recovery
+    // info log on the common (already-fine) path.
+    #[test]
+    #[serial]
+    fn clear_failsafing_returns_true_only_when_was_failsafing() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            assert!(repo.clear_failsafing_sensor("sensor1").not());
+            repo.note_failsafing_sensor("sensor1");
+            assert!(repo.clear_failsafing_sensor("sensor1"));
+            assert!(repo.clear_failsafing_sensor("sensor1").not());
+        });
+    }
+
+    // ==================== integration tests: failsafe substitution ====================
+
+    /// Builds a mock source device whose `status_history` is filled with as many ticks as
+    /// the repo's poll-rate-derived stack size: older positions are zeroed copies of the
+    /// given temps (matching `Device::initialize_status_history_with`'s semantics) and the
+    /// most recent tick carries the real values. Returns `(uid, device_lock)` ready to pass
+    /// into `CustomSensorsRepo::new`'s `all_other_devices` argument.
+    #[allow(clippy::cast_possible_truncation)]
+    fn make_mock_source_device(temps: Vec<TempStatus>) -> (UID, DeviceLock) {
+        let temp_infos: HashMap<TempName, TempInfo> = temps
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                (
+                    t.name.clone(),
+                    TempInfo {
+                        label: t.name.clone(),
+                        number: (i + 1) as u8,
+                    },
+                )
+            })
+            .collect();
+        let mut device = Device::new(
+            "MockSource".to_string(),
+            DeviceType::Hwmon,
+            1,
+            None,
+            DeviceInfo {
+                temps: temp_infos,
+                temp_min: 0,
+                temp_max: 150,
+                ..Default::default()
+            },
+            None,
+            1.0,
+        );
+        let uid = device.uid.clone();
+        // Match the repo's history length so backfill can read every tick.
+        device.initialize_status_history_with(
+            Status {
+                temps,
+                ..Default::default()
+            },
+            1.0,
+        );
+        (uid, Rc::new(RefCell::new(device)))
+    }
+
+    /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
+    fn current_temp_for(repo: &CustomSensorsRepo, cs_id: &str) -> f64 {
+        let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+        let status = device.status_current().unwrap();
+        status
+            .temps
+            .iter()
+            .find(|t| t.name == cs_id)
+            .unwrap_or_else(|| panic!("temp '{cs_id}' not found in current status"))
+            .temp
+    }
+
+    fn mix_sensor(id: &str, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+        CustomSensor {
+            id: id.to_string(),
+            cs_type: CustomSensorType::Mix,
+            mix_function: CustomSensorMixFunctionType::Max,
+            sources,
+            ..Default::default()
+        }
+    }
+
+    fn temp_source(uid: &str, name: &str) -> CustomTempSourceData {
+        CustomTempSourceData {
+            weight: 1,
+            temp_source: TempSource {
+                device_uid: uid.to_string(),
+                temp_name: name.to_string(),
+            },
+        }
+    }
+
+    // Mix sensor pointing at a non-existent source device short-circuits to
+    // MISSING_TEMP_FAILSAFE on the live tick (any-miss-fails-the-sensor per Q6c) and is
+    // recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
+    // A missing source DEVICE is what production-relevant cases look like (device removed
+    // mid-session); a present-device-with-missing-temp_name is rejected at backfill time
+    // by process_custom_sensor_data_indexed and so cannot reach the live path.
+    #[test]
+    #[serial]
+    fn mix_sensor_with_missing_source_emits_failsafe_on_live_tick() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            // No source device registered; the device_uid here is unknown to the repo.
+            let sensor = mix_sensor(
+                "mix1",
+                vec![temp_source("nonexistent_device_uid", "any_temp")],
+            );
+
+            // Backfill skips a missing source device and falls through to the empty
+            // temp_data dummy (0); set_custom_sensor therefore succeeds.
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("mix1"));
+        });
+    }
+
+    // Mix sensor with all sources present emits the real Max value and does not enter the
+    // failsafing set. Regression check that the happy path is unaffected by the refactor.
+    #[test]
+    #[serial]
+    fn mix_sensor_with_all_sources_present_emits_real_value() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![
+                TempStatus {
+                    name: "cpu".to_string(),
+                    temp: 70.0,
+                },
+                TempStatus {
+                    name: "gpu".to_string(),
+                    temp: 60.0,
+                },
+            ]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = mix_sensor(
+                "mix1",
+                vec![
+                    temp_source(&source_uid, "cpu"),
+                    temp_source(&source_uid, "gpu"),
+                ],
+            );
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            // Max(70, 60) = 70
+            assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("mix1").not());
+        });
+    }
+
+    // Mix-Delta with one missing source: today's old behavior would silently emit 0 (delta
+    // over a one-element [70] = 0). The refactor short-circuits to failsafe so the
+    // delta-driven control logic reacts. This is the case Q6c was specifically built for.
+    // The second source uses a non-existent device_uid so backfill skips it (rather than
+    // erroring on a present device with an unknown temp_name).
+    #[test]
+    #[serial]
+    fn mix_delta_with_one_source_missing_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "delta1".to_string(),
+                cs_type: CustomSensorType::Mix,
+                mix_function: CustomSensorMixFunctionType::Delta,
+                sources: vec![
+                    temp_source(&source_uid, "cpu"),
+                    temp_source("nonexistent_device_uid", "anything"),
+                ],
+                ..Default::default()
+            };
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            assert!(
+                (current_temp_for(&repo, "delta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
+            );
+            assert!(repo.failsafing_sensors.borrow().contains("delta1"));
+        });
+    }
+
+    // Offset sensor with source missing: arithmetic substitution would emit
+    // (100 + offset).clamp(0, 150) which is *not* the failsafe value. Short-circuit
+    // ensures the actual MISSING_TEMP_FAILSAFE reaches the consuming control logic.
+    #[test]
+    #[serial]
+    fn offset_sensor_with_source_missing_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "off1".to_string(),
+                cs_type: CustomSensorType::Offset,
+                offset: Some(-25),
+                sources: vec![temp_source("nonexistent_device_uid", "any_temp")],
+                ..Default::default()
+            };
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            // -25 offset on the failsafe would have been 75 under arithmetic substitution;
+            // short-circuit must produce exactly MISSING_TEMP_FAILSAFE.
+            assert!((current_temp_for(&repo, "off1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("off1"));
+        });
+    }
+
+    // TimeAverage with no collectible samples (source's history has no matching temp_name):
+    // process_time_average_current's compute_time_average returns None and emits failsafe.
+    #[test]
+    #[serial]
+    fn time_average_with_no_samples_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "actual".to_string(),
+                temp: 50.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "ta1".to_string(),
+                cs_type: CustomSensorType::TimeAverage,
+                time_window_seconds: Some(5),
+                sources: vec![temp_source(&source_uid, "missing")],
+                ..Default::default()
+            };
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            assert!((current_temp_for(&repo, "ta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("ta1"));
+        });
+    }
+
+    // TimeAverage with window_seconds == 0 is an invariant break (validator enforces 1..=60),
+    // but the live path defensively emits failsafe and logs error per tick. Bypasses
+    // set_custom_sensor because that path's debug_assert on window_seconds >= 1 would panic
+    // on 0; we inject the sensor directly to exercise the live defensive path.
+    #[test]
+    #[serial]
+    fn time_average_with_window_zero_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "actual".to_string(),
+                temp: 50.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            // Direct injection bypasses validation and backfill; we only exercise the live
+            // path here.
+            let sensor = CustomSensor {
+                id: "ta_bad".to_string(),
+                cs_type: CustomSensorType::TimeAverage,
+                time_window_seconds: Some(0),
+                sources: vec![temp_source(&source_uid, "actual")],
+                ..Default::default()
+            };
+            repo.sensors.borrow_mut().push(sensor);
+
+            repo.update_statuses().await.unwrap();
+
+            assert!(
+                (current_temp_for(&repo, "ta_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
+            );
+            assert!(repo.failsafing_sensors.borrow().contains("ta_bad"));
+        });
+    }
+
+    // File sensor entering failsafe and recovering: write valid file, run a live tick,
+    // delete the file, run another live tick (failsafe + set entry), restore the file with
+    // a new value, run another live tick (real value + set cleared).
+    #[test]
+    #[serial]
+    fn file_sensor_recovers_from_failsafe() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
+
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "file1".to_string(),
+                cs_type: CustomSensorType::File,
+                file_path: Some(test_file.clone()),
+                ..Default::default()
+            };
+            repo.set_custom_sensor(sensor).await.unwrap();
+
+            // Tick 1: file readable, real value
+            repo.update_statuses().await.unwrap();
+            assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("file1").not());
+
+            // Remove the file: next tick should failsafe.
+            cc_fs::remove_file(&test_file).await.ok();
+            repo.update_statuses().await.unwrap();
+            assert!(
+                (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
+            );
+            assert!(repo.failsafing_sensors.borrow().contains("file1"));
+
+            // Restore the file with a new value: next tick recovers.
+            cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
+            repo.update_statuses().await.unwrap();
+            assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("file1").not());
+        });
+    }
+
+    // delete_custom_sensor must drop the sensor's id from failsafing_sensors so a future
+    // sensor reusing the same id starts fresh and its first failsafe entry logs cleanly.
+    #[test]
+    #[serial]
+    fn delete_custom_sensor_clears_failsafing_state() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "to_delete".to_string(),
+                cs_type: CustomSensorType::File,
+                file_path: Some(test_file),
+                ..Default::default()
+            };
+            repo.set_custom_sensor(sensor).await.unwrap();
+            // Plant a failsafing-state entry directly to simulate the sensor having entered
+            // failsafe at some prior point.
+            repo.note_failsafing_sensor("to_delete");
+            assert!(repo.failsafing_sensors.borrow().contains("to_delete"));
+
+            repo.delete_custom_sensor("to_delete").unwrap();
+
+            assert!(repo.failsafing_sensors.borrow().contains("to_delete").not());
+        });
+    }
+
+    // update_custom_sensor must drop the prior failsafing-state entry so a reconfigured
+    // sensor starts fresh; if it failsafes on the next tick the warn log fires for the
+    // newly configured cause rather than being suppressed by the stale flag.
+    #[test]
+    #[serial]
+    fn update_custom_sensor_clears_failsafing_state() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "to_update".to_string(),
+                cs_type: CustomSensorType::File,
+                file_path: Some(test_file.clone()),
+                ..Default::default()
+            };
+            repo.set_custom_sensor(sensor.clone()).await.unwrap();
+            repo.note_failsafing_sensor("to_update");
+            assert!(repo.failsafing_sensors.borrow().contains("to_update"));
+
+            // Update with the same content; the cleanup hook must drop the failsafing entry.
+            repo.update_custom_sensor(sensor).await.unwrap();
+
+            assert!(repo.failsafing_sensors.borrow().contains("to_update").not());
+        });
+    }
+
+    // Backfill of a brand-new Mix sensor with a missing source must keep emitting 0 in
+    // status_history (the historical placeholder), not MISSING_TEMP_FAILSAFE. Backfill is
+    // out of scope for the safety contract (Q2a) and substituting failsafe in history would
+    // create phantom 100°C spikes at sensor-creation time on charts. Uses a non-existent
+    // device_uid so backfill skips the source and falls through to the empty-temp_data
+    // dummy push (0); a present-device-with-missing-temp_name would error at backfill.
+    #[test]
+    #[serial]
+    fn backfill_with_missing_source_uses_zero_not_failsafe() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = mix_sensor(
+                "mix_bf",
+                vec![temp_source("nonexistent_device_uid", "any_temp")],
+            );
+
+            // set_custom_sensor only does backfill via process_custom_sensor_data_indexed.
+            // We do NOT call update_statuses here, so the live path is never exercised.
+            repo.set_custom_sensor(sensor).await.unwrap();
+
+            // status_history entries for mix_bf (all backfilled) must be 0, not failsafe.
+            // The sensor must NOT be in the failsafing set: backfill bypasses emit_failsafe.
+            let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+            for status in device.status_history.iter() {
+                let entry = status
+                    .temps
+                    .iter()
+                    .find(|t| t.name == "mix_bf")
+                    .expect("mix_bf temp absent from history");
+                assert!(
+                    entry.temp.abs() < f64::EPSILON,
+                    "backfill must emit 0., got {}",
+                    entry.temp
+                );
+            }
+            assert!(repo.failsafing_sensors.borrow().contains("mix_bf").not());
+        });
     }
 }
