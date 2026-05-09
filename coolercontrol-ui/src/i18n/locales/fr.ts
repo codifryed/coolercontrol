@@ -606,7 +606,7 @@ export default {
             maxValueTooltip: "Les valeurs au-dessus de ceci déclencheront l'alerte.",
             minValueTooltip: "Les valeurs en dessous de ceci déclencheront l'alerte.",
             warmupDurationTooltip:
-                "Durée pendant laquelle une condition doit être active avant que l'alerte soit considérée comme active. Cette durée est vérifiée uniquement à intervalles réguliers et peut donc varier.",
+                "Durée pendant laquelle une condition doit être active avant que l'alerte soit considérée comme active.\nCette durée est vérifiée uniquement à intervalles réguliers\net peut donc varier.",
             greaterThan: 'supérieur à',
             lessThan: 'inférieur à',
             newAlert: 'Nouvelle Alerte',
@@ -625,7 +625,7 @@ export default {
                 "Activer l'audio de notification de bureau lorsque l'alerte est déclenchée.\n(Si pris en charge)",
             shutdownOnActivation: "arrêt lors de l'activation",
             shutdownOnActivationTooltip:
-                "Activer l'arrêt du système lorsque l'alerte est déclenchée.\nL'arrêt du système commencera une minute après le déclenchement de l'alerte et sera annulé si l'alerte récupère.",
+                "Activer l'arrêt du système lorsque l'alerte est déclenchée.\nL'arrêt du système commencera une minute après le déclenchement de l'alerte\net sera annulé si l'alerte récupère.",
         },
         profiles: {
             createProfile: 'Créer un profil',
@@ -776,6 +776,10 @@ export default {
             thresholdHopping: 'Saut de Seuil',
             thresholdHoppingTooltip:
                 "Lorsque la vitesse du ventilateur reste inchangée pendant 30+ secondes, les limites de taille de pas et d'hystérésis sont temporairement contournées.\nCela garantit que les ventilateurs atteignent finalement leur vitesse cible, même avec des paramètres de seuil conservateurs.",
+            stepOverrides: 'Dérogations de pas',
+            bypassMinAtExtremes: 'Toujours appliquer 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                "Lorsque activé, les cycles cibles de 0% ou 100% sont appliqués même lorsque le changement est inférieur à la taille de pas minimale.\nUtile pour s'assurer que les ventilateurs s'arrêtent complètement ou atteignent leur RPM maximum. Désactivé par défaut.",
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Fonction.',
             unsavedChangesHeader: 'Changements non enregistrés',
             functionError: 'Erreur lors de la tentative de mise à jour de cette fonction',

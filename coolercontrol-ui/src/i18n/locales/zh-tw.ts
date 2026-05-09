@@ -491,7 +491,7 @@ export default {
             maxValueTooltip: '超過此值將觸發警報。',
             minValueTooltip: '低於此值將觸發警報。',
             warmupDurationTooltip:
-                '條件必須保持多長時間才會將警報視為有效。該值僅按固定的輪詢頻率間隔進行檢查，因此可能不完全是這個長度。',
+                '條件必須保持多長時間才會將警報視為有效。\n該值僅按固定的輪詢頻率間隔進行檢查，\n因此可能不完全是這個長度。',
             greaterThan: '大於',
             lessThan: '小於',
             newAlert: '新警報',
@@ -507,7 +507,7 @@ export default {
             desktopNotifyAudioTooltip: '當警報觸發時啟用桌面通知音訊。\n（如果支援）',
             shutdownOnActivation: '啟動時關機',
             shutdownOnActivationTooltip:
-                '當警報觸發時啟用系統關機。\n系統將在警報觸發一分鐘後開始關機，如果警報恢復則取消關機。',
+                '當警報觸發時啟用系統關機。\n系統將在警報觸發一分鐘後開始關機，\n如果警報恢復則取消關機。',
         },
         profiles: {
             createProfile: '建立設定檔',
@@ -737,6 +737,10 @@ export default {
             thresholdHopping: '閾值跳躍',
             thresholdHoppingTooltip:
                 '當風扇速度保持30秒以上不變時，步長和滯後限制將被臨時繞過。\n這確保風扇最終達到目標速度，即使使用保守的閾值設置。',
+            stepOverrides: '步長覆蓋',
+            bypassMinAtExtremes: '始終套用 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                '啟用後，即使變化小於最小步長，0% 或 100% 的目標占空比也會被套用。\n有助於確保風扇完全停止或達到最大轉速。預設停用。',
             unsavedChanges: '此功能有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
             functionError: '嘗試更新此功能時出現錯誤',

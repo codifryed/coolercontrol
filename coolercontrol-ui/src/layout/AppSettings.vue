@@ -469,7 +469,7 @@ onUnmounted(() => {
                         <!--UI Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.introduction')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.introduction')">
                                     <td
                                         class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -487,7 +487,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.startupPage')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.startupPage')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -516,7 +516,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.timeFormat')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.timeFormat')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -535,9 +535,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.frequencyPrecision')
-                                    "
+                                    v-tooltip.top="t('layout.settings.tooltips.frequencyPrecision')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
@@ -558,7 +556,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.sidebarCollapse')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.sidebarCollapse')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -573,7 +571,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.eyeCandy')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.eyeCandy')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -585,7 +583,7 @@ onUnmounted(() => {
                                         <el-switch v-model="settingsStore.eyeCandy" size="large" />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.fullScreen')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.fullScreen')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -602,7 +600,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.lineThickness')">
+                                <tr v-tooltip.top="t('layout.settings.tooltips.lineThickness')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -671,7 +669,7 @@ onUnmounted(() => {
                                         </Select>
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.appearance')">
+                                <tr v-tooltip.top="t('layout.settings.appearance')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -708,7 +706,7 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.language')">
+                                <tr v-tooltip.top="t('layout.settings.language')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -947,7 +945,7 @@ onUnmounted(() => {
                         <table class="bg-bg-two rounded-lg mb-4">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.applySettingsOnStartup'),
                                     }"
@@ -967,7 +965,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.deviceDelayAtStartup'),
                                     }"
@@ -999,7 +997,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.pollingRate'),
                                     }"
@@ -1047,7 +1045,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.compressApiPayload'),
                                     }"
@@ -1082,7 +1080,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.sensorsAutoDetect'),
                                     }"
@@ -1117,7 +1115,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.deviceListener'),
                                     }"
@@ -1154,7 +1152,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.liquidctlIntegration'),
                                     }"
@@ -1189,7 +1187,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.liquidctlDeviceInit'),
                                     }"
@@ -1214,7 +1212,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.hideDuplicateDevices'),
                                     }"
@@ -1254,7 +1252,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.drivePowerState'),
                                     }"
@@ -1292,7 +1290,7 @@ onUnmounted(() => {
                         <!--                        <table class="lg:ml-4 h-full bg-bg-two rounded-lg">-->
                         <!--                            <tbody>-->
                         <!--                                <tr-->
-                        <!--                                    v-tooltip.right="{-->
+                        <!--                                    v-tooltip.top="{-->
                         <!--                                        escape: false,-->
                         <!--                                        value: t('layout.settings.tooltips.daemonAddress'),-->
                         <!--                                    }"-->
@@ -1313,7 +1311,7 @@ onUnmounted(() => {
                         <!--                                    </td>-->
                         <!--                                </tr>-->
                         <!--                                <tr-->
-                        <!--                                    v-tooltip.right="{-->
+                        <!--                                    v-tooltip.top="{-->
                         <!--                                        escape: false,-->
                         <!--                                        value: t('layout.settings.tooltips.daemonPort'),-->
                         <!--                                    }"-->
@@ -1346,7 +1344,7 @@ onUnmounted(() => {
                         <!--                                    </td>-->
                         <!--                                </tr>-->
                         <!--                                <tr-->
-                        <!--                                    v-tooltip.right="{-->
+                        <!--                                    v-tooltip.top="{-->
                         <!--                                        escape: false,-->
                         <!--                                        value: t('layout.settings.tooltips.sslTls'),-->
                         <!--                                    }"-->
@@ -1410,7 +1408,7 @@ onUnmounted(() => {
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.startInTray'),
                                     }"
@@ -1430,7 +1428,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.closeToTray'),
                                     }"
@@ -1450,7 +1448,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.zoom'),
                                     }"
@@ -1483,7 +1481,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="{
+                                    v-tooltip.top="{
                                         escape: false,
                                         value: t('layout.settings.tooltips.desktopStartupDelay'),
                                     }"

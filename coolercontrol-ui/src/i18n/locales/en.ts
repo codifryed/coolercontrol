@@ -590,7 +590,7 @@ export default {
             maxValueTooltip: 'Values above this will trigger the alert.',
             minValueTooltip: 'Values below this will trigger the alert.',
             warmupDurationTooltip:
-                'How long a condition must be active before the alert is considered active. It is checked only at regular poll-rate intervals and so may not be exactly this length.',
+                'How long a condition must be active before the alert is considered active.\nIt is checked only at regular poll-rate intervals\nand so may not be exactly this length.',
             greaterThan: 'greater than',
             lessThan: 'less than',
             newAlert: 'New Alert',
@@ -609,7 +609,7 @@ export default {
                 'Enable desktop notification audio when the alert is triggered.\n(If supported)',
             shutdownOnActivation: 'shutdown on activation',
             shutdownOnActivationTooltip:
-                'Enable system shutdown when the alert is triggered.\nSystem shutdown will commence one minute after the alert is triggered and will be cancelled if the alert recovers.',
+                'Enable system shutdown when the alert is triggered.\nSystem shutdown will commence one minute after the alert is triggered\nand will be cancelled if the alert recovers.',
         },
         profiles: {
             createProfile: 'Create Profile',
@@ -753,9 +753,13 @@ export default {
             onlyDownward: 'Only Downward',
             onlyDownwardTooltip: 'Only apply hysteresis settings when temperature is decreasing.',
             general: 'General',
+            stepOverrides: 'Step Overrides',
             thresholdHopping: 'Threshold Hopping',
             thresholdHoppingTooltip:
                 'When fan speed remains unchanged for 30+ seconds, step size and hysteresis limits are temporarily bypassed.\nThis ensures that fans eventually reach their target speed, even with conservative threshold settings.',
+            bypassMinAtExtremes: 'Always apply 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                'When enabled, target duties of 0% or 100% are applied even when the change is smaller than the minimum step size.\nUseful for ensuring fans fully stop or reach max RPM. Disabled by default.',
             unsavedChanges: 'There are unsaved changes made to this Function.',
             unsavedChangesHeader: 'Unsaved Changes',
             functionError: 'Error trying to update this function',

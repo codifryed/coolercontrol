@@ -547,8 +547,12 @@ impl FunctionDutyThresholdPostProcessor {
         let (step_increase_min, step_increase_max, step_decrease_min, step_decrease_max) =
             Self::determine_step_sizes(&data.profile.function);
 
+        let target_duty = data.duty.unwrap();
+        let extreme_bypass_active = data.profile.function.bypass_min_at_extremes
+            && (target_duty == 0 || target_duty == 100);
+
         #[allow(clippy::cast_possible_wrap)]
-        let diff_to_last_duty: i8 = data.duty.unwrap() as i8 - last_duty as i8;
+        let diff_to_last_duty: i8 = target_duty as i8 - last_duty as i8;
         let duty_has_decreased = diff_to_last_duty < 0;
         let abs_diff_to_last_duty = diff_to_last_duty.unsigned_abs();
 
@@ -556,9 +560,9 @@ impl FunctionDutyThresholdPostProcessor {
             // If the safety-latch is triggered, we want to bypass only the MIN step size thresholds
             // as that is the only case where a duty is possibly not applied.
             // MAX step size limits we will respect in all cases.
-            if data.profile.function.threshold_hopping {
-                // For threshold hopping, we only want to bypass the min thresholds, as
-                // that is the only case where duty is not applied.
+            if data.profile.function.threshold_hopping || extreme_bypass_active {
+                // For threshold hopping or extreme bypass, we only want to bypass the min thresholds,
+                // as that is the only case where duty is not applied.
                 // For duty increases or zero, we handling it like normal - always applying
                 if duty_has_decreased {
                     if abs_diff_to_last_duty < step_decrease_min {
@@ -581,9 +585,9 @@ impl FunctionDutyThresholdPostProcessor {
             }
         }
 
-        // Normal flow
+        // Normal flow. Extreme bypass skips the min check; max clamp still applies.
         if duty_has_decreased {
-            if abs_diff_to_last_duty < step_decrease_min {
+            if abs_diff_to_last_duty < step_decrease_min && extreme_bypass_active.not() {
                 None
             } else if abs_diff_to_last_duty > step_decrease_max {
                 Some(last_duty - step_decrease_max) // limit to max step size
@@ -591,7 +595,7 @@ impl FunctionDutyThresholdPostProcessor {
                 // within range
                 data.duty
             }
-        } else if abs_diff_to_last_duty < step_increase_min {
+        } else if abs_diff_to_last_duty < step_increase_min && extreme_bypass_active.not() {
             None
         } else if abs_diff_to_last_duty > step_increase_max {
             Some(last_duty + step_increase_max) // limit to max step size
@@ -1223,6 +1227,216 @@ mod tests {
             result,
             Some(55),
             "exact fixed step size match should return duty"
+        );
+    }
+
+    // ==================== bypass_min_at_extremes tests ====================
+
+    fn create_test_function_with_bypass_extremes(
+        step_size_min: u8,
+        step_size_max: u8,
+        step_size_min_decreasing: u8,
+        step_size_max_decreasing: u8,
+        threshold_hopping: bool,
+    ) -> Function {
+        Function {
+            step_size_min,
+            step_size_max,
+            step_size_min_decreasing,
+            step_size_max_decreasing,
+            threshold_hopping,
+            bypass_min_at_extremes: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn apply_step_size_bypass_increase_to_100_below_min() {
+        // Goal: with bypass enabled, an increase to exactly 100 should be applied
+        // even when the diff is below step_size_min.
+        let processor = setup_processor_with_last_duty(98);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        // Duty increase of 2 (98 -> 100), below step_size_min of 5.
+        let data = create_test_data(function, 100, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(100),
+            "bypass should apply target=100 even when below min threshold"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_decrease_to_0_below_min() {
+        // Goal: with bypass enabled, a decrease to exactly 0 should be applied
+        // even when the diff is below step_size_min.
+        let processor = setup_processor_with_last_duty(2);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        // Duty decrease of 2 (2 -> 0), below step_size_min of 5.
+        let data = create_test_data(function, 0, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(0),
+            "bypass should apply target=0 even when below min threshold"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_target_99_not_extreme() {
+        // Goal: bypass is strict at exactly 100, so target=99 should still
+        // be filtered out by the min threshold.
+        let processor = setup_processor_with_last_duty(98);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        // Duty increase of 1 (98 -> 99), below min, but 99 is not an extreme.
+        let data = create_test_data(function, 99, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "bypass should not fire for target=99 (not strictly extreme)"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_target_1_not_extreme() {
+        // Goal: bypass is strict at exactly 0, so target=1 should still
+        // be filtered out by the min threshold.
+        let processor = setup_processor_with_last_duty(2);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        // Duty decrease of 1 (2 -> 1), below min, but 1 is not an extreme.
+        let data = create_test_data(function, 1, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "bypass should not fire for target=1 (not strictly extreme)"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_disabled_unchanged_behavior() {
+        // Goal: with bypass disabled, an increase to 100 below the min
+        // threshold should still be filtered (current pre-feature behavior).
+        let processor = setup_processor_with_last_duty(98);
+        let function = create_test_function(5, 100, 0, 0, true);
+        // bypass_min_at_extremes defaults to false via create_test_function.
+        let data = create_test_data(function, 100, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "with bypass disabled, increase below min should still return None"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_increase_above_max_still_clamps() {
+        // Goal: bypass-min-only invariant. Even with bypass on and target=100,
+        // a large increase must be clamped to last_duty + step_size_max.
+        let processor = setup_processor_with_last_duty(80);
+        let function = create_test_function_with_bypass_extremes(2, 10, 0, 0, true);
+        // Duty increase of 20 (80 -> 100), above max of 10.
+        let data = create_test_data(function, 100, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(90),
+            "max clamp must still apply when target=100 and diff > step_size_max"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_decrease_above_max_still_clamps() {
+        // Goal: bypass-min-only invariant on the decrease side.
+        let processor = setup_processor_with_last_duty(20);
+        let function = create_test_function_with_bypass_extremes(2, 100, 2, 10, true);
+        // Duty decrease of 20 (20 -> 0), above decrease max of 10.
+        let data = create_test_data(function, 0, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(10),
+            "max clamp must still apply when target=0 and diff > step_size_max_decreasing"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_asymmetric_decrease_to_0() {
+        // Goal: with asymmetric step sizes, the decrease bypass uses
+        // step_size_min_decreasing. last=10, target=0 with decrease min=15
+        // would normally be filtered; bypass should let it through.
+        let processor = setup_processor_with_last_duty(10);
+        let function = create_test_function_with_bypass_extremes(5, 100, 15, 100, true);
+        // Duty decrease of 10 (10 -> 0), below decrease min of 15.
+        let data = create_test_data(function, 0, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(0),
+            "bypass should apply target=0 below the asymmetric decrease min"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_safety_latch_no_hopping_extreme_applies() {
+        // Goal: bypass is independent of threshold_hopping. With
+        // threshold_hopping=false and safety_latch_triggered, the normal
+        // path replays last_duty when below min. Bypass should override
+        // and apply the extreme target.
+        let processor = setup_processor_with_last_duty(98);
+        // hopping=false, bypass=true.
+        let function = create_test_function_with_bypass_extremes(10, 100, 0, 0, false);
+        // Duty increase of 2 (98 -> 100), below min.
+        let data = create_test_data(function, 100, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(100),
+            "bypass should apply target=100 even with safety_latch and threshold_hopping=false"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_last_equals_target_extreme() {
+        // Goal: when last_duty already equals the extreme target (no diff),
+        // bypass still fires and re-applies the same value. The device-level
+        // dedup handles redundant writes; the post-processor just needs to
+        // not return None.
+        let processor = setup_processor_with_last_duty(100);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        let data = create_test_data(function, 100, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(100),
+            "bypass should re-apply target=100 even when diff is zero"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_bypass_first_application_target_100() {
+        // Goal: regression check. The first-application short-circuit must
+        // still fire regardless of bypass state.
+        use crate::engine::Processor;
+        let processor = FunctionDutyThresholdPostProcessor::new();
+        let profile_uid = "test-profile".to_string();
+        processor.init_state(&profile_uid);
+        let function = create_test_function_with_bypass_extremes(5, 100, 0, 0, true);
+        let data = create_test_data(function, 100, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(100),
+            "first application should apply target=100 (bypass irrelevant here)"
         );
     }
 

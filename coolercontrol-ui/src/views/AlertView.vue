@@ -396,7 +396,7 @@ onMounted(async () => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
-                    v-tooltip.bottom="t('views.alerts.saveAlert')"
+                    v-tooltip.top="t('views.alerts.saveAlert')"
                     :disabled="chosenChannelSource == null || chosenName.length === 0"
                     @click="saveAlert"
                 >
@@ -429,7 +429,7 @@ onMounted(async () => {
                         :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenChannelSource == null"
-                        v-tooltip.right="t('views.alerts.channelSourceTooltip')"
+                        v-tooltip.top="t('views.alerts.channelSourceTooltip')"
                         @change="changeChannelSource"
                     >
                         <template #optiongroup="slotProps">
@@ -467,7 +467,7 @@ onMounted(async () => {
                     </small>
                     <table class="bg-bg-two rounded-lg mb-4">
                         <tbody>
-                            <tr v-tooltip.right="t('views.alerts.maxValueTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.maxValueTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2"
                                 >
@@ -520,7 +520,7 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.minValueTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.minValueTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
@@ -575,7 +575,7 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.warmupDurationTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.warmupDurationTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
@@ -616,7 +616,7 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.desktopNotifyTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.desktopNotifyTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
@@ -630,7 +630,7 @@ onMounted(async () => {
                                     <el-switch v-model="chosenDesktopNotification" size="large" />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.desktopNotifyRecoveryTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.desktopNotifyRecoveryTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
@@ -648,7 +648,7 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.desktopNotifyAudioTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.desktopNotifyAudioTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
@@ -666,7 +666,7 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="t('views.alerts.shutdownOnActivationTooltip')">
+                            <tr v-tooltip.top="t('views.alerts.shutdownOnActivationTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >

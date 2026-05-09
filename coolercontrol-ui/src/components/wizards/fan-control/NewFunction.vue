@@ -103,6 +103,7 @@ const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const chosenThresholdHopping: Ref<boolean> = ref(currentFunction.value.threshold_hopping)
+const chosenBypassMinAtExtremes: Ref<boolean> = ref(currentFunction.value.bypass_min_at_extremes)
 
 const nextStep = async (): Promise<void> => {
     if (currentFunction.value.uid === '0') {
@@ -136,6 +137,7 @@ const nextStep = async (): Promise<void> => {
     currentFunction.value.only_downward =
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
     currentFunction.value.threshold_hopping = chosenThresholdHopping.value
+    currentFunction.value.bypass_min_at_extremes = chosenBypassMinAtExtremes.value
 
     emit('newFunction', currentFunction.value)
     emit('nextStep', 13)
@@ -210,14 +212,14 @@ const updateSymmetricStepSize = () => {
                                 {{ t('views.functions.stepSizeTitle') }}
                             </th>
                         </tr>
-                        <tr v-tooltip.right="t('views.functions.fixedStepSizeTooltip')">
+                        <tr v-tooltip.top="t('views.functions.fixedStepSizeTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b"
                             >
                                 {{ t('views.functions.fixedStepSize') }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b"
                             >
                                 <el-switch
                                     v-model="chosenFixedStepSize"
@@ -226,14 +228,14 @@ const updateSymmetricStepSize = () => {
                                 />
                             </td>
                         </tr>
-                        <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
+                        <tr v-tooltip.top="t('views.functions.asymmetricTooltip')">
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b"
                             >
                                 {{ t('views.functions.asymmetric') }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b"
                             >
                                 <el-switch
                                     v-model="chosenAsymmetric"
@@ -243,7 +245,7 @@ const updateSymmetricStepSize = () => {
                             </td>
                         </tr>
                         <tr
-                            v-tooltip.right="
+                            v-tooltip.top="
                                 chosenFixedStepSize
                                     ? chosenAsymmetric
                                         ? t('views.functions.stepSizeFixedIncreasingTooltip')
@@ -254,7 +256,7 @@ const updateSymmetricStepSize = () => {
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b"
                             >
                                 {{
                                     chosenFixedStepSize
@@ -267,7 +269,7 @@ const updateSymmetricStepSize = () => {
                                 }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b"
                             >
                                 <InputNumber
                                     v-model="chosenStepDutyMinimum"
@@ -290,14 +292,14 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="!chosenFixedStepSize"
-                            v-tooltip.right="
+                            v-tooltip.top="
                                 chosenAsymmetric
                                     ? t('views.functions.stepSizeMaxIncreasingTooltip')
                                     : t('views.functions.stepSizeMaxTooltip')
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b"
                             >
                                 {{
                                     chosenAsymmetric
@@ -306,7 +308,7 @@ const updateSymmetricStepSize = () => {
                                 }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b"
                             >
                                 <InputNumber
                                     v-model="chosenStepDutyMaximum"
@@ -330,14 +332,14 @@ const updateSymmetricStepSize = () => {
 
                         <tr
                             v-if="chosenAsymmetric"
-                            v-tooltip.right="
+                            v-tooltip.top="
                                 chosenFixedStepSize
                                     ? t('views.functions.stepSizeFixedDecreasingTooltip')
                                     : t('views.functions.stepSizeMinDecreasingTooltip')
                             "
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-b"
                             >
                                 {{
                                     chosenFixedStepSize
@@ -346,7 +348,7 @@ const updateSymmetricStepSize = () => {
                                 }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-b"
                             >
                                 <InputNumber
                                     v-model="chosenStepSizeMinDecreasing"
@@ -371,15 +373,15 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="chosenAsymmetric && !chosenFixedStepSize"
-                            v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
+                            v-tooltip.top="t('views.functions.stepSizeMaxDecreasingTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t"
                             >
                                 {{ t('views.functions.stepSizeMaxDecreasing') }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t"
                             >
                                 <InputNumber
                                     v-model="chosenStepSizeMaxDecreasing"
@@ -400,6 +402,38 @@ const updateSymmetricStepSize = () => {
                                 </InputNumber>
                             </td>
                         </tr>
+                        <tr>
+                            <th
+                                colspan="2"
+                                class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
+                            >
+                                {{ t('views.functions.stepOverrides') }}
+                            </th>
+                        </tr>
+                        <tr v-tooltip.top="t('views.functions.thresholdHoppingTooltip')">
+                            <td
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.thresholdHopping') }}
+                            </td>
+                            <td
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <el-switch v-model="chosenThresholdHopping" size="large" />
+                            </td>
+                        </tr>
+                        <tr v-tooltip.top="t('views.functions.bypassMinAtExtremesTooltip')">
+                            <td
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t"
+                            >
+                                {{ t('views.functions.bypassMinAtExtremes') }}
+                            </td>
+                            <td
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t"
+                            >
+                                <el-switch v-model="chosenBypassMinAtExtremes" size="large" />
+                            </td>
+                        </tr>
                         <tr v-if="selectedType === FunctionType.Standard">
                             <th
                                 colspan="2"
@@ -410,10 +444,10 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="selectedType === FunctionType.Standard"
-                            v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
+                            v-tooltip.top="t('views.functions.hysteresisThresholdTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.hysteresisThreshold') }}
                             </td>
@@ -444,15 +478,15 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="selectedType === FunctionType.Standard"
-                            v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
+                            v-tooltip.top="t('views.functions.hysteresisDelayTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t"
                             >
                                 {{ t('views.functions.hysteresisDelay') }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t"
                             >
                                 <InputNumber
                                     v-model="chosenDelay"
@@ -475,20 +509,20 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="selectedType === FunctionType.Standard"
-                            v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
+                            v-tooltip.top="t('views.functions.onlyDownwardTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t"
                             >
                                 {{ t('views.functions.onlyDownward') }}
                             </td>
                             <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t"
                             >
                                 <el-switch v-model="chosenOnlyDownward" size="large" />
                             </td>
                         </tr>
-                        <tr>
+                        <tr v-if="selectedType === FunctionType.ExponentialMovingAvg">
                             <th
                                 colspan="2"
                                 class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
@@ -498,10 +532,10 @@ const updateSymmetricStepSize = () => {
                         </tr>
                         <tr
                             v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                            v-tooltip.right="t('views.functions.windowSizeTooltip')"
+                            v-tooltip.top="t('views.functions.windowSizeTooltip')"
                         >
                             <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                class="py-4 px-4 w-px whitespace-nowrap text-right items-center border-border-one border-r-2 border-t-2"
                             >
                                 {{ t('views.functions.windowSize') }}
                             </td>
@@ -524,18 +558,6 @@ const updateSymmetricStepSize = () => {
                                         <span class="pi pi-minus" />
                                     </template>
                                 </InputNumber>
-                            </td>
-                        </tr>
-                        <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
-                            <td
-                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                            >
-                                {{ t('views.functions.thresholdHopping') }}
-                            </td>
-                            <td
-                                class="py-0 px-2 text-center items-center border-border-one border-l-2 border-t-2"
-                            >
-                                <el-switch v-model="chosenThresholdHopping" size="large" />
                             </td>
                         </tr>
                     </tbody>

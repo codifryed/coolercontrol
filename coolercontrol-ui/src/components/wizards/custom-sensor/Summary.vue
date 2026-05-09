@@ -95,7 +95,7 @@ const saveCustomSensor = async (): Promise<void> => {
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
-                v-tooltip.bottom="t('views.speed.applySetting')"
+                v-tooltip.top="t('views.speed.applySetting')"
                 @click="saveCustomSensor"
             >
                 <svg-icon

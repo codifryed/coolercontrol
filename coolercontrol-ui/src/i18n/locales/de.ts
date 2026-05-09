@@ -598,7 +598,7 @@ export default {
             maxValueTooltip: 'Werte über diesem lösen die Warnung aus.',
             minValueTooltip: 'Werte unter diesem lösen die Warnung aus.',
             warmupDurationTooltip:
-                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt. Die Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen und kann daher von dieser Länge abweichen.',
+                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt.\nDie Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen\nund kann daher von dieser Länge abweichen.',
             greaterThan: 'größer als',
             lessThan: 'kleiner als',
             newAlert: 'Neue Warnung',
@@ -617,7 +617,7 @@ export default {
                 'Desktop-Benachrichtigungston aktivieren, wenn die Warnung ausgelöst wird.\n(Falls unterstützt)',
             shutdownOnActivation: 'Herunterfahren bei Aktivierung',
             shutdownOnActivationTooltip:
-                'System-Herunterfahren aktivieren, wenn die Warnung ausgelöst wird.\nDas System wird eine Minute nach Auslösung der Warnung heruntergefahren und abgebrochen, wenn die Warnung wiederhergestellt wird.',
+                'System-Herunterfahren aktivieren, wenn die Warnung ausgelöst wird.\nDas System wird eine Minute nach Auslösung der Warnung heruntergefahren\nund abgebrochen, wenn die Warnung wiederhergestellt wird.',
         },
         profiles: {
             createProfile: 'Profil erstellen',
@@ -768,6 +768,10 @@ export default {
             thresholdHopping: 'Schwellenwert-Überspringen',
             thresholdHoppingTooltip:
                 'Wenn die Lüftergeschwindigkeit 30+ Sekunden unverändert bleibt, werden Schrittgröße und Hysterese-Limits vorübergehend umgangen.\nDies stellt sicher, dass Lüfter schließlich ihre Zielgeschwindigkeit erreichen, auch bei konservativen Schwellenwerteinstellungen.',
+            stepOverrides: 'Schritt-Überschreibungen',
+            bypassMinAtExtremes: 'Immer 0% / 100% anwenden',
+            bypassMinAtExtremesTooltip:
+                'Wenn aktiviert, werden Ziel-Drehzahlen von 0% oder 100% auch dann angewendet, wenn die Änderung kleiner als die minimale Schrittgröße ist.\nNützlich, um sicherzustellen, dass Lüfter vollständig stoppen oder die maximale Drehzahl erreichen. Standardmäßig deaktiviert.',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Funktion.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
             functionError: 'Fehler beim Versuch, diese Funktion zu aktualisieren',

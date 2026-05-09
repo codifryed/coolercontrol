@@ -280,7 +280,7 @@ onUnmounted(() => {
             <div class="pr-4 flex items-center gap-2">
                 <!-- Enable/disable toggle -->
                 <ToggleSwitch
-                    v-tooltip.bottom="
+                    v-tooltip.top="
                         isDisabled ? t('layout.plugins.enable') : t('layout.plugins.disable')
                     "
                     :model-value="!isDisabled"
@@ -290,7 +290,7 @@ onUnmounted(() => {
                 <!-- Lifecycle controls (managed integration plugins only, when enabled) -->
                 <template v-if="isManaged && isIntegration">
                     <Button
-                        v-tooltip.bottom="t('layout.plugins.start')"
+                        v-tooltip.top="t('layout.plugins.start')"
                         class="!p-1.5"
                         :disabled="pluginStatus === PluginStatus.Running"
                         severity="success"
@@ -300,7 +300,7 @@ onUnmounted(() => {
                         <svg-icon type="mdi" :path="mdiPlay" :size="deviceStore.getREMSize(1.5)" />
                     </Button>
                     <Button
-                        v-tooltip.bottom="t('layout.plugins.stop')"
+                        v-tooltip.top="t('layout.plugins.stop')"
                         class="!p-1.5"
                         :disabled="pluginStatus === PluginStatus.Stopped"
                         severity="danger"
@@ -310,7 +310,7 @@ onUnmounted(() => {
                         <svg-icon type="mdi" :path="mdiStop" :size="deviceStore.getREMSize(1.5)" />
                     </Button>
                     <Button
-                        v-tooltip.bottom="t('layout.plugins.restart')"
+                        v-tooltip.top="t('layout.plugins.restart')"
                         class="!p-1.5"
                         text
                         @click="restartPlugin"
@@ -326,7 +326,7 @@ onUnmounted(() => {
                 <!-- Plugin info button (visible for plugins with UI) -->
                 <Button
                     v-if="hasUi"
-                    v-tooltip.bottom="t('layout.plugins.info')"
+                    v-tooltip.top="t('layout.plugins.info')"
                     class="!bg-accent/80 hover:!bg-accent h-[2.375rem] !border !border-border-one"
                     text
                     @click="openMetadataModal"

@@ -285,6 +285,11 @@ export class Function {
      */
     threshold_hopping: boolean = true
 
+    /**
+     * Whether to bypass the minimum step size when the target duty is exactly 0% or 100%.
+     */
+    bypass_min_at_extremes: boolean = false
+
     constructor(
         name: string,
         f_type: FunctionType = FunctionType.Identity,

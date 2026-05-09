@@ -513,7 +513,7 @@ onMounted(async () => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="t('views.dashboard.timeRange')"
+                    v-tooltip.top="t('views.dashboard.timeRange')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -533,7 +533,7 @@ onMounted(async () => {
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="t('views.dashboard.chartType')"
+                    v-tooltip.top="t('views.dashboard.chartType')"
                 />
             </div>
             <div v-if="!shouldCreateSensor" class="p-2">
@@ -546,7 +546,7 @@ onMounted(async () => {
                     placeholder="View Type"
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
-                    v-tooltip.right="t('views.controls.viewType')"
+                    v-tooltip.top="t('views.controls.viewType')"
                     @change="viewTypeChanged"
                 />
             </div>
@@ -555,7 +555,7 @@ onMounted(async () => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
-                    v-tooltip.bottom="t('views.customSensors.saveCustomSensor')"
+                    v-tooltip.top="t('views.customSensors.saveCustomSensor')"
                     :disabled="saveButtonDisabled()"
                     @click="saveSensor"
                 >
@@ -586,7 +586,7 @@ onMounted(async () => {
                         checkmark
                         :placeholder="t('views.customSensors.type')"
                         list-style="max-height: 100%"
-                        v-tooltip.bottom="t('views.customSensors.sensorType')"
+                        v-tooltip.top="t('views.customSensors.sensorType')"
                         @change="changeSensorType"
                         option-label="label"
                         option-value="value"
@@ -603,7 +603,7 @@ onMounted(async () => {
                         :placeholder="t('views.customSensors.type')"
                         class="w-full"
                         list-style="max-height: 100%"
-                        v-tooltip.right="t('views.customSensors.howCalculateValue')"
+                        v-tooltip.top="t('views.customSensors.howCalculateValue')"
                         @change="changeMixFunction"
                         option-label="label"
                         option-value="value"
@@ -618,7 +618,7 @@ onMounted(async () => {
                     </small>
                     <div
                         class="rounded-lg bg-bg-two p-3 flex justify-center"
-                        v-tooltip.right="{
+                        v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.offsetTooltip'),
                         }"
@@ -651,13 +651,13 @@ onMounted(async () => {
                         class="w-full h-12"
                         :placeholder="'/tmp/your_temp_file'"
                         :invalid="!filePath"
-                        v-tooltip.bottom="t('views.customSensors.filePathTooltip')"
+                        v-tooltip.top="t('views.customSensors.filePathTooltip')"
                     />
                     <div v-if="deviceStore.isQtApp()">
                         <Button
                             class="mt-2 w-full h-12"
                             :label="t('views.customSensors.browse')"
-                            v-tooltip.right="t('views.customSensors.browseCustomSensorFile')"
+                            v-tooltip.top="t('views.customSensors.browseCustomSensorFile')"
                             @click="fileBrowse"
                         >
                             <svg-icon
@@ -692,7 +692,7 @@ onMounted(async () => {
                         :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenTempSources == null || chosenTempSources.length === 0"
-                        v-tooltip.right="{
+                        v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),
                         }"
@@ -724,7 +724,7 @@ onMounted(async () => {
                 <div
                     v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
                     class="mt-1 w-96"
-                    v-tooltip.right="t('views.customSensors.tempWeights')"
+                    v-tooltip.top="t('views.customSensors.tempWeights')"
                 >
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
                         {{ t('views.customSensors.tempWeights') }}
@@ -785,7 +785,7 @@ onMounted(async () => {
                         :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenOffsetTempSource == null"
-                        v-tooltip.right="{
+                        v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),
                         }"

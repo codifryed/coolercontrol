@@ -88,6 +88,7 @@ const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const chosenThresholdHopping: Ref<boolean> = ref(currentFunction.value.threshold_hopping)
+const chosenBypassMinAtExtremes: Ref<boolean> = ref(currentFunction.value.bypass_min_at_extremes)
 const functionTypeOptions = computed(() => {
     return [...$enum(FunctionType).values()].map((type) => ({
         value: type,
@@ -126,6 +127,7 @@ const saveFunctionState = async () => {
     currentFunction.value.only_downward =
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
     currentFunction.value.threshold_hopping = chosenThresholdHopping.value
+    currentFunction.value.bypass_min_at_extremes = chosenBypassMinAtExtremes.value
     const successful = await settingsStore.updateFunction(currentFunction.value.uid)
     if (successful) {
         contextIsDirty.value = false
@@ -342,6 +344,7 @@ onMounted(async () => {
             chosenDelay,
             chosenOnlyDownward,
             chosenThresholdHopping,
+            chosenBypassMinAtExtremes,
         ],
         () => {
             contextIsDirty.value = true
@@ -367,7 +370,7 @@ onUnmounted(() => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
-                    v-tooltip.bottom="t('views.functions.saveFunction')"
+                    v-tooltip.top="t('views.functions.saveFunction')"
                     @click="saveFunctionState"
                 >
                     <svg-icon
@@ -395,7 +398,7 @@ onUnmounted(() => {
                     option-value="value"
                     option-label="label"
                     list-style="max-height: 100%"
-                    v-tooltip.right="{
+                    v-tooltip.top="{
                         escape: false,
                         value: t('views.functions.functionTypeTooltip'),
                     }"
@@ -412,7 +415,7 @@ onUnmounted(() => {
                             {{ t('views.functions.stepSizeTitle') }}
                         </th>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.fixedStepSizeTooltip')">
+                    <tr v-tooltip.top="t('views.functions.fixedStepSizeTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
@@ -428,14 +431,14 @@ onUnmounted(() => {
                             />
                         </td>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
+                    <tr v-tooltip.top="t('views.functions.asymmetricTooltip')">
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.asymmetric') }}
                         </td>
                         <td
-                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <el-switch
                                 v-model="chosenAsymmetric"
@@ -445,7 +448,7 @@ onUnmounted(() => {
                         </td>
                     </tr>
                     <tr
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenFixedStepSize
                                 ? chosenAsymmetric
                                     ? t('views.functions.stepSizeFixedIncreasingTooltip')
@@ -456,7 +459,7 @@ onUnmounted(() => {
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenFixedStepSize
@@ -469,7 +472,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepDutyMinimum"
@@ -492,14 +495,14 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="!chosenFixedStepSize"
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenAsymmetric
                                 ? t('views.functions.stepSizeMaxIncreasingTooltip')
                                 : t('views.functions.stepSizeMaxTooltip')
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenAsymmetric
@@ -508,7 +511,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepDutyMaximum"
@@ -531,14 +534,14 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="chosenAsymmetric"
-                        v-tooltip.right="
+                        v-tooltip.top="
                             chosenFixedStepSize
                                 ? t('views.functions.stepSizeFixedDecreasingTooltip')
                                 : t('views.functions.stepSizeMinDecreasingTooltip')
                         "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{
                                 chosenFixedStepSize
@@ -547,7 +550,7 @@ onUnmounted(() => {
                             }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepSizeMinDecreasing"
@@ -570,15 +573,15 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="chosenAsymmetric && !chosenFixedStepSize"
-                        v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
+                        v-tooltip.top="t('views.functions.stepSizeMaxDecreasingTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.stepSizeMaxDecreasing') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenStepSizeMaxDecreasing"
@@ -599,6 +602,38 @@ onUnmounted(() => {
                             </InputNumber>
                         </td>
                     </tr>
+                    <tr>
+                        <th
+                            colspan="2"
+                            class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
+                        >
+                            {{ t('views.functions.stepOverrides') }}
+                        </th>
+                    </tr>
+                    <tr v-tooltip.top="t('views.functions.thresholdHoppingTooltip')">
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                        >
+                            {{ t('views.functions.thresholdHopping') }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                        >
+                            <el-switch v-model="chosenThresholdHopping" size="large" />
+                        </td>
+                    </tr>
+                    <tr v-tooltip.top="t('views.functions.bypassMinAtExtremesTooltip')">
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
+                        >
+                            {{ t('views.functions.bypassMinAtExtremes') }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
+                        >
+                            <el-switch v-model="chosenBypassMinAtExtremes" size="large" />
+                        </td>
+                    </tr>
                     <tr v-if="selectedType === FunctionType.Standard">
                         <th
                             colspan="2"
@@ -609,7 +644,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
+                        v-tooltip.top="t('views.functions.hysteresisThresholdTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
@@ -643,15 +678,15 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
+                        v-tooltip.top="t('views.functions.hysteresisDelayTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.hysteresisDelay') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <InputNumber
                                 v-model="chosenDelay"
@@ -674,20 +709,20 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
+                        v-tooltip.top="t('views.functions.onlyDownwardTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t"
                         >
                             {{ t('views.functions.onlyDownward') }}
                         </td>
                         <td
-                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t"
                         >
                             <el-switch v-model="chosenOnlyDownward" size="large" />
                         </td>
                     </tr>
-                    <tr>
+                    <tr v-if="selectedType === FunctionType.ExponentialMovingAvg">
                         <th
                             colspan="2"
                             class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
@@ -697,7 +732,7 @@ onUnmounted(() => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
+                        v-tooltip.top="t('views.functions.windowSizeTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
@@ -723,18 +758,6 @@ onUnmounted(() => {
                                     <span class="pi pi-minus" />
                                 </template>
                             </InputNumber>
-                        </td>
-                    </tr>
-                    <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                        >
-                            {{ t('views.functions.thresholdHopping') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                        >
-                            <el-switch v-model="chosenThresholdHopping" size="large" />
                         </td>
                     </tr>
                 </tbody>

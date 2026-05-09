@@ -584,7 +584,7 @@ export default {
             maxValueTooltip: '이 값보다 크면 경고가 발생합니다.',
             minValueTooltip: '이 값보다 작으면 경고가 발생합니다.',
             warmupDurationTooltip:
-                '경고가 활성화되기 전에 특정 조건이 얼마나 오랫동안 지속되어야 하는지를 나타냅니다. 이 값은 정기적인 폴링 간격으로만 확인되므로 정확히 이 시간과 일치하지 않을 수 있습니다.',
+                '경고가 활성화되기 전에 특정 조건이 얼마나 오랫동안 지속되어야 하는지를 나타냅니다.\n이 값은 정기적인 폴링 간격으로만 확인되므로\n정확히 이 시간과 일치하지 않을 수 있습니다.',
             greaterThan: '보다 큰',
             lessThan: '보다 작은',
             newAlert: '새 경고',
@@ -602,7 +602,7 @@ export default {
                 '알림이 발생될 때 데스크톱 알림 소리를 활성합니다.\n(지원되는 경우)',
             shutdownOnActivation: '활성화 시 종료',
             shutdownOnActivationTooltip:
-                '경고가 발생하면 시스템을 종료합니다.\n시스템 종료는 경고 발생 후 1분 후에 시작되며, 경고가 복구되면 취소됩니다.',
+                '경고가 발생하면 시스템을 종료합니다.\n시스템 종료는 경고 발생 후 1분 후에 시작되며,\n경고가 복구되면 취소됩니다.',
         },
         profiles: {
             createProfile: '프로파일 생성',
@@ -748,6 +748,10 @@ export default {
             thresholdHopping: '임계값 도약',
             thresholdHoppingTooltip:
                 '팬 속도가 30초 이상 변하지 않으면 단계 크기 및 이력 현상 제한이 일시적으로 무시됩니다.\n이렇게 하면 보수적인 임계값 설정에서도 팬이 결국 목표 속도에 도달합니다.',
+            stepOverrides: '단계 재정의',
+            bypassMinAtExtremes: '항상 0% / 100% 적용',
+            bypassMinAtExtremesTooltip:
+                '활성화되면 변경이 최소 단계 크기보다 작더라도 0% 또는 100%의 목표 듀티가 적용됩니다.\n팬이 완전히 멈추거나 최대 RPM에 도달하도록 보장하는 데 유용합니다. 기본적으로 비활성화됩니다.',
             unsavedChanges: '이 기능에 저장되지 않은 변경 사항이 있습니다.',
             unsavedChangesHeader: '저장되지 않은 변경 사항',
             functionError: '이 기능을 업데이트하는 데 오류 발생',

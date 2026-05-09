@@ -1918,6 +1918,14 @@ impl Config {
                 } else {
                     true
                 };
+                let bypass_min_at_extremes =
+                    if let Some(bypass_value) = function_table.get("bypass_min_at_extremes") {
+                        bypass_value
+                            .as_bool()
+                            .with_context(|| "bypass_min_at_extremes should be a boolean value")?
+                    } else {
+                        false
+                    };
                 let function = Function {
                     uid,
                     name,
@@ -1931,6 +1939,7 @@ impl Config {
                     only_downward,
                     sample_window,
                     threshold_hopping,
+                    bypass_min_at_extremes,
                 };
                 functions.push(function);
             }
@@ -2097,6 +2106,9 @@ impl Config {
         }
         function_table["threshold_hopping"] =
             Item::Value(Value::Boolean(Formatted::new(function.threshold_hopping)));
+        function_table["bypass_min_at_extremes"] = Item::Value(Value::Boolean(Formatted::new(
+            function.bypass_min_at_extremes,
+        )));
     }
 
     /*

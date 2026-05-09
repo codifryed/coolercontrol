@@ -376,6 +376,12 @@ pub struct Function {
 
     /// Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.
     pub threshold_hopping: bool,
+
+    /// Whether to bypass the minimum step size when the target duty is exactly 0% or 100%.
+    /// Useful for ensuring fans fully stop or reach max RPM even when the change is below the
+    /// minimum step size. The maximum step size is still respected. Disabled by default.
+    #[serde(default)]
+    pub bypass_min_at_extremes: bool,
 }
 
 impl Default for Function {
@@ -393,6 +399,7 @@ impl Default for Function {
             only_downward: None,
             sample_window: None,
             threshold_hopping: true,
+            bypass_min_at_extremes: false,
         }
     }
 }

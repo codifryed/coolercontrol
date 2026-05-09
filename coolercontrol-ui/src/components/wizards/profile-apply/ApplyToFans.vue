@@ -309,7 +309,7 @@ onMounted(async () => {
                     scroll-height="40rem"
                     dropdown-icon="pi pi-gauge"
                     :placeholder="t('components.wizards.profileApply.selectChannels')"
-                    v-tooltip.bottom="{
+                    v-tooltip.top="{
                         escape: false,
                         value: t('components.wizards.profileApply.channelsTooltip'),
                     }"
@@ -399,7 +399,7 @@ onMounted(async () => {
                 class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
                 :disabled="chosenChannels.length === 0"
-                v-tooltip.bottom="t('views.speed.applySetting')"
+                v-tooltip.top="t('views.speed.applySetting')"
                 @click="applyProfileToChannels"
             >
                 <svg-icon

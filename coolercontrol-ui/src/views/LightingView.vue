@@ -274,7 +274,7 @@ onMounted(() => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
-                    v-tooltip.bottom="t('views.lighting.saveLightingSettings')"
+                    v-tooltip.top="t('views.lighting.saveLightingSettings')"
                     @click="saveLighting"
                 >
                     <svg-icon
@@ -303,7 +303,7 @@ onMounted(() => {
                             class="w-full mt-1"
                             dropdown-icon="pi pi-sun"
                             scroll-height="40rem"
-                            v-tooltip.bottom="t('views.lighting.lightingMode')"
+                            v-tooltip.top="t('views.lighting.lightingMode')"
                             filter
                             size="large"
                             variant="filled"
@@ -327,7 +327,7 @@ onMounted(() => {
                             checkmark
                             placeholder="Speed"
                             list-style="max-height: 100%"
-                            v-tooltip.right="t('views.lighting.speed')"
+                            v-tooltip.top="t('views.lighting.speed')"
                             @change="changeLightingSpeed"
                         />
                     </div>
@@ -366,7 +366,7 @@ onMounted(() => {
                             :step="1"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="t('views.lighting.numberOfColorsTooltip')"
+                            v-tooltip.top="t('views.lighting.numberOfColorsTooltip')"
                             :disabled="selectedMode.min_colors == selectedMode.max_colors"
                         >
                             <template #incrementicon>

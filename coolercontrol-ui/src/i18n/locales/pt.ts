@@ -534,7 +534,7 @@ export default {
             maxValueTooltip: 'Valores acima disso acionarão o alerta.',
             minValueTooltip: 'Valores abaixo disso acionarão o alerta.',
             warmupDurationTooltip:
-                'Durante quanto tempo uma condição deve permanecer ativa antes de o alerta ser considerado ativo. É verificado apenas em intervalos regulares de poll-rate e, por isso, pode não ter exatamente essa duração.',
+                'Durante quanto tempo uma condição deve permanecer ativa antes de o alerta ser considerado ativo.\nÉ verificado apenas em intervalos regulares de poll-rate\ne, por isso, pode não ter exatamente essa duração.',
             greaterThan: 'maior que',
             lessThan: 'menor que',
             newAlert: 'Novo Alerta',
@@ -553,7 +553,7 @@ export default {
                 'Ativar áudio de notificação de área de trabalho quando o alerta for acionado.\n(Se suportado)',
             shutdownOnActivation: 'desligar na ativação',
             shutdownOnActivationTooltip:
-                'Ativar o desligamento do sistema quando o alerta for acionado.\nO desligamento do sistema começará um minuto após o alerta ser acionado e será cancelado se o alerta for recuperado.',
+                'Ativar o desligamento do sistema quando o alerta for acionado.\nO desligamento do sistema começará um minuto após o alerta ser acionado\ne será cancelado se o alerta for recuperado.',
         },
         profiles: {
             createProfile: 'Criar Perfil',
@@ -704,6 +704,10 @@ export default {
             thresholdHopping: 'Salto de Limite',
             thresholdHoppingTooltip:
                 'Quando a velocidade do ventilador permanece inalterada por 30+ segundos, os limites de tamanho de passo e histerese são temporariamente ignorados.\nIsso garante que os ventiladores eventualmente atinjam sua velocidade alvo, mesmo com configurações de limite conservadoras.',
+            stepOverrides: 'Substituições de passo',
+            bypassMinAtExtremes: 'Sempre aplicar 0% / 100%',
+            bypassMinAtExtremesTooltip:
+                'Quando ativado, os ciclos de trabalho alvo de 0% ou 100% são aplicados mesmo quando a mudança é menor que o tamanho de passo mínimo.\nÚtil para garantir que os ventiladores parem completamente ou atinjam a RPM máxima. Desativado por padrão.',
             unsavedChanges: 'Há alterações não salvas feitas nesta Função.',
             unsavedChangesHeader: 'Alterações Não Salvas',
             functionError: 'Erro ao tentar atualizar esta função',

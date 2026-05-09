@@ -332,6 +332,26 @@ mod engine_tests {
         function_uid
     }
 
+    fn create_identity_function_with_bypass(
+        config: &Config,
+        step_size_min: Duty,
+        step_size_max: Duty,
+        bypass_min_at_extremes: bool,
+    ) -> FunctionUID {
+        let function_uid = Uuid::new_v4().to_string();
+        let function = Function {
+            uid: function_uid.clone(),
+            name: "BypassFunction".to_string(),
+            f_type: FunctionType::Identity,
+            step_size_min,
+            step_size_max,
+            bypass_min_at_extremes,
+            ..Default::default()
+        };
+        config.set_function(function).unwrap();
+        function_uid
+    }
+
     fn set_temp_status(device: &DeviceLock, temp_name: &TempName, temp: Temp) {
         let mut status = Status::default();
         status.temps.push(TempStatus {
@@ -1258,6 +1278,68 @@ mod engine_tests {
                 *set_speeds.borrow().last().unwrap(),
                 duty_after_drop,
                 "duty should remain stable despite temp noise"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_bypass_min_at_extremes_reaches_100_below_min_diff() {
+        cc_fs::test_runtime(async {
+            // Goal: end-to-end verification that bypass_min_at_extremes lets
+            // the fan reach exactly 100% even when the final jump is below
+            // step_size_min. With bypass disabled the fan would stay at the
+            // last applied duty under 100.
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
+            let device_uid = device.borrow().uid.clone();
+
+            // step_size_min=20 so a +5 final jump would normally be filtered.
+            let function_uid = create_identity_function_with_bypass(&config, 20, 100, true);
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                // Steep slope at the top: 80C -> 95%, 90C -> 100%.
+                vec![(20.0, 0), (80.0, 95), (90.0, 100)],
+                TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                },
+                &function_uid,
+            );
+
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // Tick 1: 80C, target=95. First-application path applies 95.
+            set_temp_status(&device, &temp_channel_name, 80.);
+            moro_local::async_scope!(|scope| {
+                engine.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            // Subsequent ticks at 90C: target=100, abs_diff=5, below step_min=20.
+            // Without bypass this would stay at 95; with bypass it must reach 100.
+            for _ in 0..3 {
+                set_temp_status(&device, &temp_channel_name, 90.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let speeds = set_speeds.borrow().clone();
+            assert!(!speeds.is_empty(), "at least one speed should be applied");
+            assert_eq!(
+                *speeds.last().unwrap(),
+                100,
+                "bypass should let the fan reach exactly 100% despite step_size_min=20"
             );
         });
     }

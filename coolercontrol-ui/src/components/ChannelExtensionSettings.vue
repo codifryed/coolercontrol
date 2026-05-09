@@ -157,7 +157,7 @@ defineExpose({
 
 <template>
     <div
-        v-tooltip.bottom="{
+        v-tooltip.top="{
             value: t('components.channelExtensionSettings.title'),
             disabled: isPopupOpen,
         }"
@@ -190,7 +190,7 @@ defineExpose({
                                 <td class="w-24 text-end pl-4">
                                     <div class="flex flex-row leading-none items-center">
                                         <div
-                                            v-tooltip.bottom="
+                                            v-tooltip.top="
                                                 t(
                                                     'components.channelExtensionSettings.firmwareControlledProfileDesc',
                                                 )
@@ -210,7 +210,7 @@ defineExpose({
                                         }}
                                         <div
                                             class="ml-2 w-2"
-                                            v-tooltip.bottom="
+                                            v-tooltip.top="
                                                 t(
                                                     'components.channelExtensionSettings.firmwareControlDisabled',
                                                 )

@@ -461,10 +461,7 @@ onMounted(async () => {
                 <small class="ml-3 font-light text-sm text-text-color-secondary">{{
                     t('common.protocol')
                 }}</small>
-                <div
-                    class="flex flex-row items-center"
-                    v-tooltip.left="t('views.error.sslTooltip')"
-                >
+                <div class="flex flex-row items-center" v-tooltip.top="t('views.error.sslTooltip')">
                     <el-switch v-model="daemonSslEnabled" size="large" />
                     <span class="ml-2 m-1">{{ t('common.sslTls') }}</span>
                 </div>
@@ -473,13 +470,13 @@ onMounted(async () => {
                 <Button
                     :label="t('common.saveAndRefresh')"
                     class="mb-2 w-44"
-                    v-tooltip.left="t('views.error.saveTooltip')"
+                    v-tooltip.top="t('views.error.saveTooltip')"
                     @click="saveDaemonSettings"
                 />
             </div>
             <Button
                 :label="t('common.reset')"
-                v-tooltip.left="t('views.error.resetTooltip')"
+                v-tooltip.top="t('views.error.resetTooltip')"
                 @click="resetDaemonSettings"
             />
         </div>

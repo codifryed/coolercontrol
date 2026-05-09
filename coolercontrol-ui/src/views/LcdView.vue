@@ -488,7 +488,7 @@ onUnmounted(() => {
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
-                    v-tooltip.bottom="t('views.lcd.saveLcdSettings')"
+                    v-tooltip.top="t('views.lcd.saveLcdSettings')"
                     @click="saveLCDSetting"
                 >
                     <svg-icon
@@ -517,7 +517,7 @@ onUnmounted(() => {
                             checkmark
                             placeholder="Type"
                             list-style="max-height: 100%"
-                            v-tooltip.right="t('views.lcd.lcdMode')"
+                            v-tooltip.top="t('views.lcd.lcdMode')"
                             @change="changeLcdMode"
                         />
                     </div>
@@ -538,7 +538,7 @@ onUnmounted(() => {
                             :step="1"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="t('views.lcd.brightnessPercent')"
+                            v-tooltip.top="t('views.lcd.brightnessPercent')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />
@@ -575,7 +575,7 @@ onUnmounted(() => {
                             :step="90"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="t('views.lcd.orientationDegrees')"
+                            v-tooltip.top="t('views.lcd.orientationDegrees')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />
@@ -658,7 +658,7 @@ onUnmounted(() => {
                         filter-placeholder="Search"
                         list-style="max-height: 100%"
                         :invalid="chosenTemp == null"
-                        v-tooltip.right="t('views.lcd.tempSourceTooltip')"
+                        v-tooltip.top="t('views.lcd.tempSourceTooltip')"
                         @change="changeTempSource"
                     >
                         <template #optiongroup="slotProps">
@@ -701,13 +701,13 @@ onUnmounted(() => {
                             class="w-full mt-0 h-12"
                             placeholder="/tmp/your_images_path"
                             :invalid="!imagesPath"
-                            v-tooltip.right="t('views.lcd.imagesPathTooltip')"
+                            v-tooltip.top="t('views.lcd.imagesPathTooltip')"
                         />
                         <div v-if="deviceStore.isQtApp()">
                             <Button
                                 class="mt-2 w-full h-12"
                                 label="Browse"
-                                v-tooltip.right="t('views.lcd.browseTooltip')"
+                                v-tooltip.top="t('views.lcd.browseTooltip')"
                                 @click="pathBrowse"
                             >
                                 <svg-icon
@@ -739,7 +739,7 @@ onUnmounted(() => {
                             :suffix="` ${t('common.secondAbbr')}`"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="t('views.lcd.delayIntervalTooltip')"
+                            v-tooltip.top="t('views.lcd.delayIntervalTooltip')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />

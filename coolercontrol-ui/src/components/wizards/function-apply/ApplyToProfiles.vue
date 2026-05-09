@@ -129,7 +129,7 @@ const applyFunctionToProfiles = async (): Promise<void> => {
                 scroll-height="40rem"
                 dropdown-icon="pi pi-chart-line"
                 :placeholder="t('components.wizards.functionApply.selectProfiles')"
-                v-tooltip.bottom="{
+                v-tooltip.top="{
                     escape: false,
                     value: t('components.wizards.functionApply.profilesTooltip'),
                 }"
@@ -141,7 +141,7 @@ const applyFunctionToProfiles = async (): Promise<void> => {
                 class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
                 :disabled="chosenProfiles.length === 0"
-                v-tooltip.bottom="t('views.speed.applySetting')"
+                v-tooltip.top="t('views.speed.applySetting')"
                 @click="applyFunctionToProfiles"
             >
                 <svg-icon

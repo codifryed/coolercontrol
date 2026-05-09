@@ -207,7 +207,7 @@ watch(rawStore.currentDeviceStatus, () => {
                                 <span
                                     v-if="slotProps.option.limitInfo != null"
                                     class="text-xs opacity-70"
-                                    v-tooltip.left="slotProps.option.limitInfo.message"
+                                    v-tooltip.top="slotProps.option.limitInfo.message"
                                 >
                                     {{ slotProps.option.limitInfo.badge }}
                                 </span>
