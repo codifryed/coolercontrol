@@ -785,7 +785,7 @@ async fn init_custom_sensors_repo(
     config: Rc<Config>,
     devices_for_custom_sensors: DeviceList,
 ) -> Result<CustomSensorsRepo> {
-    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors);
+    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors)?;
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }

@@ -476,6 +476,18 @@ export default {
             offset: 'Décalage',
             offsetTooltip:
                 'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
+            timeWindow: 'Fenêtre de Lissage',
+            timeWindowTooltip:
+                'Nombre de secondes des échantillons récents à lisser ensemble.<br/><i>Remarque : doit être compris entre 1 et 300 secondes.</i>',
+            helpText: {
+                mix: 'Combine plusieurs sources de température via la fonction choisie (Min/Max/Moyenne/Delta/Moyenne Pondérée). À utiliser pour piloter les ventilateurs depuis le plus chaud de plusieurs capteurs, ou pour équilibrer entre les zones.',
+                file: 'Lit la température depuis un chemin de fichier. À utiliser pour les capteurs non détectés automatiquement par CoolerControl.',
+                offset: "Ajoute ou soustrait une valeur fixe d'une source de température. À utiliser pour calibrer une imprécision connue du capteur.",
+                timeAverage:
+                    "Moyenne arithmétique sur une fenêtre temporelle fixe. La sortie est bornée par la plage d'entrée et ne dépasse jamais. Pour les ventilateurs qui doivent ignorer les pics de température brefs.",
+                exponentialMovingAvg:
+                    'Moyenne pondérée favorisant les lectures récentes. Plus lisse que la Moyenne Temporelle pour la même fenêtre, mais nécessite environ 3 fois la longueur de la fenêtre pour suivre complètement un changement durable. Pour les ventilateurs qui doivent suivre les vraies tendances sans gigue.',
+            },
             tempWeights: 'Poids des Températures',
             tempWeightsTooltip: 'Le poids individuel de chaque source de température sélectionnée.',
             tempName: 'Nom de la Température',
@@ -762,6 +774,10 @@ export default {
             windowSize: 'Taille de la Fenêtre',
             windowSizeTooltip:
                 "Taille de l'échantillon de température de fenêtre utilisée dans le calcul de la moyenne mobile exponentielle.\nValeurs plus petites = réponse plus rapide, plus réactif aux pics de température.\nValeurs plus grandes = réponse plus lente, transitions de vitesse du ventilateur plus douces.\nConseil : Utilisez une Fonction Standard pour un contrôle précis du temps de réponse.",
+            emaCustomSensorAvailableNote:
+                'EMA est également disponible en tant que type de Capteur Personnalisé, ce qui vous permet de tracer directement la température lissée.',
+            emaDeprecatedWarning:
+                'Le type de Fonction EMA est obsolète. Veuillez passer au type de Capteur Personnalisé EMA.',
             hysteresis: 'Hystérésis Avancée',
             hysteresisThreshold: 'Seuil',
             hysteresisThresholdTooltip:
@@ -1313,6 +1329,8 @@ export default {
                 mix: 'Mélange',
                 file: 'Fichier',
                 offset: 'Décalage',
+                timeAverage: 'Moyenne Temporelle',
+                exponentialMovingAvg: 'Moyenne Mobile Exponentielle',
             },
             mixFunctionType: {
                 min: 'Minimum',

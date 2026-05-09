@@ -690,6 +690,10 @@ export default {
             windowSize: 'Tamanho da Janela',
             windowSizeTooltip:
                 'Tamanho da amostra de temperatura da janela usado no cálculo da média móvel exponencial.\nValores menores = resposta mais rápida, mais reativo a picos de temperatura.\nValores maiores = resposta mais lenta, transições de velocidade do ventilador mais suaves.\nDica: Use uma Função Padrão para controle preciso sobre o tempo de resposta.',
+            emaCustomSensorAvailableNote:
+                'EMA também está disponível como tipo de Sensor Personalizado, permitindo plotar a temperatura suavizada diretamente.',
+            emaDeprecatedWarning:
+                'O tipo de Função EMA está obsoleto. Por favor, mude para o tipo de Sensor Personalizado EMA.',
             hysteresis: 'Histerese Avançada',
             hysteresisThreshold: 'Limite',
             hysteresisThresholdTooltip:
@@ -790,6 +794,18 @@ export default {
             offset: 'Deslocamento',
             offsetTooltip:
                 'Insira um valor de deslocamento negativo ou positivo para aplicar ao sensor de origem.<br/><i>Observação: O valor final é limitado a faixas normais de temperatura.</i>',
+            timeWindow: 'Janela de Suavização',
+            timeWindowTooltip:
+                'Quantos segundos de amostras recentes serão suavizados juntos.<br/><i>Observação: Deve estar entre 1 e 300 segundos.</i>',
+            helpText: {
+                mix: 'Combina múltiplas fontes de temperatura através da função escolhida (Mín/Máx/Média/Delta/Média Ponderada). Use para controlar ventiladores a partir do mais quente de vários sensores, ou para balancear entre zonas.',
+                file: 'Lê a temperatura de um caminho de arquivo. Use para sensores não detectados automaticamente pelo CoolerControl.',
+                offset: 'Adiciona ou subtrai um valor fixo de uma fonte de temperatura. Use para calibrar uma imprecisão conhecida do sensor.',
+                timeAverage:
+                    'Média aritmética sobre uma janela de tempo fixa. A saída é limitada pelo intervalo de entrada e nunca o ultrapassa. Para ventiladores que devem ignorar picos breves de temperatura.',
+                exponentialMovingAvg:
+                    'Média ponderada que favorece leituras recentes. Mais suave que a Média Temporal para a mesma janela, mas leva aproximadamente 3x o comprimento da janela para seguir totalmente uma mudança sustentada. Para ventiladores que devem acompanhar tendências reais sem jitter.',
+            },
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'O peso individual de cada fonte de temperatura selecionada.',
             tempName: 'Nome da Temperatura',
@@ -1327,6 +1343,8 @@ export default {
                 mix: 'Mistura',
                 file: 'Arquivo',
                 offset: 'Deslocamento',
+                timeAverage: 'Média Temporal',
+                exponentialMovingAvg: 'Média Móvel Exponencial',
             },
             mixFunctionType: {
                 min: 'Mínimo',

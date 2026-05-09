@@ -149,6 +149,43 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.sources.len() != 1
     {
         invalid_msg = Some("Custom Sensor Offset type must have exactly 1 temp source".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
+        && custom_sensor.sources.len() != 1
+    {
+        invalid_msg =
+            Some("Custom Sensor TimeAverage type must have exactly 1 temp source".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
+        && custom_sensor.time_window_seconds.is_none()
+    {
+        invalid_msg = Some(
+            "Custom Sensor TimeAverage type must have a time_window_seconds value".to_string(),
+        );
+    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
+        && !(1..=300).contains(&custom_sensor.time_window_seconds.unwrap())
+    {
+        invalid_msg = Some(
+            "Custom Sensor TimeAverage time_window_seconds must be between 1 and 300".to_string(),
+        );
+    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
+        && custom_sensor.sources.len() != 1
+    {
+        invalid_msg = Some(
+            "Custom Sensor ExponentialMovingAvg type must have exactly 1 temp source".to_string(),
+        );
+    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
+        && custom_sensor.time_window_seconds.is_none()
+    {
+        invalid_msg = Some(
+            "Custom Sensor ExponentialMovingAvg type must have a time_window_seconds value"
+                .to_string(),
+        );
+    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
+        && !(1..=300).contains(&custom_sensor.time_window_seconds.unwrap())
+    {
+        invalid_msg = Some(
+            "Custom Sensor ExponentialMovingAvg time_window_seconds must be between 1 and 300"
+                .to_string(),
+        );
     }
     if let Some(msg) = invalid_msg {
         Err(CCError::UserError { msg })
@@ -165,4 +202,148 @@ pub struct CustomSensorsDto {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CSPath {
     custom_sensor_id: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::setting::{CustomSensorMixFunctionType, CustomTempSourceData, TempSource};
+
+    fn time_average_sensor() -> CustomSensor {
+        CustomSensor {
+            id: "ta".to_string(),
+            cs_type: CustomSensorType::TimeAverage,
+            mix_function: CustomSensorMixFunctionType::Min,
+            sources: vec![CustomTempSourceData {
+                temp_source: TempSource {
+                    device_uid: "device-uid".to_string(),
+                    temp_name: "cpu_temp".to_string(),
+                },
+                weight: 1,
+            }],
+            file_path: None,
+            offset: None,
+            time_window_seconds: Some(10),
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    // Valid TimeAverage sensor with one source and a window in [1, 60] passes validation.
+    #[test]
+    fn time_average_valid_passes() {
+        let sensor = time_average_sensor();
+        assert!(validate_custom_sensor(&sensor).is_ok());
+    }
+
+    // time_window_seconds == 0 is rejected (lower bound is 1).
+    #[test]
+    fn time_average_rejects_zero_window() {
+        let mut sensor = time_average_sensor();
+        sensor.time_window_seconds = Some(0);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // time_window_seconds == 300 is the upper bound and must pass.
+    #[test]
+    fn time_average_accepts_window_300() {
+        let mut sensor = time_average_sensor();
+        sensor.time_window_seconds = Some(300);
+        assert!(validate_custom_sensor(&sensor).is_ok());
+    }
+
+    // time_window_seconds > 300 is rejected (upper bound is 300).
+    #[test]
+    fn time_average_rejects_window_above_300() {
+        let mut sensor = time_average_sensor();
+        sensor.time_window_seconds = Some(301);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // Missing time_window_seconds is rejected for TimeAverage type (required field).
+    #[test]
+    fn time_average_rejects_missing_window() {
+        let mut sensor = time_average_sensor();
+        sensor.time_window_seconds = None;
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // TimeAverage requires exactly one source. Zero or two are both rejected.
+    #[test]
+    fn time_average_rejects_zero_sources() {
+        let mut sensor = time_average_sensor();
+        sensor.sources.clear();
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    #[test]
+    fn time_average_rejects_two_sources() {
+        let mut sensor = time_average_sensor();
+        let extra = sensor.sources[0].clone();
+        sensor.sources.push(extra);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    fn ema_sensor() -> CustomSensor {
+        let mut sensor = time_average_sensor();
+        sensor.id = "ema".to_string();
+        sensor.cs_type = CustomSensorType::ExponentialMovingAvg;
+        sensor
+    }
+
+    // Valid EMA sensor with one source and a window in [1, 300] passes validation. Mirrors
+    // TimeAverage's happy-path test; the validator path is parallel.
+    #[test]
+    fn ema_valid_passes() {
+        let sensor = ema_sensor();
+        assert!(validate_custom_sensor(&sensor).is_ok());
+    }
+
+    // time_window_seconds == 0 is rejected (lower bound is 1).
+    #[test]
+    fn ema_rejects_zero_window() {
+        let mut sensor = ema_sensor();
+        sensor.time_window_seconds = Some(0);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // time_window_seconds == 300 is the upper bound and must pass.
+    #[test]
+    fn ema_accepts_window_300() {
+        let mut sensor = ema_sensor();
+        sensor.time_window_seconds = Some(300);
+        assert!(validate_custom_sensor(&sensor).is_ok());
+    }
+
+    // time_window_seconds > 300 is rejected (upper bound is 300).
+    #[test]
+    fn ema_rejects_window_above_300() {
+        let mut sensor = ema_sensor();
+        sensor.time_window_seconds = Some(301);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // Missing time_window_seconds is rejected for EMA type (required field).
+    #[test]
+    fn ema_rejects_missing_window() {
+        let mut sensor = ema_sensor();
+        sensor.time_window_seconds = None;
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    // EMA requires exactly one source. Zero or two are both rejected.
+    #[test]
+    fn ema_rejects_zero_sources() {
+        let mut sensor = ema_sensor();
+        sensor.sources.clear();
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    #[test]
+    fn ema_rejects_two_sources() {
+        let mut sensor = ema_sensor();
+        let extra = sensor.sources[0].clone();
+        sensor.sources.push(extra);
+        assert!(validate_custom_sensor(&sensor).is_err());
+    }
 }

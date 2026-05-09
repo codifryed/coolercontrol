@@ -2181,18 +2181,8 @@ impl Config {
                 } else {
                     None
                 };
-                let offset = if let Some(offset_value) = c_sensor_table.get("offset") {
-                    let offset_raw: i8 = offset_value
-                        .as_integer()
-                        .with_context(|| "offset should be an integer")?
-                        .try_into()
-                        .ok()
-                        .with_context(|| "offset must be a value between -100 and 100")?;
-                    let offset = offset_raw.clamp(-100, 100);
-                    Some(offset)
-                } else {
-                    None
-                };
+                let offset = Self::parse_custom_sensor_offset(c_sensor_table)?;
+                let time_window_seconds = Self::parse_time_window_seconds(c_sensor_table)?;
                 let custom_sensor = CustomSensor {
                     id,
                     cs_type,
@@ -2200,6 +2190,7 @@ impl Config {
                     sources,
                     file_path,
                     offset,
+                    time_window_seconds,
                     children: vec![],
                     parents: vec![],
                 };
@@ -2340,6 +2331,36 @@ impl Config {
     }
 
     /// Consumes the `CustomSensor` and returns a new `CustomSensor` Table
+    /// Parses the optional `offset` field from a custom-sensor table. Clamps to `-100..=100`.
+    fn parse_custom_sensor_offset(c_sensor_table: &Table) -> Result<Option<i8>> {
+        let Some(offset_value) = c_sensor_table.get("offset") else {
+            return Ok(None);
+        };
+        let offset_raw: i8 = offset_value
+            .as_integer()
+            .with_context(|| "offset should be an integer")?
+            .try_into()
+            .ok()
+            .with_context(|| "offset must be a value between -100 and 100")?;
+        Ok(Some(offset_raw.clamp(-100, 100)))
+    }
+
+    /// Parses the optional `time_window_seconds` field from a custom-sensor table. Clamps to the
+    /// allowed `1..=300` range; the API layer rejects values outside that range so any clamping
+    /// here is purely defensive against hand-edited configs.
+    fn parse_time_window_seconds(c_sensor_table: &Table) -> Result<Option<u16>> {
+        let Some(window_value) = c_sensor_table.get("time_window_seconds") else {
+            return Ok(None);
+        };
+        let window_raw: u16 = window_value
+            .as_integer()
+            .with_context(|| "time_window_seconds should be an integer")?
+            .try_into()
+            .ok()
+            .with_context(|| "time_window_seconds must be a value between 1 and 300")?;
+        Ok(Some(window_raw.clamp(1, 300)))
+    }
+
     fn create_custom_sensor_table_from(custom_sensor: CustomSensor) -> Table {
         let mut new_custom_sensor = Table::new();
         Self::add_custom_sensor_properties_to_custom_sensor_table(
@@ -2388,6 +2409,13 @@ impl Config {
             cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
         } else {
             cs_table["offset"] = Item::None;
+        }
+        if let Some(time_window_seconds) = custom_sensor.time_window_seconds {
+            cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
+                i64::from(time_window_seconds),
+            )));
+        } else {
+            cs_table["time_window_seconds"] = Item::None;
         }
     }
 }

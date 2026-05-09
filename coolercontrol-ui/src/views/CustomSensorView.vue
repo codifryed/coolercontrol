@@ -143,6 +143,7 @@ const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
 const selectedOffset: Ref<number> = ref(customSensor.offset ?? 0)
+const selectedTimeWindowSeconds: Ref<number> = ref(customSensor.time_window_seconds ?? 10)
 
 // Generate options with localized display names
 const sensorTypeOptions = computed(() => {
@@ -159,8 +160,27 @@ const mixFunctionTypeOptions = computed(() => {
     }))
 })
 
+const getSensorTypeHelpText = (type: CustomSensorType): string => {
+    switch (type) {
+        case CustomSensorType.Mix:
+            return t('views.customSensors.helpText.mix')
+        case CustomSensorType.File:
+            return t('views.customSensors.helpText.file')
+        case CustomSensorType.Offset:
+            return t('views.customSensors.helpText.offset')
+        case CustomSensorType.TimeAverage:
+            return t('views.customSensors.helpText.timeAverage')
+        case CustomSensorType.ExponentialMovingAvg:
+            return t('views.customSensors.helpText.exponentialMovingAvg')
+        default:
+            return ''
+    }
+}
+
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const chosenOffsetTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
+const chosenTimeAverageTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
+const chosenEmaTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const chosenViewType: Ref<ChannelViewType> = ref(
     deviceSettings.sensorsAndChannels.get(customSensor.id)?.viewType ?? ChannelViewType.Control,
@@ -259,12 +279,53 @@ const fillChosenOffsetTempSource = () => {
 }
 fillChosenOffsetTempSource()
 
+const fillChosenTimeAverageTempSource = () => {
+    chosenTimeAverageTempSource.value = undefined
+    if (selectedSensorType.value !== CustomSensorType.TimeAverage) {
+        return
+    }
+    for (const customTempSourceData of customSensor.sources) {
+        for (const availableTempSource of tempSources.value) {
+            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+                for (const availableTemp of availableTempSource.temps) {
+                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                        availableTemp.weight = customTempSourceData.weight
+                        chosenTimeAverageTempSource.value = availableTemp
+                    }
+                }
+            }
+        }
+    }
+}
+fillChosenTimeAverageTempSource()
+
+const fillChosenEmaTempSource = () => {
+    chosenEmaTempSource.value = undefined
+    if (selectedSensorType.value !== CustomSensorType.ExponentialMovingAvg) {
+        return
+    }
+    for (const customTempSourceData of customSensor.sources) {
+        for (const availableTempSource of tempSources.value) {
+            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+                for (const availableTemp of availableTempSource.temps) {
+                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                        availableTemp.weight = customTempSourceData.weight
+                        chosenEmaTempSource.value = availableTemp
+                    }
+                }
+            }
+        }
+    }
+}
+fillChosenEmaTempSource()
+
 const saveSensor = async (): Promise<void> => {
     customSensor.cs_type = selectedSensorType.value
     customSensor.mix_function = selectedMixFunction.value
     const tempSources: Array<CustomTempSourceData> = []
     if (customSensor.cs_type === CustomSensorType.File) {
         customSensor.offset = undefined
+        customSensor.time_window_seconds = undefined
         customSensor.file_path = filePath.value
     } else if (customSensor.cs_type === CustomSensorType.Mix) {
         if (chosenTempSources.value == null || chosenTempSources.value.length === 0) {
@@ -273,6 +334,7 @@ const saveSensor = async (): Promise<void> => {
         }
         customSensor.file_path = undefined
         customSensor.offset = undefined
+        customSensor.time_window_seconds = undefined
         chosenTempSources.value.forEach((tempSource) =>
             tempSources.push(
                 new CustomTempSourceData(
@@ -288,6 +350,7 @@ const saveSensor = async (): Promise<void> => {
         }
         customSensor.file_path = undefined
         customSensor.offset = selectedOffset.value
+        customSensor.time_window_seconds = undefined
         tempSources.push(
             new CustomTempSourceData(
                 new CustomSensorTempSource(
@@ -295,6 +358,40 @@ const saveSensor = async (): Promise<void> => {
                     chosenOffsetTempSource.value.tempName,
                 ),
                 chosenOffsetTempSource.value.weight,
+            ),
+        )
+    } else if (customSensor.cs_type === CustomSensorType.TimeAverage) {
+        if (chosenTimeAverageTempSource.value == null) {
+            console.error('No time-average temp source selected')
+            return
+        }
+        customSensor.file_path = undefined
+        customSensor.offset = undefined
+        customSensor.time_window_seconds = selectedTimeWindowSeconds.value
+        tempSources.push(
+            new CustomTempSourceData(
+                new CustomSensorTempSource(
+                    chosenTimeAverageTempSource.value.deviceUID,
+                    chosenTimeAverageTempSource.value.tempName,
+                ),
+                chosenTimeAverageTempSource.value.weight,
+            ),
+        )
+    } else if (customSensor.cs_type === CustomSensorType.ExponentialMovingAvg) {
+        if (chosenEmaTempSource.value == null) {
+            console.error('No EMA temp source selected')
+            return
+        }
+        customSensor.file_path = undefined
+        customSensor.offset = undefined
+        customSensor.time_window_seconds = selectedTimeWindowSeconds.value
+        tempSources.push(
+            new CustomTempSourceData(
+                new CustomSensorTempSource(
+                    chosenEmaTempSource.value.deviceUID,
+                    chosenEmaTempSource.value.tempName,
+                ),
+                chosenEmaTempSource.value.weight,
             ),
         )
     }
@@ -452,7 +549,17 @@ const saveButtonDisabled = (): boolean => {
             chosenTempSources.value.length === 0) ||
         (selectedSensorType.value === CustomSensorType.Offset &&
             chosenOffsetTempSource.value == null) ||
-        (selectedSensorType.value === CustomSensorType.File && filePath.value === null)
+        (selectedSensorType.value === CustomSensorType.File && filePath.value === null) ||
+        (selectedSensorType.value === CustomSensorType.TimeAverage &&
+            (chosenTimeAverageTempSource.value == null ||
+                selectedTimeWindowSeconds.value == null ||
+                selectedTimeWindowSeconds.value < 1 ||
+                selectedTimeWindowSeconds.value > 300)) ||
+        (selectedSensorType.value === CustomSensorType.ExponentialMovingAvg &&
+            (chosenEmaTempSource.value == null ||
+                selectedTimeWindowSeconds.value == null ||
+                selectedTimeWindowSeconds.value < 1 ||
+                selectedTimeWindowSeconds.value > 300))
     )
 }
 
@@ -473,6 +580,9 @@ onMounted(async () => {
             chosenTempSources,
             selectedOffset,
             chosenOffsetTempSource,
+            selectedTimeWindowSeconds,
+            chosenTimeAverageTempSource,
+            chosenEmaTempSource,
         ],
         () => {
             contextIsDirty.value = true
@@ -586,11 +696,19 @@ onMounted(async () => {
                         checkmark
                         :placeholder="t('views.customSensors.type')"
                         list-style="max-height: 100%"
-                        v-tooltip.top="t('views.customSensors.sensorType')"
                         @change="changeSensorType"
                         option-label="label"
                         option-value="value"
-                    />
+                    >
+                        <template #option="slotProps">
+                            <div
+                                class="w-full"
+                                v-tooltip.right="getSensorTypeHelpText(slotProps.option.value)"
+                            >
+                                {{ slotProps.option.label }}
+                            </div>
+                        </template>
+                    </Listbox>
                 </div>
                 <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-0 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
@@ -628,6 +746,40 @@ onMounted(async () => {
                             show-buttons
                             :min="-100"
                             :max="100"
+                            button-layout="horizontal"
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                    </div>
+                </div>
+                <div
+                    v-if="
+                        selectedSensorType === CustomSensorType.TimeAverage ||
+                        selectedSensorType === CustomSensorType.ExponentialMovingAvg
+                    "
+                    class="flex flex-col mt-1 w-96 mb-28"
+                >
+                    <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
+                        {{ t('views.customSensors.timeWindow') }}
+                    </small>
+                    <div
+                        class="rounded-lg bg-bg-two p-3 flex justify-center"
+                        v-tooltip.top="{
+                            escape: false,
+                            value: t('views.customSensors.timeWindowTooltip'),
+                        }"
+                    >
+                        <InputNumber
+                            v-model="selectedTimeWindowSeconds"
+                            show-buttons
+                            :min="1"
+                            :max="300"
+                            :suffix="' ' + t('common.secondAbbr')"
                             button-layout="horizontal"
                         >
                             <template #incrementicon>
@@ -785,6 +937,106 @@ onMounted(async () => {
                         :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenOffsetTempSource == null"
+                        v-tooltip.top="{
+                            escape: false,
+                            value: t('views.customSensors.tempSourcesTooltip'),
+                        }"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            </div>
+                        </template>
+                    </Listbox>
+                </div>
+            </div>
+            <div
+                v-if="selectedSensorType === CustomSensorType.TimeAverage"
+                class="flex flex-col lg:flex-row mt-0 w-full"
+            >
+                <div class="w-96 mr-4">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        {{ t('views.customSensors.tempSource') }}
+                    </small>
+                    <Listbox
+                        v-model="chosenTimeAverageTempSource"
+                        class="w-full mt-1"
+                        :options="tempSources"
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        :filter-placeholder="t('common.search')"
+                        list-style="max-height: 100%"
+                        :invalid="chosenTimeAverageTempSource == null"
+                        v-tooltip.top="{
+                            escape: false,
+                            value: t('views.customSensors.tempSourcesTooltip'),
+                        }"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            </div>
+                        </template>
+                    </Listbox>
+                </div>
+            </div>
+            <div
+                v-if="selectedSensorType === CustomSensorType.ExponentialMovingAvg"
+                class="flex flex-col lg:flex-row mt-0 w-full"
+            >
+                <div class="w-96 mr-4">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        {{ t('views.customSensors.tempSource') }}
+                    </small>
+                    <Listbox
+                        v-model="chosenEmaTempSource"
+                        class="w-full mt-1"
+                        :options="tempSources"
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        :filter-placeholder="t('common.search')"
+                        list-style="max-height: 100%"
+                        :invalid="chosenEmaTempSource == null"
                         v-tooltip.top="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),

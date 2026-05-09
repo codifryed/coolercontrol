@@ -459,6 +459,18 @@ export default {
             offset: '오프셋 조정값',
             offsetTooltip:
                 '소스 센서에 적용할 음수 또는 양수 오프셋 값을 입력하세요.<br/><br/><i>참고: 최종 값은 정상 온도 범위로 제한됩니다.<br/></i>',
+            timeWindow: '스무딩 윈도우',
+            timeWindowTooltip:
+                '최근 샘플을 몇 초 동안 함께 스무딩할지 설정합니다.<br/><i>참고: 1초에서 300초 사이여야 합니다.</i>',
+            helpText: {
+                mix: '선택한 함수(최소/최대/평균/델타/가중 평균)를 통해 여러 온도 소스를 결합합니다. 여러 센서 중 가장 뜨거운 것으로 팬을 구동하거나 영역 간의 균형을 맞추는 데 사용합니다.',
+                file: '파일 경로에서 온도를 읽습니다. CoolerControl에서 자동 감지되지 않는 센서에 사용합니다.',
+                offset: '온도 소스에서 고정값을 더하거나 뺍니다. 알려진 센서 부정확성을 보정하는 데 사용합니다.',
+                timeAverage:
+                    '고정된 시간 윈도우에 대한 산술 평균입니다. 출력은 입력 범위로 제한되며 절대 초과하지 않습니다. 짧은 온도 급증을 무시해야 하는 팬에 적합합니다.',
+                exponentialMovingAvg:
+                    '최근 측정값을 선호하는 가중 평균입니다. 동일한 윈도우의 시간 평균보다 매끄럽지만 지속적인 변화를 완전히 따르려면 윈도우 길이의 약 3배가 걸립니다. 지터 없이 실제 추세를 추적해야 하는 팬에 적합합니다.',
+            },
             tempWeights: '온도 가중치',
             tempWeightsTooltip: '선택된 각 온도 소스의 개별 가중치입니다.',
             tempName: '온도 이름',
@@ -735,6 +747,10 @@ export default {
             windowSize: '창 크기',
             windowSizeTooltip:
                 '지수 이동 평균 계산에 사용되는 창 온도 샘플 크기입니다.\n값이 작을수록 = 반응 속도가 빠르고 온도 급변에 더 민감하게 반응합니다.\n값이 클수록 = 반응 속도는 느리지만 팬 속도 전환이 더 부드러워집니다.\n팁: 응답 시간을 정밀하게 제어하려면 표준 함수를 사용하세요.',
+            emaCustomSensorAvailableNote:
+                'EMA는 사용자 지정 센서 유형으로도 사용할 수 있어 스무딩된 온도를 직접 그래프로 표시할 수 있습니다.',
+            emaDeprecatedWarning:
+                '함수 유형 EMA는 더 이상 사용되지 않습니다. EMA 사용자 지정 센서 유형으로 전환하세요.',
             hysteresis: '고급 이력 현상',
             hysteresisThreshold: '임계값',
             hysteresisThresholdTooltip:
@@ -1273,6 +1289,8 @@ export default {
                 mix: '혼합',
                 file: '파일',
                 offset: '오프셋',
+                timeAverage: '시간 평균',
+                exponentialMovingAvg: '지수 이동 평균',
             },
             mixFunctionType: {
                 min: '최소',

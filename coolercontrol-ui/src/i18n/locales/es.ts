@@ -468,6 +468,18 @@ export default {
             offset: 'Desplazamiento',
             offsetTooltip:
                 'Introduzca un desplazamiento negativo o positivo que se aplicará al sensor de origen.<br/><i>Nota: El valor final se limita a rangos normales de temperatura.</i>',
+            timeWindow: 'Ventana de Suavizado',
+            timeWindowTooltip:
+                'Cuántos segundos de muestras recientes se suavizarán juntas.<br/><i>Nota: Debe estar entre 1 y 300 segundos.</i>',
+            helpText: {
+                mix: 'Combina múltiples fuentes de temperatura mediante la función elegida (Mín/Máx/Promedio/Delta/Promedio Ponderado). Use para controlar ventiladores desde el más caliente de varios sensores, o para equilibrar entre zonas.',
+                file: 'Lee la temperatura desde una ruta de archivo. Use para sensores no detectados automáticamente por CoolerControl.',
+                offset: 'Suma o resta un valor fijo a una fuente de temperatura. Use para calibrar una imprecisión conocida del sensor.',
+                timeAverage:
+                    'Media aritmética en una ventana de tiempo fija. La salida está acotada por el rango de entrada y nunca lo excede. Para ventiladores que deben ignorar picos breves de temperatura.',
+                exponentialMovingAvg:
+                    'Promedio ponderado que favorece las lecturas recientes. Más suave que el Promedio Temporal con la misma ventana, pero tarda aproximadamente 3 veces la longitud de la ventana en seguir completamente un cambio sostenido. Para ventiladores que deben seguir tendencias reales sin fluctuaciones.',
+            },
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'El peso individual de cada fuente de temperatura seleccionada.',
             tempName: 'Nombre de Temperatura',
@@ -751,6 +763,10 @@ export default {
             windowSize: 'Tamaño de Ventana',
             windowSizeTooltip:
                 'Tamaño de muestra de temperatura de ventana usado en el cálculo del promedio móvil exponencial.\nValores más pequeños = respuesta más rápida, más reactivo a picos de temperatura.\nValores más grandes = respuesta más lenta, transiciones de velocidad del ventilador más suaves.\nConsejo: Use una Función Estándar para control preciso sobre el tiempo de respuesta.',
+            emaCustomSensorAvailableNote:
+                'EMA también está disponible como tipo de Sensor Personalizado, lo que permite graficar la temperatura suavizada directamente.',
+            emaDeprecatedWarning:
+                'El tipo de Función EMA está obsoleto. Por favor, cambie al tipo de Sensor Personalizado EMA.',
             hysteresis: 'Histéresis Avanzada',
             hysteresisThreshold: 'Umbral',
             hysteresisThresholdTooltip:
@@ -1297,6 +1313,8 @@ export default {
                 mix: 'Mezcla',
                 file: 'Archivo',
                 offset: 'Desplazamiento',
+                timeAverage: 'Promedio Temporal',
+                exponentialMovingAvg: 'Promedio Móvil Exponencial',
             },
             mixFunctionType: {
                 min: 'Mínimo',

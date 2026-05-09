@@ -400,10 +400,26 @@ onUnmounted(() => {
                     list-style="max-height: 100%"
                     v-tooltip.top="{
                         escape: false,
-                        value: t('views.functions.functionTypeTooltip'),
+                        value:
+                            t('views.functions.functionTypeTooltip') +
+                            '<br/>&nbsp;&nbsp;' +
+                            t('views.functions.emaCustomSensorAvailableNote'),
                     }"
                     @change="changeFunctionType"
                 />
+            </div>
+            <!--
+                EMA migration placeholder. Stage 1 (informational) is delivered via the
+                Function Type tooltip above (`emaCustomSensorAvailableNote` appended).
+                Stage 2 (active deprecation): set the `v-if` below to
+                `selectedType === FunctionType.ExponentialMovingAvg` and drop the
+                appended note from the tooltip.
+            -->
+            <div
+                v-if="false"
+                class="mt-3 mr-4 w-96 rounded-lg border-2 border-accent bg-bg-two p-3 text-sm"
+            >
+                {{ t('views.functions.emaDeprecatedWarning') }}
             </div>
             <table class="mt-4 bg-bg-two rounded-lg">
                 <tbody>

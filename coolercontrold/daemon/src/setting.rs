@@ -438,6 +438,8 @@ pub enum CustomSensorType {
     Mix,
     File,
     Offset,
+    TimeAverage,
+    ExponentialMovingAvg,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
@@ -465,6 +467,12 @@ pub struct CustomSensor {
     pub file_path: Option<PathBuf>,
     pub offset: Option<Offset>,
 
+    /// The window in seconds over which a `TimeAverage` or `ExponentialMovingAvg` Custom
+    /// Sensor smooths its source. Required for both, ignored for other types. Validated at
+    /// the API boundary to be within `1..=300`.
+    #[serde(default)]
+    pub time_window_seconds: Option<u16>,
+
     /// The Custom Sensor's children, if any.
     ///
     /// Each Custom Sensor is either a child, parent, or standalone, not a combination of those.
@@ -491,6 +499,7 @@ impl Default for CustomSensor {
             sources: Vec::new(),
             file_path: None,
             offset: None,
+            time_window_seconds: None,
             children: Vec::new(),
             parents: Vec::new(),
         }
