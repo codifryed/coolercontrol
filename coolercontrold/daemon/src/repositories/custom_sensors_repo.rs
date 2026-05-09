@@ -56,23 +56,29 @@ pub struct CustomSensorsRepo {
     all_devices: HashMap<UID, DeviceLock>,
     sensors: CustomSensors,
     relationships: Relationships,
+    /// Captured from the Config at construction. `TimeAverage` derives the number of history
+    /// samples from `time_window_seconds / poll_rate`, avoiding any wall-clock comparisons.
+    /// `poll_rate` is fixed at runtime, so a plain `f64` is enough.
+    poll_rate: f64,
 }
 
 impl CustomSensorsRepo {
-    pub fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Self {
+    pub fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Result<Self> {
+        let poll_rate = config.get_settings()?.poll_rate;
         let mut all_devices = HashMap::new();
         for device in all_other_devices {
             let uid = device.borrow().uid.clone();
             all_devices.insert(uid, device);
         }
-        Self {
+        Ok(Self {
             config,
             custom_sensor_device: None,
             device_uid: String::default(),
             all_devices,
             sensors: RefCell::new(Vec::new()),
             relationships: RefCell::new(HashMap::new()),
-        }
+            poll_rate,
+        })
     }
 
     pub fn get_device_uid(&self) -> UID {
@@ -237,6 +243,26 @@ impl CustomSensorsRepo {
                     status.temps.push(temp_status);
                 }
             }
+            CustomSensorType::TimeAverage => {
+                // The source device's status_history is fully populated, so we can compute a
+                // real time-average for every back-filled tick (not just emit the raw source
+                // value). Pre-compute sample_count once instead of per index.
+                let window_seconds =
+                    sensor
+                        .time_window_seconds
+                        .ok_or_else(|| CCError::InternalError {
+                            msg: format!(
+                                "TimeAverage Custom Sensor {} missing time_window_seconds",
+                                sensor.id
+                            ),
+                        })?;
+                let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
+                for (index, status) in history.iter_mut().enumerate() {
+                    let temp_status =
+                        self.process_time_average_indexed(sensor, index, sample_count);
+                    status.temps.push(temp_status);
+                }
+            }
             CustomSensorType::File => {
                 Self::get_custom_sensor_file_temp(sensor).await?; // make sure it's valid
                 let current_temp_status =
@@ -335,6 +361,14 @@ impl CustomSensorsRepo {
                     temp: custom_temp,
                 })
             }
+            CustomSensorType::TimeAverage => Err(CCError::InternalError {
+                msg: format!(
+                    "Indexed processing triggered for TimeAverage sensor {}; \
+                    TimeAverage uses process_time_average_indexed",
+                    sensor.id
+                ),
+            }
+            .into()),
             CustomSensorType::File => Err(CCError::InternalError {
                 msg: format!(
                     "Indexed processing triggered for Invalid sensor type: {}",
@@ -419,7 +453,177 @@ impl CustomSensorsRepo {
                     temp: 0.,
                 }
             }
+            CustomSensorType::TimeAverage => {
+                // TimeAverage is processed via process_time_average_current; this branch should
+                // not be reached. Defensive return so the match stays exhaustive.
+                debug!(
+                    "process_custom_sensor_data_current called with TimeAverage sensor: {}",
+                    sensor.id
+                );
+                TempStatus {
+                    name: sensor.id.clone(),
+                    temp: 0.,
+                }
+            }
         }
+    }
+
+    /// Processes a `TimeAverage` Custom Sensor for the current tick. Reads the last
+    /// `time_window_seconds / poll_rate` samples from the source's `status_history` and emits
+    /// their arithmetic mean. Always emits a `TempStatus`: the mean if the source exists,
+    /// `0` as the fallback if the source device has been removed (matches `Mix`/`Offset`).
+    fn process_time_average_current(
+        &self,
+        sensor: &CustomSensor,
+        custom_temps: &[TempStatus],
+    ) -> TempStatus {
+        debug_assert_eq!(sensor.cs_type, CustomSensorType::TimeAverage);
+        debug_assert_eq!(sensor.sources.len(), 1);
+        let window_seconds = sensor.time_window_seconds.unwrap_or(0);
+        if window_seconds == 0 {
+            // Misconfigured (validation should have caught this). Defensive zero emission.
+            error!(
+                "TimeAverage Custom Sensor {} has no time_window_seconds set; emitting 0",
+                sensor.id
+            );
+            return TempStatus {
+                name: sensor.id.clone(),
+                temp: 0.,
+            };
+        }
+        let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
+        let temps = self.collect_recent_source_temps(
+            &sensor.sources[0].temp_source,
+            custom_temps,
+            sample_count,
+        );
+        let mean = Self::compute_time_average(&temps).unwrap_or(0.);
+        TempStatus {
+            name: sensor.id.clone(),
+            temp: mean,
+        }
+    }
+
+    /// Computes the time-average for a `TimeAverage` sensor at history `index`, used during
+    /// back-fill of a newly-created sensor. Averages the last `sample_count` samples of the
+    /// source device's `status_history` ending at (and including) `index`.
+    fn process_time_average_indexed(
+        &self,
+        sensor: &CustomSensor,
+        index: usize,
+        sample_count: usize,
+    ) -> TempStatus {
+        debug_assert_eq!(sensor.cs_type, CustomSensorType::TimeAverage);
+        debug_assert_eq!(sensor.sources.len(), 1);
+        let temps =
+            self.collect_indexed_source_temps(&sensor.sources[0].temp_source, index, sample_count);
+        let mean = Self::compute_time_average(&temps).unwrap_or(0.);
+        TempStatus {
+            name: sensor.id.clone(),
+            temp: mean,
+        }
+    }
+
+    /// Collects up to `sample_count` source temps from the source device's `status_history`,
+    /// ending at history `index` (inclusive). Indices beyond the history's length are skipped.
+    fn collect_indexed_source_temps(
+        &self,
+        temp_source: &TempSource,
+        index: usize,
+        sample_count: usize,
+    ) -> Vec<Temp> {
+        let mut temps: Vec<Temp> = Vec::with_capacity(sample_count);
+        let some_source_device = if temp_source.device_uid == self.device_uid {
+            // Children must exist before parents, so child status_history is already filled
+            // by the time fill_status_history_for_new_sensor runs for the parent.
+            self.custom_sensor_device.as_ref()
+        } else {
+            self.all_devices.get(&temp_source.device_uid)
+        };
+        let Some(source_device) = some_source_device else {
+            return temps;
+        };
+        let device_ref = source_device.borrow();
+        let history_len = device_ref.status_history.len();
+        let end = index.saturating_add(1).min(history_len);
+        let start = end.saturating_sub(sample_count);
+        for k in start..end {
+            if let Some(status) = device_ref.status_history.get(k) {
+                if let Some(t) = Self::get_temp_from_status(&temp_source.temp_name, status) {
+                    temps.push(t);
+                }
+            }
+        }
+        temps
+    }
+
+    /// How many samples fit in `window_seconds` at the current `poll_rate`. Always at least 1.
+    /// Pure helper so it's directly testable without setting up a Repo.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn window_sample_count(window_seconds: u8, poll_rate: f64) -> usize {
+        debug_assert!(window_seconds >= 1);
+        debug_assert!(poll_rate > 0.0);
+        let count = (f64::from(window_seconds) / poll_rate).ceil() as usize;
+        count.max(1)
+    }
+
+    /// Collects up to `n` most-recent temperature samples for `temp_source`. For external
+    /// sources we read straight from the source device's `status_history`. For child sources
+    /// (within the Custom Sensors device) the current tick is in `custom_temps` and the prior
+    /// `n - 1` ticks are in the Custom Sensors device's history.
+    fn collect_recent_source_temps(
+        &self,
+        temp_source: &TempSource,
+        custom_temps: &[TempStatus],
+        sample_count: usize,
+    ) -> Vec<Temp> {
+        let mut temps: Vec<Temp> = Vec::with_capacity(sample_count);
+        if temp_source.device_uid == self.device_uid {
+            if let Some(current) = custom_temps
+                .iter()
+                .find(|t| t.name == temp_source.temp_name)
+            {
+                temps.push(current.temp);
+            }
+            if let Some(cs_device) = self.custom_sensor_device.as_ref() {
+                let remaining = sample_count.saturating_sub(temps.len());
+                for status in cs_device
+                    .borrow()
+                    .status_history
+                    .iter()
+                    .rev()
+                    .take(remaining)
+                {
+                    if let Some(t) = Self::get_temp_from_status(&temp_source.temp_name, status) {
+                        temps.push(t);
+                    }
+                }
+            }
+        } else if let Some(source_device) = self.all_devices.get(&temp_source.device_uid) {
+            for status in source_device
+                .borrow()
+                .status_history
+                .iter()
+                .rev()
+                .take(sample_count)
+            {
+                if let Some(t) = Self::get_temp_from_status(&temp_source.temp_name, status) {
+                    temps.push(t);
+                }
+            }
+        }
+        temps
+    }
+
+    /// Returns the arithmetic mean of the slice, or `None` if it's empty.
+    /// Pure function — callers compose their own sample collection.
+    #[allow(clippy::cast_precision_loss)]
+    fn compute_time_average(samples: &[Temp]) -> Option<Temp> {
+        if samples.is_empty() {
+            return None;
+        }
+        let sum: Temp = samples.iter().sum();
+        Some(sum / samples.len() as Temp)
     }
 
     /// Retrieves the temperature value from a specified `TempSource`.
@@ -641,6 +845,18 @@ impl CustomSensorsRepo {
             }
             .into());
         }
+        if custom_sensor.cs_type == CustomSensorType::TimeAverage
+            && custom_sensor.sources.len() != 1
+        {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "Custom Sensor TimeAverage types should have only one temp source: \
+                    {sensor_id}",
+                    sensor_id = custom_sensor.id
+                ),
+            }
+            .into());
+        }
         // the children vector is not necessarily filled at this point, so we check directly
         for temp_source_data in &custom_sensor.sources {
             if temp_source_data.temp_source.device_uid != self.device_uid {
@@ -731,7 +947,7 @@ impl Repository for CustomSensorsRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        let poll_rate = self.config.get_settings()?.poll_rate;
+        let poll_rate = self.poll_rate;
         let custom_sensors = self.config.get_custom_sensors()?;
         let temp_infos = custom_sensors
             .iter()
@@ -842,6 +1058,10 @@ impl Repository for CustomSensorsRepo {
                     // clone used here to avoid holding the lock over an await:
                     file_sensors.push(sensor.clone());
                 }
+                CustomSensorType::TimeAverage => {
+                    let temp_status = self.process_time_average_current(sensor, &custom_temps);
+                    custom_temps.push(temp_status);
+                }
             });
         for sensor in &file_sensors {
             let temp_status = Self::process_custom_sensor_data_file_current(sensor).await;
@@ -859,6 +1079,10 @@ impl Repository for CustomSensorsRepo {
                 }
                 // Parent sensors can not be File types
                 CustomSensorType::File => {}
+                CustomSensorType::TimeAverage => {
+                    let temp_status = self.process_time_average_current(sensor, &custom_temps);
+                    custom_temps.push(temp_status);
+                }
             });
         self.custom_sensor_device
             .as_ref()
@@ -1708,7 +1932,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -1769,7 +1993,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -1833,7 +2057,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -1894,7 +2118,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -1956,7 +2180,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2049,7 +2273,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2099,7 +2323,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2194,7 +2418,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]);
+            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2225,5 +2449,64 @@ mod tests {
                 .map_err(|err| err.to_string().contains("cannot have itself as a child"))
                 .unwrap_err());
         });
+    }
+
+    // ==================== TimeAverage helper tests ====================
+
+    // Empty slice => None. The caller treats this as a fallback case (emit 0, since the source
+    // device is gone). When the source device exists, the slice is always non-empty because
+    // status_history is guaranteed filled.
+    #[test]
+    fn time_average_compute_empty_returns_none() {
+        let samples: Vec<f64> = Vec::new();
+        assert!(CustomSensorsRepo::compute_time_average(&samples).is_none());
+    }
+
+    // Basic arithmetic mean across multiple samples.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn time_average_compute_basic_mean() {
+        let samples = vec![10.0, 20.0, 30.0, 40.0];
+        assert_eq!(
+            CustomSensorsRepo::compute_time_average(&samples),
+            Some(25.0)
+        );
+    }
+
+    // Single sample => the sample itself (degenerate but must work, e.g. the very first tick
+    // where N=1 makes sense conceptually).
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn time_average_compute_single_sample() {
+        let samples = vec![42.0];
+        assert_eq!(
+            CustomSensorsRepo::compute_time_average(&samples),
+            Some(42.0)
+        );
+    }
+
+    // window_sample_count: 10s window @ 1s poll = 10 samples.
+    #[test]
+    fn time_average_window_sample_count_basic() {
+        assert_eq!(CustomSensorsRepo::window_sample_count(10, 1.0), 10);
+    }
+
+    // window_sample_count: ceiling division — 10s @ 0.3s poll = 34 samples (33.33 rounded up).
+    #[test]
+    fn time_average_window_sample_count_ceiling() {
+        assert_eq!(CustomSensorsRepo::window_sample_count(10, 0.3), 34);
+    }
+
+    // window_sample_count never returns 0 — guards against division-by-zero in mean computation
+    // even at extreme poll rates (e.g. a 1s window with a 10s poll rate would round down to 0).
+    #[test]
+    fn time_average_window_sample_count_min_one() {
+        assert_eq!(CustomSensorsRepo::window_sample_count(1, 10.0), 1);
+    }
+
+    // 60s window @ 1s poll = 60 samples — the upper-bound case the validator allows.
+    #[test]
+    fn time_average_window_sample_count_max_window() {
+        assert_eq!(CustomSensorsRepo::window_sample_count(60, 1.0), 60);
     }
 }
