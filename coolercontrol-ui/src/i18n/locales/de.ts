@@ -673,6 +673,11 @@ export default {
             moveTable: 'In andere Ecke verschieben',
             addPointAfter: 'Punkt danach hinzufügen',
             removePoint: 'Punkt entfernen',
+            curvePointLimitBadge: 'max. {n} Pkt.',
+            curveLimitedByAmdGpu:
+                'Kurve auf {n} Punkte durch AMD GPU Hardware-Lüfterkurve begrenzt.',
+            curveLimitedByFirmware:
+                'Kurve auf {n} Punkte durch Geräte-Firmware-Lüfterkurve begrenzt.',
         },
         controls: {
             viewType: 'Ansichtstyp',

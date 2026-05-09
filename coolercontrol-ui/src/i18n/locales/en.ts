@@ -663,6 +663,9 @@ export default {
             moveTable: 'Move to other corner',
             addPointAfter: 'Add point after',
             removePoint: 'Remove point',
+            curvePointLimitBadge: 'max {n} pts',
+            curveLimitedByAmdGpu: 'Curve limited to {n} points by AMD GPU hardware fan curve.',
+            curveLimitedByFirmware: 'Curve limited to {n} points by device firmware fan curve.',
         },
         controls: {
             viewType: 'View Type',

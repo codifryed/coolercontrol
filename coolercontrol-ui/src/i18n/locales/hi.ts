@@ -599,6 +599,9 @@ export default {
             moveTable: 'दूसरे कोने में ले जाएं',
             addPointAfter: 'बाद में बिंदु जोड़ें',
             removePoint: 'बिंदु हटाएं',
+            curvePointLimitBadge: 'अधिकतम {n} अंक',
+            curveLimitedByAmdGpu: 'वक्र AMD GPU हार्डवेयर फैन वक्र द्वारा {n} बिंदुओं तक सीमित है।',
+            curveLimitedByFirmware: 'वक्र डिवाइस फर्मवेयर फैन वक्र द्वारा {n} बिंदुओं तक सीमित है।',
         },
         devices: {
             detectionIssues: 'पहचान समस्याएं? देखें',

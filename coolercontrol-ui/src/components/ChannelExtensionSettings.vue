@@ -31,6 +31,7 @@ import { UID } from '@/models/Device.ts'
 import { ChannelExtensionNames } from '@/models/SpeedOptions.ts'
 import { Profile, ProfileType } from '@/models/Profile.ts'
 import { CCChannelSettings, ChannelExtensions } from '@/models/CCSettings.ts'
+import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { useToast } from 'primevue/usetoast'
 
 const props = defineProps<{
@@ -91,7 +92,7 @@ const hwFanCurveIsApplicable = computed((): boolean => {
     return isApplicable
 })
 
-const saveChannelExtensionSettings = () => {
+const saveChannelExtensionSettings = async () => {
     if (currentChannelExtension.value == null || !hwFanCurveIsApplicable.value) return
     let newExtensionSettings: ChannelExtensions | undefined = undefined
     if (currentChannelExtension.value === ChannelExtensionNames.AmdRdnaGpu && hwFanCurve.value) {
@@ -116,16 +117,16 @@ const saveChannelExtensionSettings = () => {
         const changed = ccChannelSettings.extension != null
         ccChannelSettings.extension = undefined
         if (changed) {
-            const successful = deviceStore.daemonClient.saveCCDeviceSettings(
+            const result = await deviceStore.daemonClient.saveCCDeviceSettings(
                 props.deviceUID,
                 deviceSettings,
             )
-            if (!successful) {
+            if (result instanceof ErrorResponse) {
                 toast.add({
                     severity: 'error',
                     summary: t('common.error'),
-                    detail: t('components.channelExtensionSettings.saveError'),
-                    life: 3000,
+                    detail: result.error || t('components.channelExtensionSettings.saveError'),
+                    life: 6000,
                 })
             }
         }
@@ -136,16 +137,16 @@ const saveChannelExtensionSettings = () => {
         deviceSettings.channel_settings.get(props.channelName) ?? new CCChannelSettings()
     ccChannelSettings.extension = newExtensionSettings
     deviceSettings.channel_settings.set(props.channelName, ccChannelSettings)
-    const successful = deviceStore.daemonClient.saveCCDeviceSettings(
+    const result = await deviceStore.daemonClient.saveCCDeviceSettings(
         props.deviceUID,
         deviceSettings,
     )
-    if (!successful) {
+    if (result instanceof ErrorResponse) {
         toast.add({
             severity: 'error',
             summary: t('common.error'),
-            detail: t('components.channelExtensionSettings.saveError'),
-            life: 3000,
+            detail: result.error || t('components.channelExtensionSettings.saveError'),
+            life: 6000,
         })
     }
 }

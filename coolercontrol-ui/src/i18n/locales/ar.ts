@@ -657,6 +657,10 @@ export default {
             moveTable: 'نقل إلى الزاوية الأخرى',
             addPointAfter: 'إضافة نقطة بعد',
             removePoint: 'إزالة النقطة',
+            curvePointLimitBadge: 'بحد أقصى {n} نقاط',
+            curveLimitedByAmdGpu: 'المنحنى محدود بـ {n} نقاط بواسطة منحنى مروحة جهاز AMD GPU.',
+            curveLimitedByFirmware:
+                'المنحنى محدود بـ {n} نقاط بواسطة منحنى مروحة البرنامج الثابت للجهاز.',
         },
         controls: {
             viewType: 'نوع العرض',

@@ -27,6 +27,7 @@ import Select from 'primevue/select'
 import { ref, Ref, toRaw, watch } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ProfileTempSource } from '@/models/Profile.ts'
+import { useProfileLimitInfo, type LimitInfo } from '@/composables/useProfileLimitInfo.ts'
 
 interface Props {
     name: string
@@ -40,6 +41,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { getLimitInfo } = useProfileLimitInfo()
 const deviceStore = useDeviceStore()
 // We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
 // reacting to changes from Vue's shallowRef & triggerRef anymore.
@@ -52,6 +54,7 @@ interface AvailableTemp {
     tempFrontendName: string
     lineColor: string
     temp: string
+    limitInfo: LimitInfo | null
 }
 
 interface AvailableTempSources {
@@ -59,6 +62,7 @@ interface AvailableTempSources {
     deviceName: string
     profileMinLength: number
     profileMaxLength: number
+    amdGpuOverdrive?: boolean
     tempMin: number
     tempMax: number
     temps: Array<AvailableTemp>
@@ -78,6 +82,7 @@ const fillTempSources = () => {
             deviceName: deviceSettings.name,
             profileMinLength: device.info.profile_min_length,
             profileMaxLength: device.info.profile_max_length,
+            amdGpuOverdrive: device.info.amd_gpu_overdrive,
             tempMin: device.info.temp_min,
             tempMax: device.info.temp_max,
             temps: [],
@@ -89,6 +94,11 @@ const fillTempSources = () => {
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
                 temp: temp.temp.toFixed(1),
+                limitInfo: getLimitInfo({
+                    profileMaxLength: deviceSource.profileMaxLength,
+                    amdGpuOverdrive: deviceSource.amdGpuOverdrive,
+                    tempName: temp.name,
+                }),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -193,7 +203,16 @@ watch(rawStore.currentDeviceStatus, () => {
                                     :style="{ color: slotProps.option.lineColor }"
                                 />{{ slotProps.option.tempFrontendName }}
                             </div>
-                            <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            <div class="flex items-center gap-3">
+                                <span
+                                    v-if="slotProps.option.limitInfo != null"
+                                    class="text-xs opacity-70"
+                                    v-tooltip.left="slotProps.option.limitInfo.message"
+                                >
+                                    {{ slotProps.option.limitInfo.badge }}
+                                </span>
+                                <span>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</span>
+                            </div>
                         </div>
                     </template>
                 </Select>

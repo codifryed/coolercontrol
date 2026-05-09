@@ -50,6 +50,7 @@ import { computed, onMounted, onUnmounted, ref, Ref, toRaw, watch, type WatchSto
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import _ from 'lodash'
+import { useProfileLimitInfo, type LimitInfo } from '@/composables/useProfileLimitInfo.ts'
 
 echarts.use([
     GridComponent,
@@ -81,6 +82,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { getLimitInfo } = useProfileLimitInfo()
 const deviceStore = useDeviceStore()
 // We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
 // reacting to changes from Vue's shallowRef & triggerRef anymore.
@@ -94,6 +96,7 @@ interface AvailableTemp {
     tempFrontendName: string
     lineColor: string
     temp: string
+    limitInfo: LimitInfo | null
 }
 
 interface AvailableTempSources {
@@ -101,6 +104,7 @@ interface AvailableTempSources {
     deviceName: string
     profileMinLength: number
     profileMaxLength: number
+    amdGpuOverdrive?: boolean
     tempMin: number
     tempMax: number
     temps: Array<AvailableTemp>
@@ -111,6 +115,7 @@ interface CurrentTempSource {
     deviceName: string
     profileMinLength: number
     profileMaxLength: number
+    amdGpuOverdrive?: boolean
     tempMin: number
     tempMax: number
     tempName: string
@@ -140,6 +145,7 @@ const fillTempSources = () => {
             deviceName: deviceSettings.name,
             profileMinLength: device.info.profile_min_length,
             profileMaxLength: device.info.profile_max_length,
+            amdGpuOverdrive: device.info.amd_gpu_overdrive,
             tempMin: device.info.temp_min,
             tempMax: device.info.temp_max,
             temps: [],
@@ -151,6 +157,11 @@ const fillTempSources = () => {
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
                 temp: temp.temp.toFixed(1),
+                limitInfo: getLimitInfo({
+                    profileMaxLength: deviceSource.profileMaxLength,
+                    amdGpuOverdrive: deviceSource.amdGpuOverdrive,
+                    tempName: temp.name,
+                }),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -175,6 +186,7 @@ const getCurrentTempSource = (
             deviceName: tmpDevice.deviceName,
             profileMinLength: tmpDevice.profileMinLength,
             profileMaxLength: tmpDevice.profileMaxLength,
+            amdGpuOverdrive: tmpDevice.amdGpuOverdrive,
             tempMin: tmpDevice.tempMin,
             tempMax: tmpDevice.tempMax,
             tempName: tmpTemp.tempName,
@@ -188,6 +200,14 @@ let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
     currentProfile.value.temp_source?.device_uid,
     currentProfile.value.temp_source?.temp_name,
 )
+const selectedLimitInfo = computed<LimitInfo | null>(() => {
+    const deviceSource = tempSources.value.find(
+        (ts) => ts.deviceUID === props.tempSource.device_uid,
+    )
+    if (deviceSource == null) return null
+    const temp = deviceSource.temps.find((t) => t.tempName === props.tempSource.temp_name)
+    return temp?.limitInfo ?? null
+})
 
 const chosenFunction: Ref<Function> = ref(
     settingsStore.functions.find((f) => f.uid === currentProfile.value.function_uid)!,
@@ -1800,7 +1820,7 @@ const nextStep = () => {
                     <span class="pi pi-minus" />
                 </template>
             </InputNumber>
-            <div class="flex flex-row">
+            <div class="flex flex-row items-center">
                 <div
                     class="p-2 mx-4 leading-none items-center"
                     v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
@@ -1812,6 +1832,9 @@ const nextStep = () => {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </div>
+                <span v-if="selectedLimitInfo != null" class="text-sm opacity-70">
+                    {{ selectedLimitInfo.message }}
+                </span>
             </div>
             <InputNumber
                 :placeholder="t('components.axisOptions.max')"

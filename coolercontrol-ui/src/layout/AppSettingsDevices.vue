@@ -30,6 +30,7 @@ import Button from 'primevue/button'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { CCChannelSettings, CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
+import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
@@ -305,23 +306,31 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                 }
                 ccDeviceSettingsToSet.push(ccSetting)
             }
-            let oneSuccessful: boolean = true
+            const errors: Array<ErrorResponse> = []
             for (const ccSetting of ccDeviceSettingsToSet) {
-                oneSuccessful =
-                    (await deviceStore.daemonClient.saveCCDeviceSettings(
-                        ccSetting.uid,
-                        ccSetting,
-                    )) || oneSuccessful
+                const result = await deviceStore.daemonClient.saveCCDeviceSettings(
+                    ccSetting.uid,
+                    ccSetting,
+                )
+                if (result instanceof ErrorResponse) {
+                    errors.push(result)
+                }
             }
-            if (oneSuccessful) {
+            if (errors.length === 0) {
                 await deviceStore.daemonClient.shutdownDaemon()
                 await deviceStore.waitAndReload()
             } else {
+                // Show every daemon error verbatim. The backend may return a
+                // multi-line message naming Profiles or Custom Sensors that
+                // depend on a soon-to-be-disabled channel; do not restart.
+                const detail = errors
+                    .map((e) => e.error || t('layout.settings.devices.unknownError'))
+                    .join('\n\n')
                 toast.add({
                     severity: 'error',
                     summary: t('common.error'),
-                    detail: t('layout.settings.devices.unknownError'),
-                    life: 4000,
+                    detail,
+                    life: 0,
                 })
             }
         },

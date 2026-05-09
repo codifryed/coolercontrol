@@ -560,6 +560,9 @@ export default {
             moveTable: '移动到其他角落',
             addPointAfter: '在后面添加点',
             removePoint: '删除点',
+            curvePointLimitBadge: '最多 {n} 点',
+            curveLimitedByAmdGpu: '曲线被 AMD GPU 硬件风扇曲线限制为 {n} 点。',
+            curveLimitedByFirmware: '曲线被设备固件风扇曲线限制为 {n} 点。',
         },
         customSensors: {
             newSensor: '新传感器',
