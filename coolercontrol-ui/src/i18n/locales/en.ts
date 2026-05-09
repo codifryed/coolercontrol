@@ -463,9 +463,18 @@ export default {
             offset: 'Offset Amount',
             offsetTooltip:
                 'Enter the negative or positive offset amount to<br/>apply to the source sensor.<br/><i>Note: The final value will is limited to<br/>normal temperature ranges.</i>',
-            timeWindow: 'Averaging Window',
+            timeWindow: 'Smoothing Window',
             timeWindowTooltip:
-                'How many seconds of recent samples to average together.<br/><i>Note: Must be between 1 and 60 seconds.</i>',
+                'How many seconds of recent samples to smooth together.<br/><i>Note: Must be between 1 and 300 seconds.</i>',
+            helpText: {
+                mix: 'Combines multiple temperature sources via the chosen function (Min/Max/Avg/Delta/WeightedAvg). Use to drive fans from the hottest of several sensors, or to balance between zones.',
+                file: 'Reads temperature from a file path. Use for sensors not auto-detected by CoolerControl.',
+                offset: 'Adds or subtracts a fixed value from a temperature source. Use to calibrate a known sensor inaccuracy.',
+                timeAverage:
+                    'Arithmetic mean over a fixed time window. Output is bounded by the input range, never overshoots. For fans that should ignore brief temperature spikes.',
+                exponentialMovingAvg:
+                    'Weighted average favoring recent readings. Smoother than Time Average for the same window, but takes roughly 3x the window length to fully follow a sustained change. For fans that should track real trends without jitter.',
+            },
             tempWeights: 'Temp Weights',
             tempWeightsTooltip: 'The individual weight of each selected temperature source.',
             tempName: 'Temp Name',
@@ -746,6 +755,10 @@ export default {
             windowSize: 'Window Size',
             windowSizeTooltip:
                 'Window temperature sample size used in the exponential moving average calculation.\nSmaller values = faster response, more reactive to temperature spikes.\nLarger values = slower response, smoother fan speed transitions.\nTip: Use a Standard Function for precise control over response timing.',
+            emaCustomSensorAvailableNote:
+                'EMA is also available as a Custom Sensor type, which lets you graph the smoothed temperature directly. The Function-type EMA remains supported.',
+            emaDeprecatedWarning:
+                'The EMA Function type is deprecated. Please switch to the EMA Custom Sensor type.',
             hysteresis: 'Advanced Hysteresis',
             hysteresisThreshold: 'Threshold',
             hysteresisThresholdTooltip:
@@ -1285,6 +1298,7 @@ export default {
                 file: 'File',
                 offset: 'Offset',
                 timeAverage: 'Time Average',
+                exponentialMovingAvg: 'Exponential Moving Average',
             },
             mixFunctionType: {
                 min: 'Minimum',

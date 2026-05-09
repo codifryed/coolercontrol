@@ -584,9 +584,18 @@ export default {
             offset: '偏移量',
             offsetTooltip:
                 '輸入要套用至來源傳感器的負值或正值偏移量。<br/><i>注意：最終數值將被限制在正常的溫度範圍內。</i>',
-            timeWindow: '平均視窗',
+            timeWindow: '平滑視窗',
             timeWindowTooltip:
-                '將最近多少秒的樣本一起取平均值。<br/><i>注意：必須在 1 到 60 秒之間。</i>',
+                '將最近多少秒的樣本一起平滑。<br/><i>注意：必須在 1 到 300 秒之間。</i>',
+            helpText: {
+                mix: '透過所選函式（最小值/最大值/平均值/差值/加權平均值）組合多個溫度源。用於根據多個感測器中最熱的一個驅動風扇，或在區域之間平衡。',
+                file: '從檔案路徑讀取溫度。用於 CoolerControl 未自動偵測到的感測器。',
+                offset: '從溫度源加減一個固定值。用於校準已知的感測器誤差。',
+                timeAverage:
+                    '固定時間視窗內的算術平均值。輸出受輸入範圍限制，從不超調。適用於應忽略短暫溫度峰值的風扇。',
+                exponentialMovingAvg:
+                    '偏重於最近讀數的加權平均值。同樣視窗下比時間平均更平滑，但需要大約 3 倍視窗長度才能完全跟隨持續變化。適用於應追蹤真實趨勢而無抖動的風扇。',
+            },
             tempWeights: '溫度權重',
             tempWeightsTooltip: '每個選定溫度源的各自權重。',
             tempName: '溫度名稱',
@@ -727,6 +736,9 @@ export default {
             windowSize: '窗口大小',
             windowSizeTooltip:
                 '指數移動平均計算中使用的窗口溫度樣本大小。\n較小的值 = 更快的響應，對溫度峰值更敏感。\n較大的值 = 較慢的響應，更平滑的風扇速度過渡。\n提示：使用標準功能可以精確控制響應時間。',
+            emaCustomSensorAvailableNote:
+                'EMA 也可作為自訂感測器類型使用，可讓您直接繪製平滑後的溫度。函式類型的 EMA 仍然受支援。',
+            emaDeprecatedWarning: '函式類型 EMA 已淘汰。請切換到 EMA 自訂感測器類型。',
             hysteresis: '高級滯後',
             hysteresisThreshold: '閾值',
             hysteresisThresholdTooltip:
@@ -1249,6 +1261,7 @@ export default {
                 file: '文件',
                 offset: '偏移',
                 timeAverage: '時間平均',
+                exponentialMovingAvg: '指數移動平均',
             },
             mixFunctionType: {
                 min: '最小值',

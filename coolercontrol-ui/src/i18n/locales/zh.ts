@@ -583,9 +583,18 @@ export default {
             offset: '偏移量',
             offsetTooltip:
                 '输入要应用于源传感器的负或正偏移量。<br/><i>注意：最终值会被限制在正常的温度范围内。</i>',
-            timeWindow: '平均窗口',
+            timeWindow: '平滑窗口',
             timeWindowTooltip:
-                '将最近多少秒的样本一起取平均值。<br/><i>注意：必须在 1 到 60 秒之间。</i>',
+                '将最近多少秒的样本一起平滑。<br/><i>注意：必须在 1 到 300 秒之间。</i>',
+            helpText: {
+                mix: '通过所选函数（最小值/最大值/平均值/差值/加权平均值）组合多个温度源。用于根据多个传感器中最热的一个驱动风扇，或在区域之间平衡。',
+                file: '从文件路径读取温度。用于 CoolerControl 未自动检测到的传感器。',
+                offset: '从温度源加减一个固定值。用于校准已知的传感器误差。',
+                timeAverage:
+                    '固定时间窗口内的算术平均值。输出受输入范围限制，从不超调。适用于应忽略短暂温度峰值的风扇。',
+                exponentialMovingAvg:
+                    '偏重于最近读数的加权平均值。同样窗口下比时间平均更平滑，但需要大约 3 倍窗口长度才能完全跟随持续变化。适用于应跟踪真实趋势而无抖动的风扇。',
+            },
             tempWeights: '温度权重',
             tempWeightsTooltip: '每个选定温度源的各自权重。',
             tempName: '温度名称',
@@ -725,6 +734,9 @@ export default {
             windowSize: '窗口大小',
             windowSizeTooltip:
                 '指数移动平均计算中使用的窗口温度样本大小。\n较小的值 = 更快的响应，对温度峰值更敏感。\n较大的值 = 较慢的响应，更平滑的风扇速度过渡。\n提示：使用标准功能可以精确控制响应时间。',
+            emaCustomSensorAvailableNote:
+                'EMA 也可作为自定义传感器类型使用，可让您直接绘制平滑后的温度。函数类型的 EMA 仍然受支持。',
+            emaDeprecatedWarning: '函数类型 EMA 已弃用。请切换到 EMA 自定义传感器类型。',
             hysteresis: '高级滞后',
             hysteresisThreshold: '阈值',
             hysteresisThresholdTooltip:
@@ -1248,6 +1260,7 @@ export default {
                 file: '文件',
                 offset: '偏移',
                 timeAverage: '时间平均',
+                exponentialMovingAvg: '指数移动平均',
             },
             mixFunctionType: {
                 min: '最小值',

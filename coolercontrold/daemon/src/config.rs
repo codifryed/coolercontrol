@@ -2346,19 +2346,19 @@ impl Config {
     }
 
     /// Parses the optional `time_window_seconds` field from a custom-sensor table. Clamps to the
-    /// allowed `1..=60` range; the API layer rejects values outside that range so any clamping
+    /// allowed `1..=300` range; the API layer rejects values outside that range so any clamping
     /// here is purely defensive against hand-edited configs.
-    fn parse_time_window_seconds(c_sensor_table: &Table) -> Result<Option<u8>> {
+    fn parse_time_window_seconds(c_sensor_table: &Table) -> Result<Option<u16>> {
         let Some(window_value) = c_sensor_table.get("time_window_seconds") else {
             return Ok(None);
         };
-        let window_raw: u8 = window_value
+        let window_raw: u16 = window_value
             .as_integer()
             .with_context(|| "time_window_seconds should be an integer")?
             .try_into()
             .ok()
-            .with_context(|| "time_window_seconds must be a value between 1 and 60")?;
-        Ok(Some(window_raw.clamp(1, 60)))
+            .with_context(|| "time_window_seconds must be a value between 1 and 300")?;
+        Ok(Some(window_raw.clamp(1, 300)))
     }
 
     fn create_custom_sensor_table_from(custom_sensor: CustomSensor) -> Table {

@@ -25,6 +25,7 @@ export enum CustomSensorType {
     File = 'File',
     Offset = 'Offset',
     TimeAverage = 'TimeAverage',
+    ExponentialMovingAvg = 'ExponentialMovingAvg',
 }
 
 export enum CustomSensorMixFunctionType {
@@ -51,6 +52,8 @@ export function getCustomSensorTypeDisplayName(type: CustomSensorType): string {
             return t('models.customSensor.sensorType.offset')
         case CustomSensorType.TimeAverage:
             return t('models.customSensor.sensorType.timeAverage')
+        case CustomSensorType.ExponentialMovingAvg:
+            return t('models.customSensor.sensorType.exponentialMovingAvg')
         default:
             return String(type)
     }

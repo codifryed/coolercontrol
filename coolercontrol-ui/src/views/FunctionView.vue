@@ -405,6 +405,27 @@ onUnmounted(() => {
                     @change="changeFunctionType"
                 />
             </div>
+            <!--
+                EMA migration placeholders. Both render slots are gated by `v-if="false"` and
+                are intentionally inert. The strings, layout, and placement are ready; flip
+                the gates when the corresponding stage is reached.
+                  Stage 1 (informational): set the first `v-if` to `selectedType === FunctionType.ExponentialMovingAvg`.
+                  Stage 2 (active deprecation): replace the informational gate above with `false`,
+                  then set the second `v-if` to `selectedType === FunctionType.ExponentialMovingAvg`.
+                Only one of the two should be live at any time.
+            -->
+            <div
+                v-if="false"
+                class="mt-3 mr-4 w-96 rounded-lg border-2 border-border-one bg-bg-two p-3 text-sm text-text-color-secondary"
+            >
+                {{ t('views.functions.emaCustomSensorAvailableNote') }}
+            </div>
+            <div
+                v-if="false"
+                class="mt-3 mr-4 w-96 rounded-lg border-2 border-accent bg-bg-two p-3 text-sm"
+            >
+                {{ t('views.functions.emaDeprecatedWarning') }}
+            </div>
             <table class="mt-4 bg-bg-two rounded-lg">
                 <tbody>
                     <tr>

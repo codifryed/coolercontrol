@@ -280,6 +280,25 @@ impl CustomSensorsRepo {
                     status.temps.push(temp_status);
                 }
             }
+            CustomSensorType::ExponentialMovingAvg => {
+                // Same backfill strategy as TimeAverage: compute the smoothed value at every
+                // historical position so charts show real values from the moment of creation
+                // rather than zeros that would later wash out.
+                let window_seconds =
+                    sensor
+                        .time_window_seconds
+                        .ok_or_else(|| CCError::InternalError {
+                            msg: format!(
+                                "ExponentialMovingAvg Custom Sensor {} missing time_window_seconds",
+                                sensor.id
+                            ),
+                        })?;
+                let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
+                for (index, status) in history.iter_mut().enumerate() {
+                    let temp_status = self.process_ema_indexed(sensor, index, sample_count);
+                    status.temps.push(temp_status);
+                }
+            }
             CustomSensorType::File => {
                 // Single read: verify the file is readable and use the value for the current
                 // tick. Older history positions are placeholder 0s by design (File sensors
@@ -391,6 +410,14 @@ impl CustomSensorsRepo {
                 ),
             }
             .into()),
+            CustomSensorType::ExponentialMovingAvg => Err(CCError::InternalError {
+                msg: format!(
+                    "Indexed processing triggered for ExponentialMovingAvg sensor {}; \
+                    ExponentialMovingAvg uses process_ema_indexed",
+                    sensor.id
+                ),
+            }
+            .into()),
             CustomSensorType::File => Err(CCError::InternalError {
                 msg: format!(
                     "Indexed processing triggered for Invalid sensor type: {}",
@@ -439,9 +466,12 @@ impl CustomSensorsRepo {
                 let custom_temp = Self::process_offset_temp_data(sensor.offset, &temp_data);
                 self.emit_real_temp(&sensor.id, custom_temp)
             }
-            CustomSensorType::File | CustomSensorType::TimeAverage => {
-                // Defensive: dispatch in update_statuses routes File through file_sensors and
-                // TimeAverage through process_time_average_current, so neither reaches here.
+            CustomSensorType::File
+            | CustomSensorType::TimeAverage
+            | CustomSensorType::ExponentialMovingAvg => {
+                // Defensive: dispatch in update_statuses routes File through file_sensors,
+                // TimeAverage through process_time_average_current, and ExponentialMovingAvg
+                // through process_ema_current, so none reach here.
                 debug!(
                     "process_custom_sensor_data_current called with unexpected cs_type {} for {}",
                     sensor.cs_type, sensor.id
@@ -468,7 +498,7 @@ impl CustomSensorsRepo {
         debug_assert_eq!(sensor.sources.len(), 1);
         let window_seconds = sensor.time_window_seconds.unwrap_or(0);
         if window_seconds == 0 {
-            // Invariant break: validation enforces 1..=60. Per-tick error log keeps every
+            // Invariant break: validation enforces 1..=300. Per-tick error log keeps every
             // line of evidence if this ever fires; emit_failsafe additionally logs the
             // sensor entering failsafe state once.
             error!(
@@ -545,7 +575,7 @@ impl CustomSensorsRepo {
     /// How many samples fit in `window_seconds` at the current `poll_rate`. Always at least 1.
     /// Pure helper so it's directly testable without setting up a Repo.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn window_sample_count(window_seconds: u8, poll_rate: f64) -> usize {
+    fn window_sample_count(window_seconds: u16, poll_rate: f64) -> usize {
         debug_assert!(window_seconds >= 1);
         debug_assert!(poll_rate > 0.0);
         let count = (f64::from(window_seconds) / poll_rate).ceil() as usize;
@@ -609,6 +639,86 @@ impl CustomSensorsRepo {
         }
         let sum: Temp = samples.iter().sum();
         Some(sum / samples.len() as Temp)
+    }
+
+    /// Computes a single Exponential Moving Average over the samples (oldest first, newest
+    /// last). `alpha = 2 / (period + 1)`, the standard EMA smoothing factor for an
+    /// equivalent simple-moving-average window of `period` samples. The EMA is initialized
+    /// with the first sample and iteratively updated. Returns `None` if `samples` is empty.
+    /// Pure function — callers compose their own sample collection and ordering.
+    #[allow(clippy::cast_precision_loss)]
+    fn compute_ema(samples: &[Temp], period: usize) -> Option<Temp> {
+        if samples.is_empty() {
+            return None;
+        }
+        debug_assert!(period >= 1);
+        let alpha = 2.0 / (period as f64 + 1.0);
+        debug_assert!(alpha > 0.0);
+        debug_assert!(alpha <= 1.0);
+        let mut ema = samples[0];
+        for &value in samples.iter().skip(1) {
+            ema = (value - ema).mul_add(alpha, ema);
+        }
+        Some(ema)
+    }
+
+    /// Processes an `ExponentialMovingAvg` Custom Sensor for the current tick. Reads the
+    /// last `time_window_seconds / poll_rate` samples from the source's `status_history`
+    /// (oldest first) and emits a single EMA over them. If the source is structurally
+    /// absent or the sensor is misconfigured, emits `MISSING_TEMP_FAILSAFE` so downstream
+    /// control reacts to the missing reading rather than serving a fake-cool value.
+    fn process_ema_current(
+        &self,
+        sensor: &CustomSensor,
+        custom_temps: &[TempStatus],
+    ) -> TempStatus {
+        debug_assert_eq!(sensor.cs_type, CustomSensorType::ExponentialMovingAvg);
+        debug_assert_eq!(sensor.sources.len(), 1);
+        let window_seconds = sensor.time_window_seconds.unwrap_or(0);
+        if window_seconds == 0 {
+            // Invariant break: validation enforces 1..=300. Per-tick error log keeps every
+            // line of evidence if this ever fires; emit_failsafe additionally logs the
+            // sensor entering failsafe state once.
+            error!(
+                "ExponentialMovingAvg Custom Sensor {} has no time_window_seconds set",
+                sensor.id
+            );
+            return self.emit_failsafe(&sensor.id, "missing time_window_seconds");
+        }
+        let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
+        let mut temps = self.collect_recent_source_temps(
+            &sensor.sources[0].temp_source,
+            custom_temps,
+            sample_count,
+        );
+        // collect_recent_source_temps returns newest-first; EMA is order-dependent and
+        // expects oldest-first so the recency weighting works correctly.
+        temps.reverse();
+        match Self::compute_ema(&temps, sample_count) {
+            Some(ema) => self.emit_real_temp(&sensor.id, ema),
+            None => self.emit_failsafe(&sensor.id, "no source samples available"),
+        }
+    }
+
+    /// Computes the EMA for an `ExponentialMovingAvg` sensor at history `index`, used
+    /// during back-fill of a newly-created sensor. Averages the last `sample_count` samples
+    /// of the source device's `status_history` ending at (and including) `index`.
+    fn process_ema_indexed(
+        &self,
+        sensor: &CustomSensor,
+        index: usize,
+        sample_count: usize,
+    ) -> TempStatus {
+        debug_assert_eq!(sensor.cs_type, CustomSensorType::ExponentialMovingAvg);
+        debug_assert_eq!(sensor.sources.len(), 1);
+        // collect_indexed_source_temps returns oldest-first, which is what compute_ema wants.
+        let temps =
+            self.collect_indexed_source_temps(&sensor.sources[0].temp_source, index, sample_count);
+        let ema = Self::compute_ema(&temps, sample_count).unwrap_or(0.);
+        TempStatus {
+            name: sensor.id.clone(),
+            temp: ema,
+        }
     }
 
     /// Retrieves the temperature value from a specified `TempSource`.
@@ -838,6 +948,18 @@ impl CustomSensorsRepo {
             return Err(CCError::UserError {
                 msg: format!(
                     "Custom Sensor TimeAverage types should have only one temp source: \
+                    {sensor_id}",
+                    sensor_id = custom_sensor.id
+                ),
+            }
+            .into());
+        }
+        if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
+            && custom_sensor.sources.len() != 1
+        {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "Custom Sensor ExponentialMovingAvg types should have only one temp source: \
                     {sensor_id}",
                     sensor_id = custom_sensor.id
                 ),
@@ -1092,6 +1214,10 @@ impl Repository for CustomSensorsRepo {
                     let temp_status = self.process_time_average_current(sensor, &custom_temps);
                     custom_temps.push(temp_status);
                 }
+                CustomSensorType::ExponentialMovingAvg => {
+                    let temp_status = self.process_ema_current(sensor, &custom_temps);
+                    custom_temps.push(temp_status);
+                }
             });
         for sensor in &file_sensors {
             let temp_status = self.process_custom_sensor_data_file_current(sensor).await;
@@ -1111,6 +1237,10 @@ impl Repository for CustomSensorsRepo {
                 CustomSensorType::File => {}
                 CustomSensorType::TimeAverage => {
                     let temp_status = self.process_time_average_current(sensor, &custom_temps);
+                    custom_temps.push(temp_status);
+                }
+                CustomSensorType::ExponentialMovingAvg => {
+                    let temp_status = self.process_ema_current(sensor, &custom_temps);
                     custom_temps.push(temp_status);
                 }
             });
@@ -2550,10 +2680,87 @@ mod tests {
         assert_eq!(CustomSensorsRepo::window_sample_count(1, 10.0), 1);
     }
 
-    // 60s window @ 1s poll = 60 samples — the upper-bound case the validator allows.
+    // 300s window @ 1s poll = 300 samples — the upper-bound case the validator allows.
     #[test]
     fn time_average_window_sample_count_max_window() {
-        assert_eq!(CustomSensorsRepo::window_sample_count(60, 1.0), 60);
+        assert_eq!(CustomSensorsRepo::window_sample_count(300, 1.0), 300);
+    }
+
+    // ==================== EMA helper tests ====================
+
+    // Empty slice => None. Mirrors compute_time_average's empty contract: callers compose
+    // their own collection; an empty result signals "no samples available" and routes to
+    // failsafe at the call site.
+    #[test]
+    fn ema_compute_empty_returns_none() {
+        let samples: Vec<f64> = Vec::new();
+        assert!(CustomSensorsRepo::compute_ema(&samples, 8).is_none());
+    }
+
+    // Single sample => the sample itself (degenerate but must work, e.g. the very first
+    // tick where no prior history exists).
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn ema_compute_single_sample() {
+        let samples = vec![42.0];
+        assert_eq!(CustomSensorsRepo::compute_ema(&samples, 8), Some(42.0));
+    }
+
+    // Constant-value input => the EMA collapses to that constant exactly. Verifies the
+    // recurrence is idempotent on a flat signal regardless of period.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn ema_compute_constant_input_returns_constant() {
+        let samples = vec![50.0; 20];
+        assert_eq!(CustomSensorsRepo::compute_ema(&samples, 10), Some(50.0));
+    }
+
+    // Step input from 0 to 100 over a long history: the EMA must converge upward toward
+    // 100 but stay strictly below the latest sample (the recurrence is asymptotic, not
+    // overshooting). Catches sign or operand-order flips in the mul_add update.
+    #[test]
+    fn ema_compute_step_input_converges_below_target() {
+        let mut samples = vec![0.0; 50];
+        samples.extend(std::iter::repeat_n(100.0, 50));
+        let result = CustomSensorsRepo::compute_ema(&samples, 5).unwrap();
+        // After 50 samples of "100" with period 5, EMA should be very close to 100 but not
+        // exceed it — single EMA cannot overshoot a bounded input.
+        assert!(
+            result > 95.0,
+            "EMA should converge close to 100, got {result}"
+        );
+        assert!(
+            result < 100.0,
+            "single EMA must not overshoot input, got {result}"
+        );
+    }
+
+    // Period 1 => alpha = 1.0 => the EMA is the most recent sample with no smoothing at
+    // all. This is the upper-alpha edge of the recurrence and a useful regression check
+    // that the algorithm reduces to identity at period 1.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn ema_compute_period_one_is_latest_sample() {
+        let samples = vec![10.0, 20.0, 30.0, 40.0];
+        assert_eq!(CustomSensorsRepo::compute_ema(&samples, 1), Some(40.0));
+    }
+
+    // Order matters: reversing the sample order produces a different EMA because recent
+    // samples weigh more. Guards against accidental order-invariance refactors that would
+    // make EMA behave like TimeAverage.
+    #[test]
+    fn ema_compute_is_order_dependent() {
+        let ascending = vec![10.0, 20.0, 30.0, 40.0, 50.0];
+        let descending: Vec<f64> = ascending.iter().rev().copied().collect();
+        let ema_ascending = CustomSensorsRepo::compute_ema(&ascending, 5).unwrap();
+        let ema_descending = CustomSensorsRepo::compute_ema(&descending, 5).unwrap();
+        assert!(
+            (ema_ascending - ema_descending).abs() > 1.0,
+            "EMA must be order-dependent: {ema_ascending} vs {ema_descending}"
+        );
+        // Ascending data: most recent sample is the highest, EMA pulls up toward it.
+        // Descending data: most recent sample is the lowest, EMA pulls down toward it.
+        assert!(ema_ascending > ema_descending);
     }
 
     // ==================== failsafe state tracking helpers ====================
@@ -2831,10 +3038,113 @@ mod tests {
         });
     }
 
-    // TimeAverage with window_seconds == 0 is an invariant break (validator enforces 1..=60),
-    // but the live path defensively emits failsafe and logs error per tick. Bypasses
-    // set_custom_sensor because that path's debug_assert on window_seconds >= 1 would panic
-    // on 0; we inject the sensor directly to exercise the live defensive path.
+    // EMA with no collectible samples (source's history has no matching temp_name):
+    // process_ema_current's compute_ema returns None and emits failsafe — same contract as
+    // TimeAverage so a missing source produces a single warning rather than a misleading
+    // value drifting through the EMA recurrence.
+    #[test]
+    #[serial]
+    fn ema_with_no_samples_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "actual".to_string(),
+                temp: 50.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "ema1".to_string(),
+                cs_type: CustomSensorType::ExponentialMovingAvg,
+                time_window_seconds: Some(5),
+                sources: vec![temp_source(&source_uid, "missing")],
+                ..Default::default()
+            };
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            assert!((current_temp_for(&repo, "ema1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+            assert!(repo.failsafing_sensors.borrow().contains("ema1"));
+        });
+    }
+
+    // EMA with window_seconds == 0 is an invariant break (validator enforces 1..=300), but
+    // the live path defensively emits failsafe and logs error per tick. Direct injection
+    // bypasses the set_custom_sensor backfill which would also debug_assert on the zero.
+    #[test]
+    #[serial]
+    fn ema_with_window_zero_emits_failsafe() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "actual".to_string(),
+                temp: 50.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "ema_bad".to_string(),
+                cs_type: CustomSensorType::ExponentialMovingAvg,
+                time_window_seconds: Some(0),
+                sources: vec![temp_source(&source_uid, "actual")],
+                ..Default::default()
+            };
+            repo.sensors.borrow_mut().push(sensor);
+
+            repo.update_statuses().await.unwrap();
+
+            assert!(
+                (current_temp_for(&repo, "ema_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
+            );
+            assert!(repo.failsafing_sensors.borrow().contains("ema_bad"));
+        });
+    }
+
+    // EMA with present source emits a bounded real value and does not enter failsafe.
+    // make_mock_source_device's history is zeros except the most recent tick (carries the
+    // 70.0); the EMA over those last 10 samples is therefore < 70 but > 0. Exact-value
+    // correctness is covered by the compute_ema unit tests; this test only verifies the
+    // live integration path runs cleanly on a healthy source.
+    #[test]
+    #[serial]
+    fn ema_with_present_source_emits_real_value() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 70.0,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            repo.initialize_devices().await.unwrap();
+            let sensor = CustomSensor {
+                id: "ema_ok".to_string(),
+                cs_type: CustomSensorType::ExponentialMovingAvg,
+                time_window_seconds: Some(10),
+                sources: vec![temp_source(&source_uid, "cpu")],
+                ..Default::default()
+            };
+
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+
+            let temp = current_temp_for(&repo, "ema_ok");
+            assert!(
+                (temp - MISSING_TEMP_FAILSAFE).abs() > f64::EPSILON,
+                "EMA must not failsafe on a present source, got {temp}"
+            );
+            assert!(
+                (0.0..=70.0).contains(&temp),
+                "EMA must be bounded by input range, got {temp}"
+            );
+            assert!(repo.failsafing_sensors.borrow().contains("ema_ok").not());
+        });
+    }
+
+    // TimeAverage with window_seconds == 0 is an invariant break (validator enforces
+    // 1..=300), but the live path defensively emits failsafe and logs error per tick.
+    // Bypasses set_custom_sensor because that path's debug_assert on window_seconds >= 1
+    // would panic on 0; we inject the sensor directly to exercise the live defensive path.
     #[test]
     #[serial]
     fn time_average_with_window_zero_emits_failsafe() {

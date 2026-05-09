@@ -469,9 +469,18 @@ export default {
             offset: 'Versatz',
             offsetTooltip:
                 'Geben Sie einen negativen oder positiven Versatz ein, der auf den Quellsensor angewendet wird.<br/><i>Hinweis: Der Endwert wird auf normale Temperaturbereiche begrenzt.</i>',
-            timeWindow: 'Mittelungsfenster',
+            timeWindow: 'Glättungsfenster',
             timeWindowTooltip:
-                'Wie viele Sekunden der jüngsten Stichproben zusammen gemittelt werden sollen.<br/><i>Hinweis: Muss zwischen 1 und 60 Sekunden liegen.</i>',
+                'Wie viele Sekunden der jüngsten Stichproben zusammen geglättet werden sollen.<br/><i>Hinweis: Muss zwischen 1 und 300 Sekunden liegen.</i>',
+            helpText: {
+                mix: 'Kombiniert mehrere Temperaturquellen mit der gewählten Funktion (Min/Max/Mittel/Differenz/Gewichtetes Mittel). Zur Steuerung von Lüftern nach dem heißesten mehrerer Sensoren oder zum Ausgleich zwischen Zonen.',
+                file: 'Liest die Temperatur aus einem Dateipfad. Für Sensoren, die nicht automatisch von CoolerControl erkannt werden.',
+                offset: 'Addiert oder subtrahiert einen festen Wert von einer Temperaturquelle. Zur Kalibrierung einer bekannten Sensorungenauigkeit.',
+                timeAverage:
+                    'Arithmetisches Mittel über ein festes Zeitfenster. Die Ausgabe ist durch den Eingangsbereich begrenzt und überschießt nie. Für Lüfter, die kurze Temperaturspitzen ignorieren sollen.',
+                exponentialMovingAvg:
+                    'Gewichtetes Mittel mit Bevorzugung neuerer Messwerte. Glatter als der zeitliche Durchschnitt bei gleicher Fenstergröße, benötigt jedoch etwa das 3-fache der Fensterlänge, um einer dauerhaften Änderung vollständig zu folgen. Für Lüfter, die echte Trends ohne Jitter verfolgen sollen.',
+            },
             tempWeights: 'Temp-Gewichtungen',
             tempWeightsTooltip: 'Die individuelle Gewichtung jeder ausgewählten Temperaturquelle.',
             tempName: 'Temp-Name',
@@ -758,6 +767,10 @@ export default {
             windowSize: 'Fenstergröße',
             windowSizeTooltip:
                 'Fenstergröße für Temperaturproben in der Berechnung des exponentiellen gleitenden Durchschnitts.\nKleinere Werte = schnellere Reaktion, reaktiver auf Temperaturspitzen.\nGrößere Werte = langsamere Reaktion, sanftere Lüftergeschwindigkeitsübergänge.\nTipp: Verwenden Sie eine Standardfunktion für präzise Kontrolle über das Reaktionstiming.',
+            emaCustomSensorAvailableNote:
+                'EMA ist auch als benutzerdefinierter Sensortyp verfügbar, mit dem die geglättete Temperatur direkt grafisch dargestellt werden kann. Der Funktionstyp EMA wird weiterhin unterstützt.',
+            emaDeprecatedWarning:
+                'Der Funktionstyp EMA ist veraltet. Bitte wechseln Sie zum benutzerdefinierten Sensortyp EMA.',
             hysteresis: 'Erweiterte Hysterese',
             hysteresisThreshold: 'Schwellenwert',
             hysteresisThresholdTooltip:
@@ -1311,6 +1324,7 @@ export default {
                 file: 'Datei',
                 offset: 'Versatz',
                 timeAverage: 'Zeitlicher Durchschnitt',
+                exponentialMovingAvg: 'Exponentieller gleitender Durchschnitt',
             },
             mixFunctionType: {
                 min: 'Minimum',

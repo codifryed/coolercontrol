@@ -133,9 +133,27 @@ const mixFunctionTypeOptions = computed(() => {
     }))
 })
 
+const getSensorTypeHelpText = (type: CustomSensorType): string => {
+    switch (type) {
+        case CustomSensorType.Mix:
+            return t('views.customSensors.helpText.mix')
+        case CustomSensorType.File:
+            return t('views.customSensors.helpText.file')
+        case CustomSensorType.Offset:
+            return t('views.customSensors.helpText.offset')
+        case CustomSensorType.TimeAverage:
+            return t('views.customSensors.helpText.timeAverage')
+        case CustomSensorType.ExponentialMovingAvg:
+            return t('views.customSensors.helpText.exponentialMovingAvg')
+        default:
+            return ''
+    }
+}
+
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const chosenOffsetTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
 const chosenTimeAverageTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
+const chosenEmaTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const tempSources: Ref<Array<AvailableTempSources>> = ref([])
 const fillTempSources = (): void => {
@@ -265,6 +283,23 @@ const nextStep = async (): Promise<void> => {
                 chosenTimeAverageTempSource.value.weight,
             ),
         )
+    } else if (customSensor.cs_type === CustomSensorType.ExponentialMovingAvg) {
+        if (chosenEmaTempSource.value == null) {
+            console.error('No EMA temp source selected')
+            return
+        }
+        customSensor.file_path = undefined
+        customSensor.offset = undefined
+        customSensor.time_window_seconds = selectedTimeWindowSeconds.value
+        tempSources.push(
+            new CustomTempSourceData(
+                new CustomSensorTempSource(
+                    chosenEmaTempSource.value.deviceUID,
+                    chosenEmaTempSource.value.tempName,
+                ),
+                chosenEmaTempSource.value.weight,
+            ),
+        )
     }
     customSensor.sources = tempSources
     emit('name', sensorName.value)
@@ -350,7 +385,16 @@ onMounted(async () => {
                     @change="changeSensorType"
                     option-label="label"
                     option-value="value"
-                />
+                >
+                    <template #option="slotProps">
+                        <div
+                            class="w-full"
+                            v-tooltip.right="getSensorTypeHelpText(slotProps.option.value)"
+                        >
+                            {{ slotProps.option.label }}
+                        </div>
+                    </template>
+                </Select>
             </div>
             <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-0">
                 <small class="ml-3 font-light text-sm">
@@ -427,7 +471,10 @@ onMounted(async () => {
                 </InputNumber>
             </div>
             <div
-                v-if="selectedSensorType === CustomSensorType.TimeAverage"
+                v-if="
+                    selectedSensorType === CustomSensorType.TimeAverage ||
+                    selectedSensorType === CustomSensorType.ExponentialMovingAvg
+                "
                 class="flex flex-col mt-1"
             >
                 <small class="ml-3 mb-1 font-light text-sm">
@@ -437,7 +484,7 @@ onMounted(async () => {
                     v-model="selectedTimeWindowSeconds"
                     show-buttons
                     :min="1"
-                    :max="60"
+                    :max="300"
                     :suffix="' ' + t('common.secondAbbr')"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
@@ -651,6 +698,58 @@ onMounted(async () => {
                     </Select>
                 </div>
             </div>
+            <div
+                v-if="selectedSensorType === CustomSensorType.ExponentialMovingAvg"
+                class="flex flex-col mt-0 w-full"
+            >
+                <div class="w-full">
+                    <small class="ml-3 font-light text-sm">
+                        {{ t('views.customSensors.tempSource') }}
+                    </small>
+                    <Select
+                        v-model="chosenEmaTempSource"
+                        :options="tempSources"
+                        class="w-full h-11 bg-bg-one items-center"
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        :filter-placeholder="t('common.search')"
+                        :invalid="chosenEmaTempSource == null"
+                        scroll-height="40rem"
+                        dropdown-icon="pi pi-microchip"
+                        :placeholder="t('views.customSensors.tempSource')"
+                        v-tooltip.top="{
+                            escape: false,
+                            value: t('views.customSensors.tempSourcesTooltip'),
+                        }"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            </div>
+                        </template>
+                    </Select>
+                </div>
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
             <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />
@@ -667,7 +766,12 @@ onMounted(async () => {
                         (chosenTimeAverageTempSource == null ||
                             selectedTimeWindowSeconds == null ||
                             selectedTimeWindowSeconds < 1 ||
-                            selectedTimeWindowSeconds > 60))
+                            selectedTimeWindowSeconds > 300)) ||
+                    (selectedSensorType === CustomSensorType.ExponentialMovingAvg &&
+                        (chosenEmaTempSource == null ||
+                            selectedTimeWindowSeconds == null ||
+                            selectedTimeWindowSeconds < 1 ||
+                            selectedTimeWindowSeconds > 300))
                 "
                 @click="nextStep"
             />
