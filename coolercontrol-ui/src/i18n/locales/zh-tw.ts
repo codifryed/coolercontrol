@@ -584,6 +584,9 @@ export default {
             offset: '偏移量',
             offsetTooltip:
                 '輸入要套用至來源傳感器的負值或正值偏移量。<br/><i>注意：最終數值將被限制在正常的溫度範圍內。</i>',
+            timeWindow: '平均視窗',
+            timeWindowTooltip:
+                '將最近多少秒的樣本一起取平均值。<br/><i>注意：必須在 1 到 60 秒之間。</i>',
             tempWeights: '溫度權重',
             tempWeightsTooltip: '每個選定溫度源的各自權重。',
             tempName: '溫度名稱',
@@ -1245,6 +1248,7 @@ export default {
                 mix: '混合',
                 file: '文件',
                 offset: '偏移',
+                timeAverage: '時間平均',
             },
             mixFunctionType: {
                 min: '最小值',

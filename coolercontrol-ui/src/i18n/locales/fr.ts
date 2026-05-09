@@ -476,6 +476,9 @@ export default {
             offset: 'Décalage',
             offsetTooltip:
                 'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
+            timeWindow: 'Fenêtre de Moyennage',
+            timeWindowTooltip:
+                'Nombre de secondes des échantillons récents à moyenner ensemble.<br/><i>Remarque : doit être compris entre 1 et 60 secondes.</i>',
             tempWeights: 'Poids des Températures',
             tempWeightsTooltip: 'Le poids individuel de chaque source de température sélectionnée.',
             tempName: 'Nom de la Température',
@@ -1313,6 +1316,7 @@ export default {
                 mix: 'Mélange',
                 file: 'Fichier',
                 offset: 'Décalage',
+                timeAverage: 'Moyenne Temporelle',
             },
             mixFunctionType: {
                 min: 'Minimum',

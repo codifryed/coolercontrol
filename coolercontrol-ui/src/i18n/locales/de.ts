@@ -469,6 +469,9 @@ export default {
             offset: 'Versatz',
             offsetTooltip:
                 'Geben Sie einen negativen oder positiven Versatz ein, der auf den Quellsensor angewendet wird.<br/><i>Hinweis: Der Endwert wird auf normale Temperaturbereiche begrenzt.</i>',
+            timeWindow: 'Mittelungsfenster',
+            timeWindowTooltip:
+                'Wie viele Sekunden der jüngsten Stichproben zusammen gemittelt werden sollen.<br/><i>Hinweis: Muss zwischen 1 und 60 Sekunden liegen.</i>',
             tempWeights: 'Temp-Gewichtungen',
             tempWeightsTooltip: 'Die individuelle Gewichtung jeder ausgewählten Temperaturquelle.',
             tempName: 'Temp-Name',
@@ -1307,6 +1310,7 @@ export default {
                 mix: 'Mix',
                 file: 'Datei',
                 offset: 'Versatz',
+                timeAverage: 'Zeitlicher Durchschnitt',
             },
             mixFunctionType: {
                 min: 'Minimum',

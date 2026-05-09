@@ -583,6 +583,9 @@ export default {
             offset: '偏移量',
             offsetTooltip:
                 '输入要应用于源传感器的负或正偏移量。<br/><i>注意：最终值会被限制在正常的温度范围内。</i>',
+            timeWindow: '平均窗口',
+            timeWindowTooltip:
+                '将最近多少秒的样本一起取平均值。<br/><i>注意：必须在 1 到 60 秒之间。</i>',
             tempWeights: '温度权重',
             tempWeightsTooltip: '每个选定温度源的各自权重。',
             tempName: '温度名称',
@@ -1244,6 +1247,7 @@ export default {
                 mix: '混合',
                 file: '文件',
                 offset: '偏移',
+                timeAverage: '时间平均',
             },
             mixFunctionType: {
                 min: '最小值',

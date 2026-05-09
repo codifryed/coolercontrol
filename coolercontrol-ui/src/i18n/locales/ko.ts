@@ -459,6 +459,9 @@ export default {
             offset: '오프셋 조정값',
             offsetTooltip:
                 '소스 센서에 적용할 음수 또는 양수 오프셋 값을 입력하세요.<br/><br/><i>참고: 최종 값은 정상 온도 범위로 제한됩니다.<br/></i>',
+            timeWindow: '평균화 창',
+            timeWindowTooltip:
+                '최근 샘플을 몇 초 동안 함께 평균할지 설정합니다.<br/><i>참고: 1초에서 60초 사이여야 합니다.</i>',
             tempWeights: '온도 가중치',
             tempWeightsTooltip: '선택된 각 온도 소스의 개별 가중치입니다.',
             tempName: '온도 이름',
@@ -1273,6 +1276,7 @@ export default {
                 mix: '혼합',
                 file: '파일',
                 offset: '오프셋',
+                timeAverage: '시간 평균',
             },
             mixFunctionType: {
                 min: '최소',

@@ -463,6 +463,9 @@ export default {
             offset: 'Offset Amount',
             offsetTooltip:
                 'Enter the negative or positive offset amount to<br/>apply to the source sensor.<br/><i>Note: The final value will is limited to<br/>normal temperature ranges.</i>',
+            timeWindow: 'Averaging Window',
+            timeWindowTooltip:
+                'How many seconds of recent samples to average together.<br/><i>Note: Must be between 1 and 60 seconds.</i>',
             tempWeights: 'Temp Weights',
             tempWeightsTooltip: 'The individual weight of each selected temperature source.',
             tempName: 'Temp Name',
@@ -1281,6 +1284,7 @@ export default {
                 mix: 'Mix',
                 file: 'File',
                 offset: 'Offset',
+                timeAverage: 'Time Average',
             },
             mixFunctionType: {
                 min: 'Minimum',

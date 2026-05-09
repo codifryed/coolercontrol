@@ -24,6 +24,7 @@ export enum CustomSensorType {
     Mix = 'Mix',
     File = 'File',
     Offset = 'Offset',
+    TimeAverage = 'TimeAverage',
 }
 
 export enum CustomSensorMixFunctionType {
@@ -48,6 +49,8 @@ export function getCustomSensorTypeDisplayName(type: CustomSensorType): string {
             return t('models.customSensor.sensorType.file')
         case CustomSensorType.Offset:
             return t('models.customSensor.sensorType.offset')
+        case CustomSensorType.TimeAverage:
+            return t('models.customSensor.sensorType.timeAverage')
         default:
             return String(type)
     }
@@ -110,6 +113,7 @@ export class CustomSensor {
     cs_type: CustomSensorType
     mix_function: CustomSensorMixFunctionType
     offset?: number
+    time_window_seconds?: number
 
     @Type(() => CustomTempSourceData)
     sources: Array<CustomTempSourceData>

@@ -510,6 +510,9 @@ export default {
             offset: 'オフセット',
             offsetTooltip:
                 'ソースセンサーに適用する負または正のオフセット値を入力してください。<br/><i>注: 最終的な値は通常の温度範囲に制限されます。</i>',
+            timeWindow: '平均ウィンドウ',
+            timeWindowTooltip:
+                '最近のサンプルを何秒分まとめて平均するか。<br/><i>注: 1秒から60秒の範囲で指定してください。</i>',
             tempWeights: '温度の重み',
             tempWeightsTooltip: '選択した各温度ソースの個々の重み。',
             tempName: '温度名',
@@ -1291,6 +1294,7 @@ export default {
                 mix: 'ミックス',
                 file: 'ファイル',
                 offset: 'オフセット',
+                timeAverage: '時間平均',
             },
             mixFunctionType: {
                 min: '最小',

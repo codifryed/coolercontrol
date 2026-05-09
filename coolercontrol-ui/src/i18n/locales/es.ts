@@ -468,6 +468,9 @@ export default {
             offset: 'Desplazamiento',
             offsetTooltip:
                 'Introduzca un desplazamiento negativo o positivo que se aplicará al sensor de origen.<br/><i>Nota: El valor final se limita a rangos normales de temperatura.</i>',
+            timeWindow: 'Ventana de Promediado',
+            timeWindowTooltip:
+                'Cuántos segundos de muestras recientes se promediarán juntas.<br/><i>Nota: Debe estar entre 1 y 60 segundos.</i>',
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'El peso individual de cada fuente de temperatura seleccionada.',
             tempName: 'Nombre de Temperatura',
@@ -1297,6 +1300,7 @@ export default {
                 mix: 'Mezcla',
                 file: 'Archivo',
                 offset: 'Desplazamiento',
+                timeAverage: 'Promedio Temporal',
             },
             mixFunctionType: {
                 min: 'Mínimo',

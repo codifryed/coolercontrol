@@ -790,6 +790,9 @@ export default {
             offset: 'Deslocamento',
             offsetTooltip:
                 'Insira um valor de deslocamento negativo ou positivo para aplicar ao sensor de origem.<br/><i>Observação: O valor final é limitado a faixas normais de temperatura.</i>',
+            timeWindow: 'Janela de Média',
+            timeWindowTooltip:
+                'Quantos segundos de amostras recentes serão calculados juntos para a média.<br/><i>Observação: Deve estar entre 1 e 60 segundos.</i>',
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'O peso individual de cada fonte de temperatura selecionada.',
             tempName: 'Nome da Temperatura',
@@ -1327,6 +1330,7 @@ export default {
                 mix: 'Mistura',
                 file: 'Arquivo',
                 offset: 'Deslocamento',
+                timeAverage: 'Média Temporal',
             },
             mixFunctionType: {
                 min: 'Mínimo',
