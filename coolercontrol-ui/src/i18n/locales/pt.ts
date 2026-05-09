@@ -691,7 +691,7 @@ export default {
             windowSizeTooltip:
                 'Tamanho da amostra de temperatura da janela usado no cálculo da média móvel exponencial.\nValores menores = resposta mais rápida, mais reativo a picos de temperatura.\nValores maiores = resposta mais lenta, transições de velocidade do ventilador mais suaves.\nDica: Use uma Função Padrão para controle preciso sobre o tempo de resposta.',
             emaCustomSensorAvailableNote:
-                'EMA também está disponível como tipo de Sensor Personalizado, permitindo plotar a temperatura suavizada diretamente. O tipo de Função EMA continua suportado.',
+                'EMA também está disponível como tipo de Sensor Personalizado, permitindo plotar a temperatura suavizada diretamente.',
             emaDeprecatedWarning:
                 'O tipo de Função EMA está obsoleto. Por favor, mude para o tipo de Sensor Personalizado EMA.',
             hysteresis: 'Histerese Avançada',

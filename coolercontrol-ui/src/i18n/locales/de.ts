@@ -768,7 +768,7 @@ export default {
             windowSizeTooltip:
                 'Fenstergröße für Temperaturproben in der Berechnung des exponentiellen gleitenden Durchschnitts.\nKleinere Werte = schnellere Reaktion, reaktiver auf Temperaturspitzen.\nGrößere Werte = langsamere Reaktion, sanftere Lüftergeschwindigkeitsübergänge.\nTipp: Verwenden Sie eine Standardfunktion für präzise Kontrolle über das Reaktionstiming.',
             emaCustomSensorAvailableNote:
-                'EMA ist auch als benutzerdefinierter Sensortyp verfügbar, mit dem die geglättete Temperatur direkt grafisch dargestellt werden kann. Der Funktionstyp EMA wird weiterhin unterstützt.',
+                'EMA ist auch als benutzerdefinierter Sensortyp verfügbar, mit dem die geglättete Temperatur direkt grafisch dargestellt werden kann.',
             emaDeprecatedWarning:
                 'Der Funktionstyp EMA ist veraltet. Bitte wechseln Sie zum benutzerdefinierten Sensortyp EMA.',
             hysteresis: 'Erweiterte Hysterese',

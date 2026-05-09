@@ -756,7 +756,7 @@ export default {
             windowSizeTooltip:
                 'Window temperature sample size used in the exponential moving average calculation.\nSmaller values = faster response, more reactive to temperature spikes.\nLarger values = slower response, smoother fan speed transitions.\nTip: Use a Standard Function for precise control over response timing.',
             emaCustomSensorAvailableNote:
-                'EMA is also available as a Custom Sensor type, which lets you graph the smoothed temperature directly. The Function-type EMA remains supported.',
+                'EMA is also available as a Custom Sensor type, which lets you graph the smoothed temperature directly.',
             emaDeprecatedWarning:
                 'The EMA Function type is deprecated. Please switch to the EMA Custom Sensor type.',
             hysteresis: 'Advanced Hysteresis',

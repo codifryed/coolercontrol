@@ -199,8 +199,22 @@ const updateSymmetricStepSize = () => {
                 />
             </div>
             <p>
-                <span v-html="t('views.functions.functionTypeTooltip')" />
+                <span
+                    v-html="
+                        t('views.functions.functionTypeTooltip') +
+                        '<br/>&nbsp;&nbsp;' +
+                        t('views.functions.emaCustomSensorAvailableNote')
+                    "
+                />
             </p>
+            <!--
+                EMA migration placeholder. Stage 2 (active deprecation): set the
+                `v-if` below to `selectedType === FunctionType.ExponentialMovingAvg`
+                to surface the deprecation warning.
+            -->
+            <div v-if="false" class="rounded-lg border-2 border-accent bg-bg-two p-3 text-sm">
+                {{ t('views.functions.emaDeprecatedWarning') }}
+            </div>
             <div class="pr-1 w-full border-border-one border-2 rounded-lg">
                 <table class="m-0.5 w-full bg-bg-two">
                     <tbody>
