@@ -4,6 +4,9 @@ This is the basic template for how releases are done. Many of the standard tasks
 our Makefile and some scripts. Each step must be completed successfully before moving on to the next
 one.
 
+Note: Steps 2 and 3 have been replaced by an improved `make bump` script, which handles these steps
+automatically. They are included here for reference:
+
 1. Update Changelog
    1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
    2. Add a new version
