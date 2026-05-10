@@ -239,6 +239,11 @@ export default {
                 textSecondary: 'Couleur du Texte Secondaire',
                 export: 'Exporter le Thème',
                 import: 'Importer le Thème',
+                copyCode: 'Copier le Code',
+                pasteCode: 'Coller le Code',
+                themeCodeCopied: 'Code du thème copié',
+                themeApplied: 'Thème appliqué',
+                invalidThemeCode: 'Code de thème invalide',
             },
             tooltips: {
                 introduction: "Commencer le tour d'introduction de l'application.",
@@ -290,6 +295,12 @@ export default {
                 triggersDaemonRestart: 'Déclenche un redémarrage automatique du daemon',
                 resetToDefaults: 'Réinitialiser aux paramètres par défaut',
                 saveAndReload: "Enregistrer et recharger l'interface utilisateur",
+                copyThemeCode:
+                    'Copier un code compact représentant votre thème personnalisé actuel.\nPartagez-le dans des chats ou forums.',
+                pasteThemeCode:
+                    "Appliquer un thème personnalisé depuis un code (cct1:...) qu'on vous a partagé.",
+                exportThemeFile: 'Enregistrer le thème personnalisé actuel dans un fichier JSON.',
+                importThemeFile: 'Charger un thème personnalisé depuis un fichier JSON.',
             },
             applySettingAndRestart:
                 "Changer ce paramètre nécessite un redémarrage du daemon et de l'interface utilisateur. Êtes-vous sûr de vouloir le faire maintenant?",

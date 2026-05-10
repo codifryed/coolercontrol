@@ -231,6 +231,11 @@ export default {
                 textSecondary: 'माध्यमिक पाठ रंग',
                 export: 'थीम निर्यात करें',
                 import: 'थीम आयात करें',
+                copyCode: 'कोड कॉपी करें',
+                pasteCode: 'कोड पेस्ट करें',
+                themeCodeCopied: 'थीम कोड कॉपी किया गया',
+                themeApplied: 'थीम लागू किया गया',
+                invalidThemeCode: 'अमान्य थीम कोड',
             },
         },
         menu: {
@@ -375,6 +380,11 @@ export default {
         triggersDaemonRestart: 'स्वचालित डेमन पुनरारंभ को ट्रिगर करता है',
         resetToDefaults: 'डिफ़ॉल्ट सेटिंग्स पर रीसेट करें',
         saveAndReload: 'UI को सहेजें और पुनः लोड करें',
+        copyThemeCode:
+            'अपने वर्तमान कस्टम थीम का एक कॉम्पैक्ट कोड कॉपी करें।\nइसे चैट या फ़ोरम में साझा करें।',
+        pasteThemeCode: 'आपके साथ साझा किए गए कोड (cct1:...) से एक कस्टम थीम लागू करें।',
+        exportThemeFile: 'वर्तमान कस्टम थीम को JSON फ़ाइल में सहेजें।',
+        importThemeFile: 'डिस्क पर एक JSON फ़ाइल से कस्टम थीम लोड करें।',
     },
     applySettingAndRestart:
         'इस सेटिंग को बदलने के लिए डेमन और UI को पुनरारंभ करना आवश्यक है। क्या आप इसे अभी करना चाहते हैं?',
