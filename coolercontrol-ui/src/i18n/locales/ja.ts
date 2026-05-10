@@ -223,6 +223,11 @@ export default {
                 textSecondary: 'セカンダリテキストカラー',
                 export: 'テーマをエクスポート',
                 import: 'テーマをインポート',
+                copyCode: 'コードをコピー',
+                pasteCode: 'コードを貼り付け',
+                themeCodeCopied: 'テーマコードをコピーしました',
+                themeApplied: 'テーマを適用しました',
+                invalidThemeCode: '無効なテーマコード',
             },
             applySettingAndRestart:
                 'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
@@ -292,6 +297,11 @@ export default {
                 triggersDaemonRestart: '自動デーモン再起動をトリガーします',
                 resetToDefaults: 'デフォルト設定にリセットします',
                 saveAndReload: '保存してUIをリロードします',
+                copyThemeCode:
+                    '現在のカスタムテーマを表すコンパクトなコードをコピーします。\nチャットやフォーラムで共有できます。',
+                pasteThemeCode: '共有されたコード (cct1:...) からカスタムテーマを適用します。',
+                exportThemeFile: '現在のカスタムテーマをJSONファイルに保存します。',
+                importThemeFile: 'ディスク上のJSONファイルからカスタムテーマを読み込みます。',
                 applySettingAndRestart:
                     'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
                 restartHeader: '設定を適用して再起動',

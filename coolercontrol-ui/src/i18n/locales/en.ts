@@ -231,6 +231,11 @@ export default {
                 textSecondary: 'Secondary Text Color',
                 export: 'Export Theme',
                 import: 'Import Theme',
+                copyCode: 'Copy Code',
+                pasteCode: 'Paste Code',
+                themeCodeCopied: 'Theme code copied',
+                themeApplied: 'Theme applied',
+                invalidThemeCode: 'Invalid theme code',
             },
             tooltips: {
                 introduction: 'Start the application introduction tour.',
@@ -280,6 +285,12 @@ export default {
                 triggersDaemonRestart: 'Triggers an automatic daemon restart',
                 resetToDefaults: 'Reset to default settings',
                 saveAndReload: 'Save and reload the UI',
+                copyThemeCode:
+                    'Copy a compact code representing your current custom theme.\nShare it by pasting into chat or forums.',
+                pasteThemeCode: 'Apply a custom theme from a code (cct1:...) shared with you.',
+                exportThemeFile:
+                    'Save the current custom theme to a JSON file you can keep or share.',
+                importThemeFile: 'Load a custom theme from a JSON file on disk.',
             },
             applySettingAndRestart:
                 'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',

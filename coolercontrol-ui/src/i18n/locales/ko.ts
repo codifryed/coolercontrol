@@ -231,6 +231,11 @@ export default {
                 textSecondary: '보조 문자 색',
                 export: '테마 내보내기',
                 import: '테마 가져오기',
+                copyCode: '코드 복사',
+                pasteCode: '코드 붙여넣기',
+                themeCodeCopied: '테마 코드가 복사되었습니다',
+                themeApplied: '테마가 적용되었습니다',
+                invalidThemeCode: '잘못된 테마 코드',
             },
             tooltips: {
                 introduction: '애플리케이션 소개 투어를 시작합니다.',
@@ -278,6 +283,11 @@ export default {
                 triggersDaemonRestart: '자동 데몬 재시작 트리거',
                 resetToDefaults: '기본 설정으로 재설정',
                 saveAndReload: 'UI를 저장하고 다시 로드',
+                copyThemeCode:
+                    '현재 커스텀 테마를 나타내는 짧은 코드를 복사합니다.\n채팅이나 포럼에서 공유하세요.',
+                pasteThemeCode: '공유받은 코드 (cct1:...) 로 커스텀 테마를 적용합니다.',
+                exportThemeFile: '현재 커스텀 테마를 JSON 파일로 저장합니다.',
+                importThemeFile: '디스크의 JSON 파일에서 커스텀 테마를 불러옵니다.',
             },
             applySettingAndRestart:
                 '이 설정을 변경하려면 데몬과 UI를 다시 시작해야 합니다. 지금 다시 시작할까요?',

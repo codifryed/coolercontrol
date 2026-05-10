@@ -231,6 +231,11 @@ export default {
                 textSecondary: 'لون النص الثانوي',
                 export: 'تصدير السمة',
                 import: 'استيراد السمة',
+                copyCode: 'نسخ الرمز',
+                pasteCode: 'لصق الرمز',
+                themeCodeCopied: 'تم نسخ رمز السمة',
+                themeApplied: 'تم تطبيق السمة',
+                invalidThemeCode: 'رمز سمة غير صالح',
             },
             tooltips: {
                 introduction: 'بدء جولة تعريفية للتطبيق.',
@@ -279,6 +284,11 @@ export default {
                 triggersDaemonRestart: 'يؤدي إلى إعادة تشغيل الخدمة تلقائيًا',
                 resetToDefaults: 'إعادة تعيين إلى الإعدادات الافتراضية',
                 saveAndReload: 'حفظ وإعادة تحميل واجهة المستخدم',
+                copyThemeCode:
+                    'انسخ رمزًا مضغوطًا يمثل سمتك المخصصة الحالية.\nشاركه في الدردشة أو المنتديات.',
+                pasteThemeCode: 'طبّق سمة مخصصة من رمز (cct1:...) شُورك معك.',
+                exportThemeFile: 'احفظ السمة المخصصة الحالية في ملف JSON.',
+                importThemeFile: 'حمّل سمة مخصصة من ملف JSON على القرص.',
             },
             applySettingAndRestart:
                 'تغيير هذا الإعداد يتطلب إعادة تشغيل الخدمة وواجهة المستخدم. هل أنت متأكد من رغبتك في القيام بذلك الآن؟',

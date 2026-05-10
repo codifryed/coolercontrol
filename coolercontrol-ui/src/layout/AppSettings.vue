@@ -20,6 +20,8 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
+    mdiCheck,
+    mdiContentCopy,
     mdiDnsOutline,
     mdiExport,
     mdiFormatListBulleted,
@@ -52,6 +54,7 @@ import 'element-plus/es/components/tree/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { Color } from '@/models/Device.ts'
 import { Emitter, EventType } from 'mitt'
@@ -329,6 +332,121 @@ class CustomColorTheme {
         setNewColorTextSecondary(this.textColorSecondary)
     }
 }
+// Theme code: cct1:<36 hex chars>[<2 hex chars CRC-8>]
+// Output always includes the checksum; input accepts with or without.
+const THEME_CODE_PREFIX = 'cct1:'
+
+const crc8 = (bytes: Uint8Array): number => {
+    let crc = 0
+    for (const byte of bytes) {
+        crc ^= byte
+        for (let i = 0; i < 8; i++) {
+            crc = (crc & 0x80) !== 0 ? ((crc << 1) ^ 0x07) & 0xff : (crc << 1) & 0xff
+        }
+    }
+    return crc
+}
+
+const colorToHexBody = (c: Color): string => {
+    const hex = colorStore.rgbToHex(c).toLowerCase()
+    return hex.startsWith('#') ? hex.slice(1) : hex
+}
+
+const encodeThemeCode = (theme: CustomThemeSettings): string => {
+    const hex = [
+        colorToHexBody(theme.accent),
+        colorToHexBody(theme.bgOne),
+        colorToHexBody(theme.bgTwo),
+        colorToHexBody(theme.borderOne),
+        colorToHexBody(theme.textColor),
+        colorToHexBody(theme.textColorSecondary),
+    ].join('')
+    const bytes = new Uint8Array(18)
+    for (let i = 0; i < 18; i++) {
+        bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+    }
+    const cs = crc8(bytes).toString(16).padStart(2, '0')
+    return THEME_CODE_PREFIX + hex + cs
+}
+
+const decodeThemeCode = (input: string): CustomColorTheme | null => {
+    const trimmed = input.trim().toLowerCase()
+    if (!trimmed.startsWith(THEME_CODE_PREFIX)) return null
+    const body = trimmed.slice(THEME_CODE_PREFIX.length)
+    let hex: string
+    if (body.length === 36) {
+        hex = body
+    } else if (body.length === 38) {
+        hex = body.slice(0, 36)
+        if (!/^[0-9a-f]{36}$/.test(hex)) return null
+        const expected = body.slice(36)
+        const bytes = new Uint8Array(18)
+        for (let i = 0; i < 18; i++) {
+            bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+        }
+        if (crc8(bytes).toString(16).padStart(2, '0') !== expected) return null
+    } else {
+        return null
+    }
+    if (!/^[0-9a-f]{36}$/.test(hex)) return null
+    const theme = new CustomColorTheme()
+    theme.accent = '#' + hex.slice(0, 6)
+    theme.bgOne = '#' + hex.slice(6, 12)
+    theme.bgTwo = '#' + hex.slice(12, 18)
+    theme.borderOne = '#' + hex.slice(18, 24)
+    theme.textColor = '#' + hex.slice(24, 30)
+    theme.textColorSecondary = '#' + hex.slice(30, 36)
+    return theme
+}
+
+const themeCode = computed((): string => encodeThemeCode(settingsStore.customTheme))
+
+const pasteCodeInput: Ref<string> = ref('')
+const justCopied: Ref<boolean> = ref(false)
+
+const copyThemeCode = async (): Promise<void> => {
+    try {
+        await navigator.clipboard.writeText(themeCode.value)
+        justCopied.value = true
+        setTimeout(() => (justCopied.value = false), 1500)
+        toast.add({
+            severity: 'success',
+            summary: t('common.success'),
+            detail: t('layout.settings.customTheme.themeCodeCopied'),
+            life: 2000,
+        })
+    } catch (e) {
+        console.error('Clipboard write failed', e)
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: t('layout.settings.customTheme.invalidThemeCode'),
+            life: 3000,
+        })
+    }
+}
+
+const applyPastedThemeCode = (): void => {
+    const decoded = decodeThemeCode(pasteCodeInput.value)
+    if (decoded == null) {
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: t('layout.settings.customTheme.invalidThemeCode'),
+            life: 3000,
+        })
+        return
+    }
+    decoded.applyCustomColorTheme()
+    pasteCodeInput.value = ''
+    toast.add({
+        severity: 'success',
+        summary: t('common.success'),
+        detail: t('layout.settings.customTheme.themeApplied'),
+        life: 2000,
+    })
+}
+
 const downloadThemeFileName = 'coolercontrol-color-theme.json'
 const downloadThemeHref = computed((): string => {
     const customColorTheme = CustomColorTheme.fromCustomThemeSettings(settingsStore.customTheme)
@@ -875,7 +993,62 @@ onUnmounted(() => {
                                         </div>
                                     </td>
                                 </tr>
-                                <tr>
+                                <tr v-tooltip.top="t('layout.settings.tooltips.copyThemeCode')">
+                                    <td colspan="2" class="py-3 px-4 border-border-one border-t-2">
+                                        <div class="flex items-center gap-2 w-full">
+                                            <div class="pr-4 text-right">
+                                                {{ t('layout.settings.customTheme.copyCode') }}
+                                            </div>
+                                            <InputText
+                                                :model-value="themeCode"
+                                                readonly
+                                                class="flex-1 font-mono text-xs"
+                                                @focus="
+                                                    ($event.target as HTMLInputElement).select()
+                                                "
+                                            />
+                                            <Button
+                                                class="bg-accent/80 hover:!bg-accenth-[2.375rem] w-12"
+                                                @click="copyThemeCode"
+                                            >
+                                                <svg-icon
+                                                    class="outline-0 shrink-0"
+                                                    type="mdi"
+                                                    :path="justCopied ? mdiCheck : mdiContentCopy"
+                                                    :size="deviceStore.getREMSize(1.25)"
+                                                />
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.top="t('layout.settings.tooltips.pasteThemeCode')">
+                                    <td colspan="2" class="py-3 px-4 border-border-one border-t-2">
+                                        <div class="flex items-center gap-2 w-full">
+                                            <div class="pr-4 text-right">
+                                                {{ t('layout.settings.customTheme.pasteCode') }}
+                                            </div>
+                                            <InputText
+                                                v-model="pasteCodeInput"
+                                                class="flex-1 font-mono text-xs"
+                                                placeholder="cct1:..."
+                                                @keyup.enter="applyPastedThemeCode"
+                                            />
+                                            <Button
+                                                class="bg-accent/80 hover:!bg-accent h-[2.375rem] w-12"
+                                                :disabled="pasteCodeInput.trim().length === 0"
+                                                @click="applyPastedThemeCode"
+                                            >
+                                                <svg-icon
+                                                    class="outline-0 shrink-0"
+                                                    type="mdi"
+                                                    :path="mdiImport"
+                                                    :size="deviceStore.getREMSize(1.5)"
+                                                />
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.top="t('layout.settings.tooltips.exportThemeFile')">
                                     <td
                                         class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -909,7 +1082,7 @@ onUnmounted(() => {
                                         </div>
                                     </td>
                                 </tr>
-                                <tr>
+                                <tr v-tooltip.top="t('layout.settings.tooltips.importThemeFile')">
                                     <td
                                         class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
                                     >
