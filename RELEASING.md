@@ -11,6 +11,9 @@ one.
       Updates
    4. Format changelog appropriately
 
+Steps 2 and 3 have been replaced by an improved `make bump` script, which handles these steps
+automatically. They are included here for reference:
+
 2. Update App Metadata
    1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
       1. with new Release version and date
