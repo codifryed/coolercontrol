@@ -19,20 +19,24 @@
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cc_fs;
 use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
+use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{debug, info, log_enabled, trace, warn};
+use nix::libc;
 use regex::Regex;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
 const TEMP_SANITY_MAX: f64 = 140.0;
 macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($arg)*) }}; }
+static THINKPAD_GPU_ENXIO_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
@@ -53,7 +57,10 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if sensor_is_usable(base_path, &channel_number).await.not() {
+            if sensor_is_usable(base_path, &channel_number, device_name)
+                .await
+                .not()
+            {
                 continue;
             }
             let channel_name = get_temp_channel_name(channel_number);
@@ -112,25 +119,36 @@ pub async fn read_one_temp_status(
         Some(path) => path,
         None => &driver.path.join(format_temp_input!(channel.number)),
     };
-    cc_fs::read_sysfs(temp_path)
+    match cc_fs::read_sysfs(temp_path)
         .await
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)
-        .inspect(|temp| debug!("hwmon read {}: {temp} C", temp_path.display()))
-        .inspect_err(|err| {
+    {
+        Ok(temp) => {
+            debug!("hwmon read {}: {temp} C", temp_path.display());
+            Some(TempStatus {
+                name: channel.name.clone(),
+                temp,
+            })
+        }
+        Err(err) => {
+            if is_thinkpad_gpu_powerdown(&driver.name, &err) {
+                log_thinkpad_gpu_powerdown_once(&channel.name, channel.label.as_deref(), temp_path);
+                return Some(TempStatus {
+                    name: channel.name.clone(),
+                    temp: 0.0,
+                });
+            }
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read temp value at {} ; {err}",
                     temp_path.display()
                 );
             }
-        })
-        .ok()
-        .map(|temp| TempStatus {
-            name: channel.name.clone(),
-            temp,
-        })
+            None
+        }
+    }
 }
 
 /// Buffered wrapper over `stream_temp_statuses` for callers that want
@@ -193,31 +211,80 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 
 /// Returns whether the temperature sensor is returning valid and sane values
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &str) -> bool {
     let temp_path = base_path.join(format_temp_input!(channel_number));
-    let possible_degrees = cc_fs::read_sysfs(&temp_path)
+    match cc_fs::read_sysfs(&temp_path)
         .await
         .and_then(check_parsing_32)
         .map(|degrees| f64::from(degrees) / 1000.0f64)
-        .inspect_err(|err| {
+    {
+        Ok(degrees) => {
+            let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
+            if !has_sane_value {
+                debug!(
+                    "Ignoring temperature sensor at {} as value: {degrees} is outside of \
+                    usable range",
+                    temp_path.display()
+                );
+            }
+            has_sane_value
+        }
+        Err(err) => {
+            if is_thinkpad_gpu_powerdown(driver_name, &err) {
+                // dGPU is currently powered down. Register the channel
+                // anyway; the runtime read path substitutes 0.0 C until
+                // the GPU powers up and the sysfs starts responding.
+                let channel_name = get_temp_channel_name(*channel_number);
+                log_thinkpad_gpu_powerdown_once(&channel_name, None, &temp_path);
+                return true;
+            }
             debug!(
                 "Error reading temperature value from: {} ; {err}",
                 temp_path.display()
             );
-        })
-        .ok();
-    if let Some(degrees) = possible_degrees {
-        let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
-        if !has_sane_value {
-            debug!(
-                "Ignoring temperature sensor at {} as value: {degrees} is outside of \
-                usable range",
-                temp_path.display()
-            );
+            false
         }
-        return has_sane_value;
     }
-    false
+}
+
+/// Returns true when `err` is the well-known `thinkpad_hwmon` ENXIO that
+/// fires on temp reads when the dedicated GPU is powered down. The temp
+/// sysfs starts responding again on its own when the GPU powers back up.
+/// Integrated GPUs do not produce this error.
+///
+/// This is a deliberate exception to the daemon's "no sentinel on read
+/// failure" rule. The cause is known and the substitute value (0.0 C) is
+/// semantically meaningful, not a fabricated stand-in for missing data.
+fn is_thinkpad_gpu_powerdown(driver_name: &str, err: &anyhow::Error) -> bool {
+    if driver_name != devices::DEVICE_NAME_THINK_PAD {
+        return false;
+    }
+    err.downcast_ref::<Error>()
+        .and_then(Error::raw_os_error)
+        .is_some_and(|errno| errno == libc::ENXIO)
+}
+
+/// Emits one info-level log on the first thinkpad dGPU power-down ENXIO
+/// observed in this process. Subsequent ENXIO reads are silent so the
+/// log doesn't fill up while the GPU stays off. The flag is never reset,
+/// so power cycles within the same daemon run are not re-announced.
+fn log_thinkpad_gpu_powerdown_once(
+    channel_name: &str,
+    channel_label: Option<&str>,
+    temp_path: &Path,
+) {
+    if THINKPAD_GPU_ENXIO_LOGGED
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+        let label = channel_label.unwrap_or("-");
+        info!(
+            "ThinkPad hwmon temp channel '{channel_name}' (label={label}) at {} \
+             returned ENXIO. Treating as 0.0 C; expected when dedicated GPU is \
+             powered down.",
+            temp_path.display()
+        );
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -635,6 +702,59 @@ mod tests {
             assert_eq!(invocations, 0);
             assert!(any_failure.not());
         });
+    }
+
+    // --- is_thinkpad_gpu_powerdown classifier ---
+
+    #[test]
+    fn is_thinkpad_gpu_powerdown_true_for_thinkpad_enxio() {
+        // Verifies the canonical case: thinkpad driver name + io::Error
+        // carrying ENXIO is recognized as the dGPU-off signal.
+        let err: anyhow::Error = Error::from_raw_os_error(libc::ENXIO).into();
+        assert!(is_thinkpad_gpu_powerdown(
+            devices::DEVICE_NAME_THINK_PAD,
+            &err,
+        ));
+    }
+
+    #[test]
+    fn is_thinkpad_gpu_powerdown_false_for_other_driver() {
+        // Verifies the carve-out is gated on driver name. The same
+        // ENXIO from a non-thinkpad driver must not be silently
+        // converted to 0.0 C; it stays a real failure.
+        let err: anyhow::Error = Error::from_raw_os_error(libc::ENXIO).into();
+        assert!(is_thinkpad_gpu_powerdown("k10temp", &err).not());
+        assert!(is_thinkpad_gpu_powerdown("nct6798", &err).not());
+        assert!(is_thinkpad_gpu_powerdown("", &err).not());
+    }
+
+    #[test]
+    fn is_thinkpad_gpu_powerdown_false_for_other_errno() {
+        // Verifies the classifier is errno-specific. Other errnos from
+        // thinkpad must propagate as real failures.
+        let enodata: anyhow::Error = Error::from_raw_os_error(libc::ENODATA).into();
+        let eopnotsupp: anyhow::Error = Error::from_raw_os_error(libc::EOPNOTSUPP).into();
+        let eio: anyhow::Error = Error::from_raw_os_error(libc::EIO).into();
+        assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &enodata).not());
+        assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &eopnotsupp).not());
+        assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &eio).not());
+    }
+
+    #[test]
+    fn is_thinkpad_gpu_powerdown_false_for_parse_error() {
+        // Verifies a non-OS error (e.g. the InvalidData produced by
+        // check_parsing_32 on garbage) is not mistaken for ENXIO. Those
+        // errors carry no raw_os_error.
+        let parse_err = check_parsing_32("not a number".to_string()).unwrap_err();
+        assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &parse_err).not());
+    }
+
+    #[test]
+    fn is_thinkpad_gpu_powerdown_false_for_non_io_error() {
+        // Verifies an arbitrary anyhow error (no io::Error in the chain)
+        // is rejected, so we never substitute 0 on unrelated failures.
+        let err = anyhow::anyhow!("something else went wrong");
+        assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &err).not());
     }
 
     #[test]
