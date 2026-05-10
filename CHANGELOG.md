@@ -10,6 +10,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [4.3.0] - 2026-05-10
+
+### Added
+
+- Time Average custom sensor for smoothing temperature inputs over a configurable window (#456,
+  !485)
+- EMA custom sensor that will gradually replace the EMA Function type (!485)
+- "Bypass Min at Extremes" Function setting for fan curves (!484)
+- Theme code support for exporting and importing custom UI themes via short codes (!488)
+- Choose startup page setting, defaulting to Info and Tools (!481)
+- Channel in-use as temp source check before disabling, with detailed error message (!483)
+- Curve point limit hints shown in the Profile View and fan control wizards (!481)
+- Failsafe fallback values are now used for missing Custom Sensors sources
+- Streaming extractors and per-channel staleness ticking for hwmon devices, so only stale channels
+  fall back to failsafe values (!479)
+- Round-robin sensor reading, per-read permits that interleave reads with writes, and coalesced fan
+  writes for hwmon devices to improve slow device handling (!480)
+- Duty cache and command deduplication to reduce redundant work on slow hwmon and liquidctl devices
+  (!480)
+- Concurrent application of startup and wakeup device settings (!480)
+- Hwmon initialization timeout so a broken device cannot hang daemon startup (!480)
+- Pending operation cancellation on shutdown (!480)
+- Hwmon raw read debug logs and runtime error logging for power and temp sensors
+- Unmanaged and Read-only subtext for appropriate fan channels in the main device menu
+
+### Changed
+
+- Default Profile renamed to "Unmanaged" and surfaced as a separate setting rather than a Profile,
+  with reduced visual priority in the menu and applicable fan settings (!481)
+- Tour steps rewritten and reordered, with two tour options: quick and thorough (!481)
+- General settings renamed to User Interface settings (!481)
+- Auto-created "My Profile" and "My Function" are no longer added on first start (!481)
+- Session expiry extended, and the UI now refreshes automatically when the session cookie expires
+  (!482)
+- Login lockout and reset-password flows hardened against edge cases (!482)
+- `plugins_dir` is now derived from `data_dir`, so overriding `data_dir` is sufficient for most
+  setups
+- Tooltip styling refined (alignment, single-pixel table separators, softer borders)
+- Improved hwmon shutdown resilience, sleep handling that no longer blocks the daemon loop, and
+  better handling of blocking ioctl calls for drivetemp (!479)
+- Improved Forgot Password link (!482)
+- Added mini getting started steps to the Tour and Info & Tools page
+- Aligned and centralized timeouts throughout the daemon
+- Decoupled hwmon read permit timeouts from poll rate, allowing slow devices more time to respond
+  before timing out
+- Many upstream dependencies updated
+
+### Fixed
+
+- Thinkpad dGPU temp sensor error when the GPU is powered off (!486)
+- Failsafe values are now correctly applied for failed hwmon reads, and missing fan duty/rpm returns
+  cached or failed values instead of none (!479)
+- Overlay and Mix profiles now output a duty right away when first applied to an additional fan
+  channel
+- Disabled devices are excluded from new-device detection (best effort) (!480)
+- In-flight hwmon writes now pick up the newest waiting value instead of an older one (!480)
+- Forgot Password link is shown when changing the password (!482)
+- Aqua initialization log only shown once instead of repeatedly
+- Read-only fan tooltip, popover style, and stacking emitters
+- Missing alert settings in the wizards and various small style alignment issues
+
 ## [4.2.1] - 2026-04-21
 
 ### Changed
