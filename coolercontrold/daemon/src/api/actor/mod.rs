@@ -31,6 +31,7 @@ use log::trace;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 mod alert;
+mod calibration;
 mod custom_sensor;
 mod detect;
 mod device;
@@ -46,6 +47,7 @@ mod token;
 
 pub use self::alert::*;
 pub use self::auth::*;
+pub use self::calibration::*;
 pub use self::custom_sensor::*;
 pub use self::detect::*;
 pub use self::device::*;

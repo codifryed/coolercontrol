@@ -62,9 +62,14 @@ pub async fn device_settings_get(
 
 pub async fn device_setting_manual_modify(
     Path(path): Path<DeviceChannelPath>,
-    State(AppState { device_handle, .. }): State<AppState>,
+    State(AppState {
+        device_handle,
+        calibration_handle,
+        ..
+    }): State<AppState>,
     Json(manual_request): Json<SettingManualRequest>,
 ) -> Result<(), CCError> {
+    reject_when_calibrating(&calibration_handle, &path).await?;
     device_handle
         .device_setting_manual(
             path.device_uid,
@@ -77,9 +82,14 @@ pub async fn device_setting_manual_modify(
 
 pub async fn device_setting_profile_modify(
     Path(path): Path<DeviceChannelPath>,
-    State(AppState { device_handle, .. }): State<AppState>,
+    State(AppState {
+        device_handle,
+        calibration_handle,
+        ..
+    }): State<AppState>,
     Json(profile_uid_json): Json<SettingProfileUID>,
 ) -> Result<(), CCError> {
+    reject_when_calibrating(&calibration_handle, &path).await?;
     device_handle
         .device_setting_profile(
             path.device_uid,
@@ -88,6 +98,29 @@ pub async fn device_setting_profile_modify(
         )
         .await
         .map_err(handle_error)
+}
+
+/// Returns `Err(CCError::Conflict)` when a calibration diagnosis is
+/// currently in flight for the channel addressed by `path`. The
+/// channel is owned by the diagnoser during a sweep; manual and
+/// profile updates would race with the sweep's writes and silently
+/// no-op in the dispatch path, so we reject them at the API edge.
+async fn reject_when_calibrating(
+    calibration_handle: &crate::api::actor::CalibrationHandle,
+    path: &DeviceChannelPath,
+) -> Result<(), CCError> {
+    if calibration_handle
+        .in_progress(path.device_uid.clone(), path.channel_name.clone())
+        .await
+    {
+        return Err(CCError::Conflict {
+            msg: format!(
+                "calibration in progress for channel '{}'; cannot change settings",
+                path.channel_name
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub async fn device_setting_lcd_modify(

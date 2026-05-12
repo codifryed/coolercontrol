@@ -1,0 +1,375 @@
+/*
+ * CoolerControl - monitor and control your cooling and other devices
+ * Copyright (c) 2021-2025  Guy Boldon, Eren Simsek and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+//! API actor + polling DTOs for the calibration subsystem.
+//!
+//! Unlike features that broadcast push events via SSE, calibration
+//! uses a poll-based UI: the engine maintains a per-channel
+//! `CalibrationStatus` map updated as the sweep progresses, and the
+//! UI polls `GET .../calibration/status` while a diagnosis is in
+//! flight. Choosing polling here avoids burning one of the browser's
+//! limited SSE connection slots on a low-frequency operation.
+
+use crate::api::actor::{run_api_actor, ApiActor};
+use crate::calibration::{
+    Calibration, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
+};
+use crate::device::{ChannelName, DeviceUID};
+use crate::engine::main::Engine;
+use anyhow::Result;
+use chrono::{DateTime, Local};
+use moro_local::Scope;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::rc::Rc;
+use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
+
+/// Per-channel status of the latest calibration attempt. The UI polls
+/// `GET .../calibration/status` to drive its progress UI; the engine
+/// rewrites this entry on every sweep step and once more on the final
+/// terminal transition. The `Completed` and `Failed` variants stick
+/// around until the next diagnosis on the same channel resets it back
+/// to `InProgress`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "phase", rename_all = "snake_case")]
+pub enum CalibrationStatus {
+    InProgress {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        stage: String,
+        percent: u8,
+        current_duty: Option<u8>,
+        current_rpm: Option<u32>,
+        updated_at: DateTime<Local>,
+    },
+    Completed {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        completed_at: DateTime<Local>,
+        calibration: Calibration,
+    },
+    Failed {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        failed_at: DateTime<Local>,
+        reason: String,
+        message: String,
+    },
+}
+
+impl CalibrationStatus {
+    /// Construct an `InProgress` entry from a diagnoser progress event.
+    pub fn from_progress(progress: DiagnosisProgress) -> Self {
+        Self::InProgress {
+            device_uid: progress.device_uid,
+            channel_name: progress.channel_name,
+            stage: stage_name(progress.phase).to_string(),
+            percent: progress.percent,
+            current_duty: progress.current_duty,
+            current_rpm: progress.current_rpm,
+            updated_at: Local::now(),
+        }
+    }
+
+    /// Construct a `Completed` entry from a successful sweep result.
+    pub fn from_completion(
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        calibration: Calibration,
+    ) -> Self {
+        Self::Completed {
+            device_uid,
+            channel_name,
+            completed_at: Local::now(),
+            calibration,
+        }
+    }
+
+    /// Construct a `Failed` entry from a sweep failure.
+    pub fn from_failure(
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        failure: &DiagnosisFailure,
+    ) -> Self {
+        let (reason, message) = match failure {
+            DiagnosisFailure::PreflightTempTooHigh { observed, limit } => (
+                "preflight_temp_too_high",
+                format!("preflight temp {observed:.1} C exceeded limit {limit:.1} C"),
+            ),
+            DiagnosisFailure::FanUnresponsive => (
+                "fan_unresponsive",
+                "fan did not produce detectable RPM at any duty".to_string(),
+            ),
+            DiagnosisFailure::TempAbortedAt { observed, limit } => (
+                "temp_aborted",
+                format!("temperature {observed:.1} C exceeded abort limit {limit:.1} C mid-sweep"),
+            ),
+            DiagnosisFailure::Cancelled => ("user_cancelled", "diagnosis cancelled".to_string()),
+            DiagnosisFailure::WriteFailed(err) => ("write_failed", err.clone()),
+            DiagnosisFailure::RestoreFailed(err) => ("restore_failed", err.clone()),
+            DiagnosisFailure::PersistFailed(err) => ("persist_failed", err.clone()),
+        };
+        Self::Failed {
+            device_uid,
+            channel_name,
+            failed_at: Local::now(),
+            reason: reason.to_string(),
+            message,
+        }
+    }
+}
+
+fn stage_name(phase: DiagnosisPhase) -> &'static str {
+    match phase {
+        DiagnosisPhase::Preflight => "preflight",
+        DiagnosisPhase::UpSweep => "up_sweep",
+        DiagnosisPhase::DownSweep => "down_sweep",
+        DiagnosisPhase::Finalizing => "finalizing",
+    }
+}
+
+struct CalibrationActor {
+    receiver: mpsc::Receiver<CalibrationMessage>,
+    engine: Rc<Engine>,
+}
+
+pub(crate) enum CalibrationMessage {
+    Start {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    Cancel {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<bool>,
+    },
+    Get {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Option<Calibration>>,
+    },
+    Delete {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<bool>>,
+    },
+    InProgress {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<bool>,
+    },
+    Status {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Option<CalibrationStatus>>,
+    },
+}
+
+impl CalibrationActor {
+    fn new(receiver: mpsc::Receiver<CalibrationMessage>, engine: Rc<Engine>) -> Self {
+        Self { receiver, engine }
+    }
+}
+
+impl ApiActor<CalibrationMessage> for CalibrationActor {
+    fn name(&self) -> &'static str {
+        "CalibrationActor"
+    }
+
+    fn receiver(&mut self) -> &mut mpsc::Receiver<CalibrationMessage> {
+        &mut self.receiver
+    }
+
+    async fn handle_message(&mut self, msg: CalibrationMessage) {
+        match msg {
+            CalibrationMessage::Start {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid.clone(), channel_name.clone());
+                if self.engine.is_calibration_in_progress(&key) {
+                    let _ = respond_to.send(Err(anyhow::anyhow!(
+                        "calibration already in progress for {device_uid}:{channel_name}"
+                    )));
+                    return;
+                }
+                let engine = Rc::clone(&self.engine);
+                tokio::task::spawn_local(async move {
+                    let _ = engine
+                        .start_calibration_diagnosis(device_uid, channel_name)
+                        .await;
+                });
+                let _ = respond_to.send(Ok(()));
+            }
+            CalibrationMessage::Cancel {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let cancelled = self.engine.cancel_calibration_diagnosis(&key);
+                let _ = respond_to.send(cancelled);
+            }
+            CalibrationMessage::Get {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let calibration = self.engine.calibration_store_get(&key);
+                let _ = respond_to.send(calibration);
+            }
+            CalibrationMessage::Delete {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let result = self.engine.delete_calibration(&key).await;
+                let _ = respond_to.send(result);
+            }
+            CalibrationMessage::InProgress {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let _ = respond_to.send(self.engine.is_calibration_in_progress(&key));
+            }
+            CalibrationMessage::Status {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let _ = respond_to.send(self.engine.calibration_status(&key));
+            }
+        }
+    }
+}
+
+/// External handle to the calibration actor.
+#[derive(Clone)]
+pub struct CalibrationHandle {
+    sender: mpsc::Sender<CalibrationMessage>,
+}
+
+impl CalibrationHandle {
+    pub fn new<'s>(
+        engine: Rc<Engine>,
+        cancel_token: CancellationToken,
+        main_scope: &'s Scope<'s, 's, Result<()>>,
+    ) -> Self {
+        let (sender, receiver) = mpsc::channel(16);
+        let handle = Self {
+            sender: sender.clone(),
+        };
+        let actor = CalibrationActor::new(receiver, engine);
+        main_scope.spawn(run_api_actor(actor, cancel_token));
+        handle
+    }
+
+    pub async fn start(&self, device_uid: DeviceUID, channel_name: ChannelName) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::Start {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await?
+    }
+
+    pub async fn cancel(&self, device_uid: DeviceUID, channel_name: ChannelName) -> bool {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::Cancel {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await.unwrap_or(false)
+    }
+
+    pub async fn get(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> Option<Calibration> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::Get {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await.ok().flatten()
+    }
+
+    pub async fn delete(&self, device_uid: DeviceUID, channel_name: ChannelName) -> Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::Delete {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await?
+    }
+
+    pub async fn in_progress(&self, device_uid: DeviceUID, channel_name: ChannelName) -> bool {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::InProgress {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await.unwrap_or(false)
+    }
+
+    pub async fn status(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> Option<CalibrationStatus> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::Status {
+                device_uid,
+                channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await.ok().flatten()
+    }
+}

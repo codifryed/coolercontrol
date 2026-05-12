@@ -16,16 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
+use crate::api::actor::CalibrationStatus;
 use crate::api::CCError;
 use crate::calibration::{
     self, Calibration, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
-    DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter, SettingsSnapshot, SnapshotKind,
+    DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter,
+    SettingsSnapshot, SnapshotKind,
 };
 use crate::config::Config;
 use crate::device::{
@@ -85,6 +88,12 @@ pub struct Engine {
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
     diagnosis_registry: Rc<DiagnosisRegistry>,
+    /// Per-channel snapshot of the most recent calibration progress
+    /// or terminal outcome. The diagnoser updates this on every sweep
+    /// step and once more on completion / failure. The UI polls via
+    /// `GET .../calibration/status`. Sticky until the next diagnosis
+    /// starts on the same channel.
+    calibration_statuses: RefCell<HashMap<ChannelKey, CalibrationStatus>>,
 }
 
 impl Engine {
@@ -141,7 +150,39 @@ impl Engine {
             calibration_store,
             fan_state_map,
             diagnosis_registry: Rc::new(DiagnosisRegistry::new()),
+            calibration_statuses: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// Returns the per-channel calibration status (the polling DTO),
+    /// or `None` if no diagnosis has ever been observed for the
+    /// channel.
+    pub fn calibration_status(&self, key: &ChannelKey) -> Option<CalibrationStatus> {
+        self.calibration_statuses.borrow().get(key).cloned()
+    }
+
+    /// Internal helper: write the most recent status snapshot for the
+    /// channel. Overwrites any prior entry.
+    fn store_calibration_status(&self, key: ChannelKey, status: CalibrationStatus) {
+        self.calibration_statuses.borrow_mut().insert(key, status);
+    }
+
+    /// Read a calibration from the store. Thin wrapper used by the
+    /// calibration actor's GET handler.
+    pub fn calibration_store_get(&self, key: &ChannelKey) -> Option<Calibration> {
+        self.calibration_store.get(key)
+    }
+
+    /// Remove a calibration from the store and persist the change to
+    /// disk. Returns `Ok(true)` when an entry was actually removed,
+    /// `Ok(false)` when the channel was not calibrated. A disk-write
+    /// failure surfaces as an `Err`.
+    pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
+        let existed = self.calibration_store.has(key);
+        if existed {
+            self.calibration_store.remove(key).await?;
+        }
+        Ok(existed)
     }
 
     /// This is used to set the config Setting model configuration.
@@ -1035,22 +1076,37 @@ impl Engine {
         }
         let cancellation = self.diagnosis_registry.register(key.clone());
         let settings = DiagnosisSettings::default();
-        let outcome = calibration::run_diagnosis(
+        let device_uid_for_event = key.0.clone();
+        let channel_name_for_event = key.1.clone();
+        let mut outcome = calibration::run_diagnosis(
             &self.fan_state_map,
             &self.calibration_store,
             self,
             &settings,
-            device_uid,
-            channel_name,
+            key.0.clone(),
+            key.1.clone(),
             cancellation,
         )
         .await;
         self.diagnosis_registry.clear(&key);
         if outcome.is_ok() {
             if let Err(err) = self.calibration_store.save_to_disk().await {
-                return Err(DiagnosisFailure::PersistFailed(err.to_string()));
+                outcome = Err(DiagnosisFailure::PersistFailed(err.to_string()));
             }
         }
+        let status = match &outcome {
+            Ok(calibration) => CalibrationStatus::from_completion(
+                device_uid_for_event,
+                channel_name_for_event,
+                calibration.clone(),
+            ),
+            Err(failure) => CalibrationStatus::from_failure(
+                device_uid_for_event,
+                channel_name_for_event,
+                failure,
+            ),
+        };
+        self.store_calibration_status(key, status);
         outcome
     }
 
@@ -1542,6 +1598,12 @@ impl DiagnosisHost for Engine {
 
     async fn sleep_millis(&self, millis: u32) {
         tokio::time::sleep(StdDuration::from_millis(u64::from(millis))).await;
+    }
+
+    fn emit_progress(&self, progress: DiagnosisProgress) {
+        let key: ChannelKey = (progress.device_uid.clone(), progress.channel_name.clone());
+        let status = CalibrationStatus::from_progress(progress);
+        self.store_calibration_status(key, status);
     }
 }
 

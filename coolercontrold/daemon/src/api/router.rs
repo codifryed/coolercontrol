@@ -17,8 +17,8 @@
  */
 
 use crate::api::{
-    alerts, auth, base, custom_sensors, detect, functions, metrics, modes, plugins, profiles,
-    settings, sse, status, stress_test, tokens,
+    alerts, auth, base, calibration, custom_sensors, detect, functions, metrics, modes, plugins,
+    profiles, settings, sse, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -43,6 +43,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(settings_routes())
         .merge(plugins_routes())
         .merge(alert_routes())
+        .merge(calibration_routes())
         .merge(detect_routes())
         .merge(stress_test_routes())
         .merge(metrics_routes())
@@ -1022,6 +1023,76 @@ fn alert_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+}
+
+fn calibration_routes() -> ApiRouter<AppState> {
+    ApiRouter::new()
+        .api_route(
+            "/devices/{device_uid}/{channel_name}/calibration/start",
+            post_with(calibration::start, |o| {
+                o.summary("Start a calibration diagnosis")
+                    .description(
+                        "Queues a calibration diagnosis on the channel and returns 202. \
+                         Poll GET .../calibration/status to track progress. \
+                         Returns 409 when a diagnosis is already in flight for the channel.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/devices/{device_uid}/{channel_name}/calibration/cancel",
+            post_with(calibration::cancel, |o| {
+                o.summary("Cancel an in-flight calibration")
+                    .description(
+                        "Triggers cancellation of the in-flight calibration for the \
+                         channel. Returns 404 when nothing is running.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/devices/{device_uid}/{channel_name}/calibration/status",
+            get_with(calibration::status, |o| {
+                o.summary("Get the calibration status")
+                    .description(
+                        "Returns the most recent calibration status for the channel \
+                         (in_progress / completed / failed). 404 if no diagnosis has \
+                         ever been observed. Intended for UI polling at ~1 Hz while \
+                         a diagnosis is in flight.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/devices/{device_uid}/{channel_name}/calibration",
+            get_with(calibration::get, |o| {
+                o.summary("Get the stored calibration")
+                    .description("Returns the persisted calibration JSON, or 404 if none.")
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .delete_with(calibration::delete, |o| {
+                o.summary("Delete the stored calibration")
+                    .description(
+                        "Removes the persisted calibration for the channel. \
+                         Returns 404 when none was stored.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
