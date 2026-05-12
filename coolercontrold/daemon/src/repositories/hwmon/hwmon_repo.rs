@@ -318,6 +318,7 @@ struct PendingWrite {
 struct WriterMailbox {
     pending: RefCell<HashMap<ChannelName, PendingWrite>>,
     notify: Notify,
+    force_next_write: RefCell<HashSet<ChannelName>>,
 }
 
 /// Duty-cache entry for slow-device fan channels. `last_known` is
@@ -629,6 +630,9 @@ impl HwmonRepo {
                 Rc::new(WriterMailbox {
                     pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                     notify: Notify::new(),
+                    force_next_write: RefCell::new(HashSet::with_capacity(
+                        PENDING_INITIAL_CAPACITY,
+                    )),
                 }),
             );
             self.delay_logged.insert(type_index, Cell::new(0));
@@ -1095,6 +1099,23 @@ impl HwmonRepo {
             tokio::task::spawn_local(run_writer_task(task));
         }
     }
+
+    /// Records that the next mailbox write for `(type_index,
+    /// channel_name)` must bypass the `preloaded_statuses` write-
+    /// skip check.
+    fn mark_force_next_write(&self, type_index: TypeIndex, channel_name: &str) {
+        let Some(mailbox) = self.writers.get(&type_index) else {
+            debug!(
+                "No writer mailbox for type_index {type_index} when marking force_next_write \
+                 for channel {channel_name}; skipping anchor flag"
+            );
+            return;
+        };
+        mailbox
+            .force_next_write
+            .borrow_mut()
+            .insert(channel_name.to_string());
+    }
 }
 
 /// Clears `preload_in_flight` on drop so a panic / cancellation
@@ -1240,8 +1261,16 @@ async fn run_one_pending_write(
         pending.target_duty <= 100,
         "enqueue_pending_write validates"
     );
-    // Write-skip: target already matches preloaded duty.
-    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+    let force_write = consume_force_flag(&task.mailbox, &channel_name);
+    debug_assert!(
+        task.mailbox
+            .force_next_write
+            .borrow()
+            .contains(channel_name.as_str())
+            .not(),
+        "force_next_write must be cleared after consume"
+    );
+    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
         let _ = pending.waiter.send(Ok(()));
         return;
     }
@@ -1282,8 +1311,10 @@ async fn run_one_pending_write(
     }
     // Re-check write-skip with the (possibly updated) target so a
     // refreshed value that already matches preloaded duty does not
-    // cost a sysfs write.
-    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+    // cost a sysfs write. Still bypassed when `force_write` is set:
+    // the anchor must reach sysfs even if a later enqueue happened
+    // to match preloaded duty.
+    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
         let _ = pending.waiter.send(Ok(()));
         drop(permit);
         return;
@@ -1318,6 +1349,15 @@ async fn run_one_pending_write(
         }
     }
     let _ = pending.waiter.send(result);
+}
+
+/// Removes and returns whether `channel_name` had the
+/// `force_next_write` anchor flag set on this mailbox. Idempotent:
+/// a subsequent call returns false until
+/// `apply_setting_manual_control` re-arms it. Sync borrow only;
+/// safe to call inside the writer task without yielding.
+fn consume_force_flag(mailbox: &WriterMailbox, channel_name: &str) -> bool {
+    mailbox.force_next_write.borrow_mut().remove(channel_name)
 }
 
 /// True when the channel's preloaded duty already equals
@@ -1706,6 +1746,12 @@ impl Repository for HwmonRepo {
         // Until the first duty write the device sits at whatever the
         // firmware had; drop any stale cache entry.
         self.invalidate_duty_cache_entry(type_index, channel_name);
+        // Force the next mailbox write for this channel through to
+        // sysfs even when the preloaded duty already matches the
+        // engine's target. Anchors manual control on boards whose EC
+        // reclaims the hardware fan curve shortly after we set
+        // `pwm_enable=1`. See `WriterMailbox::force_next_write`.
+        self.mark_force_next_write(type_index, channel_name);
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -3040,6 +3086,7 @@ mod coalescer_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
+                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
@@ -3846,6 +3893,7 @@ mod slow_device_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
+                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
@@ -4170,6 +4218,251 @@ mod slow_device_tests {
                 pwm.trim(),
                 "42",
                 "sentinel must remain: write should have been skipped"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn forces_write_after_manual_control_even_when_preloaded_matches() {
+        // Goal: apply_setting_manual_control arms the per-channel
+        // force_next_write flag, so the next mailbox write for the
+        // same channel reaches sysfs even when preloaded duty
+        // already equals the engine's target. Guards the 4.3.0
+        // regression on boards whose EC reclaims pwm_enable
+        // immediately after we set manual mode. Method: place a
+        // sentinel in pwm1, seed preloaded duty = target = 50; if
+        // the force flag works, the sentinel is overwritten.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            );
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(50.0),
+                        rpm: Some(1200),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+
+            // Manual-mode transition arms the anchor flag.
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+            assert!(
+                repo.writers[&TEST_TYPE_INDEX]
+                    .force_next_write
+                    .borrow()
+                    .contains("fan1"),
+                "manual_control must arm force_next_write for the channel"
+            );
+            let repo = Rc::new(repo);
+
+            // Target equals preloaded duty: write-skip would
+            // normally fire, but the anchor flag forces the write.
+            enqueue_write(&repo, &uid, "fan1", 50)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm.trim(),
+                duty_to_pwm_value(50).to_string(),
+                "force flag must defeat write-skip on first write after manual_control"
+            );
+            assert!(
+                repo.writers[&TEST_TYPE_INDEX]
+                    .force_next_write
+                    .borrow()
+                    .contains("fan1")
+                    .not(),
+                "force flag must be cleared after the write it forced"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn force_flag_consumed_after_one_write() {
+        // Goal: force_next_write is a one-shot anchor. After the
+        // first write forced through, a subsequent write to the
+        // same channel with a matching target falls back to normal
+        // write-skip. Method: do the forced write, restore the
+        // sentinel, enqueue the same duty again, expect sentinel
+        // to survive.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            );
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(50.0),
+                        rpm: Some(1200),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+            let repo = Rc::new(repo);
+
+            // First write: anchored, must reach sysfs.
+            enqueue_write(&repo, &uid, "fan1", 50)
+                .await
+                .unwrap()
+                .unwrap();
+            let pwm_first = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm_first.trim(),
+                duty_to_pwm_value(50).to_string(),
+                "first write must be forced through"
+            );
+
+            // Restore sentinel; second write should now be skipped.
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+            enqueue_write(&repo, &uid, "fan1", 50)
+                .await
+                .unwrap()
+                .unwrap();
+            let pwm_second = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm_second.trim(),
+                "42",
+                "second write must hit normal write-skip (flag is one-shot)"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn force_flag_per_channel_isolated() {
+        // Goal: arming the force flag for one channel must not
+        // affect a sibling channel on the same device. Method:
+        // install two fans, manual_control fan1 only, enqueue a
+        // skip-eligible write to fan2; pwm2 sentinel must survive
+        // because fan2's flag was never armed.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1, 2], 99).await;
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(dir.join("pwm2"), b"42".to_vec())
+                .await
+                .unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
+                false,
+                vec![],
+            );
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![
+                        ChannelStatus {
+                            name: "fan1".to_string(),
+                            duty: Some(50.0),
+                            rpm: Some(1200),
+                            ..Default::default()
+                        },
+                        ChannelStatus {
+                            name: "fan2".to_string(),
+                            duty: Some(70.0),
+                            rpm: Some(1500),
+                            ..Default::default()
+                        },
+                    ],
+                    vec![],
+                ),
+            );
+
+            // Arm fan1 only.
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+            // Scoped borrow: do not hold across the awaits below
+            // (clippy::await_holding_refcell_ref).
+            {
+                let force_map = repo.writers[&TEST_TYPE_INDEX].force_next_write.borrow();
+                assert!(
+                    force_map.contains("fan1"),
+                    "fan1 must be armed by manual_control"
+                );
+                assert!(
+                    force_map.contains("fan2").not(),
+                    "fan2 must not be affected by manual_control on fan1"
+                );
+            }
+            let repo = Rc::new(repo);
+
+            // fan2 write with matching preloaded duty should skip.
+            enqueue_write(&repo, &uid, "fan2", 70)
+                .await
+                .unwrap()
+                .unwrap();
+            let pwm2 = cc_fs::read_sysfs(&dir.join("pwm2")).await.unwrap();
+            assert_eq!(
+                pwm2.trim(),
+                "42",
+                "fan2 sentinel must survive: write-skip applies, no force"
             );
 
             repo.shutdown_token.cancel();
