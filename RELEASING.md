@@ -71,12 +71,18 @@ automatically. They are included here for reference:
    4. Create new branch: `coolercontrol.*`
    5. Edit the release version: `vi pkgs/applications/system/coolercontrol/default.nix` and remove
       the hash from that file to force a new source download
-   6. Copy the new Tauri Cargo.lock:
-      `cp ../coolercontrol/coolercontrold/Cargo.lock pkgs/applications/system/coolercontrol/Cargo.lock`
-   7. Build the packages, replacing the Hashes where appropriate: `nix-build -A coolercontrol`
-   8. Commit changes with message: `coolercontrol.*: 1.1.1 -> 1.2.0`
+   6. Build the packages, replacing the Hashes where appropriate:
+      `nix --extra-experimental-features nix-command build -f . coolercontrol -L`
+   7. Run the built binaries (in a root-less install):
+      - `sudo mkdir -p /nix`
+      - `sudo mount --bind ~/.local/share/nix/root/nix /nix`
+      - `sudo ./result-1/bin/coolercontrold`
+      - `./result/bin/coolercontrol --disable-gpu` -- doesn't work on a non-native NixOS
+   8. Commit changes with message: `coolercontrol: 4.1.0 -> 4.3.0`
    9. Open a PR at https://github.com/NixOS/nixpkgs/
-   10. Note: if you ever need to fix the local nix store:
+      `coolercontrol.{coolercontrold,coolercontrol-ui-data,coolercontrol-gui}: 4.0.1 -> 4.1.0`
+   10. Note: if you ever need to fix the local nix store: To rebuild ignoring the binary cache for
+       that derivation: `--rebuild`. To force a fresh evaluation: `--no-eval-cache`.
        `sudo nix-store --verify --check-contents --repair` or to clear out garbage:
        `nix-collect-garbage -d`
 
