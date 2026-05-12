@@ -1348,10 +1348,7 @@ async fn run_one_pending_write(
 }
 
 fn consume_force_flag(mailbox: &WriterMailbox, channel_name: &str) -> bool {
-    mailbox
-        .force_next_write
-        .borrow_mut()
-        .remove(channel_name)
+    mailbox.force_next_write.borrow_mut().remove(channel_name)
 }
 
 /// True when the channel's preloaded duty already equals
@@ -3075,9 +3072,7 @@ mod coalescer_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
-                force_next_write: RefCell::new(HashSet::with_capacity(
-                    PENDING_INITIAL_CAPACITY,
-                )),
+                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
@@ -3884,9 +3879,7 @@ mod slow_device_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
-                force_next_write: RefCell::new(HashSet::with_capacity(
-                    PENDING_INITIAL_CAPACITY,
-                )),
+                force_next_write: RefCell::new(HashSet::with_capacity(PENDING_INITIAL_CAPACITY)),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
