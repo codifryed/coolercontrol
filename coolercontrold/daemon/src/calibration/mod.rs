@@ -35,6 +35,7 @@
 #![allow(dead_code, unused_imports)]
 
 mod curve;
+mod diagnoser;
 mod dispatch;
 mod state;
 mod store;
@@ -42,6 +43,10 @@ mod store;
 pub use curve::{
     classify_curve, derive_scalars, start_threshold, Calibration, CurveKind, DerivedScalars,
     MappedDuty, DUTY_STEP_PERCENT, SAMPLE_COUNT,
+};
+pub use diagnoser::{
+    run_diagnosis, DiagnosisFailure, DiagnosisHost, DiagnosisSettings, SettingsSnapshot,
+    SnapshotKind,
 };
 pub use dispatch::{
     complete_kick, dispatch, dispatch_local, DispatchOutcome, DutyWriter, RepoWriter,

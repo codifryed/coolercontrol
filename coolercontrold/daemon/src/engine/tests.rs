@@ -1538,6 +1538,122 @@ mod engine_tests {
 
     #[test]
     #[serial]
+    fn diagnosis_host_current_rpm_reads_status_history() {
+        // Goal: the Engine's DiagnosisHost::current_rpm trait method
+        // returns the latest RPM from the device's status_history.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            push_channel_status(&device, channel.clone(), Some(1234), 50.0);
+
+            let observed = engine.current_rpm(&device_uid, &channel).await;
+            assert_eq!(observed, Some(1234));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_current_rpm_none_for_unknown_channel() {
+        // Goal: querying a channel not present in the latest status
+        // yields None so the diagnoser records a zero sample.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            push_channel_status(&device, "fan1".to_string(), Some(800), 30.0);
+
+            let observed = engine.current_rpm(&device_uid, "fan-missing").await;
+            assert_eq!(observed, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_max_temp_finds_hottest_value() {
+        // Goal: max_temp_celsius walks every device's latest status
+        // and returns the highest temp.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "t1".to_string(),
+                temp: 45.0,
+            });
+            status.temps.push(TempStatus {
+                name: "t2".to_string(),
+                temp: 72.5,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+
+            let observed = engine.max_temp_celsius().await;
+            assert!(
+                (observed - 72.5).abs() < f64::EPSILON,
+                "expected 72.5, got {observed}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_snapshot_returns_none_for_unset_channel() {
+        // Goal: a channel with no persisted setting snapshots as
+        // SnapshotKind::None so the restore step is a no-op reset.
+        cc_fs::test_runtime(async {
+            use crate::calibration::{DiagnosisHost as _, SnapshotKind};
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let snapshot = engine.snapshot_setting(&device_uid, "fan1");
+            assert_eq!(snapshot.kind, SnapshotKind::None);
+            assert_eq!(snapshot.device_uid, device_uid);
+            assert_eq!(snapshot.channel_name, "fan1");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn start_calibration_diagnosis_preflight_rejects_hot_system() {
+        // Goal: end-to-end engine entry point. When the most recent
+        // status shows a hot temp, the diagnoser short-circuits in
+        // pre-flight, no calibration is persisted, and the channel
+        // is not marked under_diagnosis.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisFailure;
+            use tokio_util::sync::CancellationToken;
+            let (device, engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            // Seed a hot ambient temperature so preflight refuses.
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "cpu".to_string(),
+                temp: 80.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let cancellation = CancellationToken::new();
+            let err = engine
+                .start_calibration_diagnosis(device_uid.clone(), "fan1".to_string(), cancellation)
+                .await
+                .expect_err("preflight rejects hot system");
+            assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            assert!(!calibration_store.has(&key));
+        });
+    }
+
+    #[test]
+    #[serial]
     fn apply_true_duty_skips_stepped_calibration() {
         // Goal: a calibrated channel whose curve was classified as
         // Stepped keeps its device-duty value (mapping disabled). The

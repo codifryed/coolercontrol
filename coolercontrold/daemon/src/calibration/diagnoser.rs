@@ -192,8 +192,11 @@ where
     let sweep_outcome =
         perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
 
-    let restore_result = host.restore_setting(&snapshot).await;
+    // Clear the flag BEFORE restore so the production restore path
+    // (which routes through `engine.set_fixed_speed` -> `dispatch_local`)
+    // is not no-op'd by the still-active under_diagnosis check.
     state.set_under_diagnosis(key.clone(), false);
+    let restore_result = host.restore_setting(&snapshot).await;
 
     let (up_curve, down_curve) = match sweep_outcome {
         Ok(curves) => curves,

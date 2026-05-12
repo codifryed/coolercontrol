@@ -20,12 +20,17 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use crate::api::CCError;
-use crate::calibration::{self, CalibrationStore, ChannelKey, FanStateMap, RepoWriter};
+use crate::calibration::{
+    self, Calibration, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
+    DiagnosisSettings, FanStateMap, RepoWriter, SettingsSnapshot, SnapshotKind,
+};
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
+    ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Duty, Status,
+    TempStatus, RPM, UID,
 };
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
@@ -1002,6 +1007,39 @@ impl Engine {
         }
     }
 
+    /// Drive a per-channel calibration diagnosis end-to-end.
+    ///
+    /// Wraps `calibration::run_diagnosis` with the engine itself as the
+    /// `DiagnosisHost` (so the diagnoser can read RPM/temp, write raw
+    /// duty, snapshot+restore settings, and sleep). On success the
+    /// in-memory `CalibrationStore` is flushed to disk via
+    /// `save_to_disk`; a disk-write failure is surfaced as
+    /// `PersistFailed` while the in-memory calibration stays usable.
+    pub async fn start_calibration_diagnosis(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        cancellation: tokio_util::sync::CancellationToken,
+    ) -> std::result::Result<Calibration, DiagnosisFailure> {
+        let settings = DiagnosisSettings::default();
+        let outcome = calibration::run_diagnosis(
+            &self.fan_state_map,
+            &self.calibration_store,
+            self,
+            &settings,
+            device_uid,
+            channel_name,
+            cancellation,
+        )
+        .await;
+        if outcome.is_ok() {
+            if let Err(err) = self.calibration_store.save_to_disk().await {
+                return Err(DiagnosisFailure::PersistFailed(err.to_string()));
+            }
+        }
+        outcome
+    }
+
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
     pub fn process_scheduled_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
@@ -1387,6 +1425,95 @@ impl Engine {
                 })
         });
         Ok(enabled)
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl DiagnosisHost for Engine {
+    async fn current_rpm(&self, device_uid: &UID, channel_name: &str) -> Option<RPM> {
+        let device_lock = self.all_devices.get(device_uid)?;
+        let device = device_lock.borrow();
+        let latest = device.status_history.back()?;
+        latest
+            .channels
+            .iter()
+            .find(|c| c.name == channel_name)
+            .and_then(|c| c.rpm)
+    }
+
+    async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()> {
+        let device_type = self
+            .all_devices
+            .get(device_uid)
+            .ok_or_else(|| anyhow!("device not found: {device_uid}"))?
+            .borrow()
+            .d_type;
+        let repo = self
+            .repos
+            .get(&device_type)
+            .ok_or_else(|| anyhow!("no repository for device type {device_type:?}"))?;
+        repo.apply_setting_speed_fixed(device_uid, channel_name, duty)
+            .await
+    }
+
+    async fn max_temp_celsius(&self) -> f64 {
+        let mut max = 0.0_f64;
+        for device_lock in self.all_devices.values() {
+            let device = device_lock.borrow();
+            let Some(latest) = device.status_history.back() else {
+                continue;
+            };
+            for status in &latest.temps {
+                if status.temp > max {
+                    max = status.temp;
+                }
+            }
+        }
+        max
+    }
+
+    fn snapshot_setting(&self, device_uid: &UID, channel_name: &str) -> SettingsSnapshot {
+        let kind = match self
+            .config
+            .get_device_channel_settings(device_uid, channel_name)
+        {
+            Ok(setting) => {
+                if let Some(profile_uid) = setting.profile_uid {
+                    SnapshotKind::Profile(profile_uid)
+                } else if let Some(speed_fixed) = setting.speed_fixed {
+                    SnapshotKind::Manual(speed_fixed)
+                } else {
+                    SnapshotKind::None
+                }
+            }
+            Err(_) => SnapshotKind::None,
+        };
+        SettingsSnapshot {
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+            kind,
+        }
+    }
+
+    async fn restore_setting(&self, snapshot: &SettingsSnapshot) -> Result<()> {
+        match &snapshot.kind {
+            SnapshotKind::None => {
+                self.set_reset(&snapshot.device_uid, &snapshot.channel_name)
+                    .await
+            }
+            SnapshotKind::Manual(duty) => {
+                self.set_fixed_speed(&snapshot.device_uid, &snapshot.channel_name, *duty)
+                    .await
+            }
+            SnapshotKind::Profile(profile_uid) => {
+                self.set_profile(&snapshot.device_uid, &snapshot.channel_name, profile_uid)
+                    .await
+            }
+        }
+    }
+
+    async fn sleep_millis(&self, millis: u32) {
+        tokio::time::sleep(StdDuration::from_millis(u64::from(millis))).await;
     }
 }
 
