@@ -35,12 +35,16 @@
 #![allow(dead_code, unused_imports)]
 
 mod curve;
+mod dispatch;
+mod state;
 mod store;
 
 pub use curve::{
     classify_curve, derive_scalars, start_threshold, Calibration, CurveKind, DerivedScalars,
     MappedDuty, DUTY_STEP_PERCENT, SAMPLE_COUNT,
 };
+pub use dispatch::{complete_kick, dispatch, DutyWriter};
+pub use state::{ChannelEntry, FanState, FanStateMap};
 pub use store::{CalibrationConfigFile, CalibrationEntry, CalibrationStore};
 
 use crate::device::{ChannelName, DeviceUID};
