@@ -19,9 +19,10 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::api::CCError;
-use crate::calibration::{self, CalibrationStore, FanStateMap, RepoWriter};
+use crate::calibration::{self, CalibrationStore, ChannelKey, FanStateMap, RepoWriter};
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
@@ -968,6 +969,36 @@ impl Engine {
                 repo.apply_setting_reset(device_uid, channel_name).await
             }
             Err(err) => Err(err),
+        }
+    }
+
+    /// Replace `ChannelStatus.duty` with the true-duty equivalent on the
+    /// most recent status of every calibrated smooth channel.
+    ///
+    /// Called by the main loop **after** every repo's `update_statuses`
+    /// has appended its new sample and **before** the engine processes
+    /// scheduled speeds or the status pipeline broadcasts to SSE. After
+    /// this pass, the in-memory history (and therefore every downstream
+    /// consumer: engine, SSE, REST) sees RPM-normalized true-duty for
+    /// calibrated channels.
+    ///
+    /// Uncalibrated channels, stepped-curve channels, and channels with
+    /// no RPM reading on the latest sample are left untouched.
+    pub fn apply_true_duty_to_latest_statuses(&self) {
+        for device_lock in self.all_devices.values() {
+            let mut device = device_lock.borrow_mut();
+            let device_uid = device.uid.clone();
+            let history = Arc::make_mut(&mut device.status_history);
+            let Some(latest) = history.back_mut() else {
+                continue;
+            };
+            for channel in &mut latest.channels {
+                let Some(rpm) = channel.rpm else { continue };
+                let key: ChannelKey = (device_uid.clone(), channel.name.clone());
+                if let Some(true_duty) = self.calibration_store.rpm_to_true_duty(&key, rpm) {
+                    channel.duty = Some(f64::from(true_duty));
+                }
+            }
         }
     }
 

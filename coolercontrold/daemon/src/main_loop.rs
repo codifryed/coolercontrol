@@ -227,6 +227,10 @@ async fn fire_snapshots_and_processes<'s>(
             error!("Error trying to update status: {err}");
         }
     }
+    // Rewrite the latest ChannelStatus.duty of every calibrated smooth
+    // channel into true-duty space before engine processing and status
+    // broadcast. Stepped/uncalibrated channels are untouched.
+    engine.apply_true_duty_to_latest_statuses();
     fire_lcd_update(engine, lcd_update_trigger, scope);
     engine.process_scheduled_speeds(scope);
     status_handle.broadcast_status().await;

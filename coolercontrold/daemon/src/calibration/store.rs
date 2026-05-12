@@ -26,7 +26,7 @@
 use super::curve::Calibration;
 use super::ChannelKey;
 use crate::cc_fs;
-use crate::device::{ChannelName, DeviceUID};
+use crate::device::{ChannelName, DeviceUID, Duty, RPM};
 use crate::paths;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
@@ -100,6 +100,19 @@ impl CalibrationStore {
             out.push((k.clone(), v.clone()));
         }
         out
+    }
+
+    /// Map a measured RPM to its true-duty equivalent for the given
+    /// channel. Returns `None` when the channel is uncalibrated, when
+    /// the curve is stepped (mapping disabled), or when the channel's
+    /// calibration would not produce a meaningful value.
+    ///
+    /// Used by the status-ingestion pipeline to replace device-duty
+    /// with true-duty on every observed sample of a calibrated channel.
+    pub fn rpm_to_true_duty(&self, key: &ChannelKey, rpm: RPM) -> Option<Duty> {
+        let map = self.calibrations.borrow();
+        let calibration = map.get(key)?;
+        calibration.rpm_to_true_duty(rpm)
     }
 
     /// Insert or replace a calibration. Persists to disk on success.
@@ -372,6 +385,44 @@ mod tests {
             .has(&("dev-old".to_string(), "fan-old".to_string()))
             .not());
         assert!(store.has(&("dev-new".to_string(), "fan-new".to_string())));
+    }
+
+    #[test]
+    fn rpm_to_true_duty_on_uncalibrated_channel_returns_none() {
+        // Goal: an unknown channel produces None, signalling the
+        // ingestion pipeline to leave the device-duty alone.
+        let store = CalibrationStore::empty();
+        let key: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        assert!(store.rpm_to_true_duty(&key, 1234).is_none());
+    }
+
+    #[test]
+    fn rpm_to_true_duty_on_smooth_channel_returns_some() {
+        // Goal: a calibrated smooth channel returns a mapped value
+        // bounded by 0..=100. The exact value comes from the curve
+        // math in curve.rs (covered by its own tests); here we just
+        // confirm the store-level routing is correct.
+        let store = CalibrationStore::empty();
+        let key: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        store.insert_unsaved(key.clone(), sample_calibration());
+        let mapped = store
+            .rpm_to_true_duty(&key, 1000)
+            .expect("smooth channel maps");
+        assert!(mapped <= 100);
+    }
+
+    #[test]
+    fn rpm_to_true_duty_on_stepped_channel_returns_none() {
+        // Goal: a calibrated channel whose curve was classified as
+        // stepped must signal passthrough via None. The ingestion
+        // pipeline then leaves the device-duty unchanged.
+        let store = CalibrationStore::empty();
+        let mut cal = sample_calibration();
+        cal.curve_kind = CurveKind::Stepped;
+        let key: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        store.insert_unsaved(key, cal);
+        let key2: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        assert!(store.rpm_to_true_duty(&key2, 1000).is_none());
     }
 
     #[test]
