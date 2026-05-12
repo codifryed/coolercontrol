@@ -295,10 +295,14 @@ fn main() -> Result<()> {
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
+        let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
+        let fan_state_map = Rc::new(calibration::FanStateMap::new());
         let engine = Rc::new(Engine::new(
             Rc::clone(&all_devices),
             &repos,
             Rc::clone(&config),
+            Rc::clone(&calibration_store),
+            Rc::clone(&fan_state_map),
         ));
         let mode_controller = Rc::new(
             ModeController::init(

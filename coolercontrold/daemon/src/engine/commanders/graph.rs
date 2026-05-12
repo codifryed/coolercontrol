@@ -21,9 +21,10 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
+use crate::calibration::{self, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
-use crate::engine::main::ReposByType;
+use crate::engine::main::WritersByType;
 use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPostProcessor, FunctionStandardPreProcessor,
@@ -55,7 +56,7 @@ struct ProcessorCollection {
 /// or profile speed settings for devices that only support fixed speeds.
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
-    repos: ReposByType,
+    writers_by_type: WritersByType,
     scheduled_settings:
         RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
     config: Rc<Config>,
@@ -63,12 +64,20 @@ pub struct GraphProfileCommander {
     /// The last calculated Option<Duty> for each Graph Profile.
     /// This allows other Profiles to use the output of a Graph Profile.
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
+    calibration_store: Rc<CalibrationStore>,
+    fan_state_map: Rc<FanStateMap>,
 }
 
 impl GraphProfileCommander {
-    pub fn new(all_devices: AllDevices, repos: ReposByType, config: Rc<Config>) -> Self {
+    pub fn new(
+        all_devices: AllDevices,
+        writers_by_type: WritersByType,
+        config: Rc<Config>,
+        calibration_store: Rc<CalibrationStore>,
+        fan_state_map: Rc<FanStateMap>,
+    ) -> Self {
         Self {
-            repos,
+            writers_by_type,
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
             processors: {
@@ -86,6 +95,8 @@ impl GraphProfileCommander {
             },
             all_devices,
             process_output_cache: RefCell::new(HashMap::new()),
+            calibration_store,
+            fan_state_map,
         }
     }
 
@@ -185,7 +196,7 @@ impl GraphProfileCommander {
         for (device_uid, channel_duties_to_set) in self.collect_processed_outputs() {
             scope.spawn(async move {
                 for (channel_name, duty_to_set) in channel_duties_to_set {
-                    self.set_device_speed(&device_uid, &channel_name, duty_to_set)
+                    self.set_device_speed(scope, &device_uid, &channel_name, duty_to_set)
                         .await;
                 }
             });
@@ -247,7 +258,22 @@ impl GraphProfileCommander {
 
     /// Sets the speed of a device. This is normally called by the `update_speeds` method
     /// from various Commanders. This keeps this logic in one place.
-    pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
+    ///
+    /// The user-facing `duty_to_set` is routed through `calibration::dispatch`,
+    /// which applies the per-channel true-duty mapping (and kick-then-settle
+    /// orchestration) for calibrated smooth channels and passes through
+    /// uncalibrated channels unchanged. The writer is looked up from the
+    /// pre-built `writers_by_type` cache so the hot path has no clones or
+    /// allocations. The caller's moro scope is threaded through so the
+    /// deferred sustain-write task spawns into it (instead of going via
+    /// `tokio::task::spawn_local`, which would force an `Rc::clone`).
+    pub async fn set_device_speed<'s>(
+        &'s self,
+        scope: &'s Scope<'s, 's, Result<()>>,
+        device_uid: &UID,
+        channel_name: &str,
+        duty_to_set: u8,
+    ) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
             let device_lock = self.all_devices[device_uid].borrow();
@@ -257,10 +283,17 @@ impl GraphProfileCommander {
             "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
             channel: {channel_name}; DUTY: {duty_to_set}"
         );
-        if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo
-                .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
-                .await
+        if let Some(writer) = self.writers_by_type.get(&device_type) {
+            if let Err(err) = calibration::dispatch(
+                &self.fan_state_map,
+                &self.calibration_store,
+                writer,
+                scope,
+                device_uid.clone(),
+                channel_name.to_string(),
+                duty_to_set,
+            )
+            .await
             {
                 error!("Error applying Graph/Mix Profile calculated duty - {err}");
             }

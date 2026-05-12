@@ -18,21 +18,33 @@
 
 //! Unified write entry point for calibrated channels.
 //!
-//! `dispatch` is the single call site for every duty write made on
-//! behalf of an engine commander or an API setting actor. It handles:
+//! Every duty write made on behalf of an engine commander or an API
+//! setting actor goes through one of two public entry points:
+//!
+//! - [`dispatch`] takes a `&'s Scope` and spawns the deferred sustain
+//!   write into it via `scope.spawn`. Used by the per-tick hot paths
+//!   ([`GraphProfileCommander::set_device_speed`] et al.) because it
+//!   borrows `&Rc<...>` for the spawned future and does zero clones.
+//! - [`dispatch_local`] handles paths with no scope reachable (API
+//!   actor handlers, fixed-profile application, saved-setting replay).
+//!   It uses `tokio::task::spawn_local`, which forces an `Rc::clone` of
+//!   both `state` and `writer` for the `'static` future. Acceptable for
+//!   user-triggered code that fires at human cadence.
+//!
+//! Both entry points share [`dispatch_core`], which handles:
 //!
 //! - **Passthrough** for uncalibrated channels, stepped calibrations,
 //!   and channels currently under diagnosis.
 //! - **Kick-then-settle orchestration** for smooth calibrations: a
-//!   transition out of `Off` writes the kick duty, schedules a deferred
-//!   sustain write after `kick_duration_ms`, and updates the fan state.
+//!   transition out of `Off` writes the kick duty, returns
+//!   `SustainPending`, and the caller schedules the deferred sustain
+//!   write using its spawn mechanism of choice.
 //! - **Mid-kick target adjustment**: subsequent dispatches that arrive
 //!   while the channel is still `Kicking` only update the pending
 //!   sustain target; they do not re-kick.
 //!
-//! The deferred sustain write is spawned via `tokio::task::spawn_local`
-//! in production. The same logic is exercised synchronously in tests
-//! by calling `complete_kick` directly.
+//! Tests call `complete_kick` directly to exercise the post-kick
+//! transition without driving an async timer.
 
 #![allow(dead_code)]
 // `state` / `store` / `writer` / `writes` are well-established semantic
@@ -46,17 +58,18 @@ use super::state::{ChannelEntry, FanState, FanStateMap};
 use super::store::CalibrationStore;
 use super::ChannelKey;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::repositories::repository::Repository;
 use anyhow::Result;
 use async_trait::async_trait;
 use log::warn;
+use moro_local::Scope;
 use std::rc::Rc;
 use std::time::Duration;
 
 /// Hardware-write abstraction the dispatcher targets.
 ///
-/// Production code wraps `Rc<dyn Repository>` in a small adapter that
-/// implements this trait by delegating to `apply_setting_speed_fixed`.
-/// Tests implement it directly to capture the sequence of writes.
+/// Production code wraps `Rc<dyn Repository>` in `RepoWriter` (below).
+/// Tests implement this trait directly to capture the sequence of writes.
 #[async_trait(?Send)]
 pub trait DutyWriter {
     async fn write_device_duty(
@@ -67,25 +80,153 @@ pub trait DutyWriter {
     ) -> Result<()>;
 }
 
-/// Apply a user-facing `true_duty` to a channel.
+/// Production adapter: turns a `Repository` into a `DutyWriter` by
+/// delegating to `apply_setting_speed_fixed`.
 ///
-/// Mirrors the original `repo.apply_setting_speed_fixed` contract from
-/// the caller's perspective: a single async call that returns once the
-/// hardware write has been attempted. For smooth calibrations the
-/// follow-up sustain write happens asynchronously via `spawn_local`;
-/// the immediate result reflects the kick (or the direct write).
-pub async fn dispatch(
-    state: &Rc<FanStateMap>,
-    store: &CalibrationStore,
-    writer: Rc<dyn DutyWriter>,
+/// Constructed at every dispatch call site (engine commander, manual
+/// setting path). Tiny and cheap.
+pub struct RepoWriter {
+    repo: Rc<dyn Repository>,
+}
+
+impl RepoWriter {
+    pub fn new(repo: Rc<dyn Repository>) -> Self {
+        Self { repo }
+    }
+
+    /// Convenience: returns an `Rc<dyn DutyWriter>` ready to hand to
+    /// `dispatch`. Call sites typically use this form.
+    pub fn rc(repo: Rc<dyn Repository>) -> Rc<dyn DutyWriter> {
+        Rc::new(Self::new(repo))
+    }
+}
+
+#[async_trait(?Send)]
+impl DutyWriter for RepoWriter {
+    async fn write_device_duty(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        device_duty: Duty,
+    ) -> Result<()> {
+        self.repo
+            .apply_setting_speed_fixed(device_uid, channel_name, device_duty)
+            .await
+    }
+}
+
+/// Outcome of the synchronous part of a dispatch. When the dispatcher
+/// transitions a channel out of `Off`, the caller still needs to
+/// schedule a deferred sustain write after `kick_duration_ms`. The two
+/// public entry points (`dispatch` and `dispatch_local`) use different
+/// spawn mechanisms; both consume this outcome the same way.
+pub enum DispatchOutcome {
+    /// All work completed; no follow-up needed.
+    Done,
+    /// The kick was written and the channel is now `Kicking`. The
+    /// caller must schedule a task that, after `kick_duration_ms`,
+    /// calls `complete_kick(state, writer, &key, &device_uid, &channel_name)`.
+    SustainPending {
+        kick_duration_ms: u32,
+        key: ChannelKey,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    },
+}
+
+/// Apply a user-facing `true_duty` and use a moro scope to spawn the
+/// deferred sustain write when the channel transitions out of `Off`.
+///
+/// Prefer this variant on every code path where a `Scope` reference is
+/// already in scope (engine commanders inside the main loop). It keeps
+/// the spawned future borrowing `&Rc<...>` from the caller's stack
+/// frame, so the hot path does no `Rc::clone` and no heap allocation.
+pub async fn dispatch<'s>(
+    state: &'s Rc<FanStateMap>,
+    store: &'s CalibrationStore,
+    writer: &'s Rc<dyn DutyWriter>,
+    scope: &'s Scope<'s, 's, Result<()>>,
     device_uid: DeviceUID,
     channel_name: ChannelName,
     true_duty: Duty,
 ) -> Result<()> {
+    let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
+    if let DispatchOutcome::SustainPending {
+        kick_duration_ms,
+        key,
+        device_uid,
+        channel_name,
+    } = outcome
+    {
+        scope.spawn(async move {
+            tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
+            complete_kick(state, writer, &key, &device_uid, &channel_name).await;
+        });
+    }
+    Ok(())
+}
+
+/// Apply a user-facing `true_duty` from a one-off code path that does
+/// not own a moro `Scope`. Spawns the deferred sustain write through
+/// `tokio::task::spawn_local`, which forces an `Rc::clone` of both
+/// `state` and `writer` since the spawned future must be `'static`.
+///
+/// Use only for paths that fire on user input (API actor's manual-duty
+/// handler, fixed-profile application, saved-setting replay). On the
+/// per-tick scheduled paths the moro-scope variant `dispatch` avoids
+/// these clones entirely.
+pub async fn dispatch_local(
+    state: &Rc<FanStateMap>,
+    store: &CalibrationStore,
+    writer: &Rc<dyn DutyWriter>,
+    device_uid: DeviceUID,
+    channel_name: ChannelName,
+    true_duty: Duty,
+) -> Result<()> {
+    let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
+    if let DispatchOutcome::SustainPending {
+        kick_duration_ms,
+        key,
+        device_uid,
+        channel_name,
+    } = outcome
+    {
+        let state_owned = Rc::clone(state);
+        let writer_owned = Rc::clone(writer);
+        tokio::task::spawn_local(async move {
+            tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
+            complete_kick(
+                &state_owned,
+                &writer_owned,
+                &key,
+                &device_uid,
+                &channel_name,
+            )
+            .await;
+        });
+    }
+    Ok(())
+}
+
+/// Synchronous dispatch logic shared by both public entry points.
+///
+/// Performs the immediate hardware write (passthrough, write-zero, kick,
+/// or sustain-on-On) and updates the per-channel state machine. Returns
+/// `SustainPending` only on the `Off -> Kicking` transition so the
+/// caller can spawn the deferred sustain write using whichever spawn
+/// mechanism it owns.
+async fn dispatch_core(
+    state: &Rc<FanStateMap>,
+    store: &CalibrationStore,
+    writer: &Rc<dyn DutyWriter>,
+    device_uid: DeviceUID,
+    channel_name: ChannelName,
+    true_duty: Duty,
+) -> Result<DispatchOutcome> {
     let key: ChannelKey = (device_uid.clone(), channel_name.clone());
 
     if state.is_under_diagnosis(&key) {
-        return Ok(());
+        return Ok(DispatchOutcome::Done);
     }
 
     let calibration = store.get(&key);
@@ -93,14 +234,16 @@ pub async fn dispatch(
         .as_ref()
         .and_then(|cal| cal.true_to_device(true_duty));
     let Some(mapped) = mapping else {
-        return writer
+        writer
             .write_device_duty(&device_uid, &channel_name, true_duty)
-            .await;
+            .await?;
+        return Ok(DispatchOutcome::Done);
     };
     let kick_duration_ms = calibration.as_ref().map_or(0, |cal| cal.kick_duration_ms);
 
     if true_duty == 0 {
-        return handle_write_zero(state, writer, key, device_uid, channel_name).await;
+        handle_write_zero(state, writer, key, device_uid, channel_name).await?;
+        return Ok(DispatchOutcome::Done);
     }
 
     let entry = state.entry(&key);
@@ -109,21 +252,27 @@ pub async fn dispatch(
             start_kick(
                 state,
                 writer,
-                key,
+                &key,
                 entry,
                 mapped,
+                &device_uid,
+                &channel_name,
+            )
+            .await?;
+            Ok(DispatchOutcome::SustainPending {
                 kick_duration_ms,
+                key,
                 device_uid,
                 channel_name,
-            )
-            .await
+            })
         }
         FanState::Kicking { .. } => {
             update_kick_target(state, key, entry, mapped.sustain);
-            Ok(())
+            Ok(DispatchOutcome::Done)
         }
         FanState::On => {
-            write_sustain_on(state, writer, key, entry, mapped, device_uid, channel_name).await
+            write_sustain_on(state, writer, key, entry, mapped, device_uid, channel_name).await?;
+            Ok(DispatchOutcome::Done)
         }
     }
 }
@@ -131,7 +280,7 @@ pub async fn dispatch(
 /// Transition any state to `Off` and write 0 to hardware.
 async fn handle_write_zero(
     state: &Rc<FanStateMap>,
-    writer: Rc<dyn DutyWriter>,
+    writer: &Rc<dyn DutyWriter>,
     key: ChannelKey,
     device_uid: DeviceUID,
     channel_name: ChannelName,
@@ -149,17 +298,17 @@ async fn handle_write_zero(
         .await
 }
 
-/// Start a kick: set state to `Kicking`, write `kick_duty`, and spawn
-/// the deferred sustain write.
+/// Start a kick: set state to `Kicking` and write `kick_duty`. Returns
+/// to the caller, which schedules the deferred sustain write. No clones
+/// or spawns inside this helper.
 async fn start_kick(
     state: &Rc<FanStateMap>,
-    writer: Rc<dyn DutyWriter>,
-    key: ChannelKey,
+    writer: &Rc<dyn DutyWriter>,
+    key: &ChannelKey,
     prior: ChannelEntry,
     mapped: MappedDuty,
-    kick_duration_ms: u32,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    device_uid: &UID,
+    channel_name: &str,
 ) -> Result<()> {
     state.replace(
         key.clone(),
@@ -170,18 +319,9 @@ async fn start_kick(
             under_diagnosis: prior.under_diagnosis,
         },
     );
-    let write_result = writer
-        .write_device_duty(&device_uid, &channel_name, mapped.kick)
-        .await;
-    schedule_sustain(
-        Rc::clone(state),
-        Rc::clone(&writer),
-        key,
-        device_uid,
-        channel_name,
-        kick_duration_ms,
-    );
-    write_result
+    writer
+        .write_device_duty(device_uid, channel_name, mapped.kick)
+        .await
 }
 
 /// While `Kicking`, only the pending sustain target is updated; the
@@ -208,7 +348,7 @@ fn update_kick_target(
 /// sustain duty. State stays `On`.
 async fn write_sustain_on(
     state: &Rc<FanStateMap>,
-    writer: Rc<dyn DutyWriter>,
+    writer: &Rc<dyn DutyWriter>,
     key: ChannelKey,
     prior: ChannelEntry,
     mapped: MappedDuty,
@@ -227,31 +367,12 @@ async fn write_sustain_on(
         .await
 }
 
-/// Spawns the deferred sustain-write task. The task sleeps for
-/// `kick_duration_ms`, then calls `complete_kick` to finish the
-/// transition. If the channel's state moved away from `Kicking` by
-/// the time the task fires (e.g. user wrote 0), the task does not
-/// touch the hardware.
-fn schedule_sustain(
-    state: Rc<FanStateMap>,
-    writer: Rc<dyn DutyWriter>,
-    key: ChannelKey,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
-    kick_duration_ms: u32,
-) {
-    tokio::task::spawn_local(async move {
-        tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
-        complete_kick(&state, writer, &key, &device_uid, &channel_name).await;
-    });
-}
-
 /// Finalize a pending kick: if the channel is still in `Kicking`,
 /// transition to `On` and write the latest `sustain_target`. Called
 /// by the spawned task in production and directly by unit tests.
 pub async fn complete_kick(
     state: &Rc<FanStateMap>,
-    writer: Rc<dyn DutyWriter>,
+    writer: &Rc<dyn DutyWriter>,
     key: &ChannelKey,
     device_uid: &UID,
     channel_name: &str,
@@ -298,9 +419,11 @@ mod tests {
     }
 
     impl MockWriter {
-        fn new() -> (Rc<Self>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+        /// Returns the writer as the trait-object Rc the dispatch
+        /// signature expects, plus a handle to the captured writes.
+        fn make() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
             let writes = Rc::new(RefCell::new(Vec::new()));
-            let writer = Rc::new(Self {
+            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
                 writes: Rc::clone(&writes),
                 fail_next: Rc::new(RefCell::new(false)),
             });
@@ -390,11 +513,11 @@ mod tests {
         // start on before opting into calibration.
         let state = Rc::new(FanStateMap::new());
         let store = CalibrationStore::empty();
-        let (writer, writes) = MockWriter::new();
-        dispatch(
+        let (writer, writes) = MockWriter::make();
+        dispatch_local(
             &state,
             &store,
-            writer,
+            &writer,
             "dev-a".to_string(),
             "fan1".to_string(),
             42,
@@ -416,11 +539,11 @@ mod tests {
         let state = Rc::new(FanStateMap::new());
         let store = CalibrationStore::empty();
         store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
-        let (writer, writes) = MockWriter::new();
-        dispatch(
+        let (writer, writes) = MockWriter::make();
+        dispatch_local(
             &state,
             &store,
-            writer,
+            &writer,
             "dev-a".to_string(),
             "fan1".to_string(),
             42,
@@ -441,11 +564,11 @@ mod tests {
         state.set_under_diagnosis(k("dev-a", "fan1"), true);
         let store = CalibrationStore::empty();
         store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-        let (writer, writes) = MockWriter::new();
-        dispatch(
+        let (writer, writes) = MockWriter::make();
+        dispatch_local(
             &state,
             &store,
-            writer,
+            &writer,
             "dev-a".to_string(),
             "fan1".to_string(),
             42,
@@ -467,11 +590,11 @@ mod tests {
                 let state = Rc::new(FanStateMap::new());
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::new();
-                dispatch(
+                let (writer, writes) = MockWriter::make();
+                dispatch_local(
                     &state,
                     &store,
-                    writer,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     50,
@@ -479,8 +602,9 @@ mod tests {
                 .await
                 .expect("ok");
                 // One write so far: the kick. The sustain write is
-                // scheduled but the paused tokio clock has not elapsed
-                // the kick window, so it has not yet fired.
+                // scheduled via spawn_local; we never drive the timer in
+                // this test, so the spawned future never fires before
+                // the LocalSet is dropped.
                 assert_eq!(writes.borrow().len(), 1);
                 let kick_written = writes.borrow()[0].2;
                 let mapped = smooth_cal().true_to_device(50).expect("smooth");
@@ -507,21 +631,21 @@ mod tests {
                 let state = Rc::new(FanStateMap::new());
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::new();
-                dispatch(
+                let (writer, writes) = MockWriter::make();
+                dispatch_local(
                     &state,
                     &store,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     50,
                 )
                 .await
                 .expect("kick");
-                dispatch(
+                dispatch_local(
                     &state,
                     &store,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     0,
@@ -536,7 +660,7 @@ mod tests {
                 // because state has moved to Off.
                 complete_kick(
                     &state,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     &k("dev-a", "fan1"),
                     &"dev-a".to_string(),
                     "fan1",
@@ -559,12 +683,12 @@ mod tests {
                 let state = Rc::new(FanStateMap::new());
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::new();
+                let (writer, writes) = MockWriter::make();
                 let cal = smooth_cal();
-                dispatch(
+                dispatch_local(
                     &state,
                     &store,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     50,
@@ -572,10 +696,10 @@ mod tests {
                 .await
                 .expect("kick");
                 assert_eq!(writes.borrow().len(), 1);
-                dispatch(
+                dispatch_local(
                     &state,
                     &store,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     70,
@@ -594,7 +718,7 @@ mod tests {
                 // should be written, state becomes On.
                 complete_kick(
                     &state,
-                    Rc::clone(&writer) as Rc<dyn DutyWriter>,
+                    &writer,
                     &k("dev-a", "fan1"),
                     &"dev-a".to_string(),
                     "fan1",
@@ -627,11 +751,11 @@ mod tests {
                 );
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(key.clone(), smooth_cal());
-                let (writer, writes) = MockWriter::new();
-                dispatch(
+                let (writer, writes) = MockWriter::make();
+                dispatch_local(
                     &state,
                     &store,
-                    writer,
+                    &writer,
                     "dev-a".to_string(),
                     "fan1".to_string(),
                     80,
@@ -661,8 +785,8 @@ mod tests {
                 under_diagnosis: false,
             },
         );
-        let (writer, writes) = MockWriter::new();
-        complete_kick(&state, writer, &key, &"dev-a".to_string(), "fan1").await;
+        let (writer, writes) = MockWriter::make();
+        complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
         assert!(writes.borrow().is_empty());
         assert_eq!(state.entry(&key).state, FanState::Off);
     }

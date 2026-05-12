@@ -21,6 +21,7 @@ use std::ops::Not;
 use std::rc::Rc;
 
 use crate::api::CCError;
+use crate::calibration::{self, CalibrationStore, FanStateMap, RepoWriter};
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
@@ -51,18 +52,42 @@ const SYNC_CHANNEL_NAME: &str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 
+/// Per-device-type cache of the calibration dispatch writer. Built
+/// once at engine construction and reused on every fan-write so the
+/// hot path is a single `HashMap` lookup with no allocation or cloning.
+pub type WritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
+
+/// Build the per-device-type writer cache from an existing repos map.
+/// One `Rc<dyn DutyWriter>` per device type, reused for every write.
+fn build_writers_by_type(repos_by_type: &ReposByType) -> WritersByType {
+    let mut writers = HashMap::with_capacity(repos_by_type.len());
+    for (device_type, repo) in repos_by_type {
+        writers.insert(*device_type, RepoWriter::rc(Rc::clone(repo)));
+    }
+    writers
+}
+
 pub struct Engine {
     all_devices: AllDevices,
     repos: ReposByType,
+    writers_by_type: WritersByType,
     config: Rc<Config>,
     graph_commander: Rc<GraphProfileCommander>,
     mix_commander: Rc<MixProfileCommander>,
     overlay_commander: Rc<OverlayProfileCommander>,
     pub lcd_commander: Rc<LcdCommander>,
+    calibration_store: Rc<CalibrationStore>,
+    fan_state_map: Rc<FanStateMap>,
 }
 
 impl Engine {
-    pub fn new(all_devices: AllDevices, repos: &Repos, config: Rc<Config>) -> Self {
+    pub fn new(
+        all_devices: AllDevices,
+        repos: &Repos,
+        config: Rc<Config>,
+        calibration_store: Rc<CalibrationStore>,
+        fan_state_map: Rc<FanStateMap>,
+    ) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
             match repo.device_type() {
@@ -80,10 +105,13 @@ impl Engine {
                 }
             };
         }
+        let writers_by_type = build_writers_by_type(&repos_by_type);
         let graph_commander = Rc::new(GraphProfileCommander::new(
             all_devices.clone(),
-            repos_by_type.clone(),
+            writers_by_type.clone(),
             config.clone(),
+            Rc::clone(&calibration_store),
+            Rc::clone(&fan_state_map),
         ));
         let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
         let overlay_commander = Rc::new(OverlayProfileCommander::new(
@@ -97,11 +125,14 @@ impl Engine {
         Engine {
             all_devices,
             repos: repos_by_type,
+            writers_by_type,
             config,
             graph_commander,
             mix_commander,
             overlay_commander,
             lcd_commander,
+            calibration_store,
+            fan_state_map,
         }
     }
 
@@ -154,14 +185,30 @@ impl Engine {
                     .clear_channel_setting_all_commanders(device_uid, channel_name);
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
-                repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
-                    .await
-                    .inspect(|()| {
-                        info!(
-                            "Successfully applied:: {} | {channel_name} | Fixed Speed: {speed_fixed}",
-                            device_lock.borrow().name
-                        );
-                    })
+                let device_type = device_lock.borrow().d_type;
+                let writer = self.writers_by_type.get(&device_type).with_context(|| {
+                    format!("No calibration writer for device type {device_type:?}")
+                })?;
+                // No moro scope is reachable on the manual path (API
+                // actor handlers, profile application, saved-setting
+                // replay). dispatch_local does one Rc::clone per call
+                // to satisfy spawn_local's 'static requirement, which
+                // is acceptable for the low-frequency manual path.
+                calibration::dispatch_local(
+                    &self.fan_state_map,
+                    &self.calibration_store,
+                    writer,
+                    device_uid.clone(),
+                    channel_name.to_string(),
+                    speed_fixed,
+                )
+                .await
+                .inspect(|()| {
+                    info!(
+                        "Successfully applied:: {} | {channel_name} | Fixed Speed: {speed_fixed}",
+                        device_lock.borrow().name
+                    );
+                })
             }
             Err(err) => Err(err),
         }

@@ -175,7 +175,18 @@ mod engine_tests {
         let all_repos = Rc::new(repos);
         let config = Rc::new(Config::init_default_config().unwrap());
         config.create_device_list(&all_devices);
-        let engine = Engine::new(all_devices, &all_repos, Rc::clone(&config));
+        // Empty store + empty state map means every channel is uncalibrated,
+        // so calibration::dispatch passes the duty straight through to the
+        // mock repository. Existing engine assertions stay intact.
+        let calibration_store = Rc::new(crate::calibration::CalibrationStore::empty());
+        let fan_state_map = Rc::new(crate::calibration::FanStateMap::new());
+        let engine = Engine::new(
+            all_devices,
+            &all_repos,
+            Rc::clone(&config),
+            calibration_store,
+            fan_state_map,
+        );
 
         (device, engine, config, set_speeds, should_fail)
     }

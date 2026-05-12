@@ -43,7 +43,9 @@ pub use curve::{
     classify_curve, derive_scalars, start_threshold, Calibration, CurveKind, DerivedScalars,
     MappedDuty, DUTY_STEP_PERCENT, SAMPLE_COUNT,
 };
-pub use dispatch::{complete_kick, dispatch, DutyWriter};
+pub use dispatch::{
+    complete_kick, dispatch, dispatch_local, DispatchOutcome, DutyWriter, RepoWriter,
+};
 pub use state::{ChannelEntry, FanState, FanStateMap};
 pub use store::{CalibrationConfigFile, CalibrationEntry, CalibrationStore};
 
