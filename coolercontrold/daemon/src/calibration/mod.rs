@@ -37,6 +37,7 @@
 mod curve;
 mod diagnoser;
 mod dispatch;
+mod registry;
 mod state;
 mod store;
 
@@ -45,12 +46,13 @@ pub use curve::{
     MappedDuty, DUTY_STEP_PERCENT, SAMPLE_COUNT,
 };
 pub use diagnoser::{
-    run_diagnosis, DiagnosisFailure, DiagnosisHost, DiagnosisSettings, SettingsSnapshot,
-    SnapshotKind,
+    run_diagnosis, DiagnosisFailure, DiagnosisHost, DiagnosisPhase, DiagnosisProgress,
+    DiagnosisSettings, SettingsSnapshot, SnapshotKind,
 };
 pub use dispatch::{
     complete_kick, dispatch, dispatch_local, DispatchOutcome, DutyWriter, RepoWriter,
 };
+pub use registry::DiagnosisRegistry;
 pub use state::{ChannelEntry, FanState, FanStateMap};
 pub use store::{CalibrationConfigFile, CalibrationEntry, CalibrationStore};
 

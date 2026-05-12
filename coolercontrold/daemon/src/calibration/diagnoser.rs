@@ -118,6 +118,31 @@ pub enum SnapshotKind {
     Profile(ProfileUID),
 }
 
+/// A progress notification emitted by the diagnoser. Phase 4a-ii will
+/// broadcast these as `calibration_progress` SSE events; Phase 4a-i
+/// just plumbs the type through.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiagnosisProgress {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
+    pub phase: DiagnosisPhase,
+    /// Percent complete across both sweeps. 0 at preflight, 100 on
+    /// `Finalizing`.
+    pub percent: u8,
+    /// Most recent device-duty the sweep wrote, if any.
+    pub current_duty: Option<Duty>,
+    /// Most recent RPM the sweep observed, if any.
+    pub current_rpm: Option<RPM>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosisPhase {
+    Preflight,
+    UpSweep,
+    DownSweep,
+    Finalizing,
+}
+
 /// Single trait carrying every I/O dependency the diagnoser needs.
 ///
 /// The production implementation lives on the engine (Phase 3b-ii)
@@ -150,6 +175,12 @@ pub trait DiagnosisHost {
     /// Sleep for the given number of milliseconds. Separately
     /// abstracted so unit tests can no-op the wall-clock waits.
     async fn sleep_millis(&self, millis: u32);
+
+    /// Receive a progress notification from the diagnoser. Default
+    /// no-op so unit tests using a minimal mock host do not have to
+    /// implement it; the production engine wires this to an SSE
+    /// broadcast in Phase 4a-ii.
+    fn emit_progress(&self, _progress: DiagnosisProgress) {}
 }
 
 /// Run a single calibration diagnosis on `(device_uid, channel_name)`.
@@ -178,6 +209,15 @@ where
 {
     let key: ChannelKey = (device_uid.clone(), channel_name.clone());
 
+    host.emit_progress(DiagnosisProgress {
+        device_uid: device_uid.clone(),
+        channel_name: channel_name.clone(),
+        phase: DiagnosisPhase::Preflight,
+        percent: 0,
+        current_duty: None,
+        current_rpm: None,
+    });
+
     let preflight_temp = host.max_temp_celsius().await;
     if preflight_temp >= settings.start_temp_max_c {
         return Err(DiagnosisFailure::PreflightTempTooHigh {
@@ -191,6 +231,15 @@ where
 
     let sweep_outcome =
         perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
+
+    host.emit_progress(DiagnosisProgress {
+        device_uid: device_uid.clone(),
+        channel_name: channel_name.clone(),
+        phase: DiagnosisPhase::Finalizing,
+        percent: 100,
+        current_duty: None,
+        current_rpm: None,
+    });
 
     // Clear the flag BEFORE restore so the production restore path
     // (which routes through `engine.set_fixed_speed` -> `dispatch_local`)
@@ -255,6 +304,7 @@ where
             cancellation,
             i,
             &mut up_curve,
+            DiagnosisPhase::UpSweep,
         )
         .await?;
     }
@@ -267,6 +317,7 @@ where
             cancellation,
             i,
             &mut down_curve,
+            DiagnosisPhase::DownSweep,
         )
         .await?;
     }
@@ -274,7 +325,9 @@ where
 }
 
 /// One step of the sweep: write the duty at index `i`, settle, abort
-/// check, then read the resulting RPM into `target[i]`.
+/// check, then read the resulting RPM into `target[i]`. Emits a
+/// progress event after the sample lands so the consumer sees the
+/// duty/RPM pair just observed.
 async fn sweep_step<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -283,6 +336,7 @@ async fn sweep_step<H>(
     cancellation: &CancellationToken,
     i: usize,
     target: &mut [RPM; SAMPLE_COUNT],
+    phase: DiagnosisPhase,
 ) -> Result<(), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
@@ -310,7 +364,31 @@ where
         .await
         .unwrap_or(0);
     target[i] = rpm;
+    host.emit_progress(DiagnosisProgress {
+        device_uid: device_uid.clone(),
+        channel_name: channel_name.to_string(),
+        phase,
+        percent: progress_percent(phase, i),
+        current_duty: Some(duty),
+        current_rpm: Some(rpm),
+    });
     Ok(())
+}
+
+/// Map a sweep step to a 0..=100 percent. The up-sweep occupies the
+/// first half (0..50), the down-sweep the second half (50..100).
+fn progress_percent(phase: DiagnosisPhase, idx: usize) -> u8 {
+    const HALF: u32 = 50;
+    let denom = u32::try_from(SAMPLE_COUNT).expect("SAMPLE_COUNT fits in u32");
+    let step = u32::try_from(idx + 1).unwrap_or(denom);
+    let half_progress = (step * HALF) / denom;
+    let percent = match phase {
+        DiagnosisPhase::UpSweep => half_progress,
+        DiagnosisPhase::DownSweep => HALF + half_progress,
+        DiagnosisPhase::Preflight => 0,
+        DiagnosisPhase::Finalizing => 100,
+    };
+    u8::try_from(percent.min(100)).unwrap_or(100)
 }
 
 fn index_to_duty(idx: usize) -> Duty {
@@ -337,6 +415,7 @@ mod tests {
         restores_applied: RefCell<Vec<SettingsSnapshot>>,
         restore_should_fail: Cell<bool>,
         fail_write_at_step: Cell<Option<usize>>,
+        progress_events: RefCell<Vec<DiagnosisProgress>>,
     }
 
     impl MockHost {
@@ -352,6 +431,7 @@ mod tests {
                 restores_applied: RefCell::new(Vec::new()),
                 restore_should_fail: Cell::new(false),
                 fail_write_at_step: Cell::new(None),
+                progress_events: RefCell::new(Vec::new()),
             }
         }
 
@@ -450,6 +530,10 @@ mod tests {
         }
 
         async fn sleep_millis(&self, _ms: u32) {}
+
+        fn emit_progress(&self, progress: DiagnosisProgress) {
+            self.progress_events.borrow_mut().push(progress);
+        }
     }
 
     fn key(dev: &str, chan: &str) -> ChannelKey {
@@ -769,6 +853,60 @@ mod tests {
             "under_diagnosis flag must be true on every write"
         );
         assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn progress_events_cover_preflight_sweep_and_finalize() {
+        // Goal: a successful diagnosis emits at least one preflight
+        // event, one or more per-sweep events with monotonically
+        // non-decreasing percent for the up-sweep half, and a final
+        // finalizing event at 100%. This is what SSE clients consume
+        // to render the progress bar in Phase 4a-ii.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("happy path");
+
+        let events = host.progress_events.borrow();
+        assert!(events.len() >= 3, "at least preflight + sweep + finalize");
+        assert_eq!(
+            events.first().expect("preflight").phase,
+            DiagnosisPhase::Preflight
+        );
+        assert_eq!(
+            events.last().expect("finalize").phase,
+            DiagnosisPhase::Finalizing
+        );
+        assert_eq!(events.last().expect("finalize").percent, 100);
+        let up_event_count = events
+            .iter()
+            .filter(|e| e.phase == DiagnosisPhase::UpSweep)
+            .count();
+        let down_event_count = events
+            .iter()
+            .filter(|e| e.phase == DiagnosisPhase::DownSweep)
+            .count();
+        assert_eq!(
+            up_event_count, SAMPLE_COUNT,
+            "one progress event per up-sweep step"
+        );
+        assert_eq!(
+            down_event_count, SAMPLE_COUNT,
+            "one progress event per down-sweep step"
+        );
     }
 
     use std::ops::Not;

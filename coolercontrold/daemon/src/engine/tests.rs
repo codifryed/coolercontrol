@@ -1625,11 +1625,10 @@ mod engine_tests {
     fn start_calibration_diagnosis_preflight_rejects_hot_system() {
         // Goal: end-to-end engine entry point. When the most recent
         // status shows a hot temp, the diagnoser short-circuits in
-        // pre-flight, no calibration is persisted, and the channel
-        // is not marked under_diagnosis.
+        // pre-flight, no calibration is persisted, and the registry
+        // entry is cleared so subsequent attempts can run.
         cc_fs::test_runtime(async {
             use crate::calibration::DiagnosisFailure;
-            use tokio_util::sync::CancellationToken;
             let (device, engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
             // Seed a hot ambient temperature so preflight refuses.
@@ -1641,14 +1640,27 @@ mod engine_tests {
             device
                 .borrow_mut()
                 .initialize_status_history_with(status, 1.0);
-            let cancellation = CancellationToken::new();
             let err = engine
-                .start_calibration_diagnosis(device_uid.clone(), "fan1".to_string(), cancellation)
+                .start_calibration_diagnosis(device_uid.clone(), "fan1".to_string())
                 .await
                 .expect_err("preflight rejects hot system");
             assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
             let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
             assert!(!calibration_store.has(&key));
+            assert!(!engine.is_calibration_in_progress(&key));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn cancel_calibration_returns_false_when_not_running() {
+        // Goal: the engine's cancel entry point returns false when
+        // nothing is in flight; the REST layer maps this to a 404.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            assert!(!engine.cancel_calibration_diagnosis(&key));
         });
     }
 

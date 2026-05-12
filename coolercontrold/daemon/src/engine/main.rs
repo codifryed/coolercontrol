@@ -25,7 +25,7 @@ use std::time::Duration as StdDuration;
 use crate::api::CCError;
 use crate::calibration::{
     self, Calibration, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
-    DiagnosisSettings, FanStateMap, RepoWriter, SettingsSnapshot, SnapshotKind,
+    DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter, SettingsSnapshot, SnapshotKind,
 };
 use crate::config::Config;
 use crate::device::{
@@ -84,6 +84,7 @@ pub struct Engine {
     pub lcd_commander: Rc<LcdCommander>,
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
+    diagnosis_registry: Rc<DiagnosisRegistry>,
 }
 
 impl Engine {
@@ -139,6 +140,7 @@ impl Engine {
             lcd_commander,
             calibration_store,
             fan_state_map,
+            diagnosis_registry: Rc::new(DiagnosisRegistry::new()),
         }
     }
 
@@ -1009,18 +1011,29 @@ impl Engine {
 
     /// Drive a per-channel calibration diagnosis end-to-end.
     ///
-    /// Wraps `calibration::run_diagnosis` with the engine itself as the
-    /// `DiagnosisHost` (so the diagnoser can read RPM/temp, write raw
-    /// duty, snapshot+restore settings, and sleep). On success the
-    /// in-memory `CalibrationStore` is flushed to disk via
-    /// `save_to_disk`; a disk-write failure is surfaced as
-    /// `PersistFailed` while the in-memory calibration stays usable.
+    /// Registers the channel in the `DiagnosisRegistry` so the REST
+    /// cancel endpoint can interrupt the sweep, then wraps
+    /// `calibration::run_diagnosis` with the engine itself as the
+    /// `DiagnosisHost`. On success the in-memory `CalibrationStore`
+    /// is flushed to disk via `save_to_disk`; a disk-write failure is
+    /// surfaced as `PersistFailed` while the in-memory calibration
+    /// stays usable. The registry entry is cleared after the sweep
+    /// terminates regardless of outcome.
+    ///
+    /// Returns `DiagnosisFailure::Internal` if a diagnosis is already
+    /// in flight for the same `(device_uid, channel_name)` pair.
     pub async fn start_calibration_diagnosis(
         &self,
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        cancellation: tokio_util::sync::CancellationToken,
     ) -> std::result::Result<Calibration, DiagnosisFailure> {
+        let key: ChannelKey = (device_uid.clone(), channel_name.clone());
+        if self.diagnosis_registry.is_in_flight(&key) {
+            return Err(DiagnosisFailure::WriteFailed(format!(
+                "calibration already in progress for {device_uid}:{channel_name}"
+            )));
+        }
+        let cancellation = self.diagnosis_registry.register(key.clone());
         let settings = DiagnosisSettings::default();
         let outcome = calibration::run_diagnosis(
             &self.fan_state_map,
@@ -1032,12 +1045,27 @@ impl Engine {
             cancellation,
         )
         .await;
+        self.diagnosis_registry.clear(&key);
         if outcome.is_ok() {
             if let Err(err) = self.calibration_store.save_to_disk().await {
                 return Err(DiagnosisFailure::PersistFailed(err.to_string()));
             }
         }
         outcome
+    }
+
+    /// Cancel an in-flight calibration diagnosis for the given
+    /// channel. Returns `true` when a diagnosis was found and
+    /// cancelled, `false` when nothing was running on that channel.
+    pub fn cancel_calibration_diagnosis(&self, key: &ChannelKey) -> bool {
+        self.diagnosis_registry.cancel(key)
+    }
+
+    /// Whether a calibration diagnosis is currently running on the
+    /// given channel. Used by the REST guard on manual/profile
+    /// setters and by the UI to render the in-progress state.
+    pub fn is_calibration_in_progress(&self, key: &ChannelKey) -> bool {
+        self.diagnosis_registry.is_in_flight(key)
     }
 
     /// Processes and applies the speed of all devices that have a scheduled setting.
