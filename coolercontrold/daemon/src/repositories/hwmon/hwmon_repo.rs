@@ -318,6 +318,7 @@ struct PendingWrite {
 struct WriterMailbox {
     pending: RefCell<HashMap<ChannelName, PendingWrite>>,
     notify: Notify,
+    force_next_write: RefCell<HashSet<ChannelName>>,
 }
 
 /// Duty-cache entry for slow-device fan channels. `last_known` is
@@ -629,6 +630,9 @@ impl HwmonRepo {
                 Rc::new(WriterMailbox {
                     pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                     notify: Notify::new(),
+                    force_next_write: RefCell::new(HashSet::with_capacity(
+                        PENDING_INITIAL_CAPACITY,
+                    )),
                 }),
             );
             self.delay_logged.insert(type_index, Cell::new(0));
@@ -1095,6 +1099,19 @@ impl HwmonRepo {
             tokio::task::spawn_local(run_writer_task(task));
         }
     }
+    fn mark_force_next_write(&self, type_index: TypeIndex, channel_name: &str) {
+        let Some(mailbox) = self.writers.get(&type_index) else {
+            debug!(
+                "No writer mailbox for type_index {type_index} when marking force_next_write \
+                 for channel {channel_name}; skipping anchor flag"
+            );
+            return;
+        };
+        mailbox
+            .force_next_write
+            .borrow_mut()
+            .insert(channel_name.to_string());
+    }
 }
 
 /// Clears `preload_in_flight` on drop so a panic / cancellation
@@ -1240,8 +1257,16 @@ async fn run_one_pending_write(
         pending.target_duty <= 100,
         "enqueue_pending_write validates"
     );
-    // Write-skip: target already matches preloaded duty.
-    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+    let force_write = consume_force_flag(&task.mailbox, &channel_name);
+    debug_assert!(
+        task.mailbox
+            .force_next_write
+            .borrow()
+            .contains(channel_name.as_str())
+            .not(),
+        "force_next_write must be cleared after consume"
+    );
+    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
         let _ = pending.waiter.send(Ok(()));
         return;
     }
@@ -1282,8 +1307,10 @@ async fn run_one_pending_write(
     }
     // Re-check write-skip with the (possibly updated) target so a
     // refreshed value that already matches preloaded duty does not
-    // cost a sysfs write.
-    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+    // cost a sysfs write. Still bypassed when `force_write` is set:
+    // the anchor must reach sysfs even if a later enqueue happened
+    // to match preloaded duty.
+    if force_write.not() && current_duty_matches_target(task, &channel_name, pending.target_duty) {
         let _ = pending.waiter.send(Ok(()));
         drop(permit);
         return;
@@ -1318,6 +1345,13 @@ async fn run_one_pending_write(
         }
     }
     let _ = pending.waiter.send(result);
+}
+
+fn consume_force_flag(mailbox: &WriterMailbox, channel_name: &str) -> bool {
+    mailbox
+        .force_next_write
+        .borrow_mut()
+        .remove(channel_name)
 }
 
 /// True when the channel's preloaded duty already equals
@@ -1706,6 +1740,7 @@ impl Repository for HwmonRepo {
         // Until the first duty write the device sits at whatever the
         // firmware had; drop any stale cache entry.
         self.invalidate_duty_cache_entry(type_index, channel_name);
+        self.mark_force_next_write(type_index, channel_name);
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -3040,6 +3075,9 @@ mod coalescer_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
+                force_next_write: RefCell::new(HashSet::with_capacity(
+                    PENDING_INITIAL_CAPACITY,
+                )),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
@@ -3846,6 +3884,9 @@ mod slow_device_tests {
             Rc::new(WriterMailbox {
                 pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
                 notify: Notify::new(),
+                force_next_write: RefCell::new(HashSet::with_capacity(
+                    PENDING_INITIAL_CAPACITY,
+                )),
             }),
         );
         repo.delay_logged.insert(type_index, Cell::new(0));
