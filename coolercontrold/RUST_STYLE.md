@@ -219,6 +219,15 @@ or `coolercontrol/` (Qt C++).
 
 - **Async boundary hygiene:** Keep `async fn` at the API/repository layer. Pure computation and
   hardware math should be synchronous. Do not make a function `async` just because its caller is.
+- **Prefer `moro_local::Scope::spawn` over `tokio::task::spawn_local` when a scope reference is
+  available.** `tokio::task::spawn_local` requires the spawned future to be `'static`, which forces
+  `Rc::clone` on every captured value. `moro_local::Scope::spawn` only requires the future to
+  outlive the scope, so spawned tasks can borrow `&Rc<T>` instead of cloning. The main loop already
+  carries a `&'s Scope<'s, 's, Result<()>>` through `engine.process_scheduled_speeds`,
+  `commander.update_speeds`, `fire_preloads`, `fire_lcd_update`, and similar hot paths. Thread the
+  scope into any new spawn site that lives inside the main-loop tick. Reserve
+  `tokio::task::spawn_local` for one-off paths where no scope is reachable (e.g. API actor handlers
+  that fire on user request); document the `Rc::clone` cost when you do.
 - **Actor pattern (`src/api/actor/`):** Messages passed through channels must have bounded queues.
   Document the expected queue depth and what happens when it fills.
 - **Repository pattern (`src/repositories/`):** Each repository wraps a hardware access layer.
