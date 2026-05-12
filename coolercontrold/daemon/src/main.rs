@@ -50,6 +50,7 @@ use tokio_util::sync::CancellationToken;
 mod admin;
 mod alerts;
 mod api;
+mod calibration;
 mod cc_fs;
 mod config;
 mod device;
