@@ -30,7 +30,7 @@ use crate::device::{ChannelName, DeviceUID, Duty, RPM};
 use crate::paths;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
-use log::info;
+use log::{info, warn};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -186,13 +186,42 @@ impl CalibrationStore {
                 .await
                 .map_err(|err| anyhow!("Reading configuration file {} - {err}", path.display()))?
         };
-        let parsed: CalibrationConfigFile = serde_json::from_str(&contents).map_err(|err| {
+        // Parse entries one at a time so a single corrupted/legacy
+        // entry (e.g. pre-variable-resolution schema) does not torch
+        // the whole store. Failures are logged and skipped; the user
+        // re-calibrates the affected channel.
+        let raw: serde_json::Value = serde_json::from_str(&contents).map_err(|err| {
             anyhow!(
                 "Parsing Calibration configuration file {} - {err}",
                 path.display()
             )
         })?;
-        self.replace_cache(parsed);
+        let entries_json = raw
+            .get("calibrations")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut calibrations = Vec::with_capacity(entries_json.len());
+        for entry_json in entries_json {
+            match serde_json::from_value::<CalibrationEntry>(entry_json.clone()) {
+                Ok(entry) => calibrations.push(entry),
+                Err(err) => {
+                    let key = entry_json
+                        .get("device_uid")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("<unknown>");
+                    let channel = entry_json
+                        .get("channel_name")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("<unknown>");
+                    warn!(
+                        "Dropping incompatible calibration entry for {key}:{channel} - {err}. \
+                         Re-calibrate the channel from the UI to restore mapping."
+                    );
+                }
+            }
+        }
+        self.replace_cache(CalibrationConfigFile { calibrations });
         Ok(())
     }
 
@@ -240,21 +269,21 @@ async fn ensure_config_dir() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::curve::{CurveKind, SAMPLE_COUNT};
+    use super::super::curve::{CurveKind, DutySample};
     use super::*;
     use chrono::Local;
 
     fn sample_calibration() -> Calibration {
         // Build a deterministic Calibration suitable for serde round-trips
-        // and CRUD assertions. The values mirror what the diagnoser would
-        // produce for a typical 2000-RPM fan calibrated at 5% steps.
-        let mut up = [0u32; SAMPLE_COUNT];
-        let mut down = [0u32; SAMPLE_COUNT];
-        for (i, (u, d)) in up.iter_mut().zip(down.iter_mut()).enumerate() {
-            let rpm = 100 * u32::try_from(i).expect("SAMPLE_COUNT fits in u32");
-            *u = rpm;
-            *d = rpm;
-        }
+        // and CRUD assertions. Uniform 5%-step samples are sufficient for
+        // store-level tests; the diagnoser tests cover variable spacing.
+        let up: Vec<DutySample> = (0..21usize)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: 100 * u32::try_from(i).expect("fits in u32"),
+            })
+            .collect();
+        let down = up.clone();
         Calibration {
             up_curve: up,
             down_curve: down,

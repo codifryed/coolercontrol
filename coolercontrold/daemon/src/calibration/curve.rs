@@ -36,16 +36,27 @@ use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Duty resolution used by the diagnosis sweep and the lookup curves.
-///
-/// Changes here break backwards compatibility with persisted JSON files.
-pub const DUTY_STEP_PERCENT: u8 = 5;
+/// Sparse step size: duty increment used after kick-in on the up-sweep
+/// and outside the kick-in zone on the down-sweep.
+pub const DUTY_STEP_SPARSE: u8 = 5;
 
-/// Number of samples in each direction. Equal to `(100 / DUTY_STEP_PERCENT) + 1`.
-pub const SAMPLE_COUNT: usize = 21;
+/// Dense step size: duty increment used while ramping up from rest on
+/// the up-sweep, and inside the kick-in zone on the down-sweep. The
+/// extra resolution captures the steep duty-to-RPM gradient at low
+/// duty and produces a more accurate mapping in that region.
+pub const DUTY_STEP_DENSE: u8 = 2;
 
-const _: () = assert!((DUTY_STEP_PERCENT as usize) * (SAMPLE_COUNT - 1) == 100);
-const _: () = assert!(SAMPLE_COUNT <= u8::MAX as usize);
+/// Buffer above `min_start_duty` that the down-sweep treats as the
+/// kick-in zone (where dense sampling is used). Wide enough to catch
+/// hysteresis (fan keeps spinning at duties slightly below where it
+/// started).
+pub const KICK_ZONE_BUFFER_PERCENT: u8 = 10;
+
+/// Maximum samples we will accept in a single curve. Loose upper
+/// bound; the sweep produces ~30 samples per direction with default
+/// step sizes. Enforced at deserialization time to guard against
+/// pathological persisted data.
+pub const MAX_SAMPLES_PER_CURVE: usize = 128;
 
 /// Absolute RPM floor below which we treat readings as noise.
 const RPM_START_THRESHOLD_ABSOLUTE: RPM = 50;
@@ -66,17 +77,30 @@ const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
 /// hide behind the value the daemon last wrote.
 pub const SANITY_THRESHOLD_PERCENT: u8 = 10;
 
+/// A single measured (device-duty, RPM) sample taken during a sweep.
+/// Curves are stored as variable-length `Vec<DutySample>` sorted by
+/// `duty` ascending, with the dense (2%) sampling concentrated in the
+/// kick-in region and the sparse (5%) sampling elsewhere.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct DutySample {
+    pub duty: Duty,
+    pub rpm: RPM,
+}
+
 /// The duty/RPM curve and derived working-range scalars for one channel.
 ///
 /// Always represents a successful diagnosis. A fan that never spins is
 /// rejected by the diagnoser before a `Calibration` is constructed.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct Calibration {
-    /// RPM readings at duty 0, 5, ..., 100 while sweeping the duty upward.
-    pub up_curve: [RPM; SAMPLE_COUNT],
+    /// Up-sweep RPM samples by device-duty, sorted by duty ascending.
+    /// First sample is at duty 0, last is at duty 100. Dense (2%-step)
+    /// sampling in the kick-in region, sparse (5%-step) elsewhere.
+    pub up_curve: Vec<DutySample>,
 
-    /// RPM readings at duty 0, 5, ..., 100 while sweeping the duty downward.
-    pub down_curve: [RPM; SAMPLE_COUNT],
+    /// Down-sweep RPM samples. Same shape as `up_curve`, with the
+    /// dense sampling around the kick-in zone.
+    pub down_curve: Vec<DutySample>,
 
     /// Measured time from writing `min_start_duty` until RPM crossed the
     /// start threshold, with a safety margin already applied. Bounded.
@@ -198,11 +222,18 @@ impl Calibration {
         u8::try_from(result.min(100)).unwrap_or(100)
     }
 
-    /// RPM at `min_start_duty` along the up-curve.
+    /// RPM at `min_start_duty` along the up-curve. Looks up the
+    /// sample with the matching duty exactly; on a well-formed
+    /// calibration this is always present (the sweep records the
+    /// sample that crossed the start threshold at this duty value).
     fn rpm_floor(&self) -> RPM {
-        let idx = usize::from(self.min_start_duty / DUTY_STEP_PERCENT);
-        assert!(idx < SAMPLE_COUNT);
-        self.up_curve[idx]
+        self.up_curve
+            .iter()
+            .find(|s| s.duty == self.min_start_duty)
+            .map_or_else(
+                || rpm_at_device_duty(&self.up_curve, self.min_start_duty),
+                |s| s.rpm,
+            )
     }
 }
 
@@ -218,54 +249,55 @@ fn interpolate_rpm(rpm_floor: RPM, rpm_max: RPM, true_duty: Duty) -> RPM {
     rpm_floor + u32::try_from(offset).unwrap_or(u32::MAX - rpm_floor)
 }
 
-/// Binary-ish scan of the curve for the lowest duty where RPM >= target,
-/// linearly interpolating between the surrounding samples.
-fn duty_for_rpm(curve: &[RPM; SAMPLE_COUNT], rpm: RPM) -> Duty {
-    let mut idx = SAMPLE_COUNT - 1;
-    for (i, &v) in curve.iter().enumerate() {
-        if v >= rpm {
-            idx = i;
-            break;
-        }
-    }
-    if idx == 0 {
+/// Linear scan of a variable-spaced curve for the lowest sample where
+/// RPM >= target, then linear interpolation by RPM between that sample
+/// and the previous one. Returns the upper-bound duty when the target
+/// is above the entire curve, the lower-bound duty when below, and 0
+/// for an empty curve.
+fn duty_for_rpm(curve: &[DutySample], rpm: RPM) -> Duty {
+    if curve.is_empty() {
         return 0;
     }
-    let lo_rpm = curve[idx - 1];
-    let hi_rpm = curve[idx];
-    let lo_duty = index_to_duty(idx - 1);
-    let hi_duty = index_to_duty(idx);
-    if hi_rpm <= lo_rpm {
-        return lo_duty;
+    let Some(idx) = curve.iter().position(|s| s.rpm >= rpm) else {
+        return curve[curve.len() - 1].duty;
+    };
+    if idx == 0 {
+        return curve[0].duty;
     }
-    if rpm <= lo_rpm {
-        return lo_duty;
+    let lo = curve[idx - 1];
+    let hi = curve[idx];
+    if hi.rpm <= lo.rpm || rpm <= lo.rpm {
+        return lo.duty;
     }
-    let numerator = (rpm - lo_rpm) * u32::from(hi_duty - lo_duty);
-    let denominator = hi_rpm - lo_rpm;
+    let span = hi.duty - lo.duty;
+    let numerator = (rpm - lo.rpm) * u32::from(span);
+    let denominator = hi.rpm - lo.rpm;
     let frac = numerator / denominator;
-    // frac is bounded by (hi_duty - lo_duty), which is at most DUTY_STEP_PERCENT.
-    lo_duty + u8::try_from(frac).unwrap_or(hi_duty - lo_duty)
+    lo.duty + u8::try_from(frac).unwrap_or(span)
 }
 
 /// Classify the up-curve as `Smooth` or `Stepped`.
 ///
 /// Counts inter-sample increases that exceed the jitter tolerance.
-/// Below half the maximum possible transitions is `Stepped`; this catches
-/// devices like `ThinkPad` fans and step-pumps that only change RPM at a
-/// few discrete duty values.
-pub fn classify_curve(up_curve: &[RPM; SAMPLE_COUNT], rpm_max: RPM) -> CurveKind {
+/// Below half the inter-sample gaps having a meaningful increase is
+/// `Stepped`; this catches devices like `ThinkPad` fans and step-pumps
+/// that only change RPM at a few discrete duty values, regardless of
+/// the sample spacing.
+pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
     assert!(rpm_max > 0);
+    if up_curve.len() < 2 {
+        return CurveKind::Stepped;
+    }
 
     let jitter = jitter_threshold(rpm_max);
     let mut transitions: u32 = 0;
-    for i in 0..(SAMPLE_COUNT - 1) {
-        if up_curve[i + 1] > up_curve[i].saturating_add(jitter) {
+    for pair in up_curve.windows(2) {
+        if pair[1].rpm > pair[0].rpm.saturating_add(jitter) {
             transitions += 1;
         }
     }
-    let half = u32::try_from((SAMPLE_COUNT - 1) / 2).unwrap_or(0);
-    if transitions < half {
+    let total_gaps = u32::try_from(up_curve.len() - 1).unwrap_or(u32::MAX);
+    if transitions * 2 < total_gaps {
         CurveKind::Stepped
     } else {
         CurveKind::Smooth
@@ -292,47 +324,66 @@ fn jitter_threshold(rpm_max: RPM) -> RPM {
 /// which the diagnoser surfaces as a `fan_unresponsive` failure rather
 /// than persisting a degenerate calibration.
 pub fn derive_scalars(
-    up_curve: &[RPM; SAMPLE_COUNT],
-    down_curve: &[RPM; SAMPLE_COUNT],
+    up_curve: &[DutySample],
+    down_curve: &[DutySample],
 ) -> Option<DerivedScalars> {
-    let rpm_max = *up_curve.iter().max().unwrap_or(&0);
-    if rpm_max == 0 {
+    let rpm_max = up_curve.iter().map(|s| s.rpm).max().unwrap_or(0);
+    if rpm_max == 0 || up_curve.is_empty() {
         return None;
     }
     let threshold = start_threshold(rpm_max);
     let jitter = jitter_threshold(rpm_max);
 
-    let start_idx = up_curve.iter().position(|&v| v >= threshold)?;
-    let sustain_idx = down_curve
+    let min_start_duty = up_curve.iter().find(|s| s.rpm >= threshold)?.duty;
+    let min_sustain_duty = down_curve
         .iter()
-        .position(|&v| v >= threshold)
-        .unwrap_or(start_idx);
+        .find(|s| s.rpm >= threshold)
+        .map_or(min_start_duty, |s| s.duty);
     let plateau_target = rpm_max.saturating_sub(jitter);
-    let plateau_idx = up_curve
+    let max_eff_duty = up_curve
         .iter()
-        .position(|&v| v >= plateau_target)
-        .unwrap_or(SAMPLE_COUNT - 1);
+        .find(|s| s.rpm >= plateau_target)
+        .map_or_else(|| up_curve[up_curve.len() - 1].duty, |s| s.duty);
 
     Some(DerivedScalars {
-        min_start_duty: index_to_duty(start_idx),
-        min_sustain_duty: index_to_duty(sustain_idx),
-        max_eff_duty: index_to_duty(plateau_idx),
+        min_start_duty,
+        min_sustain_duty,
+        max_eff_duty,
         rpm_max,
     })
 }
 
-/// Linearly interpolate the RPM a real fan would produce at an arbitrary
-/// device-duty, given a sampled curve. Models how the hardware behaves
-/// between sample points; the bare `curve[idx]` lookup only samples the
-/// grid, which is not what reaches the status pipeline.
-fn rpm_at_device_duty(curve: &[RPM; SAMPLE_COUNT], device_duty: Duty) -> RPM {
-    let lo_idx = usize::from(device_duty / DUTY_STEP_PERCENT);
-    let hi_idx = (lo_idx + 1).min(SAMPLE_COUNT - 1);
-    let frac = u32::from(device_duty % DUTY_STEP_PERCENT);
-    let lo_rpm = curve[lo_idx];
-    let hi_rpm = curve[hi_idx];
-    let delta = hi_rpm.saturating_sub(lo_rpm);
-    lo_rpm + delta * frac / u32::from(DUTY_STEP_PERCENT)
+/// Linearly interpolate the RPM at an arbitrary device-duty in a
+/// variable-spaced sample list. Clamps to the boundary RPMs outside
+/// the recorded range and returns 0 for an empty curve.
+fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
+    if curve.is_empty() {
+        return 0;
+    }
+    // Below the lowest recorded duty: clamp to its RPM.
+    if device_duty <= curve[0].duty {
+        return curve[0].rpm;
+    }
+    // Above the highest recorded duty: clamp to its RPM.
+    let last = curve[curve.len() - 1];
+    if device_duty >= last.duty {
+        return last.rpm;
+    }
+    // Find the first sample with duty > device_duty; interpolate
+    // between it and the previous sample.
+    let hi_idx = curve
+        .iter()
+        .position(|s| s.duty > device_duty)
+        .unwrap_or(curve.len() - 1);
+    let lo = curve[hi_idx - 1];
+    let hi = curve[hi_idx];
+    let span = u32::from(hi.duty - lo.duty);
+    if span == 0 {
+        return lo.rpm;
+    }
+    let frac = u32::from(device_duty - lo.duty);
+    let delta = hi.rpm.saturating_sub(lo.rpm);
+    lo.rpm + delta * frac / span
 }
 
 /// Pick the displayed true-duty from the two reverse-mapped values.
@@ -356,14 +407,6 @@ pub fn select_displayed_true_duty(
     }
 }
 
-fn index_to_duty(idx: usize) -> Duty {
-    assert!(idx < SAMPLE_COUNT);
-    // SAMPLE_COUNT <= u8::MAX is asserted at compile time, so the
-    // conversion below is total.
-    let idx_u8 = u8::try_from(idx).expect("SAMPLE_COUNT <= u8::MAX (const-asserted)");
-    idx_u8 * DUTY_STEP_PERCENT
-}
-
 /// Scalars derived from the raw sweep curves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedScalars {
@@ -377,28 +420,42 @@ pub struct DerivedScalars {
 mod tests {
     use super::*;
 
+    /// Number of samples in the synthetic 5%-step curves used by the
+    /// pre-existing tests. The new sweep produces variable spacing in
+    /// real use, but uniform 5%-step samples are sufficient to test
+    /// the mapping math.
+    const TEST_SAMPLE_COUNT: usize = 21;
+    const TEST_STEP: u8 = 5;
+
     /// Build a synthetic smooth up-curve: RPM ramps linearly from 0 to `rpm_top`.
-    fn smooth_curve(rpm_top: RPM) -> [RPM; SAMPLE_COUNT] {
-        let mut curve = [0u32; SAMPLE_COUNT];
-        let denominator = u32::try_from(SAMPLE_COUNT - 1).expect("SAMPLE_COUNT - 1 fits in u32");
-        for (i, slot) in curve.iter_mut().enumerate() {
-            let frac = u32::try_from(i).expect("SAMPLE_COUNT fits in u32");
-            *slot = (rpm_top * frac) / denominator;
-        }
-        curve
+    fn smooth_curve(rpm_top: RPM) -> Vec<DutySample> {
+        let denominator =
+            u32::try_from(TEST_SAMPLE_COUNT - 1).expect("TEST_SAMPLE_COUNT - 1 fits in u32");
+        (0..TEST_SAMPLE_COUNT)
+            .map(|i| {
+                let frac = u32::try_from(i).expect("TEST_SAMPLE_COUNT fits in u32");
+                let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
+                DutySample {
+                    duty,
+                    rpm: (rpm_top * frac) / denominator,
+                }
+            })
+            .collect()
     }
 
     /// Build a stepped curve: three RPM plateaus at low/middle/high duty.
-    fn stepped_curve(rpm_top: RPM) -> [RPM; SAMPLE_COUNT] {
-        let mut curve = [0u32; SAMPLE_COUNT];
-        for (i, slot) in curve.iter_mut().enumerate() {
-            *slot = match i {
-                0..=4 => 0,
-                5..=12 => rpm_top / 2,
-                _ => rpm_top,
-            };
-        }
-        curve
+    fn stepped_curve(rpm_top: RPM) -> Vec<DutySample> {
+        (0..TEST_SAMPLE_COUNT)
+            .map(|i| {
+                let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
+                let rpm = match i {
+                    0..=4 => 0,
+                    5..=12 => rpm_top / 2,
+                    _ => rpm_top,
+                };
+                DutySample { duty, rpm }
+            })
+            .collect()
     }
 
     fn make_smooth_calibration() -> Calibration {
@@ -442,14 +499,14 @@ mod tests {
         // be misclassified as stepped (jitter tolerance must absorb it).
         let mut curve = smooth_curve(2000);
         // Add alternating +/-30 RPM jitter; below the absolute floor of 50.
-        for (i, slot) in curve.iter_mut().enumerate() {
+        for (i, sample) in curve.iter_mut().enumerate() {
             if i.is_multiple_of(2) {
-                *slot = slot.saturating_add(30);
+                sample.rpm = sample.rpm.saturating_add(30);
             } else {
-                *slot = slot.saturating_sub(30);
+                sample.rpm = sample.rpm.saturating_sub(30);
             }
         }
-        let rpm_max = *curve.iter().max().unwrap();
+        let rpm_max = curve.iter().map(|s| s.rpm).max().unwrap();
         let kind = classify_curve(&curve, rpm_max);
         assert_eq!(kind, CurveKind::Smooth);
     }
@@ -642,10 +699,46 @@ mod tests {
     }
 
     #[test]
+    fn rpm_at_device_duty_interpolates_across_variable_spacing() {
+        // Goal: a curve with mixed 2%/5% spacing must interpolate
+        // linearly at any in-between device-duty. Mirrors what the new
+        // sweep produces: dense around kick-in, sparse beyond. We
+        // verify that a duty between two samples comes back as the
+        // expected linearly-interpolated RPM regardless of whether
+        // the surrounding samples are 2 or 5 apart.
+        let curve = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 2, rpm: 40 },
+            DutySample { duty: 4, rpm: 80 },
+            DutySample { duty: 9, rpm: 180 },
+            DutySample { duty: 14, rpm: 280 },
+            DutySample { duty: 19, rpm: 380 },
+            DutySample {
+                duty: 100,
+                rpm: 2000,
+            },
+        ];
+        // Between 2% samples (at duty 3, mid of 2 and 4): expect 60.
+        assert_eq!(rpm_at_device_duty(&curve, 3), 60);
+        // Between 5% samples (at duty 11, between 9 and 14 at +2/5 of
+        // the way): 180 + (280-180) * 2/5 = 220.
+        assert_eq!(rpm_at_device_duty(&curve, 11), 220);
+        // At a sample duty: returns the sample RPM exactly.
+        assert_eq!(rpm_at_device_duty(&curve, 14), 280);
+        // Above the highest sample: clamps to that sample's RPM.
+        assert_eq!(rpm_at_device_duty(&curve, 100), 2000);
+    }
+
+    #[test]
     fn derive_scalars_rejects_zero_curve() {
         // Goal: a fan that never produces RPM must surface as None so the
         // diagnoser fails with fan_unresponsive instead of saving garbage.
-        let zero = [0u32; SAMPLE_COUNT];
+        let zero: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * TEST_STEP,
+                rpm: 0,
+            })
+            .collect();
         assert!(derive_scalars(&zero, &zero).is_none());
     }
 
@@ -684,7 +777,12 @@ mod tests {
         // Goal: a constant non-zero curve (which would mean a stuck-on fan)
         // must classify cleanly without arithmetic surprises. Uniform = no
         // transitions = Stepped.
-        let curve = [1500u32; SAMPLE_COUNT];
+        let curve: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * TEST_STEP,
+                rpm: 1500,
+            })
+            .collect();
         let kind = classify_curve(&curve, 1500);
         assert_eq!(kind, CurveKind::Stepped);
     }

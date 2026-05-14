@@ -32,7 +32,8 @@
 #![allow(dead_code)]
 
 use super::curve::{
-    classify_curve, derive_scalars, Calibration, CurveKind, DUTY_STEP_PERCENT, SAMPLE_COUNT,
+    classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
+    DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE,
 };
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
@@ -66,16 +67,16 @@ pub struct DiagnosisSettings {
     /// Absolute RPM tolerance for stability across the middle of the
     /// sweep (max - min over the stability window).
     pub stability_tolerance_rpm: RPM,
-    /// Tighter absolute RPM tolerance applied to the first and last
-    /// `extreme_step_count` steps of each phase, where a fan ramping
-    /// up from rest or near saturation takes longer to settle. At
-    /// these extremes the absolute floor dominates the percent
-    /// tolerance (3% of e.g. 200 RPM = 6 RPM), so this is the value
-    /// that effectively gates extreme-step stability.
+    /// Tighter absolute RPM tolerance applied wherever the sweep is
+    /// taking dense (2%) steps, plus the saturation tail (duty >=
+    /// `saturation_extreme_duty_min`). A fan ramping up from rest, a
+    /// fan crossing through the kick-out region on the down-sweep, or
+    /// a fan operating near saturation all take longer to settle, so
+    /// we hold out for tighter RPM agreement before declaring stable.
     pub stability_tolerance_rpm_extremes: RPM,
-    /// Number of steps at each end of the sweep that get the tighter
-    /// `stability_tolerance_rpm_extremes` tolerance.
-    pub extreme_step_count: u32,
+    /// Duty (percent) at or above which a step is treated as extreme
+    /// regardless of its step size, capturing the saturation tail.
+    pub saturation_extreme_duty_min: Duty,
     /// Relative RPM tolerance for stability, in percent of the
     /// largest sample seen in the window.
     pub stability_tolerance_percent: u8,
@@ -105,7 +106,7 @@ impl Default for DiagnosisSettings {
             stability_window: 3,
             stability_tolerance_rpm: 30,
             stability_tolerance_rpm_extremes: 15,
-            extreme_step_count: 3,
+            saturation_extreme_duty_min: 90,
             stability_tolerance_percent: 3,
             status_poll_interval_ms: 50,
             fresh_read_cap_percent: 50,
@@ -345,76 +346,163 @@ where
     Ok(calibration)
 }
 
-/// Sweep the duty range up and down, returning the two RPM curves
-/// (one per direction). Mid-sweep failures (temp abort, cancellation,
-/// write failure) short-circuit the function; the caller still
-/// reapplies the snapshot and clears `under_diagnosis` afterwards.
+/// Sweep the duty range up and down, returning the two variable-spaced
+/// curves. Up-sweep walks from 0% in 2% steps until the fan crosses
+/// the start threshold, then 5% steps to 100%. Down-sweep walks from
+/// 100% in 5% steps until duty falls into the kick-in zone, then 2%
+/// steps to 0%. Mid-sweep failures (temp abort, cancellation, write
+/// failure) short-circuit the function; the caller still reapplies the
+/// snapshot and clears `under_diagnosis` afterwards.
 async fn perform_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
     device_uid: &UID,
     channel_name: &str,
     cancellation: &CancellationToken,
-) -> Result<([RPM; SAMPLE_COUNT], [RPM; SAMPLE_COUNT]), DiagnosisFailure>
+) -> Result<(Vec<DutySample>, Vec<DutySample>), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
-    let mut up_curve = [0u32; SAMPLE_COUNT];
-    let mut down_curve = [0u32; SAMPLE_COUNT];
-
-    for i in 0..SAMPLE_COUNT {
-        sweep_step(
-            host,
-            settings,
-            device_uid,
-            channel_name,
-            cancellation,
-            i,
-            &mut up_curve,
-            DiagnosisPhase::UpSweep,
-        )
-        .await?;
-    }
-    for i in (0..SAMPLE_COUNT).rev() {
-        sweep_step(
-            host,
-            settings,
-            device_uid,
-            channel_name,
-            cancellation,
-            i,
-            &mut down_curve,
-            DiagnosisPhase::DownSweep,
-        )
-        .await?;
-    }
+    let up_curve = perform_up_sweep(host, settings, device_uid, channel_name, cancellation).await?;
+    let kick_in_duty = up_curve
+        .iter()
+        .find(|s| s.rpm >= settings.start_rpm_min)
+        .map_or(100, |s| s.duty);
+    let down_curve = perform_down_sweep(
+        host,
+        settings,
+        device_uid,
+        channel_name,
+        cancellation,
+        kick_in_duty,
+    )
+    .await?;
     Ok((up_curve, down_curve))
 }
 
-/// One step of the sweep: write the duty at index `i`, adaptively
-/// settle by watching the device's status timestamp advance, sample
-/// RPM across a small window, and record the median once consecutive
-/// samples agree within tolerance. Falls back to "median of what we
-/// have" if the per-step cap elapses. Temp abort and cancellation
-/// are checked inside the settle loop, not just at step boundaries,
-/// so the diagnoser stays responsive on slow devices.
+/// Up-sweep: dense (2%) steps from 0 to first observed kick-in, then
+/// sparse (5%) steps to 100. Returns the sample list (sorted by duty
+/// ascending, first sample at duty 0, last at duty 100).
+async fn perform_up_sweep<H>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    channel_name: &str,
+    cancellation: &CancellationToken,
+) -> Result<Vec<DutySample>, DiagnosisFailure>
+where
+    H: DiagnosisHost + ?Sized,
+{
+    let mut samples = Vec::with_capacity(64);
+    let mut duty: Duty = 0;
+    let mut kicked_in = false;
+    loop {
+        assert!(
+            samples.len() < MAX_SAMPLES_PER_CURVE,
+            "up-sweep sample bound"
+        );
+        let in_dense = !kicked_in;
+        let rpm = sweep_step(
+            host,
+            settings,
+            device_uid,
+            channel_name,
+            cancellation,
+            duty,
+            DiagnosisPhase::UpSweep,
+            in_dense,
+        )
+        .await?;
+        samples.push(DutySample { duty, rpm });
+        if duty == 100 {
+            break;
+        }
+        if !kicked_in && rpm >= settings.start_rpm_min {
+            kicked_in = true;
+        }
+        let step = if kicked_in {
+            DUTY_STEP_SPARSE
+        } else {
+            DUTY_STEP_DENSE
+        };
+        duty = duty.saturating_add(step).min(100);
+    }
+    Ok(samples)
+}
+
+/// Down-sweep: sparse (5%) steps from 100 down to `kick_in_duty +
+/// KICK_ZONE_BUFFER_PERCENT`, then dense (2%) steps to 0. Returns the
+/// sample list (sorted by duty ascending so it matches up-sweep
+/// shape; the underlying measurements are taken high-to-low).
+async fn perform_down_sweep<H>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    channel_name: &str,
+    cancellation: &CancellationToken,
+    kick_in_duty: Duty,
+) -> Result<Vec<DutySample>, DiagnosisFailure>
+where
+    H: DiagnosisHost + ?Sized,
+{
+    let mut samples = Vec::with_capacity(64);
+    let zone_top = kick_in_duty
+        .saturating_add(KICK_ZONE_BUFFER_PERCENT)
+        .min(100);
+    let mut duty: Duty = 100;
+    loop {
+        assert!(
+            samples.len() < MAX_SAMPLES_PER_CURVE,
+            "down-sweep sample bound"
+        );
+        let in_dense = duty <= zone_top;
+        let rpm = sweep_step(
+            host,
+            settings,
+            device_uid,
+            channel_name,
+            cancellation,
+            duty,
+            DiagnosisPhase::DownSweep,
+            in_dense,
+        )
+        .await?;
+        samples.push(DutySample { duty, rpm });
+        if duty == 0 {
+            break;
+        }
+        let step = if duty <= zone_top {
+            DUTY_STEP_DENSE
+        } else {
+            DUTY_STEP_SPARSE
+        };
+        duty = duty.saturating_sub(step);
+    }
+    samples.sort_by_key(|s| s.duty);
+    Ok(samples)
+}
+
+/// One step of the sweep: write `duty`, adaptively settle, return the
+/// stabilized RPM. Emits a progress event after the sample lands.
+/// `in_dense` is true when the current step is taken at 2% resolution
+/// (kick-in region or near the boundaries); it selects the tighter
+/// `stability_tolerance_rpm_extremes` for that step.
 async fn sweep_step<H>(
     host: &H,
     settings: &DiagnosisSettings,
     device_uid: &UID,
     channel_name: &str,
     cancellation: &CancellationToken,
-    i: usize,
-    target: &mut [RPM; SAMPLE_COUNT],
+    duty: Duty,
     phase: DiagnosisPhase,
-) -> Result<(), DiagnosisFailure>
+    in_dense: bool,
+) -> Result<RPM, DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
     if cancellation.is_cancelled() {
         return Err(DiagnosisFailure::Cancelled);
     }
-    let duty = index_to_duty(i);
     // Snapshot the cached RPM before issuing the write. The settle
     // loop uses this to confirm a fresh post-write read has landed
     // (the value must change, not just the status timestamp).
@@ -426,12 +514,12 @@ where
         .await
         .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
 
-    // First and last few steps of each phase get the tighter
-    // tolerance: a fan ramping up from rest or operating near
-    // saturation takes longer to settle, so we hold out for a tighter
-    // RPM agreement before declaring stable.
-    let extreme_count = settings.extreme_step_count as usize;
-    let is_extreme = i < extreme_count || i >= SAMPLE_COUNT.saturating_sub(extreme_count);
+    // Tight tolerance for any 2%-step (dense) region: ramp-up from
+    // rest and kick-in zone on the down-sweep both need more careful
+    // stabilization than the middle of the range. Also pin the
+    // saturation tail (duty >= saturation_extreme_duty_min) to the
+    // tight tolerance, matching the prior fixed-index behavior.
+    let is_extreme = in_dense || duty >= settings.saturation_extreme_duty_min;
     let abs_tolerance_rpm = if is_extreme {
         settings.stability_tolerance_rpm_extremes
     } else {
@@ -457,16 +545,15 @@ where
         Err(err) => return Err(err),
     };
 
-    target[i] = rpm;
     host.emit_progress(DiagnosisProgress {
         device_uid: device_uid.clone(),
         channel_name: channel_name.to_string(),
         phase,
-        percent: progress_percent(phase, i),
+        percent: progress_percent(phase, duty),
         current_duty: Some(duty),
         current_rpm: Some(rpm),
     });
-    Ok(())
+    Ok(rpm)
 }
 
 /// Adaptive per-step settle. Returns the representative RPM for the
@@ -609,35 +696,21 @@ fn median_of(window: &VecDeque<RPM>) -> RPM {
     buf[buf.len() / 2]
 }
 
-/// Map a sweep step to a 0..=100 percent. The up-sweep occupies the
-/// first half (0..50), the down-sweep the second half (50..100). The
-/// down-sweep iterates `idx` in reverse (SAMPLE_COUNT-1 -> 0), so its
-/// "position into the sweep" is `SAMPLE_COUNT - idx`, not `idx + 1`.
-/// Without this inversion, the bar would jump to 100% on the first
-/// down-sweep step and count back down to ~52% on the last.
-fn progress_percent(phase: DiagnosisPhase, idx: usize) -> u8 {
-    const HALF: u32 = 50;
-    let denom = u32::try_from(SAMPLE_COUNT).expect("SAMPLE_COUNT fits in u32");
-    let step = match phase {
-        DiagnosisPhase::UpSweep => u32::try_from(idx + 1).unwrap_or(denom),
-        DiagnosisPhase::DownSweep => u32::try_from(SAMPLE_COUNT - idx).unwrap_or(denom),
-        DiagnosisPhase::Preflight | DiagnosisPhase::Finalizing => 0,
-    };
-    let half_progress = (step * HALF) / denom;
+/// Map a sweep step to a 0..=100 percent based on the current duty.
+/// Duty progress is the only thing that monotonically advances across
+/// a variable-resolution sweep (sample count is data-dependent), so we
+/// use it as the progress signal. Up-sweep climbs duty 0 -> 100 (mapped
+/// to percent 0 -> 50); down-sweep walks duty 100 -> 0 (mapped to
+/// percent 50 -> 100).
+fn progress_percent(phase: DiagnosisPhase, duty: Duty) -> u8 {
+    let duty_u32 = u32::from(duty);
     let percent = match phase {
-        DiagnosisPhase::UpSweep => half_progress,
-        DiagnosisPhase::DownSweep => HALF + half_progress,
+        DiagnosisPhase::UpSweep => duty_u32 / 2,
+        DiagnosisPhase::DownSweep => 50 + (100 - duty_u32) / 2,
         DiagnosisPhase::Preflight => 0,
         DiagnosisPhase::Finalizing => 100,
     };
     u8::try_from(percent.min(100)).unwrap_or(100)
-}
-
-fn index_to_duty(idx: usize) -> Duty {
-    assert!(idx < SAMPLE_COUNT);
-    // SAMPLE_COUNT <= u8::MAX asserted at compile time in curve.rs.
-    let idx_u8 = u8::try_from(idx).expect("SAMPLE_COUNT <= u8::MAX (const-asserted)");
-    idx_u8 * DUTY_STEP_PERCENT
 }
 
 #[cfg(test)]
@@ -705,26 +778,26 @@ mod tests {
             self
         }
 
-        /// Configure the host to map device-duty -> RPM linearly in
-        /// 100-RPM steps (mirrors the synthetic smooth curve from
-        /// the unit tests in curve.rs).
+        /// Configure the host to map device-duty -> RPM linearly: RPM
+        /// = 20 * duty, so duty 0 -> 0 RPM and duty 100 -> 2000 RPM.
+        /// Populates every duty in 0..=100 since the new sweep visits
+        /// 2%-step values too.
         fn with_smooth_fan(self) -> Self {
-            for i in 0..SAMPLE_COUNT {
-                let duty = index_to_duty(i);
-                let rpm = 100 * u32::try_from(i).expect("SAMPLE_COUNT fits in u32");
-                self.rpm_for_duty.borrow_mut().insert(duty, rpm);
+            for duty in 0u8..=100 {
+                self.rpm_for_duty
+                    .borrow_mut()
+                    .insert(duty, 20 * u32::from(duty));
             }
             self
         }
 
         /// Configure the host as a stepped fan with three RPM
-        /// plateaus (matches the curve.rs synthetic stepped fan).
+        /// plateaus by duty percentage.
         fn with_stepped_fan(self) -> Self {
-            for i in 0..SAMPLE_COUNT {
-                let duty = index_to_duty(i);
-                let rpm = if i < 5 {
+            for duty in 0u8..=100 {
+                let rpm = if duty < 25 {
                     0
-                } else if i < 13 {
+                } else if duty < 65 {
                     1000
                 } else {
                     2000
@@ -737,8 +810,7 @@ mod tests {
         /// Configure the host as an unresponsive fan (RPM=0 at every
         /// duty). The diagnoser must surface `FanUnresponsive`.
         fn with_dead_fan(self) -> Self {
-            for i in 0..SAMPLE_COUNT {
-                let duty = index_to_duty(i);
+            for duty in 0u8..=100 {
                 self.rpm_for_duty.borrow_mut().insert(duty, 0);
             }
             self
@@ -1194,13 +1266,18 @@ mod tests {
             .iter()
             .filter(|e| e.phase == DiagnosisPhase::DownSweep)
             .count();
-        assert_eq!(
-            up_event_count, SAMPLE_COUNT,
-            "one progress event per up-sweep step"
+        // The sweep is variable-resolution now, so we don't pin the
+        // exact count. We just sanity-check that the up- and down-
+        // sweeps each emit at least a dozen samples (dense + sparse
+        // combined gives ~25-30 per direction) and that they are
+        // similar in magnitude (within 2x).
+        assert!(
+            up_event_count >= 12,
+            "expected at least 12 up-sweep events, got {up_event_count}"
         );
-        assert_eq!(
-            down_event_count, SAMPLE_COUNT,
-            "one progress event per down-sweep step"
+        assert!(
+            down_event_count >= 12,
+            "expected at least 12 down-sweep events, got {down_event_count}"
         );
 
         // The progress bar must rise monotonically across the entire
@@ -1309,20 +1386,31 @@ mod tests {
         .await
         .expect("smooth fan diagnoses successfully even with stale reads");
 
-        // The synthetic smooth fan returns rpm = 100 * idx for each
-        // duty index. With_stale_reads(5, 800) makes the first 5
-        // current_rpm calls return 800 instead. The very first sweep
-        // step (duty=0) must therefore reach the post-stale read of 0,
-        // not record the stale 800.
+        // The synthetic smooth fan returns rpm = 20 * duty. With
+        // with_stale_reads(5, 800) the first 5 current_rpm calls
+        // return 800. The early samples (low duty, real rpm < 200)
+        // must therefore NOT contain a stale 800; settle must have
+        // waited for the cache to refresh to the post-write value.
+        let first = result
+            .up_curve
+            .iter()
+            .find(|s| s.duty == 0)
+            .expect("first sample at duty 0");
         assert_eq!(
-            result.up_curve[0], 0,
-            "stale 800 must not be recorded; settle should wait for the post-write change to 0"
+            first.rpm, 0,
+            "stale 800 must not be recorded at duty 0; settle should wait for the post-write change to 0"
         );
-        // The rest of the up-curve should follow the synthetic linear
-        // fan exactly, since stale_reads exhausted during the first
-        // step.
-        assert_eq!(result.up_curve[5], 500);
-        assert_eq!(result.up_curve[10], 1000);
+        let max_early_rpm = result
+            .up_curve
+            .iter()
+            .filter(|s| s.duty <= 10)
+            .map(|s| s.rpm)
+            .max()
+            .expect("at least one low-duty sample");
+        assert!(
+            max_early_rpm < 300,
+            "no low-duty sample should carry the stale 800 RPM; max in duty<=10 was {max_early_rpm}"
+        );
     }
 
     #[test]
@@ -1350,6 +1438,101 @@ mod tests {
         window.push_back(125);
         window.push_back(115);
         assert!(is_stable(&window, 15, 3).not());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn up_sweep_uses_dense_steps_before_kick_in() {
+        // Goal: the up-sweep walks duty in 2% increments from 0 until
+        // the fan RPM crosses start_rpm_min, then switches to 5%. With
+        // the synthetic smooth fan (rpm = 20 * duty, start_rpm_min =
+        // 50), kick-in happens at duty 3 (60 RPM). The recorded
+        // up_curve must contain consecutive 2%-aligned duties below
+        // and through kick-in, and 5%-aligned duties beyond.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("smooth fan diagnoses");
+
+        // Duties 0 and 2 must appear (2%-step before kick-in).
+        let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
+        assert!(duties.contains(&0), "up_curve missing duty 0: {duties:?}");
+        assert!(duties.contains(&2), "up_curve missing duty 2: {duties:?}");
+        // After kick-in (at duty 4 on this synthetic fan) the walker
+        // steps by 5. Verify at least two consecutive +5 increments
+        // are present in the post-kick-in portion of the curve.
+        let post_kick: Vec<Duty> = duties.iter().copied().filter(|&d| d > 5).collect();
+        assert!(
+            post_kick.len() >= 3,
+            "expected several post-kick-in samples: {post_kick:?}"
+        );
+        let consecutive_5_gap = post_kick.windows(2).any(|w| w[1] - w[0] == 5);
+        assert!(
+            consecutive_5_gap,
+            "post-kick-in samples must include a 5% step: {post_kick:?}"
+        );
+        // The very last sample is at duty 100.
+        assert_eq!(
+            result.up_curve[result.up_curve.len() - 1].duty,
+            100,
+            "up_curve must end at duty 100"
+        );
+        // A non-2%-aligned, non-5%-aligned mid-range duty (e.g. 47)
+        // must NOT appear; only the chosen grid is sampled.
+        assert!(
+            duties.contains(&47).not(),
+            "duty 47 should not be sampled: {duties:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn down_sweep_uses_dense_steps_in_kick_in_zone() {
+        // Goal: the down-sweep walks duty 100 -> 0. 5%-steps above the
+        // kick-in zone (kick_in_duty + KICK_ZONE_BUFFER_PERCENT), 2%-
+        // steps inside the zone and continuing to 0. With kick-in at
+        // duty 4 on the up-sweep (smooth synthetic), zone_top = 14;
+        // duties below 14 must appear at 2%-step spacing and duties
+        // above at 5%-step spacing.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("smooth fan diagnoses");
+
+        let duties: Vec<Duty> = result.down_curve.iter().map(|s| s.duty).collect();
+        assert!(duties.contains(&0), "down_curve must include 0");
+        assert!(duties.contains(&100), "down_curve must include 100");
+        // Inside the dense zone: a 2%-step duty must appear.
+        assert!(duties.contains(&8), "down_curve missing duty 8: {duties:?}");
+        // Outside the dense zone (above zone_top): a 5%-step duty must appear.
+        assert!(
+            duties.contains(&50),
+            "down_curve missing duty 50: {duties:?}"
+        );
     }
 
     #[test]

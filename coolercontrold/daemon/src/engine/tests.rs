@@ -1402,14 +1402,14 @@ mod engine_tests {
     }
 
     fn sample_smooth_calibration() -> crate::calibration::Calibration {
-        use crate::calibration::{CurveKind, SAMPLE_COUNT};
-        let mut up = [0u32; SAMPLE_COUNT];
-        let mut down = [0u32; SAMPLE_COUNT];
-        for (i, (u, d)) in up.iter_mut().zip(down.iter_mut()).enumerate() {
-            let rpm = 100 * u32::try_from(i).expect("SAMPLE_COUNT fits in u32");
-            *u = rpm;
-            *d = rpm;
-        }
+        use crate::calibration::{CurveKind, DutySample};
+        let up: Vec<DutySample> = (0..21usize)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: 100 * u32::try_from(i).expect("fits in u32"),
+            })
+            .collect();
+        let down = up.clone();
         crate::calibration::Calibration {
             up_curve: up,
             down_curve: down,

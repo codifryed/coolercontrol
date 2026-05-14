@@ -373,10 +373,22 @@ pub async fn complete_kick(
 
 #[cfg(test)]
 mod tests {
-    use super::super::curve::{Calibration, CurveKind, SAMPLE_COUNT};
+    use super::super::curve::{Calibration, CurveKind, DutySample};
     use super::*;
+    use crate::device::RPM;
     use chrono::Local;
     use std::cell::RefCell;
+
+    /// Build a uniform 5%-step `Vec<DutySample>` curve from a closure
+    /// that maps each duty index (0..21) to an RPM value.
+    fn build_curve<F: FnMut(usize) -> RPM>(mut rpm_at: F) -> Vec<DutySample> {
+        (0..21usize)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: rpm_at(i),
+            })
+            .collect()
+    }
 
     /// Test writer that captures every (uid, channel, duty) write in
     /// order. Cheap to clone via `Rc` so the test keeps a handle to
@@ -427,13 +439,8 @@ mod tests {
     /// Build a smooth calibration with predictable values:
     /// `min_start_duty=5`, `rpm_max=2000`, `kick_duration_ms=500`.
     fn smooth_cal() -> Calibration {
-        let mut up = [0u32; SAMPLE_COUNT];
-        let mut down = [0u32; SAMPLE_COUNT];
-        for (i, (u, d)) in up.iter_mut().zip(down.iter_mut()).enumerate() {
-            let rpm = 100 * u32::try_from(i).expect("SAMPLE_COUNT fits in u32");
-            *u = rpm;
-            *d = rpm;
-        }
+        let up = build_curve(|i| 100 * u32::try_from(i).expect("fits in u32"));
+        let down = up.clone();
         Calibration {
             up_curve: up,
             down_curve: down,
@@ -448,19 +455,16 @@ mod tests {
     }
 
     fn stepped_cal() -> Calibration {
-        let mut up = [0u32; SAMPLE_COUNT];
-        let mut down = [0u32; SAMPLE_COUNT];
-        for (i, (u, d)) in up.iter_mut().zip(down.iter_mut()).enumerate() {
-            let rpm = if i < 5 {
+        let up = build_curve(|i| {
+            if i < 5 {
                 0
             } else if i < 13 {
                 1000
             } else {
                 2000
-            };
-            *u = rpm;
-            *d = rpm;
-        }
+            }
+        });
+        let down = up.clone();
         Calibration {
             up_curve: up,
             down_curve: down,
