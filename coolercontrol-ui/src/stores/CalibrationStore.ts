@@ -110,8 +110,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
     function getChannelDisplayName(uid: UID, channelName: string): string {
         return (
-            settingsStore.allUIDeviceSettings.get(uid)?.sensorsAndChannels.get(channelName)
-                ?.name ?? channelName
+            settingsStore.allUIDeviceSettings.get(uid)?.sensorsAndChannels.get(channelName)?.name ??
+            channelName
         )
     }
 
@@ -330,8 +330,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     ): Promise<boolean | ErrorResponse> {
         const key = channelKey(uid, channelName)
         const previous = statuses.get(key)
-        const priorCalibration =
-            previous?.phase === 'completed' ? previous.calibration : undefined
+        const priorCalibration = previous?.phase === 'completed' ? previous.calibration : undefined
         const result = await deviceStore.daemonClient.deleteCalibration(uid, channelName)
         if (result === true || result === false) {
             stopPolling(uid, channelName)
