@@ -339,6 +339,7 @@ export default {
                 unpin: '取消固定',
                 profileApply: '将配置文件应用到风扇',
                 tags: '管理标签',
+                calibrated: '已校准',
             },
         },
         plugins: {
@@ -1113,6 +1114,88 @@ export default {
             saveError: '保存通道扩展设置失败',
             firmwareControlDisabled:
                 '当前设置无法使用固件控制。\n请为此设备使用带有受支持内置温度传感器的图表配置文件。',
+            calibration: {
+                heading: '转速校准',
+                description:
+                    '让风扇完整扫掠，以获取其真实的占空比–转速曲线，然后将该通道按以转速归一化的真实占空比进行控制。\n消除低占空比的死区与高占空比的饱和。\n校准后，启动冲量也会自动处理：短暂的启动加速将风扇从静止状态转起，随后稳定到目标占空比。\n扫掠通常需要几分钟，对响应较慢的风扇可能明显更久。开始时通道将被设为 0 %。',
+                statusNotCalibrated: '未校准',
+                statusInProgress: '校准中：{stage}（{percent} %）',
+                statusCompleted: '已校准（平滑曲线，映射已启用）',
+                statusCompletedStepped: '已校准（阶梯曲线，映射已禁用）',
+                statusCompletedWithWarnings: '已校准但带有警告：{messages}',
+                statusFailed: '上次尝试失败：{message}',
+                warningNoTachometer: '未检测到转速（传感器或线缆可能未连接）',
+                warningNotControllable: '风扇对占空比无响应（很可能由 BIOS 控制）',
+                warningLimitedRange: '转速范围有限（{span} RPM），映射分辨率较粗',
+                warningOscillating:
+                    '风扇在 {lower} % 与 {upper} % 占空比之间振荡（固件控制的启动冲量）；在低占空比下已禁用映射',
+                stagePreflight: '预检',
+                stageUpSweep: '上升扫掠',
+                stageDownSweep: '下降扫掠',
+                stageFinalizing: '收尾',
+                buttonCalibrate: '校准',
+                buttonRecalibrate: '重新校准',
+                buttonCancel: '取消',
+                buttonClear: '清除',
+                buttonViewCurve: '查看曲线',
+                caveatsBanner:
+                    '同时校准多个主要散热风扇可能会提高系统温度。\n并行诊断的推拉式散热排风扇可能产生不准确的读数。\n请在校准期间保持系统处于空闲状态。',
+                completedNotice:
+                    '校准已生效。此通道的风扇曲线与手动占空比现在按以转速归一化的真实占空比进行控制。如有需要，请重新检查您的配置文件数值。',
+                clearedNotice: '已清除。此通道的风扇曲线现在直接控制设备占空比。',
+                startError: '无法开始校准',
+                cancelError: '无法取消校准',
+                clearError: '无法清除校准',
+                reloadHeader: '重新加载界面',
+                reloadAccept: '重新加载',
+                reloadReject: '稍后',
+                reload_rpm_only_completed_single:
+                    '{channelName} 的校准已完成。重新加载界面以显示该通道的占空比图。',
+                reload_rpm_only_completed_multi:
+                    '{channelList} 的校准已完成。重新加载界面以显示各通道的占空比图。',
+                reload_rpm_only_cleared_single:
+                    '{channelName} 的校准已清除。重新加载界面以移除该通道现在已过时的占空比图。',
+                reload_rpm_only_cleared_multi:
+                    '{channelList} 的校准已清除。重新加载界面以移除各通道现在已过时的占空比图。',
+                reload_duty_range_completed_single:
+                    '{channelName} 的校准已完成。重新加载界面，让手动占空比滑块和风扇控制向导采用该通道的新占空比范围。',
+                reload_duty_range_completed_multi:
+                    '{channelList} 的校准已完成。重新加载界面,让手动占空比滑块和风扇控制向导采用各通道的新占空比范围。',
+                reload_duty_range_cleared_single:
+                    '{channelName} 的校准已清除。重新加载界面,让手动占空比滑块回到该通道的硬件上下限。',
+                reload_duty_range_cleared_multi:
+                    '{channelList} 的校准已清除。重新加载界面,让手动占空比滑块回到各通道的硬件上下限。',
+                reload_mixed_multi:
+                    '{channelList} 的校准已更改。重新加载界面,让各通道采用新的占空比显示和滑块范围。',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: '校准曲线',
+            loading: '正在加载校准数据...',
+            notFound: '未找到此通道的校准数据。',
+            loadError: '加载校准数据失败。',
+            axisDuty: '占空比',
+            axisRpm: 'RPM',
+            legendUp: '上升扫掠',
+            legendDown: '下降扫掠',
+            markerStart: '起始',
+            markerSustain: '保持',
+            markerSaturate: '接近平台',
+            markerStable: '稳定下限',
+            curveKindSmooth: '平滑（映射已启用）',
+            curveKindStepped: '阶梯（映射已禁用）',
+            fieldCurveKind: '曲线',
+            fieldRpmMax: '峰值转速',
+            fieldKick: '启动冲量时长',
+            fieldStart: '最小启动占空比',
+            fieldSustain: '最小保持占空比',
+            fieldStable: '最小稳定占空比',
+            fieldStableTooltip:
+                '风扇能够无振荡运行的最低占空比。\n固件控制的风扇会在低占空比下将转速顶到内部下限以上,产生可听见的颤动;调度器会将启动冲量之后的保持值上钳到此值,使风扇始终高于该振荡带。',
+            fieldSaturate: '接近平台的占空比',
+            fieldSaturateTooltip:
+                '转速增益开始减小的占空比。\n超过此占空比后风扇仍可能在 100 % 之前再增加几转,因此校准使用 0 到 100 % 的整个占空比范围。',
+            fieldTimestamp: '校准时间',
         },
         deviceExtensionSettings: {
             title: '高级设备设置',

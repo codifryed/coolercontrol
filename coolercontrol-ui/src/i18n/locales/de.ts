@@ -355,6 +355,7 @@ export default {
                 unpin: 'Loslassen',
                 profileApply: 'Profil auf Lüfter anwenden',
                 tags: 'Tags verwalten',
+                calibrated: 'Kalibriert',
             },
         },
         plugins: {
@@ -1182,6 +1183,92 @@ export default {
             saveError: 'Speichern der Einstellungen der Kanalerweiterung fehlgeschlagen',
             firmwareControlDisabled:
                 'Die Firmware-Steuerung ist mit den aktuellen Einstellungen nicht verfügbar.\nVerwenden Sie ein Graph-Profil für dieses Gerät mit einem unterstützten internen Temperatursensor.',
+            calibration: {
+                heading: 'Drehzahl-Kalibrierung',
+                description:
+                    'Lassen Sie den Lüfter den gesamten Bereich durchlaufen, um seine tatsächliche Tastgrad-zu-Drehzahl-Kurve zu ermitteln, und steuern Sie den Kanal anschließend als drehzahlnormierten Echt-Tastgrad.\nBeseitigt tote Zonen bei niedrigem Tastgrad und Sättigung bei hohem Tastgrad.\nDer Anlauf-Boost wird ebenfalls automatisch behandelt, sobald der Lüfter kalibriert ist: Ein kurzer Startschub bringt den Lüfter aus dem Stillstand auf Drehzahl, bevor er sich auf den Zieltastgrad einpendelt.\nDer Durchlauf dauert in der Regel mehrere Minuten und kann bei träge reagierenden Lüftern deutlich länger laufen. Der Kanal wird zu Beginn auf 0 % gesetzt.',
+                statusNotCalibrated: 'Nicht kalibriert',
+                statusInProgress: 'Kalibrierung läuft: {stage} ({percent} %)',
+                statusCompleted: 'Kalibriert (gleichmäßig, Abbildung aktiv)',
+                statusCompletedStepped: 'Kalibriert (Stufenkurve, Abbildung deaktiviert)',
+                statusCompletedWithWarnings: 'Kalibriert mit Warnungen: {messages}',
+                statusFailed: 'Letzter Versuch fehlgeschlagen: {message}',
+                warningNoTachometer:
+                    'keine Drehzahl erkannt (Sensor oder Verkabelung möglicherweise getrennt)',
+                warningNotControllable:
+                    'Lüfter reagiert nicht auf Tastgrad (vermutlich BIOS-gesteuert)',
+                warningLimitedRange:
+                    'eingeschränkter Drehzahlbereich ({span} RPM); grobe Abbildungs-Auflösung',
+                warningOscillating:
+                    'Lüfter oszilliert zwischen {lower} % und {upper} % Tastgrad (firmware-gesteuerter Anlaufschub); Abbildung bei niedrigem Tastgrad deaktiviert',
+                stagePreflight: 'Vorprüfung',
+                stageUpSweep: 'Aufwärts-Durchlauf',
+                stageDownSweep: 'Abwärts-Durchlauf',
+                stageFinalizing: 'Abschluss',
+                buttonCalibrate: 'Kalibrieren',
+                buttonRecalibrate: 'Neu kalibrieren',
+                buttonCancel: 'Abbrechen',
+                buttonClear: 'Zurücksetzen',
+                buttonViewCurve: 'Kurve anzeigen',
+                caveatsBanner:
+                    'Mehrere primäre Kühllüfter gleichzeitig zu kalibrieren kann die Systemtemperatur erhöhen.\nGleichzeitig diagnostizierte Push-Pull-Radiatorlüfter können ungenaue Messwerte liefern.\nHalten Sie das System während der Kalibrierung im Leerlauf.',
+                completedNotice:
+                    'Kalibrierung aktiv. Lüfterkurven und manuelle Tastgrade auf diesem Kanal steuern jetzt drehzahlnormierten Echt-Tastgrad. Überprüfen Sie bei Bedarf Ihre Profilwerte.',
+                clearedNotice:
+                    'Zurückgesetzt. Lüfterkurven auf diesem Kanal steuern jetzt wieder direkt den Geräte-Tastgrad.',
+                startError: 'Kalibrierung konnte nicht gestartet werden',
+                cancelError: 'Kalibrierung konnte nicht abgebrochen werden',
+                clearError: 'Kalibrierung konnte nicht zurückgesetzt werden',
+                reloadHeader: 'Oberfläche neu laden',
+                reloadAccept: 'Neu laden',
+                reloadReject: 'Später',
+                reload_rpm_only_completed_single:
+                    'Kalibrierung für {channelName} abgeschlossen. Laden Sie die Oberfläche neu, um den Tastgrad-Verlauf des Kanals anzuzeigen.',
+                reload_rpm_only_completed_multi:
+                    'Kalibrierung für {channelList} abgeschlossen. Laden Sie die Oberfläche neu, um den Tastgrad-Verlauf der einzelnen Kanäle anzuzeigen.',
+                reload_rpm_only_cleared_single:
+                    'Kalibrierung für {channelName} zurückgesetzt. Laden Sie die Oberfläche neu, um den nun veralteten Tastgrad-Verlauf des Kanals zu entfernen.',
+                reload_rpm_only_cleared_multi:
+                    'Kalibrierung für {channelList} zurückgesetzt. Laden Sie die Oberfläche neu, um den nun veralteten Tastgrad-Verlauf der einzelnen Kanäle zu entfernen.',
+                reload_duty_range_completed_single:
+                    'Kalibrierung für {channelName} abgeschlossen. Laden Sie die Oberfläche neu, damit der Tastgrad-Regler und der Lüftersteuerungs-Assistent den neuen Tastgradbereich des Kanals übernehmen.',
+                reload_duty_range_completed_multi:
+                    'Kalibrierung für {channelList} abgeschlossen. Laden Sie die Oberfläche neu, damit der Tastgrad-Regler und der Lüftersteuerungs-Assistent den neuen Tastgradbereich jedes Kanals übernehmen.',
+                reload_duty_range_cleared_single:
+                    'Kalibrierung für {channelName} zurückgesetzt. Laden Sie die Oberfläche neu, damit der Tastgrad-Regler wieder auf die Hardware-Grenzen des Kanals zurückspringt.',
+                reload_duty_range_cleared_multi:
+                    'Kalibrierung für {channelList} zurückgesetzt. Laden Sie die Oberfläche neu, damit der Tastgrad-Regler wieder auf die Hardware-Grenzen jedes Kanals zurückspringt.',
+                reload_mixed_multi:
+                    'Kalibrierung für {channelList} geändert. Laden Sie die Oberfläche neu, damit jeder Kanal seine neue Tastgrad-Anzeige und Reglergrenzen übernimmt.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: 'Kalibrierungskurve',
+            loading: 'Kalibrierung wird geladen...',
+            notFound: 'Keine Kalibrierungsdaten für diesen Kanal gefunden.',
+            loadError: 'Kalibrierungsdaten konnten nicht geladen werden.',
+            axisDuty: 'Tastgrad',
+            axisRpm: 'RPM',
+            legendUp: 'Aufwärts',
+            legendDown: 'Abwärts',
+            markerStart: 'Start',
+            markerSustain: 'Halten',
+            markerSaturate: 'Annähernd Plateau',
+            markerStable: 'Stabile Untergrenze',
+            curveKindSmooth: 'Gleichmäßig (Abbildung aktiv)',
+            curveKindStepped: 'Gestuft (Abbildung deaktiviert)',
+            fieldCurveKind: 'Kurve',
+            fieldRpmMax: 'Spitzen-Drehzahl',
+            fieldKick: 'Anlaufdauer',
+            fieldStart: 'Min. Start-Tastgrad',
+            fieldSustain: 'Min. Halte-Tastgrad',
+            fieldStable: 'Min. stabiler Tastgrad',
+            fieldStableTooltip:
+                'Niedrigster Tastgrad, bei dem der Lüfter ohne Oszillation arbeitet.\nFirmware-gesteuerte Lüfter heben die Drehzahl bei niedrigem Tastgrad über eine interne Untergrenze an und erzeugen so ein hörbares Flattern; der Dispatcher begrenzt das Halte-Niveau nach dem Anlaufschub auf diesen Wert, damit der Lüfter oberhalb des Bandes bleibt.',
+            fieldSaturate: 'Tastgrad nahe Plateau',
+            fieldSaturateTooltip:
+                'Tastgrad, ab dem die Drehzahlzuwächse abnehmen.\nDer Lüfter kann auch oberhalb dieses Tastgrads bis zu 100 % noch einige Umdrehungen zulegen, daher nutzt die Kalibrierung den vollen Tastgradbereich von 0 bis 100 %.',
+            fieldTimestamp: 'Kalibriert',
         },
         deviceExtensionSettings: {
             title: 'Erweiterte Geräteeinstellungen',

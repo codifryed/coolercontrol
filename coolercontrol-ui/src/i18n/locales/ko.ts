@@ -346,6 +346,7 @@ export default {
                 unpin: '핀 해제',
                 profileApply: '팬들에 프로파일 적용',
                 tags: '태그 관리',
+                calibrated: '보정됨',
             },
         },
         plugins: {
@@ -1141,6 +1142,89 @@ export default {
             saveError: '채널 확장 설정 저장에 실패함',
             firmwareControlDisabled:
                 '현재 설정으로는 펌웨어 제어가 불가능합니다.\n지원되는 내부 온도 센서가 있는 이 장치에는 그래프 프로파일을 사용하세요.',
+            calibration: {
+                heading: 'RPM 보정',
+                description:
+                    '팬의 실제 듀티 대 RPM 곡선을 학습하기 위해 팬을 스윕한 다음, 채널을 RPM 정규화된 실제 듀티로 제어합니다.\n낮은 듀티의 무효 구간과 높은 듀티의 포화 구간을 제거합니다.\n팬이 보정되면 시동 부스트도 자동으로 처리됩니다. 정지 상태에서 잠시 시동 부스트로 팬을 돌린 뒤 목표 듀티에서 안정시킵니다.\n스윕은 일반적으로 몇 분이 걸리며, 반응이 느린 팬에서는 상당히 더 오래 걸릴 수 있습니다. 시작 시 채널은 0 %로 설정됩니다.',
+                statusNotCalibrated: '보정되지 않음',
+                statusInProgress: '보정 중: {stage} ({percent} %)',
+                statusCompleted: '보정됨 (매끄러움, 매핑 활성)',
+                statusCompletedStepped: '보정됨 (계단형 곡선, 매핑 비활성)',
+                statusCompletedWithWarnings: '경고와 함께 보정됨: {messages}',
+                statusFailed: '마지막 시도 실패: {message}',
+                warningNoTachometer: 'RPM이 감지되지 않음 (센서 또는 배선이 분리되었을 수 있음)',
+                warningNotControllable: '팬이 듀티에 반응하지 않음 (BIOS 제어일 가능성 있음)',
+                warningLimitedRange: '제한된 RPM 범위 ({span} RPM); 매핑 해상도가 거칠어집니다',
+                warningOscillating:
+                    '팬이 {lower} %와 {upper} % 듀티 사이에서 진동함 (펌웨어 제어 시동 부스트); 낮은 듀티에서 매핑 비활성화',
+                stagePreflight: '사전 점검',
+                stageUpSweep: '상승 스윕',
+                stageDownSweep: '하강 스윕',
+                stageFinalizing: '마무리',
+                buttonCalibrate: '보정',
+                buttonRecalibrate: '재보정',
+                buttonCancel: '취소',
+                buttonClear: '지우기',
+                buttonViewCurve: '곡선 보기',
+                caveatsBanner:
+                    '주요 쿨링 팬 여러 개를 동시에 보정하면 시스템 온도가 올라갈 수 있습니다.\n푸시풀 라디에이터 팬을 병행 진단하면 부정확한 측정값이 나올 수 있습니다.\n보정 중에는 시스템을 유휴 상태로 유지하세요.',
+                completedNotice:
+                    '보정이 활성 상태입니다. 이 채널의 팬 곡선과 수동 듀티는 이제 RPM 정규화된 실제 듀티를 제어합니다. 필요하면 프로파일 값을 다시 확인하세요.',
+                clearedNotice:
+                    '지워졌습니다. 이 채널의 팬 곡선이 다시 장치 듀티를 직접 제어합니다.',
+                startError: '보정을 시작할 수 없습니다',
+                cancelError: '보정을 취소할 수 없습니다',
+                clearError: '보정을 지울 수 없습니다',
+                reloadHeader: 'UI 새로 고침',
+                reloadAccept: '새로 고침',
+                reloadReject: '나중에',
+                reload_rpm_only_completed_single:
+                    '{channelName}의 보정이 완료되었습니다. UI를 새로 고침하면 채널의 듀티 그래프가 표시됩니다.',
+                reload_rpm_only_completed_multi:
+                    '{channelList}의 보정이 완료되었습니다. UI를 새로 고침하면 각 채널의 듀티 그래프가 표시됩니다.',
+                reload_rpm_only_cleared_single:
+                    '{channelName}의 보정이 지워졌습니다. UI를 새로 고침하면 이제 더 이상 유효하지 않은 듀티 그래프가 제거됩니다.',
+                reload_rpm_only_cleared_multi:
+                    '{channelList}의 보정이 지워졌습니다. UI를 새로 고침하면 각 채널의 더 이상 유효하지 않은 듀티 그래프가 제거됩니다.',
+                reload_duty_range_completed_single:
+                    '{channelName}의 보정이 완료되었습니다. UI를 새로 고침하면 수동 듀티 슬라이더와 팬 제어 마법사가 채널의 새 듀티 범위를 적용합니다.',
+                reload_duty_range_completed_multi:
+                    '{channelList}의 보정이 완료되었습니다. UI를 새로 고침하면 수동 듀티 슬라이더와 팬 제어 마법사가 각 채널의 새 듀티 범위를 적용합니다.',
+                reload_duty_range_cleared_single:
+                    '{channelName}의 보정이 지워졌습니다. UI를 새로 고침하면 수동 듀티 슬라이더가 채널의 하드웨어 한계로 돌아갑니다.',
+                reload_duty_range_cleared_multi:
+                    '{channelList}의 보정이 지워졌습니다. UI를 새로 고침하면 수동 듀티 슬라이더가 각 채널의 하드웨어 한계로 돌아갑니다.',
+                reload_mixed_multi:
+                    '{channelList}의 보정이 변경되었습니다. UI를 새로 고침하면 각 채널이 새 듀티 표시와 슬라이더 범위를 적용합니다.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: '보정 곡선',
+            loading: '보정 데이터를 불러오는 중...',
+            notFound: '이 채널에 대한 보정 데이터를 찾을 수 없습니다.',
+            loadError: '보정 데이터를 불러오지 못했습니다.',
+            axisDuty: '듀티',
+            axisRpm: 'RPM',
+            legendUp: '상승',
+            legendDown: '하강',
+            markerStart: '시작',
+            markerSustain: '유지',
+            markerSaturate: '플래토 근접',
+            markerStable: '안정 하한',
+            curveKindSmooth: '매끄러움 (매핑 활성)',
+            curveKindStepped: '계단형 (매핑 비활성)',
+            fieldCurveKind: '곡선',
+            fieldRpmMax: '최대 RPM',
+            fieldKick: '시동 부스트 시간',
+            fieldStart: '최소 시동 듀티',
+            fieldSustain: '최소 유지 듀티',
+            fieldStable: '최소 안정 듀티',
+            fieldStableTooltip:
+                '팬이 진동 없이 동작하는 최저 듀티.\n펌웨어 제어 팬은 낮은 듀티에서 RPM을 내부 하한선 이상으로 끌어올려 들리는 떨림을 유발합니다. 디스패처는 시동 부스트 이후의 유지 값을 이 값으로 제한해 팬이 진동 대역 위에 머물도록 합니다.',
+            fieldSaturate: '플래토 근접 듀티',
+            fieldSaturateTooltip:
+                'RPM 증가량이 줄어들기 시작하는 듀티.\n이 듀티를 넘어 100 %까지도 RPM이 조금 더 늘 수 있으므로, 보정은 0~100 %의 전체 범위를 사용합니다.',
+            fieldTimestamp: '보정됨',
         },
         deviceExtensionSettings: {
             title: '고급 장치 설정',

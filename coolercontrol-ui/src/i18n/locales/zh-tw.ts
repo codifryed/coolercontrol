@@ -339,6 +339,7 @@ export default {
                 unpin: '取消釘選',
                 profileApply: '將設定檔套用至風扇',
                 tags: '管理標籤',
+                calibrated: '已校正',
             },
         },
         plugins: {
@@ -1114,6 +1115,88 @@ export default {
             saveError: '儲存通道擴充設定失敗',
             firmwareControlDisabled:
                 '目前設定無法使用韌體控制。\n請為此裝置使用含有受支援內建溫度感測器的圖表設定檔。',
+            calibration: {
+                heading: '轉速校正',
+                description:
+                    '讓風扇完整掃掠以取得其真實的工作週期對轉速曲線，之後將該通道以依轉速正規化的真實工作週期進行控制。\n消除低工作週期下的死區與高工作週期下的飽和。\n校正後，啟動衝擊也會自動處理：短暫的啟動加速會把風扇從靜止狀態帶起，再穩定到目標工作週期。\n掃掠通常需要數分鐘，對反應緩慢的風扇可能明顯更久。開始時通道會被設為 0 %。',
+                statusNotCalibrated: '未校正',
+                statusInProgress: '正在校正：{stage}（{percent} %）',
+                statusCompleted: '已校正（平滑曲線，對應已啟用）',
+                statusCompletedStepped: '已校正（階梯曲線，對應已停用）',
+                statusCompletedWithWarnings: '已校正但有警告：{messages}',
+                statusFailed: '上次嘗試失敗：{message}',
+                warningNoTachometer: '未偵測到轉速（感測器或線材可能未連接）',
+                warningNotControllable: '風扇對工作週期沒有反應（很可能由 BIOS 控制）',
+                warningLimitedRange: '轉速範圍有限（{span} RPM），對應的解析度較粗',
+                warningOscillating:
+                    '風扇在 {lower} % 與 {upper} % 工作週期之間擺盪（韌體控制的啟動衝擊）；在低工作週期下已停用對應',
+                stagePreflight: '預檢',
+                stageUpSweep: '上升掃掠',
+                stageDownSweep: '下降掃掠',
+                stageFinalizing: '收尾',
+                buttonCalibrate: '校正',
+                buttonRecalibrate: '重新校正',
+                buttonCancel: '取消',
+                buttonClear: '清除',
+                buttonViewCurve: '檢視曲線',
+                caveatsBanner:
+                    '同時校正多個主要散熱風扇可能會提高系統溫度。\n平行診斷的推拉式散熱排風扇可能產生不準確的讀數。\n請在校正期間讓系統保持閒置。',
+                completedNotice:
+                    '校正已生效。此通道的風扇曲線與手動工作週期現在會以依轉速正規化的真實工作週期進行控制。如有需要請重新檢視您的設定檔數值。',
+                clearedNotice: '已清除。此通道的風扇曲線現在直接控制裝置工作週期。',
+                startError: '無法開始校正',
+                cancelError: '無法取消校正',
+                clearError: '無法清除校正',
+                reloadHeader: '重新載入介面',
+                reloadAccept: '重新載入',
+                reloadReject: '稍後',
+                reload_rpm_only_completed_single:
+                    '{channelName} 的校正已完成。重新載入介面以顯示該通道的工作週期圖。',
+                reload_rpm_only_completed_multi:
+                    '{channelList} 的校正已完成。重新載入介面以顯示各通道的工作週期圖。',
+                reload_rpm_only_cleared_single:
+                    '{channelName} 的校正已清除。重新載入介面以移除該通道現已過時的工作週期圖。',
+                reload_rpm_only_cleared_multi:
+                    '{channelList} 的校正已清除。重新載入介面以移除各通道現已過時的工作週期圖。',
+                reload_duty_range_completed_single:
+                    '{channelName} 的校正已完成。重新載入介面，讓手動工作週期滑桿與風扇控制精靈採用該通道的新工作週期範圍。',
+                reload_duty_range_completed_multi:
+                    '{channelList} 的校正已完成。重新載入介面，讓手動工作週期滑桿與風扇控制精靈採用各通道的新工作週期範圍。',
+                reload_duty_range_cleared_single:
+                    '{channelName} 的校正已清除。重新載入介面，讓手動工作週期滑桿回到該通道的硬體上下限。',
+                reload_duty_range_cleared_multi:
+                    '{channelList} 的校正已清除。重新載入介面，讓手動工作週期滑桿回到各通道的硬體上下限。',
+                reload_mixed_multi:
+                    '{channelList} 的校正已變更。重新載入介面，讓各通道採用新的工作週期顯示與滑桿範圍。',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: '校正曲線',
+            loading: '正在載入校正資料...',
+            notFound: '找不到此通道的校正資料。',
+            loadError: '載入校正資料失敗。',
+            axisDuty: '工作週期',
+            axisRpm: 'RPM',
+            legendUp: '上升掃掠',
+            legendDown: '下降掃掠',
+            markerStart: '起點',
+            markerSustain: '保持',
+            markerSaturate: '接近高原',
+            markerStable: '穩定下限',
+            curveKindSmooth: '平滑（對應已啟用）',
+            curveKindStepped: '階梯（對應已停用）',
+            fieldCurveKind: '曲線',
+            fieldRpmMax: '峰值轉速',
+            fieldKick: '啟動衝擊時長',
+            fieldStart: '最小啟動工作週期',
+            fieldSustain: '最小保持工作週期',
+            fieldStable: '最小穩定工作週期',
+            fieldStableTooltip:
+                '風扇能在不產生擺盪的情況下運作的最低工作週期。\n韌體控制的風扇會在低工作週期下將轉速推到內部下限以上，產生可聽見的顫動；排程器會把啟動衝擊後的保持值上夾到此值，讓風扇維持在此頻帶之上。',
+            fieldSaturate: '接近高原的工作週期',
+            fieldSaturateTooltip:
+                '轉速增幅開始遞減的工作週期。\n超過此工作週期後，風扇仍可能在 100 % 之前再增加幾轉，因此校正會使用 0 到 100 % 的完整工作週期範圍。',
+            fieldTimestamp: '校正時間',
         },
         deviceExtensionSettings: {
             title: '進階裝置設定',

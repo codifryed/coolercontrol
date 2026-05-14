@@ -365,6 +365,7 @@ export default {
                 unpin: 'ピン留め解除',
                 profileApply: 'ファンにプロファイルを適用',
                 tags: 'タグを管理',
+                calibrated: 'キャリブレーション済み',
             },
         },
         plugins: {
@@ -1166,6 +1167,92 @@ export default {
             saveError: 'チャンネル拡張設定の保存に失敗しました',
             firmwareControlDisabled:
                 '現在の設定ではファームウェア制御は利用できません。\nこのデバイス向けの、対応する内蔵温度センサーを使用するグラフプロファイルを使用してください。',
+            calibration: {
+                heading: 'RPM キャリブレーション',
+                description:
+                    'ファンを掃引して実際のデューティ対 RPM カーブを学習し、その後はチャンネルを RPM 正規化された真のデューティとして制御します。\n低デューティでのデッドゾーンと高デューティでの飽和を取り除きます。\nファンがキャリブレーションされると、起動キックも自動的に処理されます。停止状態から短時間の起動ブーストでファンを回し、目標デューティで安定させます。\n掃引には通常数分かかり、応答の遅いファンではかなり長くなる場合があります。開始時にチャンネルは 0 % に設定されます。',
+                statusNotCalibrated: '未キャリブレーション',
+                statusInProgress: 'キャリブレーション中: {stage} ({percent} %)',
+                statusCompleted: 'キャリブレーション済み (スムース、マッピング有効)',
+                statusCompletedStepped: 'キャリブレーション済み (ステップ曲線、マッピング無効)',
+                statusCompletedWithWarnings: '警告付きでキャリブレーション済み: {messages}',
+                statusFailed: '直近の試行に失敗しました: {message}',
+                warningNoTachometer:
+                    'RPM が検出されません (センサーまたは配線が切断されている可能性があります)',
+                warningNotControllable:
+                    'ファンがデューティに反応しません (BIOS 制御の可能性があります)',
+                warningLimitedRange:
+                    'RPM レンジが限定的です ({span} RPM)。マッピング分解能は粗くなります',
+                warningOscillating:
+                    'ファンが {lower} % と {upper} % のデューティの間で振動しています (ファームウェア制御のキック)。低デューティでマッピングは無効化されます',
+                stagePreflight: '事前チェック',
+                stageUpSweep: '上昇掃引',
+                stageDownSweep: '下降掃引',
+                stageFinalizing: '完了処理',
+                buttonCalibrate: 'キャリブレーション',
+                buttonRecalibrate: '再キャリブレーション',
+                buttonCancel: 'キャンセル',
+                buttonClear: 'クリア',
+                buttonViewCurve: 'カーブを表示',
+                caveatsBanner:
+                    '主要な冷却ファンを同時に複数キャリブレーションすると、システム温度が上昇する可能性があります。\nプッシュプル構成のラジエーターファンを並行して診断すると、不正確な読み取り値になる場合があります。\nキャリブレーション中はシステムをアイドル状態に保ってください。',
+                completedNotice:
+                    'キャリブレーションが有効です。このチャンネルのファンカーブと手動デューティは、現在 RPM 正規化された真のデューティを制御します。必要に応じてプロファイル値を見直してください。',
+                clearedNotice:
+                    'クリアしました。このチャンネルのファンカーブは、再び直接デバイスデューティを制御します。',
+                startError: 'キャリブレーションを開始できませんでした',
+                cancelError: 'キャリブレーションをキャンセルできませんでした',
+                clearError: 'キャリブレーションをクリアできませんでした',
+                reloadHeader: 'UI を再読み込み',
+                reloadAccept: '再読み込み',
+                reloadReject: '後で',
+                reload_rpm_only_completed_single:
+                    '{channelName} のキャリブレーションが完了しました。UI を再読み込みすると、このチャンネルのデューティグラフが表示されます。',
+                reload_rpm_only_completed_multi:
+                    '{channelList} のキャリブレーションが完了しました。UI を再読み込みすると、各チャンネルのデューティグラフが表示されます。',
+                reload_rpm_only_cleared_single:
+                    '{channelName} のキャリブレーションをクリアしました。UI を再読み込みすると、古くなったデューティグラフが削除されます。',
+                reload_rpm_only_cleared_multi:
+                    '{channelList} のキャリブレーションをクリアしました。UI を再読み込みすると、各チャンネルの古くなったデューティグラフが削除されます。',
+                reload_duty_range_completed_single:
+                    '{channelName} のキャリブレーションが完了しました。UI を再読み込みすると、手動デューティスライダーとファン制御ウィザードが新しいデューティレンジを取り込みます。',
+                reload_duty_range_completed_multi:
+                    '{channelList} のキャリブレーションが完了しました。UI を再読み込みすると、手動デューティスライダーとファン制御ウィザードが各チャンネルの新しいデューティレンジを取り込みます。',
+                reload_duty_range_cleared_single:
+                    '{channelName} のキャリブレーションをクリアしました。UI を再読み込みすると、手動デューティスライダーがチャンネルのハードウェア上限に戻ります。',
+                reload_duty_range_cleared_multi:
+                    '{channelList} のキャリブレーションをクリアしました。UI を再読み込みすると、手動デューティスライダーが各チャンネルのハードウェア上限に戻ります。',
+                reload_mixed_multi:
+                    '{channelList} のキャリブレーションが変更されました。UI を再読み込みすると、各チャンネルが新しいデューティ表示とスライダー範囲を取り込みます。',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: 'キャリブレーションカーブ',
+            loading: 'キャリブレーションを読み込み中...',
+            notFound: 'このチャンネルのキャリブレーションデータが見つかりません。',
+            loadError: 'キャリブレーションデータの読み込みに失敗しました。',
+            axisDuty: 'デューティ',
+            axisRpm: 'RPM',
+            legendUp: '上昇',
+            legendDown: '下降',
+            markerStart: '始点',
+            markerSustain: '保持',
+            markerSaturate: 'プラトー付近',
+            markerStable: '安定下限',
+            curveKindSmooth: 'スムース (マッピング有効)',
+            curveKindStepped: 'ステップ (マッピング無効)',
+            fieldCurveKind: 'カーブ',
+            fieldRpmMax: 'ピーク RPM',
+            fieldKick: 'キック時間',
+            fieldStart: '最小起動デューティ',
+            fieldSustain: '最小保持デューティ',
+            fieldStable: '最小安定デューティ',
+            fieldStableTooltip:
+                'ファンが振動なく動作する最低デューティ。\nファームウェア制御のファンは低デューティで RPM を内部下限以上に押し上げ、可聴な振動を生じさせます。ディスパッチャはキック後の保持値をこの値に制限し、ファンが帯域より上に留まるようにします。',
+            fieldSaturate: 'プラトー付近のデューティ',
+            fieldSaturateTooltip:
+                'RPM の伸びが鈍り始めるデューティ。\nこのデューティを超えても 100 % までさらに数 RPM 増える場合があるため、キャリブレーションは 0〜100 % のフルレンジを使用します。',
+            fieldTimestamp: 'キャリブレーション日時',
         },
         deviceExtensionSettings: {
             title: '高度なデバイス設定',

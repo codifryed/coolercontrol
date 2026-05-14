@@ -257,6 +257,7 @@ export default {
                 unpin: 'Desfixar',
                 profileApply: 'Aplicar Perfil aos ventiladores',
                 tags: 'Gerir Tags',
+                calibrated: 'Calibrado',
             },
         },
         plugins: {
@@ -1202,6 +1203,92 @@ export default {
             saveError: 'Falha ao salvar as configurações da extensão do canal',
             firmwareControlDisabled:
                 'O controle por firmware não está disponível com as configurações atuais.\nUse um Perfil de gráfico para este dispositivo com um sensor de temperatura interno compatível.',
+            calibration: {
+                heading: 'Calibração de RPM',
+                description:
+                    'Faça uma varredura no ventilador para descobrir sua curva real de ciclo de trabalho versus RPM e, em seguida, controle o canal como ciclo de trabalho real normalizado por RPM.\nElimina zonas mortas em ciclo baixo e saturação em ciclo alto.\nO impulso de partida também é tratado automaticamente quando o ventilador está calibrado: um breve reforço inicial o tira do repouso antes de estabilizá-lo no ciclo alvo.\nA varredura normalmente leva vários minutos e pode ser bem mais longa em ventiladores de resposta lenta. O canal é ajustado para 0 % no início.',
+                statusNotCalibrated: 'Não calibrado',
+                statusInProgress: 'Calibrando: {stage} ({percent} %)',
+                statusCompleted: 'Calibrado (curva suave, mapeamento ativo)',
+                statusCompletedStepped: 'Calibrado (curva em degraus, mapeamento desativado)',
+                statusCompletedWithWarnings: 'Calibrado com avisos: {messages}',
+                statusFailed: 'Última tentativa falhou: {message}',
+                warningNoTachometer:
+                    'nenhuma RPM detectada (o sensor ou cabeamento podem estar desconectados)',
+                warningNotControllable:
+                    'o ventilador não responde ao ciclo de trabalho (provavelmente controlado pela BIOS)',
+                warningLimitedRange:
+                    'faixa de RPM limitada ({span} RPM); resolução de mapeamento grosseira',
+                warningOscillating:
+                    'o ventilador oscila entre {lower} % e {upper} % de ciclo (impulso controlado por firmware); mapeamento desativado em ciclo baixo',
+                stagePreflight: 'pré-verificação',
+                stageUpSweep: 'varredura ascendente',
+                stageDownSweep: 'varredura descendente',
+                stageFinalizing: 'finalizando',
+                buttonCalibrate: 'Calibrar',
+                buttonRecalibrate: 'Recalibrar',
+                buttonCancel: 'Cancelar',
+                buttonClear: 'Limpar',
+                buttonViewCurve: 'Ver curva',
+                caveatsBanner:
+                    'Calibrar vários ventiladores de refrigeração principais ao mesmo tempo pode elevar a temperatura do sistema.\nVentiladores push-pull de radiador diagnosticados em paralelo podem gerar leituras imprecisas.\nMantenha o sistema ocioso durante a calibração.',
+                completedNotice:
+                    'Calibração ativa. As curvas de ventilador e os ciclos manuais deste canal agora controlam o ciclo de trabalho real normalizado por RPM. Revise os valores do seu perfil, se necessário.',
+                clearedNotice:
+                    'Limpo. As curvas de ventilador deste canal agora controlam diretamente o ciclo de trabalho do dispositivo.',
+                startError: 'Falha ao iniciar a calibração',
+                cancelError: 'Falha ao cancelar a calibração',
+                clearError: 'Falha ao limpar a calibração',
+                reloadHeader: 'Recarregar interface',
+                reloadAccept: 'Recarregar',
+                reloadReject: 'Mais tarde',
+                reload_rpm_only_completed_single:
+                    'Calibração concluída para {channelName}. Recarregue a interface para exibir o gráfico de ciclo do canal.',
+                reload_rpm_only_completed_multi:
+                    'Calibração concluída para {channelList}. Recarregue a interface para exibir o gráfico de ciclo de cada canal.',
+                reload_rpm_only_cleared_single:
+                    'Calibração limpa para {channelName}. Recarregue a interface para remover o gráfico de ciclo do canal, agora obsoleto.',
+                reload_rpm_only_cleared_multi:
+                    'Calibração limpa para {channelList}. Recarregue a interface para remover o gráfico de ciclo de cada canal, agora obsoleto.',
+                reload_duty_range_completed_single:
+                    'Calibração concluída para {channelName}. Recarregue a interface para que o controle manual de ciclo e o assistente de controle do ventilador adotem a nova faixa de ciclo do canal.',
+                reload_duty_range_completed_multi:
+                    'Calibração concluída para {channelList}. Recarregue a interface para que o controle manual de ciclo e o assistente de controle do ventilador adotem a nova faixa de ciclo de cada canal.',
+                reload_duty_range_cleared_single:
+                    'Calibração limpa para {channelName}. Recarregue a interface para que o controle manual de ciclo volte aos limites de hardware do canal.',
+                reload_duty_range_cleared_multi:
+                    'Calibração limpa para {channelList}. Recarregue a interface para que o controle manual de ciclo volte aos limites de hardware de cada canal.',
+                reload_mixed_multi:
+                    'Calibração alterada para {channelList}. Recarregue a interface para que cada canal adote a nova exibição de ciclo e os limites do controle.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: 'Curva de calibração',
+            loading: 'Carregando calibração...',
+            notFound: 'Nenhum dado de calibração encontrado para este canal.',
+            loadError: 'Falha ao carregar os dados de calibração.',
+            axisDuty: 'Ciclo',
+            axisRpm: 'RPM',
+            legendUp: 'Varredura ascendente',
+            legendDown: 'Varredura descendente',
+            markerStart: 'Início',
+            markerSustain: 'Sustentação',
+            markerSaturate: 'Perto do platô',
+            markerStable: 'Piso estável',
+            curveKindSmooth: 'Suave (mapeamento ativo)',
+            curveKindStepped: 'Em degraus (mapeamento desativado)',
+            fieldCurveKind: 'Curva',
+            fieldRpmMax: 'RPM máxima',
+            fieldKick: 'Duração do impulso',
+            fieldStart: 'Ciclo mínimo de partida',
+            fieldSustain: 'Ciclo mínimo de sustentação',
+            fieldStable: 'Ciclo mínimo estável',
+            fieldStableTooltip:
+                'Ciclo mais baixo no qual o ventilador opera sem oscilação.\nVentiladores controlados por firmware elevam as RPM acima de um piso interno em ciclo baixo, gerando uma vibração audível; o dispatcher limita a sustentação pós-impulso a este valor para que o ventilador permaneça acima da faixa.',
+            fieldSaturate: 'Ciclo próximo do platô',
+            fieldSaturateTooltip:
+                'Ciclo a partir do qual os ganhos de RPM começam a diminuir.\nO ventilador ainda pode adicionar algumas RPM além deste ciclo até 100 %, por isso a calibração usa toda a faixa de 0 a 100 %.',
+            fieldTimestamp: 'Calibrado',
         },
         deviceExtensionSettings: {
             title: 'Configurações Avançadas do Dispositivo',

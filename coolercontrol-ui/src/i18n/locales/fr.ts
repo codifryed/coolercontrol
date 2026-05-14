@@ -361,6 +361,7 @@ export default {
                 unpin: 'Désépingler',
                 profileApply: 'Appliquer le Profil aux ventilateurs',
                 tags: 'Gérer les Tags',
+                calibrated: 'Calibré',
             },
         },
         plugins: {
@@ -1181,6 +1182,92 @@ export default {
             saveError: "Échec de l'enregistrement des paramètres de l'extension de canal",
             firmwareControlDisabled:
                 "Le contrôle par firmware n'est pas disponible avec la configuration actuelle.\nUtilisez un profil Graph pour cet appareil avec un capteur de température interne pris en charge.",
+            calibration: {
+                heading: 'Étalonnage des RPM',
+                description:
+                    "Faites parcourir au ventilateur sa plage complète pour obtenir sa véritable courbe rapport cyclique/RPM, puis pilotez le canal en rapport cyclique réel normalisé par les RPM.\nSupprime les zones mortes à bas rapport cyclique et la saturation à haut rapport cyclique.\nLe coup d'envoi est aussi géré automatiquement quand le ventilateur est étalonné : une brève impulsion de démarrage le lance depuis l'arrêt avant qu'il ne se stabilise à la valeur cible.\nLe balayage prend généralement plusieurs minutes, et peut durer sensiblement plus longtemps pour des ventilateurs à réaction lente. Le canal est réglé à 0 % au début.",
+                statusNotCalibrated: 'Non étalonné',
+                statusInProgress: 'Étalonnage en cours : {stage} ({percent} %)',
+                statusCompleted: 'Étalonné (lisse, mappage actif)',
+                statusCompletedStepped: 'Étalonné (courbe en marches, mappage désactivé)',
+                statusCompletedWithWarnings: 'Étalonné avec avertissements : {messages}',
+                statusFailed: 'Dernière tentative échouée : {message}',
+                warningNoTachometer:
+                    'aucune RPM détectée (le capteur ou le câblage peuvent être débranchés)',
+                warningNotControllable:
+                    'le ventilateur ne réagit pas au rapport cyclique (probablement piloté par le BIOS)',
+                warningLimitedRange:
+                    'plage de RPM limitée ({span} RPM) ; résolution de mappage grossière',
+                warningOscillating:
+                    'le ventilateur oscille entre {lower} % et {upper} % de rapport cyclique (impulsion contrôlée par le firmware) ; mappage désactivé à bas rapport cyclique',
+                stagePreflight: 'pré-vol',
+                stageUpSweep: 'balayage montant',
+                stageDownSweep: 'balayage descendant',
+                stageFinalizing: 'finalisation',
+                buttonCalibrate: 'Étalonner',
+                buttonRecalibrate: 'Ré-étalonner',
+                buttonCancel: 'Annuler',
+                buttonClear: 'Effacer',
+                buttonViewCurve: 'Voir la courbe',
+                caveatsBanner:
+                    "Étalonner plusieurs ventilateurs de refroidissement principaux en même temps peut faire monter la température du système.\nDes ventilateurs push-pull de radiateur diagnostiqués en parallèle peuvent produire des mesures inexactes.\nMaintenez le système au repos pendant l'étalonnage.",
+                completedNotice:
+                    'Étalonnage actif. Les courbes de ventilateur et les rapports cycliques manuels de ce canal pilotent désormais le rapport cyclique réel normalisé par les RPM. Vérifiez au besoin les valeurs de votre profil.',
+                clearedNotice:
+                    "Effacé. Les courbes de ventilateur de ce canal pilotent à nouveau directement le rapport cyclique de l'appareil.",
+                startError: "Échec du démarrage de l'étalonnage",
+                cancelError: "Échec de l'annulation de l'étalonnage",
+                clearError: "Échec de l'effacement de l'étalonnage",
+                reloadHeader: "Recharger l'interface",
+                reloadAccept: 'Recharger',
+                reloadReject: 'Plus tard',
+                reload_rpm_only_completed_single:
+                    "Étalonnage terminé pour {channelName}. Rechargez l'interface pour afficher le graphique de rapport cyclique du canal.",
+                reload_rpm_only_completed_multi:
+                    "Étalonnage terminé pour {channelList}. Rechargez l'interface pour afficher le graphique de rapport cyclique de chaque canal.",
+                reload_rpm_only_cleared_single:
+                    "Étalonnage effacé pour {channelName}. Rechargez l'interface pour supprimer le graphique de rapport cyclique désormais obsolète du canal.",
+                reload_rpm_only_cleared_multi:
+                    "Étalonnage effacé pour {channelList}. Rechargez l'interface pour supprimer le graphique de rapport cyclique désormais obsolète de chaque canal.",
+                reload_duty_range_completed_single:
+                    "Étalonnage terminé pour {channelName}. Rechargez l'interface pour que le curseur de rapport cyclique manuel et l'assistant de contrôle du ventilateur prennent en compte la nouvelle plage du canal.",
+                reload_duty_range_completed_multi:
+                    "Étalonnage terminé pour {channelList}. Rechargez l'interface pour que le curseur de rapport cyclique manuel et l'assistant de contrôle du ventilateur prennent en compte la nouvelle plage de chaque canal.",
+                reload_duty_range_cleared_single:
+                    "Étalonnage effacé pour {channelName}. Rechargez l'interface pour que le curseur de rapport cyclique manuel revienne aux limites matérielles du canal.",
+                reload_duty_range_cleared_multi:
+                    "Étalonnage effacé pour {channelList}. Rechargez l'interface pour que le curseur de rapport cyclique manuel revienne aux limites matérielles de chaque canal.",
+                reload_mixed_multi:
+                    "Étalonnage modifié pour {channelList}. Rechargez l'interface pour que chaque canal prenne en compte son nouvel affichage de rapport cyclique et les limites du curseur.",
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: "Courbe d'étalonnage",
+            loading: "Chargement de l'étalonnage...",
+            notFound: "Aucune donnée d'étalonnage trouvée pour ce canal.",
+            loadError: "Échec du chargement des données d'étalonnage.",
+            axisDuty: 'Rapport cyclique',
+            axisRpm: 'RPM',
+            legendUp: 'Balayage montant',
+            legendDown: 'Balayage descendant',
+            markerStart: 'Démarrage',
+            markerSustain: 'Maintien',
+            markerSaturate: 'Proche du plateau',
+            markerStable: 'Seuil stable',
+            curveKindSmooth: 'Lisse (mappage actif)',
+            curveKindStepped: 'En marches (mappage désactivé)',
+            fieldCurveKind: 'Courbe',
+            fieldRpmMax: 'RPM maximales',
+            fieldKick: "Durée de l'impulsion",
+            fieldStart: 'Rapport cyclique min. de démarrage',
+            fieldSustain: 'Rapport cyclique min. de maintien',
+            fieldStable: 'Rapport cyclique min. stable',
+            fieldStableTooltip:
+                "Rapport cyclique le plus bas auquel le ventilateur fonctionne sans oscillation.\nLes ventilateurs pilotés par le firmware relèvent les RPM au-dessus d'un seuil interne à bas rapport cyclique, ce qui produit un battement audible ; le dispatcher plafonne le maintien post-impulsion à cette valeur pour que le ventilateur reste au-dessus de cette bande.",
+            fieldSaturate: 'Rapport cyclique proche du plateau',
+            fieldSaturateTooltip:
+                "Rapport cyclique à partir duquel les gains de RPM commencent à diminuer.\nLe ventilateur peut encore ajouter quelques RPM au-delà de ce rapport cyclique jusqu'à 100 %, c'est pourquoi l'étalonnage utilise la plage complète de 0 à 100 %.",
+            fieldTimestamp: 'Étalonné',
         },
         deviceExtensionSettings: {
             title: 'Paramètres Avancés du Périphérique',
