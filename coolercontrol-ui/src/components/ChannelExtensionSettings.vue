@@ -382,14 +382,14 @@ defineExpose({
                           the directive's unbindEvents() removes the visible tooltip
                           from document.body every ~1s while calibration is in_progress.
                         -->
-                        <div
-                            v-memo="[]"
-                            v-tooltip.top="
-                                t('components.channelExtensionSettings.calibration.description')
-                            "
-                            class="flex items-center mb-2 cursor-help"
-                        >
-                            <div class="leading-none">
+                        <div class="flex items-center mb-2">
+                            <div
+                                class="leading-none cursor-help"
+                                v-memo="[]"
+                                v-tooltip.top="
+                                    t('components.channelExtensionSettings.calibration.description')
+                                "
+                            >
                                 <svg-icon
                                     type="mdi"
                                     class="mr-2"
