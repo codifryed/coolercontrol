@@ -90,8 +90,9 @@ pub async fn get(
         })
 }
 
-/// Get the latest calibration status (polling). 404 when no
-/// diagnosis has ever been observed for the channel.
+/// Get the latest calibration status (polling). Always returns 200;
+/// channels that have never been diagnosed and have no persisted
+/// calibration return a `NotStarted` status payload rather than 404.
 pub async fn status(
     Path(path): Path<DeviceChannelPath>,
     State(AppState {
@@ -102,8 +103,8 @@ pub async fn status(
         .status(path.device_uid, path.channel_name)
         .await
         .map(Json)
-        .ok_or(CCError::NotFound {
-            msg: "no calibration status available for this channel".to_string(),
+        .ok_or(CCError::InternalError {
+            msg: "calibration actor is not responding".to_string(),
         })
 }
 

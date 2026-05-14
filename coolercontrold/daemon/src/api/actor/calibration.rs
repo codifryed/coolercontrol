@@ -45,10 +45,17 @@ use tokio_util::sync::CancellationToken;
 /// rewrites this entry on every sweep step and once more on the final
 /// terminal transition. The `Completed` and `Failed` variants stick
 /// around until the next diagnosis on the same channel resets it back
-/// to `InProgress`.
+/// to `InProgress`. `NotStarted` is returned when neither an in-memory
+/// snapshot nor a persisted calibration exists for the channel; the
+/// endpoint returns 200 in that case so the UI does not have to
+/// distinguish "channel unknown" from network errors via HTTP 404.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum CalibrationStatus {
+    NotStarted {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    },
     InProgress {
         device_uid: DeviceUID,
         channel_name: ChannelName,
@@ -71,6 +78,15 @@ pub enum CalibrationStatus {
         reason: String,
         message: String,
     },
+}
+
+impl CalibrationStatus {
+    pub fn not_started(device_uid: DeviceUID, channel_name: ChannelName) -> Self {
+        Self::NotStarted {
+            device_uid,
+            channel_name,
+        }
+    }
 }
 
 impl CalibrationStatus {
@@ -178,7 +194,7 @@ pub(crate) enum CalibrationMessage {
     Status {
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        respond_to: oneshot::Sender<Option<CalibrationStatus>>,
+        respond_to: oneshot::Sender<CalibrationStatus>,
     },
 }
 
@@ -356,6 +372,10 @@ impl CalibrationHandle {
         rx.await.unwrap_or(false)
     }
 
+    /// Fetch the current per-channel status. Returns `None` only on
+    /// a transport-level failure (actor task dropped the channel);
+    /// otherwise the status itself encodes the "nothing yet" state
+    /// as `NotStarted` and never round-trips an absent value.
     pub async fn status(
         &self,
         device_uid: DeviceUID,
@@ -370,6 +390,6 @@ impl CalibrationHandle {
                 respond_to: tx,
             })
             .await;
-        rx.await.ok().flatten()
+        rx.await.ok()
     }
 }

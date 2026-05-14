@@ -154,11 +154,31 @@ impl Engine {
         }
     }
 
-    /// Returns the per-channel calibration status (the polling DTO),
-    /// or `None` if no diagnosis has ever been observed for the
-    /// channel.
-    pub fn calibration_status(&self, key: &ChannelKey) -> Option<CalibrationStatus> {
-        self.calibration_statuses.borrow().get(key).cloned()
+    /// Returns the per-channel calibration status (the polling DTO).
+    ///
+    /// Resolution order:
+    /// 1. In-memory status from the most recent sweep this session.
+    /// 2. Synthesized `Completed` from the persisted calibration on
+    ///    disk (so daemon restarts keep showing the calibrated state
+    ///    instead of regressing to "not started").
+    /// 3. `NotStarted` for channels we have never observed.
+    ///
+    /// The endpoint therefore always returns a meaningful status and
+    /// never 404s on this route.
+    pub fn calibration_status(&self, key: &ChannelKey) -> CalibrationStatus {
+        if let Some(in_memory) = self.calibration_statuses.borrow().get(key).cloned() {
+            return in_memory;
+        }
+        if let Some(persisted) = self.calibration_store.get(key) {
+            let completed_at = persisted.timestamp;
+            return CalibrationStatus::Completed {
+                device_uid: key.0.clone(),
+                channel_name: key.1.clone(),
+                completed_at,
+                calibration: persisted,
+            };
+        }
+        CalibrationStatus::not_started(key.0.clone(), key.1.clone())
     }
 
     /// Internal helper: write the most recent status snapshot for the
@@ -238,12 +258,7 @@ impl Engine {
                 let writer = self.writers_by_type.get(&device_type).with_context(|| {
                     format!("No calibration writer for device type {device_type:?}")
                 })?;
-                // No moro scope is reachable on the manual path (API
-                // actor handlers, profile application, saved-setting
-                // replay). dispatch_local does one Rc::clone per call
-                // to satisfy spawn_local's 'static requirement, which
-                // is acceptable for the low-frequency manual path.
-                calibration::dispatch_local(
+                calibration::dispatch(
                     &self.fan_state_map,
                     &self.calibration_store,
                     writer,
