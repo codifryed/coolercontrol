@@ -262,7 +262,10 @@ const chartOption = (cal: Calibration) => {
                         {{ calibration.min_sustain_duty }}{{ t('common.percentUnit') }}
                     </span>
                 </div>
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldSaturateTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldSaturate') }}:
                     </span>

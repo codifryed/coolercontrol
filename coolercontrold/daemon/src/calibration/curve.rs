@@ -114,8 +114,12 @@ pub struct Calibration {
     /// fan continues to spin once already in motion.
     pub min_sustain_duty: Duty,
 
-    /// Lowest device-duty (multiple of `DUTY_STEP_PERCENT`) at which
-    /// `up_curve` reaches the saturation plateau.
+    /// Lowest device-duty at which the up-curve reaches within
+    /// `jitter` of `rpm_max` — the "near plateau" point where
+    /// additional duty produces diminishing RPM gains. Informational
+    /// only: the mapping math uses `rpm_max` as the upper bound, so
+    /// `true_to_device(100)` may still write a device-duty above
+    /// this value when the fan continues to gain RPM past it.
     pub max_eff_duty: Duty,
 
     /// Peak RPM observed across the sweep. Always positive.
@@ -514,6 +518,10 @@ fn effective_rpm_span(up_curve: &[DutySample], scalars: &DerivedScalars) -> RPM 
 }
 
 /// Scalars derived from the raw sweep curves.
+///
+/// `max_eff_duty` is informational (where the up-curve approaches its peak
+/// within `jitter`); the mapping math does NOT use it as a duty cap. See
+/// `Calibration::max_eff_duty` for the full doc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedScalars {
     pub min_start_duty: Duty,
@@ -629,13 +637,20 @@ mod tests {
     }
 
     #[test]
-    fn forward_map_hundred_is_at_or_below_max_eff() {
-        // Goal: true-duty 100 must map to a device duty <= max_eff_duty
-        // (we don't waste duty beyond saturation).
+    fn forward_map_hundred_writes_full_device_duty() {
+        // Goal: true-duty 100 targets `rpm_max` and writes a device-duty
+        // up to the curve's top. `max_eff_duty` is informational and
+        // does NOT cap the forward mapping — real fans often keep
+        // gaining RPM beyond their `max_eff_duty` and the algorithm
+        // honors that. Asserts the mapping reaches 100% device-duty
+        // for a curve whose rpm_max sits at duty 100.
         let cal = make_smooth_calibration();
         let mapped = cal.true_to_device(100).expect("smooth maps");
-        assert!(mapped.kick <= cal.max_eff_duty);
-        assert!(mapped.sustain <= cal.max_eff_duty);
+        assert_eq!(
+            mapped.sustain, 100,
+            "true=100 must drive the full device-duty range, not cap at max_eff_duty"
+        );
+        assert_eq!(mapped.kick, 100);
     }
 
     #[test]
