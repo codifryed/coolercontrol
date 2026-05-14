@@ -60,6 +60,13 @@ export interface Calibration {
     min_start_duty: number
     /** Lowest duty at which the fan continues spinning (multiple of 5). */
     min_sustain_duty: number
+    /**
+     * Lowest duty at which the fan operates stably (no firmware-kick
+     * oscillation). Equals `min_sustain_duty` for healthy fans.
+     * Defaults to 0 on older persisted calibrations that pre-date this
+     * field (the dispatcher's clamp then degenerates to a no-op).
+     */
+    min_stable_duty: number
     /** Lowest duty where the fan hits its saturation plateau. */
     max_eff_duty: number
     /** Peak RPM observed during the sweep. */
@@ -86,6 +93,7 @@ export type CalibrationWarning =
     | { kind: 'no_tachometer' }
     | { kind: 'not_controllable' }
     | { kind: 'limited_range'; rpm_span: number; rpm_max: number }
+    | { kind: 'oscillating'; lower_duty: number; upper_duty: number }
 
 /**
  * The stage label embedded in an in-progress status. The values

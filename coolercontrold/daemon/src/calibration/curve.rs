@@ -114,6 +114,22 @@ pub struct Calibration {
     /// fan continues to spin once already in motion.
     pub min_sustain_duty: Duty,
 
+    /// Lowest device-duty at which the fan operates stably (no oscillation).
+    ///
+    /// On well-behaved fans this equals `min_sustain_duty` — every spinning
+    /// duty is also stable. Some controllers apply a kick in firmware that
+    /// keeps RPM above an internal floor, producing an audible oscillation
+    /// in a band immediately above `min_sustain_duty`; on those fans the
+    /// threshold sits above the band and the dispatcher clamps the
+    /// post-kick sustain (and the kick target itself) to this value so the
+    /// fan never operates inside the oscillation zone.
+    ///
+    /// Defaults to 0 on older persisted records that pre-date this field;
+    /// the dispatcher's `max` clamp then degenerates to a no-op, preserving
+    /// pre-existing behaviour until the user recalibrates.
+    #[serde(default)]
+    pub min_stable_duty: Duty,
+
     /// Lowest device-duty at which the up-curve reaches within
     /// `jitter` of `rpm_max` — the "near plateau" point where
     /// additional duty produces diminishing RPM gains. Informational
@@ -167,6 +183,14 @@ pub enum CalibrationWarning {
     /// active; the popover surfaces the span so the user can decide
     /// whether to clear.
     LimitedRange { rpm_span: RPM, rpm_max: RPM },
+    /// The fan never settled into a stable RPM anywhere above
+    /// `min_sustain_duty` — typically a cheap firmware-kicked fan
+    /// whose internal floor sits well above its mechanical minimum.
+    /// `min_stable_duty` could not be derived; the dispatcher falls
+    /// back to `min_sustain_duty` (no clamp). `lower_duty`/`upper_duty`
+    /// describe the duty range observed to oscillate so the UI can
+    /// surface what the diagnoser saw.
+    Oscillating { lower_duty: Duty, upper_duty: Duty },
 }
 
 /// Result of a forward true-duty -> device-duty mapping.
@@ -233,14 +257,22 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
-        // Kick must always be >= min_start_duty: that's the lowest
-        // duty at which the fan reliably spins up from rest. With a
-        // hysteretic fan the target RPM near 0% true-duty can land
-        // below the up-curve sample at min_start_duty, which would
-        // otherwise let duty_for_rpm interpolate down to an
-        // unkickable duty value. The clamp guarantees the fan kicks.
-        let kick = duty_for_rpm(&self.up_curve, target_rpm).max(self.min_start_duty);
-        let sustain = duty_for_rpm(&self.down_curve, target_rpm);
+        // Kick must clear two floors: `min_start_duty` (lowest duty that
+        // reliably spins up from rest) and `min_stable_duty` (lowest duty
+        // at which the fan operates without firmware-kick oscillation).
+        // On healthy fans `min_stable_duty <= min_sustain_duty`, so the
+        // second clamp is a no-op; on firmware-kick fans it raises the
+        // kick target above the oscillation band so the post-kick
+        // sustain landing also stays clear of the zone.
+        let kick = duty_for_rpm(&self.up_curve, target_rpm)
+            .max(self.min_start_duty)
+            .max(self.min_stable_duty);
+        // Same clamp on sustain: never let the dispatcher write a
+        // device-duty that sits inside the oscillation zone. With
+        // `min_stable_duty == 0` (the default for older persisted
+        // calibrations that pre-date this field) the clamp degenerates
+        // to a no-op and prior behaviour is preserved exactly.
+        let sustain = duty_for_rpm(&self.down_curve, target_rpm).max(self.min_stable_duty);
         MappedDuty { kick, sustain }
     }
 
@@ -505,6 +537,61 @@ pub fn derive_warnings(
     warnings
 }
 
+/// Derive `min_stable_duty` from the down-sweep + parallel stability
+/// flags collected by the diagnoser.
+///
+/// Rule: scan the down-curve from highest duty to lowest; descend while
+/// each sample is `was_stable = true` AND `rpm >= start_threshold(rpm_max)`;
+/// stop at the first sample that fails either gate. The lowest duty in
+/// that contiguous-stable run is the threshold.
+///
+/// Returns `(threshold, oscillation_band)`:
+/// - `threshold` is the lowest stable duty (clamped at `min_sustain_duty`
+///   so a stable-all-the-way-down fan reports `min_sustain_duty` and the
+///   dispatcher's `max` clamp is a no-op).
+/// - `oscillation_band` is `Some((lower, upper))` only when **no**
+///   contiguous-stable run exists from the top (fully-unstable case).
+///   In the partial-unstable case (firmware-kick fans, the usual one)
+///   the threshold is set above the band and no warning is needed: the
+///   threshold itself is the user-facing signal.
+pub fn derive_min_stable_duty(
+    down_curve: &[DutySample],
+    down_stable: &[bool],
+    rpm_max: RPM,
+    min_sustain_duty: Duty,
+) -> (Duty, Option<(Duty, Duty)>) {
+    assert!(rpm_max > 0);
+    assert_eq!(down_curve.len(), down_stable.len());
+    if down_curve.is_empty() {
+        return (min_sustain_duty, None);
+    }
+    let threshold_rpm = start_threshold(rpm_max);
+    // Scan top-down; remember the lowest duty in the contiguous-stable run.
+    let mut floor: Option<Duty> = None;
+    for (sample, &stable) in down_curve.iter().rev().zip(down_stable.iter().rev()) {
+        if stable && sample.rpm >= threshold_rpm {
+            floor = Some(sample.duty);
+            continue;
+        }
+        break;
+    }
+    match floor {
+        // All stable, or stable down to (and including) min_sustain_duty:
+        // collapse to min_sustain_duty so the dispatcher clamp degenerates.
+        Some(duty) if duty <= min_sustain_duty => (min_sustain_duty, None),
+        // Partial: oscillation zone exists but a stable region sits above
+        // it. Threshold is the bottom of that stable region. No warning.
+        Some(duty) => (duty, None),
+        // Fully unstable above start-threshold: every sample failed at
+        // least one gate. Threshold falls back to min_sustain_duty and we
+        // surface the band so the UI can explain what happened.
+        None => {
+            let upper = down_curve.last().map_or(min_sustain_duty, |s| s.duty);
+            (min_sustain_duty, Some((min_sustain_duty, upper)))
+        }
+    }
+}
+
 /// RPM span across the responding portion of the up-sweep: the
 /// distance from the sample at `min_start_duty` up to the curve's
 /// peak. Excluding the "off" prefix prevents `0 → rpm_max` from
@@ -584,6 +671,7 @@ mod tests {
             kick_duration_ms: 800,
             min_start_duty: scalars.min_start_duty,
             min_sustain_duty: scalars.min_sustain_duty,
+            min_stable_duty: scalars.min_sustain_duty,
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
@@ -728,6 +816,7 @@ mod tests {
             kick_duration_ms: 800,
             min_start_duty: scalars.min_start_duty,
             min_sustain_duty: scalars.min_sustain_duty,
+            min_stable_duty: scalars.min_sustain_duty,
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Stepped,
@@ -956,6 +1045,7 @@ mod tests {
             kick_duration_ms: 1500,
             min_start_duty: 10,
             min_sustain_duty: 6,
+            min_stable_duty: 6,
             max_eff_duty: 95,
             rpm_max: 3518,
             curve_kind: CurveKind::Smooth,
@@ -1015,6 +1105,7 @@ mod tests {
             kick_duration_ms: 500,
             min_start_duty: scalars.min_start_duty,
             min_sustain_duty: scalars.min_sustain_duty,
+            min_stable_duty: scalars.min_sustain_duty,
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
@@ -1138,5 +1229,219 @@ mod tests {
                 mapped.sustain
             );
         }
+    }
+
+    // --- derive_min_stable_duty -------------------------------------
+
+    /// Build a synthetic down-curve at 5%-step spacing and a parallel
+    /// stable-flag vec. Helper for the `derive_min_stable_duty` tests so
+    /// each case can declare just "RPM per duty step" + which duties are
+    /// flagged unstable.
+    fn down_curve_with_flags(
+        per_duty_rpm: &[(Duty, RPM)],
+        unstable_duties: &[Duty],
+    ) -> (Vec<DutySample>, Vec<bool>) {
+        let samples: Vec<DutySample> = per_duty_rpm
+            .iter()
+            .map(|&(duty, rpm)| DutySample { duty, rpm })
+            .collect();
+        let flags: Vec<bool> = samples
+            .iter()
+            .map(|s| !unstable_duties.contains(&s.duty))
+            .collect();
+        (samples, flags)
+    }
+
+    #[test]
+    fn derive_min_stable_duty_all_stable_collapses_to_min_sustain() {
+        // Goal: a healthy fan whose entire down-curve settles within
+        // tolerance must report `min_stable_duty == min_sustain_duty`
+        // and produce no oscillation band, so the dispatcher's clamp
+        // is a no-op and the UI dashed line does not render.
+        let samples: Vec<(Duty, RPM)> = (0..=20)
+            .map(|i| {
+                (
+                    u8::try_from(i).unwrap() * 5,
+                    100 * u32::try_from(i).unwrap(),
+                )
+            })
+            .collect();
+        let (down, stable) = down_curve_with_flags(&samples, &[]);
+        let (floor, band) = derive_min_stable_duty(&down, &stable, 2000, 5);
+        assert_eq!(floor, 5, "all-stable: floor collapses to min_sustain_duty");
+        assert!(band.is_none(), "all-stable: no oscillation band reported");
+    }
+
+    #[test]
+    fn derive_min_stable_duty_firmware_kick_lifts_floor_above_band() {
+        // Goal: the canonical firmware-kick scenario. The fan is stable
+        // from ~30%+ but oscillates between min_sustain_duty (5%) and
+        // ~25%. The threshold must land at the bottom of the contiguous
+        // stable run from the top of the down-curve. No band is
+        // surfaced because the threshold ITSELF is the user-facing
+        // signal (partial-unstable case).
+        let mut samples: Vec<(Duty, RPM)> = Vec::new();
+        for i in 0..=20 {
+            samples.push((
+                u8::try_from(i).unwrap() * 5,
+                100 * u32::try_from(i).unwrap(),
+            ));
+        }
+        let unstable: Vec<Duty> = vec![10, 15, 20, 25]; // oscillation band
+        let (down, stable) = down_curve_with_flags(&samples, &unstable);
+        let (floor, band) = derive_min_stable_duty(&down, &stable, 2000, 5);
+        assert_eq!(
+            floor, 30,
+            "floor lifts to the bottom of the contiguous-stable run"
+        );
+        assert!(
+            band.is_none(),
+            "partial-unstable: no Oscillating warning (threshold conveys it)"
+        );
+    }
+
+    #[test]
+    fn derive_min_stable_duty_fully_unstable_falls_back_and_warns() {
+        // Goal: when no contiguous-stable run exists from the top of
+        // the down-curve, the floor must fall back to min_sustain_duty
+        // (no clamp change) and the oscillation band must be surfaced
+        // so the popover can emit a CalibrationWarning::Oscillating.
+        let mut samples: Vec<(Duty, RPM)> = Vec::new();
+        for i in 0..=20 {
+            samples.push((
+                u8::try_from(i).unwrap() * 5,
+                100 * u32::try_from(i).unwrap(),
+            ));
+        }
+        // Every sample above min_sustain_duty is unstable.
+        let unstable: Vec<Duty> = (5..=100).step_by(5).collect();
+        let (down, stable) = down_curve_with_flags(&samples, &unstable);
+        let (floor, band) = derive_min_stable_duty(&down, &stable, 2000, 5);
+        assert_eq!(
+            floor, 5,
+            "fully-unstable: floor falls back to min_sustain_duty"
+        );
+        let (lower, upper) = band.expect("fully-unstable: oscillation band surfaced");
+        assert_eq!(lower, 5);
+        assert_eq!(upper, 100);
+    }
+
+    #[test]
+    fn derive_min_stable_duty_ignores_phase_coincidence_stable_island() {
+        // Goal: rule (B) — descend only while EVERY sample above is
+        // stable. A single phase-coincidence stable sample sitting
+        // inside an otherwise-unstable region must NOT be picked as
+        // the floor; the run is broken by the unstable samples above it.
+        let mut samples: Vec<(Duty, RPM)> = Vec::new();
+        for i in 0..=20 {
+            samples.push((
+                u8::try_from(i).unwrap() * 5,
+                100 * u32::try_from(i).unwrap(),
+            ));
+        }
+        // 15 is a stable island; 20 and 25 unstable; 30+ stable. The
+        // contiguous run from the top stops at 30 (because 25 broke it).
+        let unstable: Vec<Duty> = vec![10, 20, 25];
+        let (down, stable) = down_curve_with_flags(&samples, &unstable);
+        let (floor, band) = derive_min_stable_duty(&down, &stable, 2000, 5);
+        assert_eq!(
+            floor, 30,
+            "phase-coincidence stable at 15 must NOT be chosen; floor is bottom of run above 25"
+        );
+        assert!(band.is_none());
+    }
+
+    #[test]
+    fn derive_min_stable_duty_low_rpm_samples_block_floor() {
+        // Goal: a sample marked stable but whose RPM is below
+        // start_threshold(rpm_max) must NOT count as the floor. This
+        // guards against the "fan stopped at low duty so the reading
+        // is noise-stable around 0 RPM" failure mode.
+        let mut samples: Vec<(Duty, RPM)> = Vec::new();
+        // Fan is below start threshold (50 RPM or 5% of 2000 = 100) for
+        // duty 0-15, then climbs. All samples are tagged stable.
+        for i in 0..=20 {
+            let duty = u8::try_from(i).unwrap() * 5;
+            let rpm = if duty < 20 { 30 } else { 100 * u32::from(duty) };
+            samples.push((duty, rpm));
+        }
+        let (down, stable) = down_curve_with_flags(&samples, &[]);
+        let (floor, _band) = derive_min_stable_duty(&down, &stable, 2000, 5);
+        assert_eq!(
+            floor, 20,
+            "low-RPM samples (below start_threshold) must not be eligible as the floor"
+        );
+    }
+
+    // --- dispatch clamp via true_to_device_smooth -------------------
+
+    #[test]
+    fn true_to_device_smooth_clamps_sustain_to_min_stable_duty() {
+        // Goal: a calibration whose min_stable_duty sits ABOVE the
+        // natural down-curve interpolation point for low true-duty
+        // values must surface min_stable_duty as the sustain. The
+        // post-kick fan lands above the oscillation zone instead of
+        // inside it.
+        let mut cal = make_smooth_calibration();
+        // Force a firmware-kick-style threshold: clamp sustain at 40%.
+        cal.min_stable_duty = 40;
+        // 1% true duty would otherwise produce a sustain near
+        // min_sustain_duty; the clamp must lift it to 40%.
+        let mapped = cal.true_to_device(1).expect("smooth maps");
+        assert!(
+            mapped.sustain >= 40,
+            "sustain must clamp at min_stable_duty; got {}",
+            mapped.sustain
+        );
+        // Kick also lifts at least to 40% so the post-kick landing
+        // isn't ABOVE the kick value (avoiding a transient downstep).
+        assert!(
+            mapped.kick >= 40,
+            "kick must lift to min_stable_duty too; got {}",
+            mapped.kick
+        );
+    }
+
+    #[test]
+    fn true_to_device_smooth_zero_still_off_with_clamp() {
+        // Goal: the min_stable_duty clamp must not turn off-state into
+        // a forced minimum. true_duty == 0 always writes (0, 0) so the
+        // dispatcher can transition the fan to fully off.
+        let mut cal = make_smooth_calibration();
+        cal.min_stable_duty = 40;
+        let mapped = cal.true_to_device(0).expect("smooth maps");
+        assert_eq!(mapped.sustain, 0);
+        assert_eq!(mapped.kick, 0);
+    }
+
+    #[test]
+    fn true_to_device_smooth_no_clamp_when_threshold_at_sustain() {
+        // Goal: the healthy-fan path. min_stable_duty == min_sustain_duty
+        // means there's no oscillation zone; the clamp must be a no-op
+        // and behaviour must match the pre-feature mapping exactly.
+        // Snapshot the mapping with the threshold at min_sustain, then
+        // at 0 (the default for old persisted calibrations), and require
+        // both produce identical sustains for every true-duty.
+        let cal = make_smooth_calibration();
+        let baseline = cal.min_sustain_duty;
+        let mut at_default = cal.clone();
+        at_default.min_stable_duty = 0;
+        let mut at_sustain = cal.clone();
+        at_sustain.min_stable_duty = baseline;
+        for t in 1..=100 {
+            let a = at_default.true_to_device(t).expect("smooth maps");
+            let b = at_sustain.true_to_device(t).expect("smooth maps");
+            assert_eq!(a.sustain, b.sustain, "no-op clamp mismatch at true={t}");
+            assert_eq!(a.kick, b.kick, "no-op clamp mismatch at true={t}");
+        }
+        // Also verify the post-fix sustain at high duty is unchanged
+        // from what the natural interpolation would produce.
+        let mapped = cal.true_to_device(80).expect("smooth maps");
+        assert!(
+            mapped.sustain >= baseline,
+            "sustain at 80% must remain at or above min_sustain (no regression)"
+        );
+        let _ = at_default;
+        let _ = mapped;
     }
 }

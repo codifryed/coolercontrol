@@ -182,6 +182,33 @@ const chartOption = (cal: Calibration) => {
                 connectNulls: true,
                 data: upData,
                 z: 10,
+                // Dashed vertical marker at min_stable_duty when it
+                // sits above min_sustain_duty: a firmware-kick fan has
+                // an oscillation band above min_sustain_duty and the
+                // dispatcher clamps post-kick sustain to this floor.
+                // Healthy fans collapse to the same value and the
+                // line is suppressed.
+                ...(cal.min_stable_duty > cal.min_sustain_duty
+                    ? {
+                          markLine: {
+                              silent: true,
+                              symbol: 'none',
+                              label: {
+                                  color: colors.themeColors.yellow,
+                                  fontSize: deviceStore.getREMSize(0.8),
+                                  formatter: t('components.calibrationCurve.markerStable'),
+                                  position: 'insideEndTop',
+                              },
+                              lineStyle: {
+                                  color: colors.themeColors.yellow,
+                                  width: 1.5,
+                                  type: 'dashed',
+                                  opacity: 0.8,
+                              },
+                              data: [{ xAxis: cal.min_stable_duty }],
+                          },
+                      }
+                    : {}),
             },
             {
                 id: 'downCurve',
@@ -261,6 +288,18 @@ const chartOption = (cal: Calibration) => {
                     </span>
                     <span class="font-medium">
                         {{ calibration.min_sustain_duty }}{{ t('common.percentUnit') }}
+                    </span>
+                </div>
+                <div
+                    v-if="calibration.min_stable_duty > calibration.min_sustain_duty"
+                    v-tooltip.top="t('components.calibrationCurve.fieldStableTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
+                    <span class="text-text-color-secondary mr-2">
+                        {{ t('components.calibrationCurve.fieldStable') }}:
+                    </span>
+                    <span class="font-medium">
+                        {{ calibration.min_stable_duty }}{{ t('common.percentUnit') }}
                     </span>
                 </div>
                 <div

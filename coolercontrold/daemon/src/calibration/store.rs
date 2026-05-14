@@ -290,6 +290,7 @@ mod tests {
             kick_duration_ms: 750,
             min_start_duty: 5,
             min_sustain_duty: 5,
+            min_stable_duty: 5,
             max_eff_duty: 95,
             rpm_max: 2000,
             curve_kind: CurveKind::Smooth,

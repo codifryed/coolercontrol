@@ -315,7 +315,7 @@ where
     state.set_under_diagnosis(key.clone(), false);
     let restore_result = host.restore_setting(&snapshot).await;
 
-    let (up_curve, down_curve) = match sweep_outcome {
+    let (up_curve, down_curve, down_stable) = match sweep_outcome {
         Ok(curves) => curves,
         Err(failure) => return Err(failure),
     };
@@ -323,14 +323,33 @@ where
     let calibration = match derive_scalars(&up_curve, &down_curve) {
         Some(scalars) => {
             let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max);
-            let warnings =
+            let mut warnings =
                 crate::calibration::curve::derive_warnings(&up_curve, &scalars, &mut curve_kind);
+            // Derive the post-kick sustain floor from the down-sweep's
+            // per-step stability flags. When a contiguous-stable band
+            // sits above the oscillation zone the threshold rises to
+            // the band's bottom; otherwise it stays at min_sustain_duty
+            // and (in the fully-unstable case) an Oscillating warning
+            // is pushed so the popover can explain the result.
+            let (min_stable_duty, band) = crate::calibration::curve::derive_min_stable_duty(
+                &down_curve,
+                &down_stable,
+                scalars.rpm_max,
+                scalars.min_sustain_duty,
+            );
+            if let Some((lower_duty, upper_duty)) = band {
+                warnings.push(crate::calibration::curve::CalibrationWarning::Oscillating {
+                    lower_duty,
+                    upper_duty,
+                });
+            }
             Calibration {
                 up_curve,
                 down_curve,
                 kick_duration_ms: settings.kick_duration_default_ms,
                 min_start_duty: scalars.min_start_duty,
                 min_sustain_duty: scalars.min_sustain_duty,
+                min_stable_duty,
                 max_eff_duty: scalars.max_eff_duty,
                 rpm_max: scalars.rpm_max,
                 curve_kind,
@@ -350,6 +369,7 @@ where
                 kick_duration_ms: settings.kick_duration_default_ms,
                 min_start_duty: 100,
                 min_sustain_duty: 100,
+                min_stable_duty: 100,
                 max_eff_duty: 100,
                 rpm_max: 0,
                 curve_kind: CurveKind::Stepped,
@@ -381,7 +401,7 @@ async fn perform_sweep<H>(
     device_uid: &UID,
     channel_name: &str,
     cancellation: &CancellationToken,
-) -> Result<(Vec<DutySample>, Vec<DutySample>), DiagnosisFailure>
+) -> Result<(Vec<DutySample>, Vec<DutySample>, Vec<bool>), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
@@ -390,7 +410,7 @@ where
         .iter()
         .find(|s| s.rpm >= settings.start_rpm_min)
         .map_or(100, |s| s.duty);
-    let down_curve = perform_down_sweep(
+    let (down_curve, down_stable) = perform_down_sweep(
         host,
         settings,
         device_uid,
@@ -399,7 +419,7 @@ where
         kick_in_duty,
     )
     .await?;
-    Ok((up_curve, down_curve))
+    Ok((up_curve, down_curve, down_stable))
 }
 
 /// Up-sweep: dense (2%) steps from 0 to first observed kick-in, then
@@ -424,7 +444,11 @@ where
             "up-sweep sample bound"
         );
         let in_dense = !kicked_in;
-        let rpm = sweep_step(
+        // Up-sweep stability is observed but not retained: the post-kick
+        // sustain floor is derived from the down-sweep (where the
+        // dispatcher's interpolation also lives), so up-curve flags would
+        // be dead weight.
+        let (rpm, _was_stable) = sweep_step(
             host,
             settings,
             device_uid,
@@ -455,7 +479,14 @@ where
 /// Down-sweep: sparse (5%) steps from 100 down to `kick_in_duty +
 /// KICK_ZONE_BUFFER_PERCENT`, then dense (2%) steps to 0. Returns the
 /// sample list (sorted by duty ascending so it matches up-sweep
-/// shape; the underlying measurements are taken high-to-low).
+/// shape; the underlying measurements are taken high-to-low) AND a
+/// parallel `Vec<bool>` of per-step `was_stable` flags (also sorted by
+/// duty ascending; flag[i] corresponds to samples[i]).
+///
+/// The stability flags drive `derive_min_stable_duty`: cap-exhausted
+/// samples indicate the fan never settled at that duty (firmware-kick
+/// oscillation), so the dispatcher's sustain floor needs to sit above
+/// them.
 async fn perform_down_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -463,22 +494,22 @@ async fn perform_down_sweep<H>(
     channel_name: &str,
     cancellation: &CancellationToken,
     kick_in_duty: Duty,
-) -> Result<Vec<DutySample>, DiagnosisFailure>
+) -> Result<(Vec<DutySample>, Vec<bool>), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
-    let mut samples = Vec::with_capacity(64);
+    let mut sample_pairs: Vec<(DutySample, bool)> = Vec::with_capacity(64);
     let zone_top = kick_in_duty
         .saturating_add(KICK_ZONE_BUFFER_PERCENT)
         .min(100);
     let mut duty: Duty = 100;
     loop {
         assert!(
-            samples.len() < MAX_SAMPLES_PER_CURVE,
+            sample_pairs.len() < MAX_SAMPLES_PER_CURVE,
             "down-sweep sample bound"
         );
         let in_dense = duty <= zone_top;
-        let rpm = sweep_step(
+        let (rpm, was_stable) = sweep_step(
             host,
             settings,
             device_uid,
@@ -489,7 +520,7 @@ where
             in_dense,
         )
         .await?;
-        samples.push(DutySample { duty, rpm });
+        sample_pairs.push((DutySample { duty, rpm }, was_stable));
         if duty == 0 {
             break;
         }
@@ -500,8 +531,14 @@ where
         };
         duty = duty.saturating_sub(step);
     }
-    samples.sort_by_key(|s| s.duty);
-    Ok(samples)
+    sample_pairs.sort_by_key(|(s, _)| s.duty);
+    let mut samples = Vec::with_capacity(sample_pairs.len());
+    let mut stable_flags = Vec::with_capacity(sample_pairs.len());
+    for (sample, stable) in sample_pairs {
+        samples.push(sample);
+        stable_flags.push(stable);
+    }
+    Ok((samples, stable_flags))
 }
 
 /// One step of the sweep: write `duty`, adaptively settle, return the
@@ -518,7 +555,7 @@ async fn sweep_step<H>(
     duty: Duty,
     phase: DiagnosisPhase,
     in_dense: bool,
-) -> Result<RPM, DiagnosisFailure>
+) -> Result<(RPM, bool), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
@@ -548,7 +585,7 @@ where
         settings.stability_tolerance_rpm
     };
 
-    let rpm = match settle_and_sample(
+    let (rpm, was_stable) = match settle_and_sample(
         host,
         settings,
         device_uid,
@@ -559,7 +596,7 @@ where
     )
     .await
     {
-        Ok(rpm) => rpm,
+        Ok(pair) => pair,
         Err(DiagnosisFailure::TempAbortedAt { observed, limit }) => {
             let _ = host.write_raw_duty(device_uid, channel_name, 0).await;
             return Err(DiagnosisFailure::TempAbortedAt { observed, limit });
@@ -575,7 +612,7 @@ where
         current_duty: Some(duty),
         current_rpm: Some(rpm),
     });
-    Ok(rpm)
+    Ok((rpm, was_stable))
 }
 
 /// Adaptive per-step settle. Returns the representative RPM for the
@@ -602,7 +639,7 @@ async fn settle_and_sample<H>(
     cancellation: &CancellationToken,
     pre_write_rpm: RPM,
     abs_tolerance_rpm: RPM,
-) -> Result<RPM, DiagnosisFailure>
+) -> Result<(RPM, bool), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
 {
@@ -673,17 +710,21 @@ where
                     settings.stability_tolerance_percent,
                 )
             {
-                return Ok(median_of(&window));
+                return Ok((median_of(&window), true));
             }
         }
         if waited_ms >= cap_ms {
             // Cap exhausted: ensure we return something concrete even
             // if no fresh read was ever confirmed (extreme stuck-sensor
             // case where even the fresh-read fallback never fired).
+            // The `was_stable = false` return signals to the down-sweep
+            // accumulator that this sample sat inside an oscillation /
+            // never-settling band; `derive_min_stable_duty` uses that
+            // signal to derive the post-kick sustain floor.
             if window.is_empty() {
                 window.push_back(rpm);
             }
-            return Ok(median_of(&window));
+            return Ok((median_of(&window), false));
         }
     }
 }

@@ -118,6 +118,11 @@ function warningText(warning: CalibrationWarning): string {
             return t('components.channelExtensionSettings.calibration.warningLimitedRange', {
                 span: warning.rpm_span,
             })
+        case 'oscillating':
+            return t('components.channelExtensionSettings.calibration.warningOscillating', {
+                lower: warning.lower_duty,
+                upper: warning.upper_duty,
+            })
     }
 }
 

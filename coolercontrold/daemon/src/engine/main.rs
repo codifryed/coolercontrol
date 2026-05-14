@@ -96,6 +96,15 @@ fn describe_warning(warning: &crate::calibration::CalibrationWarning) -> String 
         crate::calibration::CalibrationWarning::LimitedRange { rpm_span, .. } => {
             format!("limited RPM range ({rpm_span} RPM); mapping resolution is coarse")
         }
+        crate::calibration::CalibrationWarning::Oscillating {
+            lower_duty,
+            upper_duty,
+        } => {
+            format!(
+                "fan oscillates between {lower_duty}% and {upper_duty}% duty (firmware-controlled \
+                 kick-in); mapping disabled at low duty"
+            )
+        }
     }
 }
 
