@@ -1058,6 +1058,12 @@ impl Engine {
             for channel in &mut latest.channels {
                 let Some(rpm) = channel.rpm else { continue };
                 let key: ChannelKey = (device_uid.clone(), channel.name.clone());
+                // Skip channels currently being swept: the diagnoser is
+                // writing raw device duty and the UI must see those raw
+                // values, not the prior calibration's RPM-mapped values.
+                if self.fan_state_map.is_under_diagnosis(&key) {
+                    continue;
+                }
                 if let Some(true_duty) = self.calibration_store.rpm_to_true_duty(&key, rpm) {
                     channel.duty = Some(f64::from(true_duty));
                 }

@@ -129,12 +129,35 @@ impl FanStateMap {
     }
 
     /// Toggle a channel's `under_diagnosis` flag, preserving its state.
-    /// The diagnoser calls this with `true` at start and `false` on
-    /// completion, success or failure alike.
+    /// The diagnoser calls this with `false` at completion (success or
+    /// failure alike); for `true`, it should use `begin_diagnosis`
+    /// which also forces the `FanState` to `Off`.
     pub fn set_under_diagnosis(&self, key: ChannelKey, value: bool) {
         let mut inner = self.inner.borrow_mut();
         let entry = inner.entry(key).or_insert_with(ChannelEntry::default_off);
         entry.under_diagnosis = value;
+    }
+
+    /// Mark a channel `under_diagnosis` AND reset its `FanState` to `Off`.
+    ///
+    /// A stale `Kicking` state from a pre-diagnosis dispatch has a
+    /// deferred sustain-write task pending; if that task fires
+    /// mid-sweep, `complete_kick` would write the prior sustain duty
+    /// over the sweep's raw write. Forcing `Off` makes the deferred
+    /// `complete_kick` observe non-`Kicking` and skip its write.
+    ///
+    /// Also: a sweep ends with raw 0% on the channel, so `Off` matches
+    /// physical reality at sweep end. With `Off` carried into the
+    /// post-sweep restore, dispatch can perform a fresh `Off -> Kicking`
+    /// to spin the fan back up under the new calibration.
+    pub fn begin_diagnosis(&self, key: ChannelKey) {
+        self.inner.borrow_mut().insert(
+            key,
+            ChannelEntry {
+                state: FanState::Off,
+                under_diagnosis: true,
+            },
+        );
     }
 
     /// Drop the entry entirely. Used when calibration is cleared so the
@@ -268,6 +291,48 @@ mod tests {
         map.forget(&key);
         assert_eq!(map.len(), 0);
         assert_eq!(map.entry(&key).state, FanState::Off);
+    }
+
+    #[test]
+    fn begin_diagnosis_resets_kicking_state_to_off() {
+        // Goal: when a sweep starts on a channel that was mid-kick, the
+        // dispatcher must reset FanState to Off so the pending complete_kick
+        // task observes non-Kicking and skips its write. Otherwise the
+        // stale sustain duty lands on hardware mid-sweep.
+        let map = FanStateMap::new();
+        let key = k("dev-a", "fan1");
+        map.replace(
+            key.clone(),
+            ChannelEntry {
+                state: FanState::Kicking { sustain_target: 60 },
+                under_diagnosis: false,
+            },
+        );
+        map.begin_diagnosis(key.clone());
+        let observed = map.entry(&key);
+        assert_eq!(observed.state, FanState::Off);
+        assert!(observed.under_diagnosis);
+    }
+
+    #[test]
+    fn begin_diagnosis_resets_on_state_to_off() {
+        // Goal: a channel running steady (FanState=On) must also be
+        // reset to Off at sweep start so the post-sweep restore (which
+        // dispatches a non-zero duty) goes through Off -> Kicking and
+        // properly re-spins the fan from the 0% it ended the sweep at.
+        let map = FanStateMap::new();
+        let key = k("dev-a", "fan1");
+        map.replace(
+            key.clone(),
+            ChannelEntry {
+                state: FanState::On,
+                under_diagnosis: false,
+            },
+        );
+        map.begin_diagnosis(key.clone());
+        let observed = map.entry(&key);
+        assert_eq!(observed.state, FanState::Off);
+        assert!(observed.under_diagnosis);
     }
 
     #[test]

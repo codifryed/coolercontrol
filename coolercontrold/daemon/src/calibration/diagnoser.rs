@@ -227,7 +227,11 @@ where
     }
 
     let snapshot = host.snapshot_setting(&device_uid, &channel_name);
-    state.set_under_diagnosis(key.clone(), true);
+    // Reset FanState to Off alongside setting under_diagnosis. Stops a
+    // stale Kicking timer from writing the prior sustain duty over the
+    // sweep, and leaves Off carried into the post-sweep restore so the
+    // restore-time dispatch can do a fresh kick under the new mapping.
+    state.begin_diagnosis(key.clone());
 
     let sweep_outcome =
         perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
@@ -400,6 +404,7 @@ fn index_to_duty(idx: usize) -> Duty {
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::FanState;
     use super::*;
     use anyhow::anyhow;
     use std::cell::{Cell, RefCell};
@@ -907,6 +912,46 @@ mod tests {
             down_event_count, SAMPLE_COUNT,
             "one progress event per down-sweep step"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pre_diagnosis_kicking_state_is_cleared_at_sweep_start() {
+        // Goal: when a re-calibration starts on a channel that was
+        // mid-kick from a prior dispatch, the sweep must reset
+        // FanState to Off. Otherwise a deferred complete_kick task
+        // spawned by the prior dispatch would observe Kicking and
+        // write the old sustain duty over the diagnoser's raw write
+        // mid-sweep.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        state.replace(
+            key("dev-a", "fan1"),
+            crate::calibration::state::ChannelEntry {
+                state: FanState::Kicking { sustain_target: 60 },
+                under_diagnosis: false,
+            },
+        );
+        let host = MockHost::new().with_smooth_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("happy path");
+
+        // After the sweep, FanState must be Off (the sweep ended at 0%)
+        // and under_diagnosis must be cleared.
+        let entry = state.entry(&key("dev-a", "fan1"));
+        assert_eq!(entry.state, FanState::Off);
+        assert!(entry.under_diagnosis.not());
     }
 
     use std::ops::Not;
