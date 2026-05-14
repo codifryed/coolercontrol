@@ -21,6 +21,7 @@ import { RouterView, useRouter } from 'vue-router'
 import { Ref, onMounted, ref, inject, nextTick } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
+import { useCalibrationStore } from '@/stores/CalibrationStore'
 import Button from 'primevue/button'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -43,6 +44,7 @@ const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const calibrationStore = useCalibrationStore()
 const daemonState = useDaemonState()
 const router = useRouter()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -296,6 +298,12 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
+    // Prime the calibration cache so the tree-menu pill renders on
+    // first paint. Awaited (rather than fire-and-forget) because the
+    // tree menu starts rendering as soon as `loaded` flips true below;
+    // racing the response against the first paint produces a flash of
+    // no-pill before the reactive update lands.
+    await calibrationStore.refreshAllStatuses()
     // Honor the configured startup page, but only when the user landed on the
     // default root route (no deep link). The empty path's component is
     // AppInfoView, so AppInfo needs no redirect; Controls and HomeDashboard do.

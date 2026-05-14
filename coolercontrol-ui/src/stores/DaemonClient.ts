@@ -48,7 +48,7 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
-import type { Calibration, CalibrationStatus } from '@/models/Calibration.ts'
+import type { Calibration, CalibrationEntry, CalibrationStatus } from '@/models/Calibration.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto, { HasUiDto, PluginStatusDto } from '@/models/Plugins.ts'
@@ -1704,6 +1704,24 @@ export default class DaemonClient {
                 return errorResponse
             }
             return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Fetch every persisted calibration in a single request. Returns
+     * an empty array on transport failure so callers don't need to
+     * distinguish "no calibrations" from "network error" -- both
+     * render the same in the UI (no tree pill).
+     */
+    async getAllCalibrations(): Promise<CalibrationEntry[]> {
+        try {
+            const response = await this.getClient().get(`/calibrations`)
+            this.logDaemonResponse(response, 'Get All Calibrations')
+            const data = response.data as { calibrations?: CalibrationEntry[] }
+            return data.calibrations ?? []
+        } catch (err: any) {
+            this.logError(err)
+            return []
         }
     }
 

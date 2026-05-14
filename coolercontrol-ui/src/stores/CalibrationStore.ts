@@ -186,6 +186,31 @@ export const useCalibrationStore = defineStore('calibration', () => {
         return deviceStore.daemonClient.getCalibration(uid, channelName)
     }
 
+    /**
+     * Pull every persisted calibration in one request and prime the
+     * `statuses` map with synthesised `completed` entries. Called once
+     * at app load so the tree menu can render a "calibrated" pill for
+     * every applicable channel without a request per channel.
+     *
+     * Channels that are mid-sweep (`in_progress` already in the map)
+     * are left alone so an active diagnosis is not overwritten.
+     */
+    async function refreshAllStatuses(): Promise<void> {
+        const entries = await deviceStore.daemonClient.getAllCalibrations()
+        for (const entry of entries) {
+            const key = channelKey(entry.device_uid, entry.channel_name)
+            const existing = statuses.get(key)
+            if (existing?.phase === 'in_progress') continue
+            statuses.set(key, {
+                phase: 'completed',
+                device_uid: entry.device_uid,
+                channel_name: entry.channel_name,
+                completed_at: entry.calibration.timestamp,
+                calibration: entry.calibration,
+            })
+        }
+    }
+
     return {
         statusFor,
         isPolling,
@@ -197,5 +222,6 @@ export const useCalibrationStore = defineStore('calibration', () => {
         cancelCalibration,
         deleteCalibration,
         getStored,
+        refreshAllStatuses,
     }
 })

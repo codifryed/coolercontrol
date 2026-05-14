@@ -44,6 +44,7 @@ import {
     mdiSpeedometer,
     mdiTelevisionShimmer,
     mdiThermometer,
+    mdiTuneVerticalVariant,
 } from '@mdi/js'
 import { inject, onMounted, onUnmounted, ref, Ref, toRaw, watch } from 'vue'
 import { ElCollapse, ElCollapseItem } from 'element-plus'
@@ -106,6 +107,7 @@ import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
 import SubMenuDeviceColorPicker from '@/components/menu/SubMenuDeviceColorPicker.vue'
 import SubMenuEntityColorPicker from '@/components/menu/SubMenuEntityColorPicker.vue'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
+import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
 import SubMenuDeviceExtensionSettings from '@/components/menu/SubMenuDeviceExtensionSettings.vue'
 
 interface Tree {
@@ -115,6 +117,7 @@ interface Tree {
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const colorStore = useThemeColorsStore()
+const calibrationStore = useCalibrationStore()
 const router = useRouter()
 const route = useRoute()
 const daemonState = useDaemonState()
@@ -1358,7 +1361,11 @@ onUnmounted(() => {
                                         settingsStore.getChannelTags(
                                             childItem.deviceUID,
                                             childItem.name,
-                                        ).length > 0
+                                        ).length > 0 ||
+                                        calibrationStore.statusFor(
+                                            childItem.deviceUID,
+                                            childItem.name,
+                                        )?.phase === 'completed'
                                     "
                                     class="mt-0.5 flex items-center gap-x-1"
                                 >
@@ -1376,6 +1383,26 @@ onUnmounted(() => {
                                         :channel-name="childItem.name"
                                         :class="{ 'text-text-color-secondary': !isActive }"
                                     />
+                                    <span
+                                        v-if="
+                                            calibrationStore.statusFor(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )?.phase === 'completed'
+                                        "
+                                        v-tooltip.top="t('layout.menu.tooltips.calibrated')"
+                                        class="text-xs px-1 rounded leading-none py-0.5 border max-h-4 text-nowrap flex items-center"
+                                        :style="{
+                                            color: 'rgb(var(--colors-accent))',
+                                            borderColor: 'rgb(var(--colors-accent))',
+                                        }"
+                                    >
+                                        <svg-icon
+                                            type="mdi"
+                                            :path="mdiTuneVerticalVariant"
+                                            :size="deviceStore.getREMSize(0.8)"
+                                        />
+                                    </span>
                                     <span
                                         v-for="tag in settingsStore.getChannelTags(
                                             childItem.deviceUID,
@@ -2027,7 +2054,11 @@ onUnmounted(() => {
                                             settingsStore.getChannelTags(
                                                 childItem.deviceUID,
                                                 childItem.name,
-                                            ).length > 0
+                                            ).length > 0 ||
+                                            calibrationStore.statusFor(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )?.phase === 'completed'
                                         "
                                         class="mt-0.5 flex items-center gap-x-1"
                                     >
@@ -2045,6 +2076,26 @@ onUnmounted(() => {
                                             :channel-name="childItem.name"
                                             :class="{ 'text-text-color-secondary': !isActive }"
                                         />
+                                        <span
+                                            v-if="
+                                                calibrationStore.statusFor(
+                                                    childItem.deviceUID,
+                                                    childItem.name,
+                                                )?.phase === 'completed'
+                                            "
+                                            v-tooltip.top="t('layout.menu.tooltips.calibrated')"
+                                            class="text-xs px-1 rounded leading-none py-0.5 border max-h-4 text-nowrap flex items-center"
+                                            :style="{
+                                                color: 'rgb(var(--colors-accent))',
+                                                borderColor: 'rgb(var(--colors-accent))',
+                                            }"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiTuneVerticalVariant"
+                                                :size="deviceStore.getREMSize(0.8)"
+                                            />
+                                        </span>
                                         <span
                                             v-for="tag in settingsStore.getChannelTags(
                                                 childItem.deviceUID,

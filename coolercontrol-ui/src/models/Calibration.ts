@@ -30,6 +30,17 @@ export interface DutySample {
 }
 
 /**
+ * One persisted calibration record returned by the bulk
+ * `GET /calibrations` endpoint. Mirrors
+ * `coolercontrold::calibration::CalibrationEntry`.
+ */
+export interface CalibrationEntry {
+    device_uid: UID
+    channel_name: string
+    calibration: Calibration
+}
+
+/**
  * Persisted per-channel calibration produced by a successful
  * diagnosis sweep. Mirrors `coolercontrold::calibration::Calibration`.
  *
