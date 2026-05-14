@@ -63,9 +63,19 @@ pub struct DiagnosisSettings {
     /// Number of consecutive RPM samples that must agree within the
     /// stability tolerance for the step to be considered settled.
     pub stability_window: u32,
-    /// Absolute RPM tolerance for stability (max - min over the
-    /// stability window).
+    /// Absolute RPM tolerance for stability across the middle of the
+    /// sweep (max - min over the stability window).
     pub stability_tolerance_rpm: RPM,
+    /// Tighter absolute RPM tolerance applied to the first and last
+    /// `extreme_step_count` steps of each phase, where a fan ramping
+    /// up from rest or near saturation takes longer to settle. At
+    /// these extremes the absolute floor dominates the percent
+    /// tolerance (3% of e.g. 200 RPM = 6 RPM), so this is the value
+    /// that effectively gates extreme-step stability.
+    pub stability_tolerance_rpm_extremes: RPM,
+    /// Number of steps at each end of the sweep that get the tighter
+    /// `stability_tolerance_rpm_extremes` tolerance.
+    pub extreme_step_count: u32,
     /// Relative RPM tolerance for stability, in percent of the
     /// largest sample seen in the window.
     pub stability_tolerance_percent: u8,
@@ -93,7 +103,9 @@ impl Default for DiagnosisSettings {
             kick_duration_default_ms: 1500,
             min_settle_ms: 200,
             stability_window: 3,
-            stability_tolerance_rpm: 50,
+            stability_tolerance_rpm: 30,
+            stability_tolerance_rpm_extremes: 15,
+            extreme_step_count: 3,
             stability_tolerance_percent: 3,
             status_poll_interval_ms: 50,
             fresh_read_cap_percent: 50,
@@ -414,6 +426,18 @@ where
         .await
         .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
 
+    // First and last few steps of each phase get the tighter
+    // tolerance: a fan ramping up from rest or operating near
+    // saturation takes longer to settle, so we hold out for a tighter
+    // RPM agreement before declaring stable.
+    let extreme_count = settings.extreme_step_count as usize;
+    let is_extreme = i < extreme_count || i >= SAMPLE_COUNT.saturating_sub(extreme_count);
+    let abs_tolerance_rpm = if is_extreme {
+        settings.stability_tolerance_rpm_extremes
+    } else {
+        settings.stability_tolerance_rpm
+    };
+
     let rpm = match settle_and_sample(
         host,
         settings,
@@ -421,6 +445,7 @@ where
         channel_name,
         cancellation,
         pre_write_rpm,
+        abs_tolerance_rpm,
     )
     .await
     {
@@ -467,6 +492,7 @@ async fn settle_and_sample<H>(
     channel_name: &str,
     cancellation: &CancellationToken,
     pre_write_rpm: RPM,
+    abs_tolerance_rpm: RPM,
 ) -> Result<RPM, DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
@@ -531,7 +557,13 @@ where
                 window.pop_front();
             }
             window.push_back(rpm);
-            if window.len() == window_size && is_stable(&window, settings) {
+            if window.len() == window_size
+                && is_stable(
+                    &window,
+                    abs_tolerance_rpm,
+                    settings.stability_tolerance_percent,
+                )
+            {
                 return Ok(median_of(&window));
             }
         }
@@ -548,8 +580,10 @@ where
 }
 
 /// True when the largest and smallest RPM in the window agree within
-/// the larger of the absolute and percent tolerances.
-fn is_stable(window: &VecDeque<RPM>, settings: &DiagnosisSettings) -> bool {
+/// the larger of the absolute and percent tolerances. The caller
+/// supplies the absolute floor so it can be tightened at the sweep
+/// extremes (where the fan needs more time to settle).
+fn is_stable(window: &VecDeque<RPM>, abs_tolerance_rpm: RPM, pct_tolerance: u8) -> bool {
     let Some(&max) = window.iter().max() else {
         return false;
     };
@@ -557,10 +591,10 @@ fn is_stable(window: &VecDeque<RPM>, settings: &DiagnosisSettings) -> bool {
         return false;
     };
     let spread = max.saturating_sub(min);
-    let pct_tolerance = (u64::from(max) * u64::from(settings.stability_tolerance_percent) / 100)
+    let pct = (u64::from(max) * u64::from(pct_tolerance) / 100)
         .try_into()
         .unwrap_or(RPM::MAX);
-    let tolerance = settings.stability_tolerance_rpm.max(pct_tolerance);
+    let tolerance = abs_tolerance_rpm.max(pct);
     spread <= tolerance
 }
 
@@ -1297,13 +1331,25 @@ mod tests {
         // absolute RPM tolerance, the step is considered settled even
         // for very low RPMs where the percent tolerance would round to
         // zero.
-        let settings = DiagnosisSettings::default();
         let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
         window.push_back(100);
-        window.push_back(140);
-        window.push_back(120);
-        // spread = 40, abs tolerance = 50 -> stable.
-        assert!(is_stable(&window, &settings));
+        window.push_back(125);
+        window.push_back(115);
+        // spread = 25, default abs tolerance = 30 -> stable.
+        assert!(is_stable(&window, 30, 3));
+    }
+
+    #[test]
+    fn is_stable_extreme_tolerance_is_stricter() {
+        // Goal: at the sweep extremes the caller passes the tighter
+        // 15-RPM floor; a 25-RPM spread that would pass under the
+        // 30-RPM general tolerance must fail under the extreme one
+        // so the diagnoser keeps waiting for the truly settled value.
+        let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
+        window.push_back(100);
+        window.push_back(125);
+        window.push_back(115);
+        assert!(is_stable(&window, 15, 3).not());
     }
 
     #[test]
@@ -1311,31 +1357,23 @@ mod tests {
         // Goal: at higher RPMs, the percent tolerance dominates and
         // small absolute drift around a fast-spinning fan is treated
         // as stable.
-        let settings = DiagnosisSettings::default();
         let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
-        window.push_back(1900);
-        window.push_back(1950);
-        window.push_back(1980);
-        // spread = 80, 3% of 1980 = 59, abs tolerance = 50 -> larger
-        // is 59, spread 80 exceeds it. Use a tighter case:
-        window.clear();
         window.push_back(2000);
         window.push_back(2020);
         window.push_back(2050);
-        // spread = 50, 3% of 2050 = 61, larger is 61, spread <= 61.
-        assert!(is_stable(&window, &settings));
+        // spread = 50, 3% of 2050 = 61, larger of (30, 61) = 61, spread <= 61.
+        assert!(is_stable(&window, 30, 3));
     }
 
     #[test]
     fn is_stable_returns_false_when_window_exceeds_tolerance() {
         // Goal: while the fan is still ramping (samples diverging),
         // stability must return false so the diagnoser keeps waiting.
-        let settings = DiagnosisSettings::default();
         let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
         window.push_back(0);
         window.push_back(400);
         window.push_back(800);
-        assert!(is_stable(&window, &settings).not());
+        assert!(is_stable(&window, 30, 3).not());
     }
 
     #[test]
