@@ -240,11 +240,21 @@ impl Engine {
     /// disk. Returns `Ok(true)` when an entry was actually removed,
     /// `Ok(false)` when the channel was not calibrated. A disk-write
     /// failure surfaces as an `Err`.
+    ///
+    /// Also drops the in-memory polling status and the dispatch state
+    /// machine entry for the channel. Without those, the popover's
+    /// next status poll would still see the most recent `Completed`
+    /// status (cached in `calibration_statuses`) and render the
+    /// calibrated view, even though the persisted calibration is gone.
+    /// Clearing the `FanStateMap` entry also defuses any in-flight
+    /// `complete_kick` deferred task spawned by a recent dispatch.
     pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
         let existed = self.calibration_store.has(key);
         if existed {
             self.calibration_store.remove(key).await?;
         }
+        self.calibration_statuses.borrow_mut().remove(key);
+        self.fan_state_map.forget(key);
         Ok(existed)
     }
 
