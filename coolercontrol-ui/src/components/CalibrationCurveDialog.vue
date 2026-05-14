@@ -88,12 +88,13 @@ const chartOption = (cal: Calibration) => {
     const upLabel = t('components.calibrationCurve.legendUp')
     const downLabel = t('components.calibrationCurve.legendDown')
     const upColor = colors.themeColors.accent
-    const downColor = colors.themeColors.yellow
+    const downColor = colors.themeColors.text_color_secondary
     return {
+        backgroundColor: colors.themeColors.bg_one,
         grid: {
             show: false,
             top: deviceStore.getREMSize(2.5),
-            left: deviceStore.getREMSize(0.5),
+            left: deviceStore.getREMSize(2.0),
             right: deviceStore.getREMSize(1.5),
             bottom: deviceStore.getREMSize(2.5),
             containLabel: true,
