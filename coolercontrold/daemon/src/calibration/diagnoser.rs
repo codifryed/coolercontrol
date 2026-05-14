@@ -576,11 +576,19 @@ fn median_of(window: &VecDeque<RPM>) -> RPM {
 }
 
 /// Map a sweep step to a 0..=100 percent. The up-sweep occupies the
-/// first half (0..50), the down-sweep the second half (50..100).
+/// first half (0..50), the down-sweep the second half (50..100). The
+/// down-sweep iterates `idx` in reverse (SAMPLE_COUNT-1 -> 0), so its
+/// "position into the sweep" is `SAMPLE_COUNT - idx`, not `idx + 1`.
+/// Without this inversion, the bar would jump to 100% on the first
+/// down-sweep step and count back down to ~52% on the last.
 fn progress_percent(phase: DiagnosisPhase, idx: usize) -> u8 {
     const HALF: u32 = 50;
     let denom = u32::try_from(SAMPLE_COUNT).expect("SAMPLE_COUNT fits in u32");
-    let step = u32::try_from(idx + 1).unwrap_or(denom);
+    let step = match phase {
+        DiagnosisPhase::UpSweep => u32::try_from(idx + 1).unwrap_or(denom),
+        DiagnosisPhase::DownSweep => u32::try_from(SAMPLE_COUNT - idx).unwrap_or(denom),
+        DiagnosisPhase::Preflight | DiagnosisPhase::Finalizing => 0,
+    };
     let half_progress = (step * HALF) / denom;
     let percent = match phase {
         DiagnosisPhase::UpSweep => half_progress,
@@ -1159,6 +1167,45 @@ mod tests {
         assert_eq!(
             down_event_count, SAMPLE_COUNT,
             "one progress event per down-sweep step"
+        );
+
+        // The progress bar must rise monotonically across the entire
+        // sweep, including the down-sweep half. Earlier the down-sweep
+        // used `idx + 1` for its step counter and so counted DOWN from
+        // 100% to ~52% (because the down-sweep iterates in reverse).
+        // This walks every event in order and asserts non-decreasing
+        // percent, which catches that class of regression.
+        let mut last_percent: u8 = 0;
+        for event in events.iter() {
+            assert!(
+                event.percent >= last_percent,
+                "progress percent must not decrease: {} then {} (phase {:?})",
+                last_percent,
+                event.percent,
+                event.phase
+            );
+            last_percent = event.percent;
+        }
+        // The up-sweep half tops out at ~50%; the down-sweep then must
+        // climb the remaining half. Pin the boundary so the bar always
+        // reaches the second half during the down-sweep.
+        let first_down = events
+            .iter()
+            .find(|e| e.phase == DiagnosisPhase::DownSweep)
+            .expect("at least one down-sweep event");
+        let last_down = events
+            .iter()
+            .rev()
+            .find(|e| e.phase == DiagnosisPhase::DownSweep)
+            .expect("at least one down-sweep event");
+        assert!(
+            first_down.percent >= 50,
+            "down-sweep should start at or above 50%, got {}",
+            first_down.percent
+        );
+        assert_eq!(
+            last_down.percent, 100,
+            "last down-sweep step should reach 100%"
         );
     }
 
