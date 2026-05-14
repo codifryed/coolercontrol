@@ -59,6 +59,13 @@ const RPM_JITTER_ABSOLUTE: RPM = 50;
 /// Fraction of `rpm_max` (in percent) used as the relative jitter tolerance.
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
 
+/// Maximum percentage-point disagreement between the device-duty-derived
+/// and RPM-derived true-duty before the displayed value falls back to the
+/// RPM-derived one. The fallback exists to surface failures (stuck fan,
+/// dead fan, broken PWM) that pure device-duty mapping would otherwise
+/// hide behind the value the daemon last wrote.
+pub const SANITY_THRESHOLD_PERCENT: u8 = 10;
+
 /// The duty/RPM curve and derived working-range scalars for one channel.
 ///
 /// Always represents a successful diagnosis. A fan that never spins is
@@ -131,6 +138,24 @@ impl Calibration {
         if self.curve_kind == CurveKind::Stepped {
             return None;
         }
+        Some(self.rpm_to_true_duty_smooth(rpm))
+    }
+
+    /// Map a cached **device-duty** (the raw PWM percent currently being
+    /// driven) back to its true-duty equivalent. Steady-state sustain
+    /// is the dominant case, so we interpolate in `down_curve` to
+    /// recover the RPM the fan would produce at this device-duty, then
+    /// reuse the existing RPM->true-duty math.
+    ///
+    /// Used by the status pipeline as the **stable** source of the
+    /// displayed true-duty (device-duty does not jitter the way RPM
+    /// does). Returns `None` for stepped channels (caller passes the
+    /// raw device-duty through unchanged).
+    pub fn device_to_true_duty(&self, device_duty: Duty) -> Option<Duty> {
+        if self.curve_kind == CurveKind::Stepped {
+            return None;
+        }
+        let rpm = rpm_at_device_duty(&self.down_curve, device_duty.min(100));
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
@@ -296,6 +321,41 @@ pub fn derive_scalars(
     })
 }
 
+/// Linearly interpolate the RPM a real fan would produce at an arbitrary
+/// device-duty, given a sampled curve. Models how the hardware behaves
+/// between sample points; the bare `curve[idx]` lookup only samples the
+/// grid, which is not what reaches the status pipeline.
+fn rpm_at_device_duty(curve: &[RPM; SAMPLE_COUNT], device_duty: Duty) -> RPM {
+    let lo_idx = usize::from(device_duty / DUTY_STEP_PERCENT);
+    let hi_idx = (lo_idx + 1).min(SAMPLE_COUNT - 1);
+    let frac = u32::from(device_duty % DUTY_STEP_PERCENT);
+    let lo_rpm = curve[lo_idx];
+    let hi_rpm = curve[hi_idx];
+    let delta = hi_rpm.saturating_sub(lo_rpm);
+    lo_rpm + delta * frac / u32::from(DUTY_STEP_PERCENT)
+}
+
+/// Pick the displayed true-duty from the two reverse-mapped values.
+///
+/// Prefer the device-duty-derived value because it is stable across
+/// reads (the PWM sysfs file does not jitter the way the fan tachometer
+/// does). Fall back to the RPM-derived value when the two disagree by
+/// more than `threshold` percentage points: that gap signals a real
+/// failure (stuck fan, broken sensor, fan not responding to PWM) which
+/// the user should see surfaced in the duty display.
+pub fn select_displayed_true_duty(
+    device_derived: Option<Duty>,
+    rpm_derived: Option<Duty>,
+    threshold: u8,
+) -> Option<Duty> {
+    match (device_derived, rpm_derived) {
+        (Some(dd), Some(rd)) if dd.abs_diff(rd) > threshold => Some(rd),
+        (Some(dd), _) => Some(dd),
+        (None, Some(rd)) => Some(rd),
+        (None, None) => None,
+    }
+}
+
 fn index_to_duty(idx: usize) -> Duty {
     assert!(idx < SAMPLE_COUNT);
     // SAMPLE_COUNT <= u8::MAX is asserted at compile time, so the
@@ -438,20 +498,6 @@ mod tests {
         }
     }
 
-    /// Linearly interpolate the RPM a real fan would produce at an arbitrary
-    /// device-duty, given its sampled curve. Models how the hardware behaves
-    /// between sample points; the bare `curve[idx]` lookup only samples the
-    /// grid, which is not what reaches the status pipeline.
-    fn simulated_rpm_at(curve: &[RPM; SAMPLE_COUNT], device_duty: Duty) -> RPM {
-        let lo_idx = usize::from(device_duty / DUTY_STEP_PERCENT);
-        let hi_idx = (lo_idx + 1).min(SAMPLE_COUNT - 1);
-        let frac = u32::from(device_duty % DUTY_STEP_PERCENT);
-        let lo_rpm = curve[lo_idx];
-        let hi_rpm = curve[hi_idx];
-        let delta = hi_rpm.saturating_sub(lo_rpm);
-        lo_rpm + delta * frac / u32::from(DUTY_STEP_PERCENT)
-    }
-
     #[test]
     fn reverse_map_round_trips_within_tolerance() {
         // Goal: a true-duty written as sustain device-duty must, when read
@@ -461,7 +507,7 @@ mod tests {
         let cal = make_smooth_calibration();
         for t in (5..=95).step_by(5) {
             let mapped = cal.true_to_device(t).expect("smooth maps");
-            let rpm = simulated_rpm_at(&cal.down_curve, mapped.sustain);
+            let rpm = rpm_at_device_duty(&cal.down_curve, mapped.sustain);
             let recovered = cal.rpm_to_true_duty(rpm).expect("smooth maps");
             assert!(
                 recovered.abs_diff(t) <= 3,
@@ -510,6 +556,89 @@ mod tests {
         };
         assert!(cal.true_to_device(50).is_none());
         assert!(cal.rpm_to_true_duty(1000).is_none());
+        assert!(cal.device_to_true_duty(50).is_none());
+    }
+
+    #[test]
+    fn device_to_true_duty_zero_maps_to_zero() {
+        // Goal: at 0% device-duty the fan is at rest; the displayed
+        // true-duty must therefore also be 0.
+        let cal = make_smooth_calibration();
+        assert_eq!(cal.device_to_true_duty(0).expect("smooth maps"), 0);
+    }
+
+    #[test]
+    fn device_to_true_duty_saturated_returns_full() {
+        // Goal: at 100% device-duty the fan is at its max effective speed;
+        // the displayed true-duty must therefore land at 100.
+        let cal = make_smooth_calibration();
+        let recovered = cal.device_to_true_duty(100).expect("smooth maps");
+        assert_eq!(recovered, 100);
+    }
+
+    #[test]
+    fn device_to_true_duty_round_trips_within_tolerance() {
+        // Goal: for each user-facing true-duty t, the device-duty written
+        // as sustain must round-trip back through `device_to_true_duty`
+        // within the same tolerance as the RPM round-trip. This is the
+        // stable-display path used by the status pipeline.
+        let cal = make_smooth_calibration();
+        for t in (5..=95).step_by(5) {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            let recovered = cal
+                .device_to_true_duty(mapped.sustain)
+                .expect("smooth maps");
+            assert!(
+                recovered.abs_diff(t) <= 3,
+                "round-trip drifted: input={t} sustain_duty={} recovered={recovered}",
+                mapped.sustain
+            );
+        }
+    }
+
+    #[test]
+    fn select_uses_device_when_close() {
+        // Goal: when device-duty-derived and RPM-derived agree within the
+        // threshold, the stable device-duty value wins. This is the
+        // common path for a healthy fan with natural RPM jitter.
+        let chosen = select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT);
+        assert_eq!(chosen, Some(50));
+    }
+
+    #[test]
+    fn select_falls_back_to_rpm_when_diverged() {
+        // Goal: a stuck or dead fan keeps the device-duty value the daemon
+        // wrote but produces no RPM. The cross-check must trip and the
+        // displayed value must be the RPM-derived one so the user sees
+        // the failure instead of a misleading "50%".
+        let chosen = select_displayed_true_duty(Some(50), Some(0), SANITY_THRESHOLD_PERCENT);
+        assert_eq!(chosen, Some(0));
+    }
+
+    #[test]
+    fn select_uses_device_when_only_device_available() {
+        // Goal: a channel with no RPM reading at all (sensor missing or
+        // never reported) falls back to the device-duty-derived value
+        // instead of dropping the display.
+        let chosen = select_displayed_true_duty(Some(40), None, SANITY_THRESHOLD_PERCENT);
+        assert_eq!(chosen, Some(40));
+    }
+
+    #[test]
+    fn select_uses_rpm_when_only_rpm_available() {
+        // Goal: a channel with no cached device-duty (some repos report
+        // RPM-only) still gets a true-duty display via the RPM path.
+        let chosen = select_displayed_true_duty(None, Some(40), SANITY_THRESHOLD_PERCENT);
+        assert_eq!(chosen, Some(40));
+    }
+
+    #[test]
+    fn select_returns_none_when_neither_derived() {
+        // Goal: an uncalibrated or stepped channel produces None on both
+        // reverse maps; the helper must report None so the caller leaves
+        // the raw device-duty in place (passthrough).
+        let chosen = select_displayed_true_duty(None, None, SANITY_THRESHOLD_PERCENT);
+        assert_eq!(chosen, None);
     }
 
     #[test]

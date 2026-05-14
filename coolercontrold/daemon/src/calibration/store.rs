@@ -107,12 +107,26 @@ impl CalibrationStore {
     /// the curve is stepped (mapping disabled), or when the channel's
     /// calibration would not produce a meaningful value.
     ///
-    /// Used by the status-ingestion pipeline to replace device-duty
-    /// with true-duty on every observed sample of a calibrated channel.
+    /// Used by the status-ingestion pipeline as the sanity cross-check
+    /// against the device-duty-derived value: when the two disagree by
+    /// more than a small threshold, the RPM-derived value wins so a
+    /// stuck or dead fan does not stay hidden behind the device-duty
+    /// the daemon wrote.
     pub fn rpm_to_true_duty(&self, key: &ChannelKey, rpm: RPM) -> Option<Duty> {
         let map = self.calibrations.borrow();
         let calibration = map.get(key)?;
         calibration.rpm_to_true_duty(rpm)
+    }
+
+    /// Map a cached **device-duty** (raw PWM percent currently being
+    /// driven) to its true-duty equivalent for the given channel. Same
+    /// `None` semantics as `rpm_to_true_duty`. Used by the status
+    /// pipeline as the **stable** source of the displayed true-duty,
+    /// cross-checked against the RPM-derived value.
+    pub fn device_to_true_duty(&self, key: &ChannelKey, device_duty: Duty) -> Option<Duty> {
+        let map = self.calibrations.borrow();
+        let calibration = map.get(key)?;
+        calibration.device_to_true_duty(device_duty)
     }
 
     /// Insert or replace a calibration. Persists to disk on success.

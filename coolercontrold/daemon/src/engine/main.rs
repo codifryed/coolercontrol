@@ -67,6 +67,20 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
 pub type WritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
 
+/// Clamp an `f64` device-duty (as stored in `ChannelStatus.duty`) into
+/// the daemon's `Duty` (`u8`, 0..=100). The clamp is total: NaN, negative,
+/// and values above 100 are pinned to the legal range. Rounding is to the
+/// nearest percent.
+fn clamp_f64_to_duty(value: f64) -> Duty {
+    if value.is_nan() {
+        return 0;
+    }
+    let rounded = value.round().clamp(0.0, 100.0);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let as_u8 = rounded as Duty;
+    as_u8
+}
+
 /// Render a `DiagnosisFailure` into a short, user-facing reason.
 /// Used by the notification body, so kept compact (no nested types).
 fn describe_failure(failure: &DiagnosisFailure) -> String {
@@ -1109,16 +1123,32 @@ impl Engine {
                 continue;
             };
             for channel in &mut latest.channels {
-                let Some(rpm) = channel.rpm else { continue };
                 let key: ChannelKey = (device_uid.clone(), channel.name.clone());
                 // Skip channels currently being swept: the diagnoser is
                 // writing raw device duty and the UI must see those raw
-                // values, not the prior calibration's RPM-mapped values.
+                // values, not the prior calibration's mapped values.
                 if self.fan_state_map.is_under_diagnosis(&key) {
                     continue;
                 }
-                if let Some(true_duty) = self.calibration_store.rpm_to_true_duty(&key, rpm) {
-                    channel.duty = Some(f64::from(true_duty));
+                // Prefer the device-duty-derived value (stable across
+                // reads) and fall back to the RPM-derived value when the
+                // two diverge by more than the sanity threshold. The
+                // fallback surfaces stuck fans, dead fans, and broken
+                // PWM lines that the stable path would otherwise hide
+                // behind the duty the daemon last wrote.
+                let device_derived = channel.duty.and_then(|d| {
+                    self.calibration_store
+                        .device_to_true_duty(&key, clamp_f64_to_duty(d))
+                });
+                let rpm_derived = channel
+                    .rpm
+                    .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
+                if let Some(displayed) = calibration::select_displayed_true_duty(
+                    device_derived,
+                    rpm_derived,
+                    calibration::SANITY_THRESHOLD_PERCENT,
+                ) {
+                    channel.duty = Some(f64::from(displayed));
                 }
             }
         }

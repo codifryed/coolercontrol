@@ -1509,10 +1509,13 @@ mod engine_tests {
 
     #[test]
     #[serial]
-    fn apply_true_duty_skips_channel_with_no_rpm() {
-        // Goal: a calibrated channel reporting no RPM on the latest
-        // sample keeps its existing duty value. Without RPM the
-        // ingestion path has nothing accurate to map from.
+    fn apply_true_duty_uses_device_duty_when_rpm_missing() {
+        // Goal: a calibrated channel with no RPM reading on the latest
+        // sample still gets its duty replaced with the device-duty-
+        // derived true-duty. Without an RPM cross-check the displayed
+        // value is whatever the calibration's down-curve maps the
+        // device-duty to (about 47% for a synthetic 0..=2000 linear
+        // curve at device-duty 50%).
         cc_fs::test_runtime(async {
             let (device, engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
@@ -1532,7 +1535,49 @@ mod engine_tests {
                 .iter()
                 .find(|c| c.name == channel)
                 .expect("channel present");
-            assert_eq!(chan.duty, Some(50.0));
+            let true_duty = chan.duty.expect("duty rewritten via device-duty path");
+            assert!(
+                (40.0..=55.0).contains(&true_duty),
+                "expected ~47% device-duty-derived true-duty, got {true_duty}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_falls_back_to_rpm_when_diverged() {
+        // Goal: a calibrated channel whose RPM disagrees with the
+        // device-duty-derived true-duty by more than the sanity
+        // threshold (stuck fan, broken sensor) displays the RPM-derived
+        // value so the failure surfaces in the duty readout.
+        cc_fs::test_runtime(async {
+            let (device, engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            // Daemon wrote device-duty 50% (would imply ~47% true), but
+            // the fan is stuck and reads 0 RPM (implies ~0% true). The
+            // sanity threshold trips and the displayed duty drops near
+            // zero.
+            push_channel_status(&device, channel.clone(), Some(0), 50.0);
+            calibration_store
+                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
+
+            engine.apply_true_duty_to_latest_statuses();
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            let true_duty = chan.duty.expect("duty rewritten via RPM fallback");
+            assert!(
+                true_duty <= 5.0,
+                "expected ~0% RPM-derived true-duty (stuck fan), got {true_duty}"
+            );
         });
     }
 
