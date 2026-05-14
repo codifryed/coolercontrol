@@ -42,30 +42,61 @@ use crate::setting::ProfileUID;
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Local;
+use std::collections::VecDeque;
 use tokio_util::sync::CancellationToken;
 
-/// Tunable parameters for a single diagnosis run. Defaults match the
-/// values discussed during the design grill: 3 s settle, 75 C
-/// pre-flight gate, 85 C abort, 50 RPM start-detection floor, and a
-/// conservative kick-duration default (since Phase 3b-i does not yet
-/// measure the kick time precisely).
+/// Tunable parameters for a single diagnosis run. Defaults: 75 C
+/// pre-flight gate, 85 C abort, 50 RPM start-detection floor, a
+/// conservative kick-duration default, and an adaptive per-step
+/// settle. The settle parameters are documented inline below.
 #[derive(Debug, Clone)]
 pub struct DiagnosisSettings {
-    pub settle_ms: u32,
     pub start_temp_max_c: f64,
     pub abort_temp_max_c: f64,
     pub start_rpm_min: RPM,
     pub kick_duration_default_ms: u32,
+    /// Initial sleep after a duty write before waiting for the cache
+    /// to refresh. Insurance that the write has at least been queued
+    /// at the repo layer. Cheap; even on slow devices, 200 ms is
+    /// below any practical poll cycle.
+    pub min_settle_ms: u32,
+    /// Number of consecutive RPM samples that must agree within the
+    /// stability tolerance for the step to be considered settled.
+    pub stability_window: u32,
+    /// Absolute RPM tolerance for stability (max - min over the
+    /// stability window).
+    pub stability_tolerance_rpm: RPM,
+    /// Relative RPM tolerance for stability, in percent of the
+    /// largest sample seen in the window.
+    pub stability_tolerance_percent: u8,
+    /// Inner busy-wait granularity while waiting for a fresh status
+    /// timestamp. Independent of poll rate; just bounds the latency
+    /// between cache refresh and us noticing.
+    pub status_poll_interval_ms: u32,
+    /// Fraction of `step_settle_cap_ms` to wait for an RPM-value
+    /// change after a duty write before accepting the cache value
+    /// as-is. A timestamp advance proves only that the main loop
+    /// ticked; an RPM-value change additionally proves a fresh
+    /// post-write read happened (real fans jitter every successful
+    /// read). The fallback covers the exception cases: non-
+    /// controllable fans, missing fans, faulty RPM sensors, and the
+    /// genuinely-constant low-duty stopped-fan case.
+    pub fresh_read_cap_percent: u8,
 }
 
 impl Default for DiagnosisSettings {
     fn default() -> Self {
         Self {
-            settle_ms: 3000,
             start_temp_max_c: 75.0,
             abort_temp_max_c: 85.0,
             start_rpm_min: 50,
             kick_duration_default_ms: 1500,
+            min_settle_ms: 200,
+            stability_window: 3,
+            stability_tolerance_rpm: 50,
+            stability_tolerance_percent: 3,
+            status_poll_interval_ms: 50,
+            fresh_read_cap_percent: 50,
         }
     }
 }
@@ -153,6 +184,26 @@ pub enum DiagnosisPhase {
 pub trait DiagnosisHost {
     /// Latest measured RPM for the channel, or `None` if no reading.
     async fn current_rpm(&self, device_uid: &UID, channel_name: &str) -> Option<RPM>;
+
+    /// Timestamp (millis since epoch) of the most recent status entry
+    /// for the device, or `None` if no status has landed yet.
+    ///
+    /// The diagnoser uses the advance of this value to detect that
+    /// the main loop has refreshed the device's cached status, so
+    /// per-step settling does not race ahead of the cache. Note that
+    /// the main loop publishes a status every poll cycle regardless
+    /// of whether the underlying read succeeded; a timestamp advance
+    /// is not a strict guarantee of a fresh post-write value. It is
+    /// however a strong proxy for healthy devices, and the
+    /// stability-window check below mitigates the outlier where a
+    /// wedged device's status keeps re-publishing the same value.
+    async fn latest_status_timestamp_ms(&self, device_uid: &UID) -> Option<i64>;
+
+    /// Per-step cap for the adaptive settle in milliseconds. Should
+    /// be `device_write_permit_timeout + device_read_permit_timeout`
+    /// so a step cannot wait longer than the daemon itself would
+    /// tolerate a single write + read against this device.
+    fn step_settle_cap_ms(&self, device_uid: &UID) -> u32;
 
     /// Write a device-duty value directly to the hardware, bypassing
     /// the calibration dispatch (it is currently paused for this
@@ -328,10 +379,13 @@ where
     Ok((up_curve, down_curve))
 }
 
-/// One step of the sweep: write the duty at index `i`, settle, abort
-/// check, then read the resulting RPM into `target[i]`. Emits a
-/// progress event after the sample lands so the consumer sees the
-/// duty/RPM pair just observed.
+/// One step of the sweep: write the duty at index `i`, adaptively
+/// settle by watching the device's status timestamp advance, sample
+/// RPM across a small window, and record the median once consecutive
+/// samples agree within tolerance. Falls back to "median of what we
+/// have" if the per-step cap elapses. Temp abort and cancellation
+/// are checked inside the settle loop, not just at step boundaries,
+/// so the diagnoser stays responsive on slow devices.
 async fn sweep_step<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -349,24 +403,35 @@ where
         return Err(DiagnosisFailure::Cancelled);
     }
     let duty = index_to_duty(i);
-    host.write_raw_duty(device_uid, channel_name, duty)
-        .await
-        .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
-    host.sleep_millis(settings.settle_ms).await;
-
-    let temp = host.max_temp_celsius().await;
-    if temp >= settings.abort_temp_max_c {
-        let _ = host.write_raw_duty(device_uid, channel_name, 0).await;
-        return Err(DiagnosisFailure::TempAbortedAt {
-            observed: temp,
-            limit: settings.abort_temp_max_c,
-        });
-    }
-
-    let rpm = host
+    // Snapshot the cached RPM before issuing the write. The settle
+    // loop uses this to confirm a fresh post-write read has landed
+    // (the value must change, not just the status timestamp).
+    let pre_write_rpm = host
         .current_rpm(device_uid, channel_name)
         .await
         .unwrap_or(0);
+    host.write_raw_duty(device_uid, channel_name, duty)
+        .await
+        .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
+
+    let rpm = match settle_and_sample(
+        host,
+        settings,
+        device_uid,
+        channel_name,
+        cancellation,
+        pre_write_rpm,
+    )
+    .await
+    {
+        Ok(rpm) => rpm,
+        Err(DiagnosisFailure::TempAbortedAt { observed, limit }) => {
+            let _ = host.write_raw_duty(device_uid, channel_name, 0).await;
+            return Err(DiagnosisFailure::TempAbortedAt { observed, limit });
+        }
+        Err(err) => return Err(err),
+    };
+
     target[i] = rpm;
     host.emit_progress(DiagnosisProgress {
         device_uid: device_uid.clone(),
@@ -377,6 +442,137 @@ where
         current_rpm: Some(rpm),
     });
     Ok(())
+}
+
+/// Adaptive per-step settle. Returns the representative RPM for the
+/// just-written duty.
+///
+/// Algorithm:
+/// 1. Sleep `min_settle_ms` so the queued write has a chance to
+///    actually reach hardware before we start watching the cache.
+/// 2. Loop sampling at status-refresh boundaries:
+///    - Wait until the device's status timestamp advances past the
+///      last-seen one (with `status_poll_interval_ms` granularity).
+///    - Read the latest cached RPM, push into a sliding window.
+///    - Declare stable when the window is full and `max - min` over
+///      it falls within `max(stability_tolerance_rpm,
+///      stability_tolerance_percent% of largest)`.
+/// 3. Hard cap at `step_settle_cap_ms` (write timeout + read timeout
+///    for the device). On cap, return the median of whatever the
+///    window holds.
+async fn settle_and_sample<H>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    channel_name: &str,
+    cancellation: &CancellationToken,
+    pre_write_rpm: RPM,
+) -> Result<RPM, DiagnosisFailure>
+where
+    H: DiagnosisHost + ?Sized,
+{
+    host.sleep_millis(settings.min_settle_ms).await;
+    let cap_ms = host.step_settle_cap_ms(device_uid);
+    let window_size = (settings.stability_window as usize).max(1);
+    // After this much elapsed time without an observed RPM change,
+    // accept the cache value as-is (covers stuck-sensor, non-
+    // controllable, and stopped-fan cases). Saturating multiplication
+    // avoids overflow on extreme settings; clamped to cap_ms.
+    let fresh_read_cap_ms = (u64::from(cap_ms))
+        .saturating_mul(u64::from(settings.fresh_read_cap_percent.min(100)))
+        / 100;
+    let fresh_read_cap_ms = u32::try_from(fresh_read_cap_ms).unwrap_or(cap_ms);
+
+    let mut waited_ms: u32 = settings.min_settle_ms;
+    let mut last_seen_ts = host.latest_status_timestamp_ms(device_uid).await;
+    let mut saw_rpm_change = false;
+    let mut window: VecDeque<RPM> = VecDeque::with_capacity(window_size);
+
+    loop {
+        // Wait for the next cache refresh, granular at status_poll_interval_ms.
+        loop {
+            if cancellation.is_cancelled() {
+                return Err(DiagnosisFailure::Cancelled);
+            }
+            if waited_ms >= cap_ms {
+                break;
+            }
+            let current = host.latest_status_timestamp_ms(device_uid).await;
+            if current != last_seen_ts && current.is_some() {
+                last_seen_ts = current;
+                break;
+            }
+            host.sleep_millis(settings.status_poll_interval_ms).await;
+            waited_ms = waited_ms.saturating_add(settings.status_poll_interval_ms);
+        }
+
+        let temp = host.max_temp_celsius().await;
+        if temp >= settings.abort_temp_max_c {
+            return Err(DiagnosisFailure::TempAbortedAt {
+                observed: temp,
+                limit: settings.abort_temp_max_c,
+            });
+        }
+
+        let rpm = host
+            .current_rpm(device_uid, channel_name)
+            .await
+            .unwrap_or(0);
+        if rpm != pre_write_rpm {
+            saw_rpm_change = true;
+        }
+
+        // Gate window updates on either an observed RPM change (proof
+        // a fresh post-write read happened) or the fresh-read cap
+        // elapsing (assume stuck reading is legitimate).
+        let fresh_read_confirmed = saw_rpm_change || waited_ms >= fresh_read_cap_ms;
+        if fresh_read_confirmed {
+            if window.len() == window_size {
+                window.pop_front();
+            }
+            window.push_back(rpm);
+            if window.len() == window_size && is_stable(&window, settings) {
+                return Ok(median_of(&window));
+            }
+        }
+        if waited_ms >= cap_ms {
+            // Cap exhausted: ensure we return something concrete even
+            // if no fresh read was ever confirmed (extreme stuck-sensor
+            // case where even the fresh-read fallback never fired).
+            if window.is_empty() {
+                window.push_back(rpm);
+            }
+            return Ok(median_of(&window));
+        }
+    }
+}
+
+/// True when the largest and smallest RPM in the window agree within
+/// the larger of the absolute and percent tolerances.
+fn is_stable(window: &VecDeque<RPM>, settings: &DiagnosisSettings) -> bool {
+    let Some(&max) = window.iter().max() else {
+        return false;
+    };
+    let Some(&min) = window.iter().min() else {
+        return false;
+    };
+    let spread = max.saturating_sub(min);
+    let pct_tolerance = (u64::from(max) * u64::from(settings.stability_tolerance_percent) / 100)
+        .try_into()
+        .unwrap_or(RPM::MAX);
+    let tolerance = settings.stability_tolerance_rpm.max(pct_tolerance);
+    spread <= tolerance
+}
+
+/// Median of the window. The window is small (default 3), so sorting
+/// a clone is the simplest correct approach.
+fn median_of(window: &VecDeque<RPM>) -> RPM {
+    if window.is_empty() {
+        return 0;
+    }
+    let mut buf: Vec<RPM> = window.iter().copied().collect();
+    buf.sort_unstable();
+    buf[buf.len() / 2]
 }
 
 /// Map a sweep step to a 0..=100 percent. The up-sweep occupies the
@@ -421,6 +617,20 @@ mod tests {
         restore_should_fail: Cell<bool>,
         fail_write_at_step: Cell<Option<usize>>,
         progress_events: RefCell<Vec<DiagnosisProgress>>,
+        // Synthetic status timestamp. Auto-advances on each sleep_millis
+        // so the diagnoser's settle loop sees fresh "cache refreshes"
+        // every tick without tests needing to wire timestamps explicitly.
+        status_timestamp_ms: Cell<i64>,
+        // Cap returned to the diagnoser. 1 s is generous for tests; the
+        // sleeps are instant so the cap effectively gates only the
+        // iteration count of the inner status-poll loop.
+        step_cap_ms: Cell<u32>,
+        // When `stale_reads_remaining > 0`, current_rpm returns
+        // `stale_rpm` (simulating a cache that has not yet refreshed
+        // after a duty write). Used to exercise the RPM-change-detection
+        // path in settle_and_sample.
+        stale_reads_remaining: Cell<usize>,
+        stale_rpm: Cell<RPM>,
     }
 
     impl MockHost {
@@ -437,7 +647,20 @@ mod tests {
                 restore_should_fail: Cell::new(false),
                 fail_write_at_step: Cell::new(None),
                 progress_events: RefCell::new(Vec::new()),
+                status_timestamp_ms: Cell::new(0),
+                step_cap_ms: Cell::new(1000),
+                stale_reads_remaining: Cell::new(0),
+                stale_rpm: Cell::new(0),
             }
+        }
+
+        /// Force the next `count` `current_rpm` calls to return `value`,
+        /// simulating a cache that has not refreshed since a duty write.
+        /// After `count` calls, normal `rpm_for_duty` lookup resumes.
+        fn with_stale_reads(self, count: usize, value: RPM) -> Self {
+            self.stale_reads_remaining.set(count);
+            self.stale_rpm.set(value);
+            self
         }
 
         /// Configure the host to map device-duty -> RPM linearly in
@@ -483,6 +706,11 @@ mod tests {
     #[async_trait(?Send)]
     impl DiagnosisHost for MockHost {
         async fn current_rpm(&self, _device_uid: &UID, _channel_name: &str) -> Option<RPM> {
+            let remaining = self.stale_reads_remaining.get();
+            if remaining > 0 {
+                self.stale_reads_remaining.set(remaining - 1);
+                return Some(self.stale_rpm.get());
+            }
             self.rpm_for_duty
                 .borrow()
                 .get(&self.last_written_duty.get())
@@ -534,7 +762,21 @@ mod tests {
             Ok(())
         }
 
-        async fn sleep_millis(&self, _ms: u32) {}
+        async fn sleep_millis(&self, ms: u32) {
+            // Advance the synthetic status timestamp so the diagnoser's
+            // settle loop sees a fresh "cache refresh" each sleep. Real
+            // sleep is a no-op for tests.
+            self.status_timestamp_ms
+                .set(self.status_timestamp_ms.get() + i64::from(ms.max(1)));
+        }
+
+        async fn latest_status_timestamp_ms(&self, _device_uid: &UID) -> Option<i64> {
+            Some(self.status_timestamp_ms.get())
+        }
+
+        fn step_settle_cap_ms(&self, _device_uid: &UID) -> u32 {
+            self.step_cap_ms.get()
+        }
 
         fn emit_progress(&self, progress: DiagnosisProgress) {
             self.progress_events.borrow_mut().push(progress);
@@ -806,6 +1048,12 @@ mod tests {
             async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
                 self.inner.current_rpm(d, c).await
             }
+            async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
+                self.inner.latest_status_timestamp_ms(d).await
+            }
+            fn step_settle_cap_ms(&self, d: &UID) -> u32 {
+                self.inner.step_settle_cap_ms(d)
+            }
             async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
                 self.state_seen_during_writes
                     .borrow_mut()
@@ -952,6 +1200,182 @@ mod tests {
         let entry = state.entry(&key("dev-a", "fan1"));
         assert_eq!(entry.state, FanState::Off);
         assert!(entry.under_diagnosis.not());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stale_cache_does_not_lock_in_pre_write_value() {
+        // Goal: when the cache returns the pre-write RPM for several
+        // status updates after a duty write (e.g. main-loop read
+        // failed or was coalesced away), the diagnoser must wait for
+        // the value to actually change before treating samples as
+        // valid. Otherwise the sweep would record the stale RPM as
+        // the post-write reading, biasing the calibration curve.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan().with_stale_reads(5, 800);
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("smooth fan diagnoses successfully even with stale reads");
+
+        // The synthetic smooth fan returns rpm = 100 * idx for each
+        // duty index. With_stale_reads(5, 800) makes the first 5
+        // current_rpm calls return 800 instead. The very first sweep
+        // step (duty=0) must therefore reach the post-stale read of 0,
+        // not record the stale 800.
+        assert_eq!(
+            result.up_curve[0], 0,
+            "stale 800 must not be recorded; settle should wait for the post-write change to 0"
+        );
+        // The rest of the up-curve should follow the synthetic linear
+        // fan exactly, since stale_reads exhausted during the first
+        // step.
+        assert_eq!(result.up_curve[5], 500);
+        assert_eq!(result.up_curve[10], 1000);
+    }
+
+    #[test]
+    fn is_stable_returns_true_when_window_fits_absolute_tolerance() {
+        // Goal: when the spread across the window is at or below the
+        // absolute RPM tolerance, the step is considered settled even
+        // for very low RPMs where the percent tolerance would round to
+        // zero.
+        let settings = DiagnosisSettings::default();
+        let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
+        window.push_back(100);
+        window.push_back(140);
+        window.push_back(120);
+        // spread = 40, abs tolerance = 50 -> stable.
+        assert!(is_stable(&window, &settings));
+    }
+
+    #[test]
+    fn is_stable_returns_true_when_window_fits_percent_tolerance() {
+        // Goal: at higher RPMs, the percent tolerance dominates and
+        // small absolute drift around a fast-spinning fan is treated
+        // as stable.
+        let settings = DiagnosisSettings::default();
+        let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
+        window.push_back(1900);
+        window.push_back(1950);
+        window.push_back(1980);
+        // spread = 80, 3% of 1980 = 59, abs tolerance = 50 -> larger
+        // is 59, spread 80 exceeds it. Use a tighter case:
+        window.clear();
+        window.push_back(2000);
+        window.push_back(2020);
+        window.push_back(2050);
+        // spread = 50, 3% of 2050 = 61, larger is 61, spread <= 61.
+        assert!(is_stable(&window, &settings));
+    }
+
+    #[test]
+    fn is_stable_returns_false_when_window_exceeds_tolerance() {
+        // Goal: while the fan is still ramping (samples diverging),
+        // stability must return false so the diagnoser keeps waiting.
+        let settings = DiagnosisSettings::default();
+        let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
+        window.push_back(0);
+        window.push_back(400);
+        window.push_back(800);
+        assert!(is_stable(&window, &settings).not());
+    }
+
+    #[test]
+    fn median_of_returns_middle_element_after_sort() {
+        // Goal: median ignores arrival order and returns the middle
+        // RPM, dampening single outlier reads when stability has
+        // already been observed.
+        let mut window: VecDeque<RPM> = VecDeque::with_capacity(3);
+        window.push_back(1500);
+        window.push_back(900);
+        window.push_back(1200);
+        assert_eq!(median_of(&window), 1200);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_during_settle_short_circuits_step() {
+        // Goal: cancellation triggered mid-step is observed inside the
+        // settle loop, not just at step boundaries. This keeps the
+        // diagnoser responsive on slow devices where a single step
+        // can otherwise wait up to step_settle_cap_ms.
+        struct CancellingHost {
+            inner: MockHost,
+            cancel_on_status_check: Rc<RefCell<Option<CancellationToken>>>,
+        }
+        #[async_trait(?Send)]
+        impl DiagnosisHost for CancellingHost {
+            async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
+                self.inner.current_rpm(d, c).await
+            }
+            async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
+                // Trip the cancel on the very first status check inside
+                // settle_and_sample so the loop bails before sampling.
+                if let Some(token) = self.cancel_on_status_check.borrow_mut().take() {
+                    token.cancel();
+                }
+                self.inner.latest_status_timestamp_ms(d).await
+            }
+            fn step_settle_cap_ms(&self, d: &UID) -> u32 {
+                self.inner.step_settle_cap_ms(d)
+            }
+            async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
+                self.inner.write_raw_duty(d, c, duty).await
+            }
+            async fn max_temp_celsius(&self) -> f64 {
+                self.inner.max_temp_celsius().await
+            }
+            fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
+                self.inner.snapshot_setting(d, c)
+            }
+            async fn restore_setting(&self, s: &SettingsSnapshot) -> Result<()> {
+                self.inner.restore_setting(s).await
+            }
+            async fn sleep_millis(&self, m: u32) {
+                self.inner.sleep_millis(m).await;
+            }
+        }
+
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let cancellation = CancellationToken::new();
+        let cancel_on_status_check = Rc::new(RefCell::new(Some(cancellation.clone())));
+        // Force the timestamp NOT to advance, so the inner status loop
+        // keeps spinning until cancellation is observed. Use a tiny cap
+        // to ensure the test would take forever without the cancel hook.
+        let inner = MockHost::new().with_smooth_fan();
+        // freeze timestamps: override sleep to NOT advance ts. We do
+        // this by giving cap that is much larger than the single
+        // cancellation check we expect.
+        inner.step_cap_ms.set(60_000);
+        let host = CancellingHost {
+            inner,
+            cancel_on_status_check,
+        };
+        let settings = DiagnosisSettings::default();
+
+        let err = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect_err("cancellation surfaces");
+        assert_eq!(err, DiagnosisFailure::Cancelled);
     }
 
     use std::ops::Not;

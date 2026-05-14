@@ -1546,6 +1546,30 @@ impl DiagnosisHost for Engine {
             .and_then(|c| c.rpm)
     }
 
+    async fn latest_status_timestamp_ms(&self, device_uid: &UID) -> Option<i64> {
+        let device_lock = self.all_devices.get(device_uid)?;
+        let device = device_lock.borrow();
+        Some(device.status_history.back()?.timestamp.timestamp_millis())
+    }
+
+    fn step_settle_cap_ms(&self, _device_uid: &UID) -> u32 {
+        // Matches hwmon's worst case: device_write_permit_timeout
+        // (poll_rate * MISSING_STATUS_THRESHOLD = poll_rate * 8) plus
+        // device_read_permit_timeout (also poll_rate * 8). For other
+        // device types this is overgenerous but harmless; the
+        // stability window will return earlier on a healthy fan. Falls
+        // back to 16 s on a config read failure.
+        const TIMEOUT_FACTOR: f64 = 16.0;
+        const FALLBACK_MS: u32 = 16_000;
+        let Ok(settings) = self.config.get_settings() else {
+            return FALLBACK_MS;
+        };
+        let cap_ms = settings.poll_rate * TIMEOUT_FACTOR * 1000.0;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let cap_ms_u32 = cap_ms.max(0.0).min(f64::from(u32::MAX)) as u32;
+        cap_ms_u32
+    }
+
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()> {
         let device_type = self
             .all_devices
