@@ -24,24 +24,24 @@ export default {
             'relative',
 
             // Shape and Size
-            'border-0',
-            'h-6',
+            'border',
+            'border-border-one',
+            'h-3',
             'rounded-md',
 
-            // Colors
-            'bg-surface-100 dark:bg-surface-700',
+            // Track color (uses CoolerControl theme tokens)
+            'bg-bg-two',
         ],
     },
     value: ({ props }) => ({
         class: [
-            // Flexbox & Overflow & Position
+            // Flexbox & Position (label, when shown, centers on the fill)
             {
-                'absolute flex items-center justify-center overflow-hidden':
-                    props.mode !== 'indeterminate',
+                'absolute flex items-center justify-center': props.mode !== 'indeterminate',
             },
 
-            // Colors
-            'bg-primary',
+            // Fill color (CoolerControl accent)
+            'bg-accent',
 
             // Spacing & Sizing
             'm-0',
@@ -70,9 +70,13 @@ export default {
             // Flexbox
             'inline-flex',
 
-            // Font and Text
-            'text-white dark:text-surface-900',
-            'leading-6',
+            // Font and Text — sized down so it does not overflow the fill
+            // at low percentages and contrasts against the accent fill.
+            'text-bg-one',
+            'text-xs',
+            'font-semibold',
+            'leading-none',
+            'whitespace-nowrap',
         ],
     },
 }
