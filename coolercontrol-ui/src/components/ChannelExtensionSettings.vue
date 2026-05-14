@@ -22,10 +22,12 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { mdiAlertOutline, mdiCogs, mdiInformationSlabCircleOutline } from '@mdi/js'
+import { mdiAlertOutline, mdiChartLine, mdiCogs, mdiInformationSlabCircleOutline } from '@mdi/js'
+import ProgressBar from 'primevue/progressbar'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, nextTick, ref, Ref } from 'vue'
+import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
+import { computed, defineAsyncComponent, nextTick, ref, Ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UID } from '@/models/Device.ts'
 import { ChannelExtensionNames } from '@/models/SpeedOptions.ts'
@@ -33,6 +35,7 @@ import { Profile, ProfileType } from '@/models/Profile.ts'
 import { CCChannelSettings, ChannelExtensions } from '@/models/CCSettings.ts'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { useToast } from 'primevue/usetoast'
+import { useDialog } from 'primevue/usedialog'
 
 const props = defineProps<{
     deviceUID: UID
@@ -44,11 +47,142 @@ const emit = defineEmits<{
 }>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const calibrationStore = useCalibrationStore()
 const toast = useToast()
+const dialog = useDialog()
 const { t } = useI18n()
+const calibrationCurveDialog = defineAsyncComponent(
+    () => import('@/components/CalibrationCurveDialog.vue'),
+)
 const isPopupOpen = ref(false)
 const hwFanCurve: Ref<boolean> = ref(false)
 const currentChannelExtension: Ref<ChannelExtensionNames | undefined> = ref()
+
+// --- Calibration state and helpers ---------------------------------
+
+const calibrationEligible = computed((): boolean => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== props.deviceUID) continue
+        const channelInfo = device.info?.channels.get(props.channelName)
+        if (channelInfo?.speed_options?.fixed_enabled) {
+            return true
+        }
+    }
+    return false
+})
+
+const calibrationStatus = computed(() =>
+    calibrationStore.statusFor(props.deviceUID, props.channelName),
+)
+
+const calibrationPhase = computed(() => calibrationStatus.value?.phase ?? ('not_started' as const))
+
+const calibrationStatusText = computed((): string => {
+    const status = calibrationStatus.value
+    if (status == null || status.phase === 'not_started') {
+        return t('components.channelExtensionSettings.calibration.statusNotCalibrated')
+    }
+    if (status.phase === 'in_progress') {
+        const stage = stageLabel(status.stage)
+        return t('components.channelExtensionSettings.calibration.statusInProgress', {
+            stage,
+            percent: status.percent,
+        })
+    }
+    if (status.phase === 'completed') {
+        return status.calibration.curve_kind === 'Stepped'
+            ? t('components.channelExtensionSettings.calibration.statusCompletedStepped')
+            : t('components.channelExtensionSettings.calibration.statusCompleted')
+    }
+    return t('components.channelExtensionSettings.calibration.statusFailed', {
+        message: status.message,
+    })
+})
+
+function stageLabel(stage: 'preflight' | 'up_sweep' | 'down_sweep' | 'finalizing'): string {
+    switch (stage) {
+        case 'preflight':
+            return t('components.channelExtensionSettings.calibration.stagePreflight')
+        case 'up_sweep':
+            return t('components.channelExtensionSettings.calibration.stageUpSweep')
+        case 'down_sweep':
+            return t('components.channelExtensionSettings.calibration.stageDownSweep')
+        case 'finalizing':
+            return t('components.channelExtensionSettings.calibration.stageFinalizing')
+    }
+}
+
+async function onStartCalibration(): Promise<void> {
+    const result = await calibrationStore.startCalibration(props.deviceUID, props.channelName)
+    if (result instanceof ErrorResponse) {
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: result.error || t('components.channelExtensionSettings.calibration.startError'),
+            life: 6000,
+        })
+    }
+}
+
+async function onCancelCalibration(): Promise<void> {
+    const result = await calibrationStore.cancelCalibration(props.deviceUID, props.channelName)
+    if (result instanceof ErrorResponse) {
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail:
+                result.error || t('components.channelExtensionSettings.calibration.cancelError'),
+            life: 6000,
+        })
+    }
+}
+
+function onViewCurve(): void {
+    const status = calibrationStatus.value
+    const calibration = status?.phase === 'completed' ? status.calibration : undefined
+    dialog.open(calibrationCurveDialog, {
+        props: {
+            header: t('components.calibrationCurve.dialogTitle'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+            style: { width: '80vw', maxWidth: '60rem' },
+            breakpoints: { '1199px': '90vw', '767px': '95vw' },
+        },
+        data: {
+            deviceUID: props.deviceUID,
+            channelName: props.channelName,
+            calibration,
+        },
+    })
+}
+
+async function onClearCalibration(): Promise<void> {
+    const result = await calibrationStore.deleteCalibration(props.deviceUID, props.channelName)
+    if (result instanceof ErrorResponse) {
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: result.error || t('components.channelExtensionSettings.calibration.clearError'),
+            life: 6000,
+        })
+        return
+    }
+    toast.add({
+        severity: 'info',
+        summary: t('components.channelExtensionSettings.calibration.heading'),
+        detail: t('components.channelExtensionSettings.calibration.clearedNotice'),
+        life: 5000,
+    })
+}
+
+// On every popover open, refresh the status once and resume polling
+// if it turns out a diagnosis is mid-sweep (e.g. after page reload).
+watch(isPopupOpen, (open) => {
+    if (open && calibrationEligible.value) {
+        calibrationStore.ensurePolling(props.deviceUID, props.channelName).catch(() => {})
+    }
+})
 
 for (const device of deviceStore.allDevices()) {
     if (device.uid === props.deviceUID && device.info != null) {
@@ -177,14 +311,10 @@ defineExpose({
                 <div
                     class="w-full bg-bg-two border border-border-one p-2 rounded-lg text-text-color pb-4"
                 >
-                    <table>
-                        <thead>
-                            <tr>
-                                <th colspan="6" class="pb-2.5 pt-1">
-                                    {{ t('components.channelExtensionSettings.title') }}
-                                </th>
-                            </tr>
-                        </thead>
+                    <div class="font-semibold pb-2.5 pt-1 text-center">
+                        {{ t('components.channelExtensionSettings.title') }}
+                    </div>
+                    <table v-if="currentChannelExtension != null">
                         <tbody>
                             <tr>
                                 <td class="w-24 text-end pl-4">
@@ -237,6 +367,131 @@ defineExpose({
                             </tr>
                         </tbody>
                     </table>
+                    <div
+                        v-if="calibrationEligible"
+                        :class="[
+                            'px-2',
+                            currentChannelExtension != null
+                                ? 'mt-3 pt-3 border-t border-border-one'
+                                : 'pt-1',
+                        ]"
+                    >
+                        <!--
+                          v-memo keeps PrimeVue's tooltip directive from running its
+                          `updated` lifecycle on each poll-driven re-render. Without it,
+                          the directive's unbindEvents() removes the visible tooltip
+                          from document.body every ~1s while calibration is in_progress.
+                        -->
+                        <div
+                            v-memo="[]"
+                            v-tooltip.top="
+                                t('components.channelExtensionSettings.calibration.description')
+                            "
+                            class="flex items-center mb-2 cursor-help"
+                        >
+                            <div class="leading-none">
+                                <svg-icon
+                                    type="mdi"
+                                    class="mr-2"
+                                    :path="mdiInformationSlabCircleOutline"
+                                    :size="deviceStore.getREMSize(1.25)"
+                                />
+                            </div>
+                            <span class="font-semibold">
+                                {{ t('components.channelExtensionSettings.calibration.heading') }}
+                            </span>
+                        </div>
+                        <div class="text-sm pb-2">{{ calibrationStatusText }}</div>
+                        <progress-bar
+                            v-if="calibrationPhase === 'in_progress'"
+                            :value="
+                                calibrationStatus?.phase === 'in_progress'
+                                    ? calibrationStatus.percent
+                                    : 0
+                            "
+                            :show-value="false"
+                            class="mb-2"
+                        />
+                        <div
+                            v-if="
+                                calibrationPhase === 'not_started' || calibrationPhase === 'failed'
+                            "
+                            class="text-xs text-text-color-secondary pb-2 whitespace-pre-line"
+                        >
+                            {{ t('components.channelExtensionSettings.calibration.caveatsBanner') }}
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                v-if="calibrationPhase === 'not_started'"
+                                type="button"
+                                @click="onStartCalibration"
+                                class="px-3 py-1 rounded border border-border-one hover:bg-surface-hover text-sm"
+                            >
+                                {{
+                                    t(
+                                        'components.channelExtensionSettings.calibration.buttonCalibrate',
+                                    )
+                                }}
+                            </button>
+                            <button
+                                v-if="calibrationPhase === 'in_progress'"
+                                type="button"
+                                @click="onCancelCalibration"
+                                class="px-3 py-1 rounded border border-border-one hover:bg-surface-hover text-sm"
+                            >
+                                {{
+                                    t(
+                                        'components.channelExtensionSettings.calibration.buttonCancel',
+                                    )
+                                }}
+                            </button>
+                            <button
+                                v-if="calibrationPhase === 'completed'"
+                                type="button"
+                                @click="onViewCurve"
+                                class="px-3 py-1 rounded border border-border-one hover:bg-surface-hover text-sm flex items-center gap-1"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiChartLine"
+                                    :size="deviceStore.getREMSize(1.0)"
+                                />
+                                {{
+                                    t(
+                                        'components.channelExtensionSettings.calibration.buttonViewCurve',
+                                    )
+                                }}
+                            </button>
+                            <button
+                                v-if="
+                                    calibrationPhase === 'completed' ||
+                                    calibrationPhase === 'failed'
+                                "
+                                type="button"
+                                @click="onStartCalibration"
+                                class="px-3 py-1 rounded border border-border-one hover:bg-surface-hover text-sm"
+                            >
+                                {{
+                                    t(
+                                        'components.channelExtensionSettings.calibration.buttonRecalibrate',
+                                    )
+                                }}
+                            </button>
+                            <button
+                                v-if="
+                                    calibrationPhase === 'completed' ||
+                                    calibrationPhase === 'failed'
+                                "
+                                type="button"
+                                @click="onClearCalibration"
+                                class="px-3 py-1 rounded border border-border-one hover:bg-surface-hover text-sm"
+                            >
+                                {{
+                                    t('components.channelExtensionSettings.calibration.buttonClear')
+                                }}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </popover-content>
         </popover-root>

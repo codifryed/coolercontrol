@@ -48,6 +48,7 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
+import type { Calibration, CalibrationStatus } from '@/models/Calibration.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto, { HasUiDto, PluginStatusDto } from '@/models/Plugins.ts'
@@ -1657,6 +1658,120 @@ export default class DaemonClient {
                 drive_active: false,
                 drive_backend: 'built_in',
             }
+        }
+    }
+
+    /**
+     * Start a per-channel calibration diagnosis. Returns `true` on
+     * 202 Accepted; an ErrorResponse on 409 (already in flight) or
+     * any other failure. The diagnosis itself runs asynchronously on
+     * the daemon; poll `getCalibrationStatus` to track progress.
+     */
+    async startCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(
+                `/devices/${deviceUID}/${channelName}/calibration/start`,
+            )
+            this.logDaemonResponse(response, 'Start Calibration')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Cancel the in-flight calibration for a channel. Returns `true`
+     * on success, `ErrorResponse` when nothing was running (404).
+     */
+    async cancelCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(
+                `/devices/${deviceUID}/${channelName}/calibration/cancel`,
+            )
+            this.logDaemonResponse(response, 'Cancel Calibration')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Fetch the persisted calibration for a channel. Returns
+     * `undefined` when no calibration is stored (HTTP 404).
+     */
+    async getCalibration(deviceUID: UID, channelName: string): Promise<Calibration | undefined> {
+        try {
+            const response = await this.getClient().get(
+                `/devices/${deviceUID}/${channelName}/calibration`,
+            )
+            this.logDaemonResponse(response, 'Get Calibration')
+            return response.data as Calibration
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                return undefined
+            }
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    /**
+     * Delete the persisted calibration for a channel. Returns
+     * `true` when an entry was removed, `false` when there was
+     * nothing to delete, `ErrorResponse` on any other failure.
+     */
+    async deleteCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(
+                `/devices/${deviceUID}/${channelName}/calibration`,
+            )
+            this.logDaemonResponse(response, 'Delete Calibration')
+            return true
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                return false
+            }
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Poll the calibration status for a channel. Always returns a
+     * `CalibrationStatus` on success (the daemon represents "no
+     * diagnosis ever observed" as a `NotStarted` variant rather
+     * than HTTP 404). Returns `undefined` only on transport errors.
+     */
+    async getCalibrationStatus(
+        deviceUID: UID,
+        channelName: string,
+    ): Promise<CalibrationStatus | undefined> {
+        try {
+            const response = await this.getClient().get(
+                `/devices/${deviceUID}/${channelName}/calibration/status`,
+            )
+            this.logDaemonResponse(response, 'Get Calibration Status')
+            return response.data as CalibrationStatus
+        } catch (err: any) {
+            this.logError(err)
+            return undefined
         }
     }
 }

@@ -25,6 +25,7 @@ import type { FanNodeData } from './useControlFlowGraph'
 import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
+import { useCalibrationStore } from '@/stores/CalibrationStore'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
@@ -35,6 +36,7 @@ const props = defineProps<NodeProps<FanNodeData>>()
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const calibrationStore = useCalibrationStore()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
 const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
@@ -64,6 +66,11 @@ const liveValues = computed(() => {
         duty: channelValues?.duty,
         rpm: channelValues?.rpm,
     }
+})
+
+const calibrationProgress = computed(() => {
+    const status = calibrationStore.statusFor(props.data.deviceUID, props.data.channelName)
+    return status?.phase === 'in_progress' ? status.percent : undefined
 })
 
 function stepIcon(type: string): string {
@@ -140,6 +147,15 @@ function onClick() {
                 {{ profileName }}
             </div>
             <div class="flex items-center gap-3 text-xs">
+                <span
+                    v-if="calibrationProgress != null"
+                    class="rounded bg-accent/20 px-1.5 py-0.5 font-medium text-accent"
+                    v-tooltip.top="t('components.channelExtensionSettings.calibration.heading')"
+                >
+                    {{
+                        t('components.channelExtensionSettings.calibration.buttonCalibrate')
+                    }}…&nbsp;{{ calibrationProgress }}{{ t('common.percentUnit') }}
+                </span>
                 <span
                     v-if="data.isManual"
                     class="rounded bg-warning/20 px-1.5 py-0.5 font-medium text-warning"
