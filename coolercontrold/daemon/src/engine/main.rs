@@ -81,6 +81,24 @@ fn clamp_f64_to_duty(value: f64) -> Duty {
     as_u8
 }
 
+/// Render a `CalibrationWarning` into a short, user-facing sentence.
+/// Used by the SSE notification body so the desktop alert tells the
+/// user what was off about their fan. The popover renders its own
+/// localized version of the same information.
+fn describe_warning(warning: &crate::calibration::CalibrationWarning) -> String {
+    match warning {
+        crate::calibration::CalibrationWarning::NoTachometer => {
+            "no RPM detected (sensor or wiring may be disconnected)".to_string()
+        }
+        crate::calibration::CalibrationWarning::NotControllable => {
+            "fan does not respond to duty changes (likely BIOS-controlled)".to_string()
+        }
+        crate::calibration::CalibrationWarning::LimitedRange { rpm_span, .. } => {
+            format!("limited RPM range ({rpm_span} RPM); mapping resolution is coarse")
+        }
+    }
+}
+
 /// Render a `DiagnosisFailure` into a short, user-facing reason.
 /// Used by the notification body, so kept compact (no nested types).
 fn describe_failure(failure: &DiagnosisFailure) -> String {
@@ -1241,6 +1259,22 @@ impl Engine {
         outcome: &std::result::Result<Calibration, DiagnosisFailure>,
     ) {
         match outcome {
+            Ok(calibration) if calibration.warnings.is_empty().not() => {
+                let summary: String = calibration
+                    .warnings
+                    .iter()
+                    .map(describe_warning)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                self.notify_calibration(
+                    "Calibration completed with warnings",
+                    &format!(
+                        "Channel {channel_name}: {summary}. Open the channel popover for details."
+                    ),
+                    NotificationIcon::Error,
+                    1,
+                );
+            }
             Ok(calibration) => match calibration.curve_kind {
                 calibration::CurveKind::Smooth => self.notify_calibration(
                     "Calibration complete",

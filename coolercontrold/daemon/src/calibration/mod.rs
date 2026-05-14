@@ -42,9 +42,10 @@ mod state;
 mod store;
 
 pub use curve::{
-    classify_curve, derive_scalars, select_displayed_true_duty, start_threshold, Calibration,
-    CurveKind, DerivedScalars, DutySample, MappedDuty, DUTY_STEP_DENSE, DUTY_STEP_SPARSE,
-    KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE, SANITY_THRESHOLD_PERCENT,
+    classify_curve, derive_scalars, derive_warnings, select_displayed_true_duty, start_threshold,
+    Calibration, CalibrationWarning, CurveKind, DerivedScalars, DutySample, MappedDuty,
+    DUTY_STEP_DENSE, DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE,
+    SANITY_THRESHOLD_PERCENT,
 };
 pub use diagnoser::{
     run_diagnosis, DiagnosisFailure, DiagnosisHost, DiagnosisPhase, DiagnosisProgress,

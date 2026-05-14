@@ -124,6 +124,13 @@ pub struct Calibration {
     /// Whether the curve is smooth (mapping active) or stepped (passthrough).
     pub curve_kind: CurveKind,
 
+    /// Non-fatal reliability findings: missing tachometer, fan not
+    /// responding to duty, limited RPM range. Empty for a healthy
+    /// calibration. Defaults to empty on older persisted records that
+    /// pre-date this field.
+    #[serde(default)]
+    pub warnings: Vec<CalibrationWarning>,
+
     /// Wall-clock time when the diagnosis that produced this calibration finished.
     pub timestamp: DateTime<Local>,
 }
@@ -132,6 +139,30 @@ pub struct Calibration {
 pub enum CurveKind {
     Smooth,
     Stepped,
+}
+
+/// Non-fatal reliability findings recorded on a `Calibration` to be
+/// surfaced to the user. The diagnoser still persists the calibration
+/// when these fire; the warnings just inform the popover and the
+/// completion notification that the fan is not as well-behaved as a
+/// fully healthy one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CalibrationWarning {
+    /// The fan tachometer reported 0 RPM across the entire sweep. The
+    /// fan may be disconnected, its tach wire unplugged, or the
+    /// firmware may be holding it off.
+    NoTachometer,
+    /// The fan is spinning but its RPM does not track duty changes
+    /// (effective RPM span across the responding portion of the curve
+    /// is within noise). Most often a BIOS / firmware-controlled fan.
+    /// Mapping is disabled (`curve_kind` is forced to `Stepped`).
+    NotControllable,
+    /// The fan responds to duty but the usable RPM span is small
+    /// enough that the mapping resolution is coarse. Mapping stays
+    /// active; the popover surfaces the span so the user can decide
+    /// whether to clear.
+    LimitedRange { rpm_span: RPM, rpm_max: RPM },
 }
 
 /// Result of a forward true-duty -> device-duty mapping.
@@ -414,6 +445,59 @@ pub fn select_displayed_true_duty(
     }
 }
 
+/// Examine the calibration curves and produce any reliability warnings
+/// that should surface to the user. Warnings do not stop the sweep
+/// from persisting; they just colour the post-completion message and
+/// the popover status text.
+///
+/// Inputs are the up-sweep curve and the scalars already derived from
+/// it. The `curve_kind` is taken by mutable reference so this helper
+/// can force passthrough when the fan looks BIOS-controlled.
+pub fn derive_warnings(
+    up_curve: &[DutySample],
+    scalars: &DerivedScalars,
+    curve_kind: &mut CurveKind,
+) -> Vec<CalibrationWarning> {
+    let mut warnings = Vec::new();
+    let effective_span = effective_rpm_span(up_curve, scalars);
+    let jitter = jitter_threshold(scalars.rpm_max);
+    let not_controllable_limit = jitter.saturating_mul(2);
+    if effective_span <= not_controllable_limit {
+        warnings.push(CalibrationWarning::NotControllable);
+        // BIOS / firmware-controlled fan: forcibly disable mapping so
+        // the dispatcher does not pretend the fan responds to true-duty.
+        *curve_kind = CurveKind::Stepped;
+        // Don't also stack LimitedRange on top — NotControllable is
+        // the more pointed message and already conveys "tiny range".
+        return warnings;
+    }
+    // LimitedRange is informational: it fires regardless of curve_kind
+    // because a narrow-range stepped fan also benefits from the
+    // explicit "the usable RPM band is small" cue alongside the
+    // "mapping disabled" status text.
+    let limited_relative = scalars.rpm_max.saturating_mul(25) / 100;
+    let limited_limit = limited_relative.max(500);
+    if effective_span < limited_limit {
+        warnings.push(CalibrationWarning::LimitedRange {
+            rpm_span: effective_span,
+            rpm_max: scalars.rpm_max,
+        });
+    }
+    warnings
+}
+
+/// RPM span across the responding portion of the up-sweep: the
+/// distance from the sample at `min_start_duty` up to the curve's
+/// peak. Excluding the "off" prefix prevents `0 → rpm_max` from
+/// looking like a healthy range when the fan is actually a toggle.
+fn effective_rpm_span(up_curve: &[DutySample], scalars: &DerivedScalars) -> RPM {
+    let rpm_at_start = up_curve
+        .iter()
+        .find(|s| s.duty == scalars.min_start_duty)
+        .map_or(0, |s| s.rpm);
+    scalars.rpm_max.saturating_sub(rpm_at_start)
+}
+
 /// Scalars derived from the raw sweep curves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedScalars {
@@ -480,6 +564,7 @@ mod tests {
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
             timestamp: Local::now(),
         }
     }
@@ -616,6 +701,7 @@ mod tests {
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Stepped,
+            warnings: Vec::new(),
             timestamp: Local::now(),
         };
         assert!(cal.true_to_device(50).is_none());
@@ -706,6 +792,84 @@ mod tests {
     }
 
     #[test]
+    fn derive_warnings_empty_for_healthy_smooth_curve() {
+        // Goal: a synthetic 0..=2000 linear smooth curve gives no
+        // warnings; the typical case must not produce false positives.
+        let up = smooth_curve(2000);
+        let down = smooth_curve(2000);
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        let mut kind = classify_curve(&up, scalars.rpm_max);
+        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        assert!(
+            warnings.is_empty(),
+            "expected no warnings, got {warnings:?}"
+        );
+        assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    #[test]
+    fn derive_warnings_flags_not_controllable_when_span_within_jitter() {
+        // Goal: a fan spinning at a near-constant 1500 RPM regardless of
+        // duty must surface as NotControllable, and curve_kind must be
+        // forced to Stepped so the dispatcher passes through.
+        let up: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
+            .map(|i| {
+                let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
+                let rpm = if duty == 0 { 0 } else { 1500 };
+                DutySample { duty, rpm }
+            })
+            .collect();
+        let down = up.clone();
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        let mut kind = CurveKind::Smooth; // pretend classify said smooth
+        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        assert!(
+            warnings.contains(&CalibrationWarning::NotControllable),
+            "expected NotControllable in {warnings:?}"
+        );
+        assert_eq!(
+            kind,
+            CurveKind::Stepped,
+            "NotControllable must force passthrough"
+        );
+    }
+
+    #[test]
+    fn derive_warnings_flags_limited_range_when_span_too_small() {
+        // Goal: a fan that does respond to duty (effective_span beyond
+        // the NotControllable noise band) but whose total RPM range
+        // is under the absolute 500-RPM threshold must surface
+        // LimitedRange. We use a step-curve here because that is the
+        // natural shape produced by a real fan with this little range,
+        // but the warning still fires (LimitedRange is independent of
+        // curve_kind).
+        let up: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
+            .map(|i| {
+                let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
+                let rpm = if duty == 0 {
+                    0
+                } else if duty < 50 {
+                    600
+                } else {
+                    900
+                };
+                DutySample { duty, rpm }
+            })
+            .collect();
+        let down = up.clone();
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        let mut kind = classify_curve(&up, scalars.rpm_max);
+        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        let limited = warnings.iter().find_map(|w| match w {
+            CalibrationWarning::LimitedRange { rpm_span, rpm_max } => Some((*rpm_span, *rpm_max)),
+            _ => None,
+        });
+        assert!(limited.is_some(), "expected LimitedRange in {warnings:?}");
+        let (span, _) = limited.expect("limited variant");
+        assert_eq!(span, 300, "expected 900 - 600 = 300 RPM span, got {span}");
+    }
+
+    #[test]
     fn rpm_to_true_duty_rounds_up_on_curve_truncation() {
         // Goal: when `duty_for_rpm` truncates the device-duty
         // calculation (the device-duty space is integer, but the
@@ -741,6 +905,7 @@ mod tests {
             max_eff_duty: scalars.max_eff_duty,
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
             timestamp: Local::now(),
         };
         // 98% device-duty round-trip: write the sustain device-duty

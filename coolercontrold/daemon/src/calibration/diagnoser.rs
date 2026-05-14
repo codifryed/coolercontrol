@@ -320,21 +320,43 @@ where
         Err(failure) => return Err(failure),
     };
 
-    let Some(scalars) = derive_scalars(&up_curve, &down_curve) else {
-        return Err(DiagnosisFailure::FanUnresponsive);
-    };
-    let curve_kind = classify_curve(&up_curve, scalars.rpm_max);
-
-    let calibration = Calibration {
-        up_curve,
-        down_curve,
-        kick_duration_ms: settings.kick_duration_default_ms,
-        min_start_duty: scalars.min_start_duty,
-        min_sustain_duty: scalars.min_sustain_duty,
-        max_eff_duty: scalars.max_eff_duty,
-        rpm_max: scalars.rpm_max,
-        curve_kind,
-        timestamp: Local::now(),
+    let calibration = match derive_scalars(&up_curve, &down_curve) {
+        Some(scalars) => {
+            let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max);
+            let warnings =
+                crate::calibration::curve::derive_warnings(&up_curve, &scalars, &mut curve_kind);
+            Calibration {
+                up_curve,
+                down_curve,
+                kick_duration_ms: settings.kick_duration_default_ms,
+                min_start_duty: scalars.min_start_duty,
+                min_sustain_duty: scalars.min_sustain_duty,
+                max_eff_duty: scalars.max_eff_duty,
+                rpm_max: scalars.rpm_max,
+                curve_kind,
+                warnings,
+                timestamp: Local::now(),
+            }
+        }
+        None => {
+            // No usable RPM anywhere in the sweep. Persist a
+            // passthrough record carrying NoTachometer so the popover
+            // surfaces the warning on reopen instead of regressing to
+            // "not calibrated". `min_*_duty` / `max_eff_duty` are
+            // pinned to 100 (no working duty); rpm_max is 0.
+            Calibration {
+                up_curve,
+                down_curve,
+                kick_duration_ms: settings.kick_duration_default_ms,
+                min_start_duty: 100,
+                min_sustain_duty: 100,
+                max_eff_duty: 100,
+                rpm_max: 0,
+                curve_kind: CurveKind::Stepped,
+                warnings: vec![crate::calibration::curve::CalibrationWarning::NoTachometer],
+                timestamp: Local::now(),
+            }
+        }
     };
 
     store.insert_unsaved(key, calibration.clone());
@@ -991,17 +1013,24 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn dead_fan_yields_fan_unresponsive() {
-        // Goal: a fan whose RPM never crosses the start floor
-        // surfaces as FanUnresponsive. The snapshot is still
-        // restored and the under_diagnosis flag is cleared.
+    async fn bios_controlled_fan_persists_with_not_controllable_warning() {
+        // Goal: a fan stuck at a constant non-zero RPM regardless of
+        // duty (BIOS / firmware override) must produce a saved
+        // calibration with NotControllable in warnings, curve_kind
+        // forced to Stepped, and no FanUnresponsive error.
+        use crate::calibration::CalibrationWarning;
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
-        let host = MockHost::new().with_dead_fan();
+        let host = MockHost::new();
+        // Every duty maps to a constant 1200 RPM — simulates a fan
+        // that spins but does not respond to PWM changes.
+        for duty in 0u8..=100 {
+            host.rpm_for_duty.borrow_mut().insert(duty, 1200);
+        }
         let settings = DiagnosisSettings::default();
         let cancellation = CancellationToken::new();
 
-        let err = run_diagnosis(
+        let calibration = run_diagnosis(
             &state,
             &store,
             &host,
@@ -1011,10 +1040,57 @@ mod tests {
             cancellation,
         )
         .await
-        .expect_err("dead fan rejected");
+        .expect("BIOS-stuck fan persists with warning, not error");
 
-        assert_eq!(err, DiagnosisFailure::FanUnresponsive);
-        assert!(store.has(&key("dev-a", "fan1")).not());
+        assert!(
+            calibration
+                .warnings
+                .contains(&CalibrationWarning::NotControllable),
+            "expected NotControllable, got {:?}",
+            calibration.warnings
+        );
+        assert_eq!(
+            calibration.curve_kind,
+            CurveKind::Stepped,
+            "NotControllable must force passthrough"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dead_fan_persists_no_tachometer_warning() {
+        // Goal: a fan whose RPM never crosses the start floor no longer
+        // returns a hard FanUnresponsive failure. Instead the diagnoser
+        // persists a passthrough calibration carrying NoTachometer so
+        // the popover shows the warning on reopen and the user can
+        // re-calibrate or clear from there.
+        use crate::calibration::CalibrationWarning;
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_dead_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let calibration = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("dead fan persists with warning, not error");
+
+        assert!(
+            calibration
+                .warnings
+                .contains(&CalibrationWarning::NoTachometer),
+            "expected NoTachometer warning, got {:?}",
+            calibration.warnings
+        );
+        assert_eq!(calibration.curve_kind, CurveKind::Stepped);
+        assert!(store.has(&key("dev-a", "fan1")));
         assert_eq!(host.restores_applied.borrow().len(), 1);
         assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
     }

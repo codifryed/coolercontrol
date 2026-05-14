@@ -293,6 +293,7 @@ mod tests {
             max_eff_duty: 95,
             rpm_max: 2000,
             curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
             timestamp: Local::now(),
         }
     }

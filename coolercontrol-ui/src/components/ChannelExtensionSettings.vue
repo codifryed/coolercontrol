@@ -27,6 +27,7 @@ import ProgressBar from 'primevue/progressbar'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
+import type { CalibrationWarning } from '@/models/Calibration.ts'
 import { computed, defineAsyncComponent, nextTick, ref, Ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UID } from '@/models/Device.ts'
@@ -90,6 +91,14 @@ const calibrationStatusText = computed((): string => {
         })
     }
     if (status.phase === 'completed') {
+        const warnings = status.calibration.warnings ?? []
+        if (warnings.length > 0) {
+            const messages = warnings.map(warningText).join('; ')
+            return t(
+                'components.channelExtensionSettings.calibration.statusCompletedWithWarnings',
+                { messages },
+            )
+        }
         return status.calibration.curve_kind === 'Stepped'
             ? t('components.channelExtensionSettings.calibration.statusCompletedStepped')
             : t('components.channelExtensionSettings.calibration.statusCompleted')
@@ -97,6 +106,24 @@ const calibrationStatusText = computed((): string => {
     return t('components.channelExtensionSettings.calibration.statusFailed', {
         message: status.message,
     })
+})
+
+function warningText(warning: CalibrationWarning): string {
+    switch (warning.kind) {
+        case 'no_tachometer':
+            return t('components.channelExtensionSettings.calibration.warningNoTachometer')
+        case 'not_controllable':
+            return t('components.channelExtensionSettings.calibration.warningNotControllable')
+        case 'limited_range':
+            return t('components.channelExtensionSettings.calibration.warningLimitedRange', {
+                span: warning.rpm_span,
+            })
+    }
+}
+
+const calibrationHasWarnings = computed((): boolean => {
+    const status = calibrationStatus.value
+    return status?.phase === 'completed' && (status.calibration.warnings?.length ?? 0) > 0
 })
 
 function stageLabel(stage: 'preflight' | 'up_sweep' | 'down_sweep' | 'finalizing'): string {
@@ -401,7 +428,11 @@ defineExpose({
                                 {{ t('components.channelExtensionSettings.calibration.heading') }}
                             </span>
                         </div>
-                        <div class="text-sm pb-2">{{ calibrationStatusText }}</div>
+                        <div
+                            :class="['text-sm pb-2', calibrationHasWarnings ? 'text-warning' : '']"
+                        >
+                            {{ calibrationStatusText }}
+                        </div>
                         <progress-bar
                             v-if="calibrationPhase === 'in_progress'"
                             :value="

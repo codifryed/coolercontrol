@@ -66,9 +66,26 @@ export interface Calibration {
     rpm_max: number
     /** `Smooth` for active mapping, `Stepped` for passthrough. */
     curve_kind: 'Smooth' | 'Stepped'
+    /**
+     * Non-fatal reliability findings produced by `derive_warnings`.
+     * Empty for a healthy calibration. Mirrors
+     * `coolercontrold::calibration::CalibrationWarning`.
+     */
+    warnings: CalibrationWarning[]
     /** ISO 8601 timestamp of when the diagnosis finished. */
     timestamp: string
 }
+
+/**
+ * Non-fatal reliability finding on a calibration. Surfaced in the
+ * popover status text and (via the SSE notifications channel) as a
+ * desktop notification. Discriminated union tagged by `kind`,
+ * matching the daemon's `#[serde(tag = "kind", rename_all = "snake_case")]`.
+ */
+export type CalibrationWarning =
+    | { kind: 'no_tachometer' }
+    | { kind: 'not_controllable' }
+    | { kind: 'limited_range'; rpm_span: number; rpm_max: number }
 
 /**
  * The stage label embedded in an in-progress status. The values
