@@ -196,7 +196,7 @@ impl GraphProfileCommander {
         for (device_uid, channel_duties_to_set) in self.collect_processed_outputs() {
             scope.spawn(async move {
                 for (channel_name, duty_to_set) in channel_duties_to_set {
-                    self.set_device_speed(scope, &device_uid, &channel_name, duty_to_set)
+                    self.set_device_speed(&device_uid, &channel_name, duty_to_set)
                         .await;
                 }
             });
@@ -264,16 +264,8 @@ impl GraphProfileCommander {
     /// orchestration) for calibrated smooth channels and passes through
     /// uncalibrated channels unchanged. The writer is looked up from the
     /// pre-built `writers_by_type` cache so the hot path has no clones or
-    /// allocations. The caller's moro scope is threaded through so the
-    /// deferred sustain-write task spawns into it (instead of going via
-    /// `tokio::task::spawn_local`, which would force an `Rc::clone`).
-    pub async fn set_device_speed<'s>(
-        &'s self,
-        scope: &'s Scope<'s, 's, Result<()>>,
-        device_uid: &UID,
-        channel_name: &str,
-        duty_to_set: u8,
-    ) {
+    /// allocations.
+    pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
             let device_lock = self.all_devices[device_uid].borrow();
@@ -288,7 +280,6 @@ impl GraphProfileCommander {
                 &self.fan_state_map,
                 &self.calibration_store,
                 writer,
-                scope,
                 device_uid.clone(),
                 channel_name.to_string(),
                 duty_to_set,

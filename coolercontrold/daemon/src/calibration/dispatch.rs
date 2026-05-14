@@ -19,29 +19,26 @@
 //! Unified write entry point for calibrated channels.
 //!
 //! Every duty write made on behalf of an engine commander or an API
-//! setting actor goes through one of two public entry points:
+//! setting actor goes through [`dispatch`], which:
 //!
-//! - [`dispatch`] takes a `&'s Scope` and spawns the deferred sustain
-//!   write into it via `scope.spawn`. Used by the per-tick hot paths
-//!   ([`GraphProfileCommander::set_device_speed`] et al.) because it
-//!   borrows `&Rc<...>` for the spawned future and does zero clones.
-//! - [`dispatch_local`] handles paths with no scope reachable (API
-//!   actor handlers, fixed-profile application, saved-setting replay).
-//!   It uses `tokio::task::spawn_local`, which forces an `Rc::clone` of
-//!   both `state` and `writer` for the `'static` future. Acceptable for
-//!   user-triggered code that fires at human cadence.
-//!
-//! Both entry points share [`dispatch_core`], which handles:
-//!
-//! - **Passthrough** for uncalibrated channels, stepped calibrations,
-//!   and channels currently under diagnosis.
-//! - **Kick-then-settle orchestration** for smooth calibrations: a
-//!   transition out of `Off` writes the kick duty, returns
-//!   `SustainPending`, and the caller schedules the deferred sustain
-//!   write using its spawn mechanism of choice.
+//! - **Passthrough**: for uncalibrated channels, stepped calibrations,
+//!   and channels currently under diagnosis, writes the raw user
+//!   value to hardware and returns.
+//! - **Kick-then-settle orchestration**: for smooth calibrations, a
+//!   transition out of `Off` writes the kick duty and schedules a
+//!   deferred sustain-write task via `tokio::task::spawn_local`.
 //! - **Mid-kick target adjustment**: subsequent dispatches that arrive
 //!   while the channel is still `Kicking` only update the pending
 //!   sustain target; they do not re-kick.
+//!
+//! The spawn path uses `tokio::task::spawn_local` (not a
+//! `moro_local::Scope`) because `dispatch` is called from inside
+//! already-spawned futures on the engine's main scope, and
+//! `moro_local::Scope::spawn` panics with `RefCell already borrowed`
+//! when re-entered from inside an active scope task. The clone cost
+//! here is one `Rc::clone` of `state` and `writer` per Off->Kicking
+//! transition, which is rare (only when a fan goes from stopped to
+//! spinning, not every per-tick write).
 //!
 //! Tests call `complete_kick` directly to exercise the post-kick
 //! transition without driving an async timer.
@@ -62,7 +59,6 @@ use crate::repositories::repository::Repository;
 use anyhow::Result;
 use async_trait::async_trait;
 use log::warn;
-use moro_local::Scope;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -115,17 +111,15 @@ impl DutyWriter for RepoWriter {
     }
 }
 
-/// Outcome of the synchronous part of a dispatch. When the dispatcher
-/// transitions a channel out of `Off`, the caller still needs to
-/// schedule a deferred sustain write after `kick_duration_ms`. The two
-/// public entry points (`dispatch` and `dispatch_local`) use different
-/// spawn mechanisms; both consume this outcome the same way.
-pub enum DispatchOutcome {
+/// Outcome of the synchronous part of a dispatch. Returned by
+/// `dispatch_core`; the public `dispatch` entry point uses it to
+/// decide whether to schedule a deferred sustain write.
+enum DispatchOutcome {
     /// All work completed; no follow-up needed.
     Done,
-    /// The kick was written and the channel is now `Kicking`. The
-    /// caller must schedule a task that, after `kick_duration_ms`,
-    /// calls `complete_kick(state, writer, &key, &device_uid, &channel_name)`.
+    /// The kick was written and the channel is now `Kicking`. A
+    /// deferred task must, after `kick_duration_ms`, call
+    /// `complete_kick(state, writer, &key, &device_uid, &channel_name)`.
     SustainPending {
         kick_duration_ms: u32,
         key: ChannelKey,
@@ -134,48 +128,24 @@ pub enum DispatchOutcome {
     },
 }
 
-/// Apply a user-facing `true_duty` and use a moro scope to spawn the
-/// deferred sustain write when the channel transitions out of `Off`.
+/// Apply a user-facing `true_duty` to the channel.
 ///
-/// Prefer this variant on every code path where a `Scope` reference is
-/// already in scope (engine commanders inside the main loop). It keeps
-/// the spawned future borrowing `&Rc<...>` from the caller's stack
-/// frame, so the hot path does no `Rc::clone` and no heap allocation.
-pub async fn dispatch<'s>(
-    state: &'s Rc<FanStateMap>,
-    store: &'s CalibrationStore,
-    writer: &'s Rc<dyn DutyWriter>,
-    scope: &'s Scope<'s, 's, Result<()>>,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
-    true_duty: Duty,
-) -> Result<()> {
-    let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
-    if let DispatchOutcome::SustainPending {
-        kick_duration_ms,
-        key,
-        device_uid,
-        channel_name,
-    } = outcome
-    {
-        scope.spawn(async move {
-            tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
-            complete_kick(state, writer, &key, &device_uid, &channel_name).await;
-        });
-    }
-    Ok(())
-}
-
-/// Apply a user-facing `true_duty` from a one-off code path that does
-/// not own a moro `Scope`. Spawns the deferred sustain write through
-/// `tokio::task::spawn_local`, which forces an `Rc::clone` of both
-/// `state` and `writer` since the spawned future must be `'static`.
+/// On a smooth-curve channel transitioning out of `Off`, the kick
+/// duty is written immediately and a deferred sustain-write task is
+/// spawned via `tokio::task::spawn_local`. The clone of `state` and
+/// `writer` into the spawned task only happens on this rare
+/// transition; the hot per-tick paths (mid-kick update, On-state
+/// write, passthrough for uncalibrated/stepped channels) do zero
+/// clones.
 ///
-/// Use only for paths that fire on user input (API actor's manual-duty
-/// handler, fixed-profile application, saved-setting replay). On the
-/// per-tick scheduled paths the moro-scope variant `dispatch` avoids
-/// these clones entirely.
-pub async fn dispatch_local(
+/// `moro_local::Scope::spawn` is intentionally not used here even
+/// though the main loop has a scope available: `dispatch` is called
+/// from inside futures that are themselves already spawned on the
+/// main scope, and re-entering `scope.spawn` from inside an active
+/// scope task panics with `RefCell already borrowed` in
+/// `moro-local 0.4.0`. `tokio::task::spawn_local` has no such
+/// restriction.
+pub async fn dispatch(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
     writer: &Rc<dyn DutyWriter>,
@@ -208,13 +178,11 @@ pub async fn dispatch_local(
     Ok(())
 }
 
-/// Synchronous dispatch logic shared by both public entry points.
-///
-/// Performs the immediate hardware write (passthrough, write-zero, kick,
-/// or sustain-on-On) and updates the per-channel state machine. Returns
-/// `SustainPending` only on the `Off -> Kicking` transition so the
-/// caller can spawn the deferred sustain write using whichever spawn
-/// mechanism it owns.
+/// Synchronous dispatch logic. Performs the immediate hardware write
+/// (passthrough, write-zero, kick, or sustain-on-On) and updates the
+/// per-channel state machine. Returns `SustainPending` only on the
+/// `Off -> Kicking` transition so the caller can schedule the
+/// deferred sustain write.
 async fn dispatch_core(
     state: &Rc<FanStateMap>,
     store: &CalibrationStore,
@@ -514,7 +482,7 @@ mod tests {
         let state = Rc::new(FanStateMap::new());
         let store = CalibrationStore::empty();
         let (writer, writes) = MockWriter::make();
-        dispatch_local(
+        dispatch(
             &state,
             &store,
             &writer,
@@ -540,7 +508,7 @@ mod tests {
         let store = CalibrationStore::empty();
         store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
         let (writer, writes) = MockWriter::make();
-        dispatch_local(
+        dispatch(
             &state,
             &store,
             &writer,
@@ -565,7 +533,7 @@ mod tests {
         let store = CalibrationStore::empty();
         store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
         let (writer, writes) = MockWriter::make();
-        dispatch_local(
+        dispatch(
             &state,
             &store,
             &writer,
@@ -591,7 +559,7 @@ mod tests {
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                 let (writer, writes) = MockWriter::make();
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,
@@ -632,7 +600,7 @@ mod tests {
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                 let (writer, writes) = MockWriter::make();
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,
@@ -642,7 +610,7 @@ mod tests {
                 )
                 .await
                 .expect("kick");
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,
@@ -685,7 +653,7 @@ mod tests {
                 store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                 let (writer, writes) = MockWriter::make();
                 let cal = smooth_cal();
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,
@@ -696,7 +664,7 @@ mod tests {
                 .await
                 .expect("kick");
                 assert_eq!(writes.borrow().len(), 1);
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,
@@ -752,7 +720,7 @@ mod tests {
                 let store = CalibrationStore::empty();
                 store.insert_unsaved(key.clone(), smooth_cal());
                 let (writer, writes) = MockWriter::make();
-                dispatch_local(
+                dispatch(
                     &state,
                     &store,
                     &writer,

@@ -231,7 +231,7 @@ impl OverlayProfileCommander {
             scope.spawn(async move {
                 for (channel_name, duty) in channel_duties_to_apply {
                     self.graph_commander
-                        .set_device_speed(scope, &device_uid, &channel_name, duty)
+                        .set_device_speed(&device_uid, &channel_name, duty)
                         .await;
                 }
             });
