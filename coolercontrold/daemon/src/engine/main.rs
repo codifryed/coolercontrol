@@ -26,9 +26,9 @@ use std::time::Duration as StdDuration;
 use crate::api::actor::CalibrationStatus;
 use crate::api::CCError;
 use crate::calibration::{
-    self, Calibration, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
-    DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter,
-    SettingsSnapshot, SnapshotKind,
+    self, Calibration, CalibrationEntry, CalibrationStore, ChannelKey, DiagnosisFailure,
+    DiagnosisHost, DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap,
+    RepoWriter, SettingsSnapshot, SnapshotKind,
 };
 use crate::config::Config;
 use crate::device::{
@@ -248,6 +248,23 @@ impl Engine {
     /// calibration actor's GET handler.
     pub fn calibration_store_get(&self, key: &ChannelKey) -> Option<Calibration> {
         self.calibration_store.get(key)
+    }
+
+    /// Snapshot every persisted calibration. Thin wrapper used by the
+    /// calibration actor's `GetAll` handler so the UI can render
+    /// per-channel cues (e.g. the tree-menu "calibrated" pill) without
+    /// a request per channel.
+    pub fn calibration_store_all(&self) -> Vec<CalibrationEntry> {
+        let pairs = self.calibration_store.all();
+        let mut entries = Vec::with_capacity(pairs.len());
+        for ((device_uid, channel_name), calibration) in pairs {
+            entries.push(CalibrationEntry {
+                device_uid,
+                channel_name,
+                calibration,
+            });
+        }
+        entries
     }
 
     /// Remove a calibration from the store and persist the change to

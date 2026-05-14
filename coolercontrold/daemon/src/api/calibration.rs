@@ -22,6 +22,7 @@
 //! - `POST /devices/{uid}/{channel}/calibration/cancel` -> 200 OK
 //! - `GET  /devices/{uid}/{channel}/calibration`        -> 200 + Calibration JSON, or 404
 //! - `DELETE /devices/{uid}/{channel}/calibration`      -> 200 OK; clears data
+//! - `GET  /calibrations`                               -> 200 + every persisted Calibration
 //!
 //! Progress and final-result events stream through SSE; see
 //! `crate::api::sse::calibration` for the event stream and
@@ -30,11 +31,13 @@
 use crate::api::actor::CalibrationStatus;
 use crate::api::devices::DeviceChannelPath;
 use crate::api::{AppState, CCError};
-use crate::calibration::Calibration;
+use crate::calibration::{Calibration, CalibrationEntry};
 use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// Start a calibration diagnosis on the channel. Returns 202 if the
 /// diagnosis was queued, 409 if a diagnosis is already in flight for
@@ -106,6 +109,27 @@ pub async fn status(
         .ok_or(CCError::InternalError {
             msg: "calibration actor is not responding".to_string(),
         })
+}
+
+/// Snapshot of every persisted calibration. Empty list when nothing
+/// is stored. Matches the wrapper shape used by `/profiles` and
+/// `/alerts` so clients can iterate `dto.calibrations`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CalibrationsDto {
+    pub calibrations: Vec<CalibrationEntry>,
+}
+
+/// List every persisted calibration. Always returns 200; an empty
+/// list signals that no channel has been calibrated yet. The UI
+/// consumes this once at app load to mark calibrated channels in the
+/// tree menu without one request per channel.
+pub async fn list(
+    State(AppState {
+        calibration_handle, ..
+    }): State<AppState>,
+) -> Json<CalibrationsDto> {
+    let calibrations = calibration_handle.get_all().await;
+    Json(CalibrationsDto { calibrations })
 }
 
 /// Delete the stored calibration for a channel. 404 when none exists.

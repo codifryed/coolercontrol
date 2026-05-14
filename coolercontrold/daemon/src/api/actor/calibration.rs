@@ -27,7 +27,7 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::calibration::{
-    Calibration, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
+    Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
 };
 use crate::device::{ChannelName, DeviceUID};
 use crate::engine::main::Engine;
@@ -181,6 +181,9 @@ pub(crate) enum CalibrationMessage {
         channel_name: ChannelName,
         respond_to: oneshot::Sender<Option<Calibration>>,
     },
+    GetAll {
+        respond_to: oneshot::Sender<Vec<CalibrationEntry>>,
+    },
     Delete {
         device_uid: DeviceUID,
         channel_name: ChannelName,
@@ -252,6 +255,10 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
                 let key: ChannelKey = (device_uid, channel_name);
                 let calibration = self.engine.calibration_store_get(&key);
                 let _ = respond_to.send(calibration);
+            }
+            CalibrationMessage::GetAll { respond_to } => {
+                let entries = self.engine.calibration_store_all();
+                let _ = respond_to.send(entries);
             }
             CalibrationMessage::Delete {
                 device_uid,
@@ -344,6 +351,21 @@ impl CalibrationHandle {
             })
             .await;
         rx.await.ok().flatten()
+    }
+
+    /// Snapshot every persisted calibration. Used by the bulk
+    /// `GET /calibrations` route so the UI can mark calibrated channels
+    /// in the tree at app load without a request per channel. Returns
+    /// an empty `Vec` on transport failure rather than `Option` so
+    /// callers don't have to distinguish "no calibrations" from "actor
+    /// is gone" -- both render the same in the UI.
+    pub async fn get_all(&self) -> Vec<CalibrationEntry> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::GetAll { respond_to: tx })
+            .await;
+        rx.await.unwrap_or_default()
     }
 
     pub async fn delete(&self, device_uid: DeviceUID, channel_name: ChannelName) -> Result<bool> {

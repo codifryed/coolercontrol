@@ -1029,6 +1029,22 @@ fn alert_routes() -> ApiRouter<AppState> {
 fn calibration_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
+            "/calibrations",
+            get_with(calibration::list, |o| {
+                o.summary("List every persisted calibration")
+                    .description(
+                        "Returns one entry per channel that has a stored calibration. \
+                         Used by the UI at app load to mark calibrated channels in the \
+                         tree menu without one request per channel. Always 200; an empty \
+                         list signals that no channel has been calibrated yet.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
             "/devices/{device_uid}/{channel_name}/calibration/start",
             post_with(calibration::start, |o| {
                 o.summary("Start a calibration diagnosis")

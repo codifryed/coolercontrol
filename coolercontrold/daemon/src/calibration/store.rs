@@ -361,6 +361,36 @@ mod tests {
     }
 
     #[test]
+    fn all_returns_inserted_entries_in_insertion_order() {
+        // Goal: the bulk `/calibrations` route depends on `all()` returning
+        // every inserted (key, calibration) pair. Verify both that the
+        // entries are present and that the values are cloned (mutating
+        // the recovered value must not mutate the cache).
+        let store = CalibrationStore::empty();
+        let key_a: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        let key_b: ChannelKey = ("dev-b".to_string(), "pump".to_string());
+        let cal_a = sample_calibration();
+        let mut cal_b = sample_calibration();
+        cal_b.kick_duration_ms = 1234;
+        store.insert_unsaved(key_a.clone(), cal_a.clone());
+        store.insert_unsaved(key_b.clone(), cal_b.clone());
+        let all = store.all();
+        assert_eq!(all.len(), 2);
+        // IndexMap preserves insertion order.
+        assert_eq!(all[0].0, key_a);
+        assert_eq!(all[0].1, cal_a);
+        assert_eq!(all[1].0, key_b);
+        assert_eq!(all[1].1, cal_b);
+        // Mutating the returned value must not leak back into the store.
+        let mut leaked = all;
+        leaked[0].1.kick_duration_ms = 9999;
+        assert_eq!(
+            store.get(&key_a).expect("still present").kick_duration_ms,
+            cal_a.kick_duration_ms,
+        );
+    }
+
+    #[test]
     fn insert_unsaved_replaces_existing_for_same_key() {
         // Goal: re-inserting the same channel key must replace the prior
         // entry, not append a duplicate. Re-calibration depends on this.
