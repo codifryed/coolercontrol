@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
-use crate::calibration::{self, CalibrationStore, FanStateMap};
+use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::engine::main::WritersByType;
@@ -338,14 +338,19 @@ impl GraphProfileCommander {
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
         })?;
-        let max_duty = channel_info
-            .speed_options
-            .as_ref()
-            .with_context(|| {
-                format!("Speed Options must be present for target device: {device_uid}")
-            })?
-            .max_duty;
-        Ok(max_duty)
+        let raw_speed_options = channel_info.speed_options.as_ref().with_context(|| {
+            format!("Speed Options must be present for target device: {device_uid}")
+        })?;
+        // Consult the calibration store so a Smooth calibration's
+        // RPM-normalised range (0-100 true-duty) is respected by the
+        // profile normaliser. Without this, `normalize_profile` would
+        // silently cap a calibrated Graph profile's high points at the
+        // device's raw `max_duty` (e.g. 80 on some AMDGPU configs),
+        // discarding the user's intent above that threshold.
+        let key = (device_uid.clone(), channel_name.to_string());
+        let calibration = self.calibration_store.get(&key);
+        let effective = effective_speed_options(raw_speed_options, calibration.as_ref());
+        Ok(effective.max_duty)
     }
 
     fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {

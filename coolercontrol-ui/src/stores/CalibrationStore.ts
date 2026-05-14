@@ -39,6 +39,8 @@
 
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
+import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import type { Calibration, CalibrationStatus } from '@/models/Calibration'
@@ -55,6 +57,30 @@ function channelKey(deviceUid: UID, channelName: string): ChannelKey {
 
 export const useCalibrationStore = defineStore('calibration', () => {
     const deviceStore = useDeviceStore()
+    const confirm = useConfirm()
+    const { t } = useI18n()
+
+    /**
+     * Prompt the user to reload the UI so the daemon's
+     * calibration-aware `speed_options.min_duty/max_duty` re-fetch on
+     * boot picks up the new range. Used after a calibration completes
+     * or is cleared. Heavy (full page reload) but simple — avoids
+     * threading reactive plumbing through every consumer of duty
+     * bounds across the UI.
+     */
+    function promptReloadForDutyRange(): void {
+        confirm.require({
+            header: t('components.channelExtensionSettings.calibration.reloadHeader'),
+            message: t('components.channelExtensionSettings.calibration.reloadMessage'),
+            icon: 'pi pi-refresh',
+            defaultFocus: 'reject',
+            acceptLabel: t('components.channelExtensionSettings.calibration.reloadAccept'),
+            rejectLabel: t('components.channelExtensionSettings.calibration.reloadReject'),
+            accept: () => {
+                deviceStore.reloadUI(true)
+            },
+        })
+    }
 
     /**
      * Latest known status per channel. Updated by the polling loop;
@@ -87,7 +113,16 @@ export const useCalibrationStore = defineStore('calibration', () => {
             // network failure.
             return
         }
-        statuses.set(channelKey(uid, channelName), status)
+        const key = channelKey(uid, channelName)
+        const previous = statuses.get(key)
+        statuses.set(key, status)
+        // First transition into `completed` widens the daemon-side
+        // `speed_options.min_duty/max_duty` for this channel. Prompt
+        // the user to reload the UI so the manual-duty slider bounds
+        // pick up the new range.
+        if (status.phase === 'completed' && previous?.phase !== 'completed') {
+            promptReloadForDutyRange()
+        }
     }
 
     /**
@@ -173,6 +208,10 @@ export const useCalibrationStore = defineStore('calibration', () => {
         if (result === true || result === false) {
             stopPolling(uid, channelName)
             statuses.delete(channelKey(uid, channelName))
+            // Daemon restores the channel's raw `speed_options` on
+            // clear: prompt for a UI reload so the slider bounds snap
+            // back to the device's hardware limits.
+            promptReloadForDutyRange()
         }
         return result
     }

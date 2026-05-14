@@ -47,10 +47,15 @@ pub struct CCDeviceService {
     hostname: String,
     device_handle: DeviceHandle,
     status_handle: StatusHandle,
+    calibration_handle: crate::api::actor::CalibrationHandle,
 }
 
 impl CCDeviceService {
-    pub fn new(device_handle: DeviceHandle, status_handle: StatusHandle) -> Self {
+    pub fn new(
+        device_handle: DeviceHandle,
+        status_handle: StatusHandle,
+        calibration_handle: crate::api::actor::CalibrationHandle,
+    ) -> Self {
         let hostname = sysinfo::System::host_name().unwrap_or_default();
         Self {
             service_id: format!("coolercontrold-{hostname}"),
@@ -58,6 +63,7 @@ impl CCDeviceService {
             hostname,
             device_handle,
             status_handle,
+            calibration_handle,
         }
     }
 
@@ -133,18 +139,22 @@ impl DeviceService for CCDeviceService {
         _request: Request<ListDevicesRequest>,
     ) -> Result<Response<ListDevicesResponse>, Status> {
         // The CC Device Service Plugin for itself is read-only, and returned DeviceInfo reflects this
-        self.device_handle
+        let mut devices = self
+            .device_handle
             .devices_get()
             .await
-            .map(|devices| {
-                Response::new(ListDevicesResponse {
-                    devices: devices
-                        .into_iter()
-                        .map(|device| self.map_device_model(device))
-                        .collect(),
-                })
-            })
-            .map_err(|err| Status::internal(format!("Error listing devices: {err}")))
+            .map_err(|err| Status::internal(format!("Error listing devices: {err}")))?;
+        // Mirror the REST DTO contract: external clients see
+        // calibration-aware (min_duty, max_duty). The plugins consuming
+        // this gRPC don't (and shouldn't) need calibration awareness.
+        let cal_map = crate::api::devices::build_calibration_map(&self.calibration_handle).await;
+        crate::api::devices::apply_effective_speed_options(&mut devices, &cal_map);
+        Ok(Response::new(ListDevicesResponse {
+            devices: devices
+                .into_iter()
+                .map(|device| self.map_device_model(device))
+                .collect(),
+        }))
     }
 
     /// This is called and used by some devices to initialize hardware, before starting to send

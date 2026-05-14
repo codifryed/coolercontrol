@@ -31,7 +31,7 @@
 // fully exercised by the test suite at the bottom of this file.
 #![allow(dead_code)]
 
-use crate::device::{Duty, RPM};
+use crate::device::{Duty, SpeedOptions, RPM};
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -535,6 +535,36 @@ pub fn derive_warnings(
         });
     }
     warnings
+}
+
+/// Apply calibration-aware adjustments to a channel's `SpeedOptions`.
+///
+/// When the channel has a `Smooth` calibration, the dispatcher's
+/// true-duty mapping fully absorbs the device's dead zone: any
+/// `true_duty == 0` routes through `handle_write_zero` (writes 0%
+/// device-duty), and any `true_duty > 0` maps through the curve to a
+/// device-duty above `min_sustain_duty`. The user-facing range therefore
+/// widens to `[0, 100]` regardless of the raw device limits.
+///
+/// Stepped / uncalibrated / failed / in-progress channels keep their
+/// raw limits because the dispatcher passes those duty values through
+/// unchanged.
+///
+/// Pure function: callers fetch the relevant `Calibration` from the
+/// calibration store (sync) or actor handle (async) and pass it in.
+/// The `None` case is the uncalibrated path and yields the raw struct.
+pub fn effective_speed_options(
+    raw: &SpeedOptions,
+    calibration: Option<&Calibration>,
+) -> SpeedOptions {
+    let mut so = raw.clone();
+    if let Some(cal) = calibration {
+        if cal.curve_kind == CurveKind::Smooth {
+            so.min_duty = 0;
+            so.max_duty = 100;
+        }
+    }
+    so
 }
 
 /// Derive `min_stable_duty` from the down-sweep + parallel stability
@@ -1443,5 +1473,83 @@ mod tests {
         );
         let _ = at_default;
         let _ = mapped;
+    }
+
+    // --- effective_speed_options -----------------------------------
+
+    fn raw_speed_options(min_duty: Duty, max_duty: Duty) -> SpeedOptions {
+        SpeedOptions {
+            min_duty,
+            max_duty,
+            fixed_enabled: true,
+            extension: None,
+        }
+    }
+
+    #[test]
+    fn effective_speed_options_returns_raw_when_no_calibration() {
+        // Goal: an uncalibrated channel must keep its device-derived
+        // limits exactly — that's the dispatcher passthrough case and
+        // any deviation here would silently change the manual-duty
+        // slider bounds for every channel that hasn't been calibrated.
+        let raw = raw_speed_options(15, 80);
+        let out = effective_speed_options(&raw, None);
+        assert_eq!(out.min_duty, 15);
+        assert_eq!(out.max_duty, 80);
+        assert_eq!(out.fixed_enabled, raw.fixed_enabled);
+        assert_eq!(out.extension, raw.extension);
+    }
+
+    #[test]
+    fn effective_speed_options_widens_both_ends_on_smooth_calibration() {
+        // Goal: a Smooth calibration must widen the user-facing range
+        // to [0, 100] regardless of where the raw limits sit. Both
+        // ends matter: AMDGPU frequently exposes a non-zero min_duty
+        // (fan_curve_info.speed_range.start), and some configs cap
+        // max_duty below 100 as well. Confirms the helper does not
+        // simply zero out min while leaving a too-low max in place.
+        let raw = raw_speed_options(15, 80);
+        let cal = make_smooth_calibration();
+        let out = effective_speed_options(&raw, Some(&cal));
+        assert_eq!(out.min_duty, 0);
+        assert_eq!(out.max_duty, 100);
+        assert_eq!(out.fixed_enabled, raw.fixed_enabled);
+    }
+
+    #[test]
+    fn effective_speed_options_keeps_raw_on_stepped_calibration() {
+        // Goal: a Stepped calibration means the dispatcher passes
+        // device-duty through unchanged (`true_to_device` returns None
+        // on Stepped). The user-facing range therefore stays at the
+        // device limits — widening to [0, 100] would falsely advertise
+        // a range the dispatcher cannot actually deliver.
+        let raw = raw_speed_options(15, 100);
+        let mut cal = make_smooth_calibration();
+        cal.curve_kind = CurveKind::Stepped;
+        let out = effective_speed_options(&raw, Some(&cal));
+        assert_eq!(out.min_duty, 15);
+        assert_eq!(out.max_duty, 100);
+    }
+
+    #[test]
+    fn effective_speed_options_preserves_fixed_enabled_and_extension() {
+        // Goal: the helper only widens the duty range; it must not
+        // touch the orthogonal fields (`fixed_enabled` / `extension`).
+        // A bug here would, for example, lose the AmdRdnaGpu extension
+        // marker on a calibrated AMDGPU channel and break HW fan-curve
+        // routing in the engine.
+        let raw = SpeedOptions {
+            min_duty: 15,
+            max_duty: 100,
+            fixed_enabled: true,
+            extension: Some(crate::device::ChannelExtensionNames::AmdRdnaGpu),
+        };
+        let cal = make_smooth_calibration();
+        let out = effective_speed_options(&raw, Some(&cal));
+        assert_eq!(out.fixed_enabled, true);
+        assert_eq!(
+            out.extension,
+            Some(crate::device::ChannelExtensionNames::AmdRdnaGpu)
+        );
     }
 }

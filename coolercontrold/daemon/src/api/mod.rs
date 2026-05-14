@@ -281,6 +281,7 @@ async fn run_all_api_servers(
     let mut handles = Vec::new();
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
+    let grpc_calibration_handle = app_state.calibration_handle.clone();
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
@@ -325,6 +326,7 @@ async fn run_all_api_servers(
             SocketAddr::from(ipv4),
             grpc_device_handle.clone(),
             grpc_status_handle.clone(),
+            grpc_calibration_handle.clone(),
             cancel_token.clone(),
         )));
     }
@@ -333,6 +335,7 @@ async fn run_all_api_servers(
             SocketAddr::from(ipv6),
             grpc_device_handle,
             grpc_status_handle,
+            grpc_calibration_handle,
             cancel_token,
         )));
     }

@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::api::actor::CalibrationHandle;
 use crate::api::{handle_error, AppState, CCError};
+use crate::calibration::{effective_speed_options, Calibration, ChannelKey};
 use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
 use crate::engine::processors::image;
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
@@ -30,6 +32,7 @@ use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use mime::Mime;
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Read;
 use std::ops::Not;
@@ -39,12 +42,55 @@ use tempfile::NamedTempFile;
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
 pub async fn get(
-    State(AppState { device_handle, .. }): State<AppState>,
+    State(AppState {
+        device_handle,
+        calibration_handle,
+        ..
+    }): State<AppState>,
 ) -> Result<Json<DevicesResponse>, CCError> {
-    let all_devices = device_handle.devices_get().await?;
+    let mut all_devices = device_handle.devices_get().await?;
+    let cal_map = build_calibration_map(&calibration_handle).await;
+    apply_effective_speed_options(&mut all_devices, &cal_map);
     Ok(Json(DevicesResponse {
         devices: all_devices,
     }))
+}
+
+/// Snapshot of every persisted calibration keyed by `(device_uid,
+/// channel_name)`. Built once per request that needs to surface
+/// calibration-aware channel state so the per-channel adjustment loop
+/// is O(1) per channel instead of O(N) actor round-trips.
+pub async fn build_calibration_map(
+    calibration_handle: &CalibrationHandle,
+) -> HashMap<ChannelKey, Calibration> {
+    let entries = calibration_handle.get_all().await;
+    let mut map = HashMap::with_capacity(entries.len());
+    for entry in entries {
+        map.insert((entry.device_uid, entry.channel_name), entry.calibration);
+    }
+    map
+}
+
+/// Overwrite each channel's `speed_options.min_duty` / `max_duty` with
+/// the calibration-aware effective range. Channels without a persisted
+/// calibration (or whose calibration is `Stepped` / passthrough) keep
+/// their raw device limits.
+///
+/// Applied at every API serialization boundary so external clients see
+/// a consistent, calibration-aware range without having to fetch and
+/// merge calibration state themselves.
+pub fn apply_effective_speed_options(
+    devices: &mut [DeviceDto],
+    cal_map: &HashMap<ChannelKey, Calibration>,
+) {
+    for device in &mut *devices {
+        for (channel_name, channel_info) in &mut device.info.channels {
+            if let Some(so) = channel_info.speed_options.as_mut() {
+                let key: ChannelKey = (device.uid.clone(), channel_name.clone());
+                *so = effective_speed_options(so, cal_map.get(&key));
+            }
+        }
+    }
 }
 
 /// Returns all the currently applied settings for the given device.
