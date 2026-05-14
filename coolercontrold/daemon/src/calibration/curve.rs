@@ -151,6 +151,24 @@ pub struct Calibration {
     #[serde(default)]
     pub warnings: Vec<CalibrationWarning>,
 
+    /// True when the channel produced `duty: None` status entries that
+    /// the daemon backfilled with calibration-derived true-duty values
+    /// at the end of the diagnosis sweep. The flag drives two
+    /// symmetric behaviors:
+    ///
+    /// - On calibration delete, the daemon resets the channel's
+    ///   `status_history` duty values to `None` so the UI chart stops
+    ///   displaying stale calibration-derived duties for a channel
+    ///   whose underlying repository does not natively report duty.
+    /// - The UI consumes this bit (via the completion event and via
+    ///   the cached calibration on delete) to decide whether to prompt
+    ///   for a UI reload that rebuilds the chart series list.
+    ///
+    /// Defaults to false on older persisted records that pre-date this
+    /// field. Users recalibrate to opt into the new behavior.
+    #[serde(default)]
+    pub was_rpm_only: bool,
+
     /// Wall-clock time when the diagnosis that produced this calibration finished.
     pub timestamp: DateTime<Local>,
 }
@@ -706,6 +724,7 @@ mod tests {
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         }
     }
@@ -851,6 +870,7 @@ mod tests {
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Stepped,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         };
         assert!(cal.true_to_device(50).is_none());
@@ -1080,6 +1100,7 @@ mod tests {
             rpm_max: 3518,
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         };
         // For each low true-duty the round-trip device_to_true_duty
@@ -1140,6 +1161,7 @@ mod tests {
             rpm_max: scalars.rpm_max,
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         };
         // 98% device-duty round-trip: write the sustain device-duty

@@ -354,6 +354,7 @@ where
                 rpm_max: scalars.rpm_max,
                 curve_kind,
                 warnings,
+                was_rpm_only: false,
                 timestamp: Local::now(),
             }
         }
@@ -374,6 +375,7 @@ where
                 rpm_max: 0,
                 curve_kind: CurveKind::Stepped,
                 warnings: vec![crate::calibration::curve::CalibrationWarning::NoTachometer],
+                was_rpm_only: false,
                 timestamp: Local::now(),
             }
         }

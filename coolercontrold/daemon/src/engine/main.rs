@@ -306,9 +306,23 @@ impl Engine {
     /// calibrated view, even though the persisted calibration is gone.
     /// Clearing the `FanStateMap` entry also defuses any in-flight
     /// `complete_kick` deferred task spawned by a recent dispatch.
+    ///
+    /// For RPM-only channels (`Calibration::was_rpm_only`), also clear
+    /// the channel's `status_history` duty values so the UI chart does
+    /// not keep showing stale calibration-derived duties for a channel
+    /// whose underlying repository does not natively report duty. The
+    /// flag is read before the calibration is removed so the lookup
+    /// still succeeds.
     pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
         let existed = self.calibration_store.has(key);
         if existed {
+            let was_rpm_only = self
+                .calibration_store
+                .get(key)
+                .is_some_and(|cal| cal.was_rpm_only);
+            if was_rpm_only {
+                self.clear_history_duties_for_channel(key);
+            }
             self.calibration_store.remove(key).await?;
         }
         self.calibration_statuses.borrow_mut().remove(key);
@@ -1146,6 +1160,88 @@ impl Engine {
         }
     }
 
+    /// Walk `status_history` for one channel and fill any entry whose
+    /// `duty` is `None` with `rpm_to_true_duty(rpm)` from the just-
+    /// completed calibration. Returns `true` iff at least one entry
+    /// was filled.
+    ///
+    /// Called once at the end of a successful diagnosis sweep. The
+    /// return value drives `Calibration::was_rpm_only`, which the
+    /// daemon uses on later deletes (to clear stale derived duties)
+    /// and the UI uses to decide whether to prompt for a reload that
+    /// rebuilds the chart series list against the now-populated
+    /// historical column.
+    ///
+    /// Stepped calibrations short-circuit because `rpm_to_true_duty`
+    /// is a no-op for them; the explicit check just makes that
+    /// invariant visible in the caller's reasoning.
+    ///
+    /// Bounded: walks a fixed-size `VecDeque` (`poll_rate * history`
+    /// seconds, typically <= 600 entries) of channel vectors
+    /// (typically <= 32 channels). All inner work is integer math; no
+    /// allocation, no await, no locks held across yields.
+    pub fn backfill_history_duties_from_calibration(
+        &self,
+        key: &ChannelKey,
+        calibration: &Calibration,
+    ) -> bool {
+        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
+        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
+        if calibration.curve_kind == calibration::CurveKind::Stepped {
+            return false;
+        }
+        let Some(device_lock) = self.all_devices.get(&key.0) else {
+            return false;
+        };
+        let mut device = device_lock.borrow_mut();
+        let history = Arc::make_mut(&mut device.status_history);
+        let mut filled_any = false;
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name != key.1 {
+                    continue;
+                }
+                if channel.duty.is_some() {
+                    continue;
+                }
+                let Some(rpm) = channel.rpm else {
+                    continue;
+                };
+                let Some(true_duty) = calibration.rpm_to_true_duty(rpm) else {
+                    continue;
+                };
+                channel.duty = Some(f64::from(true_duty));
+                filled_any = true;
+            }
+        }
+        filled_any
+    }
+
+    /// Reset `status_history` `duty` to `None` for every entry of the
+    /// given channel. Used on delete for channels whose duty values
+    /// were populated only by the calibration (`was_rpm_only`), so
+    /// the UI chart sees a consistently-empty duty column once it
+    /// reloads.
+    ///
+    /// Bounded identically to `backfill_history_duties_from_calibration`.
+    pub fn clear_history_duties_for_channel(&self, key: &ChannelKey) {
+        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
+        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
+        let Some(device_lock) = self.all_devices.get(&key.0) else {
+            return;
+        };
+        let mut device = device_lock.borrow_mut();
+        let history = Arc::make_mut(&mut device.status_history);
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name != key.1 {
+                    continue;
+                }
+                channel.duty = None;
+            }
+        }
+    }
+
     /// Replace `ChannelStatus.duty` with the true-duty equivalent on the
     /// most recent status of every calibrated smooth channel.
     ///
@@ -1237,6 +1333,26 @@ impl Engine {
         )
         .await;
         self.diagnosis_registry.clear(&key);
+        // Backfill history duties before the single save_to_disk so the
+        // was_rpm_only flag is captured in one write. The flag is true
+        // iff at least one duty=None entry was filled with a calibration-
+        // derived value, which is the signal the UI uses to prompt for
+        // a reload and the daemon uses on later delete to clear stale
+        // derived values from history.
+        let backfill_filled_any = match &outcome {
+            Ok(calibration) => self.backfill_history_duties_from_calibration(&key, calibration),
+            Err(_) => false,
+        };
+        if backfill_filled_any {
+            if let Ok(calibration) = &mut outcome {
+                calibration.was_rpm_only = true;
+                // Re-seat the in-memory store entry with the flag set; the
+                // diagnoser's insert_unsaved put a was_rpm_only=false copy
+                // there before the backfill ran.
+                self.calibration_store
+                    .insert_unsaved(key.clone(), calibration.clone());
+            }
+        }
         if outcome.is_ok() {
             if let Err(err) = self.calibration_store.save_to_disk().await {
                 outcome = Err(DiagnosisFailure::PersistFailed(err.to_string()));

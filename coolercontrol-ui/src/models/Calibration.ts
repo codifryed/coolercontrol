@@ -79,6 +79,19 @@ export interface Calibration {
      * `coolercontrold::calibration::CalibrationWarning`.
      */
     warnings: CalibrationWarning[]
+    /**
+     * True iff the channel's status_history had `duty: None` entries
+     * that the daemon backfilled with calibration-derived true-duty
+     * values at the end of the sweep. On completion the UI uses this
+     * bit to decide whether to prompt for a reload (so the chart
+     * series list is rebuilt against the now-populated history). On
+     * delete the daemon uses the same bit to clear stale derived
+     * duty values from history before the calibration is removed.
+     *
+     * Optional because older persisted calibrations pre-date the
+     * field; serde defaults to false on the daemon side.
+     */
+    was_rpm_only?: boolean
     /** ISO 8601 timestamp of when the diagnosis finished. */
     timestamp: string
 }

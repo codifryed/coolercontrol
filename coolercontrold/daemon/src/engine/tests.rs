@@ -39,6 +39,7 @@ mod engine_tests {
     use serial_test::serial;
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
+    use std::ops::Not;
     use std::rc::Rc;
     use uuid::Uuid;
 
@@ -1421,6 +1422,7 @@ mod engine_tests {
             rpm_max: 2000,
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: chrono::Local::now(),
         }
     }
@@ -1740,6 +1742,261 @@ mod engine_tests {
                 .find(|c| c.name == channel)
                 .expect("channel present");
             assert_eq!(chan.duty, Some(50.0));
+        });
+    }
+
+    /// Seed `status_history` with copies of the given (rpm, duty) values
+    /// for one channel. Drives the backfill / clear tests: they need
+    /// every history entry to share the same shape, which
+    /// `initialize_status_history_with` provides via its zero-fill of
+    /// fields whose presence matches the first status.
+    fn seed_history_with_channel(
+        device: &DeviceLock,
+        channel: ChannelName,
+        rpm: Option<u32>,
+        duty: Option<f64>,
+    ) {
+        use crate::device::ChannelStatus;
+        let mut initial = Status::default();
+        initial.channels.push(ChannelStatus {
+            name: channel,
+            rpm,
+            duty,
+            ..Default::default()
+        });
+        device
+            .borrow_mut()
+            .initialize_status_history_with(initial, 1.0);
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_fills_none_entries_on_smooth_calibration() {
+        // Goal: on a previously RPM-only channel, the backfill walks
+        // every entry whose `duty` is None and fills it via
+        // `rpm_to_true_duty`. The function reports `true` so the caller
+        // can flip `was_rpm_only` and prompt the UI to reload.
+        cc_fs::test_runtime(async {
+            let (device, engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), None);
+            let calibration = sample_smooth_calibration();
+            calibration_store
+                .insert_unsaved((device_uid.clone(), channel.clone()), calibration.clone());
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(filled, "backfill must report filling entries");
+
+            let observed = device.borrow();
+            assert!(
+                observed.status_history.is_empty().not(),
+                "history must be populated"
+            );
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present in every entry");
+                assert!(
+                    chan.duty.is_some(),
+                    "every entry's duty must be filled, got None"
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_for_stepped_calibration() {
+        // Goal: a stepped calibration has no duty mapping, so the
+        // backfill is a no-op and reports `false`. The caller leaves
+        // `was_rpm_only` at its default and does not prompt the UI.
+        cc_fs::test_runtime(async {
+            use crate::calibration::CurveKind;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), None);
+            let mut calibration = sample_smooth_calibration();
+            calibration.curve_kind = CurveKind::Stepped;
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(filled.not(), "stepped calibration must not fill anything");
+
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "stepped backfill must leave duty=None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_when_no_none_entries() {
+        // Goal: a normal (non-RPM-only) channel already has duty
+        // values throughout history. Backfill must not overwrite them
+        // and must report `false` so the caller does not set
+        // `was_rpm_only`.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), Some(60.0));
+            let calibration = sample_smooth_calibration();
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(
+                filled.not(),
+                "no None entries existed, backfill must report false"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_skips_channels_without_rpm() {
+        // Goal: an entry whose `rpm` is None cannot be mapped, so the
+        // backfill leaves it alone. The overall return value reflects
+        // whether any other entry was successfully filled; here, none.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), None, None);
+            let calibration = sample_smooth_calibration();
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(
+                filled.not(),
+                "with no rpm available, backfill must report false"
+            );
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "duty must stay None when rpm is None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_for_missing_device() {
+        // Goal: an unknown device uid must not panic; the caller (the
+        // diagnoser completion path) might race with device removal, so
+        // the helper returns false cleanly.
+        cc_fs::test_runtime(async {
+            let (_device, engine, _calibration_store) = setup_calibrated_device();
+            let calibration = sample_smooth_calibration();
+            let filled = engine.backfill_history_duties_from_calibration(
+                &("unknown-device".to_string(), "fan1".to_string()),
+                &calibration,
+            );
+            assert!(filled.not(), "missing device must not fill anything");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn clear_history_resets_duty_for_channel() {
+        // Goal: clear walks every entry and resets `duty` to None for
+        // the named channel. Drives the calibration-delete path on an
+        // RPM-only channel so the chart reverts to its pre-calibration
+        // state once the UI reloads.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), Some(45.0));
+
+            engine.clear_history_duties_for_channel(&(device_uid, channel.clone()));
+
+            let observed = device.borrow();
+            assert!(
+                observed.status_history.is_empty().not(),
+                "history must be populated"
+            );
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "clear must reset every entry to None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn clear_history_leaves_other_channels_untouched() {
+        // Goal: clear is per-channel. Other channels in the same device
+        // must keep their duty values so deleting one channel's
+        // calibration does not collateral-damage adjacent fans.
+        cc_fs::test_runtime(async {
+            use crate::device::ChannelStatus;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            // Build a status with two channels and seed history from it.
+            let mut initial = Status::default();
+            initial.channels.push(ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1000),
+                duty: Some(40.0),
+                ..Default::default()
+            });
+            initial.channels.push(ChannelStatus {
+                name: "fan2".to_string(),
+                rpm: Some(1500),
+                duty: Some(55.0),
+                ..Default::default()
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(initial, 1.0);
+
+            engine.clear_history_duties_for_channel(&(device_uid, "fan1".to_string()));
+
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let fan1 = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == "fan1")
+                    .expect("fan1 present");
+                let fan2 = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == "fan2")
+                    .expect("fan2 present");
+                assert!(fan1.duty.is_none(), "fan1 must be cleared");
+                assert!(
+                    fan2.duty.is_some(),
+                    "fan2 must keep its duty (not in clear scope)"
+                );
+            }
         });
     }
 }

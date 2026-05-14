@@ -452,6 +452,7 @@ mod tests {
             rpm_max: 2000,
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         }
     }
@@ -478,6 +479,7 @@ mod tests {
             rpm_max: 2000,
             curve_kind: CurveKind::Stepped,
             warnings: Vec::new(),
+            was_rpm_only: false,
             timestamp: Local::now(),
         }
     }

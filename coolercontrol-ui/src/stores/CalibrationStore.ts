@@ -42,9 +42,11 @@ import { reactive } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import type { Calibration, CalibrationStatus } from '@/models/Calibration'
 import type { UID } from '@/models/Device'
+import type { SpeedOptions } from '@/models/SpeedOptions'
 
 /** Poll interval while a diagnosis is `in_progress` (milliseconds). */
 const POLL_INTERVAL_MS = 1000
@@ -55,32 +57,34 @@ function channelKey(deviceUid: UID, channelName: string): ChannelKey {
     return `${deviceUid}::${channelName}`
 }
 
+/**
+ * One queued prompt entry. The kind selects which i18n key the prompt
+ * picks up; `channelName` is the user-facing display name pulled from
+ * the settings store at queue time (so it survives later renames).
+ *
+ * `rpm_only_*` fires when the calibration's `was_rpm_only` flag is
+ * true: the daemon backfilled (or, on clear, will reset) the channel's
+ * status_history duty values, and the chart needs a remount to add or
+ * remove the duty series. `duty_range_*` fires when the channel has a
+ * non-default duty range (min_duty != 0 or max_duty != 100): the
+ * manual-duty slider bounds need to refresh from `device.info`.
+ */
+type PendingPromptKind =
+    | 'rpm_only_completed'
+    | 'rpm_only_cleared'
+    | 'duty_range_completed'
+    | 'duty_range_cleared'
+
+interface PendingPromptEntry {
+    channelName: string
+    kind: PendingPromptKind
+}
+
 export const useCalibrationStore = defineStore('calibration', () => {
     const deviceStore = useDeviceStore()
+    const settingsStore = useSettingsStore()
     const confirm = useConfirm()
     const { t } = useI18n()
-
-    /**
-     * Prompt the user to reload the UI so the daemon's
-     * calibration-aware `speed_options.min_duty/max_duty` re-fetch on
-     * boot picks up the new range. Used after a calibration completes
-     * or is cleared. Heavy (full page reload) but simple — avoids
-     * threading reactive plumbing through every consumer of duty
-     * bounds across the UI.
-     */
-    function promptReloadForDutyRange(): void {
-        confirm.require({
-            header: t('components.channelExtensionSettings.calibration.reloadHeader'),
-            message: t('components.channelExtensionSettings.calibration.reloadMessage'),
-            icon: 'pi pi-refresh',
-            defaultFocus: 'reject',
-            acceptLabel: t('components.channelExtensionSettings.calibration.reloadAccept'),
-            rejectLabel: t('components.channelExtensionSettings.calibration.reloadReject'),
-            accept: () => {
-                deviceStore.reloadUI(true)
-            },
-        })
-    }
 
     /**
      * Latest known status per channel. Updated by the polling loop;
@@ -95,6 +99,108 @@ export const useCalibrationStore = defineStore('calibration', () => {
      * `phase` field of the status itself).
      */
     const pollers = new Map<ChannelKey, ReturnType<typeof setInterval>>()
+
+    /**
+     * Queued UI-reload prompt entries. Non-reactive: the bundle
+     * is consumed by `maybeFlushBundle` which empties it before
+     * showing the dialog. A user calibrating several channels in
+     * a row gets a single prompt once every diagnosis has settled.
+     */
+    const pendingPrompts = new Map<ChannelKey, PendingPromptEntry>()
+
+    function getChannelDisplayName(uid: UID, channelName: string): string {
+        return (
+            settingsStore.allUIDeviceSettings.get(uid)?.sensorsAndChannels.get(channelName)
+                ?.name ?? channelName
+        )
+    }
+
+    function getSpeedOptions(uid: UID, channelName: string): SpeedOptions | undefined {
+        for (const device of deviceStore.allDevices()) {
+            if (device.uid === uid) {
+                return device.info?.channels.get(channelName)?.speed_options
+            }
+        }
+        return undefined
+    }
+
+    /**
+     * Decide which prompt copy applies to a terminal calibration
+     * transition. `was_rpm_only` takes precedence: when the daemon
+     * backfilled (or, on clear, reset) duty values in status_history,
+     * the chart needs a remount regardless of slider bounds. The
+     * duty-range fallback only fires for channels whose effective
+     * range is not the default 0..=100, so the prompt does not nag
+     * users with normal hardware.
+     */
+    function classifyPromptKind(
+        uid: UID,
+        channelName: string,
+        calibration: Calibration,
+        eventKind: 'completed' | 'cleared',
+    ): PendingPromptKind | undefined {
+        if (calibration.was_rpm_only === true) {
+            return eventKind === 'completed' ? 'rpm_only_completed' : 'rpm_only_cleared'
+        }
+        const opts = getSpeedOptions(uid, channelName)
+        if (opts != null && (opts.min_duty !== 0 || opts.max_duty !== 100)) {
+            return eventKind === 'completed' ? 'duty_range_completed' : 'duty_range_cleared'
+        }
+        return undefined
+    }
+
+    function anyInProgress(): boolean {
+        for (const status of statuses.values()) {
+            if (status.phase === 'in_progress') return true
+        }
+        return false
+    }
+
+    function queuePromptEntry(uid: UID, channelName: string, kind: PendingPromptKind): void {
+        pendingPrompts.set(channelKey(uid, channelName), {
+            channelName: getChannelDisplayName(uid, channelName),
+            kind,
+        })
+        maybeFlushBundle()
+    }
+
+    function maybeFlushBundle(): void {
+        if (pendingPrompts.size === 0) return
+        if (anyInProgress()) return
+        const entries = Array.from(pendingPrompts.values())
+        pendingPrompts.clear()
+        showBundlePrompt(entries)
+    }
+
+    function composePromptMessage(entries: PendingPromptEntry[]): string {
+        const names = entries.map((e) => e.channelName)
+        const list = names.join(', ')
+        const single = names[0]
+        const kinds = new Set(entries.map((e) => e.kind))
+        if (kinds.size === 1) {
+            const kind = entries[0].kind
+            const suffix = entries.length === 1 ? 'Single' : 'Multi'
+            const key = `components.channelExtensionSettings.calibration.reload_${kind}_${suffix.toLowerCase()}`
+            return t(key, { channelName: single, channelList: list })
+        }
+        return t('components.channelExtensionSettings.calibration.reload_mixed_multi', {
+            channelList: list,
+        })
+    }
+
+    function showBundlePrompt(entries: PendingPromptEntry[]): void {
+        confirm.require({
+            header: t('components.channelExtensionSettings.calibration.reloadHeader'),
+            message: composePromptMessage(entries),
+            icon: 'pi pi-refresh',
+            defaultFocus: 'reject',
+            acceptLabel: t('components.channelExtensionSettings.calibration.reloadAccept'),
+            rejectLabel: t('components.channelExtensionSettings.calibration.reloadReject'),
+            accept: () => {
+                deviceStore.reloadUI(true)
+            },
+        })
+    }
 
     function statusFor(uid: UID, channelName: string): CalibrationStatus | undefined {
         return statuses.get(channelKey(uid, channelName))
@@ -116,12 +222,25 @@ export const useCalibrationStore = defineStore('calibration', () => {
         const key = channelKey(uid, channelName)
         const previous = statuses.get(key)
         statuses.set(key, status)
-        // First transition into `completed` widens the daemon-side
-        // `speed_options.min_duty/max_duty` for this channel. Prompt
-        // the user to reload the UI so the manual-duty slider bounds
-        // pick up the new range.
+        // First transition into `completed`: queue a reload prompt if
+        // the calibration backfilled history duties (was_rpm_only) or
+        // the channel has a non-default duty range that the slider
+        // bounds need to pick up. The bundle waits for every active
+        // calibration to settle before firing a single dialog.
         if (status.phase === 'completed' && previous?.phase !== 'completed') {
-            promptReloadForDutyRange()
+            const kind = classifyPromptKind(uid, channelName, status.calibration, 'completed')
+            if (kind !== undefined) {
+                queuePromptEntry(uid, channelName, kind)
+            } else {
+                // No queue, but a stale bundle from prior calibrations
+                // may now be eligible to flush since this in_progress
+                // exited terminal.
+                maybeFlushBundle()
+            }
+        } else if (status.phase === 'failed' && previous?.phase === 'in_progress') {
+            // Failed transitions also exit `in_progress`; drain any
+            // bundle stranded by prior completions.
+            maybeFlushBundle()
         }
     }
 
@@ -199,19 +318,34 @@ export const useCalibrationStore = defineStore('calibration', () => {
      * Delete the persisted calibration. Clears the cached status and
      * stops any in-flight poller so the UI immediately reflects the
      * uncalibrated state.
+     *
+     * Snapshots the calibration BEFORE deleting so the prompt
+     * classifier can read `was_rpm_only` and the slider-bounds heuristic
+     * can read `speed_options`. If either applies, the channel joins
+     * the same reload-prompt bundle used by completion transitions.
      */
     async function deleteCalibration(
         uid: UID,
         channelName: string,
     ): Promise<boolean | ErrorResponse> {
+        const key = channelKey(uid, channelName)
+        const previous = statuses.get(key)
+        const priorCalibration =
+            previous?.phase === 'completed' ? previous.calibration : undefined
         const result = await deviceStore.daemonClient.deleteCalibration(uid, channelName)
         if (result === true || result === false) {
             stopPolling(uid, channelName)
-            statuses.delete(channelKey(uid, channelName))
-            // Daemon restores the channel's raw `speed_options` on
-            // clear: prompt for a UI reload so the slider bounds snap
-            // back to the device's hardware limits.
-            promptReloadForDutyRange()
+            statuses.delete(key)
+            if (priorCalibration !== undefined) {
+                const kind = classifyPromptKind(uid, channelName, priorCalibration, 'cleared')
+                if (kind !== undefined) {
+                    queuePromptEntry(uid, channelName, kind)
+                } else {
+                    maybeFlushBundle()
+                }
+            } else {
+                maybeFlushBundle()
+            }
         }
         return result
     }
