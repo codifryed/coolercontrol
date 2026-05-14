@@ -40,6 +40,7 @@ use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
 use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
+use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
@@ -65,6 +66,24 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// once at engine construction and reused on every fan-write so the
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
 pub type WritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
+
+/// Render a `DiagnosisFailure` into a short, user-facing reason.
+/// Used by the notification body, so kept compact (no nested types).
+fn describe_failure(failure: &DiagnosisFailure) -> String {
+    match failure {
+        DiagnosisFailure::PreflightTempTooHigh { observed, limit } => {
+            format!("pre-flight blocked (system temp {observed:.1} C >= {limit:.1} C limit)")
+        }
+        DiagnosisFailure::FanUnresponsive => "fan did not respond to duty changes".to_string(),
+        DiagnosisFailure::TempAbortedAt { observed, limit } => {
+            format!("aborted: temp reached {observed:.1} C (limit {limit:.1} C)")
+        }
+        DiagnosisFailure::Cancelled => "cancelled".to_string(),
+        DiagnosisFailure::WriteFailed(msg) => format!("write failed: {msg}"),
+        DiagnosisFailure::RestoreFailed(msg) => format!("restore failed: {msg}"),
+        DiagnosisFailure::PersistFailed(msg) => format!("could not save calibration: {msg}"),
+    }
+}
 
 /// Build the per-device-type writer cache from an existing repos map.
 /// One `Rc<dyn DutyWriter>` per device type, reused for every write.
@@ -94,6 +113,11 @@ pub struct Engine {
     /// `GET .../calibration/status`. Sticky until the next diagnosis
     /// starts on the same channel.
     calibration_statuses: RefCell<HashMap<ChannelKey, CalibrationStatus>>,
+    /// Optional handle for broadcasting `DesktopNotification`s via the
+    /// `/sse/notifications` channel. Wired by `main.rs` after the
+    /// notification system is created. None in tests; the broadcast is
+    /// then a no-op.
+    notification_handle: RefCell<Option<NotificationHandle>>,
 }
 
 impl Engine {
@@ -151,6 +175,7 @@ impl Engine {
             fan_state_map,
             diagnosis_registry: Rc::new(DiagnosisRegistry::new()),
             calibration_statuses: RefCell::new(HashMap::new()),
+            notification_handle: RefCell::new(None),
         }
     }
 
@@ -185,6 +210,24 @@ impl Engine {
     /// channel. Overwrites any prior entry.
     fn store_calibration_status(&self, key: ChannelKey, status: CalibrationStatus) {
         self.calibration_statuses.borrow_mut().insert(key, status);
+    }
+
+    /// Wire the notification broadcaster. Called by `main.rs` after the
+    /// notification system is constructed (the engine is built earlier,
+    /// during repo initialization).
+    pub fn set_notification_handle(&self, handle: NotificationHandle) {
+        self.notification_handle.borrow_mut().replace(handle);
+    }
+
+    /// Broadcast a calibration-related desktop notification, if a
+    /// handle is configured. Returns immediately on tests / unconfigured
+    /// engines. Cloning the handle outside the borrow avoids holding the
+    /// `RefCell` across the broadcast call.
+    fn notify_calibration(&self, title: &str, body: &str, icon: NotificationIcon, urgency: u8) {
+        let Some(handle) = self.notification_handle.borrow().clone() else {
+            return;
+        };
+        notifier::notify_all_sessions(title, body, icon, false, Some(urgency), Some(&handle));
     }
 
     /// Read a calibration from the store. Thin wrapper used by the
@@ -1127,8 +1170,49 @@ impl Engine {
                 failure,
             ),
         };
+        self.broadcast_calibration_outcome(&key.1, &outcome);
         self.store_calibration_status(key, status);
         outcome
+    }
+
+    /// Send a desktop notification describing the terminal outcome of a
+    /// calibration sweep. Cancellations are suppressed (user-initiated;
+    /// they already know).
+    fn broadcast_calibration_outcome(
+        &self,
+        channel_name: &str,
+        outcome: &std::result::Result<Calibration, DiagnosisFailure>,
+    ) {
+        match outcome {
+            Ok(calibration) => match calibration.curve_kind {
+                calibration::CurveKind::Smooth => self.notify_calibration(
+                    "Calibration complete",
+                    &format!(
+                        "Channel {channel_name} is calibrated. Manual duties and fan curves on \
+                         this channel now control RPM-normalized true-duty. Open the channel \
+                         popover to review or re-calibrate."
+                    ),
+                    NotificationIcon::Info,
+                    1,
+                ),
+                calibration::CurveKind::Stepped => self.notify_calibration(
+                    "Calibration complete (step curve)",
+                    &format!(
+                        "Channel {channel_name} produces a step-curve response. Mapping is \
+                         disabled; duties pass through unchanged."
+                    ),
+                    NotificationIcon::Info,
+                    1,
+                ),
+            },
+            Err(DiagnosisFailure::Cancelled) => {}
+            Err(failure) => self.notify_calibration(
+                "Calibration failed",
+                &format!("Channel {channel_name}: {}", describe_failure(failure)),
+                NotificationIcon::Error,
+                1,
+            ),
+        }
     }
 
     /// Cancel an in-flight calibration diagnosis for the given
