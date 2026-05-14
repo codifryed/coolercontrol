@@ -229,7 +229,13 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
-        let kick = duty_for_rpm(&self.up_curve, target_rpm);
+        // Kick must always be >= min_start_duty: that's the lowest
+        // duty at which the fan reliably spins up from rest. With a
+        // hysteretic fan the target RPM near 0% true-duty can land
+        // below the up-curve sample at min_start_duty, which would
+        // otherwise let duty_for_rpm interpolate down to an
+        // unkickable duty value. The clamp guarantees the fan kicks.
+        let kick = duty_for_rpm(&self.up_curve, target_rpm).max(self.min_start_duty);
         let sustain = duty_for_rpm(&self.down_curve, target_rpm);
         MappedDuty { kick, sustain }
     }
@@ -260,16 +266,25 @@ impl Calibration {
         u8::try_from(result.min(100)).unwrap_or(100)
     }
 
-    /// RPM at `min_start_duty` along the up-curve. Looks up the
-    /// sample with the matching duty exactly; on a well-formed
-    /// calibration this is always present (the sweep records the
-    /// sample that crossed the start threshold at this duty value).
+    /// RPM at `min_sustain_duty` along the **down**-curve: the lowest
+    /// RPM the fan can hold once already spinning. This is the right
+    /// floor for true-duty mapping in both directions: the dispatcher
+    /// writes a sustain device-duty (from the down-curve) after the
+    /// kick, so the reverse map must reference the down-curve's
+    /// lowest spinning RPM, not the up-curve's higher kick threshold.
+    ///
+    /// Using the up-curve threshold here on hysteretic fans causes
+    /// the reverse map to clamp legitimate low-duty samples (e.g.
+    /// `down_curve[10] = 713` RPM when `up_curve[10] = 720` RPM) to
+    /// 0% true-duty, even though the fan is clearly spinning. The
+    /// forward path now clamps `kick` to `min_start_duty` so the
+    /// kick is still strong enough to spin the fan up from rest.
     fn rpm_floor(&self) -> RPM {
-        self.up_curve
+        self.down_curve
             .iter()
-            .find(|s| s.duty == self.min_start_duty)
+            .find(|s| s.duty == self.min_sustain_duty)
             .map_or_else(
-                || rpm_at_device_duty(&self.up_curve, self.min_start_duty),
+                || rpm_at_device_duty(&self.down_curve, self.min_sustain_duty),
                 |s| s.rpm,
             )
     }
@@ -867,6 +882,89 @@ mod tests {
         assert!(limited.is_some(), "expected LimitedRange in {warnings:?}");
         let (span, _) = limited.expect("limited variant");
         assert_eq!(span, 300, "expected 900 - 600 = 300 RPM span, got {span}");
+    }
+
+    #[test]
+    fn hysteretic_fan_low_true_duty_does_not_clamp_to_zero() {
+        // Goal: regression for the user-reported bug where a hysteretic
+        // real-world fan (down_curve[min_start_duty] < up_curve[min_start_duty])
+        // would display 0% true-duty across the entire 1-5% set range.
+        //
+        // The shape mirrors the user's fan1 in calibrations.json:
+        // min_start_duty=10, min_sustain_duty=6, rpm at down_curve[10]=713,
+        // rpm at down_curve[6]=648, rpm_max=3518.
+        let up = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 2, rpm: 0 },
+            DutySample { duty: 4, rpm: 0 },
+            DutySample { duty: 6, rpm: 0 },
+            DutySample { duty: 8, rpm: 0 },
+            DutySample { duty: 10, rpm: 720 },
+            DutySample { duty: 15, rpm: 960 },
+            DutySample {
+                duty: 20,
+                rpm: 1257,
+            },
+            DutySample {
+                duty: 50,
+                rpm: 2391,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 3518,
+            },
+        ];
+        let down = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 2, rpm: 0 },
+            DutySample { duty: 4, rpm: 0 },
+            DutySample { duty: 6, rpm: 648 },
+            DutySample { duty: 8, rpm: 662 },
+            DutySample { duty: 10, rpm: 713 },
+            DutySample { duty: 12, rpm: 867 },
+            DutySample {
+                duty: 20,
+                rpm: 1285,
+            },
+            DutySample {
+                duty: 50,
+                rpm: 2378,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 3517,
+            },
+        ];
+        let cal = Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 1500,
+            min_start_duty: 10,
+            min_sustain_duty: 6,
+            max_eff_duty: 95,
+            rpm_max: 3518,
+            curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
+            timestamp: Local::now(),
+        };
+        // For each low true-duty the round-trip device_to_true_duty
+        // must not collapse to 0.
+        for t in 1..=5u8 {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            assert!(
+                mapped.kick >= cal.min_start_duty,
+                "kick must clamp to min_start_duty; got {} for true={t}",
+                mapped.kick
+            );
+            let recovered = cal
+                .device_to_true_duty(mapped.sustain)
+                .expect("smooth maps");
+            assert!(
+                recovered > 0,
+                "true={t} -> sustain={} -> recovered={recovered} must not collapse to 0",
+                mapped.sustain
+            );
+        }
     }
 
     #[test]
