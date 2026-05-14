@@ -204,6 +204,13 @@ impl Calibration {
     }
 
     /// Internal smooth-path reverse map. Caller guarantees `Smooth`.
+    ///
+    /// Uses **ceiling** integer division (not round-to-nearest) so the
+    /// displayed true-duty round-trips back to what the user set even
+    /// when truncation in `duty_for_rpm` shaves a few RPM off the
+    /// target. Without this, setting 98% commonly displays as 97%
+    /// because the integer-truncated device-duty corresponds to an
+    /// RPM that falls just below the 98% boundary.
     fn rpm_to_true_duty_smooth(&self, rpm: RPM) -> Duty {
         debug_assert_eq!(self.curve_kind, CurveKind::Smooth);
         assert!(self.rpm_max > 0);
@@ -218,7 +225,7 @@ impl Calibration {
         let range = u64::from(self.rpm_max - rpm_floor);
         assert!(range > 0);
         let above = u64::from(rpm - rpm_floor);
-        let result = (above * 100 + range / 2) / range;
+        let result = (above * 100).div_ceil(range);
         u8::try_from(result.min(100)).unwrap_or(100)
     }
 
@@ -696,6 +703,56 @@ mod tests {
         // the raw device-duty in place (passthrough).
         let chosen = select_displayed_true_duty(None, None, SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, None);
+    }
+
+    #[test]
+    fn rpm_to_true_duty_rounds_up_on_curve_truncation() {
+        // Goal: when `duty_for_rpm` truncates the device-duty
+        // calculation (the device-duty space is integer, but the
+        // computed target lands between samples), the reverse
+        // `rpm_to_true_duty` must round UP so the displayed true-duty
+        // matches what the user originally set. Regression for the
+        // "set 98%, display 97%" bug.
+        //
+        // Build a synthetic curve whose down-curve at duty 90 sits
+        // below where the up-curve at the same duty would (a normal
+        // hysteretic fan). 98% true_duty -> ~1962 RPM target ->
+        // truncated to duty 93 -> read back as ~1952 RPM -> previously
+        // mapped to 97% via round-to-nearest. Ceiling pulls it back
+        // up to 98%.
+        let mut up = vec![DutySample { duty: 0, rpm: 0 }];
+        for d in (5..=100).step_by(5) {
+            let rpm = match d {
+                90 => 1880,
+                95 => 2000,
+                100 => 2000,
+                _ => 20 * u32::from(d), // linear ramp
+            };
+            up.push(DutySample { duty: d, rpm });
+        }
+        let down = up.clone();
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        let cal = Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 500,
+            min_start_duty: scalars.min_start_duty,
+            min_sustain_duty: scalars.min_sustain_duty,
+            max_eff_duty: scalars.max_eff_duty,
+            rpm_max: scalars.rpm_max,
+            curve_kind: CurveKind::Smooth,
+            timestamp: Local::now(),
+        };
+        // 98% device-duty round-trip: write the sustain device-duty
+        // for 98%, then verify the reverse mapping comes back at 98%.
+        let mapped = cal.true_to_device(98).expect("smooth maps");
+        let recovered = cal
+            .device_to_true_duty(mapped.sustain)
+            .expect("smooth maps");
+        assert_eq!(
+            recovered, 98,
+            "98% true must round-trip to 98% display; got {recovered}"
+        );
     }
 
     #[test]
