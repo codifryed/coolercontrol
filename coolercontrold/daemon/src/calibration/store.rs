@@ -16,12 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Persistence and in-memory cache for per-channel calibrations.
-//!
-//! Mirrors the `alerts.rs` pattern: a top-level `RefCell<IndexMap<...>>`
-//! is populated from a JSON file at startup, mutated via CRUD methods that
-//! save after each change, and serialized through a `Vec<Entry>` wrapper
-//! so the on-disk format does not depend on the in-memory key type.
+//! Persistence + in-memory cache for per-channel calibrations.
+//! `RefCell<IndexMap>` populated from JSON; CRUD methods save after
+//! each change. Wire format is `Vec<CalibrationEntry>` since JSON
+//! object keys can't be tuples.
 
 use super::curve::Calibration;
 use super::ChannelKey;
@@ -42,8 +40,6 @@ pub struct CalibrationConfigFile {
     pub calibrations: Vec<CalibrationEntry>,
 }
 
-/// One persisted calibration record. The on-disk format is a flat list
-/// of these because JSON object keys cannot natively express tuples.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct CalibrationEntry {
     pub device_uid: DeviceUID,
@@ -51,46 +47,38 @@ pub struct CalibrationEntry {
     pub calibration: Calibration,
 }
 
-/// In-memory cache of calibrations, keyed by `(device_uid, channel_name)`.
-///
-/// All mutating methods persist to disk before returning, mirroring the
-/// alerts controller. Reads are cheap clones of the cached values.
 pub struct CalibrationStore {
     calibrations: RefCell<IndexMap<ChannelKey, Calibration>>,
 }
 
 impl CalibrationStore {
-    /// Load the store from disk, creating an empty file on first run.
+    /// Load from disk, creating an empty file on first run.
     pub async fn init() -> Result<Self> {
         let store = Self::empty();
         store.load_from_disk().await?;
         Ok(store)
     }
 
-    /// Construct an empty store without touching disk. Public so tests
-    /// can build one in-process without filesystem dependencies.
+    /// In-memory only; no disk I/O. Used by tests.
     pub fn empty() -> Self {
         Self {
             calibrations: RefCell::new(IndexMap::new()),
         }
     }
 
-    /// Number of stored calibrations.
+    #[allow(dead_code)] // test-only currently; useful production API.
     pub fn len(&self) -> usize {
         self.calibrations.borrow().len()
     }
 
-    /// Whether the store holds a calibration for the given channel.
     pub fn has(&self, key: &ChannelKey) -> bool {
         self.calibrations.borrow().contains_key(key)
     }
 
-    /// Returns a clone of the stored calibration for the given channel.
     pub fn get(&self, key: &ChannelKey) -> Option<Calibration> {
         self.calibrations.borrow().get(key).cloned()
     }
 
-    /// Returns clones of every stored `(key, calibration)` pair.
     pub fn all(&self) -> Vec<(ChannelKey, Calibration)> {
         let map = self.calibrations.borrow();
         let mut out = Vec::with_capacity(map.len());
@@ -100,47 +88,28 @@ impl CalibrationStore {
         out
     }
 
-    /// Map a measured RPM to its true-duty equivalent for the given
-    /// channel. Returns `None` when the channel is uncalibrated, when
-    /// the curve is stepped (mapping disabled), or when the channel's
-    /// calibration would not produce a meaningful value.
-    ///
-    /// Used by the status-ingestion pipeline as the sanity cross-check
-    /// against the device-duty-derived value: when the two disagree by
-    /// more than a small threshold, the RPM-derived value wins so a
-    /// stuck or dead fan does not stay hidden behind the device-duty
-    /// the daemon wrote.
+    /// `None` for uncalibrated, stepped, or non-mappable channels.
     pub fn rpm_to_true_duty(&self, key: &ChannelKey, rpm: RPM) -> Option<Duty> {
         let map = self.calibrations.borrow();
         let calibration = map.get(key)?;
         calibration.rpm_to_true_duty(rpm)
     }
 
-    /// Map a cached **device-duty** (raw PWM percent currently being
-    /// driven) to its true-duty equivalent for the given channel. Same
-    /// `None` semantics as `rpm_to_true_duty`. Used by the status
-    /// pipeline as the **stable** source of the displayed true-duty,
-    /// cross-checked against the RPM-derived value.
+    /// Stable inverse via the down-curve. `None` semantics as
+    /// `rpm_to_true_duty`.
     pub fn device_to_true_duty(&self, key: &ChannelKey, device_duty: Duty) -> Option<Duty> {
         let map = self.calibrations.borrow();
         let calibration = map.get(key)?;
         calibration.device_to_true_duty(device_duty)
     }
 
-    /// Insert or replace a calibration. Persists to disk on success.
-    pub async fn insert(&self, key: ChannelKey, calibration: Calibration) -> Result<()> {
-        self.calibrations.borrow_mut().insert(key, calibration);
-        self.save_to_disk().await
-    }
-
-    /// Insert without persisting. Reserved for the diagnoser path so it
-    /// can atomically build a batch of changes and save once at the end.
+    /// Insert without persisting. Used by the diagnoser to build a batch
+    /// of changes and save once at the end.
     pub fn insert_unsaved(&self, key: ChannelKey, calibration: Calibration) {
         self.calibrations.borrow_mut().insert(key, calibration);
     }
 
-    /// Remove the calibration for a channel. Persists on success when the
-    /// key existed; otherwise returns `Ok(())` without touching disk.
+    /// Removes the calibration; persists only when the key existed.
     pub async fn remove(&self, key: &ChannelKey) -> Result<()> {
         let existed = self.calibrations.borrow_mut().shift_remove(key).is_some();
         if existed {
@@ -149,8 +118,6 @@ impl CalibrationStore {
         Ok(())
     }
 
-    /// Explicit disk save. Public so the shutdown hook can flush pending
-    /// in-memory changes (mirrors `Alerts::watch_for_shutdown`).
     pub async fn save_to_disk(&self) -> Result<()> {
         let entries = self.snapshot_entries();
         let file = CalibrationConfigFile {

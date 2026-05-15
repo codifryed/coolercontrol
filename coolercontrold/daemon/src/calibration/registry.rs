@@ -16,29 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! In-flight diagnosis tracking and cancellation routing.
-//!
-//! Each running calibration diagnosis registers a `CancellationToken`
-//! keyed by `(device_uid, channel_name)`. The REST `cancel` handler
-//! looks up the token and triggers it; the diagnoser observes the
-//! cancellation on its next poll and bails through the normal
-//! restore-snapshot path.
-//!
-//! `under_diagnosis` on `FanStateMap` already tracks "this channel is
-//! mid-diagnosis" for the engine's dispatch no-op check. The registry
-//! tracks the same set of channels but holds the cancellation handles
-//! so external callers can interrupt the sweep.
+//! Per-channel `CancellationToken` registry. The REST cancel handler
+//! looks up the token and triggers it; the diagnoser polls for it
+//! between sweep steps. Parallel to `FanStateMap::under_diagnosis`
+//! but exposes the handle so external callers can interrupt.
 
 use super::ChannelKey;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
-/// Per-channel registry of in-flight diagnosis cancellation tokens.
-///
-/// Single-threaded `RefCell` is fine here: every access happens on
-/// the daemon's main runtime thread (HTTP handlers + the diagnoser
-/// task that finalizes/cleans up).
 pub struct DiagnosisRegistry {
     in_flight: RefCell<HashMap<ChannelKey, CancellationToken>>,
 }
@@ -56,21 +43,15 @@ impl DiagnosisRegistry {
         }
     }
 
-    /// Register a new diagnosis for the channel and return its
-    /// cancellation token. If a diagnosis was already registered for
-    /// this channel the existing token is dropped and replaced; the
-    /// caller is expected to check `is_in_flight` first if it wants
-    /// to reject duplicate starts (the engine's `under_diagnosis`
-    /// flag covers that case).
+    /// Replaces any existing token for the key. Callers wanting to
+    /// reject duplicates should check `is_in_flight` first.
     pub fn register(&self, key: ChannelKey) -> CancellationToken {
         let token = CancellationToken::new();
         self.in_flight.borrow_mut().insert(key, token.clone());
         token
     }
 
-    /// Trigger cancellation of the registered diagnosis for the
-    /// channel. Returns `true` when a diagnosis was found and
-    /// cancelled, `false` when no diagnosis was in flight.
+    /// Returns `true` if a diagnosis was found and cancelled.
     pub fn cancel(&self, key: &ChannelKey) -> bool {
         let token = self.in_flight.borrow().get(key).cloned();
         if let Some(token) = token {
@@ -81,23 +62,21 @@ impl DiagnosisRegistry {
         }
     }
 
-    /// Drop the registration for the channel after the diagnosis
-    /// terminates (success, failure, or cancellation). Idempotent.
+    /// Idempotent.
     pub fn clear(&self, key: &ChannelKey) {
         self.in_flight.borrow_mut().remove(key);
     }
 
-    /// Whether a diagnosis is currently in flight for the channel.
     pub fn is_in_flight(&self, key: &ChannelKey) -> bool {
         self.in_flight.borrow().contains_key(key)
     }
 
-    /// Number of in-flight diagnoses. Test-facing visibility.
+    #[allow(dead_code)] // test-only; useful production API.
     pub fn len(&self) -> usize {
         self.in_flight.borrow().len()
     }
 
-    /// True if no diagnoses are in flight.
+    #[allow(dead_code)] // test-only; useful production API.
     pub fn is_empty(&self) -> bool {
         self.in_flight.borrow().is_empty()
     }

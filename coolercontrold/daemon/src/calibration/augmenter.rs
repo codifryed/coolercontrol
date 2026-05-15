@@ -16,11 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! `StatusAugmenter` impl that rewrites a freshly-pushed status's
-//! per-channel `duty` into RPM-normalized true-duty space. Installed
-//! on every device by `Engine::new`, fires inside `Device::set_status`
-//! while the history `Arc` is being mutated, so there is no extra deep
-//! clone when a REST or gRPC reader holds an `Arc` clone of the history.
+//! Rewrites each pushed status's `duty` into true-duty space. Runs
+//! inside `set_status`'s `Arc::make_mut`, avoiding a second pass that
+//! would deep-clone the history when a reader holds the Arc.
 
 use std::rc::Rc;
 
@@ -48,18 +46,12 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
     fn augment(&self, status: &mut Status, device_uid: &DeviceUID) {
         for channel in &mut status.channels {
             let key: ChannelKey = (device_uid.clone(), channel.name.clone());
-            // Skip channels currently being swept: the diagnoser is
-            // writing raw device duty and the UI must see those raw
-            // values, not the prior calibration's mapped values.
+            // Sweep is writing raw duty; don't mask it with the prior mapping.
             if self.fan_state_map.is_under_diagnosis(&key) {
                 continue;
             }
-            // Prefer the device-duty-derived value (stable across
-            // reads). Fall back to the RPM-derived value when the
-            // two diverge by more than the sanity threshold: that gap
-            // surfaces stuck fans, dead fans, and broken PWM lines
-            // that the stable path would otherwise hide behind the
-            // duty the daemon last wrote.
+            // Device-duty is the stable source; fall back to RPM when the two
+            // diverge so stuck fans and broken PWM lines surface in the readout.
             let device_derived = channel.duty.and_then(|d| {
                 self.calibration_store
                     .device_to_true_duty(&key, clamp_f64_to_duty(d))

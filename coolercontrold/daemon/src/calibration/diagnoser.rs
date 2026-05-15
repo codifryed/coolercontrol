@@ -17,16 +17,9 @@
  */
 
 //! Per-channel diagnosis sweep that produces a `Calibration`.
-//!
-//! The diagnoser owns the temporal workflow: pre-flight thermal
-//! checks, snapshotting the channel's current setting, marking the
-//! channel `under_diagnosis` so the engine's dispatch becomes a
-//! no-op, the up-sweep and down-sweep, classification, persistence,
-//! and restoring the snapshotted setting at the end.
-//!
-//! All I/O is funnelled through the [`DiagnosisHost`] trait so the
-//! sweep can be exercised against a mock in unit tests. The production
-//! impl lives on the engine.
+//! Owns the temporal workflow: pre-flight, snapshot, sweep, classify,
+//! persist, restore. All I/O routes through [`DiagnosisHost`] so the
+//! sweep is testable against a mock; the engine provides the prod impl.
 
 use super::curve::{
     classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
@@ -44,52 +37,34 @@ use std::collections::VecDeque;
 use std::ops::Not;
 use tokio_util::sync::CancellationToken;
 
-/// Tunable parameters for a single diagnosis run. Defaults: 75 C
-/// pre-flight gate, 85 C abort, 50 RPM start-detection floor, a
-/// conservative kick-duration default, and an adaptive per-step
-/// settle. The settle parameters are documented inline below.
+/// Tunable parameters for a single diagnosis run.
 #[derive(Debug, Clone)]
 pub struct DiagnosisSettings {
     pub start_temp_max_c: f64,
     pub abort_temp_max_c: f64,
     pub start_rpm_min: RPM,
     pub kick_duration_default_ms: u32,
-    /// Initial sleep after a duty write before waiting for the cache
-    /// to refresh. Insurance that the write has at least been queued
-    /// at the repo layer. Cheap; even on slow devices, 200 ms is
-    /// below any practical poll cycle.
+    /// Initial post-write sleep before waiting for cache refresh.
     pub min_settle_ms: u32,
-    /// Number of consecutive RPM samples that must agree within the
-    /// stability tolerance for the step to be considered settled.
+    /// Consecutive samples that must agree before declaring settled.
     pub stability_window: u32,
-    /// Absolute RPM tolerance for stability across the middle of the
-    /// sweep (max - min over the stability window).
+    /// Absolute RPM stability tolerance for mid-sweep steps.
     pub stability_tolerance_rpm: RPM,
-    /// Tighter absolute RPM tolerance applied wherever the sweep is
-    /// taking dense (2%) steps, plus the saturation tail (duty >=
-    /// `saturation_extreme_duty_min`). A fan ramping up from rest, a
-    /// fan crossing through the kick-out region on the down-sweep, or
-    /// a fan operating near saturation all take longer to settle, so
-    /// we hold out for tighter RPM agreement before declaring stable.
+    /// Tighter tolerance for dense (2%) steps and the saturation tail,
+    /// where settling is slower so we wait for tighter agreement.
     pub stability_tolerance_rpm_extremes: RPM,
-    /// Duty (percent) at or above which a step is treated as extreme
-    /// regardless of its step size, capturing the saturation tail.
+    /// Duty at/above which a step is treated as extreme regardless of
+    /// step size (catches the saturation tail).
     pub saturation_extreme_duty_min: Duty,
-    /// Relative RPM tolerance for stability, in percent of the
-    /// largest sample seen in the window.
+    /// Relative tolerance (percent of largest sample in the window).
     pub stability_tolerance_percent: u8,
-    /// Inner busy-wait granularity while waiting for a fresh status
-    /// timestamp. Independent of poll rate; just bounds the latency
-    /// between cache refresh and us noticing.
+    /// Inner busy-wait granularity while watching the status timestamp.
     pub status_poll_interval_ms: u32,
-    /// Fraction of `step_settle_cap_ms` to wait for an RPM-value
-    /// change after a duty write before accepting the cache value
-    /// as-is. A timestamp advance proves only that the main loop
-    /// ticked; an RPM-value change additionally proves a fresh
-    /// post-write read happened (real fans jitter every successful
-    /// read). The fallback covers the exception cases: non-
-    /// controllable fans, missing fans, faulty RPM sensors, and the
-    /// genuinely-constant low-duty stopped-fan case.
+    /// Fraction of `step_settle_cap_ms` to wait for the RPM value to
+    /// change after a write before accepting the cache. A timestamp
+    /// advance proves only that the loop ticked; an RPM change proves
+    /// a fresh post-write read landed. Fallback covers non-controllable
+    /// fans, faulty sensors, and genuinely-stopped low-duty cases.
     pub fresh_read_cap_percent: u8,
 }
 
@@ -116,32 +91,32 @@ impl Default for DiagnosisSettings {
 /// error codes and `calibration_failed` SSE events.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosisFailure {
-    /// One or more temperature sensors crossed the pre-flight limit
-    /// before the sweep started.
-    PreflightTempTooHigh { observed: f64, limit: f64 },
-    /// The up-sweep finished without any RPM sample crossing the
-    /// start floor; the fan never produced detectable motion.
+    /// Pre-flight temperature crossed the gate.
+    PreflightTempTooHigh {
+        observed: f64,
+        limit: f64,
+    },
+    /// Deprecated: dead fans now persist a passthrough + `NoTachometer`
+    /// calibration instead. Kept so older serialized values still parse.
+    #[allow(dead_code)]
     FanUnresponsive,
-    /// A temperature sensor crossed the abort limit mid-sweep. The
-    /// channel was written to 0% and the snapshot restored.
-    TempAbortedAt { observed: f64, limit: f64 },
-    /// The caller's `CancellationToken` was triggered.
+    /// Temp crossed abort mid-sweep. Channel was zeroed and snapshot restored.
+    TempAbortedAt {
+        observed: f64,
+        limit: f64,
+    },
     Cancelled,
-    /// A hardware write failed (repo I/O error). The diagnoser
-    /// preserves the original error message verbatim.
+    /// Hardware write failed; preserves the repo error verbatim.
     WriteFailed(String),
-    /// Restoring the snapshotted setting after the sweep failed.
-    /// The calibration itself is persisted if the failure happens
-    /// after persistence; otherwise the calibration is discarded.
+    /// Restore failed after the sweep. The calibration is kept if
+    /// persistence already happened, discarded otherwise.
     RestoreFailed(String),
-    /// Persisting the calibration to disk failed. The snapshot has
-    /// already been restored at this point.
+    /// Disk persistence failed; snapshot has already been restored.
     PersistFailed(String),
 }
 
-/// Captured channel setting taken before a diagnosis starts. The
-/// host returns this from `snapshot_setting` and consumes it on
-/// `restore_setting` once the sweep is complete (success or fail).
+/// Snapshotted channel setting. Captured before the sweep, restored
+/// afterwards (success or fail).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingsSnapshot {
     pub device_uid: DeviceUID,
@@ -151,27 +126,20 @@ pub struct SettingsSnapshot {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SnapshotKind {
-    /// No prior duty setting for this channel; restore is a no-op.
     None,
-    /// Channel was on a fixed manual duty.
     Manual(Duty),
-    /// Channel was assigned a profile.
     Profile(ProfileUID),
 }
 
-/// A progress notification emitted by the diagnoser. The engine
-/// broadcasts these as `calibration_progress` SSE events.
+/// Progress event broadcast as `calibration_progress` SSE.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosisProgress {
     pub device_uid: DeviceUID,
     pub channel_name: ChannelName,
     pub phase: DiagnosisPhase,
-    /// Percent complete across both sweeps. 0 at preflight, 100 on
-    /// `Finalizing`.
+    /// 0 at preflight, 100 on `Finalizing`.
     pub percent: u8,
-    /// Most recent device-duty the sweep wrote, if any.
     pub current_duty: Option<Duty>,
-    /// Most recent RPM the sweep observed, if any.
     pub current_rpm: Option<RPM>,
 }
 
@@ -183,53 +151,35 @@ pub enum DiagnosisPhase {
     Finalizing,
 }
 
-/// Single trait carrying every I/O dependency the diagnoser needs.
-/// The engine provides the production impl; tests implement it
-/// directly with synthetic RPM curves and instantly-elapsed sleeps.
+/// I/O dependencies for the diagnoser. Engine provides the prod impl;
+/// tests provide mocks with synthetic curves and no-op sleeps.
 #[async_trait(?Send)]
 pub trait DiagnosisHost {
-    /// Latest measured RPM for the channel, or `None` if no reading.
     async fn current_rpm(&self, device_uid: &UID, channel_name: &str) -> Option<RPM>;
 
-    /// Timestamp (millis since epoch) of the most recent status entry
-    /// for the device, or `None` if no status has landed yet. The
-    /// diagnoser watches this value to know the cache has refreshed
-    /// before sampling RPM, so per-step settling does not race ahead
-    /// of the cache. The stability-window check covers the edge case
-    /// where a wedged device re-publishes the same value.
+    /// Watched by the settle loop to confirm a fresh cache refresh
+    /// landed before sampling RPM. Returns `None` until the first
+    /// status arrives.
     async fn latest_status_timestamp_ms(&self, device_uid: &UID) -> Option<i64>;
 
-    /// Per-step cap for the adaptive settle in milliseconds. Should
-    /// be `device_write_permit_timeout + device_read_permit_timeout`
-    /// so a step cannot wait longer than the daemon itself would
-    /// tolerate a single write + read against this device.
+    /// Per-step settle cap. Should be `write_timeout + read_timeout`
+    /// so a step never waits longer than the daemon's own I/O budget.
     fn step_settle_cap_ms(&self, device_uid: &UID) -> u32;
 
-    /// Write a device-duty value directly to the hardware, bypassing
-    /// the calibration dispatch (it is currently paused for this
-    /// channel because we marked it `under_diagnosis`).
+    /// Writes raw duty, bypassing dispatch (channel is `under_diagnosis`).
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()>;
 
-    /// Highest current temperature in Celsius across every monitored
-    /// device. Used for pre-flight gating and mid-sweep abort.
+    /// Max device temp in Celsius. Drives pre-flight gate and mid-sweep abort.
     async fn max_temp_celsius(&self) -> f64;
 
-    /// Capture the channel's current setting so the diagnoser can
-    /// restore it afterwards. Synchronous because reading from the
-    /// in-memory config is cheap.
     fn snapshot_setting(&self, device_uid: &UID, channel_name: &str) -> SettingsSnapshot;
 
-    /// Reapply a previously snapshotted setting. The async fn body
-    /// will typically delegate to `engine.set_config_setting`.
     async fn restore_setting(&self, snapshot: &SettingsSnapshot) -> Result<()>;
 
-    /// Sleep for the given number of milliseconds. Separately
-    /// abstracted so unit tests can no-op the wall-clock waits.
+    /// Abstracted so tests can no-op the wall-clock waits.
     async fn sleep_millis(&self, millis: u32);
 
-    /// Receive a progress notification from the diagnoser. Default
-    /// no-op so minimal mock hosts do not have to implement it; the
-    /// engine wires this to an SSE broadcast.
+    /// Default no-op so minimal mocks don't have to implement it.
     fn emit_progress(&self, _progress: DiagnosisProgress) {}
 }
 
@@ -370,17 +320,10 @@ where
     Ok(calibration)
 }
 
-/// Sweep the duty range up and down, returning the two variable-spaced
-/// curves. Up-sweep walks from 0% in 2% steps until the fan crosses
-/// the start threshold, then 5% steps to 100%. Down-sweep walks from
-/// 100% in 5% steps until duty falls into the kick-in zone, then 2%
-/// steps to 0%. Mid-sweep failures (temp abort, cancellation, write
-/// failure) short-circuit the function; the caller still reapplies the
-/// snapshot and clears `under_diagnosis` afterwards.
-///
-/// When no up-sweep sample crosses `start_rpm_min` the down-sweep is
-/// skipped: `derive_scalars` returns `None` for a zero-rpm curve, so
-/// the caller persists the passthrough + `NoTachometer` calibration.
+/// Up-sweep then down-sweep, returning both curves and the down-sweep
+/// stability flags. Mid-sweep failures short-circuit; the caller still
+/// restores the snapshot. Down-sweep is skipped when the up-curve
+/// never crossed `start_rpm_min` (the passthrough + `NoTachometer` path).
 async fn perform_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -430,10 +373,8 @@ where
             "up-sweep sample bound"
         );
         let in_dense = kicked_in.not();
-        // Up-sweep stability is observed but not retained: the post-kick
-        // sustain floor is derived from the down-sweep (where the
-        // dispatcher's interpolation also lives), so up-curve flags would
-        // be dead weight.
+        // Up-sweep stability is discarded; the sustain floor is derived
+        // from the down-sweep where the dispatcher interpolates.
         let (rpm, _was_stable) = sweep_step(
             host,
             settings,
@@ -452,9 +393,8 @@ where
         if kicked_in.not() && rpm >= settings.start_rpm_min {
             kicked_in = true;
         }
-        // Order matters: `kicked_in` is updated for the just-pushed
-        // sample first, so a fan that crosses the floor exactly at
-        // `UNRESPONSIVE_ABORT_DUTY` is not aborted.
+        // Update `kicked_in` first so a sample crossing the floor exactly
+        // at `UNRESPONSIVE_ABORT_DUTY` is not aborted.
         if kicked_in.not() && duty >= UNRESPONSIVE_ABORT_DUTY {
             return Ok(samples);
         }
@@ -468,17 +408,11 @@ where
     Ok(samples)
 }
 
-/// Down-sweep: sparse (5%) steps from 100 down to `kick_in_duty +
-/// KICK_ZONE_BUFFER_PERCENT`, then dense (2%) steps to 0. Returns the
-/// sample list (sorted by duty ascending so it matches up-sweep
-/// shape; the underlying measurements are taken high-to-low) AND a
-/// parallel `Vec<bool>` of per-step `was_stable` flags (also sorted by
-/// duty ascending; flag[i] corresponds to samples[i]).
-///
-/// The stability flags drive `derive_min_stable_duty`: cap-exhausted
-/// samples indicate the fan never settled at that duty (firmware-kick
-/// oscillation), so the dispatcher's sustain floor needs to sit above
-/// them.
+/// Down-sweep: sparse 5% steps from 100 to `kick_in_duty +
+/// KICK_ZONE_BUFFER_PERCENT`, dense 2% steps below. Samples and parallel
+/// stability flags both returned ascending. Cap-exhausted (unstable)
+/// samples mark firmware-kick oscillation; the sustain floor must sit
+/// above them (see `derive_min_stable_duty`).
 async fn perform_down_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -607,22 +541,10 @@ where
     Ok((rpm, was_stable))
 }
 
-/// Adaptive per-step settle. Returns the representative RPM for the
-/// just-written duty.
-///
-/// Algorithm:
-/// 1. Sleep `min_settle_ms` so the queued write has a chance to
-///    actually reach hardware before we start watching the cache.
-/// 2. Loop sampling at status-refresh boundaries:
-///    - Wait until the device's status timestamp advances past the
-///      last-seen one (with `status_poll_interval_ms` granularity).
-///    - Read the latest cached RPM, push into a sliding window.
-///    - Declare stable when the window is full and `max - min` over
-///      it falls within `max(stability_tolerance_rpm,
-///      stability_tolerance_percent% of largest)`.
-/// 3. Hard cap at `step_settle_cap_ms` (write timeout + read timeout
-///    for the device). On cap, return the median of whatever the
-///    window holds.
+/// Adaptive per-step settle. Sleeps `min_settle_ms`, then samples on
+/// each status-refresh tick and declares stable when the window
+/// agrees within tolerance. Caps at `step_settle_cap_ms`; on cap,
+/// returns the median of whatever the window holds.
 async fn settle_and_sample<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -638,10 +560,8 @@ where
     host.sleep_millis(settings.min_settle_ms).await;
     let cap_ms = host.step_settle_cap_ms(device_uid);
     let window_size = (settings.stability_window as usize).max(1);
-    // After this much elapsed time without an observed RPM change,
-    // accept the cache value as-is (covers stuck-sensor, non-
-    // controllable, and stopped-fan cases). Saturating multiplication
-    // avoids overflow on extreme settings; clamped to cap_ms.
+    // After this much elapsed time without a fresh RPM read, accept the
+    // cache as-is (covers stuck sensor / stopped-fan / non-controllable).
     let fresh_read_cap_ms = (u64::from(cap_ms))
         .saturating_mul(u64::from(settings.fresh_read_cap_percent.min(100)))
         / 100;
@@ -653,7 +573,6 @@ where
     let mut window: VecDeque<RPM> = VecDeque::with_capacity(window_size);
 
     loop {
-        // Wait for the next cache refresh, granular at status_poll_interval_ms.
         loop {
             if cancellation.is_cancelled() {
                 return Err(DiagnosisFailure::Cancelled);
@@ -686,9 +605,8 @@ where
             saw_rpm_change = true;
         }
 
-        // Gate window updates on either an observed RPM change (proof
-        // a fresh post-write read happened) or the fresh-read cap
-        // elapsing (assume stuck reading is legitimate).
+        // A fresh post-write read is proven by either an RPM change or
+        // the fresh-read cap elapsing (assume the stuck reading is real).
         let fresh_read_confirmed = saw_rpm_change || waited_ms >= fresh_read_cap_ms;
         if fresh_read_confirmed {
             if window.len() == window_size {
@@ -706,13 +624,9 @@ where
             }
         }
         if waited_ms >= cap_ms {
-            // Cap exhausted: ensure we return something concrete even
-            // if no fresh read was ever confirmed (extreme stuck-sensor
-            // case where even the fresh-read fallback never fired).
-            // The `was_stable = false` return signals to the down-sweep
-            // accumulator that this sample sat inside an oscillation /
-            // never-settling band; `derive_min_stable_duty` uses that
-            // signal to derive the post-kick sustain floor.
+            // Cap exhausted. `was_stable = false` signals the sample
+            // sat in an oscillation/never-settling band, which
+            // `derive_min_stable_duty` uses to lift the sustain floor.
             if window.is_empty() {
                 window.push_back(rpm);
             }
@@ -721,10 +635,7 @@ where
     }
 }
 
-/// True when the largest and smallest RPM in the window agree within
-/// the larger of the absolute and percent tolerances. The caller
-/// supplies the absolute floor so it can be tightened at the sweep
-/// extremes (where the fan needs more time to settle).
+/// Window agreement within `max(abs_tolerance, pct_tolerance%)`.
 fn is_stable(window: &VecDeque<RPM>, abs_tolerance_rpm: RPM, pct_tolerance: u8) -> bool {
     let Some(&max) = window.iter().max() else {
         return false;
@@ -787,18 +698,13 @@ mod tests {
         restore_should_fail: Cell<bool>,
         fail_write_at_step: Cell<Option<usize>>,
         progress_events: RefCell<Vec<DiagnosisProgress>>,
-        // Synthetic status timestamp. Auto-advances on each sleep_millis
-        // so the diagnoser's settle loop sees fresh "cache refreshes"
-        // every tick without tests needing to wire timestamps explicitly.
+        // Auto-advances on each sleep_millis so the settle loop sees a
+        // fresh cache refresh per tick without explicit timestamp wiring.
         status_timestamp_ms: Cell<i64>,
-        // Cap returned to the diagnoser. 1 s is generous for tests; the
-        // sleeps are instant so the cap effectively gates only the
-        // iteration count of the inner status-poll loop.
+        // Sleeps are instant in tests; the cap only gates inner loop count.
         step_cap_ms: Cell<u32>,
-        // When `stale_reads_remaining > 0`, current_rpm returns
-        // `stale_rpm` (simulating a cache that has not yet refreshed
-        // after a duty write). Used to exercise the RPM-change-detection
-        // path in settle_and_sample.
+        // Returns `stale_rpm` for the next N reads, simulating a cache
+        // that has not yet refreshed after a duty write.
         stale_reads_remaining: Cell<usize>,
         stale_rpm: Cell<RPM>,
     }

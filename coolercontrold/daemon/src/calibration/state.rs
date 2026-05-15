@@ -61,6 +61,7 @@ pub enum FanState {
     On,
 }
 
+#[allow(dead_code)] // predicate helpers; dispatch uses pattern matching directly.
 impl FanState {
     pub fn is_off(self) -> bool {
         matches!(self, Self::Off)
@@ -151,18 +152,17 @@ impl FanStateMap {
         );
     }
 
-    /// Drop the entry entirely. Used when calibration is cleared so the
-    /// next dispatch starts from a clean slate.
+    /// Drop the entry. Used when calibration is cleared.
     pub fn forget(&self, key: &ChannelKey) {
         self.inner.borrow_mut().remove(key);
     }
 
-    /// Count of tracked channels. Test-facing visibility.
+    #[allow(dead_code)] // test-only; useful production API.
     pub fn len(&self) -> usize {
         self.inner.borrow().len()
     }
 
-    /// True if no channels have been observed yet.
+    #[allow(dead_code)] // test-only; useful production API.
     pub fn is_empty(&self) -> bool {
         self.inner.borrow().is_empty()
     }

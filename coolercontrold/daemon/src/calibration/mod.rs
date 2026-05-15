@@ -33,20 +33,17 @@ mod state;
 mod store;
 
 pub use augmenter::{install_augmenter_on_all_devices, CalibrationStatusAugmenter};
-pub use curve::{
-    classify_curve, derive_scalars, derive_warnings, effective_speed_options,
-    select_displayed_true_duty, start_threshold, Calibration, CalibrationWarning, CurveKind,
-    DerivedScalars, DutySample, MappedDuty, DUTY_STEP_DENSE, DUTY_STEP_SPARSE,
-    KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE, SANITY_THRESHOLD_PERCENT,
-};
+#[cfg_attr(not(test), allow(unused_imports))]
+pub use curve::DutySample;
+pub use curve::{effective_speed_options, Calibration, CalibrationWarning, CurveKind};
 pub use diagnoser::{
     run_diagnosis, DiagnosisFailure, DiagnosisHost, DiagnosisPhase, DiagnosisProgress,
     DiagnosisSettings, SettingsSnapshot, SnapshotKind,
 };
-pub use dispatch::{complete_kick, dispatch, DutyWriter, RepoWriter};
+pub use dispatch::{dispatch, DutyWriter, RepoWriter};
 pub use registry::DiagnosisRegistry;
-pub use state::{ChannelEntry, FanState, FanStateMap};
-pub use store::{CalibrationConfigFile, CalibrationEntry, CalibrationStore};
+pub use state::FanStateMap;
+pub use store::{CalibrationEntry, CalibrationStore};
 
 use crate::device::{ChannelName, DeviceUID};
 

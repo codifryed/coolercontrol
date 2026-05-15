@@ -16,147 +16,97 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Calibration curve types and the pure RPM<->duty math.
-//!
-//! A `Calibration` is the persisted result of a successful diagnosis sweep.
-//! It carries two RPM samples-vs-duty arrays (one each direction), the
-//! kick window, the derived working-range scalars, and a classification of
-//! the curve as `Smooth` or `Stepped`.
-//!
-//! Smooth curves get RPM-normalized true-duty mapping. Stepped curves are
-//! returned to the caller via `None` so the dispatch layer passes through.
+//! Calibration curve types and the pure RPM<->duty math. A `Calibration`
+//! holds two sample arrays (up + down), a kick window, derived scalars,
+//! and a `Smooth`/`Stepped` classification. Smooth maps; stepped returns
+//! `None` so the dispatcher passes through.
 
 use crate::device::{Duty, SpeedOptions, RPM};
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Sparse step size: duty increment used after kick-in on the up-sweep
-/// and outside the kick-in zone on the down-sweep.
+/// Sparse duty step (post kick-in on up-sweep, outside kick-zone on down).
 pub const DUTY_STEP_SPARSE: u8 = 5;
 
-/// Dense step size: duty increment used while ramping up from rest on
-/// the up-sweep, and inside the kick-in zone on the down-sweep. The
-/// extra resolution captures the steep duty-to-RPM gradient at low
-/// duty and produces a more accurate mapping in that region.
+/// Dense duty step (ramp from rest, inside kick-zone). Tighter resolution
+/// where the duty-to-RPM gradient is steepest.
 pub const DUTY_STEP_DENSE: u8 = 2;
 
-/// Buffer above `min_start_duty` that the down-sweep treats as the
-/// kick-in zone (where dense sampling is used). Wide enough to catch
-/// hysteresis (fan keeps spinning at duties slightly below where it
-/// started).
+/// Buffer above `min_start_duty` treated as the kick-in zone on the
+/// down-sweep. Wide enough to cover hysteresis.
 pub const KICK_ZONE_BUFFER_PERCENT: u8 = 10;
 
-/// Up-sweep duty at which a fan that has produced no detectable
-/// motion is declared unresponsive. The remainder of the sweep is
-/// skipped and a passthrough calibration with `NoTachometer` is
-/// persisted, matching the dead-fan end state but avoiding the
-/// per-step settle timeouts for the unreachable upper half of the
-/// sweep and the entire down-sweep. 50 sits well above the start
-/// duty of essentially any real PWM fan.
+/// Up-sweep duty at which a non-spinning fan is declared unresponsive
+/// and the sweep is aborted. 50% is well above any real PWM fan's start.
 pub const UNRESPONSIVE_ABORT_DUTY: Duty = 50;
 
-/// Maximum samples we will accept in a single curve. Loose upper
-/// bound; the sweep produces ~30 samples per direction with default
-/// step sizes. Enforced at deserialization time to guard against
-/// pathological persisted data.
+/// Sample cap enforced at deserialization to guard against pathological data.
 pub const MAX_SAMPLES_PER_CURVE: usize = 128;
 
-/// Absolute RPM floor below which we treat readings as noise.
 const RPM_START_THRESHOLD_ABSOLUTE: RPM = 50;
-
-/// Fraction of `rpm_max` (in percent) used as a relative noise floor.
 const RPM_START_THRESHOLD_FRACTION_PERCENT: u32 = 5;
-
-/// Absolute RPM jitter tolerance used during step-curve classification.
 const RPM_JITTER_ABSOLUTE: RPM = 50;
-
-/// Fraction of `rpm_max` (in percent) used as the relative jitter tolerance.
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
 
-/// Maximum percentage-point disagreement between the device-duty-derived
-/// and RPM-derived true-duty before the displayed value falls back to the
-/// RPM-derived one. The fallback exists to surface failures (stuck fan,
-/// dead fan, broken PWM) that pure device-duty mapping would otherwise
-/// hide behind the value the daemon last wrote.
+/// Max disagreement (percentage points) between device-duty-derived and
+/// RPM-derived true-duty before the displayed value falls back to RPM.
+/// Surfaces stuck fans / broken PWM that the stable path would mask.
 pub const SANITY_THRESHOLD_PERCENT: u8 = 10;
 
-/// A single measured (device-duty, RPM) sample taken during a sweep.
-/// Curves are stored as variable-length `Vec<DutySample>` sorted by
-/// `duty` ascending, with the dense (2%) sampling concentrated in the
-/// kick-in region and the sparse (5%) sampling elsewhere.
+/// A (device-duty, RPM) sample. Curves are sorted ascending by `duty`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct DutySample {
     pub duty: Duty,
     pub rpm: RPM,
 }
 
-/// The duty/RPM curve and derived working-range scalars for one channel.
-///
-/// Always represents a successful diagnosis. A fan that never spins is
-/// rejected by the diagnoser before a `Calibration` is constructed.
+/// The duty/RPM curve and derived scalars for one channel. Always
+/// represents a successful diagnosis.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct Calibration {
-    /// Up-sweep RPM samples by device-duty, sorted by duty ascending.
-    /// First sample is at duty 0, last is at duty 100. Dense (2%-step)
-    /// sampling in the kick-in region, sparse (5%-step) elsewhere.
+    /// Up-sweep samples (duty 0..=100 ascending). Dense in kick-in, sparse above.
     pub up_curve: Vec<DutySample>,
 
-    /// Down-sweep RPM samples. Same shape as `up_curve`, with the
-    /// dense sampling around the kick-in zone.
+    /// Down-sweep samples. Same shape, dense around the kick-in zone.
     pub down_curve: Vec<DutySample>,
 
-    /// Measured time from writing `min_start_duty` until RPM crossed the
-    /// start threshold, with a safety margin already applied. Bounded.
+    /// Measured kick window (write-to-spin-up) plus safety margin.
     pub kick_duration_ms: u32,
 
-    /// Lowest device-duty (multiple of `DUTY_STEP_PERCENT`) that reliably
-    /// starts the fan from rest.
+    /// Lowest device-duty that reliably starts the fan from rest.
     pub min_start_duty: Duty,
 
-    /// Lowest device-duty (multiple of `DUTY_STEP_PERCENT`) at which the
-    /// fan continues to spin once already in motion.
+    /// Lowest device-duty that keeps the fan spinning once started.
     pub min_sustain_duty: Duty,
 
-    /// Lowest device-duty at which the fan operates stably (no oscillation).
-    /// Equals `min_sustain_duty` on well-behaved fans; sits above it on
-    /// firmware-kicked fans that oscillate in a band just above sustain,
-    /// in which case the dispatcher clamps both kick and sustain up to
-    /// this value to stay out of the zone. Defaults to 0 on older
-    /// records (clamp degenerates to a no-op until recalibration).
+    /// Lowest device-duty without oscillation. Equals `min_sustain_duty`
+    /// on healthy fans; sits above it on firmware-kicked fans that
+    /// oscillate just above sustain (dispatcher clamps kick + sustain
+    /// to this value). Defaults to 0 on older records.
     #[serde(default)]
     pub min_stable_duty: Duty,
 
-    /// Lowest device-duty at which the up-curve reaches within
-    /// `jitter` of `rpm_max`: the "near plateau" point where
-    /// additional duty produces diminishing RPM gains. Informational
-    /// only: the mapping math uses `rpm_max` as the upper bound, so
-    /// `true_to_device(100)` may still write a device-duty above
-    /// this value when the fan continues to gain RPM past it.
+    /// "Near plateau" duty (within `jitter` of `rpm_max`). Informational:
+    /// `true_to_device(100)` can still write above this on fans that
+    /// keep gaining RPM past it.
     pub max_eff_duty: Duty,
 
-    /// Peak RPM observed across the sweep. Always positive.
+    /// Peak RPM observed. Always positive.
     pub rpm_max: RPM,
 
-    /// Whether the curve is smooth (mapping active) or stepped (passthrough).
     pub curve_kind: CurveKind,
 
-    /// Non-fatal reliability findings: missing tachometer, fan not
-    /// responding to duty, limited RPM range. Empty for a healthy
-    /// calibration. Defaults to empty on older persisted records that
-    /// pre-date this field.
+    /// Non-fatal reliability findings. Empty for a healthy calibration.
     #[serde(default)]
     pub warnings: Vec<CalibrationWarning>,
 
-    /// True when the diagnoser backfilled `duty: None` history entries
-    /// with calibration-derived values (channel has no native duty
-    /// reporting). On delete the daemon clears those backfilled duties,
-    /// and the UI uses this bit to decide whether to prompt for a chart
-    /// reload. Defaults to false on older records.
+    /// Diagnoser backfilled `duty: None` history entries with derived
+    /// values (channel has no native duty reporting). Clears on delete;
+    /// the UI uses it to decide whether to prompt for a chart reload.
     #[serde(default)]
     pub was_rpm_only: bool,
 
-    /// Wall-clock time when the diagnosis that produced this calibration finished.
     pub timestamp: DateTime<Local>,
 }
 
@@ -166,40 +116,29 @@ pub enum CurveKind {
     Stepped,
 }
 
-/// Non-fatal reliability findings recorded on a `Calibration` to be
-/// surfaced to the user. The diagnoser still persists the calibration
-/// when these fire; the warnings just inform the popover and the
-/// completion notification that the fan is not as well-behaved as a
-/// fully healthy one.
+/// Non-fatal reliability findings. The calibration persists either way;
+/// these inform the popover and the completion notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CalibrationWarning {
-    /// The fan tachometer reported 0 RPM across the entire sweep. The
-    /// fan may be disconnected, its tach wire unplugged, or the
-    /// firmware may be holding it off.
+    /// Tachometer reported 0 RPM throughout: fan disconnected, tach
+    /// wire unplugged, or firmware holding the fan off.
     NoTachometer,
-    /// The fan is spinning but its RPM does not track duty changes
-    /// (effective RPM span across the responding portion of the curve
-    /// is within noise). Most often a BIOS / firmware-controlled fan.
-    /// Mapping is disabled (`curve_kind` is forced to `Stepped`).
+    /// Fan spins but does not track duty (RPM span within noise). Most
+    /// often BIOS/firmware-controlled. Mapping disabled (forced Stepped).
     NotControllable,
-    /// The fan responds to duty but the usable RPM span is small
-    /// enough that the mapping resolution is coarse. Mapping stays
-    /// active; the popover surfaces the span so the user can decide
-    /// whether to clear.
+    /// Usable RPM span is small enough that mapping resolution is coarse.
+    /// Mapping stays active.
     LimitedRange { rpm_span: RPM, rpm_max: RPM },
-    /// The fan never settled above `min_sustain_duty` (typical of a
-    /// cheap firmware-kicked fan whose internal floor sits above its
-    /// mechanical minimum). `min_stable_duty` is undefined; the
-    /// dispatcher falls back to `min_sustain_duty`. `lower_duty` /
-    /// `upper_duty` mark the observed oscillation range for the UI.
+    /// Fan never settled above `min_sustain_duty` (cheap firmware-kicked
+    /// fan). `min_stable_duty` undefined; dispatcher falls back to
+    /// `min_sustain_duty`. The range marks the observed oscillation band.
     Oscillating { lower_duty: Duty, upper_duty: Duty },
 }
 
 /// Result of a forward true-duty -> device-duty mapping.
 ///
-/// The two values correspond to the up-curve (kick from rest) and the
-/// down-curve (sustain once spinning), used by the dispatch state machine.
+/// (kick, sustain) device duties returned by the forward map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappedDuty {
     pub kick: Duty,
@@ -207,9 +146,7 @@ pub struct MappedDuty {
 }
 
 impl Calibration {
-    /// Map a target true-duty into the (kick, sustain) device duties.
-    ///
-    /// Returns `None` for stepped channels so the caller passes through.
+    /// Maps true-duty to (kick, sustain). `None` for stepped channels.
     pub fn true_to_device(&self, true_duty: Duty) -> Option<MappedDuty> {
         if self.curve_kind == CurveKind::Stepped {
             return None;
@@ -217,9 +154,7 @@ impl Calibration {
         Some(self.true_to_device_smooth(true_duty))
     }
 
-    /// Map a measured RPM back to its true-duty equivalent.
-    ///
-    /// Returns `None` for stepped channels so the caller passes through.
+    /// Maps measured RPM back to true-duty. `None` for stepped channels.
     pub fn rpm_to_true_duty(&self, rpm: RPM) -> Option<Duty> {
         if self.curve_kind == CurveKind::Stepped {
             return None;
@@ -227,16 +162,9 @@ impl Calibration {
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
-    /// Map a cached **device-duty** (the raw PWM percent currently being
-    /// driven) back to its true-duty equivalent. Steady-state sustain
-    /// is the dominant case, so we interpolate in `down_curve` to
-    /// recover the RPM the fan would produce at this device-duty, then
-    /// reuse the existing RPM->true-duty math.
-    ///
-    /// Used by the status pipeline as the **stable** source of the
-    /// displayed true-duty (device-duty does not jitter the way RPM
-    /// does). Returns `None` for stepped channels (caller passes the
-    /// raw device-duty through unchanged).
+    /// Stable inverse: device-duty -> down-curve RPM -> true-duty. Used
+    /// by the status pipeline since device-duty does not jitter the way
+    /// RPM does. `None` for stepped channels.
     pub fn device_to_true_duty(&self, device_duty: Duty) -> Option<Duty> {
         if self.curve_kind == CurveKind::Stepped {
             return None;
@@ -245,7 +173,6 @@ impl Calibration {
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
-    /// Internal smooth-path forward map. Caller guarantees `Smooth`.
     fn true_to_device_smooth(&self, true_duty: Duty) -> MappedDuty {
         debug_assert_eq!(self.curve_kind, CurveKind::Smooth);
         assert!(self.rpm_max > 0);
@@ -260,33 +187,19 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
-        // Kick must clear two floors: `min_start_duty` (lowest duty that
-        // reliably spins up from rest) and `min_stable_duty` (lowest duty
-        // at which the fan operates without firmware-kick oscillation).
-        // On healthy fans `min_stable_duty <= min_sustain_duty`, so the
-        // second clamp is a no-op; on firmware-kick fans it raises the
-        // kick target above the oscillation band so the post-kick
-        // sustain landing also stays clear of the zone.
+        // Kick and sustain both clamp up to `min_stable_duty` so neither
+        // writes inside the firmware-kick oscillation band. Older records
+        // have `min_stable_duty == 0`, making the clamp a no-op.
         let kick = duty_for_rpm(&self.up_curve, target_rpm)
             .max(self.min_start_duty)
             .max(self.min_stable_duty);
-        // Same clamp on sustain: never let the dispatcher write a
-        // device-duty that sits inside the oscillation zone. With
-        // `min_stable_duty == 0` (the default for older persisted
-        // calibrations that pre-date this field) the clamp degenerates
-        // to a no-op and prior behaviour is preserved exactly.
         let sustain = duty_for_rpm(&self.down_curve, target_rpm).max(self.min_stable_duty);
         MappedDuty { kick, sustain }
     }
 
-    /// Internal smooth-path reverse map. Caller guarantees `Smooth`.
-    ///
-    /// Uses **ceiling** integer division (not round-to-nearest) so the
-    /// displayed true-duty round-trips back to what the user set even
-    /// when truncation in `duty_for_rpm` shaves a few RPM off the
-    /// target. Without this, setting 98% commonly displays as 97%
-    /// because the integer-truncated device-duty corresponds to an
-    /// RPM that falls just below the 98% boundary.
+    /// Ceiling division so the inverse round-trips: setting 98% would
+    /// otherwise display as 97% when integer truncation in `duty_for_rpm`
+    /// shaves a few RPM off the target.
     fn rpm_to_true_duty_smooth(&self, rpm: RPM) -> Duty {
         debug_assert_eq!(self.curve_kind, CurveKind::Smooth);
         assert!(self.rpm_max > 0);
@@ -305,19 +218,10 @@ impl Calibration {
         u8::try_from(result.min(100)).unwrap_or(100)
     }
 
-    /// RPM at `min_sustain_duty` along the **down**-curve: the lowest
-    /// RPM the fan can hold once already spinning. This is the right
-    /// floor for true-duty mapping in both directions: the dispatcher
-    /// writes a sustain device-duty (from the down-curve) after the
-    /// kick, so the reverse map must reference the down-curve's
-    /// lowest spinning RPM, not the up-curve's higher kick threshold.
-    ///
-    /// Using the up-curve threshold here on hysteretic fans causes
-    /// the reverse map to clamp legitimate low-duty samples (e.g.
-    /// `down_curve[10] = 713` RPM when `up_curve[10] = 720` RPM) to
-    /// 0% true-duty, even though the fan is clearly spinning. The
-    /// forward path now clamps `kick` to `min_start_duty` so the
-    /// kick is still strong enough to spin the fan up from rest.
+    /// RPM at `min_sustain_duty` on the down-curve: lowest RPM the fan
+    /// can hold once spinning. The reverse map uses this (not the
+    /// up-curve's higher kick threshold) so hysteretic fans don't get
+    /// their legitimate low-duty samples clamped to 0%.
     fn rpm_floor(&self) -> RPM {
         self.down_curve
             .iter()
@@ -368,13 +272,8 @@ fn duty_for_rpm(curve: &[DutySample], rpm: RPM) -> Duty {
     lo.duty + u8::try_from(frac).unwrap_or(span)
 }
 
-/// Classify the up-curve as `Smooth` or `Stepped`.
-///
-/// Counts inter-sample increases that exceed the jitter tolerance.
-/// Below half the inter-sample gaps having a meaningful increase is
-/// `Stepped`; this catches devices like `ThinkPad` fans and step-pumps
-/// that only change RPM at a few discrete duty values, regardless of
-/// the sample spacing.
+/// `Stepped` when fewer than half the inter-sample gaps show RPM
+/// growth above the jitter tolerance (catches `ThinkPad` fans, step-pumps).
 pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
     assert!(rpm_max > 0);
     if up_curve.len() < 2 {
@@ -396,25 +295,19 @@ pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
     }
 }
 
-/// RPM noise floor used when locating the start of fan rotation.
 pub fn start_threshold(rpm_max: RPM) -> RPM {
     let relative_u64 = u64::from(rpm_max) * u64::from(RPM_START_THRESHOLD_FRACTION_PERCENT) / 100;
     let relative = u32::try_from(relative_u64).unwrap_or(u32::MAX);
     relative.max(RPM_START_THRESHOLD_ABSOLUTE)
 }
 
-/// RPM tolerance treated as "no real change" by the step classifier.
 fn jitter_threshold(rpm_max: RPM) -> RPM {
     let relative_u64 = u64::from(rpm_max) * u64::from(RPM_JITTER_FRACTION_PERCENT) / 100;
     let relative = u32::try_from(relative_u64).unwrap_or(u32::MAX);
     relative.max(RPM_JITTER_ABSOLUTE)
 }
 
-/// Derive the working-range scalars from a pair of sweep curves.
-///
-/// Returns `None` when the up-curve never crosses the start threshold,
-/// which the diagnoser surfaces as a `fan_unresponsive` failure rather
-/// than persisting a degenerate calibration.
+/// Returns `None` when the up-curve never crosses the start threshold.
 pub fn derive_scalars(
     up_curve: &[DutySample],
     down_curve: &[DutySample],
@@ -445,24 +338,19 @@ pub fn derive_scalars(
     })
 }
 
-/// Linearly interpolate the RPM at an arbitrary device-duty in a
-/// variable-spaced sample list. Clamps to the boundary RPMs outside
-/// the recorded range and returns 0 for an empty curve.
+/// Linearly interpolates RPM at a duty in a variable-spaced curve.
+/// Clamps outside the recorded range, returns 0 for an empty curve.
 fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
     if curve.is_empty() {
         return 0;
     }
-    // Below the lowest recorded duty: clamp to its RPM.
     if device_duty <= curve[0].duty {
         return curve[0].rpm;
     }
-    // Above the highest recorded duty: clamp to its RPM.
     let last = curve[curve.len() - 1];
     if device_duty >= last.duty {
         return last.rpm;
     }
-    // Find the first sample with duty > device_duty; interpolate
-    // between it and the previous sample.
     let hi_idx = curve
         .iter()
         .position(|s| s.duty > device_duty)
@@ -478,14 +366,9 @@ fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
     lo.rpm + delta * frac / span
 }
 
-/// Pick the displayed true-duty from the two reverse-mapped values.
-///
-/// Prefer the device-duty-derived value because it is stable across
-/// reads (the PWM sysfs file does not jitter the way the fan tachometer
-/// does). Fall back to the RPM-derived value when the two disagree by
-/// more than `threshold` percentage points: that gap signals a real
-/// failure (stuck fan, broken sensor, fan not responding to PWM) which
-/// the user should see surfaced in the duty display.
+/// Picks the displayed true-duty: device-derived is the stable source;
+/// RPM-derived takes over when the two diverge by more than `threshold`,
+/// since that gap signals a stuck fan or broken PWM the user should see.
 pub fn select_displayed_true_duty(
     device_derived: Option<Duty>,
     rpm_derived: Option<Duty>,
@@ -499,14 +382,8 @@ pub fn select_displayed_true_duty(
     }
 }
 
-/// Examine the calibration curves and produce any reliability warnings
-/// that should surface to the user. Warnings do not stop the sweep
-/// from persisting; they just colour the post-completion message and
-/// the popover status text.
-///
-/// Inputs are the up-sweep curve and the scalars already derived from
-/// it. The `curve_kind` is taken by mutable reference so this helper
-/// can force passthrough when the fan looks BIOS-controlled.
+/// Reliability warnings. Mutates `curve_kind` to `Stepped` when the
+/// fan looks BIOS-controlled (kills the mapping).
 pub fn derive_warnings(
     up_curve: &[DutySample],
     scalars: &DerivedScalars,
@@ -518,17 +395,12 @@ pub fn derive_warnings(
     let not_controllable_limit = jitter.saturating_mul(2);
     if effective_span <= not_controllable_limit {
         warnings.push(CalibrationWarning::NotControllable);
-        // BIOS / firmware-controlled fan: forcibly disable mapping so
-        // the dispatcher does not pretend the fan responds to true-duty.
         *curve_kind = CurveKind::Stepped;
-        // Don't also stack LimitedRange on top. NotControllable is
-        // the more pointed message and already conveys "tiny range".
+        // Skip LimitedRange: NotControllable already implies tiny range.
         return warnings;
     }
-    // LimitedRange is informational: it fires regardless of curve_kind
-    // because a narrow-range stepped fan also benefits from the
-    // explicit "the usable RPM band is small" cue alongside the
-    // "mapping disabled" status text.
+    // LimitedRange fires regardless of curve_kind: stepped fans benefit
+    // from the explicit "narrow band" cue alongside "mapping disabled".
     let limited_relative = scalars.rpm_max.saturating_mul(25) / 100;
     let limited_limit = limited_relative.max(500);
     if effective_span < limited_limit {
@@ -540,22 +412,9 @@ pub fn derive_warnings(
     warnings
 }
 
-/// Apply calibration-aware adjustments to a channel's `SpeedOptions`.
-///
-/// When the channel has a `Smooth` calibration, the dispatcher's
-/// true-duty mapping fully absorbs the device's dead zone: any
-/// `true_duty == 0` routes through `handle_write_zero` (writes 0%
-/// device-duty), and any `true_duty > 0` maps through the curve to a
-/// device-duty above `min_sustain_duty`. The user-facing range therefore
-/// widens to `[0, 100]` regardless of the raw device limits.
-///
-/// Stepped / uncalibrated / failed / in-progress channels keep their
-/// raw limits because the dispatcher passes those duty values through
-/// unchanged.
-///
-/// Pure function: callers fetch the relevant `Calibration` from the
-/// calibration store (sync) or actor handle (async) and pass it in.
-/// The `None` case is the uncalibrated path and yields the raw struct.
+/// Smooth-calibrated channels widen the user-facing range to [0, 100]
+/// because the mapping absorbs the device's dead zone. Stepped /
+/// uncalibrated channels keep their raw limits (passthrough).
 pub fn effective_speed_options(
     raw: &SpeedOptions,
     calibration: Option<&Calibration>,
@@ -570,23 +429,10 @@ pub fn effective_speed_options(
     so
 }
 
-/// Derive `min_stable_duty` from the down-sweep + parallel stability
-/// flags collected by the diagnoser.
-///
-/// Rule: scan the down-curve from highest duty to lowest; descend while
-/// each sample is `was_stable = true` AND `rpm >= start_threshold(rpm_max)`;
-/// stop at the first sample that fails either gate. The lowest duty in
-/// that contiguous-stable run is the threshold.
-///
-/// Returns `(threshold, oscillation_band)`:
-/// - `threshold` is the lowest stable duty (clamped at `min_sustain_duty`
-///   so a stable-all-the-way-down fan reports `min_sustain_duty` and the
-///   dispatcher's `max` clamp is a no-op).
-/// - `oscillation_band` is `Some((lower, upper))` only when **no**
-///   contiguous-stable run exists from the top (fully-unstable case).
-///   In the partial-unstable case (firmware-kick fans, the usual one)
-///   the threshold is set above the band and no warning is needed: the
-///   threshold itself is the user-facing signal.
+/// Scans the down-curve top-down for the contiguous run where each
+/// sample is stable AND above the start threshold. The run's bottom is
+/// the threshold (clamped to `min_sustain_duty`). Returns an
+/// oscillation band only in the fully-unstable case.
 pub fn derive_min_stable_duty(
     down_curve: &[DutySample],
     down_stable: &[bool],
@@ -599,7 +445,6 @@ pub fn derive_min_stable_duty(
         return (min_sustain_duty, None);
     }
     let threshold_rpm = start_threshold(rpm_max);
-    // Scan top-down; remember the lowest duty in the contiguous-stable run.
     let mut floor: Option<Duty> = None;
     for (sample, &stable) in down_curve.iter().rev().zip(down_stable.iter().rev()) {
         if stable && sample.rpm >= threshold_rpm {
@@ -609,15 +454,8 @@ pub fn derive_min_stable_duty(
         break;
     }
     match floor {
-        // All stable, or stable down to (and including) min_sustain_duty:
-        // collapse to min_sustain_duty so the dispatcher clamp degenerates.
         Some(duty) if duty <= min_sustain_duty => (min_sustain_duty, None),
-        // Partial: oscillation zone exists but a stable region sits above
-        // it. Threshold is the bottom of that stable region. No warning.
         Some(duty) => (duty, None),
-        // Fully unstable above start-threshold: every sample failed at
-        // least one gate. Threshold falls back to min_sustain_duty and we
-        // surface the band so the UI can explain what happened.
         None => {
             let upper = down_curve.last().map_or(min_sustain_duty, |s| s.duty);
             (min_sustain_duty, Some((min_sustain_duty, upper)))
@@ -625,10 +463,8 @@ pub fn derive_min_stable_duty(
     }
 }
 
-/// RPM span across the responding portion of the up-sweep: the
-/// distance from the sample at `min_start_duty` up to the curve's
-/// peak. Excluding the "off" prefix prevents `0 → rpm_max` from
-/// looking like a healthy range when the fan is actually a toggle.
+/// RPM span from `min_start_duty` up to peak. Excluding the off-prefix
+/// stops a toggle fan from looking like a healthy `0..rpm_max` range.
 fn effective_rpm_span(up_curve: &[DutySample], scalars: &DerivedScalars) -> RPM {
     let rpm_at_start = up_curve
         .iter()
@@ -637,11 +473,8 @@ fn effective_rpm_span(up_curve: &[DutySample], scalars: &DerivedScalars) -> RPM 
     scalars.rpm_max.saturating_sub(rpm_at_start)
 }
 
-/// Scalars derived from the raw sweep curves.
-///
-/// `max_eff_duty` is informational (where the up-curve approaches its peak
-/// within `jitter`); the mapping math does NOT use it as a duty cap. See
-/// `Calibration::max_eff_duty` for the full doc.
+/// Scalars derived from the raw sweep curves. `max_eff_duty` is
+/// informational, not a cap on the mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedScalars {
     pub min_start_duty: Duty,
@@ -655,14 +488,9 @@ mod tests {
     use super::*;
     use std::ops::Not;
 
-    /// Number of samples in the synthetic 5%-step curves used by the
-    /// pre-existing tests. The new sweep produces variable spacing in
-    /// real use, but uniform 5%-step samples are sufficient to test
-    /// the mapping math.
     const TEST_SAMPLE_COUNT: usize = 21;
     const TEST_STEP: u8 = 5;
 
-    /// Build a synthetic smooth up-curve: RPM ramps linearly from 0 to `rpm_top`.
     fn smooth_curve(rpm_top: RPM) -> Vec<DutySample> {
         let denominator =
             u32::try_from(TEST_SAMPLE_COUNT - 1).expect("TEST_SAMPLE_COUNT - 1 fits in u32");
@@ -678,7 +506,6 @@ mod tests {
             .collect()
     }
 
-    /// Build a stepped curve: three RPM plateaus at low/middle/high duty.
     fn stepped_curve(rpm_top: RPM) -> Vec<DutySample> {
         (0..TEST_SAMPLE_COUNT)
             .map(|i| {
@@ -694,7 +521,6 @@ mod tests {
     }
 
     fn make_smooth_calibration() -> Calibration {
-        // Build a fully-derived smooth calibration to test mapping math.
         let rpm_top = 2000;
         let up = smooth_curve(rpm_top);
         let down = smooth_curve(rpm_top);
@@ -717,7 +543,6 @@ mod tests {
 
     #[test]
     fn classify_smooth_curve_is_smooth() {
-        // Goal: a strictly-monotonic synthetic curve should classify as Smooth.
         let curve = smooth_curve(2000);
         let kind = classify_curve(&curve, 2000);
         assert_eq!(kind, CurveKind::Smooth);
@@ -725,7 +550,6 @@ mod tests {
 
     #[test]
     fn classify_stepped_curve_is_stepped() {
-        // Goal: a curve with only a handful of RPM plateaus must classify as Stepped.
         let curve = stepped_curve(2000);
         let kind = classify_curve(&curve, 2000);
         assert_eq!(kind, CurveKind::Stepped);
@@ -733,10 +557,8 @@ mod tests {
 
     #[test]
     fn classify_jittery_smooth_curve_stays_smooth() {
-        // Goal: small per-sample noise on a generally rising curve must not
-        // be misclassified as stepped (jitter tolerance must absorb it).
+        // Jitter tolerance must absorb alternating +/-30 RPM noise.
         let mut curve = smooth_curve(2000);
-        // Add alternating +/-30 RPM jitter; below the absolute floor of 50.
         for (i, sample) in curve.iter_mut().enumerate() {
             if i.is_multiple_of(2) {
                 sample.rpm = sample.rpm.saturating_add(30);
@@ -751,8 +573,6 @@ mod tests {
 
     #[test]
     fn forward_map_zero_is_zero() {
-        // Goal: true-duty 0 must always map to device-duty 0 for both kick and sustain
-        // (fan off is fan off regardless of curve shape).
         let cal = make_smooth_calibration();
         let mapped = cal.true_to_device(0).expect("smooth maps");
         assert_eq!(mapped.kick, 0);
@@ -761,12 +581,8 @@ mod tests {
 
     #[test]
     fn forward_map_hundred_writes_full_device_duty() {
-        // Goal: true-duty 100 targets `rpm_max` and writes a device-duty
-        // up to the curve's top. `max_eff_duty` is informational and
-        // does NOT cap the forward mapping. Real fans often keep
-        // gaining RPM beyond their `max_eff_duty` and the algorithm
-        // honors that. Asserts the mapping reaches 100% device-duty
-        // for a curve whose rpm_max sits at duty 100.
+        // true=100 must reach the curve's top duty; `max_eff_duty` does
+        // not cap the mapping, since fans often keep gaining RPM past it.
         let cal = make_smooth_calibration();
         let mapped = cal.true_to_device(100).expect("smooth maps");
         assert_eq!(
@@ -778,8 +594,6 @@ mod tests {
 
     #[test]
     fn forward_map_is_monotonic_in_true_duty() {
-        // Goal: increasing true-duty must produce non-decreasing device-duty
-        // along both kick and sustain dimensions.
         let cal = make_smooth_calibration();
         let mut last_kick = 0;
         let mut last_sustain = 0;
@@ -802,10 +616,7 @@ mod tests {
 
     #[test]
     fn reverse_map_round_trips_within_tolerance() {
-        // Goal: a true-duty written as sustain device-duty must, when read
-        // back via the RPM the fan would actually produce at that device
-        // duty (interpolated between samples, as real hardware does),
-        // recover close to the original true-duty.
+        // Write the sustain duty, sample RPM as hardware would, recover true-duty.
         let cal = make_smooth_calibration();
         for t in (5..=95).step_by(5) {
             let mapped = cal.true_to_device(t).expect("smooth maps");
@@ -821,7 +632,6 @@ mod tests {
 
     #[test]
     fn reverse_map_clamps_above_max() {
-        // Goal: RPM beyond the calibrated maximum must clamp at true-duty 100.
         let cal = make_smooth_calibration();
         let result = cal
             .rpm_to_true_duty(cal.rpm_max + 5000)
@@ -831,7 +641,6 @@ mod tests {
 
     #[test]
     fn reverse_map_clamps_below_floor() {
-        // Goal: RPM at or below the noise floor must clamp at true-duty 0.
         let cal = make_smooth_calibration();
         let result = cal.rpm_to_true_duty(0).expect("smooth maps");
         assert_eq!(result, 0);
@@ -839,9 +648,6 @@ mod tests {
 
     #[test]
     fn stepped_calibration_returns_none_from_mapping() {
-        // Goal: a stepped calibration must signal passthrough via None on
-        // both forward and reverse mapping (the dispatcher then keeps the
-        // user value untouched).
         let up = stepped_curve(2000);
         let down = stepped_curve(2000);
         let scalars = derive_scalars(&up, &down).expect("derives");
@@ -866,16 +672,12 @@ mod tests {
 
     #[test]
     fn device_to_true_duty_zero_maps_to_zero() {
-        // Goal: at 0% device-duty the fan is at rest; the displayed
-        // true-duty must therefore also be 0.
         let cal = make_smooth_calibration();
         assert_eq!(cal.device_to_true_duty(0).expect("smooth maps"), 0);
     }
 
     #[test]
     fn device_to_true_duty_saturated_returns_full() {
-        // Goal: at 100% device-duty the fan is at its max effective speed;
-        // the displayed true-duty must therefore land at 100.
         let cal = make_smooth_calibration();
         let recovered = cal.device_to_true_duty(100).expect("smooth maps");
         assert_eq!(recovered, 100);
@@ -883,10 +685,7 @@ mod tests {
 
     #[test]
     fn device_to_true_duty_round_trips_within_tolerance() {
-        // Goal: for each user-facing true-duty t, the device-duty written
-        // as sustain must round-trip back through `device_to_true_duty`
-        // within the same tolerance as the RPM round-trip. This is the
-        // stable-display path used by the status pipeline.
+        // Stable-display path used by the status pipeline.
         let cal = make_smooth_calibration();
         for t in (5..=95).step_by(5) {
             let mapped = cal.true_to_device(t).expect("smooth maps");
@@ -903,53 +702,37 @@ mod tests {
 
     #[test]
     fn select_uses_device_when_close() {
-        // Goal: when device-duty-derived and RPM-derived agree within the
-        // threshold, the stable device-duty value wins. This is the
-        // common path for a healthy fan with natural RPM jitter.
         let chosen = select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, Some(50));
     }
 
     #[test]
     fn select_falls_back_to_rpm_when_diverged() {
-        // Goal: a stuck or dead fan keeps the device-duty value the daemon
-        // wrote but produces no RPM. The cross-check must trip and the
-        // displayed value must be the RPM-derived one so the user sees
-        // the failure instead of a misleading "50%".
+        // Stuck/dead fan: device says 50, RPM says 0; cross-check trips.
         let chosen = select_displayed_true_duty(Some(50), Some(0), SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, Some(0));
     }
 
     #[test]
     fn select_uses_device_when_only_device_available() {
-        // Goal: a channel with no RPM reading at all (sensor missing or
-        // never reported) falls back to the device-duty-derived value
-        // instead of dropping the display.
         let chosen = select_displayed_true_duty(Some(40), None, SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, Some(40));
     }
 
     #[test]
     fn select_uses_rpm_when_only_rpm_available() {
-        // Goal: a channel with no cached device-duty (some repos report
-        // RPM-only) still gets a true-duty display via the RPM path.
         let chosen = select_displayed_true_duty(None, Some(40), SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, Some(40));
     }
 
     #[test]
     fn select_returns_none_when_neither_derived() {
-        // Goal: an uncalibrated or stepped channel produces None on both
-        // reverse maps; the helper must report None so the caller leaves
-        // the raw device-duty in place (passthrough).
         let chosen = select_displayed_true_duty(None, None, SANITY_THRESHOLD_PERCENT);
         assert_eq!(chosen, None);
     }
 
     #[test]
     fn derive_warnings_empty_for_healthy_smooth_curve() {
-        // Goal: a synthetic 0..=2000 linear smooth curve gives no
-        // warnings; the typical case must not produce false positives.
         let up = smooth_curve(2000);
         let down = smooth_curve(2000);
         let scalars = derive_scalars(&up, &down).expect("derives");
@@ -964,9 +747,7 @@ mod tests {
 
     #[test]
     fn derive_warnings_flags_not_controllable_when_span_within_jitter() {
-        // Goal: a fan spinning at a near-constant 1500 RPM regardless of
-        // duty must surface as NotControllable, and curve_kind must be
-        // forced to Stepped so the dispatcher passes through.
+        // Near-constant RPM regardless of duty: NotControllable + force Stepped.
         let up: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
             .map(|i| {
                 let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
@@ -991,13 +772,8 @@ mod tests {
 
     #[test]
     fn derive_warnings_flags_limited_range_when_span_too_small() {
-        // Goal: a fan that does respond to duty (effective_span beyond
-        // the NotControllable noise band) but whose total RPM range
-        // is under the absolute 500-RPM threshold must surface
-        // LimitedRange. We use a step-curve here because that is the
-        // natural shape produced by a real fan with this little range,
-        // but the warning still fires (LimitedRange is independent of
-        // curve_kind).
+        // Responding but total RPM range under 500: LimitedRange fires
+        // regardless of curve_kind.
         let up: Vec<DutySample> = (0..TEST_SAMPLE_COUNT)
             .map(|i| {
                 let duty = u8::try_from(i).expect("fits in u8") * TEST_STEP;
