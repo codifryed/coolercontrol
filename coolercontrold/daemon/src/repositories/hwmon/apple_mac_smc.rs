@@ -600,6 +600,7 @@ struct AppleFanInfo {
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::repositories::hwmon::drivetemp;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
@@ -1339,7 +1340,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
@@ -1918,7 +1919,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
@@ -1967,7 +1968,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
@@ -2056,7 +2057,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels,
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
@@ -2141,7 +2142,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels,
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
@@ -2178,7 +2179,7 @@ mod tests {
                 model: None,
                 u_id: "test_uid".to_string(),
                 channels: vec![],
-                block_dev_path: None,
+                drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
             });
 
