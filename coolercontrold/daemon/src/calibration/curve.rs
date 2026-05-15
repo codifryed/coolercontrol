@@ -76,7 +76,10 @@ pub struct Calibration {
     /// Down-sweep samples. Same shape, dense around the kick-in zone.
     pub down_curve: Vec<DutySample>,
 
-    /// Measured kick window (write-to-spin-up) plus safety margin.
+    /// Measured time from writing `min_start_duty` to RPM crossing the
+    /// start floor, plus a 50% safety margin. Used by the dispatcher's
+    /// Off -> Kicking -> On hand-off. Bounded by the daemon's poll rate
+    /// so values land on second-aligned increments.
     pub kick_duration_ms: u32,
 
     /// Lowest device-duty that reliably starts the fan from rest.

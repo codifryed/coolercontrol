@@ -75,7 +75,7 @@ impl Default for DiagnosisSettings {
             start_temp_max_c: 75.0,
             abort_temp_max_c: 85.0,
             start_rpm_min: 50,
-            kick_duration_default_ms: 1500,
+            kick_duration_default_ms: 3000,
             min_settle_ms: 400,
             stability_window: 3,
             stability_tolerance_rpm: 30,
@@ -239,6 +239,41 @@ where
     let sweep_outcome =
         perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
 
+    // Derive scalars and time the kick-up while we still own the channel
+    // (`under_diagnosis` is set so dispatch will not fight us).
+    let (sweep_data, scalars) = match sweep_outcome {
+        Ok(curves) => {
+            let scalars = derive_scalars(&curves.0, &curves.1);
+            (Some(curves), scalars)
+        }
+        Err(failure) => {
+            host.emit_progress(DiagnosisProgress {
+                device_uid: device_uid.clone(),
+                channel_name: channel_name.clone(),
+                phase: DiagnosisPhase::Finalizing,
+                percent: 100,
+                current_duty: None,
+                current_rpm: None,
+            });
+            state.set_under_diagnosis(key.clone(), false);
+            let _ = host.restore_setting(&snapshot).await;
+            return Err(failure);
+        }
+    };
+    let kick_duration_ms = match scalars {
+        Some(s) => measure_kick_duration(
+            host,
+            settings,
+            &device_uid,
+            &channel_name,
+            &cancellation,
+            s.min_start_duty,
+        )
+        .await
+        .unwrap_or(settings.kick_duration_default_ms),
+        None => settings.kick_duration_default_ms,
+    };
+
     host.emit_progress(DiagnosisProgress {
         device_uid: device_uid.clone(),
         channel_name: channel_name.clone(),
@@ -254,30 +289,48 @@ where
     state.set_under_diagnosis(key.clone(), false);
     let restore_result = host.restore_setting(&snapshot).await;
 
-    let (up_curve, down_curve, down_stable) = match sweep_outcome {
-        Ok(curves) => curves,
-        Err(failure) => return Err(failure),
-    };
+    let (up_curve, down_curve, down_stable) =
+        sweep_data.expect("sweep_data Some after error early-return");
+    let calibration = build_calibration(
+        up_curve,
+        down_curve,
+        &down_stable,
+        scalars,
+        kick_duration_ms,
+    );
 
-    let calibration = match derive_scalars(&up_curve, &down_curve) {
+    store.insert_unsaved(key, calibration.clone());
+
+    if let Err(err) = restore_result {
+        return Err(DiagnosisFailure::RestoreFailed(err.to_string()));
+    }
+
+    Ok(calibration)
+}
+
+/// Assembles a `Calibration` from the raw sweep curves + derived
+/// scalars. The `None` scalar path persists a passthrough record with
+/// `NoTachometer` so the popover keeps the warning visible.
+fn build_calibration(
+    up_curve: Vec<DutySample>,
+    down_curve: Vec<DutySample>,
+    down_stable: &[bool],
+    scalars: Option<crate::calibration::curve::DerivedScalars>,
+    kick_duration_ms: u32,
+) -> Calibration {
+    use crate::calibration::curve::{derive_min_stable_duty, derive_warnings, CalibrationWarning};
+    match scalars {
         Some(scalars) => {
             let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max);
-            let mut warnings =
-                crate::calibration::curve::derive_warnings(&up_curve, &scalars, &mut curve_kind);
-            // Derive the post-kick sustain floor from the down-sweep's
-            // per-step stability flags. When a contiguous-stable band
-            // sits above the oscillation zone the threshold rises to
-            // the band's bottom; otherwise it stays at min_sustain_duty
-            // and (in the fully-unstable case) an Oscillating warning
-            // is pushed so the popover can explain the result.
-            let (min_stable_duty, band) = crate::calibration::curve::derive_min_stable_duty(
+            let mut warnings = derive_warnings(&up_curve, &scalars, &mut curve_kind);
+            let (min_stable_duty, band) = derive_min_stable_duty(
                 &down_curve,
-                &down_stable,
+                down_stable,
                 scalars.rpm_max,
                 scalars.min_sustain_duty,
             );
             if let Some((lower_duty, upper_duty)) = band {
-                warnings.push(crate::calibration::curve::CalibrationWarning::Oscillating {
+                warnings.push(CalibrationWarning::Oscillating {
                     lower_duty,
                     upper_duty,
                 });
@@ -285,7 +338,7 @@ where
             Calibration {
                 up_curve,
                 down_curve,
-                kick_duration_ms: settings.kick_duration_default_ms,
+                kick_duration_ms,
                 min_start_duty: scalars.min_start_duty,
                 min_sustain_duty: scalars.min_sustain_duty,
                 min_stable_duty,
@@ -297,36 +350,85 @@ where
                 timestamp: Local::now(),
             }
         }
-        None => {
-            // No usable RPM anywhere in the sweep. Persist a
-            // passthrough record carrying NoTachometer so the popover
-            // surfaces the warning on reopen instead of regressing to
-            // "not calibrated". `min_*_duty` / `max_eff_duty` are
-            // pinned to 100 (no working duty); rpm_max is 0.
-            Calibration {
-                up_curve,
-                down_curve,
-                kick_duration_ms: settings.kick_duration_default_ms,
-                min_start_duty: 100,
-                min_sustain_duty: 100,
-                min_stable_duty: 100,
-                max_eff_duty: 100,
-                rpm_max: 0,
-                curve_kind: CurveKind::Stepped,
-                warnings: vec![crate::calibration::curve::CalibrationWarning::NoTachometer],
-                was_rpm_only: false,
-                timestamp: Local::now(),
+        None => Calibration {
+            up_curve,
+            down_curve,
+            kick_duration_ms,
+            min_start_duty: 100,
+            min_sustain_duty: 100,
+            min_stable_duty: 100,
+            max_eff_duty: 100,
+            rpm_max: 0,
+            curve_kind: CurveKind::Stepped,
+            warnings: vec![CalibrationWarning::NoTachometer],
+            was_rpm_only: false,
+            timestamp: Local::now(),
+        },
+    }
+}
+
+/// Measures how long the fan needs at `kick_duty` (typically
+/// `min_start_duty`) to cross `start_rpm_min` from rest. The dispatcher
+/// uses this as the Off -> Kicking -> On hand-off delay, so an accurate
+/// per-fan value matters: too short and the sustain duty writes before
+/// the fan is spinning; too long and the kick over-drives the fan
+/// audibly.
+///
+/// Steps: write 0 + sleep so the fan fully stops, then write `kick_duty`
+/// and watch the status timestamp for a fresh RPM read. Returns the
+/// elapsed time with a 50% safety margin, clamped to `[500ms, cap_ms]`.
+/// Resolution is bounded by the daemon's poll rate (typically 1 s).
+async fn measure_kick_duration<H>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    channel_name: &str,
+    cancellation: &CancellationToken,
+    kick_duty: Duty,
+) -> Result<u32, DiagnosisFailure>
+where
+    H: DiagnosisHost + ?Sized,
+{
+    if cancellation.is_cancelled() {
+        return Err(DiagnosisFailure::Cancelled);
+    }
+    // Stop the fan and let it coast to rest. `kick_duration_default_ms`
+    // is generous enough at 1 Hz polls (3 s = 3 polls) for any fan that
+    // can stop at all.
+    host.write_raw_duty(device_uid, channel_name, 0)
+        .await
+        .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
+    host.sleep_millis(settings.kick_duration_default_ms).await;
+
+    host.write_raw_duty(device_uid, channel_name, kick_duty)
+        .await
+        .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
+    let cap_ms = host.step_settle_cap_ms(device_uid);
+    let mut waited_ms: u32 = 0;
+    let mut last_seen_ts = host.latest_status_timestamp_ms(device_uid).await;
+    while waited_ms < cap_ms {
+        if cancellation.is_cancelled() {
+            return Err(DiagnosisFailure::Cancelled);
+        }
+        let current_ts = host.latest_status_timestamp_ms(device_uid).await;
+        if current_ts != last_seen_ts && current_ts.is_some() {
+            last_seen_ts = current_ts;
+            let rpm = host
+                .current_rpm(device_uid, channel_name)
+                .await
+                .unwrap_or(0);
+            if rpm >= settings.start_rpm_min {
+                let with_margin = waited_ms.saturating_add(waited_ms / 2);
+                return Ok(with_margin.clamp(500, cap_ms));
             }
         }
-    };
-
-    store.insert_unsaved(key, calibration.clone());
-
-    if let Err(err) = restore_result {
-        return Err(DiagnosisFailure::RestoreFailed(err.to_string()));
+        host.sleep_millis(settings.status_poll_interval_ms).await;
+        waited_ms = waited_ms.saturating_add(settings.status_poll_interval_ms);
     }
-
-    Ok(calibration)
+    // Fan never crossed start_rpm_min: return the cap so the dispatcher
+    // gets the largest plausible kick window. Cap is `poll_rate * 16` in
+    // production, so the dispatcher still spins the fan.
+    Ok(cap_ms)
 }
 
 /// Up-sweep then down-sweep, returning both curves and the down-sweep
@@ -382,13 +484,16 @@ where
             samples.len() < MAX_SAMPLES_PER_CURVE,
             "up-sweep sample bound"
         );
-        // First non-zero step on a fan with firmware kick spikes RPM far
-        // above its steady-state; wait the configured kick duration so
-        // the transient decays before we sample.
-        if duty == DUTY_STEP_DENSE {
-            host.sleep_millis(settings.kick_duration_default_ms).await;
-        }
         let in_dense = duty < UP_SWEEP_DENSE_RANGE_END_DUTY;
+        // First non-zero step on a firmware-kick fan: the kick fires
+        // when duty leaves 0%, spiking RPM well above the steady-state.
+        // Sleep post-write inside sweep_step so the kick has time to
+        // decay before settle_and_sample's stability window starts.
+        let extra_post_write_settle_ms = if duty == DUTY_STEP_DENSE {
+            settings.kick_duration_default_ms
+        } else {
+            0
+        };
         let (rpm, _was_stable) = sweep_step(
             host,
             settings,
@@ -398,6 +503,7 @@ where
             duty,
             DiagnosisPhase::UpSweep,
             in_dense,
+            extra_post_write_settle_ms,
         )
         .await?;
         samples.push(DutySample { duty, rpm });
@@ -456,6 +562,7 @@ where
             duty,
             DiagnosisPhase::DownSweep,
             in_dense,
+            0,
         )
         .await?;
         sample_pairs.push((DutySample { duty, rpm }, was_stable));
@@ -480,10 +587,9 @@ where
 }
 
 /// One step of the sweep: write `duty`, adaptively settle, return the
-/// stabilized RPM. Emits a progress event after the sample lands.
-/// `in_dense` is true when the current step is taken at 2% resolution
-/// (kick-in region or near the boundaries); it selects the tighter
-/// `stability_tolerance_rpm_extremes` for that step.
+/// stabilized RPM. `extra_post_write_settle_ms` adds a wait after the
+/// write, before settle starts, so firmware-kick transients can decay
+/// without polluting the stability window.
 async fn sweep_step<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -493,6 +599,7 @@ async fn sweep_step<H>(
     duty: Duty,
     phase: DiagnosisPhase,
     in_dense: bool,
+    extra_post_write_settle_ms: u32,
 ) -> Result<(RPM, bool), DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
@@ -510,6 +617,9 @@ where
     host.write_raw_duty(device_uid, channel_name, duty)
         .await
         .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
+    if extra_post_write_settle_ms > 0 {
+        host.sleep_millis(extra_post_write_settle_ms).await;
+    }
 
     // Tight tolerance for any 2%-step (dense) region: ramp-up from
     // rest and kick-in zone on the down-sweep both need more careful
@@ -1644,6 +1754,69 @@ mod tests {
             sample_at_2.rpm, 850,
             "spike at duty 2 must be preserved as-is"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn kick_duration_is_measured_and_bounded() {
+        // The saved kick_duration_ms must be the result of the live
+        // measurement, not just the default. Asserts the value is within
+        // [500, cap_ms] and that it differs from the default for a fan
+        // whose synthetic behavior places measurement at a different
+        // point on the resolution grid than the default.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("smooth fan diagnoses");
+
+        let cap_ms = host.step_cap_ms.get();
+        assert!(
+            result.kick_duration_ms >= 500,
+            "kick_duration must respect the 500ms floor, got {}",
+            result.kick_duration_ms
+        );
+        assert!(
+            result.kick_duration_ms <= cap_ms,
+            "kick_duration must not exceed cap_ms ({cap_ms}), got {}",
+            result.kick_duration_ms
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn kick_duration_falls_back_to_default_on_dead_fan() {
+        // Dead fan has no derivable min_start_duty, so kick_duration
+        // skips measurement and uses the configured default.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_dead_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("dead fan persists passthrough");
+
+        assert_eq!(result.kick_duration_ms, settings.kick_duration_default_ms);
     }
 
     #[tokio::test(flavor = "current_thread")]
