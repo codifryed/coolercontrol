@@ -33,7 +33,7 @@
 
 use super::curve::{
     classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
-    DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE,
+    DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE, UNRESPONSIVE_ABORT_DUTY,
 };
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
@@ -44,6 +44,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Local;
 use std::collections::VecDeque;
+use std::ops::Not;
 use tokio_util::sync::CancellationToken;
 
 /// Tunable parameters for a single diagnosis run. Defaults: 75 C
@@ -397,6 +398,13 @@ where
 /// steps to 0%. Mid-sweep failures (temp abort, cancellation, write
 /// failure) short-circuit the function; the caller still reapplies the
 /// snapshot and clears `under_diagnosis` afterwards.
+///
+/// If the up-sweep produced no sample at or above `start_rpm_min`
+/// (either because it aborted early at `UNRESPONSIVE_ABORT_DUTY` or
+/// because it ran to 100% without a kick-in), the down-sweep is
+/// skipped entirely. `derive_scalars` short-circuits to `None` for a
+/// zero-rpm up-curve, so the caller persists the existing passthrough
+/// + `NoTachometer` calibration.
 async fn perform_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -411,22 +419,27 @@ where
     let kick_in_duty = up_curve
         .iter()
         .find(|s| s.rpm >= settings.start_rpm_min)
-        .map_or(100, |s| s.duty);
-    let (down_curve, down_stable) = perform_down_sweep(
-        host,
-        settings,
-        device_uid,
-        channel_name,
-        cancellation,
-        kick_in_duty,
-    )
-    .await?;
+        .map(|s| s.duty);
+    let (down_curve, down_stable) = match kick_in_duty {
+        Some(duty) => {
+            perform_down_sweep(host, settings, device_uid, channel_name, cancellation, duty).await?
+        }
+        None => (Vec::new(), Vec::new()),
+    };
     Ok((up_curve, down_curve, down_stable))
 }
 
 /// Up-sweep: dense (2%) steps from 0 to first observed kick-in, then
 /// sparse (5%) steps to 100. Returns the sample list (sorted by duty
 /// ascending, first sample at duty 0, last at duty 100).
+///
+/// Aborts early once duty reaches `UNRESPONSIVE_ABORT_DUTY` without
+/// any sample crossing `start_rpm_min`: a disconnected or stalled
+/// fan would otherwise consume the full per-step settle cap at every
+/// remaining 2% step, dragging the sweep out by ~1-2 minutes for an
+/// outcome that is already known. The returned partial sample list
+/// signals the abort to `perform_sweep` (no sample at or above the
+/// floor), which then skips the down-sweep.
 async fn perform_up_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -445,7 +458,7 @@ where
             samples.len() < MAX_SAMPLES_PER_CURVE,
             "up-sweep sample bound"
         );
-        let in_dense = !kicked_in;
+        let in_dense = kicked_in.not();
         // Up-sweep stability is observed but not retained: the post-kick
         // sustain floor is derived from the down-sweep (where the
         // dispatcher's interpolation also lives), so up-curve flags would
@@ -465,8 +478,14 @@ where
         if duty == 100 {
             break;
         }
-        if !kicked_in && rpm >= settings.start_rpm_min {
+        if kicked_in.not() && rpm >= settings.start_rpm_min {
             kicked_in = true;
+        }
+        // Order matters: `kicked_in` is updated for the just-pushed
+        // sample first, so a fan that crosses the floor exactly at
+        // `UNRESPONSIVE_ABORT_DUTY` is not aborted.
+        if kicked_in.not() && duty >= UNRESPONSIVE_ABORT_DUTY {
+            return Ok(samples);
         }
         let step = if kicked_in {
             DUTY_STEP_SPARSE
@@ -1139,6 +1158,74 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn dead_fan_aborts_at_unresponsive_threshold_and_skips_down_sweep() {
+        // Goal: a fan with no RPM response must abort the up-sweep at
+        // UNRESPONSIVE_ABORT_DUTY (50%) and skip the down-sweep
+        // entirely. The persisted Calibration is still the passthrough
+        // NoTachometer record (same end-state as a full dead-fan sweep)
+        // but produced in ~half the up-sweep steps and zero down-sweep
+        // steps. Asserts the step-count bound to lock the speed gain
+        // against regression.
+        use crate::calibration::curve::UNRESPONSIVE_ABORT_DUTY;
+        use crate::calibration::CalibrationWarning;
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_dead_fan();
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let calibration = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("dead fan still persists passthrough on early abort");
+
+        // Up-sweep stopped at UNRESPONSIVE_ABORT_DUTY (no higher duty
+        // was written by the diagnoser).
+        let max_up_duty = calibration
+            .up_curve
+            .iter()
+            .map(|s| s.duty)
+            .max()
+            .expect("up-curve has at least one sample");
+        assert_eq!(max_up_duty, UNRESPONSIVE_ABORT_DUTY);
+
+        // Down-sweep was skipped entirely.
+        assert!(calibration.down_curve.is_empty());
+
+        // End-state matches the existing dead-fan passthrough.
+        assert!(
+            calibration
+                .warnings
+                .contains(&CalibrationWarning::NoTachometer),
+            "expected NoTachometer warning, got {:?}",
+            calibration.warnings
+        );
+        assert_eq!(calibration.curve_kind, CurveKind::Stepped);
+        assert_eq!(calibration.rpm_max, 0);
+
+        // The total duty writes are bounded: 26 up-sweep steps (0, 2,
+        // ..., 50) plus the restore. Pre-change behaviour was ~51 up
+        // + ~51 down = ~102 writes. Bound at 32 to detect regression
+        // while leaving room for restore-path writes.
+        assert!(
+            host.step_counter.get() <= 32,
+            "early abort should bound step_counter, got {}",
+            host.step_counter.get()
+        );
+
+        assert!(store.has(&key("dev-a", "fan1")));
+        assert_eq!(host.restores_applied.borrow().len(), 1);
+        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn temp_abort_mid_sweep_zeros_channel_and_restores_snapshot() {
         // Goal: a temperature climb past the abort gate during the
         // sweep terminates the run, writes 0 to the channel for
@@ -1765,6 +1852,5 @@ mod tests {
         assert_eq!(err, DiagnosisFailure::Cancelled);
     }
 
-    use std::ops::Not;
     use std::rc::Rc;
 }

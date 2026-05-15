@@ -52,6 +52,15 @@ pub const DUTY_STEP_DENSE: u8 = 2;
 /// started).
 pub const KICK_ZONE_BUFFER_PERCENT: u8 = 10;
 
+/// Up-sweep duty at which a fan that has produced no detectable
+/// motion is declared unresponsive. The remainder of the sweep is
+/// skipped and a passthrough calibration with `NoTachometer` is
+/// persisted, matching the dead-fan end state but avoiding the
+/// per-step settle timeouts for the unreachable upper half of the
+/// sweep and the entire down-sweep. 50 sits well above the start
+/// duty of essentially any real PWM fan.
+pub const UNRESPONSIVE_ABORT_DUTY: Duty = 50;
+
 /// Maximum samples we will accept in a single curve. Loose upper
 /// bound; the sweep produces ~30 samples per direction with default
 /// step sizes. Enforced at deserialization time to guard against
