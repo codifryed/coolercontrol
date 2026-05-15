@@ -37,6 +37,11 @@ pub const DUTY_STEP_DENSE: u8 = 2;
 /// down-sweep. Wide enough to cover hysteresis.
 pub const KICK_ZONE_BUFFER_PERCENT: u8 = 10;
 
+/// Up-sweep dense range. Dense (2%) below, sparse (5%) above. Wide
+/// enough to capture firmware-floor / firmware-kick fans cleanly; the
+/// real start-of-response can sit at ~20-25% on those.
+pub const UP_SWEEP_DENSE_RANGE_END_DUTY: Duty = 30;
+
 /// Up-sweep duty at which a non-spinning fan is declared unresponsive
 /// and the sweep is aborted. 50% is well above any real PWM fan's start.
 pub const UNRESPONSIVE_ABORT_DUTY: Duty = 50;
@@ -274,16 +279,22 @@ fn duty_for_rpm(curve: &[DutySample], rpm: RPM) -> Duty {
 
 /// `Stepped` when fewer than half the inter-sample gaps show RPM
 /// growth above the jitter tolerance (catches `ThinkPad` fans, step-pumps).
+/// Jitter scales with step size so dense (2%) gaps are not unfairly
+/// penalized vs. sparse (5%) gaps.
 pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
     assert!(rpm_max > 0);
     if up_curve.len() < 2 {
         return CurveKind::Stepped;
     }
 
-    let jitter = jitter_threshold(rpm_max);
+    let sparse_jitter = jitter_threshold(rpm_max);
     let mut transitions: u32 = 0;
     for pair in up_curve.windows(2) {
-        if pair[1].rpm > pair[0].rpm.saturating_add(jitter) {
+        let step = u32::from(pair[1].duty.saturating_sub(pair[0].duty)).max(1);
+        let threshold =
+            u32::try_from(u64::from(sparse_jitter) * u64::from(step) / u64::from(DUTY_STEP_SPARSE))
+                .unwrap_or(sparse_jitter);
+        if pair[1].rpm > pair[0].rpm.saturating_add(threshold) {
             transitions += 1;
         }
     }

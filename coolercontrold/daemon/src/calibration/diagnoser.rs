@@ -24,6 +24,7 @@
 use super::curve::{
     classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
     DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE, UNRESPONSIVE_ABORT_DUTY,
+    UP_SWEEP_DENSE_RANGE_END_DUTY,
 };
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
@@ -75,7 +76,7 @@ impl Default for DiagnosisSettings {
             abort_temp_max_c: 85.0,
             start_rpm_min: 50,
             kick_duration_default_ms: 1500,
-            min_settle_ms: 200,
+            min_settle_ms: 400,
             stability_window: 3,
             stability_tolerance_rpm: 30,
             stability_tolerance_rpm_extremes: 15,
@@ -227,6 +228,14 @@ where
     // restore-time dispatch can do a fresh kick under the new mapping.
     state.begin_diagnosis(key.clone());
 
+    // Land at a known 0% baseline before the sweep starts. If the channel
+    // was previously driven, the fan still has momentum or a pending
+    // firmware kick; the sleep gives it time to fully stop spinning.
+    // Write failures here are not fatal: perform_sweep's first step
+    // surfaces its own write error if the hardware is unreachable.
+    let _ = host.write_raw_duty(&device_uid, &channel_name, 0).await;
+    host.sleep_millis(settings.kick_duration_default_ms).await;
+
     let sweep_outcome =
         perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
 
@@ -348,12 +357,13 @@ where
     Ok((up_curve, down_curve, down_stable))
 }
 
-/// Up-sweep: dense (2%) steps from 0 to first observed kick-in, then
-/// sparse (5%) steps to 100. Returns the sample list (sorted by duty
-/// ascending, first sample at duty 0, last at duty 100). Aborts early
-/// once duty reaches `UNRESPONSIVE_ABORT_DUTY` without any sample
-/// crossing `start_rpm_min`: the returned partial list signals the
-/// abort to `perform_sweep` which then skips the down-sweep.
+/// Up-sweep: dense (2%) steps below `UP_SWEEP_DENSE_RANGE_END_DUTY`,
+/// sparse (5%) above, returning a sample list ascending from duty 0
+/// to 100. The first non-zero step pauses for `kick_duration_default_ms`
+/// so firmware kicks decay before sampling. Aborts early once duty
+/// reaches `UNRESPONSIVE_ABORT_DUTY` without any sample crossing
+/// `start_rpm_min`: the partial list signals the abort to
+/// `perform_sweep` which then skips the down-sweep.
 async fn perform_up_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -372,9 +382,13 @@ where
             samples.len() < MAX_SAMPLES_PER_CURVE,
             "up-sweep sample bound"
         );
-        let in_dense = kicked_in.not();
-        // Up-sweep stability is discarded; the sustain floor is derived
-        // from the down-sweep where the dispatcher interpolates.
+        // First non-zero step on a fan with firmware kick spikes RPM far
+        // above its steady-state; wait the configured kick duration so
+        // the transient decays before we sample.
+        if duty == DUTY_STEP_DENSE {
+            host.sleep_millis(settings.kick_duration_default_ms).await;
+        }
+        let in_dense = duty < UP_SWEEP_DENSE_RANGE_END_DUTY;
         let (rpm, _was_stable) = sweep_step(
             host,
             settings,
@@ -393,15 +407,13 @@ where
         if kicked_in.not() && rpm >= settings.start_rpm_min {
             kicked_in = true;
         }
-        // Update `kicked_in` first so a sample crossing the floor exactly
-        // at `UNRESPONSIVE_ABORT_DUTY` is not aborted.
         if kicked_in.not() && duty >= UNRESPONSIVE_ABORT_DUTY {
             return Ok(samples);
         }
-        let step = if kicked_in {
-            DUTY_STEP_SPARSE
-        } else {
+        let step = if in_dense {
             DUTY_STEP_DENSE
+        } else {
+            DUTY_STEP_SPARSE
         };
         duty = duty.saturating_add(step).min(100);
     }
@@ -711,6 +723,9 @@ mod tests {
 
     impl MockHost {
         fn new() -> Self {
+            // step_cap_ms sized to ride out 5+ stale reads at the new
+            // longer min_settle_ms. `fresh_read_cap` is 50% of cap, so
+            // 2500 ms keeps the stale-fallback from firing prematurely.
             Self {
                 rpm_for_duty: RefCell::new(std::collections::HashMap::new()),
                 duty_writes: RefCell::new(Vec::new()),
@@ -724,7 +739,7 @@ mod tests {
                 fail_write_at_step: Cell::new(None),
                 progress_events: RefCell::new(Vec::new()),
                 status_timestamp_ms: Cell::new(0),
-                step_cap_ms: Cell::new(1000),
+                step_cap_ms: Cell::new(2500),
                 stale_reads_remaining: Cell::new(0),
                 stale_rpm: Cell::new(0),
             }
@@ -1525,12 +1540,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn up_sweep_uses_dense_steps_before_kick_in() {
-        // Goal: the up-sweep walks duty in 2% increments from 0 until
-        // the fan RPM crosses start_rpm_min, then switches to 5%. With
-        // the synthetic smooth fan (rpm = 20 * duty, start_rpm_min =
-        // 50), kick-in happens at duty 3 (60 RPM). The recorded
-        // up_curve must contain consecutive 2%-aligned duties below
-        // and through kick-in, and 5%-aligned duties beyond.
+        // Goal: the up-sweep walks 2% steps below UP_SWEEP_DENSE_RANGE_END_DUTY
+        // (30%) and 5% above, regardless of where the fan kicks in.
+        // 2%-aligned duties must appear below 30%, 5%-aligned beyond.
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
         let host = MockHost::new().with_smooth_fan();
@@ -1549,34 +1561,88 @@ mod tests {
         .await
         .expect("smooth fan diagnoses");
 
-        // Duties 0 and 2 must appear (2%-step before kick-in).
         let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
-        assert!(duties.contains(&0), "up_curve missing duty 0: {duties:?}");
-        assert!(duties.contains(&2), "up_curve missing duty 2: {duties:?}");
-        // After kick-in (at duty 4 on this synthetic fan) the walker
-        // steps by 5. Verify at least two consecutive +5 increments
-        // are present in the post-kick-in portion of the curve.
-        let post_kick: Vec<Duty> = duties.iter().copied().filter(|&d| d > 5).collect();
-        assert!(
-            post_kick.len() >= 3,
-            "expected several post-kick-in samples: {post_kick:?}"
-        );
-        let consecutive_5_gap = post_kick.windows(2).any(|w| w[1] - w[0] == 5);
+        // Every 2%-aligned duty 0..=28 must be present (dense range).
+        for expected in (0u8..=28).step_by(2) {
+            assert!(
+                duties.contains(&expected),
+                "dense duty {expected} missing: {duties:?}"
+            );
+        }
+        // Above the dense range, the walker steps by 5.
+        let post_dense: Vec<Duty> = duties.iter().copied().filter(|&d| d >= 30).collect();
+        let consecutive_5_gap = post_dense.windows(2).any(|w| w[1] - w[0] == 5);
         assert!(
             consecutive_5_gap,
-            "post-kick-in samples must include a 5% step: {post_kick:?}"
+            "post-dense samples must include a 5% step: {post_dense:?}"
         );
-        // The very last sample is at duty 100.
         assert_eq!(
             result.up_curve[result.up_curve.len() - 1].duty,
             100,
             "up_curve must end at duty 100"
         );
-        // A non-2%-aligned, non-5%-aligned mid-range duty (e.g. 47)
-        // must NOT appear; only the chosen grid is sampled.
+        // A non-2%-aligned, non-5%-aligned mid-range duty must NOT appear.
         assert!(
             duties.contains(&47).not(),
             "duty 47 should not be sampled: {duties:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn up_sweep_stays_dense_through_firmware_kick_artifact() {
+        // Goal: a firmware-kick fan that briefly spikes RPM at the first
+        // non-zero duty (e.g. 850 RPM at 2% then settles to 300 RPM at
+        // 4-28%) must still get dense sampling through the entire 0-30%
+        // range. Old code would see the 850 RPM "kick-in", flip to sparse,
+        // and miss the floor. New code is dense-by-duty so the firmware
+        // kick decay is captured cleanly.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new();
+        {
+            let mut map = host.rpm_for_duty.borrow_mut();
+            for duty in 0u8..=100 {
+                let rpm = match duty {
+                    0 => 0,
+                    2 => 850,
+                    d if d <= 30 => 300,
+                    d => 300 + u32::from(d - 30) * 1700 / 70,
+                };
+                map.insert(duty, rpm);
+            }
+        }
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let result = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect("firmware-kick fan diagnoses");
+
+        let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
+        // Every dense duty from 0 to 28 must be captured.
+        for expected in (0u8..=28).step_by(2) {
+            assert!(
+                duties.contains(&expected),
+                "firmware-kick fan missed dense duty {expected}: {duties:?}"
+            );
+        }
+        // The 850 RPM spike at duty 2 is preserved verbatim.
+        let sample_at_2 = result
+            .up_curve
+            .iter()
+            .find(|s| s.duty == 2)
+            .expect("duty 2 sample present");
+        assert_eq!(
+            sample_at_2.rpm, 850,
+            "spike at duty 2 must be preserved as-is"
         );
     }
 
