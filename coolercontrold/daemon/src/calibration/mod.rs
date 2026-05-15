@@ -23,16 +23,6 @@
 //! (RPM-normalized: 0% = no spin, 100% = max effective RPM) to the
 //! device-duty actually written to hardware, and inversely maps measured
 //! RPM back to true-duty for status display.
-//!
-//! Phase 1 ships the data types, mapping math, step-curve detection, and
-//! JSON persistence. The dispatch state machine, the diagnoser sweep, and
-//! the REST/SSE API land in later phases, which is why several public
-//! items here are dead until those phases consume them.
-
-// Phase 1 staging: consumers of these public APIs (dispatch state machine,
-// diagnoser, REST/SSE handlers) land in subsequent phases. The allow is
-// removed as soon as the first consumer is added.
-#![allow(dead_code, unused_imports)]
 
 mod augmenter;
 mod curve;

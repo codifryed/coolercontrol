@@ -25,11 +25,8 @@
 //! and restoring the snapshotted setting at the end.
 //!
 //! All I/O is funnelled through the [`DiagnosisHost`] trait so the
-//! sweep can be exercised against a mock in unit tests. The host is
-//! implemented for real by a thin adapter living on the engine in a
-//! later phase; Phase 3b-i only ships the diagnoser itself.
-
-#![allow(dead_code)]
+//! sweep can be exercised against a mock in unit tests. The production
+//! impl lives on the engine.
 
 use super::curve::{
     classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
@@ -115,9 +112,8 @@ impl Default for DiagnosisSettings {
     }
 }
 
-/// Reasons a diagnosis can fail. The caller surfaces these directly
-/// to the user (the API layer in Phase 3b-ii will map them onto REST
-/// error codes / SSE `calibration_failed` events).
+/// Reasons a diagnosis can fail. The API layer maps these onto REST
+/// error codes and `calibration_failed` SSE events.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosisFailure {
     /// One or more temperature sensors crossed the pre-flight limit
@@ -163,9 +159,8 @@ pub enum SnapshotKind {
     Profile(ProfileUID),
 }
 
-/// A progress notification emitted by the diagnoser. Phase 4a-ii will
-/// broadcast these as `calibration_progress` SSE events; Phase 4a-i
-/// just plumbs the type through.
+/// A progress notification emitted by the diagnoser. The engine
+/// broadcasts these as `calibration_progress` SSE events.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosisProgress {
     pub device_uid: DeviceUID,
@@ -189,28 +184,19 @@ pub enum DiagnosisPhase {
 }
 
 /// Single trait carrying every I/O dependency the diagnoser needs.
-///
-/// The production implementation lives on the engine (Phase 3b-ii)
-/// and dispatches the calls to the repos / config / sleep timers.
-/// Tests implement this trait directly with synthetic RPM curves and
-/// instantly-elapsed sleeps.
+/// The engine provides the production impl; tests implement it
+/// directly with synthetic RPM curves and instantly-elapsed sleeps.
 #[async_trait(?Send)]
 pub trait DiagnosisHost {
     /// Latest measured RPM for the channel, or `None` if no reading.
     async fn current_rpm(&self, device_uid: &UID, channel_name: &str) -> Option<RPM>;
 
     /// Timestamp (millis since epoch) of the most recent status entry
-    /// for the device, or `None` if no status has landed yet.
-    ///
-    /// The diagnoser uses the advance of this value to detect that
-    /// the main loop has refreshed the device's cached status, so
-    /// per-step settling does not race ahead of the cache. Note that
-    /// the main loop publishes a status every poll cycle regardless
-    /// of whether the underlying read succeeded; a timestamp advance
-    /// is not a strict guarantee of a fresh post-write value. It is
-    /// however a strong proxy for healthy devices, and the
-    /// stability-window check below mitigates the outlier where a
-    /// wedged device's status keeps re-publishing the same value.
+    /// for the device, or `None` if no status has landed yet. The
+    /// diagnoser watches this value to know the cache has refreshed
+    /// before sampling RPM, so per-step settling does not race ahead
+    /// of the cache. The stability-window check covers the edge case
+    /// where a wedged device re-publishes the same value.
     async fn latest_status_timestamp_ms(&self, device_uid: &UID) -> Option<i64>;
 
     /// Per-step cap for the adaptive settle in milliseconds. Should
@@ -242,23 +228,16 @@ pub trait DiagnosisHost {
     async fn sleep_millis(&self, millis: u32);
 
     /// Receive a progress notification from the diagnoser. Default
-    /// no-op so unit tests using a minimal mock host do not have to
-    /// implement it; the production engine wires this to an SSE
-    /// broadcast in Phase 4a-ii.
+    /// no-op so minimal mock hosts do not have to implement it; the
+    /// engine wires this to an SSE broadcast.
     fn emit_progress(&self, _progress: DiagnosisProgress) {}
 }
 
 /// Run a single calibration diagnosis on `(device_uid, channel_name)`.
-///
-/// On success the produced `Calibration` is inserted into the store's
-/// **in-memory** map and also returned to the caller; the caller is
-/// then responsible for triggering `store.save_to_disk()` if disk
-/// persistence is desired. Decoupling disk I/O from the sweep keeps
-/// the diagnoser free of filesystem dependencies (so unit tests run
-/// without write access to `/etc/coolercontrol`).
-///
-/// On any failure the snapshotted setting is reapplied via
-/// `host.restore_setting` and the channel's `under_diagnosis` flag
+/// On success the produced `Calibration` is inserted in-memory and
+/// returned; the caller flushes via `store.save_to_disk()` if desired
+/// (keeps the diagnoser free of filesystem deps for tests). On any
+/// failure the snapshotted setting is restored and `under_diagnosis`
 /// is cleared.
 pub async fn run_diagnosis<H>(
     state: &FanStateMap,
@@ -1426,7 +1405,7 @@ mod tests {
         // event, one or more per-sweep events with monotonically
         // non-decreasing percent for the up-sweep half, and a final
         // finalizing event at 100%. This is what SSE clients consume
-        // to render the progress bar in Phase 4a-ii.
+        // to render the progress bar.
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
         let host = MockHost::new().with_smooth_fan();

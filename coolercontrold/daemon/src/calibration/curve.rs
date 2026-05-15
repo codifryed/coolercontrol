@@ -26,11 +26,6 @@
 //! Smooth curves get RPM-normalized true-duty mapping. Stepped curves are
 //! returned to the caller via `None` so the dispatch layer passes through.
 
-// Phase 1 staging: math and types here are consumed in later phases
-// (dispatch, diagnoser). Until then they are dead in production but
-// fully exercised by the test suite at the bottom of this file.
-#![allow(dead_code)]
-
 use crate::device::{Duty, SpeedOptions, RPM};
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
@@ -124,18 +119,11 @@ pub struct Calibration {
     pub min_sustain_duty: Duty,
 
     /// Lowest device-duty at which the fan operates stably (no oscillation).
-    ///
-    /// On well-behaved fans this equals `min_sustain_duty`: every spinning
-    /// duty is also stable. Some controllers apply a kick in firmware that
-    /// keeps RPM above an internal floor, producing an audible oscillation
-    /// in a band immediately above `min_sustain_duty`; on those fans the
-    /// threshold sits above the band and the dispatcher clamps the
-    /// post-kick sustain (and the kick target itself) to this value so the
-    /// fan never operates inside the oscillation zone.
-    ///
-    /// Defaults to 0 on older persisted records that pre-date this field;
-    /// the dispatcher's `max` clamp then degenerates to a no-op, preserving
-    /// pre-existing behaviour until the user recalibrates.
+    /// Equals `min_sustain_duty` on well-behaved fans; sits above it on
+    /// firmware-kicked fans that oscillate in a band just above sustain,
+    /// in which case the dispatcher clamps both kick and sustain up to
+    /// this value to stay out of the zone. Defaults to 0 on older
+    /// records (clamp degenerates to a no-op until recalibration).
     #[serde(default)]
     pub min_stable_duty: Duty,
 
@@ -160,21 +148,11 @@ pub struct Calibration {
     #[serde(default)]
     pub warnings: Vec<CalibrationWarning>,
 
-    /// True when the channel produced `duty: None` status entries that
-    /// the daemon backfilled with calibration-derived true-duty values
-    /// at the end of the diagnosis sweep. The flag drives two
-    /// symmetric behaviors:
-    ///
-    /// - On calibration delete, the daemon resets the channel's
-    ///   `status_history` duty values to `None` so the UI chart stops
-    ///   displaying stale calibration-derived duties for a channel
-    ///   whose underlying repository does not natively report duty.
-    /// - The UI consumes this bit (via the completion event and via
-    ///   the cached calibration on delete) to decide whether to prompt
-    ///   for a UI reload that rebuilds the chart series list.
-    ///
-    /// Defaults to false on older persisted records that pre-date this
-    /// field. Users recalibrate to opt into the new behavior.
+    /// True when the diagnoser backfilled `duty: None` history entries
+    /// with calibration-derived values (channel has no native duty
+    /// reporting). On delete the daemon clears those backfilled duties,
+    /// and the UI uses this bit to decide whether to prompt for a chart
+    /// reload. Defaults to false on older records.
     #[serde(default)]
     pub was_rpm_only: bool,
 
@@ -210,13 +188,11 @@ pub enum CalibrationWarning {
     /// active; the popover surfaces the span so the user can decide
     /// whether to clear.
     LimitedRange { rpm_span: RPM, rpm_max: RPM },
-    /// The fan never settled into a stable RPM anywhere above
-    /// `min_sustain_duty`, typically a cheap firmware-kicked fan
-    /// whose internal floor sits well above its mechanical minimum.
-    /// `min_stable_duty` could not be derived; the dispatcher falls
-    /// back to `min_sustain_duty` (no clamp). `lower_duty`/`upper_duty`
-    /// describe the duty range observed to oscillate so the UI can
-    /// surface what the diagnoser saw.
+    /// The fan never settled above `min_sustain_duty` (typical of a
+    /// cheap firmware-kicked fan whose internal floor sits above its
+    /// mechanical minimum). `min_stable_duty` is undefined; the
+    /// dispatcher falls back to `min_sustain_duty`. `lower_duty` /
+    /// `upper_duty` mark the observed oscillation range for the UI.
     Oscillating { lower_duty: Duty, upper_duty: Duty },
 }
 

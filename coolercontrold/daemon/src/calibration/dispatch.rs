@@ -18,32 +18,20 @@
 
 //! Unified write entry point for calibrated channels.
 //!
-//! Every duty write made on behalf of an engine commander or an API
-//! setting actor goes through [`dispatch`], which:
+//! Every duty write goes through [`dispatch`]:
 //!
-//! - **Passthrough**: for uncalibrated channels, stepped calibrations,
-//!   and channels currently under diagnosis, writes the raw user
-//!   value to hardware and returns.
-//! - **Kick-then-settle orchestration**: for smooth calibrations, a
-//!   transition out of `Off` writes the kick duty and schedules a
-//!   deferred sustain-write task via `tokio::task::spawn_local`.
-//! - **Mid-kick target adjustment**: subsequent dispatches that arrive
-//!   while the channel is still `Kicking` only update the pending
-//!   sustain target; they do not re-kick.
+//! - **Passthrough** for uncalibrated, stepped, or under-diagnosis channels.
+//! - **Kick-then-settle**: an `Off` -> spinning transition on a smooth
+//!   calibration writes the kick duty, then spawns a deferred sustain write.
+//! - **Mid-kick adjust**: writes that arrive while `Kicking` only update the
+//!   pending sustain target, they do not re-kick.
 //!
-//! The spawn path uses `tokio::task::spawn_local` (not a
-//! `moro_local::Scope`) because `dispatch` is called from inside
-//! already-spawned futures on the engine's main scope, and
-//! `moro_local::Scope::spawn` panics with `RefCell already borrowed`
-//! when re-entered from inside an active scope task. The clone cost
-//! here is one `Rc::clone` of `state` and `writer` per Off->Kicking
-//! transition, which is rare (only when a fan goes from stopped to
-//! spinning, not every per-tick write).
-//!
-//! Tests call `complete_kick` directly to exercise the post-kick
-//! transition without driving an async timer.
+//! The deferred path uses `tokio::task::spawn_local` rather than a
+//! `moro_local::Scope` because dispatch is called from inside an
+//! already-spawned scope task, and re-entering the scope panics with
+//! `RefCell already borrowed`. The `Rc::clone` cost is one per Off->Kicking
+//! transition (rare).
 
-#![allow(dead_code)]
 // `state` / `store` / `writer` / `writes` are well-established semantic
 // names in this module (the state map, the calibration store, the duty
 // writer, and the captured write log). Renaming any of them to satisfy

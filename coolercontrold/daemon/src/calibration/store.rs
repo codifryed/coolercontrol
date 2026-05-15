@@ -67,10 +67,8 @@ impl CalibrationStore {
         Ok(store)
     }
 
-    /// Construct an empty store without touching disk.
-    ///
-    /// Public so unit tests and future Phase 1 consumers can build a
-    /// store in-process without a filesystem dependency.
+    /// Construct an empty store without touching disk. Public so tests
+    /// can build one in-process without filesystem dependencies.
     pub fn empty() -> Self {
         Self {
             calibrations: RefCell::new(IndexMap::new()),

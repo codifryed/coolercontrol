@@ -22,8 +22,6 @@
 //! `dispatch.rs`; this file only owns the data structures and the
 //! protected read/write primitives.
 
-#![allow(dead_code)]
-
 use super::ChannelKey;
 use crate::device::Duty;
 use std::cell::RefCell;
@@ -139,17 +137,10 @@ impl FanStateMap {
     }
 
     /// Mark a channel `under_diagnosis` AND reset its `FanState` to `Off`.
-    ///
-    /// A stale `Kicking` state from a pre-diagnosis dispatch has a
-    /// deferred sustain-write task pending; if that task fires
-    /// mid-sweep, `complete_kick` would write the prior sustain duty
-    /// over the sweep's raw write. Forcing `Off` makes the deferred
-    /// `complete_kick` observe non-`Kicking` and skip its write.
-    ///
-    /// Also: a sweep ends with raw 0% on the channel, so `Off` matches
-    /// physical reality at sweep end. With `Off` carried into the
-    /// post-sweep restore, dispatch can perform a fresh `Off -> Kicking`
-    /// to spin the fan back up under the new calibration.
+    /// Resetting to `Off` prevents a stale pre-diagnosis `Kicking` from
+    /// firing its deferred sustain-write over the sweep's raw writes,
+    /// and leaves the post-sweep restore in a clean state to do a fresh
+    /// `Off -> Kicking` under the new calibration.
     pub fn begin_diagnosis(&self, key: ChannelKey) {
         self.inner.borrow_mut().insert(
             key,

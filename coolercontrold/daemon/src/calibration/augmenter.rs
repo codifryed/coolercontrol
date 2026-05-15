@@ -76,9 +76,7 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
     }
 }
 
-/// Round and clamp an `f64` duty into the 0..=100 percent range. NaN
-/// reads from hardware are coerced to 0. Mirrors the helper that
-/// previously lived in the engine module.
+/// Round and clamp an `f64` duty into 0..=100 percent. NaN coerces to 0.
 fn clamp_f64_to_duty(value: f64) -> Duty {
     if value.is_nan() {
         return 0;
@@ -89,12 +87,8 @@ fn clamp_f64_to_duty(value: f64) -> Duty {
     as_u8
 }
 
-/// Install a fresh `CalibrationStatusAugmenter` on every device in
-/// `all_devices`. Called by `Engine::new` so the calibration rewrite
-/// runs inside each device's `set_status` `Arc::make_mut` rather than
-/// in a separate hot-path pass. Devices added later (e.g. user-created
-/// custom sensors) carry no fan channels, so missing the install on
-/// them is a no-op.
+/// Install the augmenter on every known device. Devices added later
+/// (e.g. custom sensors) carry no fan channels, so they don't need it.
 pub fn install_augmenter_on_all_devices(
     all_devices: &std::collections::HashMap<DeviceUID, Rc<std::cell::RefCell<Device>>>,
     augmenter: &Rc<dyn StatusAugmenter>,

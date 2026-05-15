@@ -29,8 +29,6 @@
 //! tracks the same set of channels but holds the cancellation handles
 //! so external callers can interrupt the sweep.
 
-#![allow(dead_code)]
-
 use super::ChannelKey;
 use std::cell::RefCell;
 use std::collections::HashMap;
