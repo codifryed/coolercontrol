@@ -80,6 +80,7 @@ use crate::device::{
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -130,15 +131,19 @@ fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
-/// Bounds the pre-acquire drivetemp ATA power-state ioctl. Kept
-/// strictly below `SLOW_DEVICE_INIT_RATIO` so a wedged controller
-/// cannot single-handedly mark the device init-slow.
-const DRIVETEMP_IOCTL_RATIO: f64 = 0.4;
+/// Pre-acquire drivetemp ATA power-state ioctl budget, expressed
+/// as a fraction of the read-permit timeout. A high fraction lets
+/// HDD spin-up / spin-down complete the ioctl naturally so the
+/// follow-up sysfs read can be skipped. The ratio must stay
+/// strictly less than 1.0 so the ioctl wait alone cannot
+/// accumulate `MISSING_STATUS_THRESHOLD` stale ticks via the
+/// in-flight coalesce guard and trip the failsafe.
+const DRIVETEMP_IOCTL_RATIO_OF_READ_PERMIT: f64 = 0.85;
 
 fn drivetemp_ioctl_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
-    Duration::from_secs_f64(poll_rate * DRIVETEMP_IOCTL_RATIO)
+    device_read_permit_timeout_for(poll_rate).mul_f64(DRIVETEMP_IOCTL_RATIO_OF_READ_PERMIT)
 }
 
 /// Per-channel-group budget for init extracts. Bounds startup so a
@@ -290,9 +295,8 @@ pub struct HwmonDriverInfo {
     pub model: Option<String>,
     pub u_id: UID,
     pub channels: Vec<HwmonChannelInfo>,
-    /// this is used specifically for the `drivetemp` module,
-    /// which has an associated block device path if found.
-    pub block_dev_path: Option<PathBuf>,
+    #[serde(flatten)]
+    pub drivetemp: DrivetempState,
     pub apple_smc: AppleMacSMC,
 }
 
@@ -705,8 +709,7 @@ impl HwmonRepo {
         self.reset_fresh_this_tick(type_index);
 
         let drivetemp_suspended =
-            drivetemp::is_suspended(driver.block_dev_path.as_ref(), self.drivetemp_ioctl_timeout)
-                .await;
+            drivetemp::is_suspended(&driver.drivetemp, self.drivetemp_ioctl_timeout).await;
 
         let semaphore = self.device_permits.get(&type_index).expect(
             "invariant: device_permits entry exists for every registered device type_index",
@@ -1505,12 +1508,16 @@ impl Repository for HwmonRepo {
                 );
                 continue;
             }
-            let block_dev_path = if device_name == DRIVETEMP && settings.drivetemp_suspend {
-                drivetemp::get_verified_block_device_path(&path)
+            let drivetemp = if device_name == DRIVETEMP && settings.drivetemp_suspend {
+                let block_dev_path = drivetemp::get_verified_block_device_path(&path)
                     .inspect_err(|err| warn!("Error getting block device path: {err}"))
-                    .ok()
+                    .ok();
+                DrivetempState {
+                    block_dev_path,
+                    ioctl_unsupported_logged: Cell::new(false),
+                }
             } else {
-                None
+                DrivetempState::default()
             };
             let apple_smc = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
                 AppleMacSMC::new(&path, &channels, &device_name).await
@@ -1528,7 +1535,7 @@ impl Repository for HwmonRepo {
                 model,
                 u_id,
                 channels,
-                block_dev_path,
+                drivetemp,
                 apple_smc,
             };
             hwmon_drivers.push(hwmon_driver_info);
@@ -2039,7 +2046,7 @@ mod preload_tests {
             model: None,
             u_id: String::new(),
             channels,
-            block_dev_path: None,
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
         })
     }
@@ -2888,27 +2895,37 @@ mod permit_timeout_tests {
 
     #[test]
     fn drivetemp_ioctl_timeout_scales_with_poll_rate() {
-        // The ioctl budget must scale proportionally with poll_rate
-        // so a slow drivetemp check cannot consume more than its
-        // share of the pre-acquire path's wall-clock budget at any
-        // valid poll rate.
-        assert_eq!(drivetemp_ioctl_timeout_for(0.5), Duration::from_millis(200));
-        assert_eq!(drivetemp_ioctl_timeout_for(1.0), Duration::from_millis(400));
-        assert_eq!(drivetemp_ioctl_timeout_for(5.0), Duration::from_secs(2));
+        // The ioctl budget is 0.85 of the read-permit timeout so
+        // HDD spin-up / spin-down can usually complete the ioctl
+        // naturally and avoid the sysfs read entirely. Scales
+        // proportionally with poll_rate at the same fraction.
+        assert_eq!(
+            drivetemp_ioctl_timeout_for(0.5),
+            Duration::from_millis(3400)
+        );
+        assert_eq!(
+            drivetemp_ioctl_timeout_for(1.0),
+            Duration::from_millis(6800)
+        );
+        assert_eq!(drivetemp_ioctl_timeout_for(5.0), Duration::from_secs(34));
     }
 
     #[test]
-    fn drivetemp_ioctl_timeout_strictly_less_than_slow_device_init_threshold() {
-        // Invariant: the ioctl budget must leave headroom under the
-        // slow-device init threshold so a slow ATA controller cannot
-        // single-handedly classify the device as init-slow. Ratios
-        // 0.4 vs 0.7 preserve 3/7 headroom at every poll rate.
+    fn drivetemp_ioctl_timeout_strictly_less_than_read_permit_timeout() {
+        // Load-bearing safety invariant: while the ioctl is in
+        // flight, every subsequent tick increments per-channel
+        // staleness via the preload coalesce guard. If the ioctl
+        // wait reached MISSING_STATUS_THRESHOLD (8) ticks the
+        // failsafe overlay would trip from the ioctl wait alone,
+        // before any sysfs read happened. The 0.85 ratio gives
+        // ~1 tick of headroom at every valid poll rate.
         for poll_rate in [0.5_f64, 1.0, 5.0] {
             let ioctl = drivetemp_ioctl_timeout_for(poll_rate);
-            let init_threshold = slow_device_init_threshold_for(poll_rate);
+            let permit = device_read_permit_timeout_for(poll_rate);
             assert!(
-                ioctl < init_threshold,
-                "ioctl must be < slow_device_init_threshold at poll_rate={poll_rate}"
+                ioctl < permit,
+                "ioctl must be < read_permit_timeout at poll_rate={poll_rate}: \
+                 ioctl={ioctl:?} permit={permit:?}"
             );
         }
     }
@@ -3066,6 +3083,7 @@ mod coalescer_tests {
             path,
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         };
@@ -3873,6 +3891,7 @@ mod slow_device_tests {
             path,
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         };
@@ -4672,6 +4691,7 @@ mod prepare_for_sleep_tests {
             path: driver_path,
             channels,
             u_id: format!("test-uid-thinkpad-{type_index}"),
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         };
@@ -4855,6 +4875,7 @@ mod shutdown_tests {
             path: driver_path,
             channels,
             u_id: format!("test-uid-{driver_name}-{type_index}"),
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         };
@@ -5103,6 +5124,7 @@ mod init_timeout_tests {
             name: name.to_string(),
             path: base.to_path_buf(),
             channels,
+            drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         }

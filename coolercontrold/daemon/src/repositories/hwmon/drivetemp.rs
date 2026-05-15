@@ -29,9 +29,12 @@ use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{anyhow, Result};
-use log::{trace, warn};
+use log::{debug, info, trace, warn};
 use nix::libc;
+use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::cmp::PartialEq;
+use std::ops::Not;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
@@ -39,6 +42,24 @@ use std::rc::Rc;
 use std::time::Duration;
 
 static DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED: f64 = 0.;
+
+/// State for `drivetemp` hwmon entries: resolved block device path
+/// and a runtime-only dedup flag for the "ioctl unsupported" log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrivetempState {
+    pub block_dev_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub ioctl_unsupported_logged: Cell<bool>,
+}
+
+impl Default for DrivetempState {
+    fn default() -> Self {
+        Self {
+            block_dev_path: None,
+            ioctl_unsupported_logged: Cell::new(false),
+        }
+    }
+}
 
 /// Ioctl for special hdd commands
 /// `/usr/include/linux/hdreg.h`
@@ -115,6 +136,45 @@ pub fn default_suspended_temp_for(channel: &HwmonChannelInfo) -> TempStatus {
     }
 }
 
+/// Result of the bounded `drive_power_state` call, kept structured so
+/// callers can discriminate the three failure modes without
+/// string-matching the error message.
+#[derive(Debug)]
+enum BlockingTimeoutError {
+    /// The ioctl exceeded its wall-clock budget; the blocking thread
+    /// is leaked until the kernel returns, but the caller is freed.
+    TimedOut(Duration),
+    /// The Tokio blocking task itself failed to join (typically a
+    /// panic inside the closure).
+    Join(tokio::task::JoinError),
+    /// The closure ran to completion but returned `Err`, e.g. the
+    /// device file could not be opened or both ATA power-state
+    /// commands returned non-zero.
+    Inner(anyhow::Error),
+}
+
+impl std::fmt::Display for BlockingTimeoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TimedOut(elapsed) => {
+                write!(f, "blocking task timed out after {elapsed:?}")
+            }
+            Self::Join(err) => write!(f, "blocking task join error: {err}"),
+            Self::Inner(err) => write!(f, "{err}"),
+        }
+    }
+}
+
+impl std::error::Error for BlockingTimeoutError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TimedOut(_) => None,
+            Self::Join(err) => Some(err),
+            Self::Inner(err) => Some(err.as_ref()),
+        }
+    }
+}
+
 /// If `drivetemp` state checks are enabled, checks the drive's power state.
 ///
 /// The power-state check performs an `ioctl(HDIO_DRIVE_CMD, …)` which is
@@ -122,16 +182,49 @@ pub fn default_suspended_temp_for(channel: &HwmonChannelInfo) -> TempStatus {
 /// and can block for seconds on a wedged ATA / SATA controller. This
 /// wrapper bounds the blocking call with `timeout` so the caller never
 /// stalls longer than its budget even if the drive is hung.
-pub async fn is_suspended(block_device_path_opt: Option<&PathBuf>, timeout: Duration) -> bool {
+///
+/// Fallback semantics on the error branches:
+/// - `TimedOut`: assume suspended (`true`). The timeout itself is
+///   evidence the drive can't answer right now; falling through to
+///   the sysfs temp read would only let the kernel block us harder
+///   during a spin-up / spin-down. Returns a 0 C placeholder for
+///   this tick; the in-flight coalesce guard sees a fresh mark and
+///   the failsafe wall stays clear.
+/// - `Inner`: legacy behaviour (`false`); a drive that doesn't
+///   support the ATA power-state command may still have a working
+///   sysfs temp file. Logged at `info!` exactly once per drive via
+///   `state.ioctl_unsupported_logged` to avoid spam in systems with
+///   many drives.
+/// - `Join`: rare panic in the blocking task. Fall through to sysfs
+///   like `Inner`, logged at `warn!`.
+pub async fn is_suspended(state: &DrivetempState, timeout: Duration) -> bool {
     debug_assert!(timeout > Duration::ZERO);
-    let Some(block_device_path) = block_device_path_opt else {
+    let Some(block_device_path) = state.block_dev_path.as_ref() else {
         return false;
     };
     let start_time = std::time::Instant::now();
     let is_suspended = match drive_power_state(block_device_path, timeout).await {
-        Ok(state) => state == PowerState::Standby,
-        Err(err) => {
-            warn!("Error getting drive power state: {err}");
+        Ok(power_state) => power_state == PowerState::Standby,
+        Err(BlockingTimeoutError::TimedOut(elapsed)) => {
+            debug!(
+                "Drive power-state ioctl exceeded {elapsed:?} for {}; \
+                 assuming suspended for this tick",
+                block_device_path.display()
+            );
+            true
+        }
+        Err(BlockingTimeoutError::Inner(err)) => {
+            if state.ioctl_unsupported_logged.replace(true).not() {
+                info!(
+                    "Drive {} does not support the ATA power-state ioctl \
+                     ({err}); falling back to direct sysfs reads",
+                    block_device_path.display()
+                );
+            }
+            false
+        }
+        Err(BlockingTimeoutError::Join(err)) => {
+            warn!("Drive power-state blocking task panicked: {err}");
             false
         }
     };
@@ -164,7 +257,10 @@ fn get_block_device_path(path: &Path) -> Result<PathBuf> {
 }
 
 #[cfg(not(feature = "io_uring"))]
-async fn drive_power_state(dev_path: &Path, timeout: Duration) -> Result<PowerState> {
+async fn drive_power_state(
+    dev_path: &Path,
+    timeout: Duration,
+) -> std::result::Result<PowerState, BlockingTimeoutError> {
     // The ioctl is blocking and cannot be cancelled; offload to the
     // blocking pool and bound the await with a timeout. If the ioctl
     // hangs, the blocking thread is leaked until the kernel returns,
@@ -177,9 +273,14 @@ async fn drive_power_state(dev_path: &Path, timeout: Duration) -> Result<PowerSt
 /// Offloads a synchronous fallible closure to the Tokio blocking pool
 /// and bounds the await with `timeout`. Extracted so the timeout path
 /// is unit-testable without a real block device and so callers do not
-/// duplicate the select/match boilerplate.
+/// duplicate the select/match boilerplate. Returns the typed
+/// `BlockingTimeoutError` so callers can discriminate timeouts (an
+/// expected event during HDD spin-up) from genuine errors.
 #[cfg(not(feature = "io_uring"))]
-async fn run_blocking_with_timeout<F, T>(timeout: Duration, blocking_fn: F) -> Result<T>
+async fn run_blocking_with_timeout<F, T>(
+    timeout: Duration,
+    blocking_fn: F,
+) -> std::result::Result<T, BlockingTimeoutError>
 where
     F: FnOnce() -> Result<T> + Send + 'static,
     T: Send + 'static,
@@ -187,9 +288,10 @@ where
     debug_assert!(timeout > Duration::ZERO);
     let handle = tokio::task::spawn_blocking(blocking_fn);
     match tokio::time::timeout(timeout, handle).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(join_err)) => Err(anyhow!("blocking task join error: {join_err}")),
-        Err(_elapsed) => Err(anyhow!("blocking task timed out after {timeout:?}")),
+        Ok(Ok(Ok(value))) => Ok(value),
+        Ok(Ok(Err(inner))) => Err(BlockingTimeoutError::Inner(inner)),
+        Ok(Err(join_err)) => Err(BlockingTimeoutError::Join(join_err)),
+        Err(_elapsed) => Err(BlockingTimeoutError::TimedOut(timeout)),
     }
 }
 
@@ -232,8 +334,11 @@ fn drive_power_state_blocking(dev_path: &Path) -> Result<PowerState> {
 }
 
 #[cfg(feature = "io_uring")]
-async fn drive_power_state(_path: impl AsRef<Path>, _timeout: Duration) -> Result<PowerState> {
-    Err(anyhow!("Not yet implemented"))
+async fn drive_power_state(
+    _path: impl AsRef<Path>,
+    _timeout: Duration,
+) -> std::result::Result<PowerState, BlockingTimeoutError> {
+    Err(BlockingTimeoutError::Inner(anyhow!("Not yet implemented")))
 }
 
 /// Tests
@@ -319,6 +424,7 @@ mod tests {
         Rc::new(HwmonDriverInfo {
             name: "test_driver".to_string(),
             channels,
+            drivetemp: DrivetempState::default(),
             ..Default::default()
         })
     }
@@ -418,9 +524,11 @@ mod tests {
     //
     // The helper is what bounds the blocking ioctl so the
     // single-threaded runtime isn't stalled on a wedged drive.
-    // Verify that a fast closure returns its value, and a slow
-    // closure produces a timeout error well before it would have
-    // completed on its own.
+    // Verify that a fast closure returns its value, that a slow
+    // closure produces a typed `TimedOut` within a bounded wall
+    // clock, and that an inner failure is surfaced as the typed
+    // `Inner` variant so callers can discriminate without
+    // string-matching.
 
     #[test]
     #[serial]
@@ -428,7 +536,7 @@ mod tests {
         // Verifies the happy path: a closure that returns promptly
         // yields its value unchanged.
         cc_fs::test_runtime(async {
-            let result: Result<u32> =
+            let result: std::result::Result<u32, BlockingTimeoutError> =
                 run_blocking_with_timeout(Duration::from_secs(1), || Ok(42)).await;
             assert!(result.is_ok(), "expected Ok, got {result:?}");
             assert_eq!(result.unwrap(), 42);
@@ -439,17 +547,22 @@ mod tests {
     #[serial]
     fn run_blocking_with_timeout_times_out_on_slow_closure() {
         // Verifies the failure path: a closure that sleeps longer
-        // than the timeout produces an Err within a bounded wall
-        // clock, so the caller is not stalled on the blocking pool.
+        // than the timeout produces the typed `TimedOut` variant
+        // within a bounded wall clock, so the caller is neither
+        // stalled on the blocking pool nor forced to string-match.
         cc_fs::test_runtime(async {
             let start = std::time::Instant::now();
-            let result: Result<u32> = run_blocking_with_timeout(Duration::from_millis(100), || {
-                std::thread::sleep(Duration::from_secs(5));
-                Ok(0)
-            })
-            .await;
+            let result: std::result::Result<u32, BlockingTimeoutError> =
+                run_blocking_with_timeout(Duration::from_millis(100), || {
+                    std::thread::sleep(Duration::from_secs(5));
+                    Ok(0)
+                })
+                .await;
             let elapsed = start.elapsed();
-            assert!(result.is_err(), "expected timeout Err, got {result:?}");
+            assert!(
+                matches!(result, Err(BlockingTimeoutError::TimedOut(_))),
+                "expected TimedOut, got {result:?}"
+            );
             // Generous upper bound: we only require the caller to
             // have returned well before the 5s sleep would have
             // completed; avoid flakiness on slow CI.
@@ -464,17 +577,76 @@ mod tests {
     #[serial]
     fn run_blocking_with_timeout_propagates_inner_error() {
         // Verifies that an Err returned by the blocking closure is
-        // surfaced to the caller verbatim and is not masked by the
-        // timeout machinery.
+        // surfaced verbatim as the typed `Inner` variant and is not
+        // masked by the timeout machinery or the `Join` variant.
         cc_fs::test_runtime(async {
-            let result: Result<u32> =
+            let result: std::result::Result<u32, BlockingTimeoutError> =
                 run_blocking_with_timeout(Duration::from_secs(1), || Err(anyhow!("inner failure")))
                     .await;
-            assert!(result.is_err());
+            assert!(
+                matches!(result, Err(BlockingTimeoutError::Inner(_))),
+                "expected Inner, got {result:?}"
+            );
             let err = result.unwrap_err().to_string();
             assert!(
                 err.contains("inner failure"),
                 "expected inner error to propagate, got {err}"
+            );
+        });
+    }
+
+    // --- is_suspended: fallback semantics ---
+    //
+    // Failsafes were tripping because a 400 ms ioctl timeout fell
+    // through to a sysfs read that itself blocked during HDD
+    // spin-up. With the typed-error split, `TimedOut` now returns
+    // `true` (skip sysfs) and only `Inner` keeps the legacy "try
+    // sysfs anyway" behaviour. The `Inner` log fires once per
+    // drive so systems with many drives aren't spammed.
+
+    #[test]
+    #[serial]
+    fn is_suspended_returns_false_when_block_path_is_none() {
+        // Verifies that without a block device path, the suspension
+        // check short-circuits to `false` (try sysfs normally).
+        cc_fs::test_runtime(async {
+            let state = DrivetempState::default();
+            let suspended = is_suspended(&state, Duration::from_secs(1)).await;
+            assert!(suspended.not());
+            assert!(
+                state.ioctl_unsupported_logged.get().not(),
+                "no log should fire when path is absent"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn is_suspended_returns_false_on_inner_error_and_logs_once_per_drive() {
+        // Verifies the `Inner` fallback: when the drive doesn't
+        // support the ioctl (here simulated by a path that cannot
+        // be opened), `is_suspended` returns `false` so the caller
+        // falls back to direct sysfs reads, and the dedup `Cell`
+        // flips to `true` after the first call so subsequent calls
+        // do not log again.
+        cc_fs::test_runtime(async {
+            let state = DrivetempState {
+                block_dev_path: Some(PathBuf::from("/dev/__cc_test_nonexistent_block_device__")),
+                ioctl_unsupported_logged: Cell::new(false),
+            };
+
+            let first = is_suspended(&state, Duration::from_secs(1)).await;
+            assert!(first.not(), "first call: expected false on Inner");
+            assert!(
+                state.ioctl_unsupported_logged.get(),
+                "first call should flip the dedup flag"
+            );
+
+            let second = is_suspended(&state, Duration::from_secs(1)).await;
+            assert!(second.not(), "second call: expected false on Inner");
+            assert!(
+                state.ioctl_unsupported_logged.get(),
+                "dedup flag must remain set across subsequent calls"
             );
         });
     }

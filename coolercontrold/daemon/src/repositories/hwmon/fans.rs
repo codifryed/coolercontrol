@@ -675,6 +675,7 @@ pub fn duty_to_pwm_value(speed_duty: u8) -> u8 {
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::repositories::hwmon::drivetemp;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
@@ -1333,7 +1334,7 @@ mod tests {
             model: None,
             u_id: String::new(),
             channels,
-            block_dev_path: None,
+            drivetemp: drivetemp::DrivetempState::default(),
             apple_smc: crate::repositories::hwmon::apple_mac_smc::AppleMacSMC::default(),
         }
     }
