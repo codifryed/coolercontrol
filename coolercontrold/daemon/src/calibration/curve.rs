@@ -125,7 +125,7 @@ pub struct Calibration {
 
     /// Lowest device-duty at which the fan operates stably (no oscillation).
     ///
-    /// On well-behaved fans this equals `min_sustain_duty` — every spinning
+    /// On well-behaved fans this equals `min_sustain_duty`: every spinning
     /// duty is also stable. Some controllers apply a kick in firmware that
     /// keeps RPM above an internal floor, producing an audible oscillation
     /// in a band immediately above `min_sustain_duty`; on those fans the
@@ -140,7 +140,7 @@ pub struct Calibration {
     pub min_stable_duty: Duty,
 
     /// Lowest device-duty at which the up-curve reaches within
-    /// `jitter` of `rpm_max` — the "near plateau" point where
+    /// `jitter` of `rpm_max`: the "near plateau" point where
     /// additional duty produces diminishing RPM gains. Informational
     /// only: the mapping math uses `rpm_max` as the upper bound, so
     /// `true_to_device(100)` may still write a device-duty above
@@ -211,7 +211,7 @@ pub enum CalibrationWarning {
     /// whether to clear.
     LimitedRange { rpm_span: RPM, rpm_max: RPM },
     /// The fan never settled into a stable RPM anywhere above
-    /// `min_sustain_duty` — typically a cheap firmware-kicked fan
+    /// `min_sustain_duty`, typically a cheap firmware-kicked fan
     /// whose internal floor sits well above its mechanical minimum.
     /// `min_stable_duty` could not be derived; the dispatcher falls
     /// back to `min_sustain_duty` (no clamp). `lower_duty`/`upper_duty`
@@ -545,7 +545,7 @@ pub fn derive_warnings(
         // BIOS / firmware-controlled fan: forcibly disable mapping so
         // the dispatcher does not pretend the fan responds to true-duty.
         *curve_kind = CurveKind::Stepped;
-        // Don't also stack LimitedRange on top — NotControllable is
+        // Don't also stack LimitedRange on top. NotControllable is
         // the more pointed message and already conveys "tiny range".
         return warnings;
     }
@@ -677,6 +677,7 @@ pub struct DerivedScalars {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     /// Number of samples in the synthetic 5%-step curves used by the
     /// pre-existing tests. The new sweep produces variable spacing in
@@ -786,7 +787,7 @@ mod tests {
     fn forward_map_hundred_writes_full_device_duty() {
         // Goal: true-duty 100 targets `rpm_max` and writes a device-duty
         // up to the curve's top. `max_eff_duty` is informational and
-        // does NOT cap the forward mapping — real fans often keep
+        // does NOT cap the forward mapping. Real fans often keep
         // gaining RPM beyond their `max_eff_duty` and the algorithm
         // honors that. Asserts the mapping reaches 100% device-duty
         // for a curve whose rpm_max sits at duty 100.
@@ -1308,7 +1309,7 @@ mod tests {
             .collect();
         let flags: Vec<bool> = samples
             .iter()
-            .map(|s| !unstable_duties.contains(&s.duty))
+            .map(|s| unstable_duties.contains(&s.duty).not())
             .collect();
         (samples, flags)
     }
@@ -1389,7 +1390,7 @@ mod tests {
 
     #[test]
     fn derive_min_stable_duty_ignores_phase_coincidence_stable_island() {
-        // Goal: rule (B) — descend only while EVERY sample above is
+        // Goal: rule (B). Descend only while EVERY sample above is
         // stable. A single phase-coincidence stable sample sitting
         // inside an otherwise-unstable region must NOT be picked as
         // the floor; the run is broken by the unstable samples above it.
@@ -1520,7 +1521,7 @@ mod tests {
     #[test]
     fn effective_speed_options_returns_raw_when_no_calibration() {
         // Goal: an uncalibrated channel must keep its device-derived
-        // limits exactly — that's the dispatcher passthrough case and
+        // limits exactly (the dispatcher passthrough case) and
         // any deviation here would silently change the manual-duty
         // slider bounds for every channel that hasn't been calibrated.
         let raw = raw_speed_options(15, 80);
@@ -1552,7 +1553,7 @@ mod tests {
         // Goal: a Stepped calibration means the dispatcher passes
         // device-duty through unchanged (`true_to_device` returns None
         // on Stepped). The user-facing range therefore stays at the
-        // device limits — widening to [0, 100] would falsely advertise
+        // device limits. Widening to [0, 100] would falsely advertise
         // a range the dispatcher cannot actually deliver.
         let raw = raw_speed_options(15, 100);
         let mut cal = make_smooth_calibration();

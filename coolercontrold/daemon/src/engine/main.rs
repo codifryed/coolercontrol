@@ -67,20 +67,6 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
 pub type WritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
 
-/// Clamp an `f64` device-duty (as stored in `ChannelStatus.duty`) into
-/// the daemon's `Duty` (`u8`, 0..=100). The clamp is total: NaN, negative,
-/// and values above 100 are pinned to the legal range. Rounding is to the
-/// nearest percent.
-fn clamp_f64_to_duty(value: f64) -> Duty {
-    if value.is_nan() {
-        return 0;
-    }
-    let rounded = value.round().clamp(0.0, 100.0);
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let as_u8 = rounded as Duty;
-    as_u8
-}
-
 /// Render a `CalibrationWarning` into a short, user-facing sentence.
 /// Used by the SSE notification body so the desktop alert tells the
 /// user what was off about their fan. The popover renders its own
@@ -203,6 +189,17 @@ impl Engine {
             all_devices.clone(),
             repos_by_type.clone(),
         ));
+        // Install the true-duty augmenter on every known device. The
+        // augmenter fires inside each `set_status`'s `Arc::make_mut`,
+        // so a calibrated channel's mapping piggybacks on the existing
+        // mutation instead of a second hot-path pass that would
+        // deep-clone the history whenever an API reader holds a clone.
+        let augmenter: Rc<dyn crate::device::StatusAugmenter> =
+            Rc::new(calibration::CalibrationStatusAugmenter::new(
+                Rc::clone(&calibration_store),
+                Rc::clone(&fan_state_map),
+            ));
+        calibration::install_augmenter_on_all_devices(&all_devices, &augmenter);
         Engine {
             all_devices,
             repos: repos_by_type,
@@ -1238,58 +1235,6 @@ impl Engine {
                     continue;
                 }
                 channel.duty = None;
-            }
-        }
-    }
-
-    /// Replace `ChannelStatus.duty` with the true-duty equivalent on the
-    /// most recent status of every calibrated smooth channel.
-    ///
-    /// Called by the main loop **after** every repo's `update_statuses`
-    /// has appended its new sample and **before** the engine processes
-    /// scheduled speeds or the status pipeline broadcasts to SSE. After
-    /// this pass, the in-memory history (and therefore every downstream
-    /// consumer: engine, SSE, REST) sees RPM-normalized true-duty for
-    /// calibrated channels.
-    ///
-    /// Uncalibrated channels, stepped-curve channels, and channels with
-    /// no RPM reading on the latest sample are left untouched.
-    pub fn apply_true_duty_to_latest_statuses(&self) {
-        for device_lock in self.all_devices.values() {
-            let mut device = device_lock.borrow_mut();
-            let device_uid = device.uid.clone();
-            let history = Arc::make_mut(&mut device.status_history);
-            let Some(latest) = history.back_mut() else {
-                continue;
-            };
-            for channel in &mut latest.channels {
-                let key: ChannelKey = (device_uid.clone(), channel.name.clone());
-                // Skip channels currently being swept: the diagnoser is
-                // writing raw device duty and the UI must see those raw
-                // values, not the prior calibration's mapped values.
-                if self.fan_state_map.is_under_diagnosis(&key) {
-                    continue;
-                }
-                // Prefer the device-duty-derived value (stable across
-                // reads) and fall back to the RPM-derived value when the
-                // two diverge by more than the sanity threshold. The
-                // fallback surfaces stuck fans, dead fans, and broken
-                // PWM lines that the stable path would otherwise hide
-                // behind the duty the daemon last wrote.
-                let device_derived = channel.duty.and_then(|d| {
-                    self.calibration_store
-                        .device_to_true_duty(&key, clamp_f64_to_duty(d))
-                });
-                let rpm_derived = channel
-                    .rpm
-                    .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
-                if let Some(displayed) = calibration::select_displayed_true_duty(
-                    device_derived,
-                    rpm_derived,
-                    calibration::SANITY_THRESHOLD_PERCENT,
-                ) {
-                    channel.duty = Some(f64::from(displayed));
-                }
             }
         }
     }

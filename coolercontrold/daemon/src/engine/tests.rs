@@ -1452,22 +1452,20 @@ mod engine_tests {
     fn apply_true_duty_rewrites_calibrated_smooth_channel() {
         // Goal: a calibrated smooth channel's latest device-duty value
         // gets replaced with its true-duty equivalent based on the
-        // measured RPM. The duty value reaching the engine and SSE
-        // broadcast layer is in true-duty space afterwards.
+        // measured RPM. The rewrite runs inside Device::set_status's
+        // existing Arc::make_mut via the engine-installed augmenter, so
+        // the calibration is inserted into the store first and then
+        // the status push triggers the mapping.
         cc_fs::test_runtime(async {
-            let (device, engine, calibration_store) = setup_calibrated_device();
+            let (device, _engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
             let channel = "fan1".to_string();
-            // initialize_status_history_with seeds the buffer with
-            // copies; first prime it with a placeholder status.
             device
                 .borrow_mut()
                 .initialize_status_history_with(Status::default(), 1.0);
-            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
             calibration_store
                 .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
-
-            engine.apply_true_duty_to_latest_statuses();
+            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
 
             let observed = device.borrow().status_current().unwrap();
             let chan = observed
@@ -1490,16 +1488,15 @@ mod engine_tests {
     fn apply_true_duty_leaves_uncalibrated_channel_alone() {
         // Goal: a channel with no calibration in the store keeps its
         // original device-duty value verbatim. This is the path most
-        // users start on.
+        // users start on. The installed augmenter is a no-op when the
+        // store has no entry for the channel.
         cc_fs::test_runtime(async {
-            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let (device, _engine, _calibration_store) = setup_calibrated_device();
             let channel = "fan1".to_string();
             device
                 .borrow_mut()
                 .initialize_status_history_with(Status::default(), 1.0);
             push_channel_status(&device, channel.clone(), Some(1000), 50.0);
-
-            engine.apply_true_duty_to_latest_statuses();
 
             let observed = device.borrow().status_current().unwrap();
             let chan = observed
@@ -1521,17 +1518,15 @@ mod engine_tests {
         // device-duty to (about 47% for a synthetic 0..=2000 linear
         // curve at device-duty 50%).
         cc_fs::test_runtime(async {
-            let (device, engine, calibration_store) = setup_calibrated_device();
+            let (device, _engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
             let channel = "fan1".to_string();
             device
                 .borrow_mut()
                 .initialize_status_history_with(Status::default(), 1.0);
-            push_channel_status(&device, channel.clone(), None, 50.0);
             calibration_store
                 .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
-
-            engine.apply_true_duty_to_latest_statuses();
+            push_channel_status(&device, channel.clone(), None, 50.0);
 
             let observed = device.borrow().status_current().unwrap();
             let chan = observed
@@ -1555,21 +1550,19 @@ mod engine_tests {
         // threshold (stuck fan, broken sensor) displays the RPM-derived
         // value so the failure surfaces in the duty readout.
         cc_fs::test_runtime(async {
-            let (device, engine, calibration_store) = setup_calibrated_device();
+            let (device, _engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
             let channel = "fan1".to_string();
             device
                 .borrow_mut()
                 .initialize_status_history_with(Status::default(), 1.0);
+            calibration_store
+                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
             // Daemon wrote device-duty 50% (would imply ~47% true), but
             // the fan is stuck and reads 0 RPM (implies ~0% true). The
             // sanity threshold trips and the displayed duty drops near
             // zero.
             push_channel_status(&device, channel.clone(), Some(0), 50.0);
-            calibration_store
-                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
-
-            engine.apply_true_duty_to_latest_statuses();
 
             let observed = device.borrow().status_current().unwrap();
             let chan = observed
@@ -1722,18 +1715,16 @@ mod engine_tests {
         // layer also leaves stepped channels in passthrough mode.
         cc_fs::test_runtime(async {
             use crate::calibration::CurveKind;
-            let (device, engine, calibration_store) = setup_calibrated_device();
+            let (device, _engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
             let channel = "fan1".to_string();
             device
                 .borrow_mut()
                 .initialize_status_history_with(Status::default(), 1.0);
-            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
             let mut cal = sample_smooth_calibration();
             cal.curve_kind = CurveKind::Stepped;
             calibration_store.insert_unsaved((device_uid, channel.clone()), cal);
-
-            engine.apply_true_duty_to_latest_statuses();
+            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
 
             let observed = device.borrow().status_current().unwrap();
             let chan = observed

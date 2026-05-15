@@ -34,6 +34,7 @@
 // removed as soon as the first consumer is added.
 #![allow(dead_code, unused_imports)]
 
+mod augmenter;
 mod curve;
 mod diagnoser;
 mod dispatch;
@@ -41,6 +42,7 @@ mod registry;
 mod state;
 mod store;
 
+pub use augmenter::{install_augmenter_on_all_devices, CalibrationStatusAugmenter};
 pub use curve::{
     classify_curve, derive_scalars, derive_warnings, effective_speed_options,
     select_displayed_true_duty, start_threshold, Calibration, CalibrationWarning, CurveKind,

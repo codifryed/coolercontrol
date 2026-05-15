@@ -399,12 +399,9 @@ where
 /// failure) short-circuit the function; the caller still reapplies the
 /// snapshot and clears `under_diagnosis` afterwards.
 ///
-/// If the up-sweep produced no sample at or above `start_rpm_min`
-/// (either because it aborted early at `UNRESPONSIVE_ABORT_DUTY` or
-/// because it ran to 100% without a kick-in), the down-sweep is
-/// skipped entirely. `derive_scalars` short-circuits to `None` for a
-/// zero-rpm up-curve, so the caller persists the existing passthrough
-/// + `NoTachometer` calibration.
+/// When no up-sweep sample crosses `start_rpm_min` the down-sweep is
+/// skipped: `derive_scalars` returns `None` for a zero-rpm curve, so
+/// the caller persists the passthrough + `NoTachometer` calibration.
 async fn perform_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -431,15 +428,10 @@ where
 
 /// Up-sweep: dense (2%) steps from 0 to first observed kick-in, then
 /// sparse (5%) steps to 100. Returns the sample list (sorted by duty
-/// ascending, first sample at duty 0, last at duty 100).
-///
-/// Aborts early once duty reaches `UNRESPONSIVE_ABORT_DUTY` without
-/// any sample crossing `start_rpm_min`: a disconnected or stalled
-/// fan would otherwise consume the full per-step settle cap at every
-/// remaining 2% step, dragging the sweep out by ~1-2 minutes for an
-/// outcome that is already known. The returned partial sample list
-/// signals the abort to `perform_sweep` (no sample at or above the
-/// floor), which then skips the down-sweep.
+/// ascending, first sample at duty 0, last at duty 100). Aborts early
+/// once duty reaches `UNRESPONSIVE_ABORT_DUTY` without any sample
+/// crossing `start_rpm_min`: the returned partial list signals the
+/// abort to `perform_sweep` which then skips the down-sweep.
 async fn perform_up_sweep<H>(
     host: &H,
     settings: &DiagnosisSettings,
@@ -1084,7 +1076,7 @@ mod tests {
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
         let host = MockHost::new();
-        // Every duty maps to a constant 1200 RPM — simulates a fan
+        // Every duty maps to a constant 1200 RPM, simulating a fan
         // that spins but does not respond to PWM changes.
         for duty in 0u8..=100 {
             host.rpm_for_duty.borrow_mut().insert(duty, 1200);

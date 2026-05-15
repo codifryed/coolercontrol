@@ -40,6 +40,14 @@ use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
+/// Bounded queue depth for the calibration actor mailbox. Sized for
+/// the worst expected pile-up of concurrent REST handlers (one start,
+/// one cancel, the UI poll for in-progress / status, plus a couple of
+/// `get_all` calls during a multi-tab reload) with margin. When full,
+/// `Sender::send` awaits and the request thread's response slows
+/// rather than dropping the message.
+const CALIBRATION_ACTOR_QUEUE_DEPTH: usize = 16;
+
 /// Per-channel status of the latest calibration attempt. The UI polls
 /// `GET .../calibration/status` to drive its progress UI; the engine
 /// rewrites this entry on every sweep step and once more on the final
@@ -165,7 +173,7 @@ struct CalibrationActor {
     engine: Rc<Engine>,
 }
 
-pub(crate) enum CalibrationMessage {
+pub enum CalibrationMessage {
     Start {
         device_uid: DeviceUID,
         channel_name: ChannelName,
@@ -301,7 +309,7 @@ impl CalibrationHandle {
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
-        let (sender, receiver) = mpsc::channel(16);
+        let (sender, receiver) = mpsc::channel(CALIBRATION_ACTOR_QUEUE_DEPTH);
         let handle = Self {
             sender: sender.clone(),
         };
@@ -323,6 +331,10 @@ impl CalibrationHandle {
         rx.await?
     }
 
+    /// Returns `true` if a sweep was actively in flight and was
+    /// cancelled. Returns `false` if no sweep was running or if the
+    /// actor task is gone (transport failure): both render the same
+    /// "nothing to cancel" outcome to the caller.
     pub async fn cancel(&self, device_uid: DeviceUID, channel_name: ChannelName) -> bool {
         let (tx, rx) = oneshot::channel();
         let _ = self
@@ -381,6 +393,10 @@ impl CalibrationHandle {
         rx.await?
     }
 
+    /// Returns `false` on transport failure (actor task gone) as well
+    /// as the literal "no sweep is in flight" answer. Callers should
+    /// not distinguish the two: a missing actor will surface elsewhere
+    /// as a request failure, so this returning `false` is safe.
     pub async fn in_progress(&self, device_uid: DeviceUID, channel_name: ChannelName) -> bool {
         let (tx, rx) = oneshot::channel();
         let _ = self
