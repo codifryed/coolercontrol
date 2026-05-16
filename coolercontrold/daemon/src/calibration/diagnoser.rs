@@ -51,11 +51,8 @@ pub struct DiagnosisSettings {
     /// kick at consistent RPM otherwise fills the stability window and
     /// gets recorded as the steady-state.
     pub kick_decay_settle_ms: u32,
-    /// Initial post-write sleep before waiting for cache refresh.
     pub min_settle_ms: u32,
-    /// Consecutive samples that must agree before declaring settled.
     pub stability_window: u32,
-    /// Absolute RPM stability tolerance for mid-sweep steps.
     pub stability_tolerance_rpm: RPM,
     /// Tighter tolerance for dense (2%) steps and the saturation tail,
     /// where settling is slower so we wait for tighter agreement.
@@ -197,7 +194,7 @@ pub trait DiagnosisHost {
 /// (keeps the diagnoser free of filesystem deps for tests). On any
 /// failure the snapshotted setting is restored and `under_diagnosis`
 /// is cleared.
-pub async fn run_diagnosis<H>(
+pub async fn run_diagnosis<H: DiagnosisHost + ?Sized>(
     state: &FanStateMap,
     store: &CalibrationStore,
     host: &H,
@@ -205,70 +202,40 @@ pub async fn run_diagnosis<H>(
     device_uid: DeviceUID,
     channel_name: ChannelName,
     cancellation: CancellationToken,
-) -> Result<Calibration, DiagnosisFailure>
-where
-    H: DiagnosisHost + ?Sized,
-{
+) -> Result<Calibration, DiagnosisFailure> {
     let key: ChannelKey = (device_uid.clone(), channel_name.clone());
-
-    host.emit_progress(DiagnosisProgress {
-        device_uid: device_uid.clone(),
-        channel_name: channel_name.clone(),
-        phase: DiagnosisPhase::Preflight,
-        percent: 0,
-        current_duty: None,
-        current_rpm: None,
-    });
-
-    let preflight_temp = host.max_temp_celsius().await;
-    if preflight_temp >= settings.start_temp_max_c {
-        return Err(DiagnosisFailure::PreflightTempTooHigh {
-            observed: preflight_temp,
-            limit: settings.start_temp_max_c,
-        });
-    }
+    run_preflight(host, settings, &device_uid, &channel_name).await?;
 
     let snapshot = host.snapshot_setting(&device_uid, &channel_name);
-    // Reset FanState to Off alongside setting under_diagnosis. Stops a
-    // stale Kicking timer from writing the prior sustain duty over the
-    // sweep, and leaves Off carried into the post-sweep restore so the
-    // restore-time dispatch can do a fresh kick under the new mapping.
+    // Reset FanState to Off so a stale Kicking timer can't write the
+    // prior sustain over the sweep, and so the post-sweep restore
+    // dispatches a fresh kick under the new mapping.
     state.begin_diagnosis(key.clone());
 
-    // Land at a known 0% baseline before the sweep starts. If the channel
-    // was previously driven, the fan still has momentum or a pending
-    // firmware kick; the sleep gives it time to fully stop spinning.
-    // Write failures here are not fatal: perform_sweep's first step
-    // surfaces its own write error if the hardware is unreachable.
+    // 0% baseline: let prior momentum or a pending firmware kick decay.
+    // Write failures here are not fatal; perform_sweep surfaces its own.
     let _ = host.write_raw_duty(&device_uid, &channel_name, 0).await;
     host.sleep_millis(settings.kick_duration_default_ms).await;
 
-    let sweep_outcome =
-        perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await;
-
-    // Derive scalars and time the kick-up while we still own the channel
-    // (`under_diagnosis` is set so dispatch will not fight us).
-    let (sweep_data, scalars) = match sweep_outcome {
-        Ok(curves) => {
-            let scalars = derive_scalars(&curves.0, &curves.1);
-            (Some(curves), scalars)
-        }
-        Err(failure) => {
-            host.emit_progress(DiagnosisProgress {
-                device_uid: device_uid.clone(),
-                channel_name: channel_name.clone(),
-                phase: DiagnosisPhase::Finalizing,
-                percent: 100,
-                current_duty: None,
-                current_rpm: None,
-            });
-            state.set_under_diagnosis(key.clone(), false);
-            let _ = host.restore_setting(&snapshot).await;
-            return Err(failure);
-        }
-    };
-    let kick_duration_ms = match scalars {
-        Some(s) => measure_kick_duration(
+    let sweep_data =
+        match perform_sweep(host, settings, &device_uid, &channel_name, &cancellation).await {
+            Ok(curves) => curves,
+            Err(failure) => {
+                emit_phase(
+                    host,
+                    &device_uid,
+                    &channel_name,
+                    DiagnosisPhase::Finalizing,
+                    100,
+                );
+                state.set_under_diagnosis(key, false);
+                let _ = host.restore_setting(&snapshot).await;
+                return Err(failure);
+            }
+        };
+    let scalars = derive_scalars(&sweep_data.0, &sweep_data.1);
+    let kick_duration_ms = if let Some(s) = scalars {
+        measure_kick_duration(
             host,
             settings,
             &device_uid,
@@ -277,27 +244,87 @@ where
             s.min_start_duty,
         )
         .await
-        .unwrap_or(settings.kick_duration_default_ms),
-        None => settings.kick_duration_default_ms,
+        .unwrap_or(settings.kick_duration_default_ms)
+    } else {
+        settings.kick_duration_default_ms
     };
 
+    finalize_diagnosis(
+        host,
+        state,
+        store,
+        key,
+        &snapshot,
+        &device_uid,
+        &channel_name,
+        sweep_data,
+        scalars,
+        kick_duration_ms,
+    )
+    .await
+}
+
+fn emit_phase<H: DiagnosisHost + ?Sized>(
+    host: &H,
+    device_uid: &DeviceUID,
+    channel_name: &ChannelName,
+    phase: DiagnosisPhase,
+    percent: u8,
+) {
     host.emit_progress(DiagnosisProgress {
         device_uid: device_uid.clone(),
         channel_name: channel_name.clone(),
-        phase: DiagnosisPhase::Finalizing,
-        percent: 100,
+        phase,
+        percent,
         current_duty: None,
         current_rpm: None,
     });
+}
 
-    // Clear the flag BEFORE restore so the production restore path
-    // (which routes through `engine.set_fixed_speed` -> `dispatch_local`)
-    // is not no-op'd by the still-active under_diagnosis check.
+async fn run_preflight<H: DiagnosisHost + ?Sized>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &DeviceUID,
+    channel_name: &ChannelName,
+) -> Result<(), DiagnosisFailure> {
+    emit_phase(host, device_uid, channel_name, DiagnosisPhase::Preflight, 0);
+    let observed = host.max_temp_celsius().await;
+    if observed >= settings.start_temp_max_c {
+        return Err(DiagnosisFailure::PreflightTempTooHigh {
+            observed,
+            limit: settings.start_temp_max_c,
+        });
+    }
+    Ok(())
+}
+
+/// Emit the final progress event, clear `under_diagnosis` BEFORE restore
+/// (so the restore path's dispatch isn't no-op'd), persist the new
+/// calibration in-memory, then surface any restore error.
+#[allow(clippy::too_many_arguments)]
+async fn finalize_diagnosis<H: DiagnosisHost + ?Sized>(
+    host: &H,
+    state: &FanStateMap,
+    store: &CalibrationStore,
+    key: ChannelKey,
+    snapshot: &SettingsSnapshot,
+    device_uid: &DeviceUID,
+    channel_name: &ChannelName,
+    sweep_data: (Vec<DutySample>, Vec<DutySample>, Vec<bool>),
+    scalars: Option<crate::calibration::curve::DerivedScalars>,
+    kick_duration_ms: u32,
+) -> Result<Calibration, DiagnosisFailure> {
+    emit_phase(
+        host,
+        device_uid,
+        channel_name,
+        DiagnosisPhase::Finalizing,
+        100,
+    );
     state.set_under_diagnosis(key.clone(), false);
-    let restore_result = host.restore_setting(&snapshot).await;
+    let restore_result = host.restore_setting(snapshot).await;
 
-    let (up_curve, down_curve, down_stable) =
-        sweep_data.expect("sweep_data Some after error early-return");
+    let (up_curve, down_curve, down_stable) = sweep_data;
     let calibration = build_calibration(
         up_curve,
         down_curve,
@@ -305,19 +332,16 @@ where
         scalars,
         kick_duration_ms,
     );
-
     store.insert_unsaved(key, calibration.clone());
 
     if let Err(err) = restore_result {
         return Err(DiagnosisFailure::RestoreFailed(err.to_string()));
     }
-
     Ok(calibration)
 }
 
-/// Assembles a `Calibration` from the raw sweep curves + derived
-/// scalars. The `None` scalar path persists a passthrough record with
-/// `NoTachometer` so the popover keeps the warning visible.
+/// `scalars = None` persists a passthrough record with `NoTachometer`
+/// so the popover keeps the warning visible.
 fn build_calibration(
     up_curve: Vec<DutySample>,
     down_curve: Vec<DutySample>,
@@ -584,13 +608,7 @@ where
         duty = duty.saturating_sub(step);
     }
     sample_pairs.sort_by_key(|(s, _)| s.duty);
-    let mut samples = Vec::with_capacity(sample_pairs.len());
-    let mut stable_flags = Vec::with_capacity(sample_pairs.len());
-    for (sample, stable) in sample_pairs {
-        samples.push(sample);
-        stable_flags.push(stable);
-    }
-    Ok((samples, stable_flags))
+    Ok(sample_pairs.into_iter().unzip())
 }
 
 /// One step of the sweep: write `duty`, adaptively settle, return the
@@ -674,7 +692,7 @@ where
 /// each status-refresh tick and declares stable when the window
 /// agrees within tolerance. Caps at `step_settle_cap_ms`; on cap,
 /// returns the median of whatever the window holds.
-async fn settle_and_sample<H>(
+async fn settle_and_sample<H: DiagnosisHost + ?Sized>(
     host: &H,
     settings: &DiagnosisSettings,
     device_uid: &UID,
@@ -682,19 +700,15 @@ async fn settle_and_sample<H>(
     cancellation: &CancellationToken,
     pre_write_rpm: RPM,
     abs_tolerance_rpm: RPM,
-) -> Result<(RPM, bool), DiagnosisFailure>
-where
-    H: DiagnosisHost + ?Sized,
-{
+) -> Result<(RPM, bool), DiagnosisFailure> {
     host.sleep_millis(settings.min_settle_ms).await;
     let cap_ms = host.step_settle_cap_ms(device_uid);
     let window_size = (settings.stability_window as usize).max(1);
-    // After this much elapsed time without a fresh RPM read, accept the
-    // cache as-is (covers stuck sensor / stopped-fan / non-controllable).
-    let fresh_read_cap_ms = (u64::from(cap_ms))
-        .saturating_mul(u64::from(settings.fresh_read_cap_percent.min(100)))
-        / 100;
-    let fresh_read_cap_ms = u32::try_from(fresh_read_cap_ms).unwrap_or(cap_ms);
+    // Cache-acceptance cap for stuck sensor / stopped-fan / non-controllable.
+    let fresh_read_cap_ms = u32::try_from(
+        u64::from(cap_ms).saturating_mul(u64::from(settings.fresh_read_cap_percent.min(100))) / 100,
+    )
+    .unwrap_or(cap_ms);
 
     let mut waited_ms: u32 = settings.min_settle_ms;
     let mut last_seen_ts = host.latest_status_timestamp_ms(device_uid).await;
@@ -702,65 +716,114 @@ where
     let mut window: VecDeque<RPM> = VecDeque::with_capacity(window_size);
 
     loop {
-        loop {
-            if cancellation.is_cancelled() {
-                return Err(DiagnosisFailure::Cancelled);
-            }
-            if waited_ms >= cap_ms {
-                break;
-            }
-            let current = host.latest_status_timestamp_ms(device_uid).await;
-            if current != last_seen_ts && current.is_some() {
-                last_seen_ts = current;
-                break;
-            }
-            host.sleep_millis(settings.status_poll_interval_ms).await;
-            waited_ms = waited_ms.saturating_add(settings.status_poll_interval_ms);
-        }
+        wait_for_fresh_status(
+            host,
+            settings,
+            device_uid,
+            cancellation,
+            &mut last_seen_ts,
+            &mut waited_ms,
+            cap_ms,
+        )
+        .await?;
+        let rpm = sample_with_temp_check(
+            host,
+            settings,
+            device_uid,
+            channel_name,
+            pre_write_rpm,
+            &mut saw_rpm_change,
+        )
+        .await?;
 
-        let temp = host.max_temp_celsius().await;
-        if temp >= settings.abort_temp_max_c {
-            return Err(DiagnosisFailure::TempAbortedAt {
-                observed: temp,
-                limit: settings.abort_temp_max_c,
-            });
-        }
-
-        let rpm = host
-            .current_rpm(device_uid, channel_name)
-            .await
-            .unwrap_or(0);
-        if rpm != pre_write_rpm {
-            saw_rpm_change = true;
-        }
-
-        // A fresh post-write read is proven by either an RPM change or
-        // the fresh-read cap elapsing (assume the stuck reading is real).
-        let fresh_read_confirmed = saw_rpm_change || waited_ms >= fresh_read_cap_ms;
-        if fresh_read_confirmed {
-            if window.len() == window_size {
-                window.pop_front();
-            }
-            window.push_back(rpm);
-            if window.len() == window_size
-                && is_stable(
-                    &window,
-                    abs_tolerance_rpm,
-                    settings.stability_tolerance_percent,
-                )
-            {
+        // Fresh post-write read proven by an RPM change OR fresh-read cap
+        // elapsing (assume the stuck reading is real).
+        if saw_rpm_change || waited_ms >= fresh_read_cap_ms {
+            if push_and_check_stable(
+                &mut window,
+                rpm,
+                window_size,
+                abs_tolerance_rpm,
+                settings.stability_tolerance_percent,
+            ) {
                 return Ok((median_of(&window), true));
             }
         }
         if waited_ms >= cap_ms {
-            // Cap exhausted. `was_stable = false` signals the sample
-            // sat in an oscillation/never-settling band, which
-            // `derive_min_stable_duty` uses to lift the sustain floor.
+            // Cap exhausted. `was_stable = false` lifts the sustain
+            // floor in `derive_min_stable_duty`.
             if window.is_empty() {
                 window.push_back(rpm);
             }
             return Ok((median_of(&window), false));
         }
+    }
+}
+
+async fn sample_with_temp_check<H: DiagnosisHost + ?Sized>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    channel_name: &str,
+    pre_write_rpm: RPM,
+    saw_rpm_change: &mut bool,
+) -> Result<RPM, DiagnosisFailure> {
+    let temp = host.max_temp_celsius().await;
+    if temp >= settings.abort_temp_max_c {
+        return Err(DiagnosisFailure::TempAbortedAt {
+            observed: temp,
+            limit: settings.abort_temp_max_c,
+        });
+    }
+    let rpm = host
+        .current_rpm(device_uid, channel_name)
+        .await
+        .unwrap_or(0);
+    if rpm != pre_write_rpm {
+        *saw_rpm_change = true;
+    }
+    Ok(rpm)
+}
+
+fn push_and_check_stable(
+    window: &mut VecDeque<RPM>,
+    rpm: RPM,
+    window_size: usize,
+    abs_tolerance_rpm: RPM,
+    pct_tolerance: u8,
+) -> bool {
+    if window.len() == window_size {
+        window.pop_front();
+    }
+    window.push_back(rpm);
+    window.len() == window_size && is_stable(window, abs_tolerance_rpm, pct_tolerance)
+}
+
+/// Wait until the host's status timestamp advances or `cap_ms` elapses.
+/// Cancellation surfaces immediately as `Cancelled`.
+async fn wait_for_fresh_status<H: DiagnosisHost + ?Sized>(
+    host: &H,
+    settings: &DiagnosisSettings,
+    device_uid: &UID,
+    cancellation: &CancellationToken,
+    last_seen_ts: &mut Option<i64>,
+    waited_ms: &mut u32,
+    cap_ms: u32,
+) -> Result<(), DiagnosisFailure> {
+    loop {
+        if cancellation.is_cancelled() {
+            return Err(DiagnosisFailure::Cancelled);
+        }
+        if *waited_ms >= cap_ms {
+            return Ok(());
+        }
+        let current = host.latest_status_timestamp_ms(device_uid).await;
+        if current != *last_seen_ts && current.is_some() {
+            *last_seen_ts = current;
+            return Ok(());
+        }
+        host.sleep_millis(settings.status_poll_interval_ms).await;
+        *waited_ms = waited_ms.saturating_add(settings.status_poll_interval_ms);
     }
 }
 
