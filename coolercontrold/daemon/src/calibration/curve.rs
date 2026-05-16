@@ -177,7 +177,11 @@ impl Calibration {
         if self.curve_kind == CurveKind::Stepped {
             return None;
         }
-        let rpm = rpm_at_device_duty(&self.down_curve, device_duty.min(100));
+        // Skip kick-artifact samples below the sustain floor: the
+        // firmware-kick dense region has non-monotonic rpms that would
+        // otherwise pull `rpm_at_device_duty` to inflated values.
+        let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
+        let rpm = rpm_at_device_duty(down_above, device_duty.min(100));
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
@@ -195,13 +199,17 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
-        // Kick and sustain both clamp up to `min_stable_duty` so neither
-        // writes inside the firmware-kick oscillation band. Older records
-        // have `min_stable_duty == 0`, making the clamp a no-op.
-        let kick = duty_for_rpm(&self.up_curve, target_rpm)
+        // Skip artifact samples below the floor on both curves. Without
+        // this, kick spikes in the dense region (e.g., down_curve has
+        // rpm 1012 at duty 4) would land as the first sample matching a
+        // mid-range target_rpm and drag the lookup to a bogus low duty
+        // before the `.max(min_stable_duty)` clamp.
+        let up_above = curve_above(&self.up_curve, self.min_start_duty);
+        let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
+        let kick = duty_for_rpm(up_above, target_rpm)
             .max(self.min_start_duty)
             .max(self.min_stable_duty);
-        let sustain = duty_for_rpm(&self.down_curve, target_rpm).max(self.min_stable_duty);
+        let sustain = duty_for_rpm(down_above, target_rpm).max(self.min_stable_duty);
         MappedDuty { kick, sustain }
     }
 
@@ -254,6 +262,18 @@ fn interpolate_rpm(rpm_floor: RPM, rpm_max: RPM, true_duty: Duty) -> RPM {
 }
 
 /// Linear scan of a variable-spaced curve for the lowest sample where
+/// Slice of `curve` at and above `floor`, in original order. Used by
+/// the dispatcher's lookups to skip the kick-artifact zone below the
+/// sustain floor; those samples have non-monotonic rpms that would
+/// fool the linear scan in `duty_for_rpm` / `rpm_at_device_duty`.
+fn curve_above(curve: &[DutySample], floor: Duty) -> &[DutySample] {
+    let start = curve
+        .iter()
+        .position(|s| s.duty >= floor)
+        .unwrap_or(curve.len());
+    &curve[start..]
+}
+
 /// RPM >= target, then linear interpolation by RPM between that sample
 /// and the previous one. Returns the upper-bound duty when the target
 /// is above the entire curve, the lower-bound duty when below, and 0
@@ -1199,6 +1219,132 @@ mod tests {
         // Means: duty 4 = 290, duty 6 = 275, duty 8 = 280, duty 10 = 290.
         // Lowest is at duty 6.
         assert_eq!(scalars.min_sustain_duty, 6);
+    }
+
+    fn artifact_calibration() -> Calibration {
+        // Models the firmware-kick fan from `/etc/coolercontrol/calibrations.json`
+        // device e0d1df00: kick artifacts at duty 2 and 4 on both curves,
+        // real floor at duty 6, monotonic from there to duty 100.
+        let up = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 2, rpm: 1139 },
+            DutySample { duty: 4, rpm: 1222 },
+            DutySample { duty: 6, rpm: 335 },
+            DutySample { duty: 10, rpm: 320 },
+            DutySample { duty: 20, rpm: 427 },
+            DutySample { duty: 30, rpm: 662 },
+            DutySample { duty: 40, rpm: 883 },
+            DutySample { duty: 50, rpm: 997 },
+            DutySample {
+                duty: 70,
+                rpm: 1466,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 1914,
+            },
+        ];
+        let down = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 2, rpm: 564 },
+            DutySample { duty: 4, rpm: 1012 },
+            DutySample { duty: 6, rpm: 311 },
+            DutySample { duty: 10, rpm: 328 },
+            DutySample { duty: 20, rpm: 554 },
+            DutySample { duty: 30, rpm: 774 },
+            DutySample {
+                duty: 40,
+                rpm: 1004,
+            },
+            DutySample {
+                duty: 50,
+                rpm: 1250,
+            },
+            DutySample {
+                duty: 70,
+                rpm: 1581,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 1922,
+            },
+        ];
+        Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 1125,
+            min_start_duty: 6,
+            min_sustain_duty: 6,
+            min_stable_duty: 6,
+            max_eff_duty: 100,
+            rpm_max: 1930,
+            curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
+            was_rpm_only: false,
+            timestamp: Local::now(),
+        }
+    }
+
+    #[test]
+    fn true_to_device_skips_low_duty_kick_artifacts() {
+        // Without the kick-zone filter, all true_duty values from ~1 to
+        // ~43 would map to the same device duty (the min_stable clamp)
+        // because duty_for_rpm hits the artifact samples first. With
+        // the filter, the lookup escapes the kick zone and the mapping
+        // is monotonically increasing across the whole range.
+        let cal = artifact_calibration();
+        let mut last_sustain: Duty = 0;
+        let mut sustains: Vec<Duty> = Vec::new();
+        for t in [1u8, 10, 30, 50, 100] {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            sustains.push(mapped.sustain);
+            assert!(
+                mapped.sustain >= last_sustain,
+                "sustain non-monotonic across artifacts at t={t}: \
+                 prev={last_sustain} now={} (all: {sustains:?})",
+                mapped.sustain
+            );
+            last_sustain = mapped.sustain;
+        }
+        // sustains[0] is the floor end (low true_duty). It must escape
+        // the kick zone (> min_sustain_duty=6) AND stay near the
+        // floor (well below 100).
+        assert!(
+            sustains[0] > cal.min_sustain_duty,
+            "true_duty=1 must map above the floor: got {}",
+            sustains[0]
+        );
+        assert!(
+            sustains[0] < 30,
+            "true_duty=1 must map near the floor, not mid-range: got {}",
+            sustains[0]
+        );
+        // sustains[last] at true_duty=100 must reach near saturation.
+        assert!(
+            *sustains.last().unwrap() >= 90,
+            "true_duty=100 must reach near-100% device duty: got {sustains:?}"
+        );
+    }
+
+    #[test]
+    fn device_to_true_duty_ignores_kick_artifacts_below_floor() {
+        // The down-sweep lookup must skip the kick-artifact samples
+        // below min_sustain_duty; otherwise device_to_true_duty at a
+        // mid-range device duty would interpolate over the spikes and
+        // return a nonsense true-duty.
+        let cal = artifact_calibration();
+        // At the floor duty the displayed true-duty must be 0.
+        assert_eq!(cal.device_to_true_duty(6), Some(0));
+        // Mid-range: device_duty 50 has down_curve rpm 1250. With the
+        // filter the lookup gets the correct rpm, and the inverse map
+        // produces a reasonable mid-range true-duty (50-60%).
+        let mid = cal
+            .device_to_true_duty(50)
+            .expect("device_to_true_duty maps");
+        assert!(
+            (50..=70).contains(&mid),
+            "device_duty 50 should map to ~58% true-duty, got {mid}"
+        );
     }
 
     #[test]
