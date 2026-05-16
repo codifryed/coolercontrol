@@ -339,7 +339,6 @@ export default {
                 unpin: '取消固定',
                 profileApply: '将配置文件应用到风扇',
                 tags: '管理标签',
-                calibrated: '已校准',
             },
         },
         plugins: {
@@ -832,7 +831,6 @@ export default {
             noControlChain: '未找到此通道的控制链。',
             controlFlow: '控制流',
             backToOverview: '返回控制概览',
-            viewControlFlow: '查看控制流程',
             switchProfile: '切换配置',
             switchTempSource: '切换温度源',
             switchFunction: '切换函数',

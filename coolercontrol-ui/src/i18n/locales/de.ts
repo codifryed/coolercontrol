@@ -355,7 +355,6 @@ export default {
                 unpin: 'Loslassen',
                 profileApply: 'Profil auf Lüfter anwenden',
                 tags: 'Tags verwalten',
-                calibrated: 'Kalibriert',
             },
         },
         plugins: {
@@ -711,7 +710,6 @@ export default {
             noControlChain: 'Keine Steuerungskette für diesen Kanal gefunden.',
             controlFlow: 'Steuerungsfluss',
             backToOverview: 'Zurück zur Steuerungsübersicht',
-            viewControlFlow: 'Steuerungsfluss anzeigen',
             switchProfile: 'Profil wechseln',
             switchTempSource: 'Temperaturquelle wechseln',
             switchFunction: 'Funktion wechseln',

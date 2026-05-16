@@ -346,7 +346,6 @@ export default {
                 unpin: '핀 해제',
                 profileApply: '팬들에 프로파일 적용',
                 tags: '태그 관리',
-                calibrated: '보정됨',
             },
         },
         plugins: {
@@ -691,7 +690,6 @@ export default {
             noControlChain: '이 채널에 대한 제어 체인을 찾을 수 없습니다.',
             controlFlow: '제어 흐름',
             backToOverview: '제어 개요로 돌아가기',
-            viewControlFlow: '제어 흐름 보기',
             switchProfile: '프로필 전환',
             switchTempSource: '온도 소스 전환',
             switchFunction: '함수 전환',

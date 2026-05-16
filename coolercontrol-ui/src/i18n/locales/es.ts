@@ -354,7 +354,6 @@ export default {
                 unpin: 'Desfijar',
                 profileApply: 'Aplicar Perfil a ventiladores',
                 tags: 'Gestionar Etiquetas',
-                calibrated: 'Calibrado',
             },
         },
         plugins: {
@@ -707,7 +706,6 @@ export default {
             noControlChain: 'No se encontró cadena de control para este canal.',
             controlFlow: 'Flujo de Control',
             backToOverview: 'Volver a la vista de controles',
-            viewControlFlow: 'Ver flujo de control',
             switchProfile: 'Cambiar perfil',
             switchTempSource: 'Cambiar fuente de temperatura',
             switchFunction: 'Cambiar función',

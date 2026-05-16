@@ -347,7 +347,6 @@ export default {
                 unpin: 'إلغاء التثبيت',
                 profileApply: 'تطبيق الملف الشخصي على المراوح',
                 tags: 'إدارة العلامات',
-                calibrated: 'مُعايَر',
             },
         },
         plugins: {
@@ -693,7 +692,6 @@ export default {
             noControlChain: 'لم يتم العثور على سلسلة تحكم لهذه القناة.',
             controlFlow: 'تدفق التحكم',
             backToOverview: 'العودة إلى نظرة عامة على التحكم',
-            viewControlFlow: 'عرض تدفق التحكم',
             switchProfile: 'تبديل الملف الشخصي',
             switchTempSource: 'تبديل مصدر الحرارة',
             switchFunction: 'تبديل الوظيفة',

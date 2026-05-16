@@ -275,7 +275,6 @@ export default {
                 unpin: 'अनपिन करें',
                 profileApply: 'पंखों पर प्रोफाइल लागू करें',
                 tags: 'टैग प्रबंधित करें',
-                calibrated: 'कैलिब्रेटेड',
             },
         },
         plugins: {
@@ -700,7 +699,6 @@ export default {
             noControlChain: 'इस चैनल के लिए कोई नियंत्रण श्रृंखला नहीं मिली।',
             controlFlow: 'नियंत्रण प्रवाह',
             backToOverview: 'नियंत्रण अवलोकन पर वापस जाएं',
-            viewControlFlow: 'नियंत्रण प्रवाह देखें',
             switchProfile: 'प्रोफ़ाइल बदलें',
             switchTempSource: 'तापमान स्रोत बदलें',
             switchFunction: 'फ़ंक्शन बदलें',

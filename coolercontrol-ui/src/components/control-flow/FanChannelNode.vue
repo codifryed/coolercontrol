@@ -248,7 +248,6 @@ function onClick() {
         <div
             v-if="flowViewMode === 'overview' && data.chainSummary?.hasChain"
             class="flex items-center gap-1 overflow-hidden border-t border-border-one px-3 py-1.5"
-            v-tooltip.bottom="t('views.controls.viewControlFlow')"
         >
             <template v-for="(step, idx) in data.chainSummary.steps.slice(0, 3)" :key="idx">
                 <svg-icon

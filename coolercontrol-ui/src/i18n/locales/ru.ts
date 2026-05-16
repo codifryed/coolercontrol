@@ -352,7 +352,6 @@ export default {
                 unpin: 'Открепить',
                 profileApply: 'Применить профиль к вентиляторам',
                 tags: 'Управление тегами',
-                calibrated: 'Откалиброван',
             },
         },
         plugins: {
@@ -706,7 +705,6 @@ export default {
             noControlChain: 'Цепочка управления для этого канала не найдена.',
             controlFlow: 'Поток управления',
             backToOverview: 'Вернуться к обзору управления',
-            viewControlFlow: 'Просмотр потока управления',
             switchProfile: 'Сменить профиль',
             switchTempSource: 'Сменить источник температуры',
             switchFunction: 'Сменить функцию',

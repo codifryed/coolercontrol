@@ -365,7 +365,6 @@ export default {
                 unpin: 'ピン留め解除',
                 profileApply: 'ファンにプロファイルを適用',
                 tags: 'タグを管理',
-                calibrated: 'キャリブレーション済み',
             },
         },
         plugins: {
@@ -747,7 +746,6 @@ export default {
             noControlChain: 'このチャンネルの制御チェーンが見つかりません。',
             controlFlow: '制御フロー',
             backToOverview: 'コントロール概要に戻る',
-            viewControlFlow: '制御フローを表示',
             switchProfile: 'プロファイルを切り替え',
             switchTempSource: '温度ソースを切り替え',
             switchFunction: '関数を切り替え',

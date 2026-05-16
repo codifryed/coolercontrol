@@ -350,7 +350,6 @@ export default {
                 unpin: 'Unpin',
                 profileApply: 'Apply Profile to fans',
                 tags: 'Manage Tags',
-                calibrated: 'Calibrated',
             },
         },
         plugins: {
@@ -699,7 +698,6 @@ export default {
             noControlChain: 'No control chain found for this channel.',
             controlFlow: 'Control Flow',
             backToOverview: 'Back to Controls Overview',
-            viewControlFlow: 'View control flow',
             switchProfile: 'Switch Profile',
             switchTempSource: 'Switch Temperature Source',
             switchFunction: 'Switch Function',
