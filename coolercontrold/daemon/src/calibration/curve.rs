@@ -321,6 +321,31 @@ fn jitter_threshold(rpm_max: RPM) -> RPM {
     relative.max(RPM_JITTER_ABSOLUTE)
 }
 
+/// First sample in `curve` (low duty to high) whose `rpm` clears
+/// `threshold` AND is not significantly above the minimum of all later
+/// samples. Returning the higher value would make it a firmware-kick
+/// transient that decays once the fan settles past the dense region.
+fn first_monotonic_above_threshold(
+    curve: &[DutySample],
+    threshold: RPM,
+    jitter: RPM,
+) -> Option<&DutySample> {
+    for (i, sample) in curve.iter().enumerate() {
+        if sample.rpm < threshold {
+            continue;
+        }
+        let later_min = curve[i + 1..]
+            .iter()
+            .map(|s| s.rpm)
+            .min()
+            .unwrap_or(sample.rpm);
+        if sample.rpm <= later_min.saturating_add(jitter) {
+            return Some(sample);
+        }
+    }
+    None
+}
+
 /// Returns `None` when the up-curve never crosses the start threshold.
 pub fn derive_scalars(
     up_curve: &[DutySample],
@@ -341,10 +366,8 @@ pub fn derive_scalars(
     let threshold = start_threshold(rpm_max);
     let jitter = jitter_threshold(rpm_max);
 
-    let min_start_duty = up_curve.iter().find(|s| s.rpm >= threshold)?.duty;
-    let min_sustain_duty = down_curve
-        .iter()
-        .find(|s| s.rpm >= threshold)
+    let min_start_duty = first_monotonic_above_threshold(up_curve, threshold, jitter)?.duty;
+    let min_sustain_duty = first_monotonic_above_threshold(down_curve, threshold, jitter)
         .map_or(min_start_duty, |s| s.duty);
     let plateau_target = rpm_max.saturating_sub(jitter);
     let max_eff_duty = up_curve
@@ -1038,6 +1061,70 @@ mod tests {
         assert!(scalars.min_start_duty <= 25);
         assert!(scalars.max_eff_duty >= 95);
         assert_eq!(scalars.rpm_max, 2000);
+    }
+
+    #[test]
+    fn derive_scalars_rejects_kick_artifact_at_low_duty() {
+        // Firmware-kick fan: low-duty samples show transient kick spikes
+        // while the real sustain floor sits below. min_sustain_duty must
+        // land on the first post-artifact sample so the dispatcher's
+        // rpm_floor reflects the real floor and true_duty=1% maps near
+        // the bottom of the fan's RPM range.
+        let up = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 5, rpm: 1130 }, // kick spike
+            DutySample { duty: 10, rpm: 290 },
+            DutySample { duty: 15, rpm: 290 },
+            DutySample { duty: 20, rpm: 400 },
+            DutySample { duty: 30, rpm: 700 },
+            DutySample {
+                duty: 50,
+                rpm: 1200,
+            },
+            DutySample {
+                duty: 70,
+                rpm: 1600,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 2000,
+            },
+        ];
+        let down = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 5, rpm: 1230 }, // kick spike
+            DutySample { duty: 10, rpm: 970 }, // kick decay
+            DutySample { duty: 15, rpm: 290 },
+            DutySample { duty: 20, rpm: 400 },
+            DutySample { duty: 30, rpm: 700 },
+            DutySample {
+                duty: 50,
+                rpm: 1200,
+            },
+            DutySample {
+                duty: 70,
+                rpm: 1600,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 2000,
+            },
+        ];
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        assert_eq!(
+            scalars.min_start_duty, 10,
+            "first up sample without kick spike is duty 10"
+        );
+        assert_eq!(
+            scalars.min_sustain_duty, 15,
+            "first down sample without kick spike or decay is duty 15"
+        );
+        let floor_rpm = down
+            .iter()
+            .find(|s| s.duty == scalars.min_sustain_duty)
+            .expect("min_sustain sample present")
+            .rpm;
+        assert_eq!(floor_rpm, 290, "rpm_floor must be the real floor, not kick");
     }
 
     #[test]
