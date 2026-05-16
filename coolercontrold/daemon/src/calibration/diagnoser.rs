@@ -45,6 +45,12 @@ pub struct DiagnosisSettings {
     pub abort_temp_max_c: f64,
     pub start_rpm_min: RPM,
     pub kick_duration_default_ms: u32,
+    /// Post-write wait at the first non-zero up-sweep step. Longer than
+    /// `kick_duration_default_ms` because the diagnoser must see the
+    /// true sustain RPM, not the kick peak: a long-lasting firmware
+    /// kick at consistent RPM otherwise fills the stability window and
+    /// gets recorded as the steady-state.
+    pub kick_decay_settle_ms: u32,
     /// Initial post-write sleep before waiting for cache refresh.
     pub min_settle_ms: u32,
     /// Consecutive samples that must agree before declaring settled.
@@ -76,6 +82,7 @@ impl Default for DiagnosisSettings {
             abort_temp_max_c: 85.0,
             start_rpm_min: 50,
             kick_duration_default_ms: 3000,
+            kick_decay_settle_ms: 6000,
             min_settle_ms: 400,
             stability_window: 3,
             stability_tolerance_rpm: 30,
@@ -490,7 +497,7 @@ where
         // Sleep post-write inside sweep_step so the kick has time to
         // decay before settle_and_sample's stability window starts.
         let extra_post_write_settle_ms = if duty == DUTY_STEP_DENSE {
-            settings.kick_duration_default_ms
+            settings.kick_decay_settle_ms
         } else {
             0
         };
