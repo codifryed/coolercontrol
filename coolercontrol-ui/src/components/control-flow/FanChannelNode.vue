@@ -96,13 +96,16 @@ const calibrationButtonClass = computed(() => {
     }
 })
 
+// Tooltip text is kept stable across polls. The live percent ticks once
+// per second; if it were in the tooltip, the v-memo guard below would
+// re-render every second and PrimeVue's tooltip directive would tear
+// the visible tooltip down on each rebind. The percent is still visible
+// inside the popover's progress bar.
 const calibrationButtonTooltip = computed(() => {
     const status = calibrationStore.statusFor(props.data.deviceUID, props.data.channelName)
     switch (status?.phase) {
         case 'in_progress':
-            return `${t(
-                'components.channelExtensionSettings.calibration.buttonCalibrate',
-            )}… ${status.percent}${t('common.percentUnit')}`
+            return `${t('components.channelExtensionSettings.calibration.buttonCalibrate')}…`
         case 'completed':
             return t('components.channelExtensionSettings.calibration.statusCompleted')
         case 'failed':
@@ -189,6 +192,7 @@ function onClick() {
             </div>
             <div
                 v-if="showCalibrationButton"
+                v-memo="[calibrationButtonTooltip, calibrationButtonClass]"
                 v-tooltip.top="calibrationButtonTooltip"
                 class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
                 @click="onCalibrationClick"
