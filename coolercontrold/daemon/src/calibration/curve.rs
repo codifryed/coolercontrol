@@ -346,6 +346,39 @@ fn first_monotonic_above_threshold(
     None
 }
 
+/// Down-sweep sample with the lowest mean RPM across the matched
+/// up-curve and down-curve at the same duty. Both samples must clear
+/// `threshold`. A firmware-kick fan oscillates at low duty, so a single
+/// down-sample can land on the oscillation valley (artificially low)
+/// while the up-sample at the same duty lands on a peak (artificially
+/// high). Averaging the two cancels the timing-of-sample bias and
+/// identifies the duty where the fan actually sits at its floor.
+fn lowest_mean_floor_duty<'a>(
+    up_curve: &'a [DutySample],
+    down_curve: &'a [DutySample],
+    threshold: RPM,
+) -> Option<&'a DutySample> {
+    let mut best: Option<(&'a DutySample, u32)> = None;
+    for down in down_curve {
+        if down.rpm < threshold {
+            continue;
+        }
+        let Some(up) = up_curve.iter().find(|u| u.duty == down.duty) else {
+            continue;
+        };
+        if up.rpm < threshold {
+            continue;
+        }
+        let mean = u32::midpoint(up.rpm, down.rpm);
+        match best {
+            None => best = Some((down, mean)),
+            Some((_, prev)) if mean < prev => best = Some((down, mean)),
+            _ => {}
+        }
+    }
+    best.map(|(s, _)| s)
+}
+
 /// Returns `None` when the up-curve never crosses the start threshold.
 pub fn derive_scalars(
     up_curve: &[DutySample],
@@ -367,8 +400,11 @@ pub fn derive_scalars(
     let jitter = jitter_threshold(rpm_max);
 
     let min_start_duty = first_monotonic_above_threshold(up_curve, threshold, jitter)?.duty;
-    let min_sustain_duty = first_monotonic_above_threshold(down_curve, threshold, jitter)
-        .map_or(min_start_duty, |s| s.duty);
+    // Lowest-mean over both curves: oscillation at low duty makes the
+    // raw down-curve minimum unreliable (the sample lands wherever the
+    // oscillation cycle is at sample time). The mean cancels that bias.
+    let min_sustain_duty =
+        lowest_mean_floor_duty(up_curve, down_curve, threshold).map_or(min_start_duty, |s| s.duty);
     let plateau_target = rpm_max.saturating_sub(jitter);
     let max_eff_duty = up_curve
         .iter()
@@ -1125,6 +1161,44 @@ mod tests {
             .expect("min_sustain sample present")
             .rpm;
         assert_eq!(floor_rpm, 290, "rpm_floor must be the real floor, not kick");
+    }
+
+    #[test]
+    fn derive_scalars_min_sustain_uses_lowest_mean_across_oscillation() {
+        // Firmware-kick fan oscillates at duty 4 so the down-sweep
+        // happens to catch the valley (270) while the up-sweep catches
+        // a higher point (310). The raw "lowest down sample" would pin
+        // min_sustain to duty 4, but the fan isn't actually stable
+        // there. At duty 6 both curves agree at the true floor, giving
+        // the lowest mean and the correct min_sustain_duty.
+        let up = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 4, rpm: 310 }, // oscillation peak
+            DutySample { duty: 6, rpm: 280 },
+            DutySample { duty: 8, rpm: 280 },
+            DutySample { duty: 10, rpm: 290 },
+            DutySample { duty: 30, rpm: 700 },
+            DutySample {
+                duty: 100,
+                rpm: 2000,
+            },
+        ];
+        let down = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 4, rpm: 270 }, // oscillation valley
+            DutySample { duty: 6, rpm: 270 },
+            DutySample { duty: 8, rpm: 280 },
+            DutySample { duty: 10, rpm: 290 },
+            DutySample { duty: 30, rpm: 700 },
+            DutySample {
+                duty: 100,
+                rpm: 2000,
+            },
+        ];
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        // Means: duty 4 = 290, duty 6 = 275, duty 8 = 280, duty 10 = 290.
+        // Lowest is at duty 6.
+        assert_eq!(scalars.min_sustain_duty, 6);
     }
 
     #[test]
