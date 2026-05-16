@@ -1544,11 +1544,13 @@ mod engine_tests {
 
     #[test]
     #[serial]
-    fn apply_true_duty_falls_back_to_rpm_when_diverged() {
-        // Goal: a calibrated channel whose RPM disagrees with the
-        // device-duty-derived true-duty by more than the sanity
-        // threshold (stuck fan, broken sensor) displays the RPM-derived
-        // value so the failure surfaces in the duty readout.
+    fn apply_true_duty_keeps_device_value_when_rpm_diverges() {
+        // The earlier cross-check used to switch to the RPM-derived
+        // value when device-derived and rpm-derived disagreed by more
+        // than the sanity threshold. That tripped false-positively on
+        // firmware-kick fans, so we now always prefer device-derived
+        // when present: the displayed value reflects what the daemon
+        // wrote, not transient RPM dips.
         cc_fs::test_runtime(async {
             let (device, _engine, calibration_store) = setup_calibrated_device();
             let device_uid = device.borrow().uid.clone();
@@ -1558,10 +1560,9 @@ mod engine_tests {
                 .initialize_status_history_with(Status::default(), 1.0);
             calibration_store
                 .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
-            // Daemon wrote device-duty 50% (would imply ~47% true), but
-            // the fan is stuck and reads 0 RPM (implies ~0% true). The
-            // sanity threshold trips and the displayed duty drops near
-            // zero.
+            // Daemon wrote device-duty 50% (would imply ~47% true), and
+            // the fan reports 0 RPM. The display must stay at the
+            // device-derived value rather than dropping to 0%.
             push_channel_status(&device, channel.clone(), Some(0), 50.0);
 
             let observed = device.borrow().status_current().unwrap();
@@ -1570,10 +1571,10 @@ mod engine_tests {
                 .iter()
                 .find(|c| c.name == channel)
                 .expect("channel present");
-            let true_duty = chan.duty.expect("duty rewritten via RPM fallback");
+            let true_duty = chan.duty.expect("duty rewritten");
             assert!(
-                true_duty <= 5.0,
-                "expected ~0% RPM-derived true-duty (stuck fan), got {true_duty}"
+                (40.0..=55.0).contains(&true_duty),
+                "expected ~47% device-derived true-duty, got {true_duty}"
             );
         });
     }

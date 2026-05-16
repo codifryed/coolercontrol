@@ -22,16 +22,11 @@
 
 use std::rc::Rc;
 
-use super::curve::{select_displayed_true_duty, SANITY_THRESHOLD_PERCENT};
+use super::curve::select_displayed_true_duty;
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
 use super::ChannelKey;
 use crate::device::{Device, DeviceUID, Duty, Status, StatusAugmenter};
-
-/// Raw device-duty at/above which we treat the channel as saturated:
-/// fan RPM jitters below the calibrated `rpm_max` here, and the
-/// device-vs-RPM cross-check would otherwise pin the display below 100%.
-const SATURATION_DUTY_PERCENT: f64 = 95.0;
 
 pub struct CalibrationStatusAugmenter {
     calibration_store: Rc<CalibrationStore>,
@@ -55,8 +50,10 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
             if self.fan_state_map.is_under_diagnosis(&key) {
                 continue;
             }
-            // Device-duty is the stable source; fall back to RPM when the two
-            // diverge so stuck fans and broken PWM lines surface in the readout.
+            // Device-duty mapping is the user-facing source of truth (it
+            // reflects what the dispatcher just wrote). The RPM-derived
+            // value is a fallback for rpm-only devices that don't report
+            // PWM readback.
             let device_derived = channel.duty.and_then(|d| {
                 self.calibration_store
                     .device_to_true_duty(&key, clamp_f64_to_duty(d))
@@ -64,15 +61,7 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
             let rpm_derived = channel
                 .rpm
                 .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
-            // Bypass the cross-check at the saturation tail: the fan's
-            // measured RPM naturally jitters below rpm_max there.
-            let in_saturation = matches!(channel.duty, Some(d) if d >= SATURATION_DUTY_PERCENT);
-            if let Some(displayed) = select_displayed_true_duty(
-                device_derived,
-                rpm_derived,
-                SANITY_THRESHOLD_PERCENT,
-                in_saturation,
-            ) {
+            if let Some(displayed) = select_displayed_true_duty(device_derived, rpm_derived) {
                 channel.duty = Some(f64::from(displayed));
             }
         }
