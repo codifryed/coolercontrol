@@ -172,11 +172,18 @@ impl Calibration {
         if self.curve_kind == CurveKind::Stepped {
             return None;
         }
+        let dut = device_duty.min(100);
+        // Mirror the forward `true_duty == 0 -> device 0` special case so
+        // an off fan always displays as 0% regardless of where the
+        // filtered curve's first sample sits.
+        if dut == 0 {
+            return Some(0);
+        }
         // Skip kick-artifact samples below the sustain floor: the
         // firmware-kick dense region has non-monotonic rpms that would
         // otherwise pull `rpm_at_device_duty` to inflated values.
         let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
-        let rpm = rpm_at_device_duty(down_above, device_duty.min(100));
+        let rpm = rpm_at_device_duty(down_above, dut);
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
@@ -189,6 +196,17 @@ impl Calibration {
             return MappedDuty {
                 kick: 0,
                 sustain: 0,
+            };
+        }
+        // Saturation tail: write full device duty rather than chasing
+        // `rpm_max`, which may sit at a sample slightly below duty 100
+        // due to measurement variance. Fans that actually throttle at
+        // saturation are rare and the user can recalibrate; the common
+        // case is the user expects 100% to give the fan's full speed.
+        if true_clamped == 100 {
+            return MappedDuty {
+                kick: 100,
+                sustain: 100,
             };
         }
         let rpm_floor = self.rpm_floor();
@@ -210,14 +228,20 @@ impl Calibration {
 
     /// Ceiling division so the inverse round-trips: setting 98% would
     /// otherwise display as 97% when integer truncation in `duty_for_rpm`
-    /// shaves a few RPM off the target.
+    /// shaves a few RPM off the target. `rpm == 0` is fan-off; any
+    /// non-zero rpm at or below the floor is "fan running at minimum"
+    /// and maps to 1 so the user can tell a spinning fan from a stopped
+    /// one in the display.
     fn rpm_to_true_duty_smooth(&self, rpm: RPM) -> Duty {
         debug_assert_eq!(self.curve_kind, CurveKind::Smooth);
         assert!(self.rpm_max > 0);
 
+        if rpm == 0 {
+            return 0;
+        }
         let rpm_floor = self.rpm_floor();
         if rpm <= rpm_floor {
-            return 0;
+            return 1;
         }
         if rpm >= self.rpm_max {
             return 100;
@@ -1292,14 +1316,52 @@ mod tests {
     }
 
     #[test]
+    fn true_to_device_hundred_writes_full_device_duty_when_max_lands_at_lower_duty() {
+        // rpm_max captured at duty 95 (down sample 1985) while duty 100
+        // shows 1981. Without the special case, true_duty=100 would map
+        // to device 95 (where rpm_max is); with it, true_duty=100 always
+        // writes 100% so the fan reaches its actual hardware max.
+        let mut cal = artifact_calibration();
+        // Modify down_curve to put rpm_max at duty 95, slight dip at 100.
+        let len = cal.down_curve.len();
+        cal.down_curve[len - 2] = DutySample {
+            duty: 95,
+            rpm: 1930,
+        };
+        cal.down_curve[len - 1] = DutySample {
+            duty: 100,
+            rpm: 1922,
+        };
+        let mapped = cal.true_to_device(100).expect("smooth maps");
+        assert_eq!(mapped.sustain, 100);
+        assert_eq!(mapped.kick, 100);
+    }
+
+    #[test]
+    fn rpm_to_true_duty_distinguishes_off_from_running_at_floor() {
+        // rpm=0 is fan-off; any non-zero rpm at or below the calibrated
+        // floor is "fan running at its minimum" and maps to 1 so the
+        // UI can tell a stopped fan from one ticking over.
+        let cal = artifact_calibration();
+        assert_eq!(cal.rpm_to_true_duty(0), Some(0));
+        // The floor for this cal is down_curve at duty 6 = 311 rpm.
+        assert_eq!(cal.rpm_to_true_duty(311), Some(1));
+        // Just below the floor: still considered "at floor" (1%).
+        assert_eq!(cal.rpm_to_true_duty(280), Some(1));
+    }
+
+    #[test]
     fn device_to_true_duty_ignores_kick_artifacts_below_floor() {
         // The down-sweep lookup must skip the kick-artifact samples
         // below min_sustain_duty; otherwise device_to_true_duty at a
         // mid-range device duty would interpolate over the spikes and
         // return a nonsense true-duty.
         let cal = artifact_calibration();
-        // At the floor duty the displayed true-duty must be 0.
-        assert_eq!(cal.device_to_true_duty(6), Some(0));
+        // device_duty 0 is a true off and must always show 0%.
+        assert_eq!(cal.device_to_true_duty(0), Some(0));
+        // At the floor duty the fan is running at minimum: display 1%
+        // (distinguishes spinning at floor from fully off).
+        assert_eq!(cal.device_to_true_duty(6), Some(1));
         // Mid-range: device_duty 50 has down_curve rpm 1250. With the
         // filter the lookup gets the correct rpm, and the inverse map
         // produces a reasonable mid-range true-duty (50-60%).
