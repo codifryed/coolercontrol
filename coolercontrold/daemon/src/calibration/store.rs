@@ -187,6 +187,15 @@ impl CalibrationStore {
             }
         }
         self.replace_cache(CalibrationConfigFile { calibrations });
+        for ((device_uid, channel_name), calibration) in self.calibrations.borrow().iter() {
+            info!(
+                "Calibration loaded for {device_uid}:{channel_name} (curve_kind={:?}, \
+                 rpm_max={}, warnings={})",
+                calibration.curve_kind,
+                calibration.rpm_max,
+                calibration.warnings.len()
+            );
+        }
         Ok(())
     }
 

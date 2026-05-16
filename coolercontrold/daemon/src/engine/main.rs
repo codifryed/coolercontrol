@@ -324,6 +324,10 @@ impl Engine {
         }
         self.calibration_statuses.borrow_mut().remove(key);
         self.fan_state_map.forget(key);
+        info!(
+            "Calibration cleared for {}:{} (had_data={existed})",
+            key.0, key.1
+        );
         // Re-dispatch the channel's saved setting so the fan picks up
         // the now-uncalibrated duty immediately instead of holding the
         // last calibration-mapped value until the next user action.
@@ -1275,6 +1279,7 @@ impl Engine {
         let settings = DiagnosisSettings::default();
         let device_uid_for_event = key.0.clone();
         let channel_name_for_event = key.1.clone();
+        info!("Calibration started for {device_uid}:{channel_name}");
         let mut outcome = calibration::run_diagnosis(
             &self.fan_state_map,
             &self.calibration_store,
@@ -1312,16 +1317,42 @@ impl Engine {
             }
         }
         let status = match &outcome {
-            Ok(calibration) => CalibrationStatus::from_completion(
-                device_uid_for_event,
-                channel_name_for_event,
-                calibration.clone(),
-            ),
-            Err(failure) => CalibrationStatus::from_failure(
-                device_uid_for_event,
-                channel_name_for_event,
-                failure,
-            ),
+            Ok(calibration) => {
+                info!(
+                    "Calibration completed for {}:{} (curve_kind={:?}, rpm_max={}, warnings={})",
+                    key.0,
+                    key.1,
+                    calibration.curve_kind,
+                    calibration.rpm_max,
+                    calibration.warnings.len()
+                );
+                CalibrationStatus::from_completion(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    calibration.clone(),
+                )
+            }
+            Err(DiagnosisFailure::Cancelled) => {
+                info!("Calibration cancelled for {}:{}", key.0, key.1);
+                CalibrationStatus::from_failure(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    &DiagnosisFailure::Cancelled,
+                )
+            }
+            Err(failure) => {
+                info!(
+                    "Calibration failed for {}:{}: {}",
+                    key.0,
+                    key.1,
+                    describe_failure(failure)
+                );
+                CalibrationStatus::from_failure(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    failure,
+                )
+            }
         };
         self.broadcast_calibration_outcome(&key.1, &outcome);
         self.store_calibration_status(key, status);
@@ -1899,6 +1930,15 @@ impl DiagnosisHost for Engine {
     }
 
     fn emit_progress(&self, progress: DiagnosisProgress) {
+        debug!(
+            "Calibration progress for {}:{} phase={:?} percent={}% duty={:?} rpm={:?}",
+            progress.device_uid,
+            progress.channel_name,
+            progress.phase,
+            progress.percent,
+            progress.current_duty,
+            progress.current_rpm
+        );
         let key: ChannelKey = (progress.device_uid.clone(), progress.channel_name.clone());
         let status = CalibrationStatus::from_progress(progress);
         self.store_calibration_status(key, status);
