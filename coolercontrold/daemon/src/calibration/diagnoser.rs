@@ -329,7 +329,7 @@ fn build_calibration(
     match scalars {
         Some(scalars) => {
             let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max);
-            let mut warnings = derive_warnings(&up_curve, &scalars, &mut curve_kind);
+            let mut warnings = derive_warnings(&up_curve, scalars, &mut curve_kind);
             let (min_stable_duty, band) = derive_min_stable_duty(
                 &down_curve,
                 down_stable,

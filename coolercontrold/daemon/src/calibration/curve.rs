@@ -507,7 +507,7 @@ pub fn select_displayed_true_duty(
 /// fan looks BIOS-controlled (kills the mapping).
 pub fn derive_warnings(
     up_curve: &[DutySample],
-    scalars: &DerivedScalars,
+    scalars: DerivedScalars,
     curve_kind: &mut CurveKind,
 ) -> Vec<CalibrationWarning> {
     let mut warnings = Vec::new();
@@ -586,7 +586,7 @@ pub fn derive_min_stable_duty(
 
 /// RPM span from `min_start_duty` up to peak. Excluding the off-prefix
 /// stops a toggle fan from looking like a healthy `0..rpm_max` range.
-fn effective_rpm_span(up_curve: &[DutySample], scalars: &DerivedScalars) -> RPM {
+fn effective_rpm_span(up_curve: &[DutySample], scalars: DerivedScalars) -> RPM {
     let rpm_at_start = up_curve
         .iter()
         .find(|s| s.duty == scalars.min_start_duty)
@@ -849,7 +849,7 @@ mod tests {
         let down = smooth_curve(2000);
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = classify_curve(&up, scalars.rpm_max);
-        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, &mut kind);
         assert!(
             warnings.is_empty(),
             "expected no warnings, got {warnings:?}"
@@ -870,7 +870,7 @@ mod tests {
         let down = up.clone();
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = CurveKind::Smooth; // pretend classify said smooth
-        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, &mut kind);
         assert!(
             warnings.contains(&CalibrationWarning::NotControllable),
             "expected NotControllable in {warnings:?}"
@@ -902,7 +902,7 @@ mod tests {
         let down = up.clone();
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = classify_curve(&up, scalars.rpm_max);
-        let warnings = derive_warnings(&up, &scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, &mut kind);
         let limited = warnings.iter().find_map(|w| match w {
             CalibrationWarning::LimitedRange { rpm_span, rpm_max } => Some((*rpm_span, *rpm_max)),
             _ => None,
@@ -1016,8 +1016,7 @@ mod tests {
         for d in (5..=100).step_by(5) {
             let rpm = match d {
                 90 => 1880,
-                95 => 2000,
-                100 => 2000,
+                95 | 100 => 2000,
                 _ => 20 * u32::from(d), // linear ramp
             };
             up.push(DutySample { duty: d, rpm });
@@ -1725,7 +1724,7 @@ mod tests {
         };
         let cal = make_smooth_calibration();
         let out = effective_speed_options(&raw, Some(&cal));
-        assert_eq!(out.fixed_enabled, true);
+        assert!(out.fixed_enabled);
         assert_eq!(
             out.extension,
             Some(crate::device::ChannelExtensionNames::AmdRdnaGpu)
