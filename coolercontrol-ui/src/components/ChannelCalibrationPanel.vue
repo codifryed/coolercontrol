@@ -27,9 +27,9 @@ import ProgressBar from 'primevue/progressbar'
 import { mdiChartLine, mdiInformationSlabCircleOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
+import { useCalibrationStatusText } from '@/composables/useCalibrationStatusText.ts'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import type { UID } from '@/models/Device.ts'
-import type { CalibrationWarning } from '@/models/Calibration.ts'
 
 const props = defineProps<{
     deviceUID: UID
@@ -45,6 +45,7 @@ const deviceStore = useDeviceStore()
 const calibrationStore = useCalibrationStore()
 const toast = useToast()
 const dialog = useDialog()
+const { completedStatusText } = useCalibrationStatusText()
 
 const calibrationCurveDialog = defineAsyncComponent(
     () => import('@/components/CalibrationCurveDialog.vue'),
@@ -69,40 +70,12 @@ const calibrationStatusText = computed((): string => {
         })
     }
     if (status.phase === 'completed') {
-        const warnings = status.calibration.warnings ?? []
-        if (warnings.length > 0) {
-            const messages = warnings.map(warningText).join('; ')
-            return t(
-                'components.channelExtensionSettings.calibration.statusCompletedWithWarnings',
-                { messages },
-            )
-        }
-        return status.calibration.curve_kind === 'Stepped'
-            ? t('components.channelExtensionSettings.calibration.statusCompletedStepped')
-            : t('components.channelExtensionSettings.calibration.statusCompleted')
+        return completedStatusText(status.calibration)
     }
     return t('components.channelExtensionSettings.calibration.statusFailed', {
         message: status.message,
     })
 })
-
-function warningText(warning: CalibrationWarning): string {
-    switch (warning.kind) {
-        case 'no_tachometer':
-            return t('components.channelExtensionSettings.calibration.warningNoTachometer')
-        case 'not_controllable':
-            return t('components.channelExtensionSettings.calibration.warningNotControllable')
-        case 'limited_range':
-            return t('components.channelExtensionSettings.calibration.warningLimitedRange', {
-                span: warning.rpm_span,
-            })
-        case 'oscillating':
-            return t('components.channelExtensionSettings.calibration.warningOscillating', {
-                lower: warning.lower_duty,
-                upper: warning.upper_duty,
-            })
-    }
-}
 
 const calibrationHasWarnings = computed((): boolean => {
     const status = calibrationStatus.value

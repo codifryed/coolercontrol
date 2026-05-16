@@ -26,6 +26,7 @@ import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useCalibrationStore } from '@/stores/CalibrationStore'
+import { useCalibrationStatusText } from '@/composables/useCalibrationStatusText'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
@@ -45,6 +46,7 @@ const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const calibrationStore = useCalibrationStore()
+const { completedStatusText } = useCalibrationStatusText()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
 const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
@@ -107,7 +109,7 @@ const calibrationButtonTooltip = computed(() => {
         case 'in_progress':
             return `${t('components.channelExtensionSettings.calibration.buttonCalibrate')}…`
         case 'completed':
-            return t('components.channelExtensionSettings.calibration.statusCompleted')
+            return completedStatusText(status.calibration)
         case 'failed':
             return t('components.channelExtensionSettings.calibration.statusFailed', {
                 message: status.message,
