@@ -382,14 +382,18 @@ fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
 
 /// Picks the displayed true-duty: device-derived is the stable source;
 /// RPM-derived takes over when the two diverge by more than `threshold`,
-/// since that gap signals a stuck fan or broken PWM the user should see.
+/// since that gap signals a stuck fan or broken PWM. `in_saturation`
+/// disables that cross-check at the saturation tail: there, the fan's
+/// RPM naturally sits below the calibrated `rpm_max` and the sanity
+/// gate would otherwise pin the display below 100%.
 pub fn select_displayed_true_duty(
     device_derived: Option<Duty>,
     rpm_derived: Option<Duty>,
     threshold: u8,
+    in_saturation: bool,
 ) -> Option<Duty> {
     match (device_derived, rpm_derived) {
-        (Some(dd), Some(rd)) if dd.abs_diff(rd) > threshold => Some(rd),
+        (Some(dd), Some(rd)) if !in_saturation && dd.abs_diff(rd) > threshold => Some(rd),
         (Some(dd), _) => Some(dd),
         (None, Some(rd)) => Some(rd),
         (None, None) => None,
@@ -716,33 +720,49 @@ mod tests {
 
     #[test]
     fn select_uses_device_when_close() {
-        let chosen = select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT);
+        let chosen = select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, Some(50));
     }
 
     #[test]
     fn select_falls_back_to_rpm_when_diverged() {
         // Stuck/dead fan: device says 50, RPM says 0; cross-check trips.
-        let chosen = select_displayed_true_duty(Some(50), Some(0), SANITY_THRESHOLD_PERCENT);
+        let chosen = select_displayed_true_duty(Some(50), Some(0), SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, Some(0));
     }
 
     #[test]
     fn select_uses_device_when_only_device_available() {
-        let chosen = select_displayed_true_duty(Some(40), None, SANITY_THRESHOLD_PERCENT);
+        let chosen = select_displayed_true_duty(Some(40), None, SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, Some(40));
     }
 
     #[test]
     fn select_uses_rpm_when_only_rpm_available() {
-        let chosen = select_displayed_true_duty(None, Some(40), SANITY_THRESHOLD_PERCENT);
+        let chosen = select_displayed_true_duty(None, Some(40), SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, Some(40));
     }
 
     #[test]
     fn select_returns_none_when_neither_derived() {
-        let chosen = select_displayed_true_duty(None, None, SANITY_THRESHOLD_PERCENT);
+        let chosen = select_displayed_true_duty(None, None, SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, None);
+    }
+
+    #[test]
+    fn select_in_saturation_keeps_device_even_when_rpm_diverges() {
+        // At saturation the fan's RPM jitters below calibrated rpm_max,
+        // so the cross-check would unfairly pin display below 100%.
+        let chosen = select_displayed_true_duty(Some(100), Some(80), SANITY_THRESHOLD_PERCENT, true);
+        assert_eq!(chosen, Some(100));
+    }
+
+    #[test]
+    fn select_in_saturation_still_falls_back_when_device_absent() {
+        // The saturation flag only affects the cross-check arm; the
+        // None-device path still uses RPM-derived.
+        let chosen = select_displayed_true_duty(None, Some(80), SANITY_THRESHOLD_PERCENT, true);
+        assert_eq!(chosen, Some(80));
     }
 
     #[test]

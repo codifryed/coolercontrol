@@ -28,6 +28,11 @@ use super::store::CalibrationStore;
 use super::ChannelKey;
 use crate::device::{Device, DeviceUID, Duty, Status, StatusAugmenter};
 
+/// Raw device-duty at/above which we treat the channel as saturated:
+/// fan RPM jitters below the calibrated `rpm_max` here, and the
+/// device-vs-RPM cross-check would otherwise pin the display below 100%.
+const SATURATION_DUTY_PERCENT: f64 = 95.0;
+
 pub struct CalibrationStatusAugmenter {
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
@@ -59,9 +64,15 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
             let rpm_derived = channel
                 .rpm
                 .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
-            if let Some(displayed) =
-                select_displayed_true_duty(device_derived, rpm_derived, SANITY_THRESHOLD_PERCENT)
-            {
+            // Bypass the cross-check at the saturation tail: the fan's
+            // measured RPM naturally jitters below rpm_max there.
+            let in_saturation = matches!(channel.duty, Some(d) if d >= SATURATION_DUTY_PERCENT);
+            if let Some(displayed) = select_displayed_true_duty(
+                device_derived,
+                rpm_derived,
+                SANITY_THRESHOLD_PERCENT,
+                in_saturation,
+            ) {
                 channel.duty = Some(f64::from(displayed));
             }
         }
