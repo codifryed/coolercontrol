@@ -324,6 +324,14 @@ impl Engine {
         }
         self.calibration_statuses.borrow_mut().remove(key);
         self.fan_state_map.forget(key);
+        // Re-dispatch the channel's saved setting so the fan picks up
+        // the now-uncalibrated duty immediately instead of holding the
+        // last calibration-mapped value until the next user action.
+        // NotFound means the channel was never pinned; a dispatch error
+        // is non-fatal here and will be retried by the periodic loop.
+        if let Ok(setting) = self.config.get_device_channel_settings(&key.0, &key.1) {
+            let _ = self.set_config_setting(&key.0, &setting).await;
+        }
         Ok(existed)
     }
 
