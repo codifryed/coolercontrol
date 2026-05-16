@@ -326,7 +326,15 @@ pub fn derive_scalars(
     up_curve: &[DutySample],
     down_curve: &[DutySample],
 ) -> Option<DerivedScalars> {
-    let rpm_max = up_curve.iter().map(|s| s.rpm).max().unwrap_or(0);
+    // Take rpm_max from both curves: a delayed RPM sensor often reads
+    // slightly higher on the down-sweep near saturation, and the true
+    // peak should reflect that.
+    let rpm_max = up_curve
+        .iter()
+        .chain(down_curve.iter())
+        .map(|s| s.rpm)
+        .max()
+        .unwrap_or(0);
     if rpm_max == 0 || up_curve.is_empty() {
         return None;
     }
@@ -720,7 +728,8 @@ mod tests {
 
     #[test]
     fn select_uses_device_when_close() {
-        let chosen = select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT, false);
+        let chosen =
+            select_displayed_true_duty(Some(50), Some(52), SANITY_THRESHOLD_PERCENT, false);
         assert_eq!(chosen, Some(50));
     }
 
@@ -753,7 +762,8 @@ mod tests {
     fn select_in_saturation_keeps_device_even_when_rpm_diverges() {
         // At saturation the fan's RPM jitters below calibrated rpm_max,
         // so the cross-check would unfairly pin display below 100%.
-        let chosen = select_displayed_true_duty(Some(100), Some(80), SANITY_THRESHOLD_PERCENT, true);
+        let chosen =
+            select_displayed_true_duty(Some(100), Some(80), SANITY_THRESHOLD_PERCENT, true);
         assert_eq!(chosen, Some(100));
     }
 
@@ -1028,6 +1038,23 @@ mod tests {
         assert!(scalars.min_start_duty <= 25);
         assert!(scalars.max_eff_duty >= 95);
         assert_eq!(scalars.rpm_max, 2000);
+    }
+
+    #[test]
+    fn derive_scalars_takes_rpm_max_from_both_curves() {
+        // Down-sweep often reads slightly higher near saturation when the
+        // RPM sensor lags, so rpm_max must reflect the union of both
+        // sweeps rather than just up.
+        let up = smooth_curve(1900);
+        let down: Vec<DutySample> = up
+            .iter()
+            .map(|s| DutySample {
+                duty: s.duty,
+                rpm: if s.duty == 100 { 1925 } else { s.rpm },
+            })
+            .collect();
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        assert_eq!(scalars.rpm_max, 1925);
     }
 
     #[test]
