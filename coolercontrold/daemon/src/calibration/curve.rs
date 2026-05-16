@@ -314,19 +314,23 @@ fn duty_for_rpm(curve: &[DutySample], rpm: RPM) -> Duty {
     lo.duty + u8::try_from(frac).unwrap_or(span)
 }
 
-/// `Stepped` when fewer than half the inter-sample gaps show RPM
-/// growth above the jitter tolerance (catches `ThinkPad` fans, step-pumps).
-/// Jitter scales with step size so dense (2%) gaps are not unfairly
-/// penalized vs. sparse (5%) gaps.
-pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
+/// `Stepped` when fewer than half the inter-sample gaps in the
+/// responsive region (samples at/above `min_sustain_duty`) show RPM
+/// growth above the jitter tolerance. Skipping the leading flat band
+/// avoids mis-classifying hardware-floor devices (pumps) whose lower
+/// duty samples idle at a constant baseline RPM. Jitter scales with
+/// step size so dense (2%) gaps are not unfairly penalized vs. sparse
+/// (5%) gaps.
+pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM, min_sustain_duty: Duty) -> CurveKind {
     assert!(rpm_max > 0);
-    if up_curve.len() < 2 {
+    let responsive = curve_above(up_curve, min_sustain_duty);
+    if responsive.len() < 2 {
         return CurveKind::Stepped;
     }
 
     let sparse_jitter = jitter_threshold(rpm_max);
     let mut transitions: u32 = 0;
-    for pair in up_curve.windows(2) {
+    for pair in responsive.windows(2) {
         let step = u32::from(pair[1].duty.saturating_sub(pair[0].duty)).max(1);
         let threshold =
             u32::try_from(u64::from(sparse_jitter) * u64::from(step) / u64::from(DUTY_STEP_SPARSE))
@@ -335,7 +339,7 @@ pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM) -> CurveKind {
             transitions += 1;
         }
     }
-    let total_gaps = u32::try_from(up_curve.len() - 1).unwrap_or(u32::MAX);
+    let total_gaps = u32::try_from(responsive.len() - 1).unwrap_or(u32::MAX);
     if transitions * 2 < total_gaps {
         CurveKind::Stepped
     } else {
@@ -643,14 +647,14 @@ mod tests {
     #[test]
     fn classify_smooth_curve_is_smooth() {
         let curve = smooth_curve(2000);
-        let kind = classify_curve(&curve, 2000);
+        let kind = classify_curve(&curve, 2000, 0);
         assert_eq!(kind, CurveKind::Smooth);
     }
 
     #[test]
     fn classify_stepped_curve_is_stepped() {
         let curve = stepped_curve(2000);
-        let kind = classify_curve(&curve, 2000);
+        let kind = classify_curve(&curve, 2000, 0);
         assert_eq!(kind, CurveKind::Stepped);
     }
 
@@ -666,8 +670,78 @@ mod tests {
             }
         }
         let rpm_max = curve.iter().map(|s| s.rpm).max().unwrap();
-        let kind = classify_curve(&curve, rpm_max);
+        let kind = classify_curve(&curve, rpm_max, 0);
         assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    fn pump_hardware_floor_up_curve() -> Vec<DutySample> {
+        // Mirrors the user-reported water pump (calibrations.json,
+        // device 722fd1e6.../pump): RPM idles around 1100 for 0-30%
+        // (pump cannot go below that hardware floor), then climbs
+        // smoothly to ~2843 at 100%.
+        const SAMPLES: &[(Duty, RPM)] = &[
+            (0, 977),
+            (2, 988),
+            (4, 993),
+            (6, 1142),
+            (8, 1138),
+            (10, 1165),
+            (12, 1140),
+            (14, 1151),
+            (16, 1160),
+            (18, 1142),
+            (20, 1136),
+            (22, 1151),
+            (24, 1160),
+            (26, 1134),
+            (28, 1132),
+            (30, 1136),
+            (35, 1295),
+            (40, 1445),
+            (45, 1550),
+            (50, 1699),
+            (55, 1791),
+            (60, 1941),
+            (65, 2013),
+            (70, 2158),
+            (75, 2298),
+            (80, 2390),
+            (85, 2469),
+            (90, 2575),
+            (95, 2702),
+            (100, 2843),
+        ];
+        SAMPLES
+            .iter()
+            .map(|&(duty, rpm)| DutySample { duty, rpm })
+            .collect()
+    }
+
+    #[test]
+    fn classify_hardware_floor_pump_curve_is_smooth() {
+        // Goal: regression for the user-reported water-pump bug. The
+        // pump idles at the hardware floor for the first ~30% of duty
+        // (zero transitions there) and climbs smoothly above it.
+        // Classifying the responsive region (samples at/above
+        // `min_sustain_duty`) escapes the flat-band penalty and the
+        // curve correctly classifies as Smooth so the mapping stays
+        // active.
+        let up = pump_hardware_floor_up_curve();
+        let kind = classify_curve(&up, 2843, 20);
+        assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    #[test]
+    fn classify_hardware_floor_pump_is_stepped_without_responsive_start() {
+        // Goal: documents why `min_sustain_duty` is the right input.
+        // The same pump curve classified across the entire range
+        // (responsive_start = 0) drops to Stepped because the flat
+        // leading band drags transitions per gap below 50%. The
+        // production caller passes `scalars.min_sustain_duty`; this
+        // test pins that contract.
+        let up = pump_hardware_floor_up_curve();
+        let kind = classify_curve(&up, 2843, 0);
+        assert_eq!(kind, CurveKind::Stepped);
     }
 
     #[test]
@@ -804,7 +878,7 @@ mod tests {
         let up = smooth_curve(2000);
         let down = smooth_curve(2000);
         let scalars = derive_scalars(&up, &down).expect("derives");
-        let mut kind = classify_curve(&up, scalars.rpm_max);
+        let mut kind = classify_curve(&up, scalars.rpm_max, scalars.min_sustain_duty);
         let warnings = derive_warnings(&up, scalars, &mut kind);
         assert!(
             warnings.is_empty(),
@@ -857,7 +931,7 @@ mod tests {
             .collect();
         let down = up.clone();
         let scalars = derive_scalars(&up, &down).expect("derives");
-        let mut kind = classify_curve(&up, scalars.rpm_max);
+        let mut kind = classify_curve(&up, scalars.rpm_max, scalars.min_sustain_duty);
         let warnings = derive_warnings(&up, scalars, &mut kind);
         let limited = warnings.iter().find_map(|w| match w {
             CalibrationWarning::LimitedRange { rpm_span, rpm_max } => Some((*rpm_span, *rpm_max)),
@@ -1373,7 +1447,7 @@ mod tests {
                 rpm: 1500,
             })
             .collect();
-        let kind = classify_curve(&curve, 1500);
+        let kind = classify_curve(&curve, 1500, 0);
         assert_eq!(kind, CurveKind::Stepped);
     }
 

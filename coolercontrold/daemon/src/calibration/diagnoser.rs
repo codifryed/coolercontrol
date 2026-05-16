@@ -352,7 +352,8 @@ fn build_calibration(
     use crate::calibration::curve::{derive_min_stable_duty, derive_warnings, CalibrationWarning};
     match scalars {
         Some(scalars) => {
-            let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max);
+            let mut curve_kind =
+                classify_curve(&up_curve, scalars.rpm_max, scalars.min_sustain_duty);
             let mut warnings = derive_warnings(&up_curve, scalars, &mut curve_kind);
             let (min_stable_duty, band) = derive_min_stable_duty(
                 &down_curve,
