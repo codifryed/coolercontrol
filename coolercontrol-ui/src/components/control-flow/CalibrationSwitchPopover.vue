@@ -44,7 +44,7 @@ defineExpose({ toggle })
 
 <template>
     <Popover ref="popRef" append-to="body">
-        <div class="w-80 rounded-lg border border-border-one bg-bg-two p-3">
+        <div class="w-80 rounded-lg border border-border-one bg-bg-two p-3 text-text-color">
             <div class="mb-2 text-sm font-semibold text-text-color">
                 {{ t('components.channelExtensionSettings.calibration.heading') }}
             </div>
