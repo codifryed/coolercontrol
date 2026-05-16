@@ -35,7 +35,7 @@ import {
     mdiThermometer,
     mdiChevronRight,
     mdiSwapHorizontal,
-    mdiTune, mdiTuneVerticalVariant,
+    mdiTuneVerticalVariant,
 } from '@mdi/js'
 import ProfileSwitchPopover from './ProfileSwitchPopover.vue'
 import CalibrationSwitchPopover from './CalibrationSwitchPopover.vue'
