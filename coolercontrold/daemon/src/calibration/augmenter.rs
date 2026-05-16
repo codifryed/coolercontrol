@@ -22,7 +22,6 @@
 
 use std::rc::Rc;
 
-use super::curve::select_displayed_true_duty;
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
 use super::ChannelKey;
@@ -50,10 +49,9 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
             if self.fan_state_map.is_under_diagnosis(&key) {
                 continue;
             }
-            // Device-duty mapping is the user-facing source of truth (it
-            // reflects what the dispatcher just wrote). The RPM-derived
-            // value is a fallback for rpm-only devices that don't report
-            // PWM readback.
+            // `device_to_true_duty` is the user-facing source of truth
+            // since it mirrors what the dispatcher wrote. RPM-derived is
+            // the fallback for rpm-only devices with no PWM readback.
             let device_derived = channel.duty.and_then(|d| {
                 self.calibration_store
                     .device_to_true_duty(&key, clamp_f64_to_duty(d))
@@ -61,7 +59,7 @@ impl StatusAugmenter for CalibrationStatusAugmenter {
             let rpm_derived = channel
                 .rpm
                 .and_then(|r| self.calibration_store.rpm_to_true_duty(&key, r));
-            if let Some(displayed) = select_displayed_true_duty(device_derived, rpm_derived) {
+            if let Some(displayed) = device_derived.or(rpm_derived) {
                 channel.duty = Some(f64::from(displayed));
             }
         }

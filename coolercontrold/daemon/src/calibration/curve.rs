@@ -139,9 +139,7 @@ pub enum CalibrationWarning {
     Oscillating { lower_duty: Duty, upper_duty: Duty },
 }
 
-/// Result of a forward true-duty -> device-duty mapping.
-///
-/// (kick, sustain) device duties returned by the forward map.
+/// (kick, sustain) device duties from the forward true-duty map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappedDuty {
     pub kick: Duty,
@@ -268,7 +266,6 @@ impl Calibration {
     }
 }
 
-/// Linear interpolation of a target RPM from a true-duty in 1..=100.
 fn interpolate_rpm(rpm_floor: RPM, rpm_max: RPM, true_duty: Duty) -> RPM {
     assert!(true_duty > 0);
     assert!(true_duty <= 100);
@@ -280,11 +277,9 @@ fn interpolate_rpm(rpm_floor: RPM, rpm_max: RPM, true_duty: Duty) -> RPM {
     rpm_floor + u32::try_from(offset).unwrap_or(u32::MAX - rpm_floor)
 }
 
-/// Linear scan of a variable-spaced curve for the lowest sample where
-/// Slice of `curve` at and above `floor`, in original order. Used by
-/// the dispatcher's lookups to skip the kick-artifact zone below the
-/// sustain floor; those samples have non-monotonic rpms that would
-/// fool the linear scan in `duty_for_rpm` / `rpm_at_device_duty`.
+/// Slice of `curve` at and above `floor`. Strips the kick-artifact
+/// zone so the linear scans in `duty_for_rpm` and `rpm_at_device_duty`
+/// don't trip on non-monotonic samples below the sustain floor.
 fn curve_above(curve: &[DutySample], floor: Duty) -> &[DutySample] {
     let start = curve
         .iter()
@@ -484,23 +479,6 @@ fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
     let frac = u32::from(device_duty - lo.duty);
     let delta = hi.rpm.saturating_sub(lo.rpm);
     lo.rpm + delta * frac / span
-}
-
-/// Picks the displayed true-duty. The device-duty-derived value reflects
-/// what the dispatcher actually wrote and is the user-facing source of
-/// truth. The RPM-derived value is a fallback only for channels that
-/// don't report duty back (some hwmon devices read RPM but not PWM).
-///
-/// An earlier version cross-checked the two and showed the RPM-derived
-/// value on disagreement to surface stuck fans / broken PWM. That
-/// triggered false positives on firmware-kick fans, where the fan
-/// transiently runs below the calibrated rpm at low duties, and the
-/// displayed value would not match what the user just set.
-pub fn select_displayed_true_duty(
-    device_derived: Option<Duty>,
-    rpm_derived: Option<Duty>,
-) -> Option<Duty> {
-    device_derived.or(rpm_derived)
 }
 
 /// Reliability warnings. Mutates `curve_kind` to `Stepped` when the
@@ -819,28 +797,6 @@ mod tests {
                 mapped.sustain
             );
         }
-    }
-
-    #[test]
-    fn select_prefers_device_when_present() {
-        // Device-derived is the source of truth: even if RPM-derived
-        // disagrees (e.g., fan transiently below calibrated rpm at low
-        // duty), the user sees what the dispatcher wrote.
-        assert_eq!(select_displayed_true_duty(Some(50), Some(52)), Some(50));
-        assert_eq!(select_displayed_true_duty(Some(50), Some(0)), Some(50));
-        assert_eq!(select_displayed_true_duty(Some(100), Some(80)), Some(100));
-        assert_eq!(select_displayed_true_duty(Some(40), None), Some(40));
-    }
-
-    #[test]
-    fn select_falls_back_to_rpm_when_device_absent() {
-        // Rpm-only devices (no PWM readback) have None for device-derived.
-        assert_eq!(select_displayed_true_duty(None, Some(40)), Some(40));
-    }
-
-    #[test]
-    fn select_returns_none_when_neither_derived() {
-        assert_eq!(select_displayed_true_duty(None, None), None);
     }
 
     #[test]
