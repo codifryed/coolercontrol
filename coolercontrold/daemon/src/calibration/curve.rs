@@ -55,10 +55,14 @@ const RPM_JITTER_ABSOLUTE: RPM = 50;
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
 
 /// Cold-start kick targets at least this fraction of the floor-to-max
-/// RPM range above `rpm_floor`. Without it the kick computed for low
-/// true-duty collapses to the sustain floor and fans with a momentum
-/// threshold stall and oscillate at startup.
-const KICK_RPM_BOOST_PERCENT: u32 = 25;
+/// RPM range above `rpm_floor`. Sized to give a momentum-threshold fan
+/// a noticeable nudge above sustain (typically 5-12 percentage points
+/// of device-duty in practice) without overshooting toward mid-range
+/// speeds on every cold start. Sluggish / server-style fans are still
+/// backstopped by the `.max(min_start_duty)` / `.max(min_stable_duty)`
+/// clamps in `true_to_device_smooth`, which keep the kick at or above
+/// the per-fan calibrated start floor regardless of this constant.
+const KICK_RPM_BOOST_PERCENT: u32 = 10;
 
 /// A (device-duty, RPM) sample. Curves are sorted ascending by `duty`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
