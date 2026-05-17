@@ -1110,6 +1110,22 @@ fn calibration_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+        .api_route(
+            "/devices/{device_uid}/{channel_name}/calibration/overrides",
+            patch_with(calibration::set_overrides, |o| {
+                o.summary("Set per-fan calibration overrides")
+                    .description(
+                        "Replaces the kick-boost and kick-duration override fields on \
+                         the stored calibration. Both fields in the body are applied \
+                         unconditionally; `null` clears the override. Returns 404 when \
+                         no calibration is stored for the channel.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
 }
 
 fn detect_routes() -> ApiRouter<AppState> {

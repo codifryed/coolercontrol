@@ -71,6 +71,9 @@ export default {
             'rounded-lg',
             'whitespace-pre-line',
             'break-words',
+            // Cap width so long tooltips wrap instead of running past
+            // the viewport edge; short ones still size to content.
+            'max-w-md',
             // 'border',
             // 'border-accent/60',
             'shadow-lg',

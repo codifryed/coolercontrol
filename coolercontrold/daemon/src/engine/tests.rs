@@ -1711,6 +1711,26 @@ mod engine_tests {
 
     #[test]
     #[serial]
+    fn set_calibration_overrides_returns_none_for_missing_calibration() {
+        // Goal: the engine method returns Ok(None) when no calibration
+        // is stored, so the REST handler maps to 404. The persistence
+        // branch is exercised end-to-end (it writes to the configured
+        // calibration file, which the unit test environment cannot
+        // create).
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            let result = engine
+                .set_calibration_overrides(&key, Some(true), Some(5000))
+                .await
+                .expect("ok");
+            assert!(result.is_none(), "no calibration stored -> None");
+        });
+    }
+
+    #[test]
+    #[serial]
     fn apply_true_duty_skips_stepped_calibration() {
         // Goal: a calibrated channel whose curve was classified as
         // Stepped keeps its device-duty value (mapping disabled). The

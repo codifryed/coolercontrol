@@ -237,7 +237,7 @@ impl Engine {
                 device_uid: key.0.clone(),
                 channel_name: key.1.clone(),
                 completed_at,
-                calibration: persisted,
+                calibration: persisted.into(),
             };
         }
         CalibrationStatus::not_started(key.0.clone(), key.1.clone())
@@ -309,6 +309,44 @@ impl Engine {
     /// whose underlying repository does not natively report duty. The
     /// flag is read before the calibration is removed so the lookup
     /// still succeeds.
+    /// Replace the override fields on the stored calibration and
+    /// persist. Returns `None` when no calibration is stored for the
+    /// channel (handler surfaces as 404). The next dispatch call picks
+    /// up the new values automatically since `kick_boost_active()` and
+    /// `kick_duration_ms_effective()` are pure functions of the
+    /// calibration.
+    pub async fn set_calibration_overrides(
+        &self,
+        key: &ChannelKey,
+        kick_boost_override: Option<bool>,
+        kick_duration_override_ms: Option<u32>,
+    ) -> Result<Option<Calibration>> {
+        let Some(mut cal) = self.calibration_store.get(key) else {
+            return Ok(None);
+        };
+        cal.kick_boost_override = kick_boost_override;
+        cal.kick_duration_override_ms = kick_duration_override_ms;
+        self.calibration_store
+            .insert_unsaved(key.clone(), cal.clone());
+        self.calibration_store.save_to_disk().await?;
+        // Refresh the cached status snapshot so the next status poll
+        // sees the new resolved kick-boost decision. Only `Completed`
+        // entries carry a calibration; other phases are left alone.
+        let mut statuses = self.calibration_statuses.borrow_mut();
+        if matches!(statuses.get(key), Some(CalibrationStatus::Completed { .. })) {
+            statuses.insert(
+                key.clone(),
+                CalibrationStatus::from_completion(key.0.clone(), key.1.clone(), cal.clone()),
+            );
+        }
+        drop(statuses);
+        info!(
+            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?})",
+            key.0, key.1, cal.kick_boost_override, cal.kick_duration_override_ms
+        );
+        Ok(Some(cal))
+    }
+
     pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
         let existed = self.calibration_store.has(key);
         if existed {

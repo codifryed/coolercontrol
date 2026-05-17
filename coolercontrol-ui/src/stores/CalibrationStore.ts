@@ -359,6 +359,36 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }
 
     /**
+     * Replace the kick-boost and kick-duration override fields on the
+     * stored calibration. Both fields are sent unconditionally; `null`
+     * clears the corresponding override. On success the cached
+     * `completed` status entry for the channel is refreshed with the
+     * returned calibration so any subscribed UI sees the new values.
+     */
+    async function updateOverrides(
+        uid: UID,
+        channelName: string,
+        overrides: {
+            kick_boost_override: boolean | null
+            kick_duration_override_ms: number | null
+        },
+    ): Promise<Calibration | undefined | ErrorResponse> {
+        const result = await deviceStore.daemonClient.patchCalibrationOverrides(
+            uid,
+            channelName,
+            overrides,
+        )
+        if (result && !(result instanceof ErrorResponse)) {
+            const key = channelKey(uid, channelName)
+            const existing = statuses.get(key)
+            if (existing?.phase === 'completed') {
+                statuses.set(key, { ...existing, calibration: result })
+            }
+        }
+        return result
+    }
+
+    /**
      * Pull every persisted calibration in one request and prime the
      * `statuses` map with synthesised `completed` entries. Called once
      * at app load so the tree menu can render a "calibrated" pill for
@@ -394,6 +424,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
         cancelCalibration,
         deleteCalibration,
         getStored,
+        updateOverrides,
         refreshAllStatuses,
     }
 })

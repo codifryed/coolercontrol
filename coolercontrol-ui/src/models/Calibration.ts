@@ -92,6 +92,27 @@ export interface Calibration {
      * field; serde defaults to false on the daemon side.
      */
     was_rpm_only?: boolean
+    /**
+     * User override for the cold-start kick boost. `null` defers to
+     * the daemon heuristic (auto). `true` forces the boost on for
+     * every cold start; `false` silences it.
+     */
+    kick_boost_override: boolean | null
+    /**
+     * User override for the kick-write duration (ms). `null` uses the
+     * calibrated `kick_duration_ms`. Set to force the dispatcher to
+     * hold the kick for a specific duration before dropping to
+     * sustain.
+     */
+    kick_duration_override_ms: number | null
+    /**
+     * Resolved cold-start kick-boost decision for this channel
+     * (override or heuristic). `true` means the dispatcher will issue
+     * the boost on the next Off->Kicking transition. Computed by the
+     * daemon on every read; the UI uses it to clarify what `Auto`
+     * resolves to per-fan.
+     */
+    kick_boost_active: boolean
     /** ISO 8601 timestamp of when the diagnosis finished. */
     timestamp: string
 }

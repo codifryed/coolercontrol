@@ -1772,6 +1772,39 @@ export default class DaemonClient {
     }
 
     /**
+     * Replace the kick-boost and kick-duration override fields on a
+     * stored calibration. Both fields in the body are sent
+     * unconditionally; `null` clears the corresponding override.
+     * Returns the updated `Calibration` on success, `undefined` on
+     * 404 (no calibration stored), `ErrorResponse` on other failures.
+     */
+    async patchCalibrationOverrides(
+        deviceUID: UID,
+        channelName: string,
+        body: { kick_boost_override: boolean | null; kick_duration_override_ms: number | null },
+    ): Promise<Calibration | undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().patch(
+                `/devices/${deviceUID}/${channelName}/calibration/overrides`,
+                body,
+            )
+            this.logDaemonResponse(response, 'Set Calibration Overrides')
+            return response.data as Calibration
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                return undefined
+            }
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
      * Poll the calibration status for a channel. Always returns a
      * `CalibrationStatus` on success (the daemon represents "no
      * diagnosis ever observed" as a `NotStarted` variant rather

@@ -32,12 +32,57 @@ use crate::api::actor::CalibrationStatus;
 use crate::api::devices::DeviceChannelPath;
 use crate::api::{AppState, CCError};
 use crate::calibration::{Calibration, CalibrationEntry};
+use crate::device::{ChannelName, DeviceUID};
 use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+/// Calibration as exposed via the REST API. Flattens the persistence
+/// struct and adds derived fields the UI consumes.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CalibrationView {
+    #[serde(flatten)]
+    pub calibration: Calibration,
+    /// Resolved kick-boost decision (override + heuristic). `true`
+    /// when the dispatcher will apply the cold-start boost on the
+    /// next Off->Kicking transition for this channel. Derived; the
+    /// deserialize path is only used for JSON round-trips in tests
+    /// and will be recomputed if `kick_boost_override` changes.
+    #[serde(default)]
+    pub kick_boost_active: bool,
+}
+
+impl From<Calibration> for CalibrationView {
+    fn from(calibration: Calibration) -> Self {
+        let kick_boost_active = calibration.kick_boost_active();
+        Self {
+            calibration,
+            kick_boost_active,
+        }
+    }
+}
+
+/// Same wire shape as `crate::calibration::CalibrationEntry`, with
+/// the wrapped view in place of the bare calibration.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CalibrationEntryView {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
+    pub calibration: CalibrationView,
+}
+
+impl From<CalibrationEntry> for CalibrationEntryView {
+    fn from(entry: CalibrationEntry) -> Self {
+        Self {
+            device_uid: entry.device_uid,
+            channel_name: entry.channel_name,
+            calibration: entry.calibration.into(),
+        }
+    }
+}
 
 /// Start a calibration diagnosis on the channel. Returns 202 if the
 /// diagnosis was queued, 409 if a diagnosis is already in flight for
@@ -83,11 +128,11 @@ pub async fn get(
     State(AppState {
         calibration_handle, ..
     }): State<AppState>,
-) -> Result<Json<Calibration>, CCError> {
+) -> Result<Json<CalibrationView>, CCError> {
     calibration_handle
         .get(path.device_uid, path.channel_name)
         .await
-        .map(Json)
+        .map(|c| Json(c.into()))
         .ok_or(CCError::NotFound {
             msg: "no calibration stored for this channel".to_string(),
         })
@@ -116,7 +161,7 @@ pub async fn status(
 /// `/alerts` so clients can iterate `dto.calibrations`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CalibrationsDto {
-    pub calibrations: Vec<CalibrationEntry>,
+    pub calibrations: Vec<CalibrationEntryView>,
 }
 
 /// List every persisted calibration. Always returns 200; an empty
@@ -128,8 +173,51 @@ pub async fn list(
         calibration_handle, ..
     }): State<AppState>,
 ) -> Json<CalibrationsDto> {
-    let calibrations = calibration_handle.get_all().await;
+    let calibrations = calibration_handle
+        .get_all()
+        .await
+        .into_iter()
+        .map(CalibrationEntryView::from)
+        .collect();
     Json(CalibrationsDto { calibrations })
+}
+
+/// Per-fan calibration override values. `null` clears the override
+/// and falls back to the auto-derived behavior (heuristic for the
+/// boost, calibrated `kick_duration_ms` for the duration).
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct CalibrationOverridesUpdate {
+    pub kick_boost_override: Option<bool>,
+    pub kick_duration_override_ms: Option<u32>,
+}
+
+/// Replace the override fields on the persisted calibration for a
+/// channel. Both fields are set unconditionally from the request body
+/// (PUT-style on the overrides subset). 404 when no calibration is
+/// stored for the channel. Returns the updated calibration so the UI
+/// re-renders without a second GET.
+pub async fn set_overrides(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState {
+        calibration_handle, ..
+    }): State<AppState>,
+    Json(body): Json<CalibrationOverridesUpdate>,
+) -> Result<Json<CalibrationView>, CCError> {
+    calibration_handle
+        .set_overrides(
+            path.device_uid,
+            path.channel_name,
+            body.kick_boost_override,
+            body.kick_duration_override_ms,
+        )
+        .await
+        .map_err(|err| CCError::InternalError {
+            msg: err.to_string(),
+        })?
+        .map(|c| Json(c.into()))
+        .ok_or(CCError::NotFound {
+            msg: "no calibration stored for this channel".to_string(),
+        })
 }
 
 /// Delete the stored calibration for a channel. 404 when none exists.

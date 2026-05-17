@@ -26,6 +26,7 @@
 //! limited SSE connection slots on a low-frequency operation.
 
 use crate::api::actor::{run_api_actor, ApiActor};
+use crate::api::calibration::CalibrationView;
 use crate::calibration::{
     Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
 };
@@ -77,7 +78,7 @@ pub enum CalibrationStatus {
         device_uid: DeviceUID,
         channel_name: ChannelName,
         completed_at: DateTime<Local>,
-        calibration: Calibration,
+        calibration: CalibrationView,
     },
     Failed {
         device_uid: DeviceUID,
@@ -121,7 +122,7 @@ impl CalibrationStatus {
             device_uid,
             channel_name,
             completed_at: Local::now(),
-            calibration,
+            calibration: calibration.into(),
         }
     }
 
@@ -192,6 +193,13 @@ pub enum CalibrationMessage {
         device_uid: DeviceUID,
         channel_name: ChannelName,
         respond_to: oneshot::Sender<Result<bool>>,
+    },
+    SetOverrides {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        kick_boost_override: Option<bool>,
+        kick_duration_override_ms: Option<u32>,
+        respond_to: oneshot::Sender<Result<Option<Calibration>>>,
     },
     InProgress {
         device_uid: DeviceUID,
@@ -271,6 +279,20 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
             } => {
                 let key: ChannelKey = (device_uid, channel_name);
                 let result = self.engine.delete_calibration(&key).await;
+                let _ = respond_to.send(result);
+            }
+            CalibrationMessage::SetOverrides {
+                device_uid,
+                channel_name,
+                kick_boost_override,
+                kick_duration_override_ms,
+                respond_to,
+            } => {
+                let key: ChannelKey = (device_uid, channel_name);
+                let result = self
+                    .engine
+                    .set_calibration_overrides(&key, kick_boost_override, kick_duration_override_ms)
+                    .await;
                 let _ = respond_to.send(result);
             }
             CalibrationMessage::InProgress {
@@ -383,6 +405,29 @@ impl CalibrationHandle {
             .send(CalibrationMessage::Delete {
                 device_uid,
                 channel_name,
+                respond_to: tx,
+            })
+            .await;
+        rx.await?
+    }
+
+    /// Replace the override fields on the stored calibration. `Ok(None)`
+    /// when no calibration exists for the channel (handler maps to 404).
+    pub async fn set_overrides(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        kick_boost_override: Option<bool>,
+        kick_duration_override_ms: Option<u32>,
+    ) -> Result<Option<Calibration>> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::SetOverrides {
+                device_uid,
+                channel_name,
+                kick_boost_override,
+                kick_duration_override_ms,
                 respond_to: tx,
             })
             .await;

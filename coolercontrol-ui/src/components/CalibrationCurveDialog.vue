@@ -22,12 +22,18 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { LineChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { inject, onMounted, ref, type Ref } from 'vue'
+import { inject, onMounted, ref, watch, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
+import Button from 'primevue/button'
+import Select from 'primevue/select'
+import InputNumber from 'primevue/inputnumber'
+import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
+import _ from 'lodash'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { useCalibrationStore } from '@/stores/CalibrationStore'
+import { ErrorResponse } from '@/models/ErrorResponse'
 import type { Calibration } from '@/models/Calibration'
 import type { UID } from '@/models/Device'
 
@@ -38,6 +44,7 @@ const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const colors = useThemeColorsStore()
 const calibrationStore = useCalibrationStore()
+const toast = useToast()
 
 const deviceUID: UID = dialogRef.value.data.deviceUID
 const channelName: string = dialogRef.value.data.channelName
@@ -47,14 +54,45 @@ const calibration: Ref<Calibration | undefined> = ref(initialCalibration)
 const loading: Ref<boolean> = ref(initialCalibration == null)
 const loadError: Ref<string | undefined> = ref()
 
+type BoostMode = 'auto' | 'on' | 'off'
+const boostMode: Ref<BoostMode> = ref('auto')
+const durationOverride: Ref<number | null> = ref(null)
+const saving: Ref<boolean> = ref(false)
+// Suppress watcher-driven saves while we sync the refs from a fresh
+// calibration (initial load, post-save echo). Without this the watcher
+// would fire on every assignment and re-PATCH the same values.
+let syncing = false
+
+const boostOptions: Array<{ label: string; value: BoostMode }> = [
+    { label: t('components.calibrationCurve.kickBoostAuto'), value: 'auto' },
+    { label: t('components.calibrationCurve.kickBoostOn'), value: 'on' },
+    { label: t('components.calibrationCurve.kickBoostOff'), value: 'off' },
+]
+
+const syncOverridesFrom = (cal: Calibration): void => {
+    syncing = true
+    boostMode.value =
+        cal.kick_boost_override === true ? 'on' : cal.kick_boost_override === false ? 'off' : 'auto'
+    durationOverride.value = cal.kick_duration_override_ms ?? null
+    // Release the suppression on the next microtask so the watchers
+    // observe the assignment as "settled".
+    void Promise.resolve().then(() => {
+        syncing = false
+    })
+}
+
 onMounted(async () => {
-    if (calibration.value != null) return
+    if (calibration.value != null) {
+        syncOverridesFrom(calibration.value)
+        return
+    }
     try {
         const stored = await calibrationStore.getStored(deviceUID, channelName)
         if (stored == null) {
             loadError.value = t('components.calibrationCurve.notFound')
         } else {
             calibration.value = stored
+            syncOverridesFrom(stored)
         }
     } catch {
         loadError.value = t('components.calibrationCurve.loadError')
@@ -62,6 +100,45 @@ onMounted(async () => {
         loading.value = false
     }
 })
+
+const overridesFromMode = (mode: BoostMode): boolean | null => {
+    return mode === 'on' ? true : mode === 'off' ? false : null
+}
+
+const saveOverrides = async (): Promise<void> => {
+    if (calibration.value == null) return
+    saving.value = true
+    const result = await calibrationStore.updateOverrides(deviceUID, channelName, {
+        kick_boost_override: overridesFromMode(boostMode.value),
+        kick_duration_override_ms: durationOverride.value,
+    })
+    saving.value = false
+    if (result instanceof ErrorResponse || result == null) {
+        toast.add({
+            severity: 'error',
+            summary: t('components.calibrationCurve.overridesSaveFailed'),
+            detail: result instanceof ErrorResponse ? result.error : undefined,
+            life: 5000,
+        })
+        // Revert local refs to the still-current calibration values so
+        // the form reflects what's actually persisted.
+        if (calibration.value != null) syncOverridesFrom(calibration.value)
+        return
+    }
+    calibration.value = result
+}
+
+const saveBoost = () => {
+    if (syncing) return
+    void saveOverrides()
+}
+const saveDuration = _.debounce(() => {
+    if (syncing) return
+    void saveOverrides()
+}, 500)
+
+watch(boostMode, saveBoost)
+watch(durationOverride, saveDuration)
 
 const formatTimestamp = (iso: string): string => {
     const date = new Date(iso)
@@ -327,6 +404,76 @@ const chartOption = (cal: Calibration) => {
                     <span class="font-medium">
                         {{ calibration.max_eff_duty }}{{ t('common.percentUnit') }}
                     </span>
+                </div>
+            </div>
+            <div
+                class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm border-t border-border-one pt-3"
+            >
+                <div class="md:col-span-2 text-text-color-secondary font-medium">
+                    {{ t('components.calibrationCurve.overridesHeading') }}
+                </div>
+                <div class="flex items-center gap-3">
+                    <label
+                        v-tooltip.top="
+                            t('components.calibrationCurve.fieldKickBoostOverrideTooltip')
+                        "
+                        class="text-text-color-secondary cursor-help shrink-0"
+                    >
+                        {{ t('components.calibrationCurve.fieldKickBoostOverride') }}:
+                    </label>
+                    <Select
+                        v-model="boostMode"
+                        :options="boostOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        :disabled="saving"
+                        class="w-44"
+                    />
+                    <span
+                        class="text-xs px-2 py-0.5 rounded"
+                        :class="
+                            calibration.kick_boost_active
+                                ? 'text-accent bg-accent/15'
+                                : 'text-text-color-secondary bg-bg-two'
+                        "
+                    >
+                        {{
+                            calibration.kick_boost_active
+                                ? t('components.calibrationCurve.kickBoostCurrentlyOn')
+                                : t('components.calibrationCurve.kickBoostCurrentlyOff')
+                        }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label
+                        v-tooltip.top="
+                            t('components.calibrationCurve.fieldKickDurationOverrideTooltip')
+                        "
+                        class="text-text-color-secondary cursor-help shrink-0"
+                    >
+                        {{ t('components.calibrationCurve.fieldKickDurationOverride') }}:
+                    </label>
+                    <InputNumber
+                        v-model="durationOverride"
+                        :placeholder="`${t('components.calibrationCurve.kickDurationDefault')}: ${calibration.kick_duration_ms} ms`"
+                        :min="100"
+                        :max="60000"
+                        :step="100"
+                        :use-grouping="false"
+                        suffix=" ms"
+                        :disabled="saving"
+                        :input-class="'w-44'"
+                    />
+                    <Button
+                        v-tooltip.top="t('components.calibrationCurve.kickDurationReset')"
+                        icon="pi pi-undo"
+                        severity="secondary"
+                        text
+                        rounded
+                        :disabled="saving || durationOverride === null"
+                        :aria-label="t('components.calibrationCurve.kickDurationReset')"
+                        @click="durationOverride = null"
+                    />
                 </div>
             </div>
             <div class="text-xs text-text-color-secondary text-right">
