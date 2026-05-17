@@ -432,7 +432,12 @@ const KICK_MEASUREMENT_TRUE_DUTY: Duty = 1;
 /// 2. Compute the dispatcher's `mapped.kick` for `KICK_MEASUREMENT_TRUE_DUTY`.
 /// 3. Stop the fan, sleep, then write the computed kick duty.
 /// 4. Watch the status cache until the RPM both crosses `start_rpm_min`
-///    AND stabilizes within the diagnoser's tight tolerance window.
+///    AND stabilizes within the diagnoser's relaxed tolerance window
+///    (the mid-sweep non-extreme value). The kick measurement only
+///    needs to know the fan is past its spin-up transient, so we do
+///    not pay the tight-extremes cost here; firmware-kick fans dither
+///    20-30 RPM at the kick duty and would otherwise inflate the
+///    measured time-to-stable for no dispatch benefit.
 /// 5. Bucket the elapsed time up to the next multiple of the device
 ///    poll period, plus one extra period of safety, clamped to
 ///    `[poll_period, cap_ms]`.
@@ -476,7 +481,7 @@ where
     let cap_ms = host.step_settle_cap_ms(device_uid);
     let poll_period_ms = host.poll_period_ms(device_uid).max(1);
     let window_size = (settings.stability_window as usize).max(1);
-    let abs_tolerance_rpm = settings.stability_tolerance_rpm_extremes;
+    let abs_tolerance_rpm = settings.stability_tolerance_rpm;
     let mut waited_ms: u32 = 0;
     let mut last_seen_ts = host.latest_status_timestamp_ms(device_uid).await;
     let mut window: VecDeque<RPM> = VecDeque::with_capacity(window_size);
