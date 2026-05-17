@@ -1228,7 +1228,7 @@ export default {
                 'Highest RPM observed during the sweep.\nUsed as the 100% reference when translating a target duty to its RPM-normalized true-duty value.',
             fieldKick: 'Kick duration',
             fieldKickTooltip:
-                'How long the dispatcher holds the fan at the kick duty before dropping to the target when starting from off.\nMeasured as the time the fan takes to reach 50 RPM after a stop and restart, times 1.5 as a safety margin (at least 500 ms). The sensor poll rate defaults to 1/second, so most fans land on 500, 1500, or 2500 ms.',
+                "How long the dispatcher holds the kick duty before dropping to sustain on a cold start.\nMeasured by writing the dispatcher's worst-case (boosted) kick duty from rest and waiting until the RPM settles into a stable window.",
             fieldStart: 'Min start duty',
             fieldStartTooltip:
                 'Lowest duty that reliably starts the fan from a stopped state.\nBelow this duty the fan may not begin spinning even though it would keep spinning if already running.',
@@ -1242,6 +1242,21 @@ export default {
             fieldSaturateTooltip:
                 'Duty at which RPM gains begin to diminish.\nThe fan can still add a few RPM beyond this duty up to 100%, so the calibration uses the full 0 to 100% duty range.',
             fieldTimestamp: 'Calibrated',
+            overridesHeading: 'Overrides',
+            fieldKickBoostOverride: 'Kick boost',
+            fieldKickBoostOverrideTooltip:
+                'Force the cold-start kick boost on or off for this channel, or let the daemon decide based on the up-curve heuristic.\nThe boost briefly raises the kick duty above sustain to push the fan past its momentum threshold.',
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Force on',
+            kickBoostOff: 'Force off',
+            fieldKickDurationOverride: 'Kick duration override',
+            fieldKickDurationOverrideTooltip:
+                'Override the calibrated kick duration. Leave empty to use the measured value.\nLengthen when the fan needs more time at the kick duty to stabilize before the sustain takes over.',
+            kickDurationDefault: 'default',
+            kickDurationReset: 'Reset to default',
+            kickBoostCurrentlyOn: 'currently on',
+            kickBoostCurrentlyOff: 'currently off',
+            overridesSaveFailed: 'Failed to save calibration overrides',
         },
         deviceExtensionSettings: {
             title: 'Advanced Device Settings',

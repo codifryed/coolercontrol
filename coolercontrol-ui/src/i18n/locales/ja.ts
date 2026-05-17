@@ -1247,7 +1247,7 @@ export default {
                 'スイープ中に観測された最大 RPM。\n目標デューティを RPM 正規化された真のデューティ値に変換する際の 100% 基準として使用されます。',
             fieldKick: 'キック時間',
             fieldKickTooltip:
-                'オフから起動するとき、ディスパッチャがファンをキックデューティに保持してから目標値に下げるまでの時間。\nファンを停止して再起動した後、50 RPM に達するまでの時間に安全マージンとして 1.5 を掛けた値として測定されます (最小 500 ms)。センサーのポーリング間隔は既定で 1/秒のため、ほとんどのファンは 500、1500、2500 ms のいずれかに収まります。',
+                'ディスパッチャがコールドスタートでキックデューティを保持してから保持値に下げるまでの時間。\n停止状態からディスパッチャの最悪ケース (ブースト) キックデューティを書き込み、RPM が安定した範囲に収まるまで待機して測定されます。',
             fieldStart: '最小起動デューティ',
             fieldStartTooltip:
                 '停止状態からファンを確実に起動できる最小デューティ。\nこの値より下では、すでに回転中であれば回り続けるとしても、ファンが回り始めないことがあります。',
@@ -1261,6 +1261,21 @@ export default {
             fieldSaturateTooltip:
                 'RPM の伸びが鈍り始めるデューティ。\nこのデューティを超えても 100 % までさらに数 RPM 増える場合があるため、キャリブレーションは 0〜100 % のフルレンジを使用します。',
             fieldTimestamp: 'キャリブレーション日時',
+            overridesHeading: 'オーバーライド',
+            fieldKickBoostOverride: 'キックブースト',
+            fieldKickBoostOverrideTooltip:
+                'このチャネルに対し、コールドスタートのキックブーストを強制的にオン/オフするか、デーモンに上昇カーブのヒューリスティックで判断させます。\nブーストはキックデューティを一時的に保持値より上に引き上げ、ファンを慣性のしきい値を越えて押し出します。',
+            kickBoostAuto: '自動',
+            kickBoostOn: '強制オン',
+            kickBoostOff: '強制オフ',
+            fieldKickDurationOverride: 'キック時間のオーバーライド',
+            fieldKickDurationOverrideTooltip:
+                'キャリブレーション済みのキック時間を上書きします。空のままにすると測定値が使用されます。\n保持値に切り替わる前に、ファンがキックデューティで安定するためにより多くの時間が必要な場合に長くしてください。',
+            kickDurationDefault: 'デフォルト',
+            kickDurationReset: 'デフォルトに戻す',
+            kickBoostCurrentlyOn: '現在オン',
+            kickBoostCurrentlyOff: '現在オフ',
+            overridesSaveFailed: 'キャリブレーションのオーバーライドを保存できませんでした',
         },
         deviceExtensionSettings: {
             title: '高度なデバイス設定',

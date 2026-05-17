@@ -1283,7 +1283,7 @@ export default {
                 'RPM mais alta observada durante a varredura.\nUsada como referência de 100% ao traduzir um ciclo alvo no seu valor real normalizado por RPM.',
             fieldKick: 'Duração do impulso',
             fieldKickTooltip:
-                'Por quanto tempo o dispatcher mantém o ventilador no ciclo de impulso antes de baixar para o alvo ao iniciar a partir de desligado.\nMedido como o tempo que o ventilador leva para atingir 50 RPM após parar e reiniciar, multiplicado por 1,5 como margem de segurança (no mínimo 500 ms). A taxa de sondagem dos sensores é por padrão 1/segundo, então a maioria dos ventiladores acaba em 500, 1500 ou 2500 ms.',
+                'Por quanto tempo o dispatcher mantém o ciclo de impulso antes de baixar para a sustentação em uma partida a frio.\nMedido escrevendo o ciclo de impulso de pior caso (com boost) do dispatcher a partir do repouso e aguardando até que a RPM se assente em uma janela estável.',
             fieldStart: 'Ciclo mínimo de partida',
             fieldStartTooltip:
                 'Ciclo mais baixo que faz o ventilador partir de forma confiável a partir de parado.\nAbaixo, o ventilador pode não começar a girar, mesmo que continuasse girando se já estivesse em movimento.',
@@ -1297,6 +1297,21 @@ export default {
             fieldSaturateTooltip:
                 'Ciclo a partir do qual os ganhos de RPM começam a diminuir.\nO ventilador ainda pode adicionar algumas RPM além deste ciclo até 100 %, por isso a calibração usa toda a faixa de 0 a 100 %.',
             fieldTimestamp: 'Calibrado',
+            overridesHeading: 'Substituições',
+            fieldKickBoostOverride: 'Boost do impulso',
+            fieldKickBoostOverrideTooltip:
+                'Força o boost de impulso na partida a frio ligado ou desligado para este canal, ou deixa o daemon decidir com base na heurística da curva ascendente.\nO boost eleva brevemente o ciclo de impulso acima da sustentação para empurrar o ventilador além do seu limiar de inércia.',
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Forçar ligado',
+            kickBoostOff: 'Forçar desligado',
+            fieldKickDurationOverride: 'Substituição da duração do impulso',
+            fieldKickDurationOverrideTooltip:
+                'Substitui a duração do impulso calibrada. Deixe vazio para usar o valor medido.\nAumente quando o ventilador precisa de mais tempo no ciclo de impulso para se estabilizar antes da sustentação assumir.',
+            kickDurationDefault: 'padrão',
+            kickDurationReset: 'Restaurar para o padrão',
+            kickBoostCurrentlyOn: 'atualmente ligado',
+            kickBoostCurrentlyOff: 'atualmente desligado',
+            overridesSaveFailed: 'Falha ao salvar as substituições da calibração',
         },
         deviceExtensionSettings: {
             title: 'Configurações Avançadas do Dispositivo',

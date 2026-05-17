@@ -1190,7 +1190,7 @@ export default {
                 '扫描期间观测到的最高转速。\n用作 100% 参考值,在将目标占空比转换为按转速归一化的真实占空比时使用。',
             fieldKick: '启动冲量时长',
             fieldKickTooltip:
-                '调度器在风扇从停止启动时,先以启动冲量占空比维持的时长,之后再降至目标占空比。\n测量方法是先停止风扇再启动,统计达到 50 转/分所需的时间,然后乘以 1.5 作为安全余量(至少 500 毫秒)。传感器轮询间隔默认为 1/秒,因此大多数风扇会落在 500、1500 或 2500 毫秒。',
+                '在冷启动时,调度器在降至保持值之前维持启动冲量占空比的时间。\n通过从停止状态写入调度器最坏情况(带 Boost)的启动冲量占空比,并等待转速进入稳定窗口来测量。',
             fieldStart: '最小启动占空比',
             fieldStartTooltip:
                 '能够可靠地让风扇从停止状态起转的最低占空比。\n低于此占空比时,即使已经运转的风扇可以继续转,停止中的风扇也可能无法开始转动。',
@@ -1204,6 +1204,21 @@ export default {
             fieldSaturateTooltip:
                 '转速增益开始减小的占空比。\n超过此占空比后风扇仍可能在 100 % 之前再增加几转,因此校准使用 0 到 100 % 的整个占空比范围。',
             fieldTimestamp: '校准时间',
+            overridesHeading: '覆盖',
+            fieldKickBoostOverride: '启动冲量 Boost',
+            fieldKickBoostOverrideTooltip:
+                '为该通道强制开启或关闭冷启动时的启动冲量 Boost,或让守护进程基于上升曲线的启发式判断自动决定。\nBoost 会短暂将启动冲量占空比抬到保持值之上,推动风扇越过其惯性阈值。',
+            kickBoostAuto: '自动',
+            kickBoostOn: '强制开启',
+            kickBoostOff: '强制关闭',
+            fieldKickDurationOverride: '启动冲量时长覆盖',
+            fieldKickDurationOverrideTooltip:
+                '覆盖校准得到的启动冲量时长。留空将使用测量值。\n如果风扇需要更多时间在启动冲量占空比下稳定,然后再切换到保持值,可延长此值。',
+            kickDurationDefault: '默认',
+            kickDurationReset: '恢复默认值',
+            kickBoostCurrentlyOn: '当前开启',
+            kickBoostCurrentlyOff: '当前关闭',
+            overridesSaveFailed: '保存校准覆盖失败',
         },
         deviceExtensionSettings: {
             title: '高级设备设置',

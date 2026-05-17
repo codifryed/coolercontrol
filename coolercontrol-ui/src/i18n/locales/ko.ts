@@ -1219,7 +1219,7 @@ export default {
                 '스윕 동안 관측된 최고 RPM.\n목표 듀티를 RPM 정규화된 실제 듀티 값으로 변환할 때 100% 기준으로 사용됩니다.',
             fieldKick: '시동 부스트 시간',
             fieldKickTooltip:
-                '꺼진 상태에서 시동할 때 디스패처가 팬을 시동 부스트 듀티에 유지했다가 목표 듀티로 내리는 시간.\n팬을 정지한 뒤 재시작하여 50 RPM에 도달하기까지 걸린 시간에 안전 마진으로 1.5를 곱한 값으로 측정됩니다 (최소 500 ms). 센서 폴링 속도는 기본 1/초이므로 대부분의 팬은 500, 1500, 2500 ms 중 하나에 해당합니다.',
+                '콜드 스타트 시 디스패처가 시동 부스트 듀티를 유지했다가 유지 값으로 내리기까지의 시간.\n정지 상태에서 디스패처의 최악(부스트 포함) 시동 부스트 듀티를 적용하고, RPM이 안정된 구간에 들어올 때까지 기다려 측정합니다.',
             fieldStart: '최소 시동 듀티',
             fieldStartTooltip:
                 '정지 상태에서 팬을 확실하게 시동시키는 최저 듀티.\n이 듀티보다 낮으면 이미 돌고 있다면 계속 돌 수 있는 팬이라도 시동이 걸리지 않을 수 있습니다.',
@@ -1233,6 +1233,21 @@ export default {
             fieldSaturateTooltip:
                 'RPM 증가량이 줄어들기 시작하는 듀티.\n이 듀티를 넘어 100 %까지도 RPM이 조금 더 늘 수 있으므로, 보정은 0~100 %의 전체 범위를 사용합니다.',
             fieldTimestamp: '보정됨',
+            overridesHeading: '재정의',
+            fieldKickBoostOverride: '시동 부스트',
+            fieldKickBoostOverrideTooltip:
+                '이 채널에 대해 콜드 스타트의 시동 부스트를 강제로 켜거나 끄거나, 데몬이 상승 곡선 휴리스틱으로 판단하도록 둡니다.\n부스트는 시동 부스트 듀티를 잠시 유지 값 위로 끌어올려 팬을 관성 임계점 너머로 밀어냅니다.',
+            kickBoostAuto: '자동',
+            kickBoostOn: '강제 켜기',
+            kickBoostOff: '강제 끄기',
+            fieldKickDurationOverride: '시동 부스트 시간 재정의',
+            fieldKickDurationOverrideTooltip:
+                '캘리브레이션으로 얻은 시동 부스트 시간을 재정의합니다. 비워두면 측정 값을 사용합니다.\n팬이 유지 값으로 넘어가기 전에 시동 부스트 듀티에서 안정되는 데 더 많은 시간이 필요할 때 늘리세요.',
+            kickDurationDefault: '기본값',
+            kickDurationReset: '기본값으로 재설정',
+            kickBoostCurrentlyOn: '현재 켜짐',
+            kickBoostCurrentlyOff: '현재 꺼짐',
+            overridesSaveFailed: '캘리브레이션 재정의 저장 실패',
         },
         deviceExtensionSettings: {
             title: '고급 장치 설정',

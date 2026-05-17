@@ -1263,7 +1263,7 @@ export default {
                 'Höchste während des Sweeps beobachtete Drehzahl.\nWird als 100%-Referenz verwendet, wenn ein Ziel-Tastgrad in seinen drehzahlnormalisierten echten Tastgradwert umgerechnet wird.',
             fieldKick: 'Anlaufdauer',
             fieldKickTooltip:
-                'Wie lange der Dispatcher den Lüfter beim Start aus dem Aus auf dem Anlauf-Tastgrad hält, bevor er auf den Zielwert absenkt.\nGemessen als die Zeit, die der Lüfter nach Stoppen und Neustart benötigt, um 50 RPM zu erreichen, multipliziert mit 1,5 als Sicherheitsmarge (mindestens 500 ms). Die Sensor-Abfragerate liegt standardmäßig bei 1/Sekunde, daher landen die meisten Lüfter bei 500, 1500 oder 2500 ms.',
+                'Wie lange der Dispatcher den Anlauf-Tastgrad hält, bevor er bei einem Kaltstart auf das Halte-Niveau absenkt.\nGemessen, indem der schlechteste Fall (mit Boost) des Anlauf-Tastgrads des Dispatchers aus dem Stillstand geschrieben wird und gewartet wird, bis sich die Drehzahl in einem stabilen Fenster einpendelt.',
             fieldStart: 'Min. Start-Tastgrad',
             fieldStartTooltip:
                 'Niedrigster Tastgrad, der den Lüfter aus dem Stillstand zuverlässig anlaufen lässt.\nUnterhalb dieses Tastgrads beginnt der Lüfter unter Umständen nicht zu drehen, obwohl er weiterdrehen würde, wenn er bereits läuft.',
@@ -1277,6 +1277,21 @@ export default {
             fieldSaturateTooltip:
                 'Tastgrad, ab dem die Drehzahlzuwächse abnehmen.\nDer Lüfter kann auch oberhalb dieses Tastgrads bis zu 100 % noch einige Umdrehungen zulegen, daher nutzt die Kalibrierung den vollen Tastgradbereich von 0 bis 100 %.',
             fieldTimestamp: 'Kalibriert',
+            overridesHeading: 'Überschreibungen',
+            fieldKickBoostOverride: 'Anlauf-Boost',
+            fieldKickBoostOverrideTooltip:
+                'Erzwinge den Kaltstart-Anlaufboost für diesen Kanal an oder aus, oder lass den Daemon anhand der Heuristik der Aufwärtskurve entscheiden.\nDer Boost hebt den Anlauf-Tastgrad kurz über das Halte-Niveau, um den Lüfter über seine Trägheitsschwelle zu drücken.',
+            kickBoostAuto: 'Automatisch',
+            kickBoostOn: 'Erzwingen ein',
+            kickBoostOff: 'Erzwingen aus',
+            fieldKickDurationOverride: 'Anlaufdauer überschreiben',
+            fieldKickDurationOverrideTooltip:
+                'Überschreibt die kalibrierte Anlaufdauer. Leer lassen, um den gemessenen Wert zu verwenden.\nVerlängern, wenn der Lüfter mehr Zeit am Anlauf-Tastgrad benötigt, um sich zu stabilisieren, bevor das Halte-Niveau übernimmt.',
+            kickDurationDefault: 'Standard',
+            kickDurationReset: 'Auf Standard zurücksetzen',
+            kickBoostCurrentlyOn: 'aktuell ein',
+            kickBoostCurrentlyOff: 'aktuell aus',
+            overridesSaveFailed: 'Speichern der Kalibrierungs-Überschreibungen fehlgeschlagen',
         },
         deviceExtensionSettings: {
             title: 'Erweiterte Geräteeinstellungen',

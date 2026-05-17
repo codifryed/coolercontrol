@@ -1262,7 +1262,7 @@ export default {
                 "RPM les plus élevées observées pendant le balayage.\nUtilisées comme référence 100% lors de la conversion d'un rapport cyclique cible en sa valeur réelle normalisée par RPM.",
             fieldKick: "Durée de l'impulsion",
             fieldKickTooltip:
-                "Durée pendant laquelle le dispatcher maintient le ventilateur au rapport cyclique d'impulsion avant de redescendre vers la cible lors d'un démarrage depuis l'arrêt.\nMesurée comme le temps que met le ventilateur à atteindre 50 RPM après un arrêt et un redémarrage, multiplié par 1,5 comme marge de sécurité (au moins 500 ms). La fréquence d'interrogation des capteurs est par défaut de 1/seconde, la plupart des ventilateurs aboutissent donc à 500, 1500 ou 2500 ms.",
+                "Durée pendant laquelle le dispatcher maintient le rapport cyclique d'impulsion avant de redescendre au maintien lors d'un démarrage à froid.\nMesurée en écrivant le rapport cyclique d'impulsion le plus défavorable (avec boost) du dispatcher depuis l'arrêt, puis en attendant que les RPM se stabilisent dans une fenêtre stable.",
             fieldStart: 'Rapport cyclique min. de démarrage',
             fieldStartTooltip:
                 "Rapport cyclique le plus bas qui démarre le ventilateur de manière fiable depuis l'arrêt.\nEn dessous, le ventilateur peut ne pas commencer à tourner, même s'il continuerait à tourner s'il était déjà en marche.",
@@ -1276,6 +1276,21 @@ export default {
             fieldSaturateTooltip:
                 "Rapport cyclique à partir duquel les gains de RPM commencent à diminuer.\nLe ventilateur peut encore ajouter quelques RPM au-delà de ce rapport cyclique jusqu'à 100 %, c'est pourquoi l'étalonnage utilise la plage complète de 0 à 100 %.",
             fieldTimestamp: 'Étalonné',
+            overridesHeading: 'Surcharges',
+            fieldKickBoostOverride: "Boost d'impulsion",
+            fieldKickBoostOverrideTooltip:
+                "Force l'activation ou la désactivation du boost d'impulsion au démarrage à froid pour ce canal, ou laisse le daemon décider d'après l'heuristique de la courbe montante.\nLe boost relève brièvement le rapport cyclique d'impulsion au-dessus du maintien pour pousser le ventilateur au-delà de son seuil d'inertie.",
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Forcer activé',
+            kickBoostOff: 'Forcer désactivé',
+            fieldKickDurationOverride: "Surcharge de la durée d'impulsion",
+            fieldKickDurationOverrideTooltip:
+                "Surcharge la durée d'impulsion calibrée. Laisser vide pour utiliser la valeur mesurée.\nAllonger lorsque le ventilateur a besoin de plus de temps au rapport cyclique d'impulsion pour se stabiliser avant que le maintien prenne le relais.",
+            kickDurationDefault: 'défaut',
+            kickDurationReset: 'Réinitialiser par défaut',
+            kickBoostCurrentlyOn: 'actuellement activé',
+            kickBoostCurrentlyOff: 'actuellement désactivé',
+            overridesSaveFailed: 'Échec de la sauvegarde des surcharges de calibration',
         },
         deviceExtensionSettings: {
             title: 'Paramètres Avancés du Périphérique',

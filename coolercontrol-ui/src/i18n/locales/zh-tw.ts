@@ -1191,7 +1191,7 @@ export default {
                 '掃描期間觀測到的最高轉速。\n作為 100% 參考值，用於將目標工作週期換算為依轉速正規化的真實工作週期。',
             fieldKick: '啟動衝擊時長',
             fieldKickTooltip:
-                '排程器在風扇從停止啟動時，先以啟動衝擊工作週期維持的時間，之後再降到目標值。\n測量方式為：先停止風扇後重新啟動，計算達到 50 轉/分所需的時間，再乘以 1.5 作為安全裕度（至少 500 毫秒）。感測器輪詢頻率預設為 1/秒，因此大多數風扇會落在 500、1500 或 2500 毫秒。',
+                '在冷啟動時，排程器於降到保持值之前維持啟動衝擊工作週期的時間。\n透過從停止狀態寫入排程器最壞情況（含 Boost）的啟動衝擊工作週期，並等待轉速進入穩定區間來測量。',
             fieldStart: '最小啟動工作週期',
             fieldStartTooltip:
                 '能夠穩定使風扇從停止狀態起轉的最低工作週期。\n低於此工作週期時，即使已經運轉的風扇可以持續運轉，停止中的風扇也可能無法開始轉動。',
@@ -1205,6 +1205,21 @@ export default {
             fieldSaturateTooltip:
                 '轉速增幅開始遞減的工作週期。\n超過此工作週期後，風扇仍可能在 100 % 之前再增加幾轉，因此校正會使用 0 到 100 % 的完整工作週期範圍。',
             fieldTimestamp: '校正時間',
+            overridesHeading: '覆寫',
+            fieldKickBoostOverride: '啟動衝擊 Boost',
+            fieldKickBoostOverrideTooltip:
+                '為此通道強制開啟或關閉冷啟動的啟動衝擊 Boost，或讓守護程式依據上升曲線的啟發式判斷自動決定。\nBoost 會短暫將啟動衝擊工作週期抬至保持值之上，推動風扇越過其慣性閾值。',
+            kickBoostAuto: '自動',
+            kickBoostOn: '強制開啟',
+            kickBoostOff: '強制關閉',
+            fieldKickDurationOverride: '啟動衝擊時長覆寫',
+            fieldKickDurationOverrideTooltip:
+                '覆寫校正取得的啟動衝擊時長。留空將使用測量值。\n若風扇需要更多時間在啟動衝擊工作週期上穩定下來，再切換到保持值，可延長此值。',
+            kickDurationDefault: '預設',
+            kickDurationReset: '還原為預設值',
+            kickBoostCurrentlyOn: '目前開啟',
+            kickBoostCurrentlyOff: '目前關閉',
+            overridesSaveFailed: '儲存校正覆寫失敗',
         },
         deviceExtensionSettings: {
             title: '進階裝置設定',
