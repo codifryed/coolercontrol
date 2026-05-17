@@ -54,6 +54,12 @@ const RPM_START_THRESHOLD_FRACTION_PERCENT: u32 = 5;
 const RPM_JITTER_ABSOLUTE: RPM = 50;
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
 
+/// Cold-start kick targets at least this fraction of the floor-to-max
+/// RPM range above `rpm_floor`. Without it the kick computed for low
+/// true-duty collapses to the sustain floor and fans with a momentum
+/// threshold stall and oscillate at startup.
+const KICK_RPM_BOOST_PERCENT: u32 = 25;
+
 /// A (device-duty, RPM) sample. Curves are sorted ascending by `duty`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct DutySample {
@@ -140,6 +146,8 @@ pub enum CalibrationWarning {
 }
 
 /// (kick, sustain) device duties from the forward true-duty map.
+/// `kick` is the cold-start (Off->Kicking) value, possibly inflated
+/// above `sustain` so the fan breaks past its momentum threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappedDuty {
     pub kick: Duty,
@@ -210,6 +218,16 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
+        // Cold-start kick: target a fraction of the RPM range above the
+        // floor so the dispatcher's Off->Kicking write pushes the fan
+        // past its static-friction / momentum threshold before the
+        // sustain write drops back to `target_rpm`. The dispatcher
+        // consumes `mapped.kick` only on Off->Kicking; `write_sustain_on`
+        // and the deferred sustain write both use `mapped.sustain`, so
+        // this boost is implicitly cold-start only.
+        let boost_rpm = (self.rpm_max - rpm_floor).saturating_mul(KICK_RPM_BOOST_PERCENT) / 100;
+        let kick_target_rpm = rpm_floor.saturating_add(boost_rpm);
+        let kick_rpm = target_rpm.max(kick_target_rpm);
         // Skip artifact samples below the floor on both curves. Without
         // this, kick spikes in the dense region (e.g., down_curve has
         // rpm 1012 at duty 4) would land as the first sample matching a
@@ -217,7 +235,7 @@ impl Calibration {
         // before the `.max(min_stable_duty)` clamp.
         let up_above = curve_above(&self.up_curve, self.min_start_duty);
         let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
-        let kick = duty_for_rpm(up_above, target_rpm)
+        let kick = duty_for_rpm(up_above, kick_rpm)
             .max(self.min_start_duty)
             .max(self.min_stable_duty);
         let sustain = duty_for_rpm(down_above, target_rpm).max(self.min_stable_duty);
@@ -784,6 +802,77 @@ mod tests {
             );
             last_kick = mapped.kick;
             last_sustain = mapped.sustain;
+        }
+    }
+
+    fn momentum_threshold_calibration() -> Calibration {
+        // Synthetic fan with a 20% momentum / static-friction floor.
+        // RPM is 0 below duty 20, then a linear ramp from 500 at duty
+        // 20 to 2000 at duty 100. up_curve == down_curve so any
+        // kick-vs-sustain delta in the mapping is purely the cold-start
+        // boost, not curve hysteresis.
+        let mut samples = vec![DutySample { duty: 0, rpm: 0 }];
+        for d in (2..=18).step_by(2) {
+            samples.push(DutySample { duty: d, rpm: 0 });
+        }
+        for d in (20..=100).step_by(5) {
+            let frac = u32::from(d - 20);
+            let rpm = 500 + (1500 * frac) / 80;
+            samples.push(DutySample { duty: d, rpm });
+        }
+        Calibration {
+            up_curve: samples.clone(),
+            down_curve: samples,
+            kick_duration_ms: 1500,
+            min_start_duty: 20,
+            min_sustain_duty: 20,
+            min_stable_duty: 20,
+            max_eff_duty: 100,
+            rpm_max: 2000,
+            curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
+            was_rpm_only: false,
+            timestamp: Local::now(),
+        }
+    }
+
+    #[test]
+    fn forward_map_low_true_duty_kicks_above_sustain() {
+        // Goal: regression for the user-reported cold-start oscillation
+        // bug. A fan with min_stable_duty=20 used to produce kick ==
+        // sustain at low true_duty (both clamped to 20), so the
+        // dispatcher's Off->Kicking->On window had no actual kick
+        // effect. The fan tried to start from rest at the sustain
+        // floor and oscillated around its static-friction threshold.
+        // Kick must now sit strictly above sustain in this range so
+        // the cold-start write pushes the fan past that threshold.
+        let cal = momentum_threshold_calibration();
+        for t in 1..=5u8 {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            assert!(
+                mapped.kick > mapped.sustain,
+                "kick must boost above sustain at true={t}: kick={} sustain={}",
+                mapped.kick,
+                mapped.sustain
+            );
+        }
+    }
+
+    #[test]
+    fn forward_map_high_true_duty_boost_is_noop() {
+        // Goal: the cold-start boost must not affect mid/high true-duty
+        // values where the natural target_rpm is already above the
+        // kick_target_rpm. up_curve == down_curve on the fixture, so
+        // kick equal to sustain proves the boost did not shift the
+        // kick away from the natural lookup result.
+        let cal = momentum_threshold_calibration();
+        for t in [50u8, 80, 95] {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            assert_eq!(
+                mapped.kick, mapped.sustain,
+                "boost must be a no-op at true={t}: kick={} sustain={}",
+                mapped.kick, mapped.sustain
+            );
         }
     }
 
