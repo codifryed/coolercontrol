@@ -101,10 +101,6 @@ pub enum DiagnosisFailure {
         observed: f64,
         limit: f64,
     },
-    /// Deprecated: dead fans now persist a passthrough + `NoTachometer`
-    /// calibration instead. Kept so older serialized values still parse.
-    #[allow(dead_code)]
-    FanUnresponsive,
     /// Temp crossed abort mid-sweep. Channel was zeroed and snapshot restored.
     TempAbortedAt {
         observed: f64,
@@ -379,6 +375,8 @@ fn build_calibration(
                 curve_kind,
                 warnings,
                 was_rpm_only: false,
+                kick_boost_override: None,
+                kick_duration_override_ms: None,
                 timestamp: Local::now(),
             }
         }
@@ -394,6 +392,8 @@ fn build_calibration(
             curve_kind: CurveKind::Stepped,
             warnings: vec![CalibrationWarning::NoTachometer],
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         },
     }
@@ -965,7 +965,8 @@ mod tests {
         }
 
         /// Configure the host as an unresponsive fan (RPM=0 at every
-        /// duty). The diagnoser must surface `FanUnresponsive`.
+        /// duty). The diagnoser persists a passthrough calibration
+        /// carrying `NoTachometer` in the warnings.
         fn with_dead_fan(self) -> Self {
             for duty in 0u8..=100 {
                 self.rpm_for_duty.borrow_mut().insert(duty, 0);
@@ -1151,8 +1152,8 @@ mod tests {
     async fn bios_controlled_fan_persists_with_not_controllable_warning() {
         // Goal: a fan stuck at a constant non-zero RPM regardless of
         // duty (BIOS / firmware override) must produce a saved
-        // calibration with NotControllable in warnings, curve_kind
-        // forced to Stepped, and no FanUnresponsive error.
+        // calibration with NotControllable in warnings and curve_kind
+        // forced to Stepped.
         use crate::calibration::CalibrationWarning;
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
@@ -1193,9 +1194,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn dead_fan_persists_no_tachometer_warning() {
-        // Goal: a fan whose RPM never crosses the start floor no longer
-        // returns a hard FanUnresponsive failure. Instead the diagnoser
-        // persists a passthrough calibration carrying NoTachometer so
+        // Goal: a fan whose RPM never crosses the start floor must
+        // persist a passthrough calibration carrying NoTachometer so
         // the popover shows the warning on reopen and the user can
         // re-calibrate or clear from there.
         use crate::calibration::CalibrationWarning;

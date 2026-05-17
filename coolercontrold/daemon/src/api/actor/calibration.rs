@@ -136,10 +136,6 @@ impl CalibrationStatus {
                 "preflight_temp_too_high",
                 format!("preflight temp {observed:.1} C exceeded limit {limit:.1} C"),
             ),
-            DiagnosisFailure::FanUnresponsive => (
-                "fan_unresponsive",
-                "fan did not produce detectable RPM at any duty".to_string(),
-            ),
             DiagnosisFailure::TempAbortedAt { observed, limit } => (
                 "temp_aborted",
                 format!("temperature {observed:.1} C exceeded abort limit {limit:.1} C mid-sweep"),

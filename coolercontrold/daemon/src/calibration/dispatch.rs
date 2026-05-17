@@ -38,7 +38,7 @@
 // pedantic similar_names would hurt readability.
 #![allow(clippy::similar_names)]
 
-use super::curve::MappedDuty;
+use super::curve::{Calibration, MappedDuty};
 use super::state::{ChannelEntry, FanState, FanStateMap};
 use super::store::CalibrationStore;
 use super::ChannelKey;
@@ -195,7 +195,9 @@ async fn dispatch_core(
             .await?;
         return Ok(DispatchOutcome::Done);
     };
-    let kick_duration_ms = calibration.as_ref().map_or(0, |cal| cal.kick_duration_ms);
+    let kick_duration_ms = calibration
+        .as_ref()
+        .map_or(0, Calibration::kick_duration_ms_effective);
 
     if true_duty == 0 {
         handle_write_zero(state, writer, key, device_uid, channel_name).await?;
@@ -441,6 +443,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }
@@ -468,6 +472,8 @@ mod tests {
             curve_kind: CurveKind::Stepped,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }

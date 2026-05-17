@@ -101,7 +101,6 @@ fn describe_failure(failure: &DiagnosisFailure) -> String {
         DiagnosisFailure::PreflightTempTooHigh { observed, limit } => {
             format!("pre-flight blocked (system temp {observed:.1} C >= {limit:.1} C limit)")
         }
-        DiagnosisFailure::FanUnresponsive => "fan did not respond to duty changes".to_string(),
         DiagnosisFailure::TempAbortedAt { observed, limit } => {
             format!("aborted: temp reached {observed:.1} C (limit {limit:.1} C)")
         }

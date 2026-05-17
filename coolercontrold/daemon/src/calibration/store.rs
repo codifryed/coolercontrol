@@ -270,6 +270,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }
@@ -477,39 +479,15 @@ mod tests {
 
     #[test]
     fn was_rpm_only_round_trips_through_json() {
-        // Goal: the `was_rpm_only` flag must survive a JSON round-trip so
-        // the daemon can read it back at startup and decide on later
-        // deletes whether to clear `status_history` duty values. The
-        // companion case (`#[serde(default)] = false` for older records)
-        // is exercised by `calibration_round_trips_through_json`, which
-        // builds via the struct literal and gets the default.
+        // Goal: the `was_rpm_only` flag must survive a JSON round-trip
+        // so the daemon can read it back at startup and decide on later
+        // deletes whether to clear `status_history` duty values.
         let mut original = sample_calibration();
         original.was_rpm_only = true;
         let json = serde_json::to_string(&original).expect("serializes");
         let recovered: Calibration = serde_json::from_str(&json).expect("deserializes");
         assert!(recovered.was_rpm_only, "flag must round-trip as true");
         assert_eq!(recovered, original);
-    }
-
-    #[test]
-    fn was_rpm_only_defaults_to_false_when_absent_from_json() {
-        // Goal: an older persisted calibration that pre-dates the
-        // `was_rpm_only` field must load cleanly, defaulting the flag
-        // to false. This is what `#[serde(default)]` buys us; the test
-        // pins the contract so a future refactor cannot silently
-        // remove the default.
-        let mut original = sample_calibration();
-        original.was_rpm_only = true;
-        let mut value = serde_json::to_value(&original).expect("serializes");
-        // Strip the field to simulate a pre-feature JSON blob.
-        if let serde_json::Value::Object(ref mut map) = value {
-            map.remove("was_rpm_only");
-        }
-        let recovered: Calibration = serde_json::from_value(value).expect("deserializes");
-        assert!(
-            recovered.was_rpm_only.not(),
-            "missing field must default to false"
-        );
     }
 
     #[test]

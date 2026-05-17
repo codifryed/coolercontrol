@@ -92,8 +92,7 @@ pub struct Calibration {
     /// Lowest device-duty without oscillation. Equals `min_sustain_duty`
     /// on healthy fans; sits above it on firmware-kicked fans that
     /// oscillate just above sustain (dispatcher clamps kick + sustain
-    /// to this value). Defaults to 0 on older records.
-    #[serde(default)]
+    /// to this value).
     pub min_stable_duty: Duty,
 
     /// "Near plateau" duty (within `jitter` of `rpm_max`). Informational:
@@ -107,14 +106,24 @@ pub struct Calibration {
     pub curve_kind: CurveKind,
 
     /// Non-fatal reliability findings. Empty for a healthy calibration.
-    #[serde(default)]
     pub warnings: Vec<CalibrationWarning>,
 
     /// Diagnoser backfilled `duty: None` history entries with derived
     /// values (channel has no native duty reporting). Clears on delete;
     /// the UI uses it to decide whether to prompt for a chart reload.
-    #[serde(default)]
     pub was_rpm_only: bool,
+
+    /// User override for the cold-start kick boost. `None` defers to
+    /// the heuristic (`needs_kick_boost`); `Some(true)` forces the
+    /// boost on; `Some(false)` forces it off.
+    pub kick_boost_override: Option<bool>,
+
+    /// User override for the kick-write duration. `None` uses the
+    /// calibrated `kick_duration_ms`; `Some(ms)` forces the dispatcher
+    /// to hold the kick for `ms` before dropping to sustain. Useful
+    /// when a fan needs longer than the measured start-to-spin time to
+    /// stabilize at the boosted kick duty.
+    pub kick_duration_override_ms: Option<u32>,
 
     pub timestamp: DateTime<Local>,
 }
@@ -161,6 +170,35 @@ impl Calibration {
             return None;
         }
         Some(self.true_to_device_smooth(true_duty))
+    }
+
+    /// Resolved kick-boost decision. Honors `kick_boost_override` when
+    /// set; otherwise falls through to `needs_kick_boost`.
+    pub fn kick_boost_active(&self) -> bool {
+        self.kick_boost_override
+            .unwrap_or_else(|| self.needs_kick_boost())
+    }
+
+    /// Kick-write duration that the dispatcher should use. Honors
+    /// `kick_duration_override_ms` when set; otherwise falls through to
+    /// the calibrated `kick_duration_ms`.
+    pub fn kick_duration_ms_effective(&self) -> u32 {
+        self.kick_duration_override_ms
+            .unwrap_or(self.kick_duration_ms)
+    }
+
+    /// Up-curve has non-monotonic RPM samples above `min_start_duty`
+    /// (cold-start oscillation in the low-duty zone). Healthy fans show
+    /// monotonic RPM growth from `min_start_duty` and don't need the
+    /// dispatcher to inflate the kick; firmware-oscillating fans drop
+    /// by more than jitter between adjacent samples and benefit from
+    /// the boost.
+    fn needs_kick_boost(&self) -> bool {
+        let above = curve_above(&self.up_curve, self.min_start_duty);
+        let jitter = jitter_threshold(self.rpm_max);
+        above
+            .windows(2)
+            .any(|pair| pair[1].rpm + jitter < pair[0].rpm)
     }
 
     /// Maps measured RPM back to true-duty. `None` for stepped channels.
@@ -218,16 +256,21 @@ impl Calibration {
         let rpm_floor = self.rpm_floor();
         assert!(self.rpm_max >= rpm_floor);
         let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, true_clamped);
-        // Cold-start kick: target a fraction of the RPM range above the
-        // floor so the dispatcher's Off->Kicking write pushes the fan
-        // past its static-friction / momentum threshold before the
-        // sustain write drops back to `target_rpm`. The dispatcher
-        // consumes `mapped.kick` only on Off->Kicking; `write_sustain_on`
-        // and the deferred sustain write both use `mapped.sustain`, so
-        // this boost is implicitly cold-start only.
-        let boost_rpm = (self.rpm_max - rpm_floor).saturating_mul(KICK_RPM_BOOST_PERCENT) / 100;
-        let kick_target_rpm = rpm_floor.saturating_add(boost_rpm);
-        let kick_rpm = target_rpm.max(kick_target_rpm);
+        // Cold-start kick: when active, target a fraction of the RPM
+        // range above the floor so the dispatcher's Off->Kicking write
+        // pushes the fan past its static-friction / momentum threshold
+        // before the sustain write drops back to `target_rpm`. The
+        // dispatcher consumes `mapped.kick` only on Off->Kicking, so
+        // this boost is implicitly cold-start only. Gated on
+        // `kick_boost_active` so healthy fans don't audibly kick on
+        // every cold start.
+        let kick_rpm = if self.kick_boost_active() {
+            let boost_rpm = (self.rpm_max - rpm_floor).saturating_mul(KICK_RPM_BOOST_PERCENT) / 100;
+            let kick_target_rpm = rpm_floor.saturating_add(boost_rpm);
+            target_rpm.max(kick_target_rpm)
+        } else {
+            target_rpm
+        };
         // Skip artifact samples below the floor on both curves. Without
         // this, kick spikes in the dense region (e.g., down_curve has
         // rpm 1012 at duty 4) would land as the first sample matching a
@@ -658,6 +701,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }
@@ -808,9 +853,10 @@ mod tests {
     fn momentum_threshold_calibration() -> Calibration {
         // Synthetic fan with a 20% momentum / static-friction floor.
         // RPM is 0 below duty 20, then a linear ramp from 500 at duty
-        // 20 to 2000 at duty 100. up_curve == down_curve so any
-        // kick-vs-sustain delta in the mapping is purely the cold-start
-        // boost, not curve hysteresis.
+        // 20 to 2000 at duty 100. up_curve == down_curve and monotonic,
+        // so the heuristic would not auto-enable the boost; the override
+        // forces it on so the boost-math tests below isolate the boost
+        // behavior from the gate.
         let mut samples = vec![DutySample { duty: 0, rpm: 0 }];
         for d in (2..=18).step_by(2) {
             samples.push(DutySample { duty: d, rpm: 0 });
@@ -832,6 +878,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: Some(true),
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }
@@ -874,6 +922,145 @@ mod tests {
                 mapped.kick, mapped.sustain
             );
         }
+    }
+
+    fn oscillating_up_curve_calibration() -> Calibration {
+        // Models the user-reported oscillating fan (21091c4f.../fan1):
+        // up-curve from min_start_duty=16 bounces 778, 851, 889, 760,
+        // 823, 878, 939, 1007 -- a clear non-monotonic dip at duty 22.
+        let up = vec![
+            DutySample { duty: 0, rpm: 0 },
+            DutySample { duty: 12, rpm: 0 },
+            DutySample { duty: 16, rpm: 778 },
+            DutySample { duty: 18, rpm: 851 },
+            DutySample { duty: 20, rpm: 889 },
+            DutySample { duty: 22, rpm: 760 },
+            DutySample { duty: 24, rpm: 823 },
+            DutySample { duty: 26, rpm: 878 },
+            DutySample { duty: 28, rpm: 939 },
+            DutySample {
+                duty: 30,
+                rpm: 1007,
+            },
+            DutySample {
+                duty: 40,
+                rpm: 1342,
+            },
+            DutySample {
+                duty: 60,
+                rpm: 2069,
+            },
+            DutySample {
+                duty: 100,
+                rpm: 3370,
+            },
+        ];
+        let down = up.clone();
+        Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 1425,
+            min_start_duty: 16,
+            min_sustain_duty: 18,
+            min_stable_duty: 18,
+            max_eff_duty: 100,
+            rpm_max: 3370,
+            curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
+            was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
+            timestamp: Local::now(),
+        }
+    }
+
+    #[test]
+    fn kick_boost_heuristic_fires_on_up_curve_oscillation() {
+        // Goal: the heuristic must auto-enable the boost for fans whose
+        // up-curve shows non-monotonic samples above min_start_duty.
+        // Models the user's firmware-oscillating fan.
+        let cal = oscillating_up_curve_calibration();
+        assert!(cal.kick_boost_active(), "oscillating fan should auto-boost");
+    }
+
+    #[test]
+    fn kick_boost_heuristic_silent_on_monotonic_up_curve() {
+        // Goal: healthy fans (monotonic up-curve from min_start_duty)
+        // must NOT auto-enable the boost. Avoids audible kicks on cold
+        // start for fans / controllers that don't need help.
+        let mut cal = momentum_threshold_calibration();
+        cal.kick_boost_override = None;
+        assert!(
+            cal.kick_boost_active().not(),
+            "monotonic fan should not auto-boost"
+        );
+    }
+
+    #[test]
+    fn kick_boost_override_some_true_forces_boost_on_monotonic_fan() {
+        // Goal: Some(true) override must enable the boost even when the
+        // heuristic would skip it. This is the user's escape hatch for
+        // fans the heuristic misclassifies as not needing a boost.
+        let mut cal = momentum_threshold_calibration();
+        cal.kick_boost_override = Some(true);
+        assert!(cal.kick_boost_active());
+        let mapped = cal.true_to_device(1).expect("smooth maps");
+        assert!(
+            mapped.kick > mapped.sustain,
+            "forced boost must inflate kick: kick={} sustain={}",
+            mapped.kick,
+            mapped.sustain
+        );
+    }
+
+    #[test]
+    fn kick_boost_override_some_false_silences_boost_on_oscillating_fan() {
+        // Goal: Some(false) override must disable the boost even when
+        // the heuristic would enable it. Escape hatch for users who
+        // don't want the boost on a fan the heuristic flagged.
+        let mut cal = oscillating_up_curve_calibration();
+        cal.kick_boost_override = Some(false);
+        assert!(cal.kick_boost_active().not());
+        // With boost disabled, kick falls back to the natural lookup
+        // result, which on this symmetric fixture matches sustain.
+        let mapped = cal.true_to_device(1).expect("smooth maps");
+        assert_eq!(
+            mapped.kick, mapped.sustain,
+            "silenced boost must leave kick == sustain on symmetric curves"
+        );
+    }
+
+    #[test]
+    fn kick_duration_uses_calibrated_value_by_default() {
+        // Goal: when `kick_duration_override_ms` is None, the
+        // dispatcher uses the calibrated `kick_duration_ms`. The boost
+        // gate (kick_boost_override) does not affect duration; only the
+        // duration override does.
+        let mut cal = momentum_threshold_calibration();
+        cal.kick_duration_ms = 1425;
+        cal.kick_duration_override_ms = None;
+
+        cal.kick_boost_override = Some(true);
+        assert_eq!(cal.kick_duration_ms_effective(), 1425);
+        cal.kick_boost_override = Some(false);
+        assert_eq!(cal.kick_duration_ms_effective(), 1425);
+    }
+
+    #[test]
+    fn kick_duration_override_forces_user_value() {
+        // Goal: when set, `kick_duration_override_ms` replaces the
+        // calibrated value regardless of the boost gate. User dial for
+        // fans whose measured time-to-spin does not match the time the
+        // fan needs to stabilize at the boosted kick duty.
+        let mut cal = momentum_threshold_calibration();
+        cal.kick_duration_ms = 1425;
+        cal.kick_duration_override_ms = Some(5000);
+
+        assert_eq!(
+            cal.kick_duration_ms_effective(),
+            5000,
+            "override must replace calibrated duration"
+        );
     }
 
     #[test]
@@ -925,6 +1112,8 @@ mod tests {
             curve_kind: CurveKind::Stepped,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         };
         assert!(cal.true_to_device(50).is_none());
@@ -1094,6 +1283,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         };
         // For each low true-duty the round-trip device_to_true_duty
@@ -1154,6 +1345,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         };
         // 98% device-duty round-trip: write the sustain device-duty
@@ -1388,6 +1581,8 @@ mod tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: Local::now(),
         }
     }

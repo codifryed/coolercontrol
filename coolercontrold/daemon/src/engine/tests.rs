@@ -1423,6 +1423,8 @@ mod engine_tests {
             curve_kind: CurveKind::Smooth,
             warnings: Vec::new(),
             was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
             timestamp: chrono::Local::now(),
         }
     }
