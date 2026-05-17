@@ -50,6 +50,22 @@ use log::warn;
 use std::rc::Rc;
 use std::time::Duration;
 
+/// Device-duty decrement per walk-down step after the kick window. Small
+/// enough that fan controllers with steep cutoff thresholds can follow
+/// the descent without cutting power on the way down.
+const WALK_STEP_DUTY: Duty = 5;
+
+/// Time held between walk-down steps. Slow and steady: gives fans with
+/// sluggish controllers time to settle at each intermediate duty before
+/// the next decrement.
+const WALK_STEP_INTERVAL_MS: u64 = 400;
+
+/// Upper bound on walk-down iterations. The walk decreases by exactly
+/// `WALK_STEP_DUTY` per step until reaching the target, so the worst
+/// case is `100 / WALK_STEP_DUTY` steps from kick=100 to target=0.
+const MAX_WALK_STEPS: u32 = 22;
+const _: () = assert!((MAX_WALK_STEPS as usize) * (WALK_STEP_DUTY as usize) > 100);
+
 /// Hardware-write abstraction the dispatcher targets.
 ///
 /// Production code wraps `Rc<dyn Repository>` in `RepoWriter` (below).
@@ -106,10 +122,11 @@ enum DispatchOutcome {
     /// All work completed; no follow-up needed.
     Done,
     /// The kick was written and the channel is now `Kicking`. A
-    /// deferred task must, after `kick_duration_ms`, call
-    /// `complete_kick(state, writer, &key, &device_uid, &channel_name)`.
+    /// deferred task must, after `kick_duration_ms`, run the walk-down
+    /// via `complete_kick_with_walk` starting at `kick_duty`.
     SustainPending {
         kick_duration_ms: u32,
+        kick_duty: Duty,
         key: ChannelKey,
         device_uid: DeviceUID,
         channel_name: ChannelName,
@@ -144,6 +161,7 @@ pub async fn dispatch(
     let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
     if let DispatchOutcome::SustainPending {
         kick_duration_ms,
+        kick_duty,
         key,
         device_uid,
         channel_name,
@@ -153,12 +171,13 @@ pub async fn dispatch(
         let writer_owned = Rc::clone(writer);
         tokio::task::spawn_local(async move {
             tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
-            complete_kick(
+            complete_kick_with_walk(
                 &state_owned,
                 &writer_owned,
                 &key,
                 &device_uid,
                 &channel_name,
+                kick_duty,
             )
             .await;
         });
@@ -219,6 +238,7 @@ async fn dispatch_core(
             .await?;
             Ok(DispatchOutcome::SustainPending {
                 kick_duration_ms,
+                kick_duty: mapped.kick,
                 key,
                 device_uid,
                 channel_name,
@@ -327,7 +347,7 @@ async fn write_sustain_on(
 
 /// Finalize a pending kick: if the channel is still in `Kicking`,
 /// transition to `On` and write the latest `sustain_target`. Called
-/// by the spawned task in production and directly by unit tests.
+/// at the tail of `complete_kick_with_walk` and directly by unit tests.
 pub async fn complete_kick(
     state: &Rc<FanStateMap>,
     writer: &Rc<dyn DutyWriter>,
@@ -358,6 +378,66 @@ pub async fn complete_kick(
         {
             warn!("Calibration sustain write failed for {device_uid}:{channel_name} - {err}");
         }
+    }
+}
+
+/// Step the device duty down from `kick_duty` to the channel's current
+/// `sustain_target`, then finalize via `complete_kick`. Re-reads
+/// `sustain_target` at every step so a mid-walk profile re-evaluation
+/// either extends the walk to a lower target or jumps up if the target
+/// rose above the current walk position. Aborts cleanly if the state
+/// leaves `Kicking` (write-zero or diagnosis start).
+pub async fn complete_kick_with_walk(
+    state: &Rc<FanStateMap>,
+    writer: &Rc<dyn DutyWriter>,
+    key: &ChannelKey,
+    device_uid: &UID,
+    channel_name: &str,
+    kick_duty: Duty,
+) {
+    let mut walk_position = kick_duty;
+    let mut steps_taken: u32 = 0;
+    loop {
+        assert!(steps_taken < MAX_WALK_STEPS);
+
+        let target = match state.entry(key).state {
+            FanState::Kicking { sustain_target } => sustain_target,
+            FanState::Off | FanState::On => return,
+        };
+
+        // Target reached, jumped above walk position, or one more step
+        // would land on (or past) target: hand off to `complete_kick`
+        // for the final write and `Kicking -> On` transition.
+        if target >= walk_position {
+            complete_kick(state, writer, key, device_uid, channel_name).await;
+            return;
+        }
+        let next = walk_position.saturating_sub(WALK_STEP_DUTY).max(target);
+        if next == target {
+            complete_kick(state, writer, key, device_uid, channel_name).await;
+            return;
+        }
+
+        write_walk_step(writer, device_uid, channel_name, next).await;
+        walk_position = next;
+        steps_taken += 1;
+        tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS)).await;
+    }
+}
+
+/// Intermediate walk-down write. Logs and continues on error so a
+/// transient hardware failure does not abandon the fan at the kick duty.
+async fn write_walk_step(
+    writer: &Rc<dyn DutyWriter>,
+    device_uid: &UID,
+    channel_name: &str,
+    duty: Duty,
+) {
+    if let Err(err) = writer
+        .write_device_duty(device_uid, channel_name, duty)
+        .await
+    {
+        warn!("Calibration walk-down write failed for {device_uid}:{channel_name} - {err}");
     }
 }
 
@@ -761,5 +841,212 @@ mod tests {
         complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
         assert!(writes.borrow().is_empty());
         assert_eq!(state.entry(&key).state, FanState::Off);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn walk_steps_down_in_increments() {
+        // Goal: kick > sustain by more than one WALK_STEP_DUTY exercises
+        // the walk path. The deferred task writes intermediate duties
+        // stepping toward sustain by WALK_STEP_DUTY each, ending with a
+        // final write at sustain and Kicking -> On.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let key = k("dev-a", "fan1");
+                let (writer, writes) = MockWriter::make();
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 5 },
+                        under_diagnosis: false,
+                    },
+                );
+                // Walk: 20 -> 15 -> 10 -> 5 (two stepped writes plus the
+                // final write of the target via complete_kick).
+                complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 20)
+                    .await;
+                let writes_vec = writes.borrow().clone();
+                assert_eq!(writes_vec.len(), 3, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 15);
+                assert_eq!(writes_vec[1].2, 10);
+                assert_eq!(writes_vec[2].2, 5);
+                assert_eq!(state.entry(&key).state, FanState::On);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn walk_skipped_when_kick_equals_sustain() {
+        // Goal: at high true-duty where the boost is a no-op, kick ==
+        // sustain. The walk loop must take the first-iteration finalize
+        // branch with no intermediate writes: just one write at sustain
+        // plus Kicking -> On.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let key = k("dev-a", "fan1");
+                let (writer, writes) = MockWriter::make();
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 50 },
+                        under_diagnosis: false,
+                    },
+                );
+                complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 50)
+                    .await;
+                let writes_vec = writes.borrow().clone();
+                assert_eq!(writes_vec.len(), 1, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 50);
+                assert_eq!(state.entry(&key).state, FanState::On);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn walk_picks_up_mid_walk_lower_target() {
+        // Goal: a mid-walk update lowering sustain_target must extend
+        // the walk to the new (lower) endpoint. The walk re-reads
+        // sustain_target on each iteration so a Graph profile dropping
+        // the target between ticks lands at the right destination.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let key = k("dev-a", "fan1");
+                let (writer, writes) = MockWriter::make();
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 15 },
+                        under_diagnosis: false,
+                    },
+                );
+                let state_for_walk = Rc::clone(&state);
+                let writer_for_walk = Rc::clone(&writer);
+                let key_for_walk = key.clone();
+                let walk = tokio::task::spawn_local(async move {
+                    complete_kick_with_walk(
+                        &state_for_walk,
+                        &writer_for_walk,
+                        &key_for_walk,
+                        &"dev-a".to_string(),
+                        "fan1",
+                        30,
+                    )
+                    .await;
+                });
+
+                // Let walk write the first step (25) and start its sleep.
+                tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS / 2)).await;
+                assert_eq!(writes.borrow().len(), 1);
+                assert_eq!(writes.borrow()[0].2, 25);
+
+                // Lower the target. Walk should continue past 15 to 10.
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 10 },
+                        under_diagnosis: false,
+                    },
+                );
+
+                walk.await.expect("walk task");
+
+                let writes_vec = writes.borrow().clone();
+                assert_eq!(writes_vec.len(), 4, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 25);
+                assert_eq!(writes_vec[1].2, 20);
+                assert_eq!(writes_vec[2].2, 15);
+                assert_eq!(writes_vec[3].2, 10);
+                assert_eq!(state.entry(&key).state, FanState::On);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn walk_jumps_up_when_mid_walk_target_rises() {
+        // Goal: if the sustain target rises to or above the current
+        // walk position (temperature spike during the walk), the walk
+        // must abort and finalize at the new (higher) target. Models
+        // the cooling-responsiveness requirement.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let key = k("dev-a", "fan1");
+                let (writer, writes) = MockWriter::make();
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 5 },
+                        under_diagnosis: false,
+                    },
+                );
+                let state_for_walk = Rc::clone(&state);
+                let writer_for_walk = Rc::clone(&writer);
+                let key_for_walk = key.clone();
+                let walk = tokio::task::spawn_local(async move {
+                    complete_kick_with_walk(
+                        &state_for_walk,
+                        &writer_for_walk,
+                        &key_for_walk,
+                        &"dev-a".to_string(),
+                        "fan1",
+                        30,
+                    )
+                    .await;
+                });
+
+                tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS / 2)).await;
+                assert_eq!(writes.borrow().len(), 1);
+                assert_eq!(writes.borrow()[0].2, 25);
+
+                // Target rises above the current walk position (25).
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Kicking { sustain_target: 28 },
+                        under_diagnosis: false,
+                    },
+                );
+
+                walk.await.expect("walk task");
+
+                let writes_vec = writes.borrow().clone();
+                assert_eq!(writes_vec.len(), 2, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 25);
+                assert_eq!(writes_vec[1].2, 28);
+                assert_eq!(state.entry(&key).state, FanState::On);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn walk_aborts_when_state_goes_off() {
+        // Goal: if the channel transitions to Off mid-walk (a user
+        // cancel or diagnosis start), the walk must abort without
+        // further writes so we do not stomp the just-written zero.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let key = k("dev-a", "fan1");
+                let (writer, writes) = MockWriter::make();
+                state.replace(
+                    key.clone(),
+                    ChannelEntry {
+                        state: FanState::Off,
+                        under_diagnosis: false,
+                    },
+                );
+                complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 30)
+                    .await;
+                assert!(writes.borrow().is_empty());
+                assert_eq!(state.entry(&key).state, FanState::Off);
+            })
+            .await;
     }
 }
