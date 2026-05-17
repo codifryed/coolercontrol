@@ -22,9 +22,9 @@
 //! sweep is testable against a mock; the engine provides the prod impl.
 
 use super::curve::{
-    classify_curve, derive_scalars, Calibration, CurveKind, DutySample, DUTY_STEP_DENSE,
-    DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE, UNRESPONSIVE_ABORT_DUTY,
-    UP_SWEEP_DENSE_RANGE_END_DUTY,
+    classify_curve, derive_scalars, Calibration, CurveKind, DerivedScalars, DutySample,
+    DUTY_STEP_DENSE, DUTY_STEP_SPARSE, KICK_ZONE_BUFFER_PERCENT, MAX_SAMPLES_PER_CURVE,
+    UNRESPONSIVE_ABORT_DUTY, UP_SWEEP_DENSE_RANGE_END_DUTY,
 };
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
@@ -167,6 +167,16 @@ pub trait DiagnosisHost {
     /// so a step never waits longer than the daemon's own I/O budget.
     fn step_settle_cap_ms(&self, device_uid: &UID) -> u32;
 
+    /// Status-cache poll period for the device's repository. Used by
+    /// `measure_settled_kick_duration` to bucket the calibrated
+    /// `kick_duration_ms` to a multiple of the poll period so
+    /// identical-model fans land on the same value despite cache-
+    /// alignment jitter. Default of 1 s matches the daemon's typical
+    /// `poll_rate`; the prod impl reads the live setting.
+    fn poll_period_ms(&self, _device_uid: &UID) -> u32 {
+        1000
+    }
+
     /// Writes raw duty, bypassing dispatch (channel is `under_diagnosis`).
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()>;
 
@@ -231,13 +241,14 @@ pub async fn run_diagnosis<H: DiagnosisHost + ?Sized>(
         };
     let scalars = derive_scalars(&sweep_data.0, &sweep_data.1);
     let kick_duration_ms = if let Some(s) = scalars {
-        measure_kick_duration(
+        measure_settled_kick_duration(
             host,
             settings,
             &device_uid,
             &channel_name,
             &cancellation,
-            s.min_start_duty,
+            &sweep_data,
+            s,
         )
         .await
         .unwrap_or(settings.kick_duration_default_ms)
@@ -399,24 +410,40 @@ fn build_calibration(
     }
 }
 
-/// Measures how long the fan needs at `kick_duty` (typically
-/// `min_start_duty`) to cross `start_rpm_min` from rest. The dispatcher
-/// uses this as the Off -> Kicking -> On hand-off delay, so an accurate
-/// per-fan value matters: too short and the sustain duty writes before
-/// the fan is spinning; too long and the kick over-drives the fan
-/// audibly.
+/// True-duty used to compute the dispatcher's worst-case kick. At
+/// low true-duty with boost on, `mapped.kick` lands at the boost
+/// target (largest kick the dispatcher will write); above the
+/// boost crossover the natural lookup takes over and produces an
+/// even higher duty that spins up faster.
+const KICK_MEASUREMENT_TRUE_DUTY: Duty = 1;
+
+/// Measure how long the dispatcher must hold the actual kick duty
+/// (as `true_to_device_smooth` would compute it for the worst-case
+/// low true-duty) before the fan settles into a stable RPM band. The
+/// dispatcher then drops to the calibrated sustain. Returns a value
+/// bucketed to the device's poll-period so identical-model fans land
+/// on the same calibrated `kick_duration` regardless of cache-tick
+/// alignment.
 ///
-/// Steps: write 0 + sleep so the fan fully stops, then write `kick_duty`
-/// and watch the status timestamp for a fresh RPM read. Returns the
-/// elapsed time with a 50% safety margin, clamped to `[500ms, cap_ms]`.
-/// Resolution is bounded by the daemon's poll rate (typically 1 s).
-async fn measure_kick_duration<H>(
+/// Steps:
+/// 1. Build a provisional `Calibration` from the sweep data and
+///    force `kick_boost_override = Some(true)` so the test mirrors
+///    the worst-case (largest) kick the dispatcher will write.
+/// 2. Compute the dispatcher's `mapped.kick` for `KICK_MEASUREMENT_TRUE_DUTY`.
+/// 3. Stop the fan, sleep, then write the computed kick duty.
+/// 4. Watch the status cache until the RPM both crosses `start_rpm_min`
+///    AND stabilizes within the diagnoser's tight tolerance window.
+/// 5. Bucket the elapsed time up to the next multiple of the device
+///    poll period, plus one extra period of safety, clamped to
+///    `[poll_period, cap_ms]`.
+async fn measure_settled_kick_duration<H>(
     host: &H,
     settings: &DiagnosisSettings,
     device_uid: &UID,
     channel_name: &str,
     cancellation: &CancellationToken,
-    kick_duty: Duty,
+    sweep_data: &(Vec<DutySample>, Vec<DutySample>, Vec<bool>),
+    scalars: DerivedScalars,
 ) -> Result<u32, DiagnosisFailure>
 where
     H: DiagnosisHost + ?Sized,
@@ -424,20 +451,36 @@ where
     if cancellation.is_cancelled() {
         return Err(DiagnosisFailure::Cancelled);
     }
-    // Stop the fan and let it coast to rest. `kick_duration_default_ms`
-    // is generous enough at 1 Hz polls (3 s = 3 polls) for any fan that
-    // can stop at all.
+    let (up, down, down_stable) = sweep_data;
+    let mut provisional = build_calibration(
+        up.clone(),
+        down.clone(),
+        down_stable,
+        Some(scalars),
+        settings.kick_duration_default_ms,
+    );
+    provisional.kick_boost_override = Some(true);
+    let Some(mapped) = provisional.true_to_device(KICK_MEASUREMENT_TRUE_DUTY) else {
+        return Ok(settings.kick_duration_default_ms);
+    };
+
+    // Cold-start from rest, mirroring the dispatcher's Off->Kicking entry.
     host.write_raw_duty(device_uid, channel_name, 0)
         .await
         .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
     host.sleep_millis(settings.kick_duration_default_ms).await;
-
-    host.write_raw_duty(device_uid, channel_name, kick_duty)
+    host.write_raw_duty(device_uid, channel_name, mapped.kick)
         .await
         .map_err(|err| DiagnosisFailure::WriteFailed(err.to_string()))?;
+
     let cap_ms = host.step_settle_cap_ms(device_uid);
+    let poll_period_ms = host.poll_period_ms(device_uid).max(1);
+    let window_size = (settings.stability_window as usize).max(1);
+    let abs_tolerance_rpm = settings.stability_tolerance_rpm_extremes;
     let mut waited_ms: u32 = 0;
     let mut last_seen_ts = host.latest_status_timestamp_ms(device_uid).await;
+    let mut window: VecDeque<RPM> = VecDeque::with_capacity(window_size);
+
     while waited_ms < cap_ms {
         if cancellation.is_cancelled() {
             return Err(DiagnosisFailure::Cancelled);
@@ -449,17 +492,32 @@ where
                 .current_rpm(device_uid, channel_name)
                 .await
                 .unwrap_or(0);
-            if rpm >= settings.start_rpm_min {
-                let with_margin = waited_ms.saturating_add(waited_ms / 2);
-                return Ok(with_margin.clamp(500, cap_ms));
+            // Gate on `start_rpm_min` so "stably at 0 RPM" never
+            // satisfies the exit (a broken tach or never-spinning fan
+            // must time out at cap_ms instead of returning a tiny
+            // duration). Below the threshold we don't push the sample,
+            // so the stability window stays free of "fan not yet
+            // spinning" noise.
+            if rpm >= settings.start_rpm_min
+                && push_and_check_stable(
+                    &mut window,
+                    rpm,
+                    window_size,
+                    abs_tolerance_rpm,
+                    settings.stability_tolerance_percent,
+                )
+            {
+                let ticks = waited_ms.div_ceil(poll_period_ms).max(1);
+                let bucketed = ticks.saturating_add(1).saturating_mul(poll_period_ms);
+                return Ok(bucketed.clamp(poll_period_ms, cap_ms));
             }
         }
         host.sleep_millis(settings.status_poll_interval_ms).await;
         waited_ms = waited_ms.saturating_add(settings.status_poll_interval_ms);
     }
-    // Fan never crossed start_rpm_min: return the cap so the dispatcher
-    // gets the largest plausible kick window. Cap is `poll_rate * 16` in
-    // production, so the dispatcher still spins the fan.
+    // Fan never stabilized within cap_ms: hand the dispatcher the
+    // largest plausible kick window so it at least spins up
+    // (cap_ms = poll_rate * 16 in production).
     Ok(cap_ms)
 }
 
@@ -1830,10 +1888,12 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn kick_duration_is_measured_and_bounded() {
         // The saved kick_duration_ms must be the result of the live
-        // measurement, not just the default. Asserts the value is within
-        // [500, cap_ms] and that it differs from the default for a fan
-        // whose synthetic behavior places measurement at a different
-        // point on the resolution grid than the default.
+        // measurement, not just the default. Asserts the value is
+        // within [poll_period, cap_ms], is a multiple of the poll
+        // period (bucketing eliminates cache-alignment jitter so
+        // identical-model fans land on the same calibrated value),
+        // and is at least one poll period (always one period of
+        // safety on top of the measured time-to-stable).
         let state = FanStateMap::new();
         let store = CalibrationStore::empty();
         let host = MockHost::new().with_smooth_fan();
@@ -1853,9 +1913,16 @@ mod tests {
         .expect("smooth fan diagnoses");
 
         let cap_ms = host.step_cap_ms.get();
+        let poll_period = host.poll_period_ms(&"dev-a".to_string());
         assert!(
-            result.kick_duration_ms >= 500,
-            "kick_duration must respect the 500ms floor, got {}",
+            result.kick_duration_ms >= poll_period,
+            "kick_duration must be at least one poll period, got {} (poll_period={poll_period})",
+            result.kick_duration_ms
+        );
+        assert_eq!(
+            result.kick_duration_ms % poll_period,
+            0,
+            "kick_duration must be a multiple of the poll period for cross-fan consistency, got {} (poll_period={poll_period})",
             result.kick_duration_ms
         );
         assert!(

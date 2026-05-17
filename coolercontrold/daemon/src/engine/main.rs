@@ -1891,6 +1891,18 @@ impl DiagnosisHost for Engine {
         cap_ms_u32
     }
 
+    fn poll_period_ms(&self, _device_uid: &UID) -> u32 {
+        // Falls back to 1 s (the default poll rate) on config read failure.
+        const FALLBACK_MS: u32 = 1000;
+        let Ok(settings) = self.config.get_settings() else {
+            return FALLBACK_MS;
+        };
+        let period_ms = settings.poll_rate * 1000.0;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let period_u32 = period_ms.max(1.0).min(f64::from(u32::MAX)) as u32;
+        period_u32
+    }
+
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()> {
         let device_type = self
             .all_devices
