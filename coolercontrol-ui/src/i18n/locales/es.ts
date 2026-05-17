@@ -1239,10 +1239,20 @@ export default {
             curveKindSmooth: 'Continua (mapeo activo)',
             curveKindStepped: 'Escalonada (mapeo desactivado)',
             fieldCurveKind: 'Curva',
+            fieldCurveKindTooltip:
+                'Cómo responde el canal a los cambios de ciclo.\nLos ventiladores continuos tienen una curva ciclo-a-RPM continua, por lo que el dispatcher mapea el ciclo objetivo a través de la calibración. Los ventiladores escalonados tienen plataformas de RPM discretas, por lo que los ciclos pasan sin modificación.',
             fieldRpmMax: 'RPM máximas',
+            fieldRpmMaxTooltip:
+                'RPM máximas observadas durante el barrido.\nSe usa como referencia de 100% al traducir un ciclo objetivo a su valor real normalizado por RPM.',
             fieldKick: 'Duración del impulso',
+            fieldKickTooltip:
+                'Cuánto tiempo el dispatcher mantiene el ventilador en el ciclo de impulso antes de bajar al objetivo al arrancar desde apagado.\nMedido como el tiempo que tarda el ventilador en alcanzar 50 RPM tras parar y reiniciar, multiplicado por 1,5 como margen de seguridad (al menos 500 ms). La tasa de sondeo de sensores es por defecto 1/segundo, por lo que la mayoría de los ventiladores acaban en 500, 1500 o 2500 ms.',
             fieldStart: 'Ciclo mínimo de arranque',
+            fieldStartTooltip:
+                'Ciclo más bajo que arranca el ventilador de forma fiable desde detenido.\nPor debajo, el ventilador puede no comenzar a girar aunque seguiría girando si ya estuviera en marcha.',
             fieldSustain: 'Ciclo mínimo de sostenimiento',
+            fieldSustainTooltip:
+                'Ciclo más bajo en el que el ventilador sigue girando una vez arrancado.\nEl dispatcher no bajará el ciclo en marcha por debajo de este valor, salvo que el canal se envíe a 0.',
             fieldStable: 'Ciclo mínimo estable',
             fieldStableTooltip:
                 'Ciclo más bajo en el que el ventilador funciona sin oscilación.\nLos ventiladores controlados por firmware elevan las RPM por encima de un piso interno a ciclo bajo, generando un aleteo audible; el dispatcher limita el sostenimiento posterior al impulso a este valor para que el ventilador permanezca por encima de la banda.',

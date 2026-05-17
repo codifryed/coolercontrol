@@ -1256,10 +1256,20 @@ export default {
             curveKindSmooth: 'Gleichmäßig (Abbildung aktiv)',
             curveKindStepped: 'Gestuft (Abbildung deaktiviert)',
             fieldCurveKind: 'Kurve',
+            fieldCurveKindTooltip:
+                'Wie der Kanal auf Tastgradänderungen reagiert.\nGleichmäßige Lüfter haben eine durchgehende Tastgrad-zu-Drehzahl-Kurve, sodass der Dispatcher den Ziel-Tastgrad durch die Kalibrierung abbildet. Gestufte Lüfter haben diskrete Drehzahlplateaus, daher werden Tastgrade unverändert durchgereicht.',
             fieldRpmMax: 'Spitzen-Drehzahl',
+            fieldRpmMaxTooltip:
+                'Höchste während des Sweeps beobachtete Drehzahl.\nWird als 100%-Referenz verwendet, wenn ein Ziel-Tastgrad in seinen drehzahlnormalisierten echten Tastgradwert umgerechnet wird.',
             fieldKick: 'Anlaufdauer',
+            fieldKickTooltip:
+                'Wie lange der Dispatcher den Lüfter beim Start aus dem Aus auf dem Anlauf-Tastgrad hält, bevor er auf den Zielwert absenkt.\nGemessen als die Zeit, die der Lüfter nach Stoppen und Neustart benötigt, um 50 RPM zu erreichen, multipliziert mit 1,5 als Sicherheitsmarge (mindestens 500 ms). Die Sensor-Abfragerate liegt standardmäßig bei 1/Sekunde, daher landen die meisten Lüfter bei 500, 1500 oder 2500 ms.',
             fieldStart: 'Min. Start-Tastgrad',
+            fieldStartTooltip:
+                'Niedrigster Tastgrad, der den Lüfter aus dem Stillstand zuverlässig anlaufen lässt.\nUnterhalb dieses Tastgrads beginnt der Lüfter unter Umständen nicht zu drehen, obwohl er weiterdrehen würde, wenn er bereits läuft.',
             fieldSustain: 'Min. Halte-Tastgrad',
+            fieldSustainTooltip:
+                'Niedrigster Tastgrad, bei dem der Lüfter nach dem Start weiterdreht.\nDer Dispatcher senkt den laufenden Tastgrad nicht unter diesen Wert, es sei denn, der Kanal wird auf 0 gesetzt.',
             fieldStable: 'Min. stabiler Tastgrad',
             fieldStableTooltip:
                 'Niedrigster Tastgrad, bei dem der Lüfter ohne Oszillation arbeitet.\nFirmware-gesteuerte Lüfter heben die Drehzahl bei niedrigem Tastgrad über eine interne Untergrenze an und erzeugen so ein hörbares Flattern; der Dispatcher begrenzt das Halte-Niveau nach dem Anlaufschub auf diesen Wert, damit der Lüfter oberhalb des Bandes bleibt.',

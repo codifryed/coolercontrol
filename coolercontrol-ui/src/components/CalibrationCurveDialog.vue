@@ -256,25 +256,37 @@ const chartOption = (cal: Calibration) => {
             <div
                 class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1.5 text-sm border-t border-border-one pt-3"
             >
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldCurveKindTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldCurveKind') }}:
                     </span>
                     <span class="font-medium">{{ curveKindLabel(calibration.curve_kind) }}</span>
                 </div>
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldRpmMaxTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldRpmMax') }}:
                     </span>
                     <span class="font-medium">{{ calibration.rpm_max }} RPM</span>
                 </div>
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldKickTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldKick') }}:
                     </span>
                     <span class="font-medium">{{ calibration.kick_duration_ms }} ms</span>
                 </div>
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldStartTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldStart') }}:
                     </span>
@@ -282,7 +294,10 @@ const chartOption = (cal: Calibration) => {
                         {{ calibration.min_start_duty }}{{ t('common.percentUnit') }}
                     </span>
                 </div>
-                <div class="flex justify-between md:block">
+                <div
+                    v-tooltip.top="t('components.calibrationCurve.fieldSustainTooltip')"
+                    class="flex justify-between md:block cursor-help"
+                >
                     <span class="text-text-color-secondary mr-2">
                         {{ t('components.calibrationCurve.fieldSustain') }}:
                     </span>

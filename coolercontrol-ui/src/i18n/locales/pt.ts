@@ -1276,10 +1276,20 @@ export default {
             curveKindSmooth: 'Suave (mapeamento ativo)',
             curveKindStepped: 'Em degraus (mapeamento desativado)',
             fieldCurveKind: 'Curva',
+            fieldCurveKindTooltip:
+                'Como o canal responde a mudanças de ciclo.\nVentiladores suaves têm uma curva ciclo-RPM contínua, então o dispatcher mapeia o ciclo alvo através da calibração. Ventiladores em degraus têm platôs de RPM discretos, então os ciclos passam sem modificação.',
             fieldRpmMax: 'RPM máxima',
+            fieldRpmMaxTooltip:
+                'RPM mais alta observada durante a varredura.\nUsada como referência de 100% ao traduzir um ciclo alvo no seu valor real normalizado por RPM.',
             fieldKick: 'Duração do impulso',
+            fieldKickTooltip:
+                'Por quanto tempo o dispatcher mantém o ventilador no ciclo de impulso antes de baixar para o alvo ao iniciar a partir de desligado.\nMedido como o tempo que o ventilador leva para atingir 50 RPM após parar e reiniciar, multiplicado por 1,5 como margem de segurança (no mínimo 500 ms). A taxa de sondagem dos sensores é por padrão 1/segundo, então a maioria dos ventiladores acaba em 500, 1500 ou 2500 ms.',
             fieldStart: 'Ciclo mínimo de partida',
+            fieldStartTooltip:
+                'Ciclo mais baixo que faz o ventilador partir de forma confiável a partir de parado.\nAbaixo, o ventilador pode não começar a girar, mesmo que continuasse girando se já estivesse em movimento.',
             fieldSustain: 'Ciclo mínimo de sustentação',
+            fieldSustainTooltip:
+                'Ciclo mais baixo em que o ventilador continua girando após iniciado.\nO dispatcher não baixará o ciclo em curso abaixo deste valor, salvo se o canal for enviado para 0.',
             fieldStable: 'Ciclo mínimo estável',
             fieldStableTooltip:
                 'Ciclo mais baixo no qual o ventilador opera sem oscilação.\nVentiladores controlados por firmware elevam as RPM acima de um piso interno em ciclo baixo, gerando uma vibração audível; o dispatcher limita a sustentação pós-impulso a este valor para que o ventilador permaneça acima da faixa.',

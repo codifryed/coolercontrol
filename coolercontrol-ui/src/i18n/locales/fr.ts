@@ -1255,10 +1255,20 @@ export default {
             curveKindSmooth: 'Lisse (mappage actif)',
             curveKindStepped: 'En marches (mappage désactivé)',
             fieldCurveKind: 'Courbe',
+            fieldCurveKindTooltip:
+                'Manière dont le canal réagit aux changements de rapport cyclique.\nLes ventilateurs lisses ont une courbe rapport-cyclique-à-RPM continue, le dispatcher mappe donc le rapport cyclique cible via la calibration. Les ventilateurs en marches ont des plateaux RPM discrets, les rapports cycliques sont donc transmis sans modification.',
             fieldRpmMax: 'RPM maximales',
+            fieldRpmMaxTooltip:
+                "RPM les plus élevées observées pendant le balayage.\nUtilisées comme référence 100% lors de la conversion d'un rapport cyclique cible en sa valeur réelle normalisée par RPM.",
             fieldKick: "Durée de l'impulsion",
+            fieldKickTooltip:
+                "Durée pendant laquelle le dispatcher maintient le ventilateur au rapport cyclique d'impulsion avant de redescendre vers la cible lors d'un démarrage depuis l'arrêt.\nMesurée comme le temps que met le ventilateur à atteindre 50 RPM après un arrêt et un redémarrage, multiplié par 1,5 comme marge de sécurité (au moins 500 ms). La fréquence d'interrogation des capteurs est par défaut de 1/seconde, la plupart des ventilateurs aboutissent donc à 500, 1500 ou 2500 ms.",
             fieldStart: 'Rapport cyclique min. de démarrage',
+            fieldStartTooltip:
+                "Rapport cyclique le plus bas qui démarre le ventilateur de manière fiable depuis l'arrêt.\nEn dessous, le ventilateur peut ne pas commencer à tourner, même s'il continuerait à tourner s'il était déjà en marche.",
             fieldSustain: 'Rapport cyclique min. de maintien',
+            fieldSustainTooltip:
+                'Rapport cyclique le plus bas auquel le ventilateur continue de tourner une fois lancé.\nLe dispatcher ne descendra pas le rapport cyclique en cours en dessous de cette valeur, sauf si le canal est envoyé à 0.',
             fieldStable: 'Rapport cyclique min. stable',
             fieldStableTooltip:
                 "Rapport cyclique le plus bas auquel le ventilateur fonctionne sans oscillation.\nLes ventilateurs pilotés par le firmware relèvent les RPM au-dessus d'un seuil interne à bas rapport cyclique, ce qui produit un battement audible ; le dispatcher plafonne le maintien post-impulsion à cette valeur pour que le ventilateur reste au-dessus de cette bande.",

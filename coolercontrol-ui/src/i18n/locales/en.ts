@@ -1221,10 +1221,20 @@ export default {
             curveKindSmooth: 'Smooth (mapping active)',
             curveKindStepped: 'Stepped (mapping disabled)',
             fieldCurveKind: 'Curve',
+            fieldCurveKindTooltip:
+                'How the channel responds to duty changes.\nSmooth fans have a continuous duty-to-RPM curve, so the dispatcher maps target duty through the calibration. Stepped fans have discrete RPM plateaus, so duties pass through unchanged.',
             fieldRpmMax: 'Peak RPM',
+            fieldRpmMaxTooltip:
+                'Highest RPM observed during the sweep.\nUsed as the 100% reference when translating a target duty to its RPM-normalized true-duty value.',
             fieldKick: 'Kick duration',
+            fieldKickTooltip:
+                'How long the dispatcher holds the fan at the kick duty before dropping to the target when starting from off.\nMeasured as the time the fan takes to reach 50 RPM after a stop and restart, times 1.5 as a safety margin (at least 500 ms). The sensor poll rate defaults to 1/second, so most fans land on 500, 1500, or 2500 ms.',
             fieldStart: 'Min start duty',
+            fieldStartTooltip:
+                'Lowest duty that reliably starts the fan from a stopped state.\nBelow this duty the fan may not begin spinning even though it would keep spinning if already running.',
             fieldSustain: 'Min sustain duty',
+            fieldSustainTooltip:
+                'Lowest duty at which the fan keeps spinning once started.\nThe dispatcher will not drop the running duty below this value unless the channel is sent to 0.',
             fieldStable: 'Min stable duty',
             fieldStableTooltip:
                 'Lowest duty at which the fan operates without oscillation.\nFirmware-controlled fans nudge RPM above an internal floor at low duty, producing audible flutter; the dispatcher clamps post-kick sustain to this value so the fan stays above the band.',
