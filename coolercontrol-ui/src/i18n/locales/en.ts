@@ -1256,6 +1256,9 @@ export default {
             kickDurationReset: 'Reset to default',
             kickBoostCurrentlyOn: 'currently on',
             kickBoostCurrentlyOff: 'currently off',
+            fieldWalkAfterKick: 'Walk down after kick',
+            fieldWalkAfterKickTooltip:
+                'After the kick window, step the duty down to sustain in small increments. Protects fans whose controllers cut power on an abrupt drop.\nTurn off to jump straight from kick to sustain. Safe on most modern PWM fans and removes the visible ramp-down after every cold start.',
             overridesSaveFailed: 'Failed to save calibration overrides',
         },
         deviceExtensionSettings: {

@@ -1275,6 +1275,9 @@ export default {
             kickDurationReset: 'デフォルトに戻す',
             kickBoostCurrentlyOn: '現在オン',
             kickBoostCurrentlyOff: '現在オフ',
+            fieldWalkAfterKick: 'キック後の段階的な下降',
+            fieldWalkAfterKickTooltip:
+                'キック期間の後、小さなステップで保持値までデューティを下げます。急激な低下でコントローラーが電源を切るファンを保護します。\nオフにするとキックから保持値へ直接ジャンプします。最近のPWMファンの多くで安全に使えて、コールドスタート後に見える減速が消えます。',
             overridesSaveFailed: 'キャリブレーションのオーバーライドを保存できませんでした',
         },
         deviceExtensionSettings: {

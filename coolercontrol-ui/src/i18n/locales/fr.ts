@@ -1290,6 +1290,9 @@ export default {
             kickDurationReset: 'Réinitialiser par défaut',
             kickBoostCurrentlyOn: 'actuellement activé',
             kickBoostCurrentlyOff: 'actuellement désactivé',
+            fieldWalkAfterKick: 'Descente progressive après impulsion',
+            fieldWalkAfterKickTooltip:
+                "Après la fenêtre d'impulsion, abaisse le rapport cyclique vers le maintien par petits incréments. Protège les ventilateurs dont les contrôleurs coupent l'alimentation lors d'une chute brutale.\nDésactiver pour passer directement de l'impulsion au maintien. Sans risque sur la plupart des ventilateurs PWM modernes et supprime la rampe descendante visible après chaque démarrage à froid.",
             overridesSaveFailed: 'Échec de la sauvegarde des surcharges de calibration',
         },
         deviceExtensionSettings: {

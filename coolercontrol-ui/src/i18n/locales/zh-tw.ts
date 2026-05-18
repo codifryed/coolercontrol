@@ -1219,6 +1219,9 @@ export default {
             kickDurationReset: '還原為預設值',
             kickBoostCurrentlyOn: '目前開啟',
             kickBoostCurrentlyOff: '目前關閉',
+            fieldWalkAfterKick: '啟動衝擊後逐級下降',
+            fieldWalkAfterKickTooltip:
+                '啟動衝擊結束後，將工作週期以較小幅度逐級降至保持值。保護那些控制器在工作週期驟降時會切斷電源的風扇。\n關閉後將直接從衝擊切換到保持值。對絕大多數現代 PWM 風扇而言是安全的，並可移除每次冷啟動後可見的下降斜坡。',
             overridesSaveFailed: '儲存校正覆寫失敗',
         },
         deviceExtensionSettings: {

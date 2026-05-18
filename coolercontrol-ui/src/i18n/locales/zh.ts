@@ -1218,6 +1218,9 @@ export default {
             kickDurationReset: '恢复默认值',
             kickBoostCurrentlyOn: '当前开启',
             kickBoostCurrentlyOff: '当前关闭',
+            fieldWalkAfterKick: '启动冲量后逐级下降',
+            fieldWalkAfterKickTooltip:
+                '启动冲量结束后，将占空比以较小幅度逐级降至保持值。保护那些控制器在占空比骤降时会切断电源的风扇。\n关闭后将直接从冲量切换到保持值。对绝大多数现代 PWM 风扇是安全的，并可消除每次冷启动后可见的下降斜坡。',
             overridesSaveFailed: '保存校准覆盖失败',
         },
         deviceExtensionSettings: {

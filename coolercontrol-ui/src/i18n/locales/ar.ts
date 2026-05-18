@@ -1245,6 +1245,9 @@ export default {
             kickDurationReset: 'إعادة التعيين إلى الافتراضي',
             kickBoostCurrentlyOn: 'حاليًّا مُفعَّل',
             kickBoostCurrentlyOff: 'حاليًّا مُعطَّل',
+            fieldWalkAfterKick: 'الإنزال التدريجي بعد دفع البدء',
+            fieldWalkAfterKickTooltip:
+                'بعد نافذة دفع البدء، يُخفَّض مستوى التشغيل إلى مستوى الحفاظ بخطوات صغيرة. يحمي المراوح التي تقطع مُتحكِّماتها التيار عند الانخفاض المفاجئ.\nعطِّله للانتقال مباشرة من البدء إلى الحفاظ. آمن على معظم مراوح PWM الحديثة ويُزيل الانحدار المرئي بعد كل تشغيل بارد.',
             overridesSaveFailed: 'فشل حفظ تجاوزات المعايرة',
         },
         deviceExtensionSettings: {

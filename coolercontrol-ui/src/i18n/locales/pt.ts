@@ -1311,6 +1311,9 @@ export default {
             kickDurationReset: 'Restaurar para o padrão',
             kickBoostCurrentlyOn: 'atualmente ligado',
             kickBoostCurrentlyOff: 'atualmente desligado',
+            fieldWalkAfterKick: 'Descida gradual após o impulso',
+            fieldWalkAfterKickTooltip:
+                'Após a janela do impulso, reduz o ciclo de trabalho até a sustentação em pequenos incrementos. Protege ventiladores cujos controladores cortam a energia em uma queda abrupta.\nDesative para pular direto do impulso para a sustentação. Seguro na maioria dos ventiladores PWM modernos e remove a rampa descendente visível após cada inicialização a frio.',
             overridesSaveFailed: 'Falha ao salvar as substituições da calibração',
         },
         deviceExtensionSettings: {

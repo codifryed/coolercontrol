@@ -1247,6 +1247,9 @@ export default {
             kickDurationReset: '기본값으로 재설정',
             kickBoostCurrentlyOn: '현재 켜짐',
             kickBoostCurrentlyOff: '현재 꺼짐',
+            fieldWalkAfterKick: '시동 후 단계적 감속',
+            fieldWalkAfterKickTooltip:
+                '시동 기간 후 듀티를 작은 단위로 유지 값까지 단계적으로 낮춥니다. 급격한 하락 시 컨트롤러가 전원을 차단하는 팬을 보호합니다.\n끄면 시동에서 유지 값으로 곧바로 전환됩니다. 대부분의 최신 PWM 팬에서 안전하며, 콜드 스타트 후 보이는 감속 구간을 제거합니다.',
             overridesSaveFailed: '캘리브레이션 재정의 저장 실패',
         },
         deviceExtensionSettings: {

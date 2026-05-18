@@ -1259,6 +1259,9 @@ export default {
             kickDurationReset: 'डिफ़ॉल्ट पर रीसेट करें',
             kickBoostCurrentlyOn: 'अभी चालू',
             kickBoostCurrentlyOff: 'अभी बंद',
+            fieldWalkAfterKick: 'किक के बाद धीरे-धीरे कम करें',
+            fieldWalkAfterKickTooltip:
+                'किक विंडो के बाद, ड्यूटी को छोटे चरणों में सस्टेन तक कम करें. यह उन पंखों की रक्षा करता है जिनके कंट्रोलर अचानक गिरावट पर बिजली काट देते हैं.\nकिक से सीधे सस्टेन पर जाने के लिए बंद करें. अधिकांश आधुनिक PWM पंखों पर सुरक्षित है और हर कोल्ड स्टार्ट के बाद दिखने वाली रैम्प-डाउन को हटाता है.',
             overridesSaveFailed: 'कैलिब्रेशन ओवरराइड सहेजने में विफल',
         },
         deviceExtensionSettings: {

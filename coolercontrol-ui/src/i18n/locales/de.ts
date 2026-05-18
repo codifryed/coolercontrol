@@ -1291,6 +1291,9 @@ export default {
             kickDurationReset: 'Auf Standard zurücksetzen',
             kickBoostCurrentlyOn: 'aktuell ein',
             kickBoostCurrentlyOff: 'aktuell aus',
+            fieldWalkAfterKick: 'Schrittweises Absenken nach Anlauf',
+            fieldWalkAfterKickTooltip:
+                'Nach dem Anlauf-Fenster wird der Tastgrad in kleinen Schritten auf das Halte-Niveau abgesenkt. Schützt Lüfter, deren Controller bei einem abrupten Abfall die Stromzufuhr unterbrechen.\nAusschalten, um direkt vom Anlauf zum Halte-Niveau zu springen. Bei den meisten modernen PWM-Lüftern unbedenklich und entfernt die sichtbare Abklingphase nach jedem Kaltstart.',
             overridesSaveFailed: 'Speichern der Kalibrierungs-Überschreibungen fehlgeschlagen',
         },
         deviceExtensionSettings: {
