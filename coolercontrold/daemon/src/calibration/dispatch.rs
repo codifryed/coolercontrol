@@ -53,12 +53,10 @@ use std::time::Duration;
 /// Device-duty decrement per walk-down step after the kick window. Small
 /// enough that fan controllers with steep cutoff thresholds can follow
 /// the descent without cutting power on the way down.
-const WALK_STEP_DUTY: Duty = 5;
+const WALK_STEP_DUTY: Duty = 3;
 
-/// Time held between walk-down steps. Slow and steady: gives fans with
-/// sluggish controllers time to settle at each intermediate duty before
-/// the next decrement.
-const WALK_STEP_INTERVAL_MS: u64 = 400;
+/// Time held between walk-down steps.
+const WALK_STEP_INTERVAL_MS: u64 = 1000;
 
 /// Upper bound on walk-down iterations. The walk decreases by exactly
 /// `WALK_STEP_DUTY` per step until reaching the target, so the worst
