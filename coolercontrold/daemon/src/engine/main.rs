@@ -320,12 +320,14 @@ impl Engine {
         key: &ChannelKey,
         kick_boost_override: Option<bool>,
         kick_duration_override_ms: Option<u32>,
+        walk_after_kick_override: Option<bool>,
     ) -> Result<Option<Calibration>> {
         let Some(mut cal) = self.calibration_store.get(key) else {
             return Ok(None);
         };
         cal.kick_boost_override = kick_boost_override;
         cal.kick_duration_override_ms = kick_duration_override_ms;
+        cal.walk_after_kick_override = walk_after_kick_override;
         self.calibration_store
             .insert_unsaved(key.clone(), cal.clone());
         self.calibration_store.save_to_disk().await?;
@@ -341,8 +343,12 @@ impl Engine {
         }
         drop(statuses);
         info!(
-            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?})",
-            key.0, key.1, cal.kick_boost_override, cal.kick_duration_override_ms
+            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?} walk={:?})",
+            key.0,
+            key.1,
+            cal.kick_boost_override,
+            cal.kick_duration_override_ms,
+            cal.walk_after_kick_override
         );
         Ok(Some(cal))
     }

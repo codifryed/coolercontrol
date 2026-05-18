@@ -129,6 +129,16 @@ pub struct Calibration {
     /// stabilize at the boosted kick duty.
     pub kick_duration_override_ms: Option<u32>,
 
+    /// User override for the post-kick walk-down. `None` defers to the
+    /// default (walk down in small steps from kick to sustain); `Some(true)`
+    /// forces the walk on; `Some(false)` jumps from kick straight to
+    /// sustain. Skipping the walk is safe on hardware that tolerates an
+    /// abrupt drop and removes a visible 1-22 second ramp on every cold
+    /// start. Serialized with `#[serde(default)]` so calibrations written
+    /// before this field existed deserialize cleanly to `None`.
+    #[serde(default)]
+    pub walk_after_kick_override: Option<bool>,
+
     pub timestamp: DateTime<Local>,
 }
 
@@ -189,6 +199,14 @@ impl Calibration {
     pub fn kick_duration_ms_effective(&self) -> u32 {
         self.kick_duration_override_ms
             .unwrap_or(self.kick_duration_ms)
+    }
+
+    /// Resolved walk-down decision. `None` defaults to true so the walk
+    /// runs unless the user has explicitly opted out. Consumed by the
+    /// dispatcher to choose between `complete_kick_with_walk` and the
+    /// abrupt `complete_kick`.
+    pub fn walk_after_kick_enabled(&self) -> bool {
+        self.walk_after_kick_override.unwrap_or(true)
     }
 
     /// Up-curve has non-monotonic RPM samples above `min_start_duty`
@@ -707,6 +725,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -884,6 +903,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: Some(true),
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -974,6 +994,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -1068,6 +1089,37 @@ mod tests {
     }
 
     #[test]
+    fn walk_after_kick_enabled_defaults_true() {
+        // Goal: an unset override must resolve to walk-enabled so
+        // existing calibrations keep the descent protection without the
+        // user touching anything.
+        let mut cal = make_smooth_calibration();
+        cal.walk_after_kick_override = None;
+        assert!(cal.walk_after_kick_enabled());
+    }
+
+    #[test]
+    fn walk_after_kick_override_some_false_disables_walk() {
+        // Goal: Some(false) must opt the channel out of the walk so the
+        // dispatcher jumps from kick to sustain in one write. Used on
+        // hardware that tolerates the abrupt drop and finds the visible
+        // ramp confusing.
+        let mut cal = make_smooth_calibration();
+        cal.walk_after_kick_override = Some(false);
+        assert!(cal.walk_after_kick_enabled().not());
+    }
+
+    #[test]
+    fn walk_after_kick_override_some_true_forces_walk() {
+        // Goal: Some(true) must keep the walk on. Same resolved value as
+        // None today, but expressed explicitly so the override state is
+        // persisted and the UI can render the user's choice.
+        let mut cal = make_smooth_calibration();
+        cal.walk_after_kick_override = Some(true);
+        assert!(cal.walk_after_kick_enabled());
+    }
+
+    #[test]
     fn reverse_map_round_trips_within_tolerance() {
         // Write the sustain duty, sample RPM as hardware would, recover true-duty.
         let cal = make_smooth_calibration();
@@ -1118,6 +1170,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         };
         assert!(cal.true_to_device(50).is_none());
@@ -1289,6 +1342,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         };
         // For each low true-duty the round-trip device_to_true_duty
@@ -1351,6 +1405,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         };
         // 98% device-duty round-trip: write the sustain device-duty
@@ -1587,6 +1642,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }

@@ -388,6 +388,7 @@ fn build_calibration(
                 was_rpm_only: false,
                 kick_boost_override: None,
                 kick_duration_override_ms: None,
+                walk_after_kick_override: None,
                 timestamp: Local::now(),
             }
         }
@@ -405,6 +406,7 @@ fn build_calibration(
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         },
     }

@@ -272,6 +272,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -285,6 +286,23 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serializes");
         let recovered: Calibration = serde_json::from_str(&json).expect("deserializes");
         assert_eq!(recovered, original);
+    }
+
+    #[test]
+    fn calibration_deserializes_without_walk_after_kick_override() {
+        // Goal: loading a JSON blob saved before `walk_after_kick_override`
+        // existed must succeed and default the field to None. Guards
+        // against `#[serde(default)]` getting dropped during a refactor,
+        // which would silently break upgrades for every existing user.
+        let mut value = serde_json::to_value(sample_calibration()).expect("serializes");
+        let map = value.as_object_mut().expect("object");
+        assert!(
+            map.remove("walk_after_kick_override").is_some(),
+            "fixture must include the field before we strip it"
+        );
+        let json = serde_json::to_string(&value).expect("re-serializes without field");
+        let recovered: Calibration = serde_json::from_str(&json).expect("deserializes");
+        assert!(recovered.walk_after_kick_override.is_none());
     }
 
     #[test]

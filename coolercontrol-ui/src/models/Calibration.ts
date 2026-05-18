@@ -106,6 +106,16 @@ export interface Calibration {
      */
     kick_duration_override_ms: number | null
     /**
+     * User override for the post-kick walk-down. `null` defers to the
+     * default (walk down in small steps from kick to sustain). `true`
+     * forces the walk on; `false` jumps from kick straight to sustain.
+     * Skipping the walk is safe on hardware that tolerates an abrupt
+     * drop and removes the visible 1-22 second ramp on every cold
+     * start. Optional because older persisted calibrations pre-date
+     * the field; the daemon defaults to None (walk enabled).
+     */
+    walk_after_kick_override?: boolean | null
+    /**
      * Resolved cold-start kick-boost decision for this channel
      * (override or heuristic). `true` means the dispatcher will issue
      * the boost on the next Off->Kicking transition. Computed by the

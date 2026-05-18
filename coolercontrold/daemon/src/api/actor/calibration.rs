@@ -199,6 +199,7 @@ pub enum CalibrationMessage {
         channel_name: ChannelName,
         kick_boost_override: Option<bool>,
         kick_duration_override_ms: Option<u32>,
+        walk_after_kick_override: Option<bool>,
         respond_to: oneshot::Sender<Result<Option<Calibration>>>,
     },
     InProgress {
@@ -286,12 +287,18 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
                 channel_name,
                 kick_boost_override,
                 kick_duration_override_ms,
+                walk_after_kick_override,
                 respond_to,
             } => {
                 let key: ChannelKey = (device_uid, channel_name);
                 let result = self
                     .engine
-                    .set_calibration_overrides(&key, kick_boost_override, kick_duration_override_ms)
+                    .set_calibration_overrides(
+                        &key,
+                        kick_boost_override,
+                        kick_duration_override_ms,
+                        walk_after_kick_override,
+                    )
                     .await;
                 let _ = respond_to.send(result);
             }
@@ -419,6 +426,7 @@ impl CalibrationHandle {
         channel_name: ChannelName,
         kick_boost_override: Option<bool>,
         kick_duration_override_ms: Option<u32>,
+        walk_after_kick_override: Option<bool>,
     ) -> Result<Option<Calibration>> {
         let (tx, rx) = oneshot::channel();
         let _ = self
@@ -428,6 +436,7 @@ impl CalibrationHandle {
                 channel_name,
                 kick_boost_override,
                 kick_duration_override_ms,
+                walk_after_kick_override,
                 respond_to: tx,
             })
             .await;

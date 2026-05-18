@@ -27,6 +27,7 @@ import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
+import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
 import _ from 'lodash'
@@ -57,6 +58,9 @@ const loadError: Ref<string | undefined> = ref()
 type BoostMode = 'auto' | 'on' | 'off'
 const boostMode: Ref<BoostMode> = ref('auto')
 const durationOverride: Ref<number | null> = ref(null)
+// Local state for the walk-down toggle. The daemon defaults the
+// override to None (walk enabled), so the toggle starts checked.
+const walkAfterKick: Ref<boolean> = ref(true)
 const saving: Ref<boolean> = ref(false)
 // Suppress watcher-driven saves while we sync the refs from a fresh
 // calibration (initial load, post-save echo). Without this the watcher
@@ -74,6 +78,9 @@ const syncOverridesFrom = (cal: Calibration): void => {
     boostMode.value =
         cal.kick_boost_override === true ? 'on' : cal.kick_boost_override === false ? 'off' : 'auto'
     durationOverride.value = cal.kick_duration_override_ms ?? null
+    // `null` (no override) and `true` (explicit on) both mean the walk
+    // runs. Only `false` toggles it off.
+    walkAfterKick.value = cal.walk_after_kick_override !== false
     // Release the suppression on the next microtask so the watchers
     // observe the assignment as "settled".
     void Promise.resolve().then(() => {
@@ -111,6 +118,10 @@ const saveOverrides = async (): Promise<void> => {
     const result = await calibrationStore.updateOverrides(deviceUID, channelName, {
         kick_boost_override: overridesFromMode(boostMode.value),
         kick_duration_override_ms: durationOverride.value,
+        // Persist `false` only when the user opts out, leaving the
+        // daemon-side `None` default for the on case to keep stored
+        // payloads minimal.
+        walk_after_kick_override: walkAfterKick.value ? null : false,
     })
     saving.value = false
     if (result instanceof ErrorResponse || result == null) {
@@ -136,9 +147,14 @@ const saveDuration = _.debounce(() => {
     if (syncing) return
     void saveOverrides()
 }, 500)
+const saveWalk = () => {
+    if (syncing) return
+    void saveOverrides()
+}
 
 watch(boostMode, saveBoost)
 watch(durationOverride, saveDuration)
+watch(walkAfterKick, saveWalk)
 
 const formatTimestamp = (iso: string): string => {
     const date = new Date(iso)
@@ -474,6 +490,15 @@ const chartOption = (cal: Calibration) => {
                         :aria-label="t('components.calibrationCurve.kickDurationReset')"
                         @click="durationOverride = null"
                     />
+                </div>
+                <div class="flex items-center gap-3">
+                    <label
+                        v-tooltip.top="t('components.calibrationCurve.fieldWalkAfterKickTooltip')"
+                        class="text-text-color-secondary cursor-help shrink-0"
+                    >
+                        {{ t('components.calibrationCurve.fieldWalkAfterKick') }}:
+                    </label>
+                    <ToggleSwitch v-model="walkAfterKick" :disabled="saving" />
                 </div>
             </div>
             <div class="text-xs text-text-color-secondary text-right">

@@ -1772,8 +1772,8 @@ export default class DaemonClient {
     }
 
     /**
-     * Replace the kick-boost and kick-duration override fields on a
-     * stored calibration. Both fields in the body are sent
+     * Replace the kick-boost, kick-duration, and walk-down override
+     * fields on a stored calibration. All fields in the body are sent
      * unconditionally; `null` clears the corresponding override.
      * Returns the updated `Calibration` on success, `undefined` on
      * 404 (no calibration stored), `ErrorResponse` on other failures.
@@ -1781,7 +1781,11 @@ export default class DaemonClient {
     async patchCalibrationOverrides(
         deviceUID: UID,
         channelName: string,
-        body: { kick_boost_override: boolean | null; kick_duration_override_ms: number | null },
+        body: {
+            kick_boost_override: boolean | null
+            kick_duration_override_ms: number | null
+            walk_after_kick_override: boolean | null
+        },
     ): Promise<Calibration | undefined | ErrorResponse> {
         try {
             const response = await this.getClient().patch(

@@ -184,11 +184,14 @@ pub async fn list(
 
 /// Per-fan calibration override values. `null` clears the override
 /// and falls back to the auto-derived behavior (heuristic for the
-/// boost, calibrated `kick_duration_ms` for the duration).
+/// boost, calibrated `kick_duration_ms` for the duration, walk-down
+/// enabled by default).
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CalibrationOverridesUpdate {
     pub kick_boost_override: Option<bool>,
     pub kick_duration_override_ms: Option<u32>,
+    #[serde(default)]
+    pub walk_after_kick_override: Option<bool>,
 }
 
 /// Replace the override fields on the persisted calibration for a
@@ -209,6 +212,7 @@ pub async fn set_overrides(
             path.channel_name,
             body.kick_boost_override,
             body.kick_duration_override_ms,
+            body.walk_after_kick_override,
         )
         .await
         .map_err(|err| CCError::InternalError {

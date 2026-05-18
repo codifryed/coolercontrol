@@ -60,8 +60,9 @@ const WALK_STEP_INTERVAL_MS: u64 = 1000;
 
 /// Upper bound on walk-down iterations. The walk decreases by exactly
 /// `WALK_STEP_DUTY` per step until reaching the target, so the worst
-/// case is `100 / WALK_STEP_DUTY` steps from kick=100 to target=0.
-const MAX_WALK_STEPS: u32 = 22;
+/// case from kick=100 to target=0 needs `ceil(100 / WALK_STEP_DUTY)`
+/// writes plus one final iteration to hand off to `complete_kick`.
+const MAX_WALK_STEPS: u32 = 34;
 const _: () = assert!((MAX_WALK_STEPS as usize) * (WALK_STEP_DUTY as usize) > 100);
 
 /// Hardware-write abstraction the dispatcher targets.
@@ -121,10 +122,13 @@ enum DispatchOutcome {
     Done,
     /// The kick was written and the channel is now `Kicking`. A
     /// deferred task must, after `kick_duration_ms`, run the walk-down
-    /// via `complete_kick_with_walk` starting at `kick_duty`.
+    /// via `complete_kick_with_walk` starting at `kick_duty`. When
+    /// `walk_enabled` is false the deferred task calls `complete_kick`
+    /// directly, jumping from kick to sustain in one write.
     SustainPending {
         kick_duration_ms: u32,
         kick_duty: Duty,
+        walk_enabled: bool,
         key: ChannelKey,
         device_uid: DeviceUID,
         channel_name: ChannelName,
@@ -160,6 +164,7 @@ pub async fn dispatch(
     if let DispatchOutcome::SustainPending {
         kick_duration_ms,
         kick_duty,
+        walk_enabled,
         key,
         device_uid,
         channel_name,
@@ -169,15 +174,26 @@ pub async fn dispatch(
         let writer_owned = Rc::clone(writer);
         tokio::task::spawn_local(async move {
             tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
-            complete_kick_with_walk(
-                &state_owned,
-                &writer_owned,
-                &key,
-                &device_uid,
-                &channel_name,
-                kick_duty,
-            )
-            .await;
+            if walk_enabled {
+                complete_kick_with_walk(
+                    &state_owned,
+                    &writer_owned,
+                    &key,
+                    &device_uid,
+                    &channel_name,
+                    kick_duty,
+                )
+                .await;
+            } else {
+                complete_kick(
+                    &state_owned,
+                    &writer_owned,
+                    &key,
+                    &device_uid,
+                    &channel_name,
+                )
+                .await;
+            }
         });
     }
     Ok(())
@@ -215,6 +231,9 @@ async fn dispatch_core(
     let kick_duration_ms = calibration
         .as_ref()
         .map_or(0, Calibration::kick_duration_ms_effective);
+    let walk_enabled = calibration
+        .as_ref()
+        .is_none_or(Calibration::walk_after_kick_enabled);
 
     if true_duty == 0 {
         handle_write_zero(state, writer, key, device_uid, channel_name).await?;
@@ -237,6 +256,7 @@ async fn dispatch_core(
             Ok(DispatchOutcome::SustainPending {
                 kick_duration_ms,
                 kick_duty: mapped.kick,
+                walk_enabled,
                 key,
                 device_uid,
                 channel_name,
@@ -523,6 +543,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -552,6 +573,7 @@ mod tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: Local::now(),
         }
     }
@@ -860,15 +882,18 @@ mod tests {
                         under_diagnosis: false,
                     },
                 );
-                // Walk: 20 -> 15 -> 10 -> 5 (two stepped writes plus the
-                // final write of the target via complete_kick).
+                // Walk: 20 -> 17 -> 14 -> 11 -> 8 -> 5 (four stepped
+                // writes plus the final write of the target via
+                // complete_kick). Step size is WALK_STEP_DUTY = 3.
                 complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 20)
                     .await;
                 let writes_vec = writes.borrow().clone();
-                assert_eq!(writes_vec.len(), 3, "writes: {writes_vec:?}");
-                assert_eq!(writes_vec[0].2, 15);
-                assert_eq!(writes_vec[1].2, 10);
-                assert_eq!(writes_vec[2].2, 5);
+                assert_eq!(writes_vec.len(), 5, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 17);
+                assert_eq!(writes_vec[1].2, 14);
+                assert_eq!(writes_vec[2].2, 11);
+                assert_eq!(writes_vec[3].2, 8);
+                assert_eq!(writes_vec[4].2, 5);
                 assert_eq!(state.entry(&key).state, FanState::On);
             })
             .await;
@@ -937,12 +962,14 @@ mod tests {
                     .await;
                 });
 
-                // Let walk write the first step (25) and start its sleep.
+                // Let walk write the first step (27 = 30 - WALK_STEP_DUTY)
+                // and start its sleep.
                 tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS / 2)).await;
                 assert_eq!(writes.borrow().len(), 1);
-                assert_eq!(writes.borrow()[0].2, 25);
+                assert_eq!(writes.borrow()[0].2, 27);
 
-                // Lower the target. Walk should continue past 15 to 10.
+                // Lower the target. Walk should continue past 15 down to 10
+                // in 3% steps: 27 -> 24 -> 21 -> 18 -> 15 -> 12 -> 10.
                 state.replace(
                     key.clone(),
                     ChannelEntry {
@@ -954,11 +981,14 @@ mod tests {
                 walk.await.expect("walk task");
 
                 let writes_vec = writes.borrow().clone();
-                assert_eq!(writes_vec.len(), 4, "writes: {writes_vec:?}");
-                assert_eq!(writes_vec[0].2, 25);
-                assert_eq!(writes_vec[1].2, 20);
-                assert_eq!(writes_vec[2].2, 15);
-                assert_eq!(writes_vec[3].2, 10);
+                assert_eq!(writes_vec.len(), 7, "writes: {writes_vec:?}");
+                assert_eq!(writes_vec[0].2, 27);
+                assert_eq!(writes_vec[1].2, 24);
+                assert_eq!(writes_vec[2].2, 21);
+                assert_eq!(writes_vec[3].2, 18);
+                assert_eq!(writes_vec[4].2, 15);
+                assert_eq!(writes_vec[5].2, 12);
+                assert_eq!(writes_vec[6].2, 10);
                 assert_eq!(state.entry(&key).state, FanState::On);
             })
             .await;
@@ -1000,9 +1030,9 @@ mod tests {
 
                 tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS / 2)).await;
                 assert_eq!(writes.borrow().len(), 1);
-                assert_eq!(writes.borrow()[0].2, 25);
+                assert_eq!(writes.borrow()[0].2, 27);
 
-                // Target rises above the current walk position (25).
+                // Target rises above the current walk position (27).
                 state.replace(
                     key.clone(),
                     ChannelEntry {
@@ -1015,7 +1045,7 @@ mod tests {
 
                 let writes_vec = writes.borrow().clone();
                 assert_eq!(writes_vec.len(), 2, "writes: {writes_vec:?}");
-                assert_eq!(writes_vec[0].2, 25);
+                assert_eq!(writes_vec[0].2, 27);
                 assert_eq!(writes_vec[1].2, 28);
                 assert_eq!(state.entry(&key).state, FanState::On);
             })
@@ -1044,6 +1074,55 @@ mod tests {
                     .await;
                 assert!(writes.borrow().is_empty());
                 assert_eq!(state.entry(&key).state, FanState::Off);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn dispatch_skips_walk_when_override_disables_it() {
+        // Goal: with `walk_after_kick_override = Some(false)`, the
+        // deferred task must call complete_kick (single sustain write)
+        // instead of complete_kick_with_walk. We see the kick, the
+        // sustain, no intermediate walk steps.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let store = CalibrationStore::empty();
+                let mut cal = smooth_cal();
+                cal.walk_after_kick_override = Some(false);
+                store.insert_unsaved(k("dev-a", "fan1"), cal.clone());
+                let (writer, writes) = MockWriter::make();
+                dispatch(
+                    &state,
+                    &store,
+                    &writer,
+                    "dev-a".to_string(),
+                    "fan1".to_string(),
+                    50,
+                )
+                .await
+                .expect("kick");
+                // Kick is written synchronously.
+                assert_eq!(writes.borrow().len(), 1);
+                let mapped = cal.true_to_device(50).expect("smooth");
+                assert_eq!(writes.borrow()[0].2, mapped.kick);
+
+                // Advance past the kick window. Without the walk the
+                // deferred task should land exactly one more write (the
+                // sustain) and the state should be On. The walk path
+                // would produce multiple intermediate writes spaced
+                // WALK_STEP_INTERVAL_MS apart, so a single hop past the
+                // kick duration is enough to distinguish them.
+                tokio::time::sleep(Duration::from_millis(
+                    u64::from(cal.kick_duration_ms_effective()) + 50,
+                ))
+                .await;
+
+                let log = writes.borrow().clone();
+                assert_eq!(log.len(), 2, "expected kick + sustain, got: {log:?}");
+                assert_eq!(log[1].2, mapped.sustain);
+                assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::On);
             })
             .await;
     }

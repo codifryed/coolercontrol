@@ -1425,6 +1425,7 @@ mod engine_tests {
             was_rpm_only: false,
             kick_boost_override: None,
             kick_duration_override_ms: None,
+            walk_after_kick_override: None,
             timestamp: chrono::Local::now(),
         }
     }
@@ -1722,7 +1723,7 @@ mod engine_tests {
             let device_uid = device.borrow().uid.clone();
             let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
             let result = engine
-                .set_calibration_overrides(&key, Some(true), Some(5000))
+                .set_calibration_overrides(&key, Some(true), Some(5000), Some(false))
                 .await
                 .expect("ok");
             assert!(result.is_none(), "no calibration stored -> None");

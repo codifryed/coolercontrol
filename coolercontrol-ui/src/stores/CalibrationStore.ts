@@ -359,11 +359,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }
 
     /**
-     * Replace the kick-boost and kick-duration override fields on the
-     * stored calibration. Both fields are sent unconditionally; `null`
-     * clears the corresponding override. On success the cached
-     * `completed` status entry for the channel is refreshed with the
-     * returned calibration so any subscribed UI sees the new values.
+     * Replace the kick-boost, kick-duration, and walk-down override
+     * fields on the stored calibration. All fields are sent
+     * unconditionally; `null` clears the corresponding override. On
+     * success the cached `completed` status entry for the channel is
+     * refreshed with the returned calibration so any subscribed UI
+     * sees the new values.
      */
     async function updateOverrides(
         uid: UID,
@@ -371,6 +372,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
         overrides: {
             kick_boost_override: boolean | null
             kick_duration_override_ms: number | null
+            walk_after_kick_override: boolean | null
         },
     ): Promise<Calibration | undefined | ErrorResponse> {
         const result = await deviceStore.daemonClient.patchCalibrationOverrides(
