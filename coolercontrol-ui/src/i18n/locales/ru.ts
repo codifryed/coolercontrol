@@ -1085,7 +1085,10 @@ export default {
             current: 'Текущий',
             min: 'Мин',
             max: 'Макс',
+            range: 'Диапазон',
             average: 'Среднее',
+            resetStats: 'Сброс',
+            resetStatsTooltip: 'Сбросить мин/макс/среднее для всех каналов',
         },
         modeTable: {
             setting: 'Настройка',

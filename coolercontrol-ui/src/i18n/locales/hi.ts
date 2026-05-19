@@ -1075,7 +1075,10 @@ export default {
             current: 'वर्तमान',
             min: 'न्यूनतम',
             max: 'अधिकतम',
+            range: 'सीमा',
             average: 'औसत',
+            resetStats: 'रीसेट',
+            resetStatsTooltip: 'सभी चैनलों के लिए न्यूनतम/अधिकतम/औसत रीसेट करें',
         },
         modeTable: {
             setting: 'सेटिंग',

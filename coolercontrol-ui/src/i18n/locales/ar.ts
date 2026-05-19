@@ -1061,7 +1061,10 @@ export default {
             current: 'الحالي',
             min: 'الحد الأدنى',
             max: 'الحد الأقصى',
+            range: 'النطاق',
             average: 'المتوسط',
+            resetStats: 'إعادة تعيين',
+            resetStatsTooltip: 'إعادة تعيين الحد الأدنى/الأقصى/المتوسط لجميع القنوات',
         },
         modeTable: {
             setting: 'الإعداد',

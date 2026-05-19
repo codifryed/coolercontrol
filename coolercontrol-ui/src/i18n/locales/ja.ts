@@ -1089,7 +1089,10 @@ export default {
             current: '現在',
             min: '最小',
             max: '最大',
+            range: '範囲',
             average: '平均',
+            resetStats: 'リセット',
+            resetStatsTooltip: 'すべてのチャネルの最小/最大/平均をリセット',
         },
         modeTable: {
             setting: '設定',

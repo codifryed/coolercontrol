@@ -1064,7 +1064,10 @@ export default {
             current: '현재',
             min: '최소',
             max: '최대',
+            range: '범위',
             average: '평균',
+            resetStats: '초기화',
+            resetStatsTooltip: '모든 채널의 최소/최대/평균 초기화',
         },
         modeTable: {
             setting: '설정',
