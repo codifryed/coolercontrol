@@ -85,6 +85,11 @@ interface DeviceData {
     max: number
     avg: number
     count: number // number of values folded so far
+    // True when the next row belongs to a different channel (or this is the
+    // last row). Used to drop the channel column's border-b between same-
+    // channel rows so they read as one merged cell. Set by a post-pass in
+    // rebuildTableData after sort.
+    isLastOfChannel?: boolean
 }
 
 // Daemon hasn't observed this entry yet. Sentinel min lets the first Math.min
@@ -108,6 +113,21 @@ const fromChannelStats = (
 // when no color has been set.
 const deviceColor = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor ?? ''
+
+// A fan channel can have both duty and rpm in the same physical channel, which
+// produces multiple rows that share the same rowID (device.uid + channel.name).
+// Render the channel marker + label only on the first such row so multi-status
+// channels read as one logical group (matches the old rowspan-grouped layout).
+const isFirstRowOfChannel = (index: number): boolean => {
+    if (index === 0) return true
+    return deviceTableData.value[index - 1].rowID !== deviceTableData.value[index].rowID
+}
+
+// Drops the channel column's border-b between same-channel rows. Combined with
+// the marker/label hiding above, the duty + rpm rows of one channel read as a
+// single merged cell on the left.
+const rowClass = (data: DeviceData): string =>
+    data.isLastOfChannel === false ? 'channel-continued' : ''
 
 const rebuildTableData = (stats: StatsResponseDTO) => {
     deviceTableData.value.length = 0
@@ -235,6 +255,13 @@ const rebuildTableData = (stats: StatsResponseDTO) => {
                 return 0
             }
         })
+    }
+    // Mark whether each row is the last of its channel group, so the channel
+    // column's bottom border can be suppressed between same-channel rows.
+    for (let i = 0; i < deviceTableData.value.length; i++) {
+        const next = deviceTableData.value[i + 1]
+        deviceTableData.value[i].isLastOfChannel =
+            next == null || next.rowID !== deviceTableData.value[i].rowID
     }
 }
 
@@ -389,6 +416,7 @@ onBeforeUnmount(() => {
                     :value="deviceTableData"
                     row-group-mode="subheader"
                     group-rows-by="deviceUID"
+                    :row-class="rowClass"
                     scrollable
                     scroll-height="flex"
                     :pt="{
@@ -420,10 +448,12 @@ onBeforeUnmount(() => {
                     </template>
                     <Column field="rowID" :header="t('components.sensorTable.channel')">
                         <template #body="slotProps">
-                            <span
-                                class="pi pi-minus mr-2 ml-1"
-                                :style="{ color: slotProps.data.channelColor }"
-                            />{{ slotProps.data.channelLabel }}
+                            <template v-if="isFirstRowOfChannel(slotProps.index)">
+                                <span
+                                    class="pi pi-minus mr-2 ml-1"
+                                    :style="{ color: slotProps.data.channelColor }"
+                                />{{ slotProps.data.channelLabel }}
+                            </template>
                         </template>
                     </Column>
                     <Column
@@ -512,5 +542,12 @@ onBeforeUnmount(() => {
     border-bottom: 3px solid rgb(var(--colors-border-one)) !important;
     padding-top: 2rem !important;
     //padding-bottom: 1.0rem !important;
+}
+
+// Drop the Channel cell's bottom border between rows of the same channel
+// (e.g. a fan with both duty and rpm). Combined with hiding the marker/label
+// on subsequent rows, the cells visually fuse into one tall "rowspan" cell.
+:deep(tr.channel-continued) > td:first-of-type {
+    border-bottom: 0 !important;
 }
 </style>
