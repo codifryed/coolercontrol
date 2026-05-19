@@ -299,13 +299,12 @@ impl Device {
         self.status_history.back().cloned()
     }
 
-    /// Clears and fills the `status_history` with zeroed-out statuses based on
-    /// the given real `status`, which is consumed and appended as the most
-    /// recent entry via `set_status`. Used at device startup. Routing the
-    /// final push through `set_status` ensures the first real reading is
-    /// recorded in `stats` and any installed `StatusAugmenter` runs.
-    /// (Wake-from-sleep uses `zero_status_history` instead so its zeroed
-    /// template does not pollute stats.)
+    /// Reset `status_history` and seed it with zeroed entries plus `status`
+    /// as the newest entry. Runs the augmenter on the pushed entry but does
+    /// NOT record stats: some channels (e.g. CPU watts derived from a
+    /// joule-counter delta) have no real reading at init, and folding the
+    /// fabricated 0.0 would lock `min` there forever. Stats are seeded by
+    /// the first main-loop `set_status` call.
     ///
     /// Arguments:
     ///
@@ -319,9 +318,9 @@ impl Device {
             let history = Arc::make_mut(&mut self.status_history);
             history.clear();
             // Pre-fill with `status_stack_size` zeroed entries at offsets
-            // [-N, -(N-1), ..., -1] * poll_rate. set_status below pops the
-            // oldest (-N) and pushes the real status at offset 0, leaving
-            // the canonical [-{N-1}, ..., -1, 0] * poll_rate layout.
+            // [-N, -(N-1), ..., -1] * poll_rate. push_and_augment below
+            // pops the oldest (-N) and pushes the real status at offset 0,
+            // leaving the canonical [-{N-1}, ..., -1, 0] * poll_rate layout.
             for pos in (1..=status_stack_size).rev() {
                 history.push_back(Status {
                     timestamp: status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
@@ -330,7 +329,7 @@ impl Device {
                 });
             }
         }
-        self.set_status(status);
+        self.push_and_augment(status);
     }
 
     /// Replace the entire status history with synthetic zeroed entries. Used
@@ -358,20 +357,11 @@ impl Device {
         });
     }
 
-    /// Adds a new status to a history list and removes the oldest status.
-    /// This should be used every time a new status is to be added.
-    /// Uses `Arc::make_mut` for copy-on-write semantics: only clones if
-    /// there are other references to the history. The installed
-    /// `StatusAugmenter` (if any) runs on the just-pushed entry inside
-    /// the same mutable borrow, so the calibration rewrite incurs no
-    /// extra deep clone when a reader holds an `Arc` clone. Running
-    /// stats are folded from the just-pushed (post-augmenter) entry so
-    /// min/max/avg track the values the engine actually sees.
-    ///
-    /// Arguments:
-    ///
-    /// * `status`: The `Status` to be consumed and added to the history stack.
-    pub fn set_status(&mut self, status: Status) {
+    /// Push `status` as the newest history entry and run the augmenter on
+    /// it. Uses `Arc::make_mut` so readers holding an `Arc` clone trigger
+    /// copy-on-write; otherwise the push is in-place. Does not touch
+    /// stats; callers that need stats folded should use `set_status`.
+    fn push_and_augment(&mut self, status: Status) {
         let history = Arc::make_mut(&mut self.status_history);
         history.pop_front();
         history.push_back(status);
@@ -380,9 +370,17 @@ impl Device {
                 augmenter.augment(latest, &self.uid);
             }
         }
-        // Take a snapshot of the latest entry so we release the &mut
-        // borrow on status_history before mutating self.stats below.
-        let Some(latest) = history.back().cloned() else {
+    }
+
+    /// Push a new status, run the augmenter, and fold the post-augmenter
+    /// values into running stats. Use this for every main-loop tick.
+    ///
+    /// Arguments:
+    ///
+    /// * `status`: The `Status` to be consumed and added to the history stack.
+    pub fn set_status(&mut self, status: Status) {
+        self.push_and_augment(status);
+        let Some(latest) = self.status_history.back().cloned() else {
             return;
         };
         self.record_stats(&latest);
@@ -789,7 +787,8 @@ mod tests {
 
     /// Verify the canonical happy path: a status pushed via set_status
     /// updates min/max/avg/count for every present temp and channel
-    /// data field, lazily creating entries the first time.
+    /// data field, lazily creating entries the first time. Init seeds
+    /// history only; the first set_status seeds stats.
     #[test]
     fn set_status_records_stats_for_all_present_fields() {
         let mut device = make_test_device();
@@ -800,6 +799,10 @@ mod tests {
             ),
             POLL_RATE,
         );
+        device.set_status(status_with(
+            vec![("cpu", 40.0)],
+            vec![channel("fan1", Some(50.0), Some(1200))],
+        ));
         let stats = device.stats();
         assert_eq!(stats.temps.get("cpu").unwrap().count, 1);
         assert_eq!(stats.temps.get("cpu").unwrap().avg, 40.0);
@@ -810,10 +813,13 @@ mod tests {
 
     /// Multiple set_status calls accumulate. Min tracks the lowest, max
     /// the highest, avg is the cumulative mean, count is total samples.
+    /// Init seeds history only and is not counted; the first set_status
+    /// is observation #1.
     #[test]
     fn record_stats_folds_running_min_max_avg_count() {
         let mut device = make_test_device();
         device.initialize_status_history_with(status_with(vec![("cpu", 30.0)], vec![]), POLL_RATE);
+        device.set_status(status_with(vec![("cpu", 30.0)], vec![]));
         device.set_status(status_with(vec![("cpu", 50.0)], vec![]));
         device.set_status(status_with(vec![("cpu", 40.0)], vec![]));
         let cpu = device.stats().temps.get("cpu").unwrap();
@@ -825,6 +831,9 @@ mod tests {
 
     /// Channels absent from a tick (e.g. hwmon failsafe omission) must
     /// not pollute their stats. The remaining present channels do update.
+    /// Init seeds history only; the first set_status seeds stats for all
+    /// present fields, and a later set_status that omits some leaves
+    /// those untouched.
     #[test]
     fn record_stats_skips_absent_channels() {
         let mut device = make_test_device();
@@ -835,6 +844,11 @@ mod tests {
             ),
             POLL_RATE,
         );
+        // First real tick seeds stats for cpu, gpu, fan1.
+        device.set_status(status_with(
+            vec![("cpu", 40.0), ("gpu", 60.0)],
+            vec![channel("fan1", Some(50.0), Some(1200))],
+        ));
         // Second push only contains "cpu" and no channels.
         device.set_status(status_with(vec![("cpu", 100.0)], vec![]));
         let stats = device.stats();
@@ -854,17 +868,23 @@ mod tests {
         );
     }
 
-    /// The first real status passed to initialize_status_history_with
-    /// must be counted in stats, since it flows through set_status.
+    /// initialize_status_history_with deliberately does NOT seed stats:
+    /// some channels (CPU watts from a joule-counter delta) have no real
+    /// reading at init, and folding a fabricated 0.0 would lock min there
+    /// forever. Stats are seeded by the first main-loop set_status.
     #[test]
-    fn initialize_status_history_counts_the_first_real_reading() {
+    fn initialize_status_history_does_not_record_stats() {
         let mut device = make_test_device();
-        device.initialize_status_history_with(status_with(vec![("cpu", 42.0)], vec![]), POLL_RATE);
-        let cpu = device.stats().temps.get("cpu").unwrap();
-        assert_eq!(cpu.count, 1);
-        assert_eq!(cpu.min, 42.0);
-        assert_eq!(cpu.max, 42.0);
-        assert_eq!(cpu.avg, 42.0);
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 42.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let stats = device.stats();
+        assert!(stats.temps.is_empty());
+        assert!(stats.channels.is_empty());
     }
 
     /// zero_status_history wipes history to zeros for wake-from-sleep
@@ -880,6 +900,11 @@ mod tests {
             ),
             POLL_RATE,
         );
+        // Seed stats with a real first tick before going to sleep.
+        device.set_status(status_with(
+            vec![("cpu", 40.0)],
+            vec![channel("fan1", Some(50.0), Some(1200))],
+        ));
         // Wake-from-sleep: engine passes a zeroed template. Stats must be untouched.
         device.zero_status_history(
             &status_with(
@@ -896,9 +921,10 @@ mod tests {
         assert_eq!(fan1.get(&ChannelDataType::Rpm).unwrap().min, 1200.0);
     }
 
-    /// The augmenter is documented to fire on the just-pushed entry
-    /// before stats are recorded. Verify stats see the post-augmenter
-    /// value (the true-duty rewrite), not the raw duty passed in.
+    /// The augmenter fires on the just-pushed entry for both init and
+    /// set_status. Stats are only recorded by set_status and must see
+    /// the post-augmenter value (the true-duty rewrite), not the raw
+    /// duty passed in.
     #[test]
     fn record_stats_reads_post_augmenter_value() {
         let mut device = make_test_device();
@@ -911,6 +937,11 @@ mod tests {
             status_with(vec![], vec![channel("fan1", Some(10.0), None)]),
             POLL_RATE,
         );
+        // Init runs the augmenter but does not seed stats.
+        assert_eq!(*augmenter.invocations.borrow(), 1);
+        assert!(device.stats().channels.is_empty());
+        // First set_status runs the augmenter again and seeds stats.
+        device.set_status(status_with(vec![], vec![channel("fan1", Some(10.0), None)]));
         let duty_stats = device
             .stats()
             .channels
@@ -918,7 +949,7 @@ mod tests {
             .unwrap()
             .get(&ChannelDataType::Duty)
             .unwrap();
-        assert_eq!(*augmenter.invocations.borrow(), 1);
+        assert_eq!(*augmenter.invocations.borrow(), 2);
         assert_eq!(duty_stats.count, 1);
         assert_eq!(duty_stats.avg, 99.0);
         assert_eq!(duty_stats.min, 99.0);
@@ -982,5 +1013,79 @@ mod tests {
         s.fold(f64::NAN);
         assert_eq!(s.count, 1);
         assert_eq!(s.avg, 50.0);
+    }
+
+    /// The first `set_status` after init seeds stats with its own values
+    /// only. The init status leaves no trace in stats: count is 1 after
+    /// one `set_status` (not 2), and min/max/avg reflect the `set_status`
+    /// value, not the init value.
+    #[test]
+    fn init_then_first_set_status_seeds_stats_from_real_reading() {
+        let mut device = make_test_device();
+        device.initialize_status_history_with(status_with(vec![("cpu", 40.0)], vec![]), POLL_RATE);
+        device.set_status(status_with(vec![("cpu", 70.0)], vec![]));
+        let cpu = device.stats().temps.get("cpu").unwrap();
+        assert_eq!(cpu.count, 1);
+        assert_eq!(cpu.min, 70.0);
+        assert_eq!(cpu.max, 70.0);
+        assert_eq!(cpu.avg, 70.0);
+    }
+
+    /// Even though init does not seed stats, it must still run the
+    /// augmenter on the pushed entry so the engine sees the augmented
+    /// value on the first tick (e.g. the true-duty rewrite).
+    #[test]
+    fn init_runs_augmenter_on_pushed_status() {
+        let mut device = make_test_device();
+        let augmenter = Rc::new(FixedDutyAugmenter {
+            target_duty: 77.0,
+            invocations: RefCell::new(0),
+        });
+        device.set_status_augmenter(augmenter.clone());
+        device.initialize_status_history_with(
+            status_with(vec![], vec![channel("fan1", Some(10.0), None)]),
+            POLL_RATE,
+        );
+        assert_eq!(*augmenter.invocations.borrow(), 1);
+        let latest = device.status_current().unwrap();
+        let fan1 = latest.channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.duty, Some(77.0));
+    }
+
+    /// Regression: the CPU joule-counter produces 0.0 watts at init
+    /// because there is no prior delta. That 0.0 must not become the
+    /// stats min. The first real main-loop reading is what seeds stats.
+    #[test]
+    fn init_does_not_record_zero_watts_into_stats() {
+        let mut device = make_test_device();
+        let init_watts = ChannelStatus {
+            name: "cpu_pkg".to_string(),
+            duty: None,
+            rpm: None,
+            freq: None,
+            watts: Some(0.0),
+            pwm_mode: None,
+        };
+        device.initialize_status_history_with(status_with(vec![], vec![init_watts]), POLL_RATE);
+        let real_watts = ChannelStatus {
+            name: "cpu_pkg".to_string(),
+            duty: None,
+            rpm: None,
+            freq: None,
+            watts: Some(120.0),
+            pwm_mode: None,
+        };
+        device.set_status(status_with(vec![], vec![real_watts]));
+        let watts = device
+            .stats()
+            .channels
+            .get("cpu_pkg")
+            .unwrap()
+            .get(&ChannelDataType::Watts)
+            .unwrap();
+        assert_eq!(watts.count, 1);
+        assert_eq!(watts.min, 120.0);
+        assert_eq!(watts.max, 120.0);
+        assert_eq!(watts.avg, 120.0);
     }
 }

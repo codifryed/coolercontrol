@@ -160,6 +160,8 @@ mod tests {
             1.0,
         );
         device.initialize_status_history_with(make_status(50.0, 60.0, 1500), 1.0);
+        // Init seeds history but not stats; a first set_status seeds stats.
+        device.set_status(make_status(50.0, 60.0, 1500));
         let uid = device.uid.clone();
         let mut map = HashMap::with_capacity(1);
         map.insert(uid, Rc::new(RefCell::new(device)));
