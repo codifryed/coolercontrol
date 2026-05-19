@@ -426,7 +426,11 @@ onBeforeUnmount(() => {
                             />{{ slotProps.data.channelLabel }}
                         </template>
                     </Column>
-                    <Column field="value" :header="t('components.sensorTable.current')">
+                    <Column
+                        field="value"
+                        :header="t('components.sensorTable.current')"
+                        :style="{ width: '12%' }"
+                    >
                         <template #body="slotProps">
                             <span class="font-bold">{{
                                 format(slotProps.data.value, slotProps.data.dataType)
@@ -440,10 +444,9 @@ onBeforeUnmount(() => {
                         field="min"
                         :header="t('components.sensorTable.range')"
                         :pt="{
-                            headerCell: { class: '!text-center' },
-                            columnHeaderContent: { class: '!justify-center' },
-                            bodyCell: { class: '!text-center' },
+                            columnHeaderContent: { class: 'ml-10' },
                         }"
+                        :style="{ width: '18%' }"
                     >
                         <template #body="slotProps">
                             <span
@@ -465,7 +468,11 @@ onBeforeUnmount(() => {
                             </span>
                         </template>
                     </Column>
-                    <Column field="avg" :header="t('components.sensorTable.average')">
+                    <Column
+                        field="avg"
+                        :header="t('components.sensorTable.average')"
+                        :style="{ width: '12%' }"
+                    >
                         <template #body="slotProps">
                             <span
                                 v-if="slotProps.data.count === 0"
