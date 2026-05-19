@@ -19,9 +19,10 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiInformationSlabCircleOutline } from '@mdi/js'
+import { mdiInformationSlabCircleOutline, mdiRestart } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import type { UID } from '@/models/Device.ts'
@@ -117,6 +118,7 @@ const updateResponsiveGraphHeight = (): void => {
     }
 }
 const chartKey: Ref<string> = ref(uuidV4())
+const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 const saveNameFunction = async (newName: string): Promise<boolean> => {
     // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
     if (newName.length > 0) {
@@ -208,6 +210,20 @@ onUnmounted(() => {
                 </InputNumber>
                 <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
+            <div
+                v-if="singleDashboard.chartType == ChartType.TABLE"
+                class="p-2 pr-0 flex leading-none items-center"
+            >
+                <Button
+                    outlined
+                    class="h-[2.375rem] px-3"
+                    @click="sensorTableRef?.resetStats()"
+                    v-tooltip.top="t('components.sensorTable.resetStatsTooltip')"
+                >
+                    <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1.1)" />
+                    <span class="ml-1">{{ t('components.sensorTable.resetStats') }}</span>
+                </Button>
+            </div>
             <div class="p-2">
                 <Select
                     v-model="singleDashboard.chartType"
@@ -231,6 +247,7 @@ onUnmounted(() => {
     />
     <SensorTable
         v-else-if="singleDashboard.chartType == ChartType.TABLE"
+        ref="sensorTableRef"
         :dashboard="singleDashboard"
         :key="'table' + chartKey"
     />

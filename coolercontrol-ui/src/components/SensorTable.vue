@@ -19,12 +19,11 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiMemory, mdiRestart } from '@mdi/js'
+import { mdiMemory } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Button from 'primevue/button'
 import { onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
@@ -103,6 +102,12 @@ const fromChannelStats = (
     if (stats == null || stats.count === 0) return emptyStats()
     return { min: stats.min, max: stats.max, avg: stats.avg, count: stats.count }
 }
+
+// Device subheader color: matches the per-device userColor used in AppTreeMenu.
+// Empty string means "inherit theme default" so the device name stays readable
+// when no color has been set.
+const deviceColor = (deviceUID: UID): string =>
+    settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor ?? ''
 
 const rebuildTableData = (stats: StatsResponseDTO) => {
     deviceTableData.value.length = 0
@@ -243,6 +248,10 @@ const resetStats = async () => {
     rebuildTableData(currentStats.value)
 }
 
+// Exposed so parent views can wire a "Reset" button into their existing
+// control panel (where the chart-type Select and filter dropdowns live).
+defineExpose({ resetStats })
+
 // Initial render before /stats returns: build rows with empty baselines so the
 // table is laid out immediately. refreshStats() below replaces them with the
 // daemon-provided values.
@@ -376,83 +385,99 @@ onBeforeUnmount(() => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="pb-24 h-screen w-full">
             <div class="h-full">
-                <div class="flex justify-end px-2 py-1">
-                    <Button
-                        text
-                        size="small"
-                        @click="resetStats"
-                        v-tooltip.left="t('components.sensorTable.resetStatsTooltip')"
-                    >
-                        <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
-                        <span class="ml-1">{{ t('components.sensorTable.resetStats') }}</span>
-                    </Button>
-                </div>
                 <DataTable
                     :value="deviceTableData"
-                    row-group-mode="rowspan"
-                    :group-rows-by="['deviceName', 'rowID']"
+                    row-group-mode="subheader"
+                    group-rows-by="deviceUID"
                     scrollable
                     scroll-height="flex"
                     :pt="{
                         tableContainer: () => ({
                             class: ['rounded-none border-0 border-border-one'],
                         }),
+                        // PrimeVue defaults the row-group-header cell to
+                        // colspan=columnsLength-1 (reserves a slot for the
+                        // optional expander). We don't use expandableRowGroups,
+                        // so force full width.
+                        rowGroupHeaderCell: { colspan: 4 },
                     }"
                 >
-                    <Column field="deviceName" :header="t('components.sensorTable.device')">
-                        <template #body="slotProps">
-                            <div class="flex leading-none items-center">
-                                <div class="mr-2">
-                                    <svg-icon
-                                        type="mdi"
-                                        :path="mdiMemory"
-                                        :size="deviceStore.getREMSize(1.3)"
-                                    />
-                                </div>
-                                <div>{{ slotProps.data.deviceName }}</div>
+                    <template #groupheader="slotProps">
+                        <div
+                            class="device-subheader flex items-center font-semibold text-lg"
+                            :style="{ color: deviceColor(slotProps.data.deviceUID) }"
+                        >
+                            <div class="mr-2">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.5)"
+                                    :color="deviceColor(slotProps.data.deviceUID)"
+                                />
                             </div>
-                        </template>
-                    </Column>
-                    <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
-                    <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
+                            <div>{{ slotProps.data.deviceName }}</div>
+                        </div>
+                    </template>
                     <Column field="rowID" :header="t('components.sensorTable.channel')">
                         <template #body="slotProps">
                             <span
-                                class="pi pi-minus mr-2"
+                                class="pi pi-minus mr-2 ml-1"
                                 :style="{ color: slotProps.data.channelColor }"
                             />{{ slotProps.data.channelLabel }}
                         </template>
                     </Column>
                     <Column field="value" :header="t('components.sensorTable.current')">
                         <template #body="slotProps">
-                            {{ format(slotProps.data.value, slotProps.data.dataType) }}
+                            <span class="font-bold">{{
+                                format(slotProps.data.value, slotProps.data.dataType)
+                            }}</span>
                             <span :style="suffixStyle(slotProps.data.dataType)">{{
                                 suffix(slotProps.data.dataType)
                             }}</span>
                         </template>
                     </Column>
-                    <Column field="min" :header="t('components.sensorTable.min')">
+                    <Column
+                        field="min"
+                        :header="t('components.sensorTable.range')"
+                        :pt="{
+                            headerCell: { class: '!text-center' },
+                            columnHeaderContent: { class: '!justify-center' },
+                            bodyCell: { class: '!text-center' },
+                        }"
+                    >
                         <template #body="slotProps">
-                            {{ format(slotProps.data.min, slotProps.data.dataType) }}
-                            <span :style="suffixStyle(slotProps.data.dataType)">{{
-                                suffix(slotProps.data.dataType)
-                            }}</span>
-                        </template>
-                    </Column>
-                    <Column field="max" :header="t('components.sensorTable.max')">
-                        <template #body="slotProps">
-                            {{ format(slotProps.data.max, slotProps.data.dataType) }}
-                            <span :style="suffixStyle(slotProps.data.dataType)">{{
-                                suffix(slotProps.data.dataType)
-                            }}</span>
+                            <span
+                                v-if="slotProps.data.count === 0"
+                                class="text-text-color-secondary"
+                                >—</span
+                            >
+                            <span v-else class="inline-flex items-baseline tabular-nums">
+                                <span class="text-right min-w-[3rem]">{{
+                                    format(slotProps.data.min, slotProps.data.dataType)
+                                }}</span>
+                                <span class="mx-2 text-text-color-secondary">–</span>
+                                <span class="text-left min-w-[3rem]">{{
+                                    format(slotProps.data.max, slotProps.data.dataType)
+                                }}</span>
+                                <span class="ml-1" :style="suffixStyle(slotProps.data.dataType)">{{
+                                    suffix(slotProps.data.dataType)
+                                }}</span>
+                            </span>
                         </template>
                     </Column>
                     <Column field="avg" :header="t('components.sensorTable.average')">
                         <template #body="slotProps">
-                            {{ format(slotProps.data.avg, slotProps.data.dataType) }}
-                            <span :style="suffixStyle(slotProps.data.dataType)">{{
-                                suffix(slotProps.data.dataType)
-                            }}</span>
+                            <span
+                                v-if="slotProps.data.count === 0"
+                                class="text-text-color-secondary"
+                                >—</span
+                            >
+                            <template v-else>
+                                {{ format(slotProps.data.avg, slotProps.data.dataType) }}
+                                <span :style="suffixStyle(slotProps.data.dataType)">{{
+                                    suffix(slotProps.data.dataType)
+                                }}</span>
+                            </template>
                         </template>
                     </Column>
                 </DataTable>
@@ -469,4 +494,16 @@ onBeforeUnmount(() => {
     </ScrollAreaRoot>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+// PrimeVue DataTable renders the rowGroupHeader as <tr data-pc-section="rowgroupheader">
+// containing a single <td>. The td inherits the bodyCell preset's border-b, which
+// shows up as a "cut-off line" under the device name. Swap that for a heavier top
+// border so adjacent device groups read as separate sections.
+:deep([data-pc-section='rowgroupheader']) > td {
+    //border-top: 0 !important;
+    //border-top: 3px solid rgb(var(--colors-bg-two)) !important;
+    border-bottom: 3px solid rgb(var(--colors-border-one)) !important;
+    padding-top: 2rem !important;
+    //padding-bottom: 1.0rem !important;
+}
+</style>

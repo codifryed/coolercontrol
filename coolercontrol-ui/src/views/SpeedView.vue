@@ -26,6 +26,7 @@ import {
     mdiContentSaveOutline,
     mdiInformationSlabCircleOutline,
     mdiPercent,
+    mdiRestart,
     mdiSitemapOutline,
     mdiTuneVerticalVariant,
 } from '@mdi/js'
@@ -241,6 +242,7 @@ const chartMinutesChanged = (value: number): void => {
     singleDashboard.value.timeRangeSeconds = value * 60
 }
 const chartKey: Ref<string> = ref(uuidV4())
+const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 
 const getCurrentDuty = (): number | undefined => {
     const duty = deviceStore.currentDeviceStatus.get(props.deviceUID)?.get(props.channelName)?.duty
@@ -634,6 +636,23 @@ onUnmounted(() => {
                 </InputNumber>
                 <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
+            <div
+                v-if="
+                    chosenViewType === ChannelViewType.Dashboard &&
+                    singleDashboard.chartType == ChartType.TABLE
+                "
+                class="p-2 pr-0 flex leading-none items-center"
+            >
+                <Button
+                    outlined
+                    class="h-[2.375rem] px-3"
+                    @click="sensorTableRef?.resetStats()"
+                    v-tooltip.top="t('components.sensorTable.resetStatsTooltip')"
+                >
+                    <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1.1)" />
+                    <span class="ml-1">{{ t('components.sensorTable.resetStats') }}</span>
+                </Button>
+            </div>
             <div v-if="chosenViewType === ChannelViewType.Dashboard" class="p-2 pr-0">
                 <Select
                     v-model="singleDashboard.chartType"
@@ -797,6 +816,7 @@ onUnmounted(() => {
             />
             <SensorTable
                 v-else-if="singleDashboard.chartType == ChartType.TABLE"
+                ref="sensorTableRef"
                 :dashboard="singleDashboard"
                 :key="'table' + chartKey"
             />
