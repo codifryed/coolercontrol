@@ -18,7 +18,7 @@
 
 use crate::api::{
     alerts, auth, base, calibration, custom_sensors, detect, functions, metrics, modes, plugins,
-    profiles, settings, sse, status, stress_test, tokens,
+    profiles, settings, sse, stats, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -36,6 +36,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(token_routes())
         .merge(device_routes())
         .merge(status_routes())
+        .merge(stats_routes())
         .merge(profile_routes())
         .merge(function_routes())
         .merge(custom_sensor_routes())
@@ -446,6 +447,34 @@ fn status_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+}
+
+fn stats_routes() -> ApiRouter<AppState> {
+    ApiRouter::new().api_route(
+        "/stats",
+        get_with(stats::get_all, |o| {
+            o.summary("Retrieve Channel Stats")
+                .description(
+                    "Returns running min/max/avg/count per channel and temp since \
+                         daemon start. Entries are present once observed at least once.",
+                )
+                .tag("stats")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .delete_with(stats::delete_all, |o| {
+            o.summary("Reset Channel Stats")
+                .description(
+                    "Clears all running stats and reseeds each from the most recent \
+                         status with count=1. Channels absent from the most recent status \
+                         are dropped and will reseed naturally on their next observation.",
+                )
+                .tag("stats")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .layer(axum::middleware::from_fn(auth::auth_middleware)),
+    )
 }
 
 fn profile_routes() -> ApiRouter<AppState> {

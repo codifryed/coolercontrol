@@ -127,7 +127,7 @@ pub enum ChannelDataType {
 
 /// Per-device running stats since daemon start. Populated lazily as
 /// channels/temps are observed. Reset via `Device::reset_stats`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, JsonSchema)]
 pub struct DeviceStats {
     pub temps: HashMap<TempName, ChannelStats>,
     pub channels: HashMap<ChannelName, HashMap<ChannelDataType, ChannelStats>>,

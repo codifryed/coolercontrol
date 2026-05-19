@@ -34,6 +34,7 @@ mod router;
 mod session_store;
 mod settings;
 mod sse;
+pub mod stats;
 pub mod status;
 mod stress_test;
 mod tls;
@@ -43,7 +44,7 @@ use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CalibrationHandle, CustomSensorHandle, DetectHandle, DeviceHandle,
     FunctionHandle, HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle,
-    StatusHandle, StressTestHandle, TokenHandle,
+    StatsHandle, StatusHandle, StressTestHandle, TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
@@ -579,6 +580,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             ..Tag::default()
         })
         .tag(Tag {
+            name: "stats".to_string(),
+            description: Some("Running Channel Stats".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
             name: "profile".to_string(),
             description: Some("Profiles".to_string()),
             ..Tag::default()
@@ -693,6 +699,7 @@ async fn create_app_state<'s>(
         main_scope,
     );
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
+    let stats_handle = StatsHandle::new(all_devices.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
     let calibration_handle =
@@ -706,6 +713,7 @@ async fn create_app_state<'s>(
         token_handle,
         device_handle,
         status_handle,
+        stats_handle,
         profile_handle,
         function_handle,
         custom_sensor_handle,
@@ -1180,6 +1188,7 @@ pub struct AppState {
     pub token_handle: TokenHandle,
     pub device_handle: DeviceHandle,
     pub status_handle: StatusHandle,
+    pub stats_handle: StatsHandle,
     pub profile_handle: ProfileHandle,
     pub function_handle: FunctionHandle,
     pub custom_sensor_handle: CustomSensorHandle,
