@@ -19,15 +19,21 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiMemory } from '@mdi/js'
+import { mdiMemory, mdiRestart } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import { onMounted, Ref, ref, watch } from 'vue'
-import { Status } from '@/models/Status'
+import Button from 'primevue/button'
+import { onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
+import {
+    ChannelStats,
+    DeviceStatsDTO,
+    StatsResponseDTO,
+    defaultStatsResponse,
+} from '@/models/Stats'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useI18n } from 'vue-i18n'
 
@@ -65,6 +71,7 @@ const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
     )
 
 const deviceTableData: Ref<Array<DeviceData>> = ref([])
+const currentStats: Ref<StatsResponseDTO> = ref(defaultStatsResponse())
 
 interface DeviceData {
     rowID: string
@@ -78,65 +85,37 @@ interface DeviceData {
     min: number
     max: number
     avg: number
-    count: number // number of values we're calculating
+    count: number // number of values folded so far
 }
 
-const getData = (status: Status, channel_name: string, dataType: DataType): number => {
-    switch (dataType) {
-        case DataType.DUTY:
-            return status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
-        case DataType.RPM:
-            return status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
-        case DataType.FREQ:
-            return status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
-        case DataType.WATTS:
-            return status.channels.find((channel) => channel.name === channel_name)?.watts ?? 0
-        case DataType.TEMP:
-            return status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
-        default:
-            return 0
-    }
+// Daemon hasn't observed this entry yet. Sentinel min lets the first Math.min
+// in updateTableData seed the correct minimum; max=avg=count=0 self-seed too.
+const emptyStats = (): { min: number; max: number; avg: number; count: number } => ({
+    min: Number.MAX_SAFE_INTEGER,
+    max: 0,
+    avg: 0,
+    count: 0,
+})
+
+const fromChannelStats = (
+    stats: ChannelStats | undefined,
+): { min: number; max: number; avg: number; count: number } => {
+    if (stats == null || stats.count === 0) return emptyStats()
+    return { min: stats.min, max: stats.max, avg: stats.avg, count: stats.count }
 }
 
-// We collect and calculate them all together to keep init processing time down
-const calcMinMaxAvg = (
-    channel_name: string,
-    status_history: Array<Status>,
-    dataType: DataType,
-): [number, number, number, number] => {
-    const channelValues: Array<number> = status_history.map((status) =>
-        getData(status, channel_name, dataType),
-    )
-    const min = channelValues.reduce(
-        (accumulator, currentValue) => Math.min(accumulator, currentValue),
-        Number.MAX_SAFE_INTEGER,
-    )
-    const max = channelValues.reduce(
-        (accumulator, currentValue) => Math.max(accumulator, currentValue),
-        0,
-    )
-    const avg =
-        channelValues.reduce((accumulator, currentValue) => accumulator + currentValue, 0) /
-        channelValues.length
-    const count = channelValues.length
-    return [min, max, avg, count]
-}
-
-const initTableData = () => {
+const rebuildTableData = (stats: StatsResponseDTO) => {
     deviceTableData.value.length = 0
+    const statsByUid = new Map<UID, DeviceStatsDTO>()
+    for (const d of stats.devices) statsByUid.set(d.uid, d)
+
     for (const device of deviceStore.allDevices()) {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         if (!includesDevice(device.uid)) continue
+        const deviceStats = statsByUid.get(device.uid)
         for (const temp of device.status.temps) {
+            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) continue
             const channelSettings = deviceSettings.sensorsAndChannels.get(temp.name)
-            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) {
-                continue
-            }
-            const [min, max, avg, count] = calcMinMaxAvg(
-                temp.name,
-                device.status_history,
-                DataType.TEMP,
-            )
             deviceTableData.value.push({
                 rowID: device.uid + temp.name,
                 deviceUID: device.uid,
@@ -146,15 +125,10 @@ const initTableData = () => {
                 dataType: DataType.TEMP,
                 channelLabel: channelSettings?.name ?? temp.name,
                 value: temp.temp,
-                min: min,
-                max: max,
-                avg: avg,
-                count: count,
+                ...fromChannelStats(deviceStats?.temps?.[temp.name]),
             })
         }
-        if (device.info == null) {
-            continue
-        }
+        if (device.info == null) continue
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
             if (
                 !includesDeviceChannel(device.uid, channelName) ||
@@ -164,19 +138,12 @@ const initTableData = () => {
                 continue
             }
             const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
+            const channelDeviceStats = deviceStats?.channels?.[channelName]
             for (const channel of device.status.channels) {
-                if (channel.name !== channelName) {
-                    continue
-                }
+                if (channel.name !== channelName) continue
                 if (channel.duty != null) {
                     if (!includesLoads && channel.name.endsWith('Load')) continue
                     if (!includedDuties && !channel.name.endsWith('Load')) continue
-                    // handles both duty and load
-                    const [min, max, avg, count] = calcMinMaxAvg(
-                        channel.name,
-                        device.status_history,
-                        DataType.DUTY,
-                    )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
                         deviceUID: device.uid,
@@ -186,18 +153,10 @@ const initTableData = () => {
                         channelLabel: channelSettings?.name ?? channel.name,
                         dataType: DataType.DUTY,
                         value: channel.duty,
-                        min: min,
-                        max: max,
-                        avg: avg,
-                        count: count,
+                        ...fromChannelStats(channelDeviceStats?.['DUTY']),
                     })
                 }
                 if (includesRPMs && channel.rpm != null) {
-                    const [min, max, avg, count] = calcMinMaxAvg(
-                        channel.name,
-                        device.status_history,
-                        DataType.RPM,
-                    )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
                         deviceUID: device.uid,
@@ -207,22 +166,15 @@ const initTableData = () => {
                         channelLabel: channelSettings?.name ?? channel.name,
                         dataType: DataType.RPM,
                         value: channel.rpm,
-                        min: min,
-                        max: max,
-                        avg: avg,
-                        count: count,
+                        ...fromChannelStats(channelDeviceStats?.['RPM']),
                     })
                 }
                 if (includesFreqs && channel.freq != null) {
-                    let [min, max, avg, count] = calcMinMaxAvg(
-                        channel.name,
-                        device.status_history,
-                        DataType.FREQ,
-                    )
-                    if (settingsStore.frequencyPrecision > 1) {
-                        min = min / settingsStore.frequencyPrecision
-                        max = max / settingsStore.frequencyPrecision
-                        avg = avg / settingsStore.frequencyPrecision
+                    const scaled = fromChannelStats(channelDeviceStats?.['FREQ'])
+                    if (settingsStore.frequencyPrecision > 1 && scaled.count > 0) {
+                        scaled.min /= settingsStore.frequencyPrecision
+                        scaled.max /= settingsStore.frequencyPrecision
+                        scaled.avg /= settingsStore.frequencyPrecision
                     }
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
@@ -233,18 +185,10 @@ const initTableData = () => {
                         channelLabel: channelSettings?.name ?? channel.name,
                         dataType: DataType.FREQ,
                         value: channel.freq / settingsStore.frequencyPrecision,
-                        min: min,
-                        max: max,
-                        avg: avg,
-                        count: count,
+                        ...scaled,
                     })
                 }
                 if (includesWatts && channel.watts != null) {
-                    let [min, max, avg, count] = calcMinMaxAvg(
-                        channel.name,
-                        device.status_history,
-                        DataType.WATTS,
-                    )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
                         deviceUID: device.uid,
@@ -254,10 +198,7 @@ const initTableData = () => {
                         channelLabel: channelSettings?.name ?? channel.name,
                         dataType: DataType.WATTS,
                         value: channel.watts,
-                        min: min,
-                        max: max,
-                        avg: avg,
-                        count: count,
+                        ...fromChannelStats(channelDeviceStats?.['WATTS']),
                     })
                 }
             }
@@ -272,11 +213,9 @@ const initTableData = () => {
                 return index >= 0 ? index : Number.MAX_SAFE_INTEGER
             }
             const deviceCompare = getDeviceIndex(a) - getDeviceIndex(b)
-            // compare device position first, then channels
             if (deviceCompare !== 0) return deviceCompare
 
             const deviceMenuOrderItem = settingsStore.menuOrder.find(
-                // a and b should have the same deviceUID at this point
                 (item) => item.id === a.deviceUID,
             )
             if (deviceMenuOrderItem?.children?.length) {
@@ -294,7 +233,20 @@ const initTableData = () => {
     }
 }
 
-initTableData()
+const refreshStats = async () => {
+    currentStats.value = await deviceStore.daemonClient.getStats()
+    rebuildTableData(currentStats.value)
+}
+
+const resetStats = async () => {
+    currentStats.value = await deviceStore.daemonClient.resetStats()
+    rebuildTableData(currentStats.value)
+}
+
+// Initial render before /stats returns: build rows with empty baselines so the
+// table is laid out immediately. refreshStats() below replaces them with the
+// daemon-provided values.
+rebuildTableData(currentStats.value)
 
 // Allows us to efficiently calculate averages in real time
 const calcCumulativeAverage = (row: DeviceData, newValue: number, newCount: number): number =>
@@ -384,22 +336,39 @@ const suffixStyle = (dataType: DataType): string => {
 
 //----------------------------------------------------------------------------------------------------------------------
 
+const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+        refreshStats()
+    }
+}
+
 onMounted(async () => {
+    await refreshStats()
+
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
                 if (onlyRecentStatus) {
                     updateTableData()
                 } else {
-                    initTableData()
+                    // Full history reload (e.g. daemon reconnect): daemon stats
+                    // were not affected, but resync to be safe.
+                    refreshStats()
                 }
             })
         }
     })
 
     watch(settingsStore.allUIDeviceSettings, () => {
-        initTableData()
+        // Settings changed (name/color/label); rebuild rows with cached stats.
+        rebuildTableData(currentStats.value)
     })
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
@@ -407,6 +376,17 @@ onMounted(async () => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="pb-24 h-screen w-full">
             <div class="h-full">
+                <div class="flex justify-end px-2 py-1">
+                    <Button
+                        text
+                        size="small"
+                        @click="resetStats"
+                        v-tooltip.left="t('components.sensorTable.resetStatsTooltip')"
+                    >
+                        <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1)" />
+                        <span class="ml-1">{{ t('components.sensorTable.resetStats') }}</span>
+                    </Button>
+                </div>
                 <DataTable
                     :value="deviceTableData"
                     row-group-mode="rowspan"
