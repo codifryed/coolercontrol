@@ -550,4 +550,14 @@ onBeforeUnmount(() => {
 :deep(tr.channel-continued) > td:first-of-type {
     border-bottom: 0 !important;
 }
+
+// Row hover: subtle backdrop on the row's cells. For multi-row channels
+// (e.g. fan duty + rpm), hovering either row highlights both so the pair
+// reads as one selection. The reverse direction needs :has() (Chromium
+// 105+); older Qt builds get only forward pairing.
+:deep(tbody tr:not([data-pc-section='rowgroupheader']):hover > td),
+:deep(tbody tr.channel-continued:hover + tr > td),
+:deep(tbody tr.channel-continued:has(+ tr:hover) > td) {
+    background-color: rgba(var(--colors-surface-hover) / 0.05) !important;
+}
 </style>
