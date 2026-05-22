@@ -162,172 +162,6 @@ impl Engine {
         }
     }
 
-    /// Returns the per-channel calibration status (the polling DTO).
-    ///
-    /// Resolution order:
-    /// 1. In-memory status from the most recent sweep this session.
-    /// 2. Synthesized `Completed` from the persisted calibration on
-    ///    disk (so daemon restarts keep showing the calibrated state
-    ///    instead of regressing to "not started").
-    /// 3. `NotStarted` for channels we have never observed.
-    ///
-    /// The endpoint therefore always returns a meaningful status and
-    /// never 404s on this route.
-    pub fn calibration_status(&self, key: &ChannelKey) -> CalibrationStatus {
-        if let Some(in_memory) = self.calibration_statuses.borrow().get(key).cloned() {
-            return in_memory;
-        }
-        if let Some(persisted) = self.calibration_store.get(key) {
-            let completed_at = persisted.timestamp;
-            return CalibrationStatus::Completed {
-                device_uid: key.0.clone(),
-                channel_name: key.1.clone(),
-                completed_at,
-                calibration: persisted.into(),
-            };
-        }
-        CalibrationStatus::not_started(key.0.clone(), key.1.clone())
-    }
-
-    /// Internal helper: write the most recent status snapshot for the
-    /// channel. Overwrites any prior entry.
-    fn store_calibration_status(&self, key: ChannelKey, status: CalibrationStatus) {
-        self.calibration_statuses.borrow_mut().insert(key, status);
-    }
-
-    /// Wire the notification broadcaster. Called by `main.rs` after the
-    /// notification system is constructed (the engine is built earlier,
-    /// during repo initialization).
-    pub fn set_notification_handle(&self, handle: NotificationHandle) {
-        self.notification_handle.borrow_mut().replace(handle);
-    }
-
-    /// Broadcast a calibration-related desktop notification, if a
-    /// handle is configured. Returns immediately on tests / unconfigured
-    /// engines. Cloning the handle outside the borrow avoids holding the
-    /// `RefCell` across the broadcast call.
-    fn notify_calibration(&self, title: &str, body: &str, icon: NotificationIcon, urgency: u8) {
-        let Some(handle) = self.notification_handle.borrow().clone() else {
-            return;
-        };
-        notifier::notify_all_sessions(title, body, icon, false, Some(urgency), Some(&handle));
-    }
-
-    /// Read a calibration from the store. Thin wrapper used by the
-    /// calibration actor's GET handler.
-    pub fn calibration_store_get(&self, key: &ChannelKey) -> Option<Calibration> {
-        self.calibration_store.get(key)
-    }
-
-    /// Snapshot every persisted calibration. Thin wrapper used by the
-    /// calibration actor's `GetAll` handler so the UI can render
-    /// per-channel cues (e.g. the tree-menu "calibrated" pill) without
-    /// a request per channel.
-    pub fn calibration_store_all(&self) -> Vec<CalibrationEntry> {
-        let pairs = self.calibration_store.all();
-        let mut entries = Vec::with_capacity(pairs.len());
-        for ((device_uid, channel_name), calibration) in pairs {
-            entries.push(CalibrationEntry {
-                device_uid,
-                channel_name,
-                calibration,
-            });
-        }
-        entries
-    }
-
-    /// Remove a calibration from the store and persist the change to
-    /// disk. Returns `Ok(true)` when an entry was actually removed,
-    /// `Ok(false)` when the channel was not calibrated. A disk-write
-    /// failure surfaces as an `Err`.
-    ///
-    /// Also drops the in-memory polling status and the dispatch state
-    /// machine entry for the channel. Without those, the popover's
-    /// next status poll would still see the most recent `Completed`
-    /// status (cached in `calibration_statuses`) and render the
-    /// calibrated view, even though the persisted calibration is gone.
-    /// Clearing the `FanStateMap` entry also defuses any in-flight
-    /// `complete_kick` deferred task spawned by a recent dispatch.
-    ///
-    /// For RPM-only channels (`Calibration::was_rpm_only`), also clear
-    /// the channel's `status_history` duty values so the UI chart does
-    /// not keep showing stale calibration-derived duties for a channel
-    /// whose underlying repository does not natively report duty. The
-    /// flag is read before the calibration is removed so the lookup
-    /// still succeeds.
-    /// Replace the override fields on the stored calibration and
-    /// persist. Returns `None` when no calibration is stored for the
-    /// channel (handler surfaces as 404). The next dispatch call picks
-    /// up the new values automatically since `kick_boost_active()` and
-    /// `kick_duration_ms_effective()` are pure functions of the
-    /// calibration.
-    pub async fn set_calibration_overrides(
-        &self,
-        key: &ChannelKey,
-        kick_boost_override: Option<bool>,
-        kick_duration_override_ms: Option<u32>,
-        walk_after_kick_override: Option<bool>,
-    ) -> Result<Option<Calibration>> {
-        let Some(mut cal) = self.calibration_store.get(key) else {
-            return Ok(None);
-        };
-        cal.kick_boost_override = kick_boost_override;
-        cal.kick_duration_override_ms = kick_duration_override_ms;
-        cal.walk_after_kick_override = walk_after_kick_override;
-        self.calibration_store
-            .insert_unsaved(key.clone(), cal.clone());
-        self.calibration_store.save_to_disk().await?;
-        // Refresh the cached status snapshot so the next status poll
-        // sees the new resolved kick-boost decision. Only `Completed`
-        // entries carry a calibration; other phases are left alone.
-        let mut statuses = self.calibration_statuses.borrow_mut();
-        if matches!(statuses.get(key), Some(CalibrationStatus::Completed { .. })) {
-            statuses.insert(
-                key.clone(),
-                CalibrationStatus::from_completion(key.0.clone(), key.1.clone(), cal.clone()),
-            );
-        }
-        drop(statuses);
-        info!(
-            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?} walk={:?})",
-            key.0,
-            key.1,
-            cal.kick_boost_override,
-            cal.kick_duration_override_ms,
-            cal.walk_after_kick_override
-        );
-        Ok(Some(cal))
-    }
-
-    pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
-        let existed = self.calibration_store.has(key);
-        if existed {
-            let was_rpm_only = self
-                .calibration_store
-                .get(key)
-                .is_some_and(|cal| cal.was_rpm_only);
-            if was_rpm_only {
-                self.clear_history_duties_for_channel(key);
-            }
-            self.calibration_store.remove(key).await?;
-        }
-        self.calibration_statuses.borrow_mut().remove(key);
-        self.fan_state_map.forget(key);
-        info!(
-            "Calibration cleared for {}:{} (had_data={existed})",
-            key.0, key.1
-        );
-        // Re-dispatch the channel's saved setting so the fan picks up
-        // the now-uncalibrated duty immediately instead of holding the
-        // last calibration-mapped value until the next user action.
-        // NotFound means the channel was never pinned; a dispatch error
-        // is non-fatal here and will be retried by the periodic loop.
-        if let Ok(setting) = self.config.get_device_channel_settings(&key.0, &key.1) {
-            let _ = self.set_config_setting(&key.0, &setting).await;
-        }
-        Ok(existed)
-    }
-
     /// This is used to set the config Setting model configuration.
     /// Currently used at startup to apply saved settings and by Modes.
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
@@ -1161,266 +995,6 @@ impl Engine {
         }
     }
 
-    /// Walk `status_history` for one channel and fill any entry whose
-    /// `duty` is `None` with `rpm_to_true_duty(rpm)` from the just-
-    /// completed calibration. Returns `true` iff at least one entry
-    /// was filled.
-    ///
-    /// Called once at the end of a successful diagnosis sweep. The
-    /// return value drives `Calibration::was_rpm_only`, which the
-    /// daemon uses on later deletes (to clear stale derived duties)
-    /// and the UI uses to decide whether to prompt for a reload that
-    /// rebuilds the chart series list against the now-populated
-    /// historical column.
-    ///
-    /// Stepped calibrations short-circuit because `rpm_to_true_duty`
-    /// is a no-op for them; the explicit check just makes that
-    /// invariant visible in the caller's reasoning.
-    ///
-    /// Bounded: walks a fixed-size `VecDeque` (`poll_rate * history`
-    /// seconds, typically <= 600 entries) of channel vectors
-    /// (typically <= 32 channels). All inner work is integer math; no
-    /// allocation, no await, no locks held across yields.
-    pub fn backfill_history_duties_from_calibration(
-        &self,
-        key: &ChannelKey,
-        calibration: &Calibration,
-    ) -> bool {
-        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
-        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
-        if calibration.curve_kind == calibration::CurveKind::Stepped {
-            return false;
-        }
-        let Some(device_lock) = self.all_devices.get(&key.0) else {
-            return false;
-        };
-        let mut device = device_lock.borrow_mut();
-        let history = Arc::make_mut(&mut device.status_history);
-        let mut filled_any = false;
-        for status in history.iter_mut() {
-            for channel in &mut status.channels {
-                if channel.name != key.1 {
-                    continue;
-                }
-                if channel.duty.is_some() {
-                    continue;
-                }
-                let Some(rpm) = channel.rpm else {
-                    continue;
-                };
-                let Some(true_duty) = calibration.rpm_to_true_duty(rpm) else {
-                    continue;
-                };
-                channel.duty = Some(f64::from(true_duty));
-                filled_any = true;
-            }
-        }
-        filled_any
-    }
-
-    /// Reset `status_history` `duty` to `None` for every entry of the
-    /// given channel. Used on delete for channels whose duty values
-    /// were populated only by the calibration (`was_rpm_only`), so
-    /// the UI chart sees a consistently-empty duty column once it
-    /// reloads.
-    ///
-    /// Bounded identically to `backfill_history_duties_from_calibration`.
-    pub fn clear_history_duties_for_channel(&self, key: &ChannelKey) {
-        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
-        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
-        let Some(device_lock) = self.all_devices.get(&key.0) else {
-            return;
-        };
-        let mut device = device_lock.borrow_mut();
-        let history = Arc::make_mut(&mut device.status_history);
-        for status in history.iter_mut() {
-            for channel in &mut status.channels {
-                if channel.name != key.1 {
-                    continue;
-                }
-                channel.duty = None;
-            }
-        }
-    }
-
-    /// Drive a per-channel calibration diagnosis end-to-end.
-    ///
-    /// Registers the channel in the `DiagnosisRegistry` so the REST
-    /// cancel endpoint can interrupt the sweep, then wraps
-    /// `calibration::run_diagnosis` with the engine itself as the
-    /// `DiagnosisHost`. On success the in-memory `CalibrationStore`
-    /// is flushed to disk via `save_to_disk`; a disk-write failure is
-    /// surfaced as `PersistFailed` while the in-memory calibration
-    /// stays usable. The registry entry is cleared after the sweep
-    /// terminates regardless of outcome.
-    ///
-    /// Returns `DiagnosisFailure::Internal` if a diagnosis is already
-    /// in flight for the same `(device_uid, channel_name)` pair.
-    pub async fn start_calibration_diagnosis(
-        &self,
-        device_uid: DeviceUID,
-        channel_name: ChannelName,
-    ) -> std::result::Result<Calibration, DiagnosisFailure> {
-        let key: ChannelKey = (device_uid.clone(), channel_name.clone());
-        if self.diagnosis_registry.is_in_flight(&key) {
-            return Err(DiagnosisFailure::WriteFailed(format!(
-                "calibration already in progress for {device_uid}:{channel_name}"
-            )));
-        }
-        let cancellation = self.diagnosis_registry.register(key.clone());
-        let settings = DiagnosisSettings::default();
-        let device_uid_for_event = key.0.clone();
-        let channel_name_for_event = key.1.clone();
-        info!("Calibration started for {device_uid}:{channel_name}");
-        let mut outcome = calibration::run_diagnosis(
-            &self.fan_state_map,
-            &self.calibration_store,
-            self,
-            &settings,
-            key.0.clone(),
-            key.1.clone(),
-            cancellation,
-        )
-        .await;
-        self.diagnosis_registry.clear(&key);
-        // Backfill history duties before the single save_to_disk so the
-        // was_rpm_only flag is captured in one write. The flag is true
-        // iff at least one duty=None entry was filled with a calibration-
-        // derived value, which is the signal the UI uses to prompt for
-        // a reload and the daemon uses on later delete to clear stale
-        // derived values from history.
-        let backfill_filled_any = match &outcome {
-            Ok(calibration) => self.backfill_history_duties_from_calibration(&key, calibration),
-            Err(_) => false,
-        };
-        if backfill_filled_any {
-            if let Ok(calibration) = &mut outcome {
-                calibration.was_rpm_only = true;
-                // Re-seat the in-memory store entry with the flag set; the
-                // diagnoser's insert_unsaved put a was_rpm_only=false copy
-                // there before the backfill ran.
-                self.calibration_store
-                    .insert_unsaved(key.clone(), calibration.clone());
-            }
-        }
-        if outcome.is_ok() {
-            if let Err(err) = self.calibration_store.save_to_disk().await {
-                outcome = Err(DiagnosisFailure::PersistFailed(err.to_string()));
-            }
-        }
-        let status = match &outcome {
-            Ok(calibration) => {
-                info!(
-                    "Calibration completed for {}:{} (curve_kind={:?}, rpm_max={}, warnings={})",
-                    key.0,
-                    key.1,
-                    calibration.curve_kind,
-                    calibration.rpm_max,
-                    calibration.warnings.len()
-                );
-                CalibrationStatus::from_completion(
-                    device_uid_for_event,
-                    channel_name_for_event,
-                    calibration.clone(),
-                )
-            }
-            Err(DiagnosisFailure::Cancelled) => {
-                info!("Calibration cancelled for {}:{}", key.0, key.1);
-                CalibrationStatus::from_failure(
-                    device_uid_for_event,
-                    channel_name_for_event,
-                    &DiagnosisFailure::Cancelled,
-                )
-            }
-            Err(failure) => {
-                info!(
-                    "Calibration failed for {}:{}: {}",
-                    key.0,
-                    key.1,
-                    describe_failure(failure)
-                );
-                CalibrationStatus::from_failure(
-                    device_uid_for_event,
-                    channel_name_for_event,
-                    failure,
-                )
-            }
-        };
-        self.broadcast_calibration_outcome(&key.1, &outcome);
-        self.store_calibration_status(key, status);
-        outcome
-    }
-
-    /// Send a desktop notification describing the terminal outcome of a
-    /// calibration sweep. Cancellations are suppressed (user-initiated;
-    /// they already know).
-    fn broadcast_calibration_outcome(
-        &self,
-        channel_name: &str,
-        outcome: &std::result::Result<Calibration, DiagnosisFailure>,
-    ) {
-        match outcome {
-            Ok(calibration) if calibration.warnings.is_empty().not() => {
-                let summary: String = calibration
-                    .warnings
-                    .iter()
-                    .map(describe_warning)
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                self.notify_calibration(
-                    "Calibration completed with warnings",
-                    &format!(
-                        "Channel {channel_name}: {summary}. Open the channel popover for details."
-                    ),
-                    NotificationIcon::Error,
-                    1,
-                );
-            }
-            Ok(calibration) => match calibration.curve_kind {
-                calibration::CurveKind::Smooth => self.notify_calibration(
-                    "Calibration complete",
-                    &format!(
-                        "Channel {channel_name} is calibrated. Manual duties and fan curves on \
-                         this channel now control RPM-normalized true-duty. Open the channel \
-                         popover to review or re-calibrate."
-                    ),
-                    NotificationIcon::Info,
-                    1,
-                ),
-                calibration::CurveKind::Stepped => self.notify_calibration(
-                    "Calibration complete (step curve)",
-                    &format!(
-                        "Channel {channel_name} produces a step-curve response. Mapping is \
-                         disabled; duties pass through unchanged."
-                    ),
-                    NotificationIcon::Info,
-                    1,
-                ),
-            },
-            Err(DiagnosisFailure::Cancelled) => {}
-            Err(failure) => self.notify_calibration(
-                "Calibration failed",
-                &format!("Channel {channel_name}: {}", describe_failure(failure)),
-                NotificationIcon::Error,
-                1,
-            ),
-        }
-    }
-
-    /// Cancel an in-flight calibration diagnosis for the given
-    /// channel. Returns `true` when a diagnosis was found and
-    /// cancelled, `false` when nothing was running on that channel.
-    pub fn cancel_calibration_diagnosis(&self, key: &ChannelKey) -> bool {
-        self.diagnosis_registry.cancel(key)
-    }
-
-    /// Whether a calibration diagnosis is currently running on the
-    /// given channel. Used by the REST guard on manual/profile
-    /// setters and by the UI to render the in-progress state.
-    pub fn is_calibration_in_progress(&self, key: &ChannelKey) -> bool {
-        self.diagnosis_registry.is_in_flight(key)
-    }
-
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
     pub fn process_scheduled_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
@@ -1806,6 +1380,365 @@ impl Engine {
                 })
         });
         Ok(enabled)
+    }
+
+    /// Resolves to the in-memory snapshot, else a `Completed`
+    /// synthesized from the persisted calibration, else `NotStarted`.
+    /// Never 404s.
+    pub fn calibration_status(&self, key: &ChannelKey) -> CalibrationStatus {
+        if let Some(in_memory) = self.calibration_statuses.borrow().get(key).cloned() {
+            return in_memory;
+        }
+        if let Some(persisted) = self.calibration_store.get(key) {
+            let completed_at = persisted.timestamp;
+            return CalibrationStatus::Completed {
+                device_uid: key.0.clone(),
+                channel_name: key.1.clone(),
+                completed_at,
+                calibration: persisted.into(),
+            };
+        }
+        CalibrationStatus::not_started(key.0.clone(), key.1.clone())
+    }
+
+    fn store_calibration_status(&self, key: ChannelKey, status: CalibrationStatus) {
+        self.calibration_statuses.borrow_mut().insert(key, status);
+    }
+
+    /// Wire the notification broadcaster. Called by `main.rs` after the
+    /// notification system is constructed (the engine is built earlier,
+    /// during repo initialization).
+    pub fn set_notification_handle(&self, handle: NotificationHandle) {
+        self.notification_handle.borrow_mut().replace(handle);
+    }
+
+    /// No-op if no handle is wired (tests, early startup).
+    fn notify_calibration(&self, title: &str, body: &str, icon: NotificationIcon, urgency: u8) {
+        let Some(handle) = self.notification_handle.borrow().clone() else {
+            return;
+        };
+        notifier::notify_all_sessions(title, body, icon, false, Some(urgency), Some(&handle));
+    }
+
+    pub fn calibration_store_get(&self, key: &ChannelKey) -> Option<Calibration> {
+        self.calibration_store.get(key)
+    }
+
+    /// Batch endpoint so the UI can render per-channel "calibrated"
+    /// cues without one request per channel.
+    pub fn calibration_store_all(&self) -> Vec<CalibrationEntry> {
+        let pairs = self.calibration_store.all();
+        let mut entries = Vec::with_capacity(pairs.len());
+        for ((device_uid, channel_name), calibration) in pairs {
+            entries.push(CalibrationEntry {
+                device_uid,
+                channel_name,
+                calibration,
+            });
+        }
+        entries
+    }
+
+    /// Replace the override fields on the stored calibration. Returns
+    /// `None` when the channel has no calibration (handler maps to
+    /// 404). Dispatch picks up the new values on its next call since
+    /// the kick helpers are pure functions of the calibration.
+    pub async fn set_calibration_overrides(
+        &self,
+        key: &ChannelKey,
+        kick_boost_override: Option<bool>,
+        kick_duration_override_ms: Option<u32>,
+        walk_after_kick_override: Option<bool>,
+    ) -> Result<Option<Calibration>> {
+        let Some(mut cal) = self.calibration_store.get(key) else {
+            return Ok(None);
+        };
+        cal.kick_boost_override = kick_boost_override;
+        cal.kick_duration_override_ms = kick_duration_override_ms;
+        cal.walk_after_kick_override = walk_after_kick_override;
+        self.calibration_store
+            .insert_unsaved(key.clone(), cal.clone());
+        self.calibration_store.save_to_disk().await?;
+        // Refresh the cached status snapshot so the next status poll
+        // sees the new resolved kick-boost decision. Only `Completed`
+        // entries carry a calibration; other phases are left alone.
+        let mut statuses = self.calibration_statuses.borrow_mut();
+        if matches!(statuses.get(key), Some(CalibrationStatus::Completed { .. })) {
+            statuses.insert(
+                key.clone(),
+                CalibrationStatus::from_completion(key.0.clone(), key.1.clone(), cal.clone()),
+            );
+        }
+        drop(statuses);
+        info!(
+            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?} walk={:?})",
+            key.0,
+            key.1,
+            cal.kick_boost_override,
+            cal.kick_duration_override_ms,
+            cal.walk_after_kick_override
+        );
+        Ok(Some(cal))
+    }
+
+    /// Remove the calibration and persist. `Ok(true)` if an entry
+    /// existed. Also drops the in-memory status and `FanStateMap`
+    /// entry so the popover stops rendering the cached `Completed`
+    /// view and any in-flight `complete_kick` is defused. For
+    /// `was_rpm_only` channels, also clears `status_history` duties
+    /// so the chart no longer shows calibration-derived values.
+    pub async fn delete_calibration(&self, key: &ChannelKey) -> Result<bool> {
+        let existed = self.calibration_store.has(key);
+        if existed {
+            let was_rpm_only = self
+                .calibration_store
+                .get(key)
+                .is_some_and(|cal| cal.was_rpm_only);
+            if was_rpm_only {
+                self.clear_history_duties_for_channel(key);
+            }
+            self.calibration_store.remove(key).await?;
+        }
+        self.calibration_statuses.borrow_mut().remove(key);
+        self.fan_state_map.forget(key);
+        info!(
+            "Calibration cleared for {}:{} (had_data={existed})",
+            key.0, key.1
+        );
+        // Re-dispatch the saved setting so the fan picks up the
+        // uncalibrated duty without waiting for the next user action.
+        // Errors are non-fatal; the periodic loop retries.
+        if let Ok(setting) = self.config.get_device_channel_settings(&key.0, &key.1) {
+            let _ = self.set_config_setting(&key.0, &setting).await;
+        }
+        Ok(existed)
+    }
+
+    /// Fill `status_history` entries whose `duty` is `None` with
+    /// `rpm_to_true_duty(rpm)` from the just-completed calibration.
+    /// Returns `true` if any entry was filled; that result drives
+    /// `Calibration::was_rpm_only`. Stepped calibrations short-circuit
+    /// since the mapping is a no-op for them.
+    pub fn backfill_history_duties_from_calibration(
+        &self,
+        key: &ChannelKey,
+        calibration: &Calibration,
+    ) -> bool {
+        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
+        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
+        if calibration.curve_kind == calibration::CurveKind::Stepped {
+            return false;
+        }
+        let Some(device_lock) = self.all_devices.get(&key.0) else {
+            return false;
+        };
+        let mut device = device_lock.borrow_mut();
+        let history = Arc::make_mut(&mut device.status_history);
+        let mut filled_any = false;
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name != key.1 {
+                    continue;
+                }
+                if channel.duty.is_some() {
+                    continue;
+                }
+                let Some(rpm) = channel.rpm else {
+                    continue;
+                };
+                let Some(true_duty) = calibration.rpm_to_true_duty(rpm) else {
+                    continue;
+                };
+                channel.duty = Some(f64::from(true_duty));
+                filled_any = true;
+            }
+        }
+        filled_any
+    }
+
+    /// Used on delete for `was_rpm_only` channels so the chart no
+    /// longer shows calibration-derived duties after reload.
+    pub fn clear_history_duties_for_channel(&self, key: &ChannelKey) {
+        debug_assert!(key.0.is_empty().not(), "device_uid must be non-empty");
+        debug_assert!(key.1.is_empty().not(), "channel_name must be non-empty");
+        let Some(device_lock) = self.all_devices.get(&key.0) else {
+            return;
+        };
+        let mut device = device_lock.borrow_mut();
+        let history = Arc::make_mut(&mut device.status_history);
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name != key.1 {
+                    continue;
+                }
+                channel.duty = None;
+            }
+        }
+    }
+
+    /// Drive a per-channel calibration diagnosis end-to-end. Registers
+    /// in the `DiagnosisRegistry` so the cancel endpoint can interrupt,
+    /// runs `calibration::run_diagnosis` with `self` as the host, and
+    /// flushes the store on success. A disk-write failure becomes
+    /// `PersistFailed`; the in-memory calibration stays usable. Returns
+    /// `WriteFailed` if a diagnosis is already in flight on the channel.
+    pub async fn start_calibration_diagnosis(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> std::result::Result<Calibration, DiagnosisFailure> {
+        let key: ChannelKey = (device_uid.clone(), channel_name.clone());
+        if self.diagnosis_registry.is_in_flight(&key) {
+            return Err(DiagnosisFailure::WriteFailed(format!(
+                "calibration already in progress for {device_uid}:{channel_name}"
+            )));
+        }
+        let cancellation = self.diagnosis_registry.register(key.clone());
+        let settings = DiagnosisSettings::default();
+        let device_uid_for_event = key.0.clone();
+        let channel_name_for_event = key.1.clone();
+        info!("Calibration started for {device_uid}:{channel_name}");
+        let mut outcome = calibration::run_diagnosis(
+            &self.fan_state_map,
+            &self.calibration_store,
+            self,
+            &settings,
+            key.0.clone(),
+            key.1.clone(),
+            cancellation,
+        )
+        .await;
+        self.diagnosis_registry.clear(&key);
+        // Backfill before save_to_disk so was_rpm_only is captured in
+        // a single write.
+        let backfill_filled_any = match &outcome {
+            Ok(calibration) => self.backfill_history_duties_from_calibration(&key, calibration),
+            Err(_) => false,
+        };
+        if backfill_filled_any {
+            if let Ok(calibration) = &mut outcome {
+                calibration.was_rpm_only = true;
+                // Re-seat the in-memory store entry with the flag set; the
+                // diagnoser's insert_unsaved put a was_rpm_only=false copy
+                // there before the backfill ran.
+                self.calibration_store
+                    .insert_unsaved(key.clone(), calibration.clone());
+            }
+        }
+        if outcome.is_ok() {
+            if let Err(err) = self.calibration_store.save_to_disk().await {
+                outcome = Err(DiagnosisFailure::PersistFailed(err.to_string()));
+            }
+        }
+        let status = match &outcome {
+            Ok(calibration) => {
+                info!(
+                    "Calibration completed for {}:{} (curve_kind={:?}, rpm_max={}, warnings={})",
+                    key.0,
+                    key.1,
+                    calibration.curve_kind,
+                    calibration.rpm_max,
+                    calibration.warnings.len()
+                );
+                CalibrationStatus::from_completion(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    calibration.clone(),
+                )
+            }
+            Err(DiagnosisFailure::Cancelled) => {
+                info!("Calibration cancelled for {}:{}", key.0, key.1);
+                CalibrationStatus::from_failure(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    &DiagnosisFailure::Cancelled,
+                )
+            }
+            Err(failure) => {
+                info!(
+                    "Calibration failed for {}:{}: {}",
+                    key.0,
+                    key.1,
+                    describe_failure(failure)
+                );
+                CalibrationStatus::from_failure(
+                    device_uid_for_event,
+                    channel_name_for_event,
+                    failure,
+                )
+            }
+        };
+        self.broadcast_calibration_outcome(&key.1, &outcome);
+        self.store_calibration_status(key, status);
+        outcome
+    }
+
+    /// Send a desktop notification describing the terminal outcome of a
+    /// calibration sweep. Cancellations are suppressed (user-initiated;
+    /// they already know).
+    fn broadcast_calibration_outcome(
+        &self,
+        channel_name: &str,
+        outcome: &std::result::Result<Calibration, DiagnosisFailure>,
+    ) {
+        match outcome {
+            Ok(calibration) if calibration.warnings.is_empty().not() => {
+                let summary: String = calibration
+                    .warnings
+                    .iter()
+                    .map(describe_warning)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                self.notify_calibration(
+                    "Calibration completed with warnings",
+                    &format!(
+                        "Channel {channel_name}: {summary}. Open the channel popover for details."
+                    ),
+                    NotificationIcon::Error,
+                    1,
+                );
+            }
+            Ok(calibration) => match calibration.curve_kind {
+                calibration::CurveKind::Smooth => self.notify_calibration(
+                    "Calibration complete",
+                    &format!(
+                        "Channel {channel_name} is calibrated. Manual duties and fan curves on \
+                         this channel now control RPM-normalized true-duty. Open the channel \
+                         popover to review or re-calibrate."
+                    ),
+                    NotificationIcon::Info,
+                    1,
+                ),
+                calibration::CurveKind::Stepped => self.notify_calibration(
+                    "Calibration complete (step curve)",
+                    &format!(
+                        "Channel {channel_name} produces a step-curve response. Mapping is \
+                         disabled; duties pass through unchanged."
+                    ),
+                    NotificationIcon::Info,
+                    1,
+                ),
+            },
+            Err(DiagnosisFailure::Cancelled) => {}
+            Err(failure) => self.notify_calibration(
+                "Calibration failed",
+                &format!("Channel {channel_name}: {}", describe_failure(failure)),
+                NotificationIcon::Error,
+                1,
+            ),
+        }
+    }
+
+    /// `true` if a diagnosis was cancelled, `false` if none was
+    /// running.
+    pub fn cancel_calibration_diagnosis(&self, key: &ChannelKey) -> bool {
+        self.diagnosis_registry.cancel(key)
+    }
+
+    /// Used as a REST guard on manual/profile setters and by the UI
+    /// to render the in-progress state.
+    pub fn is_calibration_in_progress(&self, key: &ChannelKey) -> bool {
+        self.diagnosis_registry.is_in_flight(key)
     }
 }
 
