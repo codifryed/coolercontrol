@@ -298,11 +298,9 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
-    // Prime the calibration cache so the tree-menu pill renders on
-    // first paint. Awaited (rather than fire-and-forget) because the
-    // tree menu starts rendering as soon as `loaded` flips true below;
-    // racing the response against the first paint produces a flash of
-    // no-pill before the reactive update lands.
+    // Prime the calibration cache before `loaded` flips below: the Controls
+    // Overview can be the configured startup page, and its FanChannelNode
+    // buttons read `statusFor` on first paint.
     await calibrationStore.refreshAllStatuses()
     // Honor the configured startup page, but only when the user landed on the
     // default root route (no deep link). The empty path's component is
