@@ -21,9 +21,10 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
+use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
-use crate::engine::main::ReposByType;
+use crate::engine::main::DutyWritersByType;
 use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPostProcessor, FunctionStandardPreProcessor,
@@ -55,7 +56,7 @@ struct ProcessorCollection {
 /// or profile speed settings for devices that only support fixed speeds.
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
-    repos: ReposByType,
+    duty_writers_by_type: DutyWritersByType,
     scheduled_settings:
         RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
     config: Rc<Config>,
@@ -63,12 +64,20 @@ pub struct GraphProfileCommander {
     /// The last calculated Option<Duty> for each Graph Profile.
     /// This allows other Profiles to use the output of a Graph Profile.
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
+    calibration_store: Rc<CalibrationStore>,
+    fan_state_map: Rc<FanStateMap>,
 }
 
 impl GraphProfileCommander {
-    pub fn new(all_devices: AllDevices, repos: ReposByType, config: Rc<Config>) -> Self {
+    pub fn new(
+        all_devices: AllDevices,
+        duty_writers_by_type: DutyWritersByType,
+        config: Rc<Config>,
+        calibration_store: Rc<CalibrationStore>,
+        fan_state_map: Rc<FanStateMap>,
+    ) -> Self {
         Self {
-            repos,
+            duty_writers_by_type,
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
             processors: {
@@ -86,6 +95,8 @@ impl GraphProfileCommander {
             },
             all_devices,
             process_output_cache: RefCell::new(HashMap::new()),
+            calibration_store,
+            fan_state_map,
         }
     }
 
@@ -247,6 +258,13 @@ impl GraphProfileCommander {
 
     /// Sets the speed of a device. This is normally called by the `update_speeds` method
     /// from various Commanders. This keeps this logic in one place.
+    ///
+    /// The user-facing `duty_to_set` is routed through `calibration::dispatch`,
+    /// which applies the per-channel true-duty mapping (and kick-then-settle
+    /// orchestration) for calibrated smooth channels and passes through
+    /// uncalibrated channels unchanged. The writer is looked up from the
+    /// pre-built `duty_writers_by_type` cache so the hot path has no clones or
+    /// allocations.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
@@ -257,10 +275,16 @@ impl GraphProfileCommander {
             "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
             channel: {channel_name}; DUTY: {duty_to_set}"
         );
-        if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo
-                .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
-                .await
+        if let Some(writer) = self.duty_writers_by_type.get(&device_type) {
+            if let Err(err) = calibration::dispatch(
+                &self.fan_state_map,
+                &self.calibration_store,
+                writer,
+                device_uid.clone(),
+                channel_name.to_string(),
+                duty_to_set,
+            )
+            .await
             {
                 error!("Error applying Graph/Mix Profile calculated duty - {err}");
             }
@@ -314,14 +338,19 @@ impl GraphProfileCommander {
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
         })?;
-        let max_duty = channel_info
-            .speed_options
-            .as_ref()
-            .with_context(|| {
-                format!("Speed Options must be present for target device: {device_uid}")
-            })?
-            .max_duty;
-        Ok(max_duty)
+        let raw_speed_options = channel_info.speed_options.as_ref().with_context(|| {
+            format!("Speed Options must be present for target device: {device_uid}")
+        })?;
+        // Consult the calibration store so a Smooth calibration's
+        // RPM-normalised range (0-100 true-duty) is respected by the
+        // profile normaliser. Without this, `normalize_profile` would
+        // silently cap a calibrated Graph profile's high points at the
+        // device's raw `max_duty` (e.g. 80 on some AMDGPU configs),
+        // discarding the user's intent above that threshold.
+        let key = (device_uid.clone(), channel_name.to_string());
+        let calibration = self.calibration_store.get(&key);
+        let effective = effective_speed_options(raw_speed_options, calibration.as_ref());
+        Ok(effective.max_duty)
     }
 
     fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {

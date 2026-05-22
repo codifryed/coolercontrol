@@ -25,16 +25,28 @@ import type { FanNodeData } from './useControlFlowGraph'
 import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
+import { useCalibrationStore } from '@/stores/CalibrationStore'
+import { useCalibrationStatusText } from '@/composables/useCalibrationStatusText'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFan, mdiChartLine, mdiThermometer, mdiChevronRight, mdiSwapHorizontal } from '@mdi/js'
+import {
+    mdiFan,
+    mdiChartLine,
+    mdiThermometer,
+    mdiChevronRight,
+    mdiSwapHorizontal,
+    mdiTuneVerticalVariant,
+} from '@mdi/js'
 import ProfileSwitchPopover from './ProfileSwitchPopover.vue'
+import CalibrationSwitchPopover from './CalibrationSwitchPopover.vue'
 
 const props = defineProps<NodeProps<FanNodeData>>()
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const calibrationStore = useCalibrationStore()
+const { completedStatusText } = useCalibrationStatusText()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
 const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
@@ -43,13 +55,69 @@ const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
 )
 const onProfileSwitched = inject<() => void>('onProfileSwitched', () => {})
 const switchPopoverRef = ref<InstanceType<typeof ProfileSwitchPopover>>()
+const calibrationPopoverRef = ref<InstanceType<typeof CalibrationSwitchPopover>>()
 
 function onSwapClick(event: Event) {
     event.stopPropagation()
     switchPopoverRef.value?.toggle(event)
 }
 
+function onCalibrationClick(event: Event) {
+    event.stopPropagation()
+    calibrationPopoverRef.value?.toggle(event)
+}
+
 const showSwapButton = computed(() => flowViewMode === 'detail')
+
+const calibrationEligible = computed((): boolean => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== props.data.deviceUID) continue
+        const channelInfo = device.info?.channels.get(props.data.channelName)
+        if (channelInfo?.speed_options?.fixed_enabled) {
+            return true
+        }
+    }
+    return false
+})
+
+const showCalibrationButton = computed(
+    () => flowViewMode === 'overview' && calibrationEligible.value,
+)
+
+const calibrationButtonClass = computed(() => {
+    const status = calibrationStore.statusFor(props.data.deviceUID, props.data.channelName)
+    switch (status?.phase) {
+        case 'in_progress':
+            return 'animate-pulse text-accent'
+        case 'completed':
+            return 'text-accent'
+        case 'failed':
+            return 'text-warning'
+        default:
+            return 'text-text-color transition-colors hover:text-accent'
+    }
+})
+
+// Tooltip text is kept stable across polls. The live percent ticks once
+// per second; if it were in the tooltip, the v-memo guard below would
+// re-render every second and PrimeVue's tooltip directive would tear
+// the visible tooltip down on each rebind. The percent is still visible
+// inside the popover's progress bar.
+const calibrationButtonTooltip = computed(() => {
+    const status = calibrationStore.statusFor(props.data.deviceUID, props.data.channelName)
+    switch (status?.phase) {
+        case 'in_progress':
+            return `${t('components.channelExtensionSettings.calibration.buttonCalibrate')}…`
+        case 'completed':
+            return completedStatusText(status.calibration)
+        case 'failed':
+            return t('components.channelExtensionSettings.calibration.statusFailed', {
+                message: status.message,
+            })
+        default:
+            return t('components.channelExtensionSettings.calibration.heading')
+    }
+})
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
@@ -64,6 +132,11 @@ const liveValues = computed(() => {
         duty: channelValues?.duty,
         rpm: channelValues?.rpm,
     }
+})
+
+const calibrationProgress = computed(() => {
+    const status = calibrationStore.statusFor(props.data.deviceUID, props.data.channelName)
+    return status?.phase === 'in_progress' ? status.percent : undefined
 })
 
 function stepIcon(type: string): string {
@@ -120,6 +193,20 @@ function onClick() {
                 {{ data.channelLabel }}
             </div>
             <div
+                v-if="showCalibrationButton"
+                v-memo="[calibrationButtonTooltip, calibrationButtonClass]"
+                v-tooltip.top="calibrationButtonTooltip"
+                class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
+                @click="onCalibrationClick"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiTuneVerticalVariant"
+                    class="size-4"
+                    :class="calibrationButtonClass"
+                />
+            </div>
+            <div
                 v-if="showSwapButton"
                 v-tooltip.top="t('views.controls.switchProfile')"
                 class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
@@ -141,6 +228,15 @@ function onClick() {
             </div>
             <div class="flex items-center gap-3 text-xs">
                 <span
+                    v-if="calibrationProgress != null && !showCalibrationButton"
+                    class="rounded bg-accent/20 px-1.5 py-0.5 font-medium text-accent"
+                    v-tooltip.top="t('components.channelExtensionSettings.calibration.heading')"
+                >
+                    {{
+                        t('components.channelExtensionSettings.calibration.buttonCalibrate')
+                    }}…&nbsp;{{ calibrationProgress }}{{ t('common.percentUnit') }}
+                </span>
+                <span
                     v-if="data.isManual"
                     class="rounded bg-warning/20 px-1.5 py-0.5 font-medium text-warning"
                 >
@@ -158,7 +254,6 @@ function onClick() {
         <div
             v-if="flowViewMode === 'overview' && data.chainSummary?.hasChain"
             class="flex items-center gap-1 overflow-hidden border-t border-border-one px-3 py-1.5"
-            v-tooltip.bottom="t('views.controls.viewControlFlow')"
         >
             <template v-for="(step, idx) in data.chainSummary.steps.slice(0, 3)" :key="idx">
                 <svg-icon
@@ -194,6 +289,12 @@ function onClick() {
             :channel-name="data.channelName"
             :current-profile-u-i-d="data.profileUID"
             @profile-switched="onProfileSwitched"
+        />
+        <CalibrationSwitchPopover
+            v-if="showCalibrationButton"
+            ref="calibrationPopoverRef"
+            :device-u-i-d="data.deviceUID"
+            :channel-name="data.channelName"
         />
     </div>
 </template>

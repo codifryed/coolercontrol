@@ -698,7 +698,6 @@ export default {
             noControlChain: 'No control chain found for this channel.',
             controlFlow: 'Control Flow',
             backToOverview: 'Back to Controls Overview',
-            viewControlFlow: 'View control flow',
             switchProfile: 'Switch Profile',
             switchTempSource: 'Switch Temperature Source',
             switchFunction: 'Switch Function',
@@ -1150,6 +1149,117 @@ export default {
             saveError: 'Failed to save channel extension settings',
             firmwareControlDisabled:
                 'Firmware control is not available with the current settings.\nUse a Graph Profile for this device with a supported internal temperature sensor.',
+            calibration: {
+                heading: 'RPM Calibration',
+                description:
+                    'Sweep the fan to learn its actual duty-to-RPM curve, then control the channel as RPM-normalized true-duty.\nRemoves dead zones at low duty and saturation at high duty.\nKick-in is also handled automatically when the fan is calibrated: a brief startup boost spins the fan up from rest before settling to the target duty.\nThe sweep typically takes several minutes, and can run noticeably longer for slow-to-respond fans. The channel is written to 0% at the start.',
+                statusNotCalibrated: 'Not calibrated',
+                statusInProgress: 'Calibrating: {stage} ({percent}%)',
+                statusCompleted: 'Calibrated (smooth, mapping active)',
+                statusCompletedStepped: 'Calibrated (step-curve, mapping disabled)',
+                statusCompletedWithWarnings: 'Calibrated with warnings: {messages}',
+                statusFailed: 'Last attempt failed: {message}',
+                warningNoTachometer: 'no RPM detected (sensor or wiring may be disconnected)',
+                warningNotControllable: 'fan does not respond to duty (likely BIOS-controlled)',
+                warningLimitedRange: 'limited RPM range ({span} RPM); mapping resolution is coarse',
+                warningOscillating:
+                    'fan oscillates between {lower}% and {upper}% duty (firmware-controlled kick-in); mapping disabled at low duty',
+                stagePreflight: 'pre-flight',
+                stageUpSweep: 'up-sweep',
+                stageDownSweep: 'down-sweep',
+                stageFinalizing: 'finalizing',
+                buttonCalibrate: 'Calibrate',
+                buttonRecalibrate: 'Re-calibrate',
+                buttonCancel: 'Cancel',
+                buttonClear: 'Clear',
+                buttonViewCurve: 'View Curve',
+                caveatsBanner:
+                    'Calibrating several primary cooling fans at once can raise system temperature.\nPush-pull radiator fans diagnosed in parallel may produce inaccurate readings.\nKeep the system idle during calibration.',
+                completedNotice:
+                    'Calibration active. Fan curves and manual duties on this channel now control RPM-normalized true-duty. Revisit your profile values if needed.',
+                clearedNotice:
+                    'Cleared. Fan curves on this channel now control device duty directly.',
+                startError: 'Failed to start calibration',
+                cancelError: 'Failed to cancel calibration',
+                clearError: 'Failed to clear calibration',
+                reloadHeader: 'Reload UI',
+                reloadAccept: 'Reload',
+                reloadReject: 'Later',
+                reload_rpm_only_completed_single:
+                    "Calibration completed for {channelName}. Reload the UI to display the channel's duty graph.",
+                reload_rpm_only_completed_multi:
+                    "Calibration completed for {channelList}. Reload the UI to display each channel's duty graph.",
+                reload_rpm_only_cleared_single:
+                    "Calibration cleared for {channelName}. Reload the UI to remove the channel's now-stale duty graph.",
+                reload_rpm_only_cleared_multi:
+                    "Calibration cleared for {channelList}. Reload the UI to remove each channel's now-stale duty graph.",
+                reload_duty_range_completed_single:
+                    "Calibration completed for {channelName}. Reload the UI so the manual-duty slider and the fan-control wizard pick up the channel's new duty range.",
+                reload_duty_range_completed_multi:
+                    "Calibration completed for {channelList}. Reload the UI so the manual-duty slider and the fan-control wizard pick up each channel's new duty range.",
+                reload_duty_range_cleared_single:
+                    "Calibration cleared for {channelName}. Reload the UI so the manual-duty slider snaps back to the channel's hardware duty limits.",
+                reload_duty_range_cleared_multi:
+                    "Calibration cleared for {channelList}. Reload the UI so the manual-duty slider snaps back to each channel's hardware duty limits.",
+                reload_mixed_multi:
+                    'Calibration changed for {channelList}. Reload the UI so each channel picks up its new duty display and slider bounds.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: 'Calibration Curve',
+            loading: 'Loading calibration...',
+            notFound: 'No calibration data found for this channel.',
+            loadError: 'Failed to load calibration data.',
+            axisDuty: 'Duty',
+            axisRpm: 'RPM',
+            legendUp: 'Up sweep',
+            legendDown: 'Down sweep',
+            markerStart: 'Start',
+            markerSustain: 'Sustain',
+            markerSaturate: 'Near plateau',
+            markerStable: 'Stable floor',
+            curveKindSmooth: 'Smooth (mapping active)',
+            curveKindStepped: 'Stepped (mapping disabled)',
+            fieldCurveKind: 'Curve',
+            fieldCurveKindTooltip:
+                'How the channel responds to duty changes.\nSmooth fans have a continuous duty-to-RPM curve, so the dispatcher maps target duty through the calibration. Stepped fans have discrete RPM plateaus, so duties pass through unchanged.',
+            fieldRpmMax: 'Peak RPM',
+            fieldRpmMaxTooltip:
+                'Highest RPM observed during the sweep.\nUsed as the 100% reference when translating a target duty to its RPM-normalized true-duty value.',
+            fieldKick: 'Kick duration',
+            fieldKickTooltip:
+                "How long the dispatcher holds the kick duty before dropping to sustain on a cold start.\nMeasured by writing the dispatcher's worst-case (boosted) kick duty from rest and waiting until the RPM settles into a stable window.",
+            fieldStart: 'Min start duty',
+            fieldStartTooltip:
+                'Lowest duty that reliably starts the fan from a stopped state.\nBelow this duty the fan may not begin spinning even though it would keep spinning if already running.',
+            fieldSustain: 'Min sustain duty',
+            fieldSustainTooltip:
+                'Lowest duty at which the fan keeps spinning once started.\nThe dispatcher will not drop the running duty below this value unless the channel is sent to 0.',
+            fieldStable: 'Min stable duty',
+            fieldStableTooltip:
+                'Lowest duty at which the fan operates without oscillation.\nFirmware-controlled fans nudge RPM above an internal floor at low duty, producing audible flutter; the dispatcher clamps post-kick sustain to this value so the fan stays above the band.',
+            fieldSaturate: 'Near plateau duty',
+            fieldSaturateTooltip:
+                'Duty at which RPM gains begin to diminish.\nThe fan can still add a few RPM beyond this duty up to 100%, so the calibration uses the full 0 to 100% duty range.',
+            fieldTimestamp: 'Calibrated',
+            overridesHeading: 'Overrides',
+            fieldKickBoostOverride: 'Kick boost',
+            fieldKickBoostOverrideTooltip:
+                'Force the cold-start kick boost on or off for this channel, or let the daemon decide based on the up-curve heuristic.\nThe boost briefly raises the kick duty above sustain to push the fan past its momentum threshold.',
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Force on',
+            kickBoostOff: 'Force off',
+            fieldKickDurationOverride: 'Kick duration override',
+            fieldKickDurationOverrideTooltip:
+                'Override the calibrated kick duration. Leave empty to use the measured value.\nLengthen when the fan needs more time at the kick duty to stabilize before the sustain takes over.',
+            kickDurationDefault: 'default',
+            kickDurationReset: 'Reset to default',
+            kickBoostCurrentlyOn: 'currently on',
+            kickBoostCurrentlyOff: 'currently off',
+            fieldWalkAfterKick: 'Walk down after kick',
+            fieldWalkAfterKickTooltip:
+                'After the kick window, step the duty down to sustain in small increments. Protects fans whose controllers cut power on an abrupt drop.\nTurn off to jump straight from kick to sustain. Safe on most modern PWM fans and removes the visible ramp-down after every cold start.',
+            overridesSaveFailed: 'Failed to save calibration overrides',
         },
         deviceExtensionSettings: {
             title: 'Advanced Device Settings',

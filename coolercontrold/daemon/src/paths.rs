@@ -59,6 +59,8 @@ static TOKENS_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".tok
 // -- features --
 static ALERT_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("alerts.json"));
 static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("modes.json"));
+static CALIBRATION_CONFIG_FILE: LazyLock<PathBuf> =
+    LazyLock::new(|| config_dir().join("calibrations.json"));
 static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("detect.toml"));
 
 // -- auth (runtime session state in /var/lib) --
@@ -122,6 +124,10 @@ pub fn alert_config_file() -> &'static Path {
 
 pub fn mode_config_file() -> &'static Path {
     &MODE_CONFIG_FILE
+}
+
+pub fn calibration_config_file() -> &'static Path {
+    &CALIBRATION_CONFIG_FILE
 }
 
 pub fn plugins_dir() -> &'static Path {
@@ -347,6 +353,7 @@ mod tests {
         assert!(tokens_file().starts_with(dir));
         assert!(alert_config_file().starts_with(dir));
         assert!(mode_config_file().starts_with(dir));
+        assert!(calibration_config_file().starts_with(dir));
         assert!(detect_override_file().starts_with(dir));
     }
 
@@ -381,6 +388,10 @@ mod tests {
         assert_eq!(alert_config_file().file_name().unwrap(), "alerts.json");
         assert_eq!(alert_logs_file().file_name().unwrap(), "alert-logs.json");
         assert_eq!(mode_config_file().file_name().unwrap(), "modes.json");
+        assert_eq!(
+            calibration_config_file().file_name().unwrap(),
+            "calibrations.json"
+        );
         assert_eq!(plugins_dir().file_name().unwrap(), "plugins");
         assert_eq!(detect_override_file().file_name().unwrap(), "detect.toml");
     }

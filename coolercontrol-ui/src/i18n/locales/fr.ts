@@ -717,7 +717,6 @@ export default {
             noControlChain: 'Aucune chaîne de contrôle trouvée pour ce canal.',
             controlFlow: 'Flux de Contrôle',
             backToOverview: 'Retour à la vue des contrôles',
-            viewControlFlow: 'Voir le flux de contrôle',
             switchProfile: 'Changer de profil',
             switchTempSource: 'Changer la source de température',
             switchFunction: 'Changer la fonction',
@@ -1181,6 +1180,120 @@ export default {
             saveError: "Échec de l'enregistrement des paramètres de l'extension de canal",
             firmwareControlDisabled:
                 "Le contrôle par firmware n'est pas disponible avec la configuration actuelle.\nUtilisez un profil Graph pour cet appareil avec un capteur de température interne pris en charge.",
+            calibration: {
+                heading: 'Étalonnage des RPM',
+                description:
+                    "Faites parcourir au ventilateur sa plage complète pour obtenir sa véritable courbe rapport cyclique/RPM, puis pilotez le canal en rapport cyclique réel normalisé par les RPM.\nSupprime les zones mortes à bas rapport cyclique et la saturation à haut rapport cyclique.\nLe coup d'envoi est aussi géré automatiquement quand le ventilateur est étalonné : une brève impulsion de démarrage le lance depuis l'arrêt avant qu'il ne se stabilise à la valeur cible.\nLe balayage prend généralement plusieurs minutes, et peut durer sensiblement plus longtemps pour des ventilateurs à réaction lente. Le canal est réglé à 0 % au début.",
+                statusNotCalibrated: 'Non étalonné',
+                statusInProgress: 'Étalonnage en cours : {stage} ({percent} %)',
+                statusCompleted: 'Étalonné (lisse, mappage actif)',
+                statusCompletedStepped: 'Étalonné (courbe en marches, mappage désactivé)',
+                statusCompletedWithWarnings: 'Étalonné avec avertissements : {messages}',
+                statusFailed: 'Dernière tentative échouée : {message}',
+                warningNoTachometer:
+                    'aucune RPM détectée (le capteur ou le câblage peuvent être débranchés)',
+                warningNotControllable:
+                    'le ventilateur ne réagit pas au rapport cyclique (probablement piloté par le BIOS)',
+                warningLimitedRange:
+                    'plage de RPM limitée ({span} RPM) ; résolution de mappage grossière',
+                warningOscillating:
+                    'le ventilateur oscille entre {lower} % et {upper} % de rapport cyclique (impulsion contrôlée par le firmware) ; mappage désactivé à bas rapport cyclique',
+                stagePreflight: 'pré-vol',
+                stageUpSweep: 'balayage montant',
+                stageDownSweep: 'balayage descendant',
+                stageFinalizing: 'finalisation',
+                buttonCalibrate: 'Étalonner',
+                buttonRecalibrate: 'Ré-étalonner',
+                buttonCancel: 'Annuler',
+                buttonClear: 'Effacer',
+                buttonViewCurve: 'Voir la courbe',
+                caveatsBanner:
+                    "Étalonner plusieurs ventilateurs de refroidissement principaux en même temps peut faire monter la température du système.\nDes ventilateurs push-pull de radiateur diagnostiqués en parallèle peuvent produire des mesures inexactes.\nMaintenez le système au repos pendant l'étalonnage.",
+                completedNotice:
+                    'Étalonnage actif. Les courbes de ventilateur et les rapports cycliques manuels de ce canal pilotent désormais le rapport cyclique réel normalisé par les RPM. Vérifiez au besoin les valeurs de votre profil.',
+                clearedNotice:
+                    "Effacé. Les courbes de ventilateur de ce canal pilotent à nouveau directement le rapport cyclique de l'appareil.",
+                startError: "Échec du démarrage de l'étalonnage",
+                cancelError: "Échec de l'annulation de l'étalonnage",
+                clearError: "Échec de l'effacement de l'étalonnage",
+                reloadHeader: "Recharger l'interface",
+                reloadAccept: 'Recharger',
+                reloadReject: 'Plus tard',
+                reload_rpm_only_completed_single:
+                    "Étalonnage terminé pour {channelName}. Rechargez l'interface pour afficher le graphique de rapport cyclique du canal.",
+                reload_rpm_only_completed_multi:
+                    "Étalonnage terminé pour {channelList}. Rechargez l'interface pour afficher le graphique de rapport cyclique de chaque canal.",
+                reload_rpm_only_cleared_single:
+                    "Étalonnage effacé pour {channelName}. Rechargez l'interface pour supprimer le graphique de rapport cyclique désormais obsolète du canal.",
+                reload_rpm_only_cleared_multi:
+                    "Étalonnage effacé pour {channelList}. Rechargez l'interface pour supprimer le graphique de rapport cyclique désormais obsolète de chaque canal.",
+                reload_duty_range_completed_single:
+                    "Étalonnage terminé pour {channelName}. Rechargez l'interface pour que le curseur de rapport cyclique manuel et l'assistant de contrôle du ventilateur prennent en compte la nouvelle plage du canal.",
+                reload_duty_range_completed_multi:
+                    "Étalonnage terminé pour {channelList}. Rechargez l'interface pour que le curseur de rapport cyclique manuel et l'assistant de contrôle du ventilateur prennent en compte la nouvelle plage de chaque canal.",
+                reload_duty_range_cleared_single:
+                    "Étalonnage effacé pour {channelName}. Rechargez l'interface pour que le curseur de rapport cyclique manuel revienne aux limites matérielles du canal.",
+                reload_duty_range_cleared_multi:
+                    "Étalonnage effacé pour {channelList}. Rechargez l'interface pour que le curseur de rapport cyclique manuel revienne aux limites matérielles de chaque canal.",
+                reload_mixed_multi:
+                    "Étalonnage modifié pour {channelList}. Rechargez l'interface pour que chaque canal prenne en compte son nouvel affichage de rapport cyclique et les limites du curseur.",
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: "Courbe d'étalonnage",
+            loading: "Chargement de l'étalonnage...",
+            notFound: "Aucune donnée d'étalonnage trouvée pour ce canal.",
+            loadError: "Échec du chargement des données d'étalonnage.",
+            axisDuty: 'Rapport cyclique',
+            axisRpm: 'RPM',
+            legendUp: 'Balayage montant',
+            legendDown: 'Balayage descendant',
+            markerStart: 'Démarrage',
+            markerSustain: 'Maintien',
+            markerSaturate: 'Proche du plateau',
+            markerStable: 'Seuil stable',
+            curveKindSmooth: 'Lisse (mappage actif)',
+            curveKindStepped: 'En marches (mappage désactivé)',
+            fieldCurveKind: 'Courbe',
+            fieldCurveKindTooltip:
+                'Manière dont le canal réagit aux changements de rapport cyclique.\nLes ventilateurs lisses ont une courbe rapport-cyclique-à-RPM continue, le dispatcher mappe donc le rapport cyclique cible via la calibration. Les ventilateurs en marches ont des plateaux RPM discrets, les rapports cycliques sont donc transmis sans modification.',
+            fieldRpmMax: 'RPM maximales',
+            fieldRpmMaxTooltip:
+                "RPM les plus élevées observées pendant le balayage.\nUtilisées comme référence 100% lors de la conversion d'un rapport cyclique cible en sa valeur réelle normalisée par RPM.",
+            fieldKick: "Durée de l'impulsion",
+            fieldKickTooltip:
+                "Durée pendant laquelle le dispatcher maintient le rapport cyclique d'impulsion avant de redescendre au maintien lors d'un démarrage à froid.\nMesurée en écrivant le rapport cyclique d'impulsion le plus défavorable (avec boost) du dispatcher depuis l'arrêt, puis en attendant que les RPM se stabilisent dans une fenêtre stable.",
+            fieldStart: 'Rapport cyclique min. de démarrage',
+            fieldStartTooltip:
+                "Rapport cyclique le plus bas qui démarre le ventilateur de manière fiable depuis l'arrêt.\nEn dessous, le ventilateur peut ne pas commencer à tourner, même s'il continuerait à tourner s'il était déjà en marche.",
+            fieldSustain: 'Rapport cyclique min. de maintien',
+            fieldSustainTooltip:
+                'Rapport cyclique le plus bas auquel le ventilateur continue de tourner une fois lancé.\nLe dispatcher ne descendra pas le rapport cyclique en cours en dessous de cette valeur, sauf si le canal est envoyé à 0.',
+            fieldStable: 'Rapport cyclique min. stable',
+            fieldStableTooltip:
+                "Rapport cyclique le plus bas auquel le ventilateur fonctionne sans oscillation.\nLes ventilateurs pilotés par le firmware relèvent les RPM au-dessus d'un seuil interne à bas rapport cyclique, ce qui produit un battement audible ; le dispatcher plafonne le maintien post-impulsion à cette valeur pour que le ventilateur reste au-dessus de cette bande.",
+            fieldSaturate: 'Rapport cyclique proche du plateau',
+            fieldSaturateTooltip:
+                "Rapport cyclique à partir duquel les gains de RPM commencent à diminuer.\nLe ventilateur peut encore ajouter quelques RPM au-delà de ce rapport cyclique jusqu'à 100 %, c'est pourquoi l'étalonnage utilise la plage complète de 0 à 100 %.",
+            fieldTimestamp: 'Étalonné',
+            overridesHeading: 'Surcharges',
+            fieldKickBoostOverride: "Boost d'impulsion",
+            fieldKickBoostOverrideTooltip:
+                "Force l'activation ou la désactivation du boost d'impulsion au démarrage à froid pour ce canal, ou laisse le daemon décider d'après l'heuristique de la courbe montante.\nLe boost relève brièvement le rapport cyclique d'impulsion au-dessus du maintien pour pousser le ventilateur au-delà de son seuil d'inertie.",
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Forcer activé',
+            kickBoostOff: 'Forcer désactivé',
+            fieldKickDurationOverride: "Surcharge de la durée d'impulsion",
+            fieldKickDurationOverrideTooltip:
+                "Surcharge la durée d'impulsion calibrée. Laisser vide pour utiliser la valeur mesurée.\nAllonger lorsque le ventilateur a besoin de plus de temps au rapport cyclique d'impulsion pour se stabiliser avant que le maintien prenne le relais.",
+            kickDurationDefault: 'défaut',
+            kickDurationReset: 'Réinitialiser par défaut',
+            kickBoostCurrentlyOn: 'actuellement activé',
+            kickBoostCurrentlyOff: 'actuellement désactivé',
+            fieldWalkAfterKick: 'Descente progressive après impulsion',
+            fieldWalkAfterKickTooltip:
+                "Après la fenêtre d'impulsion, abaisse le rapport cyclique vers le maintien par petits incréments. Protège les ventilateurs dont les contrôleurs coupent l'alimentation lors d'une chute brutale.\nDésactiver pour passer directement de l'impulsion au maintien. Sans risque sur la plupart des ventilateurs PWM modernes et supprime la rampe descendante visible après chaque démarrage à froid.",
+            overridesSaveFailed: 'Échec de la sauvegarde des surcharges de calibration',
         },
         deviceExtensionSettings: {
             title: 'Paramètres Avancés du Périphérique',

@@ -50,6 +50,7 @@ use tokio_util::sync::CancellationToken;
 mod admin;
 mod alerts;
 mod api;
+mod calibration;
 mod cc_fs;
 mod config;
 mod device;
@@ -294,10 +295,14 @@ fn main() -> Result<()> {
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
+        let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
+        let fan_state_map = Rc::new(calibration::FanStateMap::new());
         let engine = Rc::new(Engine::new(
             Rc::clone(&all_devices),
             &repos,
             Rc::clone(&config),
+            calibration_store,
+            fan_state_map,
         ));
         let mode_controller = Rc::new(
             ModeController::init(
@@ -333,6 +338,7 @@ fn main() -> Result<()> {
                 );
                 let notification_handle = notifier::NotificationHandle::new(run_token.clone());
                 alert_controller.set_notification_handle(notification_handle.clone());
+                engine.set_notification_handle(notification_handle.clone());
                 let device_listener_enabled = config
                     .get_settings()
                     .map(|s| s.device_listener_enabled)

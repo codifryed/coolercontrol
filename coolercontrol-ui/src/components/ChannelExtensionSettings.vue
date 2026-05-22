@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { mdiAlertOutline, mdiCogs, mdiInformationSlabCircleOutline } from '@mdi/js'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import ChannelCalibrationPanel from '@/components/ChannelCalibrationPanel.vue'
 import { computed, nextTick, ref, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UID } from '@/models/Device.ts'
@@ -49,6 +50,17 @@ const { t } = useI18n()
 const isPopupOpen = ref(false)
 const hwFanCurve: Ref<boolean> = ref(false)
 const currentChannelExtension: Ref<ChannelExtensionNames | undefined> = ref()
+
+const calibrationEligible = computed((): boolean => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== props.deviceUID) continue
+        const channelInfo = device.info?.channels.get(props.channelName)
+        if (channelInfo?.speed_options?.fixed_enabled) {
+            return true
+        }
+    }
+    return false
+})
 
 for (const device of deviceStore.allDevices()) {
     if (device.uid === props.deviceUID && device.info != null) {
@@ -177,14 +189,10 @@ defineExpose({
                 <div
                     class="w-full bg-bg-two border border-border-one p-2 rounded-lg text-text-color pb-4"
                 >
-                    <table>
-                        <thead>
-                            <tr>
-                                <th colspan="6" class="pb-2.5 pt-1">
-                                    {{ t('components.channelExtensionSettings.title') }}
-                                </th>
-                            </tr>
-                        </thead>
+                    <div class="font-semibold pb-2.5 pt-1 text-center">
+                        {{ t('components.channelExtensionSettings.title') }}
+                    </div>
+                    <table v-if="currentChannelExtension != null">
                         <tbody>
                             <tr>
                                 <td class="w-24 text-end pl-4">
@@ -237,6 +245,20 @@ defineExpose({
                             </tr>
                         </tbody>
                     </table>
+                    <div
+                        v-if="calibrationEligible"
+                        :class="[
+                            'px-2',
+                            currentChannelExtension != null
+                                ? 'mt-3 pt-3 border-t border-border-one'
+                                : 'pt-1',
+                        ]"
+                    >
+                        <channel-calibration-panel
+                            :device-u-i-d="deviceUID"
+                            :channel-name="channelName"
+                        />
+                    </div>
                 </div>
             </popover-content>
         </popover-root>

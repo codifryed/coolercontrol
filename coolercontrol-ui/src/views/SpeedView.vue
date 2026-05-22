@@ -171,12 +171,16 @@ const channelLabel = ref(
 
 const hasChannelExtensionSettings = (): boolean => {
     for (const device of deviceStore.allDevices()) {
-        if (device.uid === props.deviceUID && device.info != null) {
-            const channelInfo = device.info.channels.get(props.channelName)
-            if (channelInfo != null && channelInfo.speed_options != null) {
-                return channelInfo.speed_options.extension != null
-            }
-        }
+        if (device.uid !== props.deviceUID || device.info == null) continue
+        const speedOptions = device.info.channels.get(props.channelName)?.speed_options
+        if (speedOptions == null) return false
+        // Any writable-duty channel is calibration-eligible, and the
+        // calibration UI is independent of automatic / manual mode.
+        if (speedOptions.fixed_enabled === true) return true
+        // HW-curve extension is only meaningful with a Graph profile
+        // assigned, so restrict it to automatic mode.
+        if (speedOptions.extension != null && controlMode.value === 'automatic') return true
+        return false
     }
     return false
 }
@@ -503,11 +507,7 @@ onUnmounted(() => {
                 </Button>
             </div>
             <div
-                v-if="
-                    chosenViewType === ChannelViewType.Control &&
-                    controlMode === 'automatic' &&
-                    hasChannelExtensionSettings()
-                "
+                v-if="chosenViewType === ChannelViewType.Control && hasChannelExtensionSettings()"
                 class="p-2 pr-0 flex flex-row"
             >
                 <channel-extension-settings

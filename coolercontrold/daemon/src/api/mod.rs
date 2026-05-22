@@ -20,6 +20,7 @@ pub mod actor;
 mod alerts;
 mod auth;
 mod base;
+mod calibration;
 mod custom_sensors;
 mod detect;
 pub mod devices;
@@ -40,9 +41,9 @@ mod tokens;
 
 use crate::alerts::AlertController;
 use crate::api::actor::{
-    AlertHandle, AuthHandle, CustomSensorHandle, DetectHandle, DeviceHandle, FunctionHandle,
-    HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
-    StressTestHandle, TokenHandle,
+    AlertHandle, AuthHandle, CalibrationHandle, CustomSensorHandle, DetectHandle, DeviceHandle,
+    FunctionHandle, HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle,
+    StatusHandle, StressTestHandle, TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
@@ -280,6 +281,7 @@ async fn run_all_api_servers(
     let mut handles = Vec::new();
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
+    let grpc_calibration_handle = app_state.calibration_handle.clone();
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
@@ -324,6 +326,7 @@ async fn run_all_api_servers(
             SocketAddr::from(ipv4),
             grpc_device_handle.clone(),
             grpc_status_handle.clone(),
+            grpc_calibration_handle.clone(),
             cancel_token.clone(),
         )));
     }
@@ -332,6 +335,7 @@ async fn run_all_api_servers(
             SocketAddr::from(ipv6),
             grpc_device_handle,
             grpc_status_handle,
+            grpc_calibration_handle,
             cancel_token,
         )));
     }
@@ -605,6 +609,16 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             ..Tag::default()
         })
         .tag(Tag {
+            name: "calibration".to_string(),
+            description: Some("Channel Calibration".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "detect".to_string(),
+            description: Some("Hardware Detection".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
             name: "sse".to_string(),
             description: Some("Server Side Events".to_string()),
             ..Tag::default()
@@ -617,6 +631,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         .tag(Tag {
             name: "stress-test".to_string(),
             description: Some("Stress Testing".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "metrics".to_string(),
+            description: Some("Prometheus Metrics".to_string()),
             ..Tag::default()
         })
 }
@@ -676,6 +695,8 @@ async fn create_app_state<'s>(
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
+    let calibration_handle =
+        CalibrationHandle::new(engine.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
     let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope).await;
     AppState {
@@ -691,6 +712,7 @@ async fn create_app_state<'s>(
         mode_handle,
         setting_handle,
         alert_handle,
+        calibration_handle,
         plugin_handle,
         stress_test_handle,
         log_buf_handle,
@@ -978,6 +1000,9 @@ pub enum CCError {
     #[display("Resource not found: {msg}")]
     NotFound { msg: String },
 
+    #[display("Conflict: {msg}")]
+    Conflict { msg: String },
+
     #[display("{msg}")]
     UserError { msg: String },
 
@@ -1011,6 +1036,11 @@ impl IntoResponse for CCError {
                 let err_msg = self.to_string();
                 debug!("{err_msg}");
                 (StatusCode::NOT_FOUND, err_msg)
+            }
+            CCError::Conflict { .. } => {
+                let err_msg = self.to_string();
+                debug!("{err_msg}");
+                (StatusCode::CONFLICT, err_msg)
             }
             CCError::UserError { .. } => {
                 let err_msg = self.to_string();
@@ -1156,6 +1186,7 @@ pub struct AppState {
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
     pub alert_handle: AlertHandle,
+    pub calibration_handle: CalibrationHandle,
     pub plugin_handle: PluginHandle,
     pub stress_test_handle: StressTestHandle,
     pub log_buf_handle: LogBufHandle,

@@ -39,6 +39,7 @@ mod engine_tests {
     use serial_test::serial;
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
+    use std::ops::Not;
     use std::rc::Rc;
     use uuid::Uuid;
 
@@ -175,7 +176,18 @@ mod engine_tests {
         let all_repos = Rc::new(repos);
         let config = Rc::new(Config::init_default_config().unwrap());
         config.create_device_list(&all_devices);
-        let engine = Engine::new(all_devices, &all_repos, Rc::clone(&config));
+        // Empty store + empty state map means every channel is uncalibrated,
+        // so calibration::dispatch passes the duty straight through to the
+        // mock repository. Existing engine assertions stay intact.
+        let calibration_store = Rc::new(crate::calibration::CalibrationStore::empty());
+        let fan_state_map = Rc::new(crate::calibration::FanStateMap::new());
+        let engine = Engine::new(
+            all_devices,
+            &all_repos,
+            Rc::clone(&config),
+            calibration_store,
+            fan_state_map,
+        );
 
         (device, engine, config, set_speeds, should_fail)
     }
@@ -1341,6 +1353,665 @@ mod engine_tests {
                 100,
                 "bypass should let the fan reach exactly 100% despite step_size_min=20"
             );
+        });
+    }
+
+    /// Setup variant that returns an `Rc` handle to the engine's
+    /// `CalibrationStore` so the test can inject calibration data
+    /// after construction and observe the effect on the engine.
+    fn setup_calibrated_device() -> (DeviceLock, Engine, Rc<crate::calibration::CalibrationStore>) {
+        let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
+        let mut repos = Repositories::default();
+        let set_speeds = Rc::new(RefCell::new(Vec::new()));
+        let should_fail = Rc::new(Cell::new(false));
+
+        let mock_repo = Rc::new(MockRepository {
+            device_type: DeviceType::Hwmon,
+            set_speeds,
+            should_fail,
+        });
+        repos.hwmon = Some(mock_repo);
+
+        let device = Rc::new(RefCell::new(Device::new(
+            "Test Device".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        )));
+        let device_uid = device.borrow().uid.clone();
+        devices.insert(device_uid, Rc::clone(&device));
+
+        let all_devices = Rc::new(devices);
+        let all_repos = Rc::new(repos);
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+
+        let calibration_store = Rc::new(crate::calibration::CalibrationStore::empty());
+        let fan_state_map = Rc::new(crate::calibration::FanStateMap::new());
+        let engine = Engine::new(
+            all_devices,
+            &all_repos,
+            Rc::clone(&config),
+            Rc::clone(&calibration_store),
+            fan_state_map,
+        );
+
+        (device, engine, calibration_store)
+    }
+
+    fn sample_smooth_calibration() -> crate::calibration::Calibration {
+        use crate::calibration::{CurveKind, DutySample};
+        let up: Vec<DutySample> = (0..21usize)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: 100 * u32::try_from(i).expect("fits in u32"),
+            })
+            .collect();
+        let down = up.clone();
+        crate::calibration::Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 500,
+            min_start_duty: 5,
+            min_sustain_duty: 5,
+            min_stable_duty: 5,
+            max_eff_duty: 95,
+            rpm_max: 2000,
+            curve_kind: CurveKind::Smooth,
+            warnings: Vec::new(),
+            was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
+            walk_after_kick_override: None,
+            timestamp: chrono::Local::now(),
+        }
+    }
+
+    fn push_channel_status(
+        device: &DeviceLock,
+        channel: ChannelName,
+        rpm: Option<u32>,
+        duty_device: f64,
+    ) {
+        // Append a fresh Status with one ChannelStatus carrying the
+        // given device-duty (the value a repo would have observed from
+        // hardware before the mapping pass runs).
+        use crate::device::ChannelStatus;
+        let mut status = Status::default();
+        status.channels.push(ChannelStatus {
+            name: channel,
+            rpm,
+            duty: Some(duty_device),
+            ..Default::default()
+        });
+        device.borrow_mut().set_status(status);
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_rewrites_calibrated_smooth_channel() {
+        // Goal: a calibrated smooth channel's latest device-duty value
+        // gets replaced with its true-duty equivalent based on the
+        // measured RPM. The rewrite runs inside Device::set_status's
+        // existing Arc::make_mut via the engine-installed augmenter, so
+        // the calibration is inserted into the store first and then
+        // the status push triggers the mapping.
+        cc_fs::test_runtime(async {
+            let (device, _engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            calibration_store
+                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
+            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            // 1000 RPM on a 0..=2000 curve with rpm_floor at index 1 (=100):
+            // (1000 - 100) / (2000 - 100) * 100 = ~47%.
+            let true_duty = chan.duty.expect("duty rewritten");
+            assert!(
+                (40.0..=55.0).contains(&true_duty),
+                "expected ~47% true-duty, got {true_duty}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_leaves_uncalibrated_channel_alone() {
+        // Goal: a channel with no calibration in the store keeps its
+        // original device-duty value verbatim. This is the path most
+        // users start on. The installed augmenter is a no-op when the
+        // store has no entry for the channel.
+        cc_fs::test_runtime(async {
+            let (device, _engine, _calibration_store) = setup_calibrated_device();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            assert_eq!(chan.duty, Some(50.0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_uses_device_duty_when_rpm_missing() {
+        // Goal: a calibrated channel with no RPM reading on the latest
+        // sample still gets its duty replaced with the device-duty-
+        // derived true-duty. Without an RPM cross-check the displayed
+        // value is whatever the calibration's down-curve maps the
+        // device-duty to (about 47% for a synthetic 0..=2000 linear
+        // curve at device-duty 50%).
+        cc_fs::test_runtime(async {
+            let (device, _engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            calibration_store
+                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
+            push_channel_status(&device, channel.clone(), None, 50.0);
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            let true_duty = chan.duty.expect("duty rewritten via device-duty path");
+            assert!(
+                (40.0..=55.0).contains(&true_duty),
+                "expected ~47% device-duty-derived true-duty, got {true_duty}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_keeps_device_value_when_rpm_diverges() {
+        // The earlier cross-check used to switch to the RPM-derived
+        // value when device-derived and rpm-derived disagreed by more
+        // than the sanity threshold. That tripped false-positively on
+        // firmware-kick fans, so we now always prefer device-derived
+        // when present: the displayed value reflects what the daemon
+        // wrote, not transient RPM dips.
+        cc_fs::test_runtime(async {
+            let (device, _engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            calibration_store
+                .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
+            // Daemon wrote device-duty 50% (would imply ~47% true), and
+            // the fan reports 0 RPM. The display must stay at the
+            // device-derived value rather than dropping to 0%.
+            push_channel_status(&device, channel.clone(), Some(0), 50.0);
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            let true_duty = chan.duty.expect("duty rewritten");
+            assert!(
+                (40.0..=55.0).contains(&true_duty),
+                "expected ~47% device-derived true-duty, got {true_duty}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_current_rpm_reads_status_history() {
+        // Goal: the Engine's DiagnosisHost::current_rpm trait method
+        // returns the latest RPM from the device's status_history.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            push_channel_status(&device, channel.clone(), Some(1234), 50.0);
+
+            let observed = engine.current_rpm(&device_uid, &channel).await;
+            assert_eq!(observed, Some(1234));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_current_rpm_none_for_unknown_channel() {
+        // Goal: querying a channel not present in the latest status
+        // yields None so the diagnoser records a zero sample.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            push_channel_status(&device, "fan1".to_string(), Some(800), 30.0);
+
+            let observed = engine.current_rpm(&device_uid, "fan-missing").await;
+            assert_eq!(observed, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_max_temp_finds_hottest_value() {
+        // Goal: max_temp_celsius walks every device's latest status
+        // and returns the highest temp.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisHost as _;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "t1".to_string(),
+                temp: 45.0,
+            });
+            status.temps.push(TempStatus {
+                name: "t2".to_string(),
+                temp: 72.5,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+
+            let observed = engine.max_temp_celsius().await;
+            assert!(
+                (observed - 72.5).abs() < f64::EPSILON,
+                "expected 72.5, got {observed}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn diagnosis_host_snapshot_returns_none_for_unset_channel() {
+        // Goal: a channel with no persisted setting snapshots as
+        // SnapshotKind::None so the restore step is a no-op reset.
+        cc_fs::test_runtime(async {
+            use crate::calibration::{DiagnosisHost as _, SnapshotKind};
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let snapshot = engine.snapshot_setting(&device_uid, "fan1");
+            assert_eq!(snapshot.kind, SnapshotKind::None);
+            assert_eq!(snapshot.device_uid, device_uid);
+            assert_eq!(snapshot.channel_name, "fan1");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn start_calibration_diagnosis_preflight_rejects_hot_system() {
+        // Goal: end-to-end engine entry point. When the most recent
+        // status shows a hot temp, the diagnoser short-circuits in
+        // pre-flight, no calibration is persisted, and the registry
+        // entry is cleared so subsequent attempts can run.
+        cc_fs::test_runtime(async {
+            use crate::calibration::DiagnosisFailure;
+            let (device, engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            // Seed a hot ambient temperature so preflight refuses.
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "cpu".to_string(),
+                temp: 80.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let err = engine
+                .start_calibration_diagnosis(device_uid.clone(), "fan1".to_string())
+                .await
+                .expect_err("preflight rejects hot system");
+            assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            assert!(!calibration_store.has(&key));
+            assert!(!engine.is_calibration_in_progress(&key));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn cancel_calibration_returns_false_when_not_running() {
+        // Goal: the engine's cancel entry point returns false when
+        // nothing is in flight; the REST layer maps this to a 404.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            assert!(!engine.cancel_calibration_diagnosis(&key));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn set_calibration_overrides_returns_none_for_missing_calibration() {
+        // Goal: the engine method returns Ok(None) when no calibration
+        // is stored, so the REST handler maps to 404. The persistence
+        // branch is exercised end-to-end (it writes to the configured
+        // calibration file, which the unit test environment cannot
+        // create).
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let key: crate::calibration::ChannelKey = (device_uid, "fan1".to_string());
+            let result = engine
+                .set_calibration_overrides(&key, Some(true), Some(5000), Some(false))
+                .await
+                .expect("ok");
+            assert!(result.is_none(), "no calibration stored -> None");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn apply_true_duty_skips_stepped_calibration() {
+        // Goal: a calibrated channel whose curve was classified as
+        // Stepped keeps its device-duty value (mapping disabled). The
+        // user sees the raw device value, matching how the dispatch
+        // layer also leaves stepped channels in passthrough mode.
+        cc_fs::test_runtime(async {
+            use crate::calibration::CurveKind;
+            let (device, _engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            device
+                .borrow_mut()
+                .initialize_status_history_with(Status::default(), 1.0);
+            let mut cal = sample_smooth_calibration();
+            cal.curve_kind = CurveKind::Stepped;
+            calibration_store.insert_unsaved((device_uid, channel.clone()), cal);
+            push_channel_status(&device, channel.clone(), Some(1000), 50.0);
+
+            let observed = device.borrow().status_current().unwrap();
+            let chan = observed
+                .channels
+                .iter()
+                .find(|c| c.name == channel)
+                .expect("channel present");
+            assert_eq!(chan.duty, Some(50.0));
+        });
+    }
+
+    /// Seed `status_history` with copies of the given (rpm, duty) values
+    /// for one channel. Drives the backfill / clear tests: they need
+    /// every history entry to share the same shape, which
+    /// `initialize_status_history_with` provides via its zero-fill of
+    /// fields whose presence matches the first status.
+    fn seed_history_with_channel(
+        device: &DeviceLock,
+        channel: ChannelName,
+        rpm: Option<u32>,
+        duty: Option<f64>,
+    ) {
+        use crate::device::ChannelStatus;
+        let mut initial = Status::default();
+        initial.channels.push(ChannelStatus {
+            name: channel,
+            rpm,
+            duty,
+            ..Default::default()
+        });
+        device
+            .borrow_mut()
+            .initialize_status_history_with(initial, 1.0);
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_fills_none_entries_on_smooth_calibration() {
+        // Goal: on a previously RPM-only channel, the backfill walks
+        // every entry whose `duty` is None and fills it via
+        // `rpm_to_true_duty`. The function reports `true` so the caller
+        // can flip `was_rpm_only` and prompt the UI to reload.
+        cc_fs::test_runtime(async {
+            let (device, engine, calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), None);
+            let calibration = sample_smooth_calibration();
+            calibration_store
+                .insert_unsaved((device_uid.clone(), channel.clone()), calibration.clone());
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(filled, "backfill must report filling entries");
+
+            let observed = device.borrow();
+            assert!(
+                observed.status_history.is_empty().not(),
+                "history must be populated"
+            );
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present in every entry");
+                assert!(
+                    chan.duty.is_some(),
+                    "every entry's duty must be filled, got None"
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_for_stepped_calibration() {
+        // Goal: a stepped calibration has no duty mapping, so the
+        // backfill is a no-op and reports `false`. The caller leaves
+        // `was_rpm_only` at its default and does not prompt the UI.
+        cc_fs::test_runtime(async {
+            use crate::calibration::CurveKind;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), None);
+            let mut calibration = sample_smooth_calibration();
+            calibration.curve_kind = CurveKind::Stepped;
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(filled.not(), "stepped calibration must not fill anything");
+
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "stepped backfill must leave duty=None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_when_no_none_entries() {
+        // Goal: a normal (non-RPM-only) channel already has duty
+        // values throughout history. Backfill must not overwrite them
+        // and must report `false` so the caller does not set
+        // `was_rpm_only`.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), Some(60.0));
+            let calibration = sample_smooth_calibration();
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(
+                filled.not(),
+                "no None entries existed, backfill must report false"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_skips_channels_without_rpm() {
+        // Goal: an entry whose `rpm` is None cannot be mapped, so the
+        // backfill leaves it alone. The overall return value reflects
+        // whether any other entry was successfully filled; here, none.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), None, None);
+            let calibration = sample_smooth_calibration();
+
+            let filled = engine.backfill_history_duties_from_calibration(
+                &(device_uid, channel.clone()),
+                &calibration,
+            );
+            assert!(
+                filled.not(),
+                "with no rpm available, backfill must report false"
+            );
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "duty must stay None when rpm is None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn backfill_history_returns_false_for_missing_device() {
+        // Goal: an unknown device uid must not panic; the caller (the
+        // diagnoser completion path) might race with device removal, so
+        // the helper returns false cleanly.
+        cc_fs::test_runtime(async {
+            let (_device, engine, _calibration_store) = setup_calibrated_device();
+            let calibration = sample_smooth_calibration();
+            let filled = engine.backfill_history_duties_from_calibration(
+                &("unknown-device".to_string(), "fan1".to_string()),
+                &calibration,
+            );
+            assert!(filled.not(), "missing device must not fill anything");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn clear_history_resets_duty_for_channel() {
+        // Goal: clear walks every entry and resets `duty` to None for
+        // the named channel. Drives the calibration-delete path on an
+        // RPM-only channel so the chart reverts to its pre-calibration
+        // state once the UI reloads.
+        cc_fs::test_runtime(async {
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let channel = "fan1".to_string();
+            seed_history_with_channel(&device, channel.clone(), Some(1000), Some(45.0));
+
+            engine.clear_history_duties_for_channel(&(device_uid, channel.clone()));
+
+            let observed = device.borrow();
+            assert!(
+                observed.status_history.is_empty().not(),
+                "history must be populated"
+            );
+            for status in observed.status_history.iter() {
+                let chan = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == channel)
+                    .expect("channel present");
+                assert!(chan.duty.is_none(), "clear must reset every entry to None");
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn clear_history_leaves_other_channels_untouched() {
+        // Goal: clear is per-channel. Other channels in the same device
+        // must keep their duty values so deleting one channel's
+        // calibration does not collateral-damage adjacent fans.
+        cc_fs::test_runtime(async {
+            use crate::device::ChannelStatus;
+            let (device, engine, _calibration_store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            // Build a status with two channels and seed history from it.
+            let mut initial = Status::default();
+            initial.channels.push(ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1000),
+                duty: Some(40.0),
+                ..Default::default()
+            });
+            initial.channels.push(ChannelStatus {
+                name: "fan2".to_string(),
+                rpm: Some(1500),
+                duty: Some(55.0),
+                ..Default::default()
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(initial, 1.0);
+
+            engine.clear_history_duties_for_channel(&(device_uid, "fan1".to_string()));
+
+            let observed = device.borrow();
+            for status in observed.status_history.iter() {
+                let fan1 = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == "fan1")
+                    .expect("fan1 present");
+                let fan2 = status
+                    .channels
+                    .iter()
+                    .find(|c| c.name == "fan2")
+                    .expect("fan2 present");
+                assert!(fan1.duty.is_none(), "fan1 must be cleared");
+                assert!(
+                    fan2.duty.is_some(),
+                    "fan2 must keep its duty (not in clear scope)"
+                );
+            }
         });
     }
 }

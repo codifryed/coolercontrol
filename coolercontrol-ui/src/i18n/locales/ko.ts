@@ -690,7 +690,6 @@ export default {
             noControlChain: '이 채널에 대한 제어 체인을 찾을 수 없습니다.',
             controlFlow: '제어 흐름',
             backToOverview: '제어 개요로 돌아가기',
-            viewControlFlow: '제어 흐름 보기',
             switchProfile: '프로필 전환',
             switchTempSource: '온도 소스 전환',
             switchFunction: '함수 전환',
@@ -1141,6 +1140,117 @@ export default {
             saveError: '채널 확장 설정 저장에 실패함',
             firmwareControlDisabled:
                 '현재 설정으로는 펌웨어 제어가 불가능합니다.\n지원되는 내부 온도 센서가 있는 이 장치에는 그래프 프로파일을 사용하세요.',
+            calibration: {
+                heading: 'RPM 보정',
+                description:
+                    '팬의 실제 듀티 대 RPM 곡선을 학습하기 위해 팬을 스윕한 다음, 채널을 RPM 정규화된 실제 듀티로 제어합니다.\n낮은 듀티의 무효 구간과 높은 듀티의 포화 구간을 제거합니다.\n팬이 보정되면 시동 부스트도 자동으로 처리됩니다. 정지 상태에서 잠시 시동 부스트로 팬을 돌린 뒤 목표 듀티에서 안정시킵니다.\n스윕은 일반적으로 몇 분이 걸리며, 반응이 느린 팬에서는 상당히 더 오래 걸릴 수 있습니다. 시작 시 채널은 0 %로 설정됩니다.',
+                statusNotCalibrated: '보정되지 않음',
+                statusInProgress: '보정 중: {stage} ({percent} %)',
+                statusCompleted: '보정됨 (매끄러움, 매핑 활성)',
+                statusCompletedStepped: '보정됨 (계단형 곡선, 매핑 비활성)',
+                statusCompletedWithWarnings: '경고와 함께 보정됨: {messages}',
+                statusFailed: '마지막 시도 실패: {message}',
+                warningNoTachometer: 'RPM이 감지되지 않음 (센서 또는 배선이 분리되었을 수 있음)',
+                warningNotControllable: '팬이 듀티에 반응하지 않음 (BIOS 제어일 가능성 있음)',
+                warningLimitedRange: '제한된 RPM 범위 ({span} RPM); 매핑 해상도가 거칠어집니다',
+                warningOscillating:
+                    '팬이 {lower} %와 {upper} % 듀티 사이에서 진동함 (펌웨어 제어 시동 부스트); 낮은 듀티에서 매핑 비활성화',
+                stagePreflight: '사전 점검',
+                stageUpSweep: '상승 스윕',
+                stageDownSweep: '하강 스윕',
+                stageFinalizing: '마무리',
+                buttonCalibrate: '보정',
+                buttonRecalibrate: '재보정',
+                buttonCancel: '취소',
+                buttonClear: '지우기',
+                buttonViewCurve: '곡선 보기',
+                caveatsBanner:
+                    '주요 쿨링 팬 여러 개를 동시에 보정하면 시스템 온도가 올라갈 수 있습니다.\n푸시풀 라디에이터 팬을 병행 진단하면 부정확한 측정값이 나올 수 있습니다.\n보정 중에는 시스템을 유휴 상태로 유지하세요.',
+                completedNotice:
+                    '보정이 활성 상태입니다. 이 채널의 팬 곡선과 수동 듀티는 이제 RPM 정규화된 실제 듀티를 제어합니다. 필요하면 프로파일 값을 다시 확인하세요.',
+                clearedNotice:
+                    '지워졌습니다. 이 채널의 팬 곡선이 다시 장치 듀티를 직접 제어합니다.',
+                startError: '보정을 시작할 수 없습니다',
+                cancelError: '보정을 취소할 수 없습니다',
+                clearError: '보정을 지울 수 없습니다',
+                reloadHeader: 'UI 새로 고침',
+                reloadAccept: '새로 고침',
+                reloadReject: '나중에',
+                reload_rpm_only_completed_single:
+                    '{channelName}의 보정이 완료되었습니다. UI를 새로 고침하면 채널의 듀티 그래프가 표시됩니다.',
+                reload_rpm_only_completed_multi:
+                    '{channelList}의 보정이 완료되었습니다. UI를 새로 고침하면 각 채널의 듀티 그래프가 표시됩니다.',
+                reload_rpm_only_cleared_single:
+                    '{channelName}의 보정이 지워졌습니다. UI를 새로 고침하면 이제 더 이상 유효하지 않은 듀티 그래프가 제거됩니다.',
+                reload_rpm_only_cleared_multi:
+                    '{channelList}의 보정이 지워졌습니다. UI를 새로 고침하면 각 채널의 더 이상 유효하지 않은 듀티 그래프가 제거됩니다.',
+                reload_duty_range_completed_single:
+                    '{channelName}의 보정이 완료되었습니다. UI를 새로 고침하면 수동 듀티 슬라이더와 팬 제어 마법사가 채널의 새 듀티 범위를 적용합니다.',
+                reload_duty_range_completed_multi:
+                    '{channelList}의 보정이 완료되었습니다. UI를 새로 고침하면 수동 듀티 슬라이더와 팬 제어 마법사가 각 채널의 새 듀티 범위를 적용합니다.',
+                reload_duty_range_cleared_single:
+                    '{channelName}의 보정이 지워졌습니다. UI를 새로 고침하면 수동 듀티 슬라이더가 채널의 하드웨어 한계로 돌아갑니다.',
+                reload_duty_range_cleared_multi:
+                    '{channelList}의 보정이 지워졌습니다. UI를 새로 고침하면 수동 듀티 슬라이더가 각 채널의 하드웨어 한계로 돌아갑니다.',
+                reload_mixed_multi:
+                    '{channelList}의 보정이 변경되었습니다. UI를 새로 고침하면 각 채널이 새 듀티 표시와 슬라이더 범위를 적용합니다.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: '보정 곡선',
+            loading: '보정 데이터를 불러오는 중...',
+            notFound: '이 채널에 대한 보정 데이터를 찾을 수 없습니다.',
+            loadError: '보정 데이터를 불러오지 못했습니다.',
+            axisDuty: '듀티',
+            axisRpm: 'RPM',
+            legendUp: '상승',
+            legendDown: '하강',
+            markerStart: '시작',
+            markerSustain: '유지',
+            markerSaturate: '플래토 근접',
+            markerStable: '안정 하한',
+            curveKindSmooth: '매끄러움 (매핑 활성)',
+            curveKindStepped: '계단형 (매핑 비활성)',
+            fieldCurveKind: '곡선',
+            fieldCurveKindTooltip:
+                '채널이 듀티 변화에 어떻게 반응하는지.\n매끄러운 팬은 듀티-RPM 곡선이 연속적이므로 디스패처가 캘리브레이션을 통해 목표 듀티를 매핑합니다. 계단형 팬은 RPM 플래토가 이산적이므로 듀티는 변경 없이 그대로 전달됩니다.',
+            fieldRpmMax: '최대 RPM',
+            fieldRpmMaxTooltip:
+                '스윕 동안 관측된 최고 RPM.\n목표 듀티를 RPM 정규화된 실제 듀티 값으로 변환할 때 100% 기준으로 사용됩니다.',
+            fieldKick: '시동 부스트 시간',
+            fieldKickTooltip:
+                '콜드 스타트 시 디스패처가 시동 부스트 듀티를 유지했다가 유지 값으로 내리기까지의 시간.\n정지 상태에서 디스패처의 최악(부스트 포함) 시동 부스트 듀티를 적용하고, RPM이 안정된 구간에 들어올 때까지 기다려 측정합니다.',
+            fieldStart: '최소 시동 듀티',
+            fieldStartTooltip:
+                '정지 상태에서 팬을 확실하게 시동시키는 최저 듀티.\n이 듀티보다 낮으면 이미 돌고 있다면 계속 돌 수 있는 팬이라도 시동이 걸리지 않을 수 있습니다.',
+            fieldSustain: '최소 유지 듀티',
+            fieldSustainTooltip:
+                '팬이 시동된 뒤에도 계속 회전하는 최저 듀티.\n채널이 0으로 보내지지 않는 한 디스패처는 동작 중 듀티를 이 값보다 낮게 떨어뜨리지 않습니다.',
+            fieldStable: '최소 안정 듀티',
+            fieldStableTooltip:
+                '팬이 진동 없이 동작하는 최저 듀티.\n펌웨어 제어 팬은 낮은 듀티에서 RPM을 내부 하한선 이상으로 끌어올려 들리는 떨림을 유발합니다. 디스패처는 시동 부스트 이후의 유지 값을 이 값으로 제한해 팬이 진동 대역 위에 머물도록 합니다.',
+            fieldSaturate: '플래토 근접 듀티',
+            fieldSaturateTooltip:
+                'RPM 증가량이 줄어들기 시작하는 듀티.\n이 듀티를 넘어 100 %까지도 RPM이 조금 더 늘 수 있으므로, 보정은 0~100 %의 전체 범위를 사용합니다.',
+            fieldTimestamp: '보정됨',
+            overridesHeading: '재정의',
+            fieldKickBoostOverride: '시동 부스트',
+            fieldKickBoostOverrideTooltip:
+                '이 채널에 대해 콜드 스타트의 시동 부스트를 강제로 켜거나 끄거나, 데몬이 상승 곡선 휴리스틱으로 판단하도록 둡니다.\n부스트는 시동 부스트 듀티를 잠시 유지 값 위로 끌어올려 팬을 관성 임계점 너머로 밀어냅니다.',
+            kickBoostAuto: '자동',
+            kickBoostOn: '강제 켜기',
+            kickBoostOff: '강제 끄기',
+            fieldKickDurationOverride: '시동 부스트 시간 재정의',
+            fieldKickDurationOverrideTooltip:
+                '캘리브레이션으로 얻은 시동 부스트 시간을 재정의합니다. 비워두면 측정 값을 사용합니다.\n팬이 유지 값으로 넘어가기 전에 시동 부스트 듀티에서 안정되는 데 더 많은 시간이 필요할 때 늘리세요.',
+            kickDurationDefault: '기본값',
+            kickDurationReset: '기본값으로 재설정',
+            kickBoostCurrentlyOn: '현재 켜짐',
+            kickBoostCurrentlyOff: '현재 꺼짐',
+            fieldWalkAfterKick: '시동 후 단계적 감속',
+            fieldWalkAfterKickTooltip:
+                '시동 기간 후 듀티를 작은 단위로 유지 값까지 단계적으로 낮춥니다. 급격한 하락 시 컨트롤러가 전원을 차단하는 팬을 보호합니다.\n끄면 시동에서 유지 값으로 곧바로 전환됩니다. 대부분의 최신 PWM 팬에서 안전하며, 콜드 스타트 후 보이는 감속 구간을 제거합니다.',
+            overridesSaveFailed: '캘리브레이션 재정의 저장 실패',
         },
         deviceExtensionSettings: {
             title: '고급 장치 설정',

@@ -46,9 +46,10 @@ pub async fn create_grpc_api_server(
     addr: SocketAddr,
     device_handle: DeviceHandle,
     status_handle: StatusHandle,
+    calibration_handle: crate::api::actor::CalibrationHandle,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    let service = CCDeviceService::new(device_handle, status_handle);
+    let service = CCDeviceService::new(device_handle, status_handle, calibration_handle);
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<DeviceServiceServer<CCDeviceService>>()

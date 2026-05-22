@@ -73,6 +73,40 @@ export default {
     headerActions: {
         class: ['flex items-center'],
     },
+    pcCloseButton: {
+        root: {
+            class: [
+                'relative',
+
+                // Flexbox and Alignment
+                'flex items-center justify-center',
+
+                // Size and Spacing
+                'w-8 h-8',
+
+                // Shape
+                'border-0',
+                'rounded-full',
+
+                // Colors
+                'text-text-color-secondary',
+                'bg-transparent',
+
+                // Transitions
+                'transition duration-200 ease-in-out',
+
+                // States
+                'hover:text-text-color',
+                'hover:bg-surface-hover',
+                // No focus ring: the close button is auto-focused on
+                // dialog open and the browser default outline is loud.
+                'focus:outline-none',
+
+                // Misc
+                'overflow-hidden',
+            ],
+        },
+    },
     content: ({ state, instance }) => ({
         class: [
             // Spacing

@@ -706,7 +706,6 @@ export default {
             noControlChain: 'No se encontró cadena de control para este canal.',
             controlFlow: 'Flujo de Control',
             backToOverview: 'Volver a la vista de controles',
-            viewControlFlow: 'Ver flujo de control',
             switchProfile: 'Cambiar perfil',
             switchTempSource: 'Cambiar fuente de temperatura',
             switchFunction: 'Cambiar función',
@@ -1165,6 +1164,120 @@ export default {
             saveError: 'Error al guardar los ajustes de la extensión del canal',
             firmwareControlDisabled:
                 'El control por firmware no está disponible con la configuración actual.\nUse un Perfil de gráfico para este dispositivo con un sensor de temperatura interno compatible.',
+            calibration: {
+                heading: 'Calibración de RPM',
+                description:
+                    'Recorra el ventilador para obtener su curva real de ciclo de trabajo a RPM y, a continuación, controle el canal como ciclo de trabajo real normalizado por RPM.\nElimina zonas muertas a ciclo bajo y la saturación a ciclo alto.\nEl impulso de arranque también se gestiona automáticamente cuando el ventilador está calibrado: un breve refuerzo inicial lo pone en marcha desde reposo antes de estabilizarlo en el ciclo objetivo.\nEl barrido suele tardar varios minutos y puede ser notablemente más largo en ventiladores de respuesta lenta. El canal se ajusta a 0 % al inicio.',
+                statusNotCalibrated: 'Sin calibrar',
+                statusInProgress: 'Calibrando: {stage} ({percent} %)',
+                statusCompleted: 'Calibrado (curva continua, mapeo activo)',
+                statusCompletedStepped: 'Calibrado (curva escalonada, mapeo desactivado)',
+                statusCompletedWithWarnings: 'Calibrado con advertencias: {messages}',
+                statusFailed: 'El último intento falló: {message}',
+                warningNoTachometer:
+                    'no se detectaron RPM (el sensor o el cableado pueden estar desconectados)',
+                warningNotControllable:
+                    'el ventilador no responde al ciclo de trabajo (probablemente controlado por la BIOS)',
+                warningLimitedRange:
+                    'rango de RPM limitado ({span} RPM); la resolución del mapeo es gruesa',
+                warningOscillating:
+                    'el ventilador oscila entre {lower} % y {upper} % de ciclo (impulso controlado por firmware); mapeo desactivado a ciclo bajo',
+                stagePreflight: 'previo',
+                stageUpSweep: 'barrido ascendente',
+                stageDownSweep: 'barrido descendente',
+                stageFinalizing: 'finalizando',
+                buttonCalibrate: 'Calibrar',
+                buttonRecalibrate: 'Recalibrar',
+                buttonCancel: 'Cancelar',
+                buttonClear: 'Borrar',
+                buttonViewCurve: 'Ver curva',
+                caveatsBanner:
+                    'Calibrar varios ventiladores de refrigeración principales a la vez puede aumentar la temperatura del sistema.\nLos ventiladores push-pull de un radiador diagnosticados en paralelo pueden generar lecturas inexactas.\nMantenga el sistema inactivo durante la calibración.',
+                completedNotice:
+                    'Calibración activa. Las curvas de ventilador y los ciclos manuales de este canal ahora controlan el ciclo de trabajo real normalizado por RPM. Revise los valores de su perfil si es necesario.',
+                clearedNotice:
+                    'Borrado. Las curvas de ventilador de este canal ahora controlan directamente el ciclo de trabajo del dispositivo.',
+                startError: 'No se pudo iniciar la calibración',
+                cancelError: 'No se pudo cancelar la calibración',
+                clearError: 'No se pudo borrar la calibración',
+                reloadHeader: 'Recargar interfaz',
+                reloadAccept: 'Recargar',
+                reloadReject: 'Más tarde',
+                reload_rpm_only_completed_single:
+                    'Calibración completada para {channelName}. Recargue la interfaz para mostrar el gráfico de ciclo del canal.',
+                reload_rpm_only_completed_multi:
+                    'Calibración completada para {channelList}. Recargue la interfaz para mostrar el gráfico de ciclo de cada canal.',
+                reload_rpm_only_cleared_single:
+                    'Calibración borrada para {channelName}. Recargue la interfaz para eliminar el gráfico de ciclo del canal, ahora obsoleto.',
+                reload_rpm_only_cleared_multi:
+                    'Calibración borrada para {channelList}. Recargue la interfaz para eliminar el gráfico de ciclo de cada canal, ahora obsoleto.',
+                reload_duty_range_completed_single:
+                    'Calibración completada para {channelName}. Recargue la interfaz para que el control manual de ciclo y el asistente de control del ventilador adopten el nuevo rango de ciclo del canal.',
+                reload_duty_range_completed_multi:
+                    'Calibración completada para {channelList}. Recargue la interfaz para que el control manual de ciclo y el asistente de control del ventilador adopten el nuevo rango de ciclo de cada canal.',
+                reload_duty_range_cleared_single:
+                    'Calibración borrada para {channelName}. Recargue la interfaz para que el control manual de ciclo vuelva a los límites de hardware del canal.',
+                reload_duty_range_cleared_multi:
+                    'Calibración borrada para {channelList}. Recargue la interfaz para que el control manual de ciclo vuelva a los límites de hardware de cada canal.',
+                reload_mixed_multi:
+                    'Calibración modificada para {channelList}. Recargue la interfaz para que cada canal adopte la nueva visualización de ciclo y los límites del control.',
+            },
+        },
+        calibrationCurve: {
+            dialogTitle: 'Curva de calibración',
+            loading: 'Cargando calibración...',
+            notFound: 'No se encontraron datos de calibración para este canal.',
+            loadError: 'No se pudieron cargar los datos de calibración.',
+            axisDuty: 'Ciclo',
+            axisRpm: 'RPM',
+            legendUp: 'Barrido ascendente',
+            legendDown: 'Barrido descendente',
+            markerStart: 'Inicio',
+            markerSustain: 'Sostenimiento',
+            markerSaturate: 'Cerca del plateau',
+            markerStable: 'Piso estable',
+            curveKindSmooth: 'Continua (mapeo activo)',
+            curveKindStepped: 'Escalonada (mapeo desactivado)',
+            fieldCurveKind: 'Curva',
+            fieldCurveKindTooltip:
+                'Cómo responde el canal a los cambios de ciclo.\nLos ventiladores continuos tienen una curva ciclo-a-RPM continua, por lo que el dispatcher mapea el ciclo objetivo a través de la calibración. Los ventiladores escalonados tienen plataformas de RPM discretas, por lo que los ciclos pasan sin modificación.',
+            fieldRpmMax: 'RPM máximas',
+            fieldRpmMaxTooltip:
+                'RPM máximas observadas durante el barrido.\nSe usa como referencia de 100% al traducir un ciclo objetivo a su valor real normalizado por RPM.',
+            fieldKick: 'Duración del impulso',
+            fieldKickTooltip:
+                'Cuánto tiempo el dispatcher mantiene el ciclo de impulso antes de bajar al sostenimiento en un arranque en frío.\nMedido escribiendo el ciclo de impulso de peor caso (con boost) del dispatcher desde reposo y esperando hasta que las RPM se asienten en una ventana estable.',
+            fieldStart: 'Ciclo mínimo de arranque',
+            fieldStartTooltip:
+                'Ciclo más bajo que arranca el ventilador de forma fiable desde detenido.\nPor debajo, el ventilador puede no comenzar a girar aunque seguiría girando si ya estuviera en marcha.',
+            fieldSustain: 'Ciclo mínimo de sostenimiento',
+            fieldSustainTooltip:
+                'Ciclo más bajo en el que el ventilador sigue girando una vez arrancado.\nEl dispatcher no bajará el ciclo en marcha por debajo de este valor, salvo que el canal se envíe a 0.',
+            fieldStable: 'Ciclo mínimo estable',
+            fieldStableTooltip:
+                'Ciclo más bajo en el que el ventilador funciona sin oscilación.\nLos ventiladores controlados por firmware elevan las RPM por encima de un piso interno a ciclo bajo, generando un aleteo audible; el dispatcher limita el sostenimiento posterior al impulso a este valor para que el ventilador permanezca por encima de la banda.',
+            fieldSaturate: 'Ciclo cerca del plateau',
+            fieldSaturateTooltip:
+                'Ciclo a partir del cual las ganancias de RPM comienzan a disminuir.\nEl ventilador puede seguir añadiendo algunas RPM más allá de este ciclo hasta el 100 %, por lo que la calibración utiliza todo el rango de 0 a 100 %.',
+            fieldTimestamp: 'Calibrado',
+            overridesHeading: 'Sobrescrituras',
+            fieldKickBoostOverride: 'Boost de impulso',
+            fieldKickBoostOverrideTooltip:
+                'Fuerza la activación o desactivación del boost de impulso de arranque en frío para este canal, o deja que el daemon decida según la heurística de la curva ascendente.\nEl boost eleva brevemente el ciclo de impulso por encima del sostenimiento para empujar al ventilador más allá de su umbral de inercia.',
+            kickBoostAuto: 'Auto',
+            kickBoostOn: 'Forzar activado',
+            kickBoostOff: 'Forzar desactivado',
+            fieldKickDurationOverride: 'Sobrescritura de la duración del impulso',
+            fieldKickDurationOverrideTooltip:
+                'Sobrescribe la duración del impulso calibrada. Deja vacío para usar el valor medido.\nAlarga cuando el ventilador necesita más tiempo en el ciclo de impulso para estabilizarse antes de que tome el relevo el sostenimiento.',
+            kickDurationDefault: 'predeterminado',
+            kickDurationReset: 'Restablecer al predeterminado',
+            kickBoostCurrentlyOn: 'actualmente activado',
+            kickBoostCurrentlyOff: 'actualmente desactivado',
+            fieldWalkAfterKick: 'Descenso gradual tras el impulso',
+            fieldWalkAfterKickTooltip:
+                'Tras la ventana de impulso, reduce el ciclo de trabajo hacia el sostenimiento en pequeños incrementos. Protege los ventiladores cuyos controladores cortan la corriente ante una caída brusca.\nDesactivar para saltar directamente del impulso al sostenimiento. Seguro en la mayoría de los ventiladores PWM modernos y elimina la rampa descendente visible tras cada arranque en frío.',
+            overridesSaveFailed: 'Error al guardar las sobrescrituras de calibración',
         },
         deviceExtensionSettings: {
             title: 'Configuración Avanzada del Dispositivo',

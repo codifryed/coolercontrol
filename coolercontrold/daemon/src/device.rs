@@ -17,6 +17,7 @@
  */
 
 use std::fmt::Debug;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::{
     collections::{HashMap, VecDeque},
@@ -50,6 +51,15 @@ pub type RPM = u32;
 pub type Mhz = u32;
 pub type Watts = f64;
 
+/// Post-push hook invoked inside `Device::set_status` while the
+/// `status_history` `Arc` is being mutated. Lets a single consumer
+/// (today: the calibration true-duty rewrite) piggyback on the
+/// existing `Arc::make_mut` instead of taking a second pass that
+/// would deep-clone the history whenever any reader holds a clone.
+pub trait StatusAugmenter {
+    fn augment(&self, status: &mut Status, device_uid: &DeviceUID);
+}
+
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Device {
     pub name: DeviceName,
@@ -76,6 +86,11 @@ pub struct Device {
 
     /// General Device information
     pub info: DeviceInfo,
+
+    /// Optional post-push hook run inside `set_status`. See [`StatusAugmenter`].
+    #[serde(skip)]
+    #[schemars(skip)]
+    status_augmenter: Option<Rc<dyn StatusAugmenter>>,
 }
 
 impl PartialEq for Device {
@@ -127,7 +142,17 @@ impl Device {
             status_history,
             lc_info,
             info,
+            status_augmenter: None,
         }
+    }
+
+    /// Install a post-push hook. The hook fires on every `set_status`
+    /// inside the same `Arc::make_mut` that grows the history, so it
+    /// piggybacks for free instead of forcing a second deep clone
+    /// when a reader (REST `GET /status`, gRPC) holds a clone of the
+    /// `Arc`. Calling twice replaces the prior hook.
+    pub fn set_status_augmenter(&mut self, augmenter: Rc<dyn StatusAugmenter>) {
+        self.status_augmenter = Some(augmenter);
     }
 
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -211,8 +236,11 @@ impl Device {
 
     /// Adds a new status to a history list and removes the oldest status.
     /// This should be used every time a new status is to be added.
-    /// Uses `Arc::make_mut` for copy-on-write semantics - only clones if there
-    /// are other references to the history.
+    /// Uses `Arc::make_mut` for copy-on-write semantics: only clones if
+    /// there are other references to the history. The installed
+    /// `StatusAugmenter` (if any) runs on the just-pushed entry inside
+    /// the same mutable borrow, so the calibration rewrite incurs no
+    /// extra deep clone when a reader holds an `Arc` clone.
     ///
     /// Arguments:
     ///
@@ -221,6 +249,11 @@ impl Device {
         let history = Arc::make_mut(&mut self.status_history);
         history.pop_front();
         history.push_back(status);
+        if let Some(augmenter) = self.status_augmenter.as_ref() {
+            if let Some(latest) = history.back_mut() {
+                augmenter.augment(latest, &self.uid);
+            }
+        }
     }
 }
 

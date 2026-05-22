@@ -160,8 +160,15 @@ or `coolercontrol/` (Qt C++).
 - When a function has a callback or helper, prefix it: `poll_sensors` / `poll_sensors_inner`.
 - **Infuse names with meaning.** `channel_uid: UID` tells the reader what kind of value it is.
   `val: u32` does not.
-- Order struct fields: data fields first, then type aliases, then `impl` methods. Put `pub fn new`
-  first in `impl` blocks.
+- Order struct fields: data fields first, then type aliases, then `impl` methods.
+
+### Function Ordering
+
+- **`pub fn new` first.** When a struct has a constructor, it leads the `impl` block.
+- **Then core logic and hot paths.** Functions central to the type's purpose, and anything on the
+  data plane or per-tick path, sit above seldom-used helpers.
+- **Auxiliary functions at the bottom.** Cluster infrequent setters, debug helpers, and rarely-used
+  API methods at the bottom of the `impl`.
 
 ### Comments and Commits
 
@@ -219,6 +226,24 @@ or `coolercontrol/` (Qt C++).
 
 - **Async boundary hygiene:** Keep `async fn` at the API/repository layer. Pure computation and
   hardware math should be synchronous. Do not make a function `async` just because its caller is.
+- **Prefer `moro_local::Scope::spawn` over `tokio::task::spawn_local` when a scope reference is
+  available _and_ the spawn site is not itself inside an already-spawned task on that scope.**
+  `tokio::task::spawn_local` requires the spawned future to be `'static`, which forces `Rc::clone`
+  on every captured value. `moro_local::Scope::spawn` only requires the future to outlive the scope,
+  so spawned tasks can borrow `&Rc<T>` instead of cloning. The main loop carries a
+  `&'s Scope<'s, 's, Result<()>>` through `engine.process_scheduled_speeds`,
+  `commander.update_speeds`, `fire_preloads`, `fire_lcd_update`, and similar paths. Use the scope
+  for top-level spawn sites (a sync function called from the scope's body before any await point)
+  like those listed above.
+- **Nested-spawn caveat (moro_local 0.4.0):** `Scope::poll_jobs` holds `RefCell::borrow_mut()` on
+  its `futures` field for the entire duration of `FuturesUnordered::poll_next`. Any task being
+  polled in that scope that calls `scope.spawn` on the **same** scope panics with
+  `RefCell already borrowed`. Creating a fresh `async_scope!` inside the polled task does not fix
+  this, because awaiting the new scope blocks the caller; and nesting two scopes (sibling or
+  parent/child) doesn't fix it because the outer scope's `borrow_mut` is still held while the inner
+  scope's tasks are polled. For spawn sites that live **inside** a future that is itself spawned on
+  the main-loop scope (e.g. `calibration::dispatch`'s deferred sustain task), use
+  `tokio::task::spawn_local` with the necessary `Rc::clone`. Document the clone where it lands.
 - **Actor pattern (`src/api/actor/`):** Messages passed through channels must have bounded queues.
   Document the expected queue depth and what happens when it fills.
 - **Repository pattern (`src/repositories/`):** Each repository wraps a hardware access layer.
