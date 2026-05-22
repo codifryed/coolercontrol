@@ -83,9 +83,6 @@ impl FanState {
     }
 }
 
-/// Map of channel state, protected by a `RefCell` for single-threaded
-/// async access. The single-threaded runtime guarantees no concurrent
-/// borrow can occur as long as we keep mutations between yield points.
 pub struct FanStateMap {
     inner: RefCell<HashMap<ChannelKey, ChannelEntry>>,
 }

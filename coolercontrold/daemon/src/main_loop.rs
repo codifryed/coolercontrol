@@ -222,9 +222,6 @@ async fn fire_snapshots_and_processes<'s>(
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     // snapshots for all devices should be done at the same time. (this is very fast)
-    // Each repo's `update_statuses` calls `Device::set_status`, whose installed
-    // `StatusAugmenter` rewrites duty into true-duty space on the just-pushed
-    // entry inside the same `Arc::make_mut`. No separate pass is needed.
     for repo in repos.iter() {
         if let Err(err) = repo.update_statuses().await {
             error!("Error trying to update status: {err}");

@@ -16,15 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! API actor + polling DTOs for the calibration subsystem.
-//!
-//! Unlike features that broadcast push events via SSE, calibration
-//! uses a poll-based UI: the engine maintains a per-channel
-//! `CalibrationStatus` map updated as the sweep progresses, and the
-//! UI polls `GET .../calibration/status` while a diagnosis is in
-//! flight. Choosing polling here avoids burning one of the browser's
-//! limited SSE connection slots on a low-frequency operation.
-
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::calibration::CalibrationView;
 use crate::calibration::{

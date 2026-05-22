@@ -16,18 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! REST handlers for the per-channel calibration lifecycle.
-//!
-//! - `POST /devices/{uid}/{channel}/calibration/start`  -> 202 Accepted
-//! - `POST /devices/{uid}/{channel}/calibration/cancel` -> 200 OK
-//! - `GET  /devices/{uid}/{channel}/calibration`        -> 200 + Calibration JSON, or 404
-//! - `DELETE /devices/{uid}/{channel}/calibration`      -> 200 OK; clears data
-//! - `GET  /calibrations`                               -> 200 + every persisted Calibration
-//!
-//! Progress and final-result events stream through SSE; see
-//! `crate::api::sse::calibration` for the event stream and
-//! `CalibrationEvent` for the JSON schema.
-
 use crate::api::actor::CalibrationStatus;
 use crate::api::devices::DeviceChannelPath;
 use crate::api::{AppState, CCError};
