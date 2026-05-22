@@ -54,6 +54,27 @@ pub enum StressBackend {
     StressNg,
 }
 
+/// Which stress test the watchdog timer is associated with.
+/// Internal to the actor; never crosses the API boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StressKind {
+    Cpu,
+    Gpu,
+    Ram,
+    Drive,
+}
+
+impl StressKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU",
+            Self::Gpu => "GPU",
+            Self::Ram => "RAM",
+            Self::Drive => "Drive",
+        }
+    }
+}
+
 impl std::fmt::Display for StressBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -71,6 +92,10 @@ struct StressNgCaps {
 
 struct StressTestActor {
     receiver: mpsc::Receiver<StressTestMessage>,
+    /// Clone handed to each watchdog task so it can self-message on expiry.
+    /// The actor then owns the `Child` handle and can safely check-and-kill
+    /// without racing on a recycled PID.
+    sender: mpsc::Sender<StressTestMessage>,
     stress_ng: StressNgCaps,
     cpu_child: Option<Child>,
     cpu_duration_secs: Option<u16>,
@@ -132,6 +157,10 @@ enum StressTestMessage {
     Status {
         respond_to: oneshot::Sender<StressTestStatus>,
     },
+    /// Internal message: a watchdog timer expired. The actor decides whether
+    /// to force-kill (child still running) or just clean up state (child
+    /// already exited within the grace window).
+    WatchdogFired { kind: StressKind },
 }
 
 #[derive(Debug, Clone)]
@@ -153,9 +182,14 @@ pub struct StressTestStatus {
 }
 
 impl StressTestActor {
-    fn new(receiver: mpsc::Receiver<StressTestMessage>, stress_ng: StressNgCaps) -> Self {
+    fn new(
+        receiver: mpsc::Receiver<StressTestMessage>,
+        sender: mpsc::Sender<StressTestMessage>,
+        stress_ng: StressNgCaps,
+    ) -> Self {
         Self {
             receiver,
+            sender,
             stress_ng,
             cpu_child: None,
             cpu_duration_secs: None,
@@ -190,14 +224,18 @@ impl StressTestActor {
         }
     }
 
-    /// Spawn a watchdog task that force-kills the child PID if it overruns
-    /// `duration_secs + WATCHDOG_GRACE_SECS`. Returns the cancellation token
-    /// the actor must cancel when the child exits or is stopped explicitly,
-    /// to avoid sending SIGKILL to a recycled PID.
+    /// Spawn a watchdog task that, on expiry, sends a `WatchdogFired` message
+    /// back to the actor. The actor then owns the `Child` and decides whether
+    /// to force-kill (still running) or just clean up (already exited within
+    /// the grace window).
+    ///
+    /// Returns the cancellation token to be cancelled when the child exits
+    /// or is stopped explicitly, so we do not message a no-op back to the
+    /// actor after the fact.
     fn spawn_watchdog(
-        child_pid: u32,
+        sender: mpsc::Sender<StressTestMessage>,
+        kind: StressKind,
         duration_secs: u16,
-        label: &'static str,
     ) -> CancellationToken {
         let token = CancellationToken::new();
         let token_clone = token.clone();
@@ -207,20 +245,58 @@ impl StressTestActor {
             tokio::select! {
                 () = token_clone.cancelled() => {} // child exited normally or stop_*
                 () = tokio::time::sleep(total) => {
-                    warn!(
-                        "{label} stress test exceeded timeout + grace; \
-                         force-killing PID {child_pid}"
-                    );
-                    // Truncation impossible: PIDs are well within i32 range on Linux.
-                    #[allow(clippy::cast_possible_wrap)]
-                    let _ = nix::sys::signal::kill(
-                        nix::unistd::Pid::from_raw(child_pid as i32),
-                        nix::sys::signal::Signal::SIGKILL,
-                    );
+                    // Hand off to the actor. Using the Child handle avoids
+                    // the PID-recycling race a blind kill-by-PID would have.
+                    let _ = sender.send(StressTestMessage::WatchdogFired { kind }).await;
                 }
             }
         });
         token
+    }
+
+    /// Handle a watchdog timer expiry. If the child is still running, kill
+    /// it via the owned `Child` handle and warn. If it already exited within
+    /// the grace window, log at debug and clean up state silently.
+    async fn handle_watchdog_fired(&mut self, kind: StressKind) {
+        let label = kind.label();
+        let (child, duration, backend, watchdog) = match kind {
+            StressKind::Cpu => (
+                &mut self.cpu_child,
+                &mut self.cpu_duration_secs,
+                &mut self.cpu_backend,
+                &mut self.cpu_watchdog,
+            ),
+            StressKind::Gpu => (
+                &mut self.gpu_child,
+                &mut self.gpu_duration_secs,
+                &mut self.gpu_backend,
+                &mut self.gpu_watchdog,
+            ),
+            StressKind::Ram => (
+                &mut self.ram_child,
+                &mut self.ram_duration_secs,
+                &mut self.ram_backend,
+                &mut self.ram_watchdog,
+            ),
+            StressKind::Drive => (
+                &mut self.drive_child,
+                &mut self.drive_duration_secs,
+                &mut self.drive_backend,
+                &mut self.drive_watchdog,
+            ),
+        };
+        // The token already fired; clear it either way so we do not leak.
+        *watchdog = None;
+        let Some(c) = child.as_mut() else { return };
+        if let Ok(Some(_)) = c.try_wait() {
+            debug!("{label} stress test exited within grace window");
+        } else {
+            warn!("{label} stress test exceeded timeout + grace; force-killing");
+            Self::kill_and_reap(c, label).await;
+        }
+        *child = None;
+        *duration = None;
+        *backend = None;
     }
 
     /// SIGKILL the child and reap it with a bounded wait.
@@ -333,9 +409,11 @@ impl StressTestActor {
         );
         Self::check_early_exit(&mut child, "CPU").await?;
 
-        self.cpu_watchdog = child
-            .id()
-            .map(|pid| Self::spawn_watchdog(pid, duration_secs, "CPU"));
+        self.cpu_watchdog = Some(Self::spawn_watchdog(
+            self.sender.clone(),
+            StressKind::Cpu,
+            duration_secs,
+        ));
         self.cpu_child = Some(child);
         self.cpu_duration_secs = Some(duration_secs);
         self.cpu_backend = Some(resolved);
@@ -428,9 +506,11 @@ impl StressTestActor {
             return Err(e);
         }
 
-        self.gpu_watchdog = child
-            .id()
-            .map(|pid| Self::spawn_watchdog(pid, duration_secs, "GPU"));
+        self.gpu_watchdog = Some(Self::spawn_watchdog(
+            self.sender.clone(),
+            StressKind::Gpu,
+            duration_secs,
+        ));
         self.gpu_child = Some(child);
         self.gpu_duration_secs = Some(duration_secs);
         self.gpu_backend = Some(resolved);
@@ -495,9 +575,11 @@ impl StressTestActor {
         let mut child = self.spawn_ram(resolved, duration_secs, alloc_bytes)?;
         Self::check_early_exit(&mut child, "RAM").await?;
 
-        self.ram_watchdog = child
-            .id()
-            .map(|pid| Self::spawn_watchdog(pid, duration_secs, "RAM"));
+        self.ram_watchdog = Some(Self::spawn_watchdog(
+            self.sender.clone(),
+            StressKind::Ram,
+            duration_secs,
+        ));
         self.ram_child = Some(child);
         self.ram_duration_secs = Some(duration_secs);
         self.ram_backend = Some(resolved);
@@ -596,9 +678,11 @@ impl StressTestActor {
         let mut child = self.spawn_drive(resolved, &device_path, thread_count, duration_secs)?;
         Self::check_early_exit(&mut child, "Drive").await?;
 
-        self.drive_watchdog = child
-            .id()
-            .map(|pid| Self::spawn_watchdog(pid, duration_secs, "Drive"));
+        self.drive_watchdog = Some(Self::spawn_watchdog(
+            self.sender.clone(),
+            StressKind::Drive,
+            duration_secs,
+        ));
         self.drive_child = Some(child);
         self.drive_duration_secs = Some(duration_secs);
         self.drive_backend = Some(resolved);
@@ -838,6 +922,9 @@ impl ApiActor<StressTestMessage> for StressTestActor {
             StressTestMessage::Status { respond_to } => {
                 let _ = respond_to.send(self.status());
             }
+            StressTestMessage::WatchdogFired { kind } => {
+                self.handle_watchdog_fired(kind).await;
+            }
         }
     }
 }
@@ -932,11 +1019,11 @@ impl StressTestHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let stress_ng = detect_stress_ng().await;
-        // Depth 1: callers await the oneshot response, so at most one message
-        // is in flight per caller. Backpressure is handled by the sender
-        // awaiting channel capacity.
-        let (sender, receiver) = mpsc::channel(1);
-        let actor = StressTestActor::new(receiver, stress_ng);
+        // Depth 2: callers await the oneshot response (at most one user
+        // message in flight per caller), but a watchdog may self-message
+        // independently. Both are processed serially by the actor.
+        let (sender, receiver) = mpsc::channel(2);
+        let actor = StressTestActor::new(receiver, sender.clone(), stress_ng);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }
@@ -1099,6 +1186,17 @@ mod tests {
         // Display format is consumed by log lines; pin both spellings.
         assert_eq!(StressBackend::BuiltIn.to_string(), "built-in");
         assert_eq!(StressBackend::StressNg.to_string(), "stress-ng");
+    }
+
+    #[test]
+    fn stress_kind_labels_match_log_lines() {
+        // The watchdog routes by kind; the label is consumed by user-visible
+        // warn/debug log lines and must match the spelling used elsewhere in
+        // this module (info!("CPU stress subprocess..."), etc.). Pin them.
+        assert_eq!(StressKind::Cpu.label(), "CPU");
+        assert_eq!(StressKind::Gpu.label(), "GPU");
+        assert_eq!(StressKind::Ram.label(), "RAM");
+        assert_eq!(StressKind::Drive.label(), "Drive");
     }
 
     #[test]
