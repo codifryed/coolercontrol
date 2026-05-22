@@ -67,60 +67,6 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
 pub type DutyWritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
 
-/// Render a `CalibrationWarning` into a short, user-facing sentence.
-/// Used by the SSE notification body so the desktop alert tells the
-/// user what was off about their fan. The popover renders its own
-/// localized version of the same information.
-fn describe_warning(warning: &crate::calibration::CalibrationWarning) -> String {
-    match warning {
-        crate::calibration::CalibrationWarning::NoTachometer => {
-            "no RPM detected (sensor or wiring may be disconnected)".to_string()
-        }
-        crate::calibration::CalibrationWarning::NotControllable => {
-            "fan does not respond to duty changes (likely BIOS-controlled)".to_string()
-        }
-        crate::calibration::CalibrationWarning::LimitedRange { rpm_span, .. } => {
-            format!("limited RPM range ({rpm_span} RPM); mapping resolution is coarse")
-        }
-        crate::calibration::CalibrationWarning::Oscillating {
-            lower_duty,
-            upper_duty,
-        } => {
-            format!(
-                "fan oscillates between {lower_duty}% and {upper_duty}% duty (firmware-controlled \
-                 kick-in); mapping disabled at low duty"
-            )
-        }
-    }
-}
-
-/// Render a `DiagnosisFailure` into a short, user-facing reason.
-/// Used by the notification body, so kept compact (no nested types).
-fn describe_failure(failure: &DiagnosisFailure) -> String {
-    match failure {
-        DiagnosisFailure::PreflightTempTooHigh { observed, limit } => {
-            format!("pre-flight blocked (system temp {observed:.1} C >= {limit:.1} C limit)")
-        }
-        DiagnosisFailure::TempAbortedAt { observed, limit } => {
-            format!("aborted: temp reached {observed:.1} C (limit {limit:.1} C)")
-        }
-        DiagnosisFailure::Cancelled => "cancelled".to_string(),
-        DiagnosisFailure::WriteFailed(msg) => format!("write failed: {msg}"),
-        DiagnosisFailure::RestoreFailed(msg) => format!("restore failed: {msg}"),
-        DiagnosisFailure::PersistFailed(msg) => format!("could not save calibration: {msg}"),
-    }
-}
-
-/// Build the per-device-type writer cache from an existing repos map.
-/// One `Rc<dyn DutyWriter>` per device type, reused for every write.
-fn build_duty_writers_by_type(repos_by_type: &ReposByType) -> DutyWritersByType {
-    let mut writers = HashMap::with_capacity(repos_by_type.len());
-    for (device_type, repo) in repos_by_type {
-        writers.insert(*device_type, RepoWriter::rc(Rc::clone(repo)));
-    }
-    writers
-}
-
 pub struct Engine {
     all_devices: AllDevices,
     repos: ReposByType,
@@ -432,9 +378,12 @@ impl Engine {
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
                 let device_type = device_lock.borrow().d_type;
-                let writer = self.duty_writers_by_type.get(&device_type).with_context(|| {
-                    format!("No calibration writer for device type {device_type:?}")
-                })?;
+                let writer = self
+                    .duty_writers_by_type
+                    .get(&device_type)
+                    .with_context(|| {
+                        format!("No calibration writer for device type {device_type:?}")
+                    })?;
                 calibration::dispatch(
                     &self.fan_state_map,
                     &self.calibration_store,
@@ -1858,6 +1807,60 @@ impl Engine {
         });
         Ok(enabled)
     }
+}
+
+/// Render a `CalibrationWarning` into a short, user-facing sentence.
+/// Used by the SSE notification body so the desktop alert tells the
+/// user what was off about their fan. The popover renders its own
+/// localized version of the same information.
+fn describe_warning(warning: &calibration::CalibrationWarning) -> String {
+    match warning {
+        calibration::CalibrationWarning::NoTachometer => {
+            "no RPM detected (sensor or wiring may be disconnected)".to_string()
+        }
+        calibration::CalibrationWarning::NotControllable => {
+            "fan does not respond to duty changes (likely BIOS-controlled)".to_string()
+        }
+        calibration::CalibrationWarning::LimitedRange { rpm_span, .. } => {
+            format!("limited RPM range ({rpm_span} RPM); mapping resolution is coarse")
+        }
+        calibration::CalibrationWarning::Oscillating {
+            lower_duty,
+            upper_duty,
+        } => {
+            format!(
+                "fan oscillates between {lower_duty}% and {upper_duty}% duty (firmware-controlled \
+                 kick-in); mapping disabled at low duty"
+            )
+        }
+    }
+}
+
+/// Render a `DiagnosisFailure` into a short, user-facing reason.
+/// Used by the notification body, so kept compact (no nested types).
+fn describe_failure(failure: &DiagnosisFailure) -> String {
+    match failure {
+        DiagnosisFailure::PreflightTempTooHigh { observed, limit } => {
+            format!("pre-flight blocked (system temp {observed:.1} C >= {limit:.1} C limit)")
+        }
+        DiagnosisFailure::TempAbortedAt { observed, limit } => {
+            format!("aborted: temp reached {observed:.1} C (limit {limit:.1} C)")
+        }
+        DiagnosisFailure::Cancelled => "cancelled".to_string(),
+        DiagnosisFailure::WriteFailed(msg) => format!("write failed: {msg}"),
+        DiagnosisFailure::RestoreFailed(msg) => format!("restore failed: {msg}"),
+        DiagnosisFailure::PersistFailed(msg) => format!("could not save calibration: {msg}"),
+    }
+}
+
+/// Build the per-device-type writer cache from an existing repos map.
+/// One `Rc<dyn DutyWriter>` per device type, reused for every write.
+fn build_duty_writers_by_type(repos_by_type: &ReposByType) -> DutyWritersByType {
+    let mut writers = HashMap::with_capacity(repos_by_type.len());
+    for (device_type, repo) in repos_by_type {
+        writers.insert(*device_type, RepoWriter::rc(Rc::clone(repo)));
+    }
+    writers
 }
 
 #[async_trait::async_trait(?Send)]
