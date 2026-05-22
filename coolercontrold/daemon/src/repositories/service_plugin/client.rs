@@ -327,7 +327,7 @@ impl DeviceServiceClient {
                                     max_colors: safe_u8(mode.max_colors),
                                     speed_enabled: mode.speed_enabled,
                                     backward_enabled: mode.backward_enabled,
-                                    type_: LightingModeType::None,
+                                    type_: LightingModeType::Custom,
                                 })
                                 .collect();
                         }
