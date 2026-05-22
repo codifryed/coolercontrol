@@ -301,8 +301,8 @@ fn main() -> Result<()> {
             Rc::clone(&all_devices),
             &repos,
             Rc::clone(&config),
-            Rc::clone(&calibration_store),
-            Rc::clone(&fan_state_map),
+            calibration_store,
+            fan_state_map,
         ));
         let mode_controller = Rc::new(
             ModeController::init(
