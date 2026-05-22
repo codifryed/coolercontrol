@@ -50,7 +50,7 @@ use tokio_util::sync::CancellationToken;
 const CALIBRATION_ACTOR_QUEUE_DEPTH: usize = 16;
 
 /// Per-channel status of the latest calibration attempt. The UI polls
-/// `GET .../calibration/status` to drive its progress UI; the engine
+/// `GET /calibrations/.../status` to drive its progress UI; the engine
 /// rewrites this entry on every sweep step and once more on the final
 /// terminal transition. The `Completed` and `Failed` variants stick
 /// around until the next diagnosis on the same channel resets it back

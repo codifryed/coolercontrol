@@ -609,6 +609,16 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             ..Tag::default()
         })
         .tag(Tag {
+            name: "calibration".to_string(),
+            description: Some("Channel Calibration".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "detect".to_string(),
+            description: Some("Hardware Detection".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
             name: "sse".to_string(),
             description: Some("Server Side Events".to_string()),
             ..Tag::default()
@@ -621,6 +631,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         .tag(Tag {
             name: "stress-test".to_string(),
             description: Some("Stress Testing".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "metrics".to_string(),
+            description: Some("Prometheus Metrics".to_string()),
             ..Tag::default()
         })
 }

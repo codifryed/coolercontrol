@@ -1045,12 +1045,12 @@ fn calibration_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
-            "/devices/{device_uid}/{channel_name}/calibration/start",
+            "/calibrations/{device_uid}/channels/{channel_name}/start",
             post_with(calibration::start, |o| {
                 o.summary("Start a calibration diagnosis")
                     .description(
                         "Queues a calibration diagnosis on the channel and returns 202. \
-                         Poll GET .../calibration/status to track progress. \
+                         Poll GET .../status to track progress. \
                          Returns 409 when a diagnosis is already in flight for the channel.",
                     )
                     .tag("calibration")
@@ -1060,7 +1060,7 @@ fn calibration_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
-            "/devices/{device_uid}/{channel_name}/calibration/cancel",
+            "/calibrations/{device_uid}/channels/{channel_name}/cancel",
             post_with(calibration::cancel, |o| {
                 o.summary("Cancel an in-flight calibration")
                     .description(
@@ -1074,7 +1074,7 @@ fn calibration_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
-            "/devices/{device_uid}/{channel_name}/calibration/status",
+            "/calibrations/{device_uid}/channels/{channel_name}/status",
             get_with(calibration::status, |o| {
                 o.summary("Get the calibration status")
                     .description(
@@ -1090,7 +1090,7 @@ fn calibration_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
-            "/devices/{device_uid}/{channel_name}/calibration",
+            "/calibrations/{device_uid}/channels/{channel_name}",
             get_with(calibration::get, |o| {
                 o.summary("Get the stored calibration")
                     .description("Returns the persisted calibration JSON, or 404 if none.")
@@ -1111,7 +1111,7 @@ fn calibration_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
-            "/devices/{device_uid}/{channel_name}/calibration/overrides",
+            "/calibrations/{device_uid}/channels/{channel_name}/overrides",
             patch_with(calibration::set_overrides, |o| {
                 o.summary("Set per-fan calibration overrides")
                     .description(

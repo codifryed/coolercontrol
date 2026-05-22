@@ -1670,7 +1670,7 @@ export default class DaemonClient {
     async startCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
         try {
             const response = await this.getClient().post(
-                `/devices/${deviceUID}/${channelName}/calibration/start`,
+                `/calibrations/${deviceUID}/channels/${channelName}/start`,
             )
             this.logDaemonResponse(response, 'Start Calibration')
             return true
@@ -1692,7 +1692,7 @@ export default class DaemonClient {
     async cancelCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
         try {
             const response = await this.getClient().post(
-                `/devices/${deviceUID}/${channelName}/calibration/cancel`,
+                `/calibrations/${deviceUID}/channels/${channelName}/cancel`,
             )
             this.logDaemonResponse(response, 'Cancel Calibration')
             return true
@@ -1732,7 +1732,7 @@ export default class DaemonClient {
     async getCalibration(deviceUID: UID, channelName: string): Promise<Calibration | undefined> {
         try {
             const response = await this.getClient().get(
-                `/devices/${deviceUID}/${channelName}/calibration`,
+                `/calibrations/${deviceUID}/channels/${channelName}`,
             )
             this.logDaemonResponse(response, 'Get Calibration')
             return response.data as Calibration
@@ -1753,7 +1753,7 @@ export default class DaemonClient {
     async deleteCalibration(deviceUID: UID, channelName: string): Promise<boolean | ErrorResponse> {
         try {
             const response = await this.getClient().delete(
-                `/devices/${deviceUID}/${channelName}/calibration`,
+                `/calibrations/${deviceUID}/channels/${channelName}`,
             )
             this.logDaemonResponse(response, 'Delete Calibration')
             return true
@@ -1789,7 +1789,7 @@ export default class DaemonClient {
     ): Promise<Calibration | undefined | ErrorResponse> {
         try {
             const response = await this.getClient().patch(
-                `/devices/${deviceUID}/${channelName}/calibration/overrides`,
+                `/calibrations/${deviceUID}/channels/${channelName}/overrides`,
                 body,
             )
             this.logDaemonResponse(response, 'Set Calibration Overrides')
@@ -1820,7 +1820,7 @@ export default class DaemonClient {
     ): Promise<CalibrationStatus | undefined> {
         try {
             const response = await this.getClient().get(
-                `/devices/${deviceUID}/${channelName}/calibration/status`,
+                `/calibrations/${deviceUID}/channels/${channelName}/status`,
             )
             this.logDaemonResponse(response, 'Get Calibration Status')
             return response.data as CalibrationStatus

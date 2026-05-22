@@ -23,7 +23,7 @@
  * store owns:
  *
  * - A reactive Map of channel-key -> `CalibrationStatus`, updated by
- *   periodic polls of `GET .../calibration/status`.
+ *   periodic polls of `GET /calibrations/.../status`.
  * - A non-reactive Map of channel-key -> `setInterval` handle so the
  *   poller can be torn down on terminal status transitions or store
  *   reset.

@@ -136,7 +136,7 @@ pub struct Engine {
     /// Per-channel snapshot of the most recent calibration progress
     /// or terminal outcome. The diagnoser updates this on every sweep
     /// step and once more on completion / failure. The UI polls via
-    /// `GET .../calibration/status`. Sticky until the next diagnosis
+    /// `GET /calibrations/.../status`. Sticky until the next diagnosis
     /// starts on the same channel.
     calibration_statuses: RefCell<HashMap<ChannelKey, CalibrationStatus>>,
     /// Optional handle for broadcasting `DesktopNotification`s via the
