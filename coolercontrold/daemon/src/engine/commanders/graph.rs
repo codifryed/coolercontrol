@@ -24,7 +24,7 @@ use std::rc::Rc;
 use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
-use crate::engine::main::WritersByType;
+use crate::engine::main::DutyWritersByType;
 use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPostProcessor, FunctionStandardPreProcessor,
@@ -56,7 +56,7 @@ struct ProcessorCollection {
 /// or profile speed settings for devices that only support fixed speeds.
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
-    writers_by_type: WritersByType,
+    duty_writers_by_type: DutyWritersByType,
     scheduled_settings:
         RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
     config: Rc<Config>,
@@ -71,13 +71,13 @@ pub struct GraphProfileCommander {
 impl GraphProfileCommander {
     pub fn new(
         all_devices: AllDevices,
-        writers_by_type: WritersByType,
+        duty_writers_by_type: DutyWritersByType,
         config: Rc<Config>,
         calibration_store: Rc<CalibrationStore>,
         fan_state_map: Rc<FanStateMap>,
     ) -> Self {
         Self {
-            writers_by_type,
+            duty_writers_by_type,
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
             processors: {
@@ -263,7 +263,7 @@ impl GraphProfileCommander {
     /// which applies the per-channel true-duty mapping (and kick-then-settle
     /// orchestration) for calibrated smooth channels and passes through
     /// uncalibrated channels unchanged. The writer is looked up from the
-    /// pre-built `writers_by_type` cache so the hot path has no clones or
+    /// pre-built `duty_writers_by_type` cache so the hot path has no clones or
     /// allocations.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
@@ -275,7 +275,7 @@ impl GraphProfileCommander {
             "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
             channel: {channel_name}; DUTY: {duty_to_set}"
         );
-        if let Some(writer) = self.writers_by_type.get(&device_type) {
+        if let Some(writer) = self.duty_writers_by_type.get(&device_type) {
             if let Err(err) = calibration::dispatch(
                 &self.fan_state_map,
                 &self.calibration_store,

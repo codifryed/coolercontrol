@@ -65,7 +65,7 @@ pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 /// Per-device-type cache of the calibration dispatch writer. Built
 /// once at engine construction and reused on every fan-write so the
 /// hot path is a single `HashMap` lookup with no allocation or cloning.
-pub type WritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
+pub type DutyWritersByType = HashMap<DeviceType, Rc<dyn calibration::DutyWriter>>;
 
 /// Render a `CalibrationWarning` into a short, user-facing sentence.
 /// Used by the SSE notification body so the desktop alert tells the
@@ -113,7 +113,7 @@ fn describe_failure(failure: &DiagnosisFailure) -> String {
 
 /// Build the per-device-type writer cache from an existing repos map.
 /// One `Rc<dyn DutyWriter>` per device type, reused for every write.
-fn build_writers_by_type(repos_by_type: &ReposByType) -> WritersByType {
+fn build_duty_writers_by_type(repos_by_type: &ReposByType) -> DutyWritersByType {
     let mut writers = HashMap::with_capacity(repos_by_type.len());
     for (device_type, repo) in repos_by_type {
         writers.insert(*device_type, RepoWriter::rc(Rc::clone(repo)));
@@ -124,7 +124,7 @@ fn build_writers_by_type(repos_by_type: &ReposByType) -> WritersByType {
 pub struct Engine {
     all_devices: AllDevices,
     repos: ReposByType,
-    writers_by_type: WritersByType,
+    duty_writers_by_type: DutyWritersByType,
     config: Rc<Config>,
     graph_commander: Rc<GraphProfileCommander>,
     mix_commander: Rc<MixProfileCommander>,
@@ -171,10 +171,10 @@ impl Engine {
                 }
             };
         }
-        let writers_by_type = build_writers_by_type(&repos_by_type);
+        let duty_writers_by_type = build_duty_writers_by_type(&repos_by_type);
         let graph_commander = Rc::new(GraphProfileCommander::new(
             all_devices.clone(),
-            writers_by_type.clone(),
+            duty_writers_by_type.clone(),
             config.clone(),
             Rc::clone(&calibration_store),
             Rc::clone(&fan_state_map),
@@ -202,7 +202,7 @@ impl Engine {
         Engine {
             all_devices,
             repos: repos_by_type,
-            writers_by_type,
+            duty_writers_by_type,
             config,
             graph_commander,
             mix_commander,
@@ -432,7 +432,7 @@ impl Engine {
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
                 let device_type = device_lock.borrow().d_type;
-                let writer = self.writers_by_type.get(&device_type).with_context(|| {
+                let writer = self.duty_writers_by_type.get(&device_type).with_context(|| {
                     format!("No calibration writer for device type {device_type:?}")
                 })?;
                 calibration::dispatch(
