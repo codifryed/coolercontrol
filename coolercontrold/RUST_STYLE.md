@@ -160,8 +160,15 @@ or `coolercontrol/` (Qt C++).
 - When a function has a callback or helper, prefix it: `poll_sensors` / `poll_sensors_inner`.
 - **Infuse names with meaning.** `channel_uid: UID` tells the reader what kind of value it is.
   `val: u32` does not.
-- Order struct fields: data fields first, then type aliases, then `impl` methods. Put `pub fn new`
-  first in `impl` blocks.
+- Order struct fields: data fields first, then type aliases, then `impl` methods.
+
+### Function Ordering
+
+- **`pub fn new` first.** When a struct has a constructor, it leads the `impl` block.
+- **Then core logic and hot paths.** Functions central to the type's purpose, and anything on the
+  data plane or per-tick path, sit above seldom-used helpers.
+- **Auxiliary functions at the bottom.** Cluster infrequent setters, debug helpers, and rarely-used
+  API methods at the bottom of the `impl`.
 
 ### Comments and Commits
 
