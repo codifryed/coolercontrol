@@ -1038,7 +1038,10 @@ export default {
             current: '當前值',
             min: '最小值',
             max: '最大值',
+            range: '範圍',
             average: '平均值',
+            resetStats: '重置',
+            resetStatsTooltip: '重置所有通道的最小/最大/平均值',
         },
         modeTable: {
             setting: '設置',

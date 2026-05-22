@@ -1101,7 +1101,10 @@ export default {
             current: 'Atual',
             min: 'Mín',
             max: 'Máx',
+            range: 'Intervalo',
             average: 'Média',
+            resetStats: 'Redefinir',
+            resetStatsTooltip: 'Redefinir mín/máx/média para todos os canais',
         },
         modeTable: {
             setting: 'Configuração',

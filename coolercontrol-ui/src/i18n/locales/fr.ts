@@ -1103,7 +1103,10 @@ export default {
             current: 'Actuel',
             min: 'Min',
             max: 'Max',
+            range: 'Plage',
             average: 'Moyenne',
+            resetStats: 'Réinitialiser',
+            resetStatsTooltip: 'Réinitialiser min/max/moyenne pour tous les canaux',
         },
         modeTable: {
             setting: 'Paramètre',

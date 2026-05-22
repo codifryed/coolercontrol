@@ -1103,7 +1103,10 @@ export default {
             current: 'Aktuell',
             min: 'Min',
             max: 'Max',
+            range: 'Bereich',
             average: 'Durchschnitt',
+            resetStats: 'Zurücksetzen',
+            resetStatsTooltip: 'Min/Max/Durchschnitt für alle Kanäle zurücksetzen',
         },
         modeTable: {
             setting: 'Einstellung',

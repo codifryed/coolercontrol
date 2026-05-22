@@ -1073,7 +1073,10 @@ export default {
             current: 'Current',
             min: 'Min',
             max: 'Max',
+            range: 'Range',
             average: 'Average',
+            resetStats: 'Reset',
+            resetStatsTooltip: 'Reset min/max/average for all channels',
         },
         modeTable: {
             setting: 'Setting',

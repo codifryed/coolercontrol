@@ -1045,7 +1045,7 @@ impl Engine {
             };
             device
                 .borrow_mut()
-                .initialize_status_history_with(adjusted_recent_status, poll_rate);
+                .zero_status_history(&adjusted_recent_status, poll_rate);
         }
         Ok(())
     }

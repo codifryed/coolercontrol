@@ -20,6 +20,7 @@ import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import axiosRetry, { isNetworkError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
+import { defaultStatsResponse, type StatsResponseDTO } from '@/models/Stats'
 import { UISettingsDTO } from '@/models/UISettings'
 import type { UID } from '@/models/Device'
 import {
@@ -375,6 +376,36 @@ export default class DaemonClient {
                 'This can happen when the tab goes into an inactive state and should be re-synced once active again.',
             )
             return new StatusResponseDTO([])
+        }
+    }
+
+    /**
+     * Fetches the running per-channel min/max/avg/count stats from the daemon.
+     * Returns an empty response on failure so callers can render a sane baseline.
+     */
+    async getStats(): Promise<StatsResponseDTO> {
+        try {
+            const response = await this.getClient().get('/stats')
+            this.logDaemonResponse(response, 'Stats')
+            return response.data as StatsResponseDTO
+        } catch (err) {
+            this.logError(err)
+            return defaultStatsResponse()
+        }
+    }
+
+    /**
+     * Resets all running stats on the daemon and returns the new baseline
+     * (count=1, min=max=avg=most-recent-value per channel).
+     */
+    async resetStats(): Promise<StatsResponseDTO> {
+        try {
+            const response = await this.getClient().delete('/stats')
+            this.logDaemonResponse(response, 'Reset Stats')
+            return response.data as StatsResponseDTO
+        } catch (err) {
+            this.logError(err)
+            return defaultStatsResponse()
         }
     }
 

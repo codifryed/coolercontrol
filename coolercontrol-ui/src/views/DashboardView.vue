@@ -19,6 +19,7 @@
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -38,7 +39,7 @@ import { TempInfo } from '@/models/TempInfo.ts'
 import { ChannelInfo } from '@/models/ChannelInfo.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiInformationSlabCircleOutline, mdiMemory, mdiOverscan } from '@mdi/js'
+import { mdiInformationSlabCircleOutline, mdiMemory, mdiOverscan, mdiRestart } from '@mdi/js'
 import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
@@ -304,6 +305,7 @@ const toggleFullPage = (): void => {
 }
 
 const chartKey: Ref<string> = ref(uuidV4())
+const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 onMounted(async () => {
     window.addEventListener('resize', updateResponsiveGraphHeight)
     setTimeout(updateResponsiveGraphHeight)
@@ -467,6 +469,20 @@ onUnmounted(() => {
                 </InputNumber>
                 <axis-options class="h-[2.375rem] ml-3" :dashboard="dashboard" />
             </div>
+            <div
+                v-if="dashboard.chartType == ChartType.TABLE"
+                class="p-2 pr-0 flex leading-none items-center bg-bg-one"
+            >
+                <Button
+                    outlined
+                    class="h-[2.375rem] px-3"
+                    @click="sensorTableRef?.resetStats()"
+                    v-tooltip.top="t('components.sensorTable.resetStatsTooltip')"
+                >
+                    <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1.1)" />
+                    <span class="ml-1">{{ t('components.sensorTable.resetStats') }}</span>
+                </Button>
+            </div>
             <div class="p-2 bg-bg-one">
                 <Select
                     v-model="dashboard.chartType"
@@ -507,6 +523,7 @@ onUnmounted(() => {
             />
             <SensorTable
                 v-else-if="dashboard.chartType == ChartType.TABLE"
+                ref="sensorTableRef"
                 :dashboard="viewDashboard"
                 :key="'table' + chartKey"
             />

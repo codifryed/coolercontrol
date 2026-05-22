@@ -280,8 +280,8 @@ fn log_thinkpad_gpu_powerdown_once(
         let label = channel_label.unwrap_or("-");
         info!(
             "ThinkPad hwmon temp channel '{channel_name}' (label={label}) at {} \
-             returned ENXIO. Treating as 0.0 C; expected when dedicated GPU is \
-             powered down.",
+             returned ENXIO. Treating as 0.0 C; expected when no dedicated GPU \
+             is present or it is powered down.",
             temp_path.display()
         );
     }

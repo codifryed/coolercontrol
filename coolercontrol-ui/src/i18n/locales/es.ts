@@ -1088,7 +1088,10 @@ export default {
             current: 'Actual',
             min: 'Mín',
             max: 'Máx',
+            range: 'Rango',
             average: 'Promedio',
+            resetStats: 'Restablecer',
+            resetStatsTooltip: 'Restablecer mín/máx/promedio para todos los canales',
         },
         modeTable: {
             setting: 'Configuración',
