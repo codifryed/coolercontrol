@@ -249,6 +249,7 @@ async fn dispatch_core(
                 &key,
                 entry,
                 mapped,
+                true_duty,
                 &device_uid,
                 &channel_name,
             )
@@ -263,11 +264,21 @@ async fn dispatch_core(
             })
         }
         FanState::Kicking { .. } => {
-            update_kick_target(state, key, entry, mapped.sustain);
+            update_kick_target(state, key, entry, mapped.sustain, true_duty);
             Ok(DispatchOutcome::Done)
         }
         FanState::On => {
-            write_sustain_on(state, writer, key, entry, mapped, device_uid, channel_name).await?;
+            write_sustain_on(
+                state,
+                writer,
+                key,
+                entry,
+                mapped,
+                true_duty,
+                device_uid,
+                channel_name,
+            )
+            .await?;
             Ok(DispatchOutcome::Done)
         }
     }
@@ -287,6 +298,7 @@ async fn handle_write_zero(
         ChannelEntry {
             state: FanState::Off,
             under_diagnosis: prior.under_diagnosis,
+            commanded_true_duty: Some(0),
         },
     );
     writer
@@ -303,6 +315,7 @@ async fn start_kick(
     key: &ChannelKey,
     prior: ChannelEntry,
     mapped: MappedDuty,
+    true_duty: Duty,
     device_uid: &UID,
     channel_name: &str,
 ) -> Result<()> {
@@ -313,6 +326,7 @@ async fn start_kick(
                 sustain_target: mapped.sustain,
             },
             under_diagnosis: prior.under_diagnosis,
+            commanded_true_duty: Some(true_duty),
         },
     );
     writer
@@ -328,6 +342,7 @@ fn update_kick_target(
     key: ChannelKey,
     prior: ChannelEntry,
     new_sustain: Duty,
+    true_duty: Duty,
 ) {
     state.replace(
         key,
@@ -336,6 +351,7 @@ fn update_kick_target(
                 sustain_target: new_sustain,
             },
             under_diagnosis: prior.under_diagnosis,
+            commanded_true_duty: Some(true_duty),
         },
     );
 }
@@ -348,6 +364,7 @@ async fn write_sustain_on(
     key: ChannelKey,
     prior: ChannelEntry,
     mapped: MappedDuty,
+    true_duty: Duty,
     device_uid: DeviceUID,
     channel_name: ChannelName,
 ) -> Result<()> {
@@ -356,6 +373,7 @@ async fn write_sustain_on(
         ChannelEntry {
             state: FanState::On,
             under_diagnosis: prior.under_diagnosis,
+            commanded_true_duty: Some(true_duty),
         },
     );
     writer
@@ -382,6 +400,7 @@ pub async fn complete_kick(
                     ChannelEntry {
                         state: FanState::On,
                         under_diagnosis: entry.under_diagnosis,
+                        commanded_true_duty: entry.commanded_true_duty,
                     },
                 );
                 Some(sustain_target)
@@ -819,6 +838,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::On,
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 let store = CalibrationStore::empty();
@@ -855,6 +875,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::Off,
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         let (writer, writes) = MockWriter::make();
@@ -880,6 +901,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 5 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 // Walk: 20 -> 17 -> 14 -> 11 -> 8 -> 5 (four stepped
@@ -916,6 +938,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 50 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 50)
@@ -945,6 +968,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 15 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 let state_for_walk = Rc::clone(&state);
@@ -975,6 +999,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 10 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
 
@@ -1011,6 +1036,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 5 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 let state_for_walk = Rc::clone(&state);
@@ -1038,6 +1064,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Kicking { sustain_target: 28 },
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
 
@@ -1068,6 +1095,7 @@ mod tests {
                     ChannelEntry {
                         state: FanState::Off,
                         under_diagnosis: false,
+                        commanded_true_duty: None,
                     },
                 );
                 complete_kick_with_walk(&state, &writer, &key, &"dev-a".to_string(), "fan1", 30)
@@ -1123,6 +1151,82 @@ mod tests {
                 assert_eq!(log.len(), 2, "expected kick + sustain, got: {log:?}");
                 assert_eq!(log[1].2, mapped.sustain);
                 assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::On);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn dispatch_records_commanded_true_duty_across_state_transitions() {
+        // Goal: every write-bearing transition records the input true_duty
+        // in the state map so the augmenter's hybrid path can read it back.
+        // Off->Kicking, Kicking-update, write-zero, and the On-state write
+        // each must update commanded_true_duty.
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let state = Rc::new(FanStateMap::new());
+                let store = CalibrationStore::empty();
+                let key = k("dev-a", "fan1");
+                store.insert_unsaved(key.clone(), smooth_cal());
+                let (writer, _writes) = MockWriter::make();
+
+                // Off -> Kicking with commanded=50.
+                dispatch(
+                    &state,
+                    &store,
+                    &writer,
+                    "dev-a".to_string(),
+                    "fan1".to_string(),
+                    50,
+                )
+                .await
+                .expect("kick");
+                assert_eq!(state.entry(&key).commanded_true_duty, Some(50));
+
+                // Mid-kick update to commanded=70.
+                dispatch(
+                    &state,
+                    &store,
+                    &writer,
+                    "dev-a".to_string(),
+                    "fan1".to_string(),
+                    70,
+                )
+                .await
+                .expect("update");
+                assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
+
+                // Finalize the kick so state moves to On.
+                complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
+                assert_eq!(state.entry(&key).state, FanState::On);
+                assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
+
+                // On-state write at commanded=40.
+                dispatch(
+                    &state,
+                    &store,
+                    &writer,
+                    "dev-a".to_string(),
+                    "fan1".to_string(),
+                    40,
+                )
+                .await
+                .expect("on-write");
+                assert_eq!(state.entry(&key).commanded_true_duty, Some(40));
+
+                // Write-zero clears the channel and records the zero command.
+                dispatch(
+                    &state,
+                    &store,
+                    &writer,
+                    "dev-a".to_string(),
+                    "fan1".to_string(),
+                    0,
+                )
+                .await
+                .expect("zero");
+                assert_eq!(state.entry(&key).state, FanState::Off);
+                assert_eq!(state.entry(&key).commanded_true_duty, Some(0));
             })
             .await;
     }

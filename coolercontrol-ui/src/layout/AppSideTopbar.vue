@@ -206,6 +206,15 @@ const dashboardItems = computed(() => {
         }
         dashboardItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
+    dashboardItems.push({
+        uid: '__add__',
+        label: t('layout.menu.tooltips.addDashboard'),
+        mdiIcon: mdiChartBoxPlusOutline,
+        command: async () => {
+            dashboardMenuRef.value?.handleClose()
+            emitter.emit('dashboard-add')
+        },
+    })
     return dashboardItems
 })
 const modesItems = computed(() => {
@@ -218,6 +227,7 @@ const modesItems = computed(() => {
             label: mode.name,
             isActive: isActive,
             isRecentlyActive: isRecentlyActive,
+            isCreate: false,
             mdiIcon: isActive
                 ? mdiBookmarkCheckOutline
                 : isRecentlyActive
@@ -236,6 +246,17 @@ const modesItems = computed(() => {
         }
         menuItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
+    menuItems.push({
+        uid: '__add__',
+        label: t('views.modes.createMode'),
+        isActive: false,
+        isRecentlyActive: false,
+        isCreate: true,
+        mdiIcon: mdiBookmarkPlusOutline,
+        command: async () => {
+            emitter.emit('mode-add')
+        },
+    })
     return menuItems
 })
 const activatePreviousMode = async (): Promise<void> => {
@@ -636,7 +657,7 @@ onBeforeUnmount(() => {
                         @click="activatePreviousMode"
                         v-tooltip.right="{
                             value: t('layout.topbar.modes'),
-                            disabled: modesItems.length > 0,
+                            disabled: settingsStore.modes.length > 0,
                         }"
                     >
                         <svg-icon
@@ -647,7 +668,7 @@ onBeforeUnmount(() => {
                         />
                     </Button>
                     <template #dropdown>
-                        <Menu v-if="modesItems.length > 0" :model="modesItems" append-to="self">
+                        <Menu :model="modesItems" append-to="self">
                             <template #item="{ item, props }">
                                 <a
                                     v-bind="props.action"
@@ -658,7 +679,9 @@ onBeforeUnmount(() => {
                                         type="mdi"
                                         :class="{
                                             'text-text-color-secondary/40':
-                                                !item.isRecentlyActive && !item.isActive,
+                                                !item.isRecentlyActive &&
+                                                !item.isActive &&
+                                                !item.isCreate,
                                         }"
                                         :path="item.mdiIcon ?? ''"
                                         :size="getREMSize(1.5)"

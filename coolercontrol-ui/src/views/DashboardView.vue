@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
@@ -306,13 +306,26 @@ const toggleFullPage = (): void => {
 
 const chartKey: Ref<string> = ref(uuidV4())
 const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
+let panelResizeObserver: ResizeObserver | null = null
 onMounted(async () => {
     window.addEventListener('resize', updateResponsiveGraphHeight)
     setTimeout(updateResponsiveGraphHeight)
+    // Re-fit graph height when the control panel reflows (e.g. filter chips wrap to a new row).
+    const controlPanel = document.getElementById('control-panel')
+    if (controlPanel != null) {
+        panelResizeObserver = new ResizeObserver(() => updateResponsiveGraphHeight())
+        panelResizeObserver.observe(controlPanel)
+    }
 
     addScrollEventListener()
     watch(chartMinutes, (newValue: number): void => {
         chartMinutesChanged(newValue)
+    })
+    // chartKey regenerating remounts TimeChart, replacing the #u-plot-chart node and
+    // losing the inline height. Re-apply it once the new node is in the DOM.
+    watch(chartKey, async () => {
+        await nextTick()
+        updateResponsiveGraphHeight()
     })
     // This forces a debounced chart redraw for any dashboard settings change:
     watch(
@@ -326,6 +339,8 @@ onMounted(async () => {
 })
 onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
+    panelResizeObserver?.disconnect()
+    panelResizeObserver = null
 })
 </script>
 

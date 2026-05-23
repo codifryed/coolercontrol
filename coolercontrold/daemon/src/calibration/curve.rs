@@ -231,9 +231,48 @@ impl Calibration {
         Some(self.rpm_to_true_duty_smooth(rpm))
     }
 
-    /// Stable inverse: device-duty -> down-curve RPM -> true-duty. Used
-    /// by the status pipeline since device-duty does not jitter the way
-    /// RPM does. `None` for stepped channels.
+    /// Whether the forward map of `true_duty` would land on `device_duty`.
+    /// The status augmenter calls this with the last-commanded true-duty
+    /// against the device's read-back duty: a true answer means the
+    /// hardware is still showing what we commanded, so the augmenter can
+    /// display the commanded value exactly instead of the midpoint
+    /// approximation. False for stepped channels (no forward map).
+    pub fn preimage_contains_true_duty(&self, device_duty: Duty, true_duty: Duty) -> bool {
+        if self.curve_kind == CurveKind::Stepped {
+            return false;
+        }
+        let dut = device_duty.min(100);
+        let t = true_duty.min(100);
+        // Mirror the forward map's special-cases at the saturation ends.
+        if t == 0 {
+            return dut == 0;
+        }
+        if dut == 0 {
+            return false;
+        }
+        if t == 100 {
+            return dut == 100;
+        }
+        if dut == 100 {
+            return false;
+        }
+        assert!(self.rpm_max > 0);
+        let rpm_floor = self.rpm_floor();
+        assert!(self.rpm_max >= rpm_floor);
+        let target_rpm = interpolate_rpm(rpm_floor, self.rpm_max, t);
+        let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
+        let rpm_low = rpm_at_device_duty(down_above, dut);
+        let rpm_high = rpm_at_device_duty(down_above, dut + 1).max(rpm_low);
+        // Forward `duty_for_rpm` truncates the fractional segment offset,
+        // so target_rpm lands at dut iff it falls in [rpm_low, rpm_high).
+        target_rpm >= rpm_low && target_rpm < rpm_high
+    }
+
+    /// Stable inverse: device-duty maps to the midpoint of its rpm preimage
+    /// on the down-curve, then back to true-duty via round-to-nearest.
+    /// Centering on the midpoint is slope-aware, so the round trip lands
+    /// on the commanded integer true-duty regardless of curve slope.
+    /// `None` for stepped channels.
     pub fn device_to_true_duty(&self, device_duty: Duty) -> Option<Duty> {
         if self.curve_kind == CurveKind::Stepped {
             return None;
@@ -245,12 +284,34 @@ impl Calibration {
         if dut == 0 {
             return Some(0);
         }
+        assert!(self.rpm_max > 0);
         // Skip kick-artifact samples below the sustain floor: the
         // firmware-kick dense region has non-monotonic rpms that would
         // otherwise pull `rpm_at_device_duty` to inflated values.
         let down_above = curve_above(&self.down_curve, self.min_sustain_duty);
-        let rpm = rpm_at_device_duty(down_above, dut);
-        Some(self.rpm_to_true_duty_smooth(rpm))
+        let rpm_low = rpm_at_device_duty(down_above, dut);
+        let rpm_floor = self.rpm_floor();
+        // At or below the calibrated floor: fan at minimum, display 1%
+        // (distinguished from rpm=0 fan-off).
+        if rpm_low <= rpm_floor {
+            return Some(1);
+        }
+        let rpm_high = if dut < 100 {
+            rpm_at_device_duty(down_above, dut + 1)
+        } else {
+            self.rpm_max
+        }
+        .max(rpm_low);
+        let rpm_mid = RPM::midpoint(rpm_low, rpm_high);
+        if rpm_mid >= self.rpm_max {
+            return Some(100);
+        }
+        let range = u64::from(self.rpm_max - rpm_floor);
+        assert!(range > 0);
+        let above = u64::from(rpm_mid - rpm_floor);
+        // Round-to-nearest; clamp to 1 so above-floor always displays >=1%.
+        let result = ((above * 100 + range / 2) / range).max(1);
+        Some(u8::try_from(result.min(100)).unwrap_or(100))
     }
 
     fn true_to_device_smooth(&self, true_duty: Duty) -> MappedDuty {
@@ -1193,7 +1254,9 @@ mod tests {
 
     #[test]
     fn device_to_true_duty_round_trips_within_tolerance() {
-        // Stable-display path used by the status pipeline.
+        // Stable-display path used by the status pipeline. With
+        // midpoint-of-preimage the round-trip on a clean linear curve
+        // is exact for every step of 5%.
         let cal = make_smooth_calibration();
         for t in (5..=95).step_by(5) {
             let mapped = cal.true_to_device(t).expect("smooth maps");
@@ -1201,7 +1264,7 @@ mod tests {
                 .device_to_true_duty(mapped.sustain)
                 .expect("smooth maps");
             assert!(
-                recovered.abs_diff(t) <= 3,
+                recovered.abs_diff(t) <= 1,
                 "round-trip drifted: input={t} sustain_duty={} recovered={recovered}",
                 mapped.sustain
             );
@@ -1366,20 +1429,21 @@ mod tests {
     }
 
     #[test]
-    fn rpm_to_true_duty_rounds_up_on_curve_truncation() {
-        // Goal: when `duty_for_rpm` truncates the device-duty
-        // calculation (the device-duty space is integer, but the
-        // computed target lands between samples), the reverse
-        // `rpm_to_true_duty` must round UP so the displayed true-duty
-        // matches what the user originally set. Regression for the
-        // "set 98%, display 97%" bug.
+    fn device_to_true_duty_round_trips_via_midpoint_at_high_duty() {
+        // Goal: high true-duties (e.g. 98%) round-trip through
+        // device_to_true_duty cleanly. `duty_for_rpm` truncates the
+        // forward mapping (device-duty is integer; the exact target
+        // lands between samples), so the reverse picks the midpoint of
+        // the device-duty's rpm preimage and rounds to nearest to
+        // recover the commanded value. Regression for the "set 98%,
+        // display 97%" bug, originally fixed with ceiling-div on the
+        // lower-corner rpm.
         //
         // Build a synthetic curve whose down-curve at duty 90 sits
         // below where the up-curve at the same duty would (a normal
         // hysteretic fan). 98% true_duty -> ~1962 RPM target ->
-        // truncated to duty 93 -> read back as ~1952 RPM -> previously
-        // mapped to 97% via round-to-nearest. Ceiling pulls it back
-        // up to 98%.
+        // truncated to duty 93. Midpoint of d=93's preimage maps back
+        // to 98%.
         let mut up = vec![DutySample { duty: 0, rpm: 0 }];
         for d in (5..=100).step_by(5) {
             let rpm = match d {
@@ -1418,6 +1482,153 @@ mod tests {
             recovered, 98,
             "98% true must round-trip to 98% display; got {recovered}"
         );
+    }
+
+    #[test]
+    fn same_true_duty_displays_consistently_across_curves() {
+        // The user's exact scenario: multiple fans on a shared Profile
+        // (commanded true_duty 13) with different calibration curves.
+        // Pre-midpoint the forward truncation in `duty_for_rpm` plus
+        // ceiling-compensation in the reverse landed off by 1 on
+        // steeper-slope curves; displayed duties drifted across fans.
+        // Midpoint-of-preimage rounds each curve back to 13.
+        let make = |samples: Vec<DutySample>| -> Calibration {
+            let down = samples.clone();
+            let scalars = derive_scalars(&samples, &down).expect("derives");
+            Calibration {
+                up_curve: samples,
+                down_curve: down,
+                kick_duration_ms: 800,
+                min_start_duty: scalars.min_start_duty,
+                min_sustain_duty: scalars.min_sustain_duty,
+                min_stable_duty: scalars.min_sustain_duty,
+                max_eff_duty: scalars.max_eff_duty,
+                rpm_max: scalars.rpm_max,
+                curve_kind: CurveKind::Smooth,
+                warnings: Vec::new(),
+                was_rpm_only: false,
+                kick_boost_override: None,
+                kick_duration_override_ms: None,
+                walk_after_kick_override: None,
+                timestamp: Local::now(),
+            }
+        };
+        let to_samples = |pairs: &[(u8, RPM)]| -> Vec<DutySample> {
+            pairs
+                .iter()
+                .map(|&(d, r)| DutySample { duty: d, rpm: r })
+                .collect()
+        };
+        // Gentle slope near 13% (d=10..15 rises at ~20 RPM/duty).
+        let gentle = make(to_samples(&[
+            (0, 0),
+            (5, 100),
+            (10, 200),
+            (15, 300),
+            (20, 400),
+            (25, 500),
+            (30, 600),
+            (40, 800),
+            (50, 1000),
+            (60, 1200),
+            (70, 1400),
+            (80, 1600),
+            (90, 1800),
+            (100, 2000),
+        ]));
+        // Steep slope near 13% (d=10..15 rises at ~40 RPM/duty).
+        let steep = make(to_samples(&[
+            (0, 0),
+            (5, 100),
+            (10, 200),
+            (15, 400),
+            (20, 500),
+            (25, 600),
+            (30, 700),
+            (40, 900),
+            (50, 1100),
+            (60, 1300),
+            (70, 1500),
+            (80, 1700),
+            (90, 1900),
+            (100, 2000),
+        ]));
+        let mapped_gentle = gentle.true_to_device(13).expect("smooth maps");
+        let mapped_steep = steep.true_to_device(13).expect("smooth maps");
+        // Sanity: the curves DO produce different device duties
+        // (otherwise the cross-curve aspect is moot).
+        assert_ne!(
+            mapped_gentle.sustain, mapped_steep.sustain,
+            "test setup: curves must produce different device duties"
+        );
+        let displayed_gentle = gentle
+            .device_to_true_duty(mapped_gentle.sustain)
+            .expect("smooth maps");
+        let displayed_steep = steep
+            .device_to_true_duty(mapped_steep.sustain)
+            .expect("smooth maps");
+        assert_eq!(
+            displayed_gentle, displayed_steep,
+            "same Profile target must display same duty across curves; \
+             gentle={displayed_gentle} steep={displayed_steep}"
+        );
+        assert_eq!(
+            displayed_gentle, 13,
+            "both curves should round-trip to 13; got {displayed_gentle}"
+        );
+    }
+
+    #[test]
+    fn preimage_contains_true_duty_matches_forward_truncation() {
+        // Goal: preimage_contains agrees with the forward map.
+        // For every commanded t in 5..=95, forward(t) -> dut, then
+        // preimage_contains(dut, t) must be true. And shifting t by
+        // enough to escape the preimage must flip to false.
+        let cal = make_smooth_calibration();
+        for t in (5..=95).step_by(5) {
+            let mapped = cal.true_to_device(t).expect("smooth maps");
+            assert!(
+                cal.preimage_contains_true_duty(mapped.sustain, t),
+                "expected preimage of dut={} to contain t={t}",
+                mapped.sustain
+            );
+        }
+        // Boundary special cases: t=0 only maps to dut=0; t=100 only to dut=100.
+        assert!(cal.preimage_contains_true_duty(0, 0));
+        assert!(cal.preimage_contains_true_duty(100, 100));
+        assert!(cal.preimage_contains_true_duty(0, 50).not());
+        assert!(cal.preimage_contains_true_duty(50, 0).not());
+        assert!(cal.preimage_contains_true_duty(100, 50).not());
+    }
+
+    #[test]
+    fn preimage_contains_returns_false_for_stepped() {
+        // Goal: stepped channels have no forward map, so preimage_contains
+        // must always return false. The augmenter relies on this to skip
+        // the cache path for stepped channels and fall through to the
+        // rpm-only derived value.
+        let up = stepped_curve(2000);
+        let down = stepped_curve(2000);
+        let scalars = derive_scalars(&up, &down).expect("derives");
+        let cal = Calibration {
+            up_curve: up,
+            down_curve: down,
+            kick_duration_ms: 800,
+            min_start_duty: scalars.min_start_duty,
+            min_sustain_duty: scalars.min_sustain_duty,
+            min_stable_duty: scalars.min_sustain_duty,
+            max_eff_duty: scalars.max_eff_duty,
+            rpm_max: scalars.rpm_max,
+            curve_kind: CurveKind::Stepped,
+            warnings: Vec::new(),
+            was_rpm_only: false,
+            kick_boost_override: None,
+            kick_duration_override_ms: None,
+            walk_after_kick_override: None,
+            timestamp: Local::now(),
+        };
+        assert!(cal.preimage_contains_true_duty(50, 50).not());
+        assert!(cal.preimage_contains_true_duty(0, 0).not());
     }
 
     #[test]

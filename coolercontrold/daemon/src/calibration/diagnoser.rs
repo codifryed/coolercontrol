@@ -1679,6 +1679,7 @@ mod tests {
             crate::calibration::state::ChannelEntry {
                 state: FanState::Kicking { sustain_target: 60 },
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         let host = MockHost::new().with_smooth_fan();

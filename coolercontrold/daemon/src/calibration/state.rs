@@ -29,21 +29,27 @@ use std::collections::HashMap;
 
 /// Snapshot of a channel's relationship to the calibrated dispatcher.
 ///
-/// Carrying both the fan state and the `under_diagnosis` flag together
-/// lets a single map lookup decide all the dispatch branches.
+/// Carries the fan state, the `under_diagnosis` flag, and the last
+/// true-duty the dispatcher commanded for this channel. The commanded
+/// value lets the status augmenter recover the user-facing duty exactly
+/// when the hardware-reported device duty's preimage still contains it,
+/// closing the residual cross-fan drift the stateless reverse map can
+/// not eliminate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelEntry {
     pub state: FanState,
     pub under_diagnosis: bool,
+    pub commanded_true_duty: Option<Duty>,
 }
 
 impl ChannelEntry {
     /// The default for any channel never observed by the dispatcher:
-    /// idle, not under diagnosis.
+    /// idle, not under diagnosis, no commanded value yet.
     pub fn default_off() -> Self {
         Self {
             state: FanState::Off,
             under_diagnosis: false,
+            commanded_true_duty: None,
         }
     }
 }
@@ -138,15 +144,28 @@ impl FanStateMap {
     /// Resetting to `Off` prevents a stale pre-diagnosis `Kicking` from
     /// firing its deferred sustain-write over the sweep's raw writes,
     /// and leaves the post-sweep restore in a clean state to do a fresh
-    /// `Off -> Kicking` under the new calibration.
+    /// `Off -> Kicking` under the new calibration. Clears the commanded
+    /// cache so the post-sweep augmenter does not match stale values
+    /// against the new calibration's curves.
     pub fn begin_diagnosis(&self, key: ChannelKey) {
         self.inner.borrow_mut().insert(
             key,
             ChannelEntry {
                 state: FanState::Off,
                 under_diagnosis: true,
+                commanded_true_duty: None,
             },
         );
+    }
+
+    /// Last true-duty the dispatcher commanded for this channel.
+    /// `None` for channels never written by us (uncalibrated pass-through,
+    /// post-diagnosis, fresh startup) or written externally.
+    pub fn commanded_true_duty(&self, key: &ChannelKey) -> Option<Duty> {
+        self.inner
+            .borrow()
+            .get(key)
+            .and_then(|entry| entry.commanded_true_duty)
     }
 
     /// Drop the entry. Used when calibration is cleared.
@@ -197,6 +216,7 @@ mod tests {
         let target = ChannelEntry {
             state: FanState::Kicking { sustain_target: 30 },
             under_diagnosis: false,
+            commanded_true_duty: None,
         };
         map.replace(key.clone(), target);
         assert_eq!(map.entry(&key), target);
@@ -215,6 +235,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::Kicking { sustain_target: 30 },
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         map.replace(
@@ -222,6 +243,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         assert_eq!(map.entry(&key).state, FanState::On);
@@ -253,6 +275,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         map.set_under_diagnosis(key.clone(), true);
@@ -273,6 +296,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         assert_eq!(map.len(), 1);
@@ -294,6 +318,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::Kicking { sustain_target: 60 },
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         map.begin_diagnosis(key.clone());
@@ -315,6 +340,7 @@ mod tests {
             ChannelEntry {
                 state: FanState::On,
                 under_diagnosis: false,
+                commanded_true_duty: None,
             },
         );
         map.begin_diagnosis(key.clone());

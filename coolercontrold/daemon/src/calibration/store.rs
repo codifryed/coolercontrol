@@ -103,6 +103,20 @@ impl CalibrationStore {
         calibration.device_to_true_duty(device_duty)
     }
 
+    /// Whether the forward map of `true_duty` would land on `device_duty`
+    /// for this channel's calibration. False when the channel is
+    /// uncalibrated or stepped.
+    pub fn preimage_contains_true_duty(
+        &self,
+        key: &ChannelKey,
+        device_duty: Duty,
+        true_duty: Duty,
+    ) -> bool {
+        let map = self.calibrations.borrow();
+        map.get(key)
+            .is_some_and(|cal| cal.preimage_contains_true_duty(device_duty, true_duty))
+    }
+
     /// Insert without persisting. Used by the diagnoser to build a batch
     /// of changes and save once at the end.
     pub fn insert_unsaved(&self, key: ChannelKey, calibration: Calibration) {
