@@ -10,6 +10,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [4.3.1] - 2026-05-23
+
+### Added
+
+- True Duty Mapping calibration for RPM-reporting fans and pumps (#499, !492)
+- Automatic kick-in boost detection during calibration, with user-configurable boost duration and
+  walk-down behavior (!492)
+- Disconnected fan and diagnostic reporting during calibration (!492)
+- Calibration popover available from a channel's Advanced Settings and from the Controls overview
+  page, with a duty-rpm relationship graph (!492)
+- Reset button for Table View statistics (!493)
+- Quick-menu links for creating a new Dashboard and a new Mode (!495)
+
+### Changed
+
+- Table View statistics are now calculated in the daemon and span the full daemon runtime instead of
+  the 1-hour status history (!493)
+- Table View layout reduced wasted space, joined rows for channels with multiple sensors, improved
+  smaller-screen readability, and now respects device colors (!493)
+
+### Fixed
+
+- Custom lighting modes are now usable by device plugins (#582, !494)
+- Long-running drivetemp ioctl tasks now handle drives that take 9+ seconds to spin up (#579, !491)
+- Enabling manual fan control now forces a write even when already at the target duty, fixing
+  hardware like the ASUS NCT6799D where the BIOS otherwise reverted to a curve or default speed
+  (!490)
+- Collector sensors that report a 0 value at startup are now handled correctly in daemon stats
+  (!493)
+- JS error on legacy browsers (Qt Chromium on Ubuntu 22.04/Bookworm) caused by an upstream polyfill
+  behavior change (#577, !489)
+- Stress test watchdog occasionally reporting jobs as overrunning, with improved process shutdown
+  logic (!495)
+- Dashboard time axis being pushed off the page when changing filters in a smaller window (!495)
+
 ## [4.3.0] - 2026-05-10
 
 ### Added

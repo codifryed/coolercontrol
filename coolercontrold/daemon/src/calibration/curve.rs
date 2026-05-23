@@ -810,7 +810,7 @@ mod tests {
         // Jitter tolerance must absorb alternating +/-30 RPM noise.
         let mut curve = smooth_curve(2000);
         for (i, sample) in curve.iter_mut().enumerate() {
-            if i.is_multiple_of(2) {
+            if i % 2 == 0 {
                 sample.rpm = sample.rpm.saturating_add(30);
             } else {
                 sample.rpm = sample.rpm.saturating_sub(30);

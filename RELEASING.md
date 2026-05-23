@@ -14,12 +14,12 @@ automatically. They are included here for reference:
       Updates
    4. Format changelog appropriately
 
-2. Update App Metadata
+2. Update App Metadata (replaced with script)
    1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
       1. with new Release version and date
       2. plus any changes to screenshots and/or description
 
-3. Update Packaging Settings
+3. Update Packaging Settings (replaced with script)
    1. Update `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`
       1. Version near the top
       2. Changelog at the bottom
