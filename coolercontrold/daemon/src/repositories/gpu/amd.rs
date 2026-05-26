@@ -19,7 +19,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -200,7 +199,7 @@ impl GpuAMD {
             .write(true)
             .open(&path)
             .ok()?;
-        let (handle, _, _) = drm_amdgpu.init_device_handle(drm_file.as_raw_fd()).ok()?;
+        let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
         Some(handle.device_info().ok()?.find_device_name_or_default())
     }
 
