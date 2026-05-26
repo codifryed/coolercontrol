@@ -15,10 +15,12 @@ set -eux
 URL="$1"
 # The git referrence, i.e. HEAD, tag or branch name
 REF="$2"
+# Filename-safe ref: grouped branch names (e.g. chore/foo) would create nested paths
+SAFE_REF="${REF//\//-}"
 
 REPO_DIR="$(mktemp -dt 'coolercontrol-XXXX')"
 trap 'rm -rf "${REPO_DIR}"' EXIT
-TARBALL_FILE=coolercontrol-"${REF}".tar.gz
+TARBALL_FILE=coolercontrol-"${SAFE_REF}".tar.gz
 
 git clone \
     --depth=1 \
@@ -41,7 +43,7 @@ tar --sort=name \
     --owner=0 --group=0 --numeric-owner \
     --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
     --exclude-vcs \
-    --transform "s,^\./,coolercontrol-${REF}/," \
+    --transform "s,^\./,coolercontrol-${SAFE_REF}/," \
     -czf ~1/"${TARBALL_FILE}" .
 popd
 sha256sum "${TARBALL_FILE}"

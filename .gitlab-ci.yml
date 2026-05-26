@@ -178,17 +178,21 @@ build_source_assets:
   script:
     - packaging/release-source.sh ${CI_PROJECT_URL} ${CI_COMMIT_REF_NAME}
     - make vendor
-    - cp coolercontrold-vendor.tar.gz coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz
+    # Grouped branch names (e.g. chore/foo) need the slash replaced for filenames and the
+    # generic-package version path. Tags have no slash, so this is a no-op for releases.
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz"
+      SAFE_REF=$(printf '%s' "${CI_COMMIT_REF_NAME}" | tr '/' '-')
+      REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${SAFE_REF}"
+      cp coolercontrold-vendor.tar.gz "coolercontrold-vendor-${SAFE_REF}.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrol-${SAFE_REF}.tar.gz" "${REGISTRY_URL}/coolercontrol-${SAFE_REF}.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${REGISTRY_URL}/coolercontrold-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrold-vendor-${SAFE_REF}.tar.gz" "${REGISTRY_URL}/coolercontrold-vendor-${SAFE_REF}.tar.gz"
   artifacts:
-    name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
+    name: 'coolercontrol-${CI_COMMIT_REF_SLUG} Source'
     paths:
-      - coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz
+      - coolercontrol-*.tar.gz
       - coolercontrold-vendor.tar.gz
-      - coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz
+      - coolercontrold-vendor-*.tar.gz
     expire_in: 14 days
 
 ############################################################################################
