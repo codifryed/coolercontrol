@@ -17,17 +17,18 @@ doctest = false
 [dependencies]
 anyhow = "1.0.102"
 libc = "0.2"
-nix = { version = "0.31.2", default-features = false, features = [
+nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "sched",
   "ioctl",
 ] }
+# newer versions require >1.85
 wgpu = { version = "24", default-features = false, features = [
   "vulkan-portability",
   "angle",
   "wgsl",
 ] }
-tokio = { version = "1.52.1", default-features = false, features = [
+tokio = { version = "1.52.3", default-features = false, features = [
   "rt",
   "time",
 ] }

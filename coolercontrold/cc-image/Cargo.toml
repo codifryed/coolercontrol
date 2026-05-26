@@ -15,9 +15,9 @@ doctest = false
 
 [dependencies]
 anyhow = "1.0.102"
-log = "0.4.29"
+log = "0.4.30"
 mime = "0.3.17"
-tokio = { version = "1.50.0", default-features = false, features = [
+tokio = { version = "1.52.3", default-features = false, features = [
   "rt",
   "time",
 ] }
@@ -35,8 +35,8 @@ image = { version = "=0.25.8", default-features = false, features = [
 gifski = { version = "1.34.0", default-features = false, features = [
   "gifsicle",
 ] }
-imgref = "1.12.0"
-rgb = "0.8.52"
+imgref = "1.12.1"
+rgb = "0.8.53"
 # LCD image generation
 ril = { version = "0.10.3", default-features = false, features = [
   "png",
