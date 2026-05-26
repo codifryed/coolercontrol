@@ -176,7 +176,12 @@ build_source_assets:
     - npm --version
     - node --version
   script:
-    - packaging/release-source.sh ${CI_PROJECT_URL} ${CI_COMMIT_REF_NAME}
+    # On fork merge requests the source branch lives in the contributor's project, not in
+    # CI_PROJECT_URL, so clone the MR source project/branch when those vars are set.
+    - |
+      SOURCE_URL="${CI_MERGE_REQUEST_SOURCE_PROJECT_URL:-$CI_PROJECT_URL}"
+      SOURCE_REF="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
+      packaging/release-source.sh "$SOURCE_URL" "$SOURCE_REF"
     - make vendor
     # Grouped branch names (e.g. chore/foo) need the slash replaced for filenames and the
     # generic-package version path. Tags have no slash, so this is a no-op for releases.
