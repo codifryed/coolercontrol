@@ -22,6 +22,8 @@ export default {
             // Sizing and Shape
             'min-w-[6rem]',
             'rounded-lg',
+            // Shadow on the bottom and right only, so the top-left alignment with the sidebar icons stays put.
+            'shadow-[6px_6px_10px_-4px_rgba(0,0,0,0.5)]',
             'leading-none',
             // Spacing
             'p-1',

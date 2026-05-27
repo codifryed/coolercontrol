@@ -526,7 +526,9 @@ onMounted(async () => {
     >
         <template #default="{ previous, next, step, isFirst, isLast }">
             <VOnboardingStep>
-                <div class="bg-bg-two shadow rounded-lg border-2 border-border-one">
+                <div
+                    class="bg-bg-two drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] rounded-lg border-2 border-border-one"
+                >
                     <div class="px-4 py-5 sm:p-6">
                         <!-- Welcome step: intro + 3-button mode choice -->
                         <template v-if="step.content?.kind === 'welcome'">

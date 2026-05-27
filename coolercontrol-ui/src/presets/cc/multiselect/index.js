@@ -115,6 +115,7 @@ export default {
             'border',
             'rounded-lg',
             'shadow-lg',
+            'shadow-black/50',
 
             // Color
             'text-text-color-secondary',
