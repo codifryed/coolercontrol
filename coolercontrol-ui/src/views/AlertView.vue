@@ -308,23 +308,24 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
     }
 }
 
-const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+const checkForUnsavedChanges = (): boolean | Promise<boolean> => {
     if (!contextIsDirty.value) {
-        next()
-        return
+        return true
     }
-    confirm.require({
-        message: t('views.alerts.unsavedChanges'),
-        header: t('views.alerts.unsavedChangesHeader'),
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        rejectLabel: t('common.stay'),
-        acceptLabel: t('common.discard'),
-        accept: () => {
-            next()
-            contextIsDirty.value = false
-        },
-        reject: () => next(false),
+    return new Promise<boolean>((resolve) => {
+        confirm.require({
+            message: t('views.alerts.unsavedChanges'),
+            header: t('views.alerts.unsavedChangesHeader'),
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'accept',
+            rejectLabel: t('common.stay'),
+            acceptLabel: t('common.discard'),
+            accept: () => {
+                contextIsDirty.value = false
+                resolve(true)
+            },
+            reject: () => resolve(false),
+        })
     })
 }
 

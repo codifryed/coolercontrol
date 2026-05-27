@@ -232,23 +232,24 @@ watch(selectedMode, () => {
     }
 })
 
-const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+const checkForUnsavedChanges = (): boolean | Promise<boolean> => {
     if (!contextIsDirty.value) {
-        next()
-        return
+        return true
     }
-    confirm.require({
-        message: 'There are unsaved changes made to these Lighting Settings.',
-        header: 'Unsaved Changes',
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
-        accept: () => {
-            next()
-            contextIsDirty.value = false
-        },
-        reject: () => next(false),
+    return new Promise<boolean>((resolve) => {
+        confirm.require({
+            message: 'There are unsaved changes made to these Lighting Settings.',
+            header: 'Unsaved Changes',
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'accept',
+            rejectLabel: 'Stay',
+            acceptLabel: 'Discard',
+            accept: () => {
+                contextIsDirty.value = false
+                resolve(true)
+            },
+            reject: () => resolve(false),
+        })
     })
 }
 
