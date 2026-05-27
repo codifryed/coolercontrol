@@ -57,7 +57,7 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
             });
         }
     }
-    freqs.sort_by(|f1, f2| f1.number.cmp(&f2.number));
+    freqs.sort_by_key(|f| f.number);
     trace!(
         "Hwmon Frequencies detected: {freqs:?} for {}",
         base_path.display()

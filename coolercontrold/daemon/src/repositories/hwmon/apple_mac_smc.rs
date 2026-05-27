@@ -121,7 +121,7 @@ impl AppleMacSMC {
             fans::detect_rpm(base_path, file_name, &mut fan_caps).await?;
         }
         let mut fans = Self::caps_to_hwmon_fans(base_path, fan_caps).await?;
-        fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+        fans.sort_by_key(|c| c.number);
         debug!(
             "Apple SMC fans detected: {fans:?} for {}",
             base_path.display()

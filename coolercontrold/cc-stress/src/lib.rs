@@ -123,7 +123,7 @@ const READS_PER_DEADLINE_CHECK: u32 = 2048;
 #[must_use]
 pub fn online_cpu_count() -> u16 {
     std::fs::read_to_string("/proc/cpuinfo")
-        .map(|content| {
+        .map_or(1, |content| {
             // CPU count safely capped at u16::MAX (65535 cores).
             u16::try_from(
                 content
@@ -133,7 +133,6 @@ pub fn online_cpu_count() -> u16 {
             )
             .unwrap_or(u16::MAX)
         })
-        .unwrap_or(1)
         .max(1)
 }
 

@@ -53,7 +53,7 @@ pub async fn init_fans(base_path: &Path, device_name: &str) -> Result<Vec<HwmonC
         detect_rpm(base_path, file_name, &mut fan_caps).await?;
     }
     let mut fans = caps_to_hwmon_fans(base_path, device_name, fan_caps).await?;
-    fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+    fans.sort_by_key(|c| c.number);
     auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
         "Hwmon pwm fans detected: {fans:?} for {}",

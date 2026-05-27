@@ -68,7 +68,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
             ..Default::default()
         });
     }
-    powers.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+    powers.sort_by_key(|c| c.number);
     trace!(
         "Hwmon Power detected: {powers:?} for {}",
         base_path.display()
