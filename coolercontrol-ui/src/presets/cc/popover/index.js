@@ -20,7 +20,7 @@ export default {
     root: {
         class: [
             // Shape
-            'rounded-md shadow-lg',
+            'rounded-md',
             'border-0 dark:border',
 
             // Position
@@ -37,8 +37,10 @@ export default {
             // 'after:absolute after:w-0 after:-top-[0.54rem] after:left-[4px] after:h-0 after:border-transparent after:border-solid after:ml-[8px] after:border-x-[8px] after:border-b-[8px] after:border-t-0 after:border-b-surface-0 dark:after:border-b-surface-800',
         ],
     },
+    // drop-shadow (not box-shadow on root) so the shadow follows the rounded content box rather
+    // than the offset wrapper. Matches the tooltip's shadow weight.
     content: {
-        class: 'ml-8 mt-[-4rem] mb-[-2rem] p-0 items-center flex',
+        class: 'ml-8 mt-[-4rem] mb-[-2rem] p-0 items-center flex drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]',
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',

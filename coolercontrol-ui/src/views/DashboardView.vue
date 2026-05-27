@@ -250,7 +250,12 @@ const filteredSensorSources = computed<Array<AvailableSensorSource>>(() => {
 // Remove stale tags that no longer exist from the dashboard's selection
 const cleanupStaleTags = (): void => {
     const validTags = new Set(settingsStore.tags.keys())
-    dashboard.selectedTags = dashboard.selectedTags.filter((t) => validTags.has(t))
+    const remaining = dashboard.selectedTags.filter((t) => validTags.has(t))
+    // Only reassign when something was actually removed, otherwise we mutate the
+    // dashboard on every navigation and trigger an unnecessary settings save.
+    if (remaining.length !== dashboard.selectedTags.length) {
+        dashboard.selectedTags = remaining
+    }
 }
 cleanupStaleTags()
 

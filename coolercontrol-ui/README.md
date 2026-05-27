@@ -55,13 +55,15 @@ make dev
 ## Held-back Dependencies
 
 - `"element-plus": "2.13.0"`, 2.13.1 breaks at least the main device menu layout
-- `"primevue": "4.4.1"` updates can break the original Primevue tailwind implementation that we
-  have, updates should be well-tested.
+- `"primevue": "4.5.5"` exact-pinned: updates can break our PrimeVue Tailwind implementation, and
+  4.5.x's reworked Popover (a content ResizeObserver that re-aligns after render) needs the
+  hover-menu workaround in `AppTreeMenu.vue`. Re-test menu popover positioning when bumping.
 - `"tailwindcss-primeui": "0.4.0"` breaks our original Primevue tailwind implementation
-- `"@types/node": "22.19.7"` for compat with the current tsconfig node version
+- `"@types/node": "22.19.19"` for compat with the current tsconfig node version
 - `"tailwindcss": "3.4.19",` the upgrade to 4.x looks to be significant work
   - https://tailwindcss.com/docs/upgrade-guide
-  - Looks like 4.0 only works for Chrome 111+
+  - Looks like 4.0 only works for Chrome 111+ (We need to support 90+ for older debian/ubuntu
+    distros with QtWebEngine)
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
 - "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
 

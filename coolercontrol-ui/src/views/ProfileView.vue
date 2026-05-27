@@ -482,7 +482,7 @@ const option = {
         left: 0,
         right: deviceStore.getREMSize(1.2),
         bottom: 0,
-        containLabel: true,
+        outerBoundsMode: 'same',
     },
     xAxis: {
         min: axisXTempMin.value,
@@ -1812,23 +1812,24 @@ const contextIsVerifiedClean = (): boolean => {
     }
     return true
 }
-const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+const checkForUnsavedChanges = (): boolean | Promise<boolean> => {
     if (!contextIsDirty.value && contextIsVerifiedClean()) {
-        next()
-        return
+        return true
     }
-    confirm.require({
-        message: t('views.profiles.unsavedChanges'),
-        header: t('views.profiles.unsavedChangesHeader'),
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        rejectLabel: t('common.stay'),
-        acceptLabel: t('common.discard'),
-        accept: () => {
-            next()
-            contextIsDirty.value = false
-        },
-        reject: () => next(false),
+    return new Promise<boolean>((resolve) => {
+        confirm.require({
+            message: t('views.profiles.unsavedChanges'),
+            header: t('views.profiles.unsavedChangesHeader'),
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'accept',
+            rejectLabel: t('common.stay'),
+            acceptLabel: t('common.discard'),
+            accept: () => {
+                contextIsDirty.value = false
+                resolve(true)
+            },
+            reject: () => resolve(false),
+        })
     })
 }
 const updateResponsiveGraphHeight = (): void => {

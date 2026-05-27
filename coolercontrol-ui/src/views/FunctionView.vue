@@ -304,23 +304,24 @@ const removeScrollEventListeners = (): void => {
     document?.querySelector('.delay-input')?.removeEventListener('wheel', delayScrolled)
 }
 
-const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+const checkForUnsavedChanges = (): boolean | Promise<boolean> => {
     if (!contextIsDirty.value) {
-        next()
-        return
+        return true
     }
-    confirm.require({
-        message: t('views.functions.unsavedChanges'),
-        header: t('views.functions.unsavedChangesHeader'),
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        rejectLabel: t('common.stay'),
-        acceptLabel: t('common.discard'),
-        accept: () => {
-            next()
-            contextIsDirty.value = false
-        },
-        reject: () => next(false),
+    return new Promise<boolean>((resolve) => {
+        confirm.require({
+            message: t('views.functions.unsavedChanges'),
+            header: t('views.functions.unsavedChangesHeader'),
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'accept',
+            rejectLabel: t('common.stay'),
+            acceptLabel: t('common.discard'),
+            accept: () => {
+                contextIsDirty.value = false
+                resolve(true)
+            },
+            reject: () => resolve(false),
+        })
     })
 }
 

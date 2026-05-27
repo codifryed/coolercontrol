@@ -20,59 +20,59 @@
         "@vue-flow/minimap": "^1.5.4",
         "@mdi/js": "^7.4.47",
         "@microsoft/fetch-event-source": "^2.0.1",
-        "axios": "^1.15.2",
+        "axios": "^1.16.1",
         "axios-retry": "^4.5.0",
         "class-transformer": "^0.5.1",
         "d3-scale": "^4.0.2",
         "d3-scale-chromatic": "^3.1.0",
-        "echarts": "^6.0.0",
+        "echarts": "^6.1.0",
         "element-plus": "2.13.0",
-        "hotkeys-js": "^4.0.3",
+        "hotkeys-js": "^4.0.4",
         "lodash": "^4.18.1",
         "lodash.debounce": "^4.0.8",
         "mitt": "^3.0.1",
         "pinia": "^3.0.4",
         "primeicons": "^7.0.0",
-        "primevue": "4.4.1",
+        "primevue": "4.5.5",
         "radix-vue": "^1.9.17",
         "reflect-metadata": "^0.2.2",
         "tailwindcss-primeui": "0.4.0",
         "ts-enum-util": "^4.1.0",
         "uplot": "^1.6.32",
         "uuid": "^14.0.0",
-        "v-onboarding": "^2.12.2",
+        "v-onboarding": "^2.12.3",
         "vite-plugin-package-version": "^1.1.0",
-        "vue": "^3.5.33",
+        "vue": "^3.5.35",
         "vue-color": "^3.3.3",
         "vue-draggable-plus": "^0.6.1",
         "vue-echarts": "^8.0.1",
         "vue-fullscreen": "^3.1.3",
-        "vue-i18n": "^11.4.0",
-        "vue-router": "^5.0.6"
+        "vue-i18n": "^11.4.4",
+        "vue-router": "^5.0.7"
     },
     "devDependencies": {
         "@tsconfig/node22": "^22.0.5",
         "@types/d3": "^7.4.3",
-        "@types/jsdom": "^28.0.1",
-        "@types/node": "22.19.15",
-        "@vitejs/plugin-legacy": "^8.0.1",
-        "@vitejs/plugin-vue": "^6.0.6",
-        "@vue/test-utils": "^2.4.8",
+        "@types/jsdom": "^28.0.3",
+        "@types/node": "22.19.19",
+        "@vitejs/plugin-legacy": "^8.0.2",
+        "@vitejs/plugin-vue": "^6.0.7",
+        "@vue/test-utils": "^2.4.10",
         "@vue/tsconfig": "^0.9.1",
         "abortcontroller-polyfill": "^1.7.8",
         "autoprefixer": "^10.5.0",
-        "baseline-browser-mapping": "^2.10.21",
-        "jsdom": "^29.0.2",
+        "baseline-browser-mapping": "^2.10.32",
+        "jsdom": "^29.1.1",
         "npm-run-all": "^4.1.5",
-        "postcss": "^8.5.10",
-        "sass": "^1.99.0",
+        "postcss": "^8.5.15",
+        "sass": "^1.100.0",
         "tailwindcss": "3.4.19",
         "tailwindcss-themer": "^4.1.1",
         "typescript": "^6.0.3",
-        "vite": "^8.0.10",
+        "vite": "^8.0.14",
         "vite-svg-loader": "^5.1.1",
-        "vitest": "^4.1.5",
-        "vue-tsc": "^3.2.7"
+        "vitest": "^4.1.7",
+        "vue-tsc": "^3.3.2"
     },
     "browserslist": [
         "defaults",
@@ -80,17 +80,8 @@
         "chrome >= 90"
     ],
     "overrides": {
-        "npm-run-all": {
-            "minimatch": "^3.1.3"
-        },
-        "editorconfig": {
-            "minimatch": "^9.0.6"
-        },
         "js-beautify": {
             "glob": "^13.0.0"
-        },
-        "brace-expansion": ">=5.0.5",
-        "immutable": ">=5.1.5",
-        "rollup": ">=4.59.0"
+        }
     }
 }

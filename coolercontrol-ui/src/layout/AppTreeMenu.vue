@@ -601,8 +601,32 @@ const customSensorsTree = (): any => {
 }
 
 const hoverMenusAreClosed: Ref<boolean> = ref(true)
+
+// Mirror the hover state for the row whose options menu is open (menu kept in layout, metrics
+// hidden, row highlighted) so a popover anchored inside it keeps a valid anchor. primevue 4.5.x
+// re-aligns after render; a display:none anchor reads offset 0,0 and lands top-left. Set in the
+// click capture phase (before positioning), namespaced by section so a pinned channel and its tree
+// row do not match in both places.
+const openSubMenuKey: Ref<string | null> = ref(null)
+const subMenuKey = (section: string, id: string): string => `${section}:${id}`
+const isSubMenuOpen = (section: string, id: string): boolean =>
+    openSubMenuKey.value === subMenuKey(section, id)
+const setSubMenuKey = (section: string, id: string): void => {
+    openSubMenuKey.value = subMenuKey(section, id)
+}
+// Pointer left a row whose popover already closed (or a non-popover button was clicked): reset it.
+const clearSubMenuKeyIfClosed = (): void => {
+    if (hoverMenusAreClosed.value) openSubMenuKey.value = null
+}
+const onSubMenuToggle = (event: Event, section: string, id: string, popover: any): void => {
+    setSubMenuKey(section, id)
+    popover.toggle(event)
+}
+
 const setHoverMenuStatus = (isOpen: boolean): void => {
     hoverMenusAreClosed.value = !isOpen
+    // A closing popover releases the open-key so the row returns to its normal (non-hover) state.
+    if (!isOpen) openSubMenuKey.value = null
     const elements = document.querySelectorAll('.el-collapse-item__header')
     for (const element of elements) {
         if (isOpen) {
@@ -617,6 +641,22 @@ const setHoverMenuStatus = (isOpen: boolean): void => {
             element.removeAttribute('style')
         }
     }
+    // Highlight the header of the device whose own options menu is open (bg-two, like a hovered row).
+    const key = openSubMenuKey.value
+    if (isOpen && key != null && key.startsWith('device:')) {
+        const header = document
+            .getElementById(key.slice('device:'.length))
+            ?.closest('.el-collapse-item__header')
+        if (header instanceof HTMLElement) {
+            header.setAttribute(
+                'style',
+                'background-color: rgb(var(--colors-bg-two)); cursor: default;',
+            )
+        }
+    }
+}
+const onSubMenuHide = (): void => {
+    setHoverMenuStatus(false)
 }
 
 const devicesTreeArray = (): any[] => {
@@ -1290,6 +1330,7 @@ onUnmounted(() => {
                         :class="{
                             'h-12': childItem.isControllable || childItem.hasMode,
                             'hover:bg-bg-two': hoverMenusAreClosed,
+                            'bg-bg-two': isSubMenuOpen('pinned', childItem.id),
                             'pointer-events-none': !hoverMenusAreClosed,
                             'text-accent':
                                 route.fullPath === '/' &&
@@ -1396,7 +1437,10 @@ onUnmounted(() => {
                         <!-- Sensor Metrics -->
                         <div
                             class="flex ml-2 mr-1 justify-end select-none"
-                            :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
+                            :class="{
+                                'group-hover:hidden': hoverMenusAreClosed,
+                                hidden: isSubMenuOpen('pinned', childItem.id),
+                            }"
                         >
                             <div v-if="childItem.temp != null" class="items-end tree-data">
                                 {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.temp }}
@@ -1457,8 +1501,14 @@ onUnmounted(() => {
                         </div>
                         <!-- Hover Menu -->
                         <div
-                            class="hidden mr-1 justify-end whitespace-normal"
-                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                            class="mr-1 justify-end whitespace-normal"
+                            :class="{
+                                hidden: !isSubMenuOpen('pinned', childItem.id),
+                                'group-hover:flex': hoverMenusAreClosed,
+                                flex: isSubMenuOpen('pinned', childItem.id),
+                            }"
+                            @click.capture="setSubMenuKey('pinned', childItem.id)"
+                            @mouseleave="clearSubMenuKeyIfClosed()"
                         >
                             <div v-for="menu in childItem.menus">
                                 <menu-color-picker
@@ -1535,7 +1585,13 @@ onUnmounted(() => {
                                 <div
                                     class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
                                     @click.stop.prevent="
-                                        (event) => childItem.subMenuRefPin.toggle(event)
+                                        (event) =>
+                                            onSubMenuToggle(
+                                                event,
+                                                'pinned',
+                                                childItem.id,
+                                                childItem.subMenuRefPin,
+                                            )
                                     "
                                 >
                                     <svg-icon
@@ -1548,7 +1604,7 @@ onUnmounted(() => {
                                 <Popover
                                     :ref="(el) => (childItem.subMenuRefPin = el)"
                                     @show="() => setHoverMenuStatus(true)"
-                                    @hide="() => setHoverMenuStatus(false)"
+                                    @hide="onSubMenuHide"
                                 >
                                     <div
                                         class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
@@ -1780,8 +1836,14 @@ onUnmounted(() => {
                             </div>
                         </div>
                         <div
-                            class="hidden mr-1 justify-end whitespace-normal"
-                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                            class="mr-1 justify-end whitespace-normal"
+                            :class="{
+                                hidden: !isSubMenuOpen('device', item.id),
+                                'group-hover:flex': hoverMenusAreClosed,
+                                flex: isSubMenuOpen('device', item.id),
+                            }"
+                            @click.capture="setSubMenuKey('device', item.id)"
+                            @mouseleave="clearSubMenuKeyIfClosed()"
                         >
                             <div v-for="menu in item.menus">
                                 <menu-device-info
@@ -1849,7 +1911,15 @@ onUnmounted(() => {
                             >
                                 <div
                                     class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
-                                    @click.stop.prevent="(event) => item.subMenuRef.toggle(event)"
+                                    @click.stop.prevent="
+                                        (event) =>
+                                            onSubMenuToggle(
+                                                event,
+                                                'device',
+                                                item.id,
+                                                item.subMenuRef,
+                                            )
+                                    "
                                 >
                                     <svg-icon
                                         class="outline-0"
@@ -1861,7 +1931,7 @@ onUnmounted(() => {
                                 <Popover
                                     :ref="(el) => (item.subMenuRef = el)"
                                     @show="() => setHoverMenuStatus(true)"
-                                    @hide="() => setHoverMenuStatus(false)"
+                                    @hide="onSubMenuHide"
                                 >
                                     <div
                                         class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
@@ -1949,6 +2019,7 @@ onUnmounted(() => {
                             :class="{
                                 'h-12': childItem.isControllable || childItem.hasMode,
                                 'hover:bg-bg-two': hoverMenusAreClosed,
+                                'bg-bg-two': isSubMenuOpen('tree', childItem.id),
                                 'pointer-events-none': !hoverMenusAreClosed,
                                 'text-accent':
                                     route.fullPath === '/' &&
@@ -2066,7 +2137,10 @@ onUnmounted(() => {
                             <!-- Sensor Metrics -->
                             <div
                                 class="flex ml-2 mr-1 justify-end select-none"
-                                :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
+                                :class="{
+                                    'group-hover:hidden': hoverMenusAreClosed,
+                                    hidden: isSubMenuOpen('tree', childItem.id),
+                                }"
                             >
                                 <div v-if="childItem.temp != null" class="items-end tree-data">
                                     {{
@@ -2146,8 +2220,14 @@ onUnmounted(() => {
                             </div>
                             <!-- Hover Menu -->
                             <div
-                                class="hidden mr-1 justify-end whitespace-normal"
-                                :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                                class="mr-1 justify-end whitespace-normal"
+                                :class="{
+                                    hidden: !isSubMenuOpen('tree', childItem.id),
+                                    'group-hover:flex': hoverMenusAreClosed,
+                                    flex: isSubMenuOpen('tree', childItem.id),
+                                }"
+                                @click.capture="setSubMenuKey('tree', childItem.id)"
+                                @mouseleave="clearSubMenuKeyIfClosed()"
                             >
                                 <div v-for="menu in childItem.menus">
                                     <menu-color-picker
@@ -2224,7 +2304,13 @@ onUnmounted(() => {
                                     <div
                                         class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
                                         @click.stop.prevent="
-                                            (event) => childItem.subMenuRef.toggle(event)
+                                            (event) =>
+                                                onSubMenuToggle(
+                                                    event,
+                                                    'tree',
+                                                    childItem.id,
+                                                    childItem.subMenuRef,
+                                                )
                                         "
                                     >
                                         <svg-icon
@@ -2237,7 +2323,7 @@ onUnmounted(() => {
                                     <Popover
                                         :ref="(el) => (childItem.subMenuRef = el)"
                                         @show="() => setHoverMenuStatus(true)"
-                                        @hide="() => setHoverMenuStatus(false)"
+                                        @hide="onSubMenuHide"
                                     >
                                         <div
                                             class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"

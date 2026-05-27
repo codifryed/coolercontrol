@@ -201,7 +201,7 @@ const option = {
         left: deviceStore.getREMSize(1.5),
         right: deviceStore.getREMSize(1.2),
         bottom: deviceStore.getREMSize(1.7),
-        containLabel: true,
+        outerBoundsMode: 'same',
     },
     xAxis: {
         name: t('views.profiles.profileOutputDuty'),
