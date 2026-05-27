@@ -1845,6 +1845,21 @@ impl DiagnosisHost for Engine {
         period_u32
     }
 
+    async fn enter_manual_control(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        let device_type = self
+            .all_devices
+            .get(device_uid)
+            .ok_or_else(|| anyhow!("device not found: {device_uid}"))?
+            .borrow()
+            .d_type;
+        let repo = self
+            .repos
+            .get(&device_type)
+            .ok_or_else(|| anyhow!("no repository for device type {device_type:?}"))?;
+        repo.apply_setting_manual_control(device_uid, channel_name)
+            .await
+    }
+
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()> {
         let device_type = self
             .all_devices
