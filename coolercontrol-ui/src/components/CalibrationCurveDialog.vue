@@ -190,7 +190,7 @@ const chartOption = (cal: Calibration) => {
             left: deviceStore.getREMSize(2.0),
             right: deviceStore.getREMSize(1.5),
             bottom: deviceStore.getREMSize(2.5),
-            containLabel: true,
+            outerBoundsMode: 'same',
         },
         tooltip: {
             trigger: 'axis',

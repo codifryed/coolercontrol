@@ -482,7 +482,7 @@ const option = {
         left: 0,
         right: deviceStore.getREMSize(1.2),
         bottom: 0,
-        containLabel: true,
+        outerBoundsMode: 'same',
     },
     xAxis: {
         min: axisXTempMin.value,
