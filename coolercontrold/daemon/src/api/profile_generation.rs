@@ -29,8 +29,9 @@ use crate::api::devices::{apply_effective_speed_options, build_calibration_map, 
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, CustomTempSourceData, Function, FunctionUID, Offset, Profile, ProfileKind,
-    ProfileMixFunctionType, ProfileUID, SensorKind, TempSource, DEFAULT_FUNCTION_UID,
+    CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, Function, FunctionUID, Offset,
+    Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, SensorKind, TempSource,
+    DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
 use axum::Json;
@@ -276,7 +277,9 @@ fn add_assignment(
                 CaseRole::Exhaust,
             )?;
         }
-        FanKind::AioRadiator | FanKind::AioPump | FanKind::LaptopFan => {}
+        FanKind::AioPump => add_aio_pump(proposal, context, key_temps, assignment, preset)?,
+        FanKind::AioRadiator => add_aio_radiator(proposal, context, key_temps, assignment, preset)?,
+        FanKind::LaptopFan => {}
     }
     Ok(())
 }
@@ -458,6 +461,169 @@ fn build_overlay_profile(
         kind: ProfileKind::Overlay {
             member_profile_uids: vec![base_uid],
             offset_profile: Some(offset_profile),
+        },
+    }
+}
+
+/// AIO pump: it pulls heat off the CPU die, so it tracks the CPU temp (liquid as fallback).
+/// Silent is a quiet 2-step curve with a 50% floor; Balanced and Performance run the pump at a
+/// fixed 100% for maximum flow. Only Silent needs a temp source.
+fn add_aio_pump(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    assignment: &FanAssignment,
+    preset: Preset,
+) -> Result<(), CCError> {
+    let profile = match preset {
+        Preset::Silent => {
+            let base = key_temps
+                .cpu
+                .as_ref()
+                .or(key_temps.liquid.as_ref())
+                .ok_or_else(|| CCError::UserError {
+                    msg: "An AIO pump was assigned but no CPU or liquid temp was selected"
+                        .to_string(),
+                })?;
+            let source = resolve_smoothed_source(proposal, context, base, Preset::Silent);
+            let function_uid = proposal.intern_function(build_preset_function(Preset::Silent));
+            build_graph_profile(
+                &format!("AIO Pump ({preset})"),
+                source,
+                function_uid,
+                pump_silent_curve(),
+            )
+        }
+        Preset::Balanced | Preset::Performance => {
+            build_fixed_profile(&format!("AIO Pump ({preset})"), 100)
+        }
+    };
+    let profile_uid = proposal.intern_profile(profile);
+    proposal.assign(assignment, profile_uid);
+    Ok(())
+}
+
+/// The Silent pump's 2-step curve (CPU temp in Celsius, duty percent): a quiet 50% floor that
+/// ramps to full flow under load. 50% keeps noise down while still moving coolant.
+fn pump_silent_curve() -> Vec<(Temp, Duty)> {
+    vec![(50.0, 50), (70.0, 100)]
+}
+
+/// The temperature band a radiator curve is shaped for, chosen by the available temp source.
+#[derive(Debug, Clone, Copy)]
+enum RadiatorBand {
+    Delta,
+    Liquid,
+    Cpu,
+}
+
+/// AIO radiator: a Graph off the loop's thermal signal. Prefers a liquid-minus-ambient Delta
+/// (created here) when both exist, else the raw liquid temp, else the CPU temp as a fallback.
+/// The liquid and Delta signals are slow-moving, so no EMA smoothing is applied.
+fn add_aio_radiator(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    assignment: &FanAssignment,
+    preset: Preset,
+) -> Result<(), CCError> {
+    let (source, band) = resolve_radiator_source(proposal, context, key_temps)?;
+    let function_uid = proposal.intern_function(build_preset_function(preset));
+    let curve = radiator_curve(preset, band);
+    assert_valid_curve(&curve);
+    let profile = build_graph_profile(
+        &format!("AIO Radiator ({preset})"),
+        source,
+        function_uid,
+        curve,
+    );
+    let profile_uid = proposal.intern_profile(profile);
+    proposal.assign(assignment, profile_uid);
+    Ok(())
+}
+
+/// Chooses the radiator's temp source and matching curve band. A Delta custom sensor is created
+/// (and de-duplicated) only when a liquid temp, an ambient temp, and a custom-sensors device are
+/// all available.
+fn resolve_radiator_source(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+) -> Result<(TempSource, RadiatorBand), CCError> {
+    if let (Some(liquid), Some(ambient), Some(custom_sensors_device_uid)) = (
+        key_temps.liquid.as_ref(),
+        key_temps.ambient.as_ref(),
+        context.custom_sensors_device_uid.as_ref(),
+    ) {
+        let sensor_id =
+            proposal.intern_custom_sensor(build_delta_sensor(liquid.clone(), ambient.clone()));
+        let source = TempSource {
+            temp_name: sensor_id,
+            device_uid: custom_sensors_device_uid.clone(),
+        };
+        return Ok((source, RadiatorBand::Delta));
+    }
+    if let Some(liquid) = key_temps.liquid.as_ref() {
+        return Ok((liquid.clone(), RadiatorBand::Liquid));
+    }
+    if let Some(cpu) = key_temps.cpu.as_ref() {
+        return Ok((cpu.clone(), RadiatorBand::Cpu));
+    }
+    Err(CCError::UserError {
+        msg: "An AIO radiator was assigned but no liquid or CPU temp was selected".to_string(),
+    })
+}
+
+/// Radiator curves per preset and band. Liquid curves ramp 28C to 38C; Delta curves ramp 5C to
+/// 10C; the CPU fallback reuses the wider CPU-cooler band. Strawman values pending tuning.
+fn radiator_curve(preset: Preset, band: RadiatorBand) -> Vec<(Temp, Duty)> {
+    match band {
+        RadiatorBand::Delta => match preset {
+            Preset::Silent => vec![(5.0, 30), (10.0, 80)],
+            Preset::Balanced => vec![(5.0, 40), (10.0, 100)],
+            Preset::Performance => vec![(5.0, 50), (10.0, 100)],
+        },
+        RadiatorBand::Liquid => match preset {
+            Preset::Silent => vec![(28.0, 30), (38.0, 80)],
+            Preset::Balanced => vec![(28.0, 40), (38.0, 100)],
+            Preset::Performance => vec![(28.0, 50), (38.0, 100)],
+        },
+        RadiatorBand::Cpu => cpu_cooler_curve(preset),
+    }
+}
+
+/// A Delta custom sensor giving liquid minus ambient (the loop's thermal load, independent of
+/// room temperature). The engine's Delta is the absolute spread between sources, so order does
+/// not matter.
+fn build_delta_sensor(liquid: TempSource, ambient: TempSource) -> CustomSensor {
+    CustomSensor {
+        id: format!("Auto Delta {} {}", liquid.temp_name, ambient.temp_name),
+        kind: SensorKind::Mix {
+            mix_function: CustomSensorMixFunctionType::Delta,
+            sources: vec![
+                CustomTempSourceData {
+                    temp_source: liquid,
+                    weight: 1,
+                },
+                CustomTempSourceData {
+                    temp_source: ambient,
+                    weight: 1,
+                },
+            ],
+        },
+        children: Vec::new(),
+        parents: Vec::new(),
+    }
+}
+
+/// A Fixed profile holding a constant duty. A fresh UID is assigned.
+fn build_fixed_profile(name: &str, duty: Duty) -> Profile {
+    Profile {
+        uid: Uuid::new_v4().to_string(),
+        name: name.to_string(),
+        function_uid: DEFAULT_FUNCTION_UID.to_string(),
+        kind: ProfileKind::Fixed {
+            speed_fixed: Some(duty),
         },
     }
 }
@@ -1262,5 +1428,214 @@ mod tests {
             .custom_sensors
             .iter()
             .all(|s| matches!(s.kind, SensorKind::ExponentialMovingAvg { .. })));
+    }
+
+    fn liquid_temp() -> TempSource {
+        TempSource {
+            temp_name: "Liquid".to_string(),
+            device_uid: "dev-aio-1".to_string(),
+        }
+    }
+
+    fn ambient_temp() -> TempSource {
+        TempSource {
+            temp_name: "Ambient".to_string(),
+            device_uid: "dev-mb-1".to_string(),
+        }
+    }
+
+    fn aio_request(kind: FanKind, preset: Preset, key_temps: KeyTemps) -> GenerateProfilesRequest {
+        GenerateProfilesRequest {
+            assignments: vec![FanAssignment {
+                device_uid: "dev-aio-1".to_string(),
+                channel_name: "fan1".to_string(),
+                kind,
+                position: None,
+                laptop_temp_strategy: None,
+            }],
+            key_temps,
+            global_preset: preset,
+            preset_overrides: Vec::new(),
+        }
+    }
+
+    fn cpu_only() -> KeyTemps {
+        KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: None,
+            liquid: None,
+            ambient: None,
+        }
+    }
+
+    /// Goal: the pump runs at a fixed 100% on Balanced and Performance. Method: generate each and
+    /// assert a single Fixed profile at 100% with no smoothing sensor.
+    #[test]
+    fn aio_pump_balanced_and_performance_are_fixed_full() {
+        for preset in [Preset::Balanced, Preset::Performance] {
+            let response = generate_proposal(
+                &aio_request(FanKind::AioPump, preset, cpu_only()),
+                &test_context(),
+            )
+            .expect("generates");
+            assert_eq!(response.profiles.len(), 1);
+            let pump = &response.profiles[0];
+            assert_eq!(pump.p_type(), ProfileType::Fixed);
+            assert_eq!(pump.speed_fixed(), Some(100));
+            assert!(response.custom_sensors.is_empty());
+        }
+    }
+
+    /// Goal: the Silent pump is a 2-step graph with a 50% floor, smoothed off the CPU temp.
+    /// Method: generate and assert the curve points and that an EMA sensor was created.
+    #[test]
+    fn aio_pump_silent_is_two_step_graph() {
+        let response = generate_proposal(
+            &aio_request(FanKind::AioPump, Preset::Silent, cpu_only()),
+            &test_context(),
+        )
+        .expect("generates");
+        let pump = &response.profiles[0];
+        assert_eq!(pump.p_type(), ProfileType::Graph);
+        assert_eq!(
+            pump.speed_profile().expect("has curve").as_slice(),
+            &[(50.0, 50), (70.0, 100)]
+        );
+        assert_eq!(
+            response.custom_sensors.len(),
+            1,
+            "Silent smooths the CPU temp"
+        );
+    }
+
+    /// Goal: the pump falls back to the liquid temp when no CPU temp is selected. Method:
+    /// generate Silent with only a liquid temp and assert the smoothing sensor wraps it.
+    #[test]
+    fn aio_pump_falls_back_to_liquid() {
+        let key_temps = KeyTemps {
+            cpu: None,
+            gpu: None,
+            liquid: Some(liquid_temp()),
+            ambient: None,
+        };
+        let response = generate_proposal(
+            &aio_request(FanKind::AioPump, Preset::Silent, key_temps),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(response.custom_sensors.len(), 1);
+        assert!(response.custom_sensors[0]
+            .sources()
+            .iter()
+            .any(|s| s.temp_source == liquid_temp()));
+    }
+
+    /// Goal: a pump with neither CPU nor liquid temp is a user error. Method: omit both and
+    /// assert generation errors.
+    #[test]
+    fn aio_pump_without_temp_errors() {
+        let empty = KeyTemps {
+            cpu: None,
+            gpu: None,
+            liquid: None,
+            ambient: None,
+        };
+        assert!(generate_proposal(
+            &aio_request(FanKind::AioPump, Preset::Silent, empty),
+            &test_context()
+        )
+        .is_err());
+    }
+
+    /// Goal: with a liquid temp but no ambient, the radiator follows the raw liquid in the 28C to
+    /// 38C band with no Delta sensor. Method: generate and assert the source and band.
+    #[test]
+    fn aio_radiator_off_liquid_band() {
+        let key_temps = KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: None,
+            liquid: Some(liquid_temp()),
+            ambient: None,
+        };
+        let response = generate_proposal(
+            &aio_request(FanKind::AioRadiator, Preset::Balanced, key_temps),
+            &test_context(),
+        )
+        .expect("generates");
+        let radiator = &response.profiles[0];
+        assert_eq!(radiator.temp_source(), Some(&liquid_temp()));
+        assert_eq!(
+            radiator.speed_profile().expect("has curve").as_slice(),
+            &[(28.0, 40), (38.0, 100)]
+        );
+        assert!(response.custom_sensors.is_empty());
+    }
+
+    /// Goal: with both liquid and ambient temps, the radiator follows an auto-created Delta sensor
+    /// in the 5C to 10C band. Method: generate and assert the Delta sensor, source, and band.
+    #[test]
+    fn aio_radiator_off_delta_creates_sensor() {
+        let key_temps = KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: None,
+            liquid: Some(liquid_temp()),
+            ambient: Some(ambient_temp()),
+        };
+        let response = generate_proposal(
+            &aio_request(FanKind::AioRadiator, Preset::Balanced, key_temps),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(response.custom_sensors.len(), 1);
+        let sensor = &response.custom_sensors[0];
+        assert!(matches!(
+            sensor.kind,
+            SensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Delta,
+                ..
+            }
+        ));
+        let radiator = &response.profiles[0];
+        let source = radiator.temp_source().expect("has source");
+        assert_eq!(source.device_uid, "dev-custom-sensors");
+        assert_eq!(source.temp_name, sensor.id);
+        assert_eq!(
+            radiator.speed_profile().expect("has curve").as_slice(),
+            &[(5.0, 40), (10.0, 100)]
+        );
+    }
+
+    /// Goal: with only a CPU temp, the radiator falls back to the CPU-cooler curve. Method:
+    /// generate and assert the source is the CPU temp and the curve matches the CPU band.
+    #[test]
+    fn aio_radiator_falls_back_to_cpu() {
+        let response = generate_proposal(
+            &aio_request(FanKind::AioRadiator, Preset::Balanced, cpu_only()),
+            &test_context(),
+        )
+        .expect("generates");
+        let radiator = &response.profiles[0];
+        assert_eq!(radiator.temp_source(), Some(&cpu_temp()));
+        assert_eq!(
+            radiator.speed_profile().unwrap(),
+            &cpu_cooler_curve(Preset::Balanced)
+        );
+    }
+
+    /// Goal: a radiator with no liquid or CPU temp is a user error. Method: omit both and assert
+    /// generation errors.
+    #[test]
+    fn aio_radiator_without_temp_errors() {
+        let empty = KeyTemps {
+            cpu: None,
+            gpu: None,
+            liquid: None,
+            ambient: None,
+        };
+        assert!(generate_proposal(
+            &aio_request(FanKind::AioRadiator, Preset::Balanced, empty),
+            &test_context()
+        )
+        .is_err());
     }
 }
