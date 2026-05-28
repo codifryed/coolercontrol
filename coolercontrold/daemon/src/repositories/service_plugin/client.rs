@@ -609,7 +609,7 @@ impl DeviceServiceClient {
                     mode: lcd.mode.to_string(),
                     brightness: lcd.brightness.map(u32::from),
                     orientation: lcd.orientation.map(u32::from),
-                    image_path: lcd.image_file_processed.clone(),
+                    image_path: lcd.image_file_processed().cloned(),
                 };
                 let request = Request::new(LcdRequest {
                     device_id: self.get_service_device_id(device_uid)?,

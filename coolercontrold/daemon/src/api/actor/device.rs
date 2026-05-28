@@ -26,7 +26,7 @@ use crate::modes::ModeController;
 use crate::notifier::NotificationHandle;
 use crate::repositories::gpu::amd_overdrive;
 use crate::setting::{
-    LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -231,13 +231,10 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .save_lcd_image(&processed_image_data.0, processed_image_data.1)
                         .await?;
                     let lcd_settings = LcdSettings {
-                        mode,
                         brightness,
                         orientation,
-                        image_file_processed: Some(image_path),
-                        carousel: None,
-                        temp_source: None,
                         colors: Vec::with_capacity(0),
+                        mode: LcdModeKind::from_name(mode, Some(image_path), None, None),
                     };
                     self.engine
                         .set_lcd(
@@ -443,13 +440,10 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         )
                         .await?;
                     let lcd_settings = LcdSettings {
-                        mode,
                         brightness,
                         orientation,
-                        image_file_processed: Some(image_path),
-                        carousel: None,
-                        temp_source: None,
                         colors: Vec::with_capacity(0),
+                        mode: LcdModeKind::from_name(mode, Some(image_path), None, None),
                     };
                     self.config
                         .set_lcd_shutdown_setting(&device_uid, &channel_name, &lcd_settings);
@@ -467,8 +461,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     if let Ok(settings) = self.config.get_all_lcd_shutdown_settings() {
                         for (uid, ch, lcd) in settings {
                             if uid == device_uid && ch == channel_name {
-                                if let Some(path) = lcd.image_file_processed {
-                                    let _ = cc_fs::remove_file(std::path::Path::new(&path)).await;
+                                if let Some(path) = lcd.image_file_processed() {
+                                    let _ = cc_fs::remove_file(std::path::Path::new(path)).await;
                                 }
                                 break;
                             }

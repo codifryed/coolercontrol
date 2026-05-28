@@ -44,8 +44,8 @@ use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    ChannelExtensions, FunctionUID, LcdModeName, LcdSettings, LightingSettings, Profile,
-    ProfileType, ProfileUID, Setting, SettingKind, DEFAULT_FUNCTION_UID,
+    ChannelExtensions, FunctionUID, LcdModeKind, LcdModeName, LcdSettings, LightingSettings,
+    Profile, ProfileType, ProfileUID, Setting, SettingKind, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
@@ -559,15 +559,15 @@ impl Engine {
                 "LCD Screen modes not enabled for this device: {device_uid}"
             ));
         }
-        let result = if lcd_settings.mode == LcdModeName::Temp {
-            if lcd_settings.temp_source.is_none() {
+        let result = if lcd_settings.mode_name() == LcdModeName::Temp {
+            if lcd_settings.temp_source().is_none() {
                 return Err(anyhow!(
                     "A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"
                 ));
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
-        } else if lcd_settings.mode == LcdModeName::Carousel {
+        } else if lcd_settings.mode_name() == LcdModeName::Carousel {
             self.lcd_commander
                 .schedule_carousel(device_uid, channel_name, lcd_settings)
                 .await
@@ -721,8 +721,8 @@ impl Engine {
         else {
             return; // If there are currently no LCD settings applied, leave the device alone.
         };
-        if settings_lcd_current.mode == LcdModeName::None
-            || settings_lcd_current.mode == LcdModeName::Liquid
+        if settings_lcd_current.mode_name() == LcdModeName::None
+            || settings_lcd_current.mode_name() == LcdModeName::Liquid
         {
             return; // These settings mean we should also leave the device alone.
         }
@@ -800,7 +800,8 @@ impl Engine {
                 let SettingKind::Lcd { ref lcd } = settings.kind else {
                     continue;
                 };
-                if lcd.mode == LcdModeName::Temp || lcd.mode == LcdModeName::Carousel {
+                if lcd.mode_name() == LcdModeName::Temp || lcd.mode_name() == LcdModeName::Carousel
+                {
                     result.push((device_uid.clone(), channel_name.clone()));
                 }
             }
@@ -852,13 +853,12 @@ impl Engine {
             }
         };
         let lcd_settings = LcdSettings {
-            mode: LcdModeName::Image,
             brightness: None,
             orientation: None,
-            image_file_processed: Some(image_path),
-            carousel: None,
             colors: Vec::new(),
-            temp_source: None,
+            mode: LcdModeKind::Image {
+                image_file_processed: Some(image_path),
+            },
         };
         match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
@@ -890,7 +890,7 @@ impl Engine {
         let SettingKind::Lcd { ref lcd } = settings_current.kind else {
             return false;
         };
-        lcd.image_file_processed.as_ref().is_some_and(|path_image| {
+        lcd.image_file_processed().is_some_and(|path_image| {
             std::path::Path::new(path_image)
                 .starts_with(paths::config_dir())
                 .not()
@@ -912,11 +912,13 @@ impl Engine {
             }
             .into());
         };
-        let image_path = lcd_setting
-            .image_file_processed
-            .ok_or_else(|| CCError::NotFound {
-                msg: "LCD Image File Path".to_string(),
-            })?;
+        let image_path =
+            lcd_setting
+                .image_file_processed()
+                .cloned()
+                .ok_or_else(|| CCError::NotFound {
+                    msg: "LCD Image File Path".to_string(),
+                })?;
         let image_data = cc_fs::read_image(std::path::Path::new(&image_path))
             .await
             .map_err(|err| CCError::InternalError {
@@ -1313,7 +1315,7 @@ impl Engine {
                     let SettingKind::Lcd { lcd } = &setting.kind else {
                         return false;
                     };
-                    let Some(temp_source) = lcd.temp_source.as_ref() else {
+                    let Some(temp_source) = lcd.temp_source() else {
                         return false;
                     };
                     temp_source.device_uid == cs_device_uid
@@ -1963,17 +1965,16 @@ impl DiagnosisHost for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{LcdModeName, LcdSettings, Setting, SettingKind};
+    use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
 
     fn lcd_settings_with_image(image_path: Option<String>) -> LcdSettings {
         LcdSettings {
-            mode: LcdModeName::Image,
             brightness: None,
             orientation: None,
-            image_file_processed: image_path,
-            carousel: None,
             colors: Vec::new(),
-            temp_source: None,
+            mode: LcdModeKind::Image {
+                image_file_processed: image_path,
+            },
         }
     }
 

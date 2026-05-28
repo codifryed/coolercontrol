@@ -113,7 +113,9 @@ pub struct TempSource {
     pub device_uid: DeviceUID,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum LcdModeName {
@@ -126,25 +128,117 @@ pub enum LcdModeName {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdSettings {
-    /// The Lcd mode name
-    pub mode: LcdModeName,
-
-    /// The LCD brightness (0-100%)
+    /// The LCD brightness (0-100%).
     pub brightness: Option<u8>,
 
-    /// The LCD Image orientation (0,90,180,270)
+    /// The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.
     pub orientation: Option<u16>,
-
-    /// The LCD Image processed file path location, where the preprocessed image is located.
-    pub image_file_processed: Option<String>,
-
-    pub carousel: Option<LcdCarouselSettings>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(R, G, B)>,
 
-    /// A temp source for displaying a temperature.
-    pub temp_source: Option<TempSource>,
+    /// The mode and its mode-specific fields. Flattened so `mode` and the payload stay flat
+    /// siblings of the shared fields on the wire (the legacy shape).
+    #[serde(flatten)]
+    pub mode: LcdModeKind,
+}
+
+/// LCD mode and its mode-specific fields, internally tagged on the `mode` discriminator
+/// (lowercase, as before). Named `LcdModeKind` to avoid colliding with `device::LcdMode`, the
+/// device-capability struct. The per-mode fields stay `Option` for now: the enum already makes
+/// a mode structurally unable to carry another mode's field; requiredness is still enforced by
+/// the existing apply-time validation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum LcdModeKind {
+    None,
+    Liquid,
+    Image {
+        /// Processed (preprocessed) image file path location.
+        image_file_processed: Option<String>,
+    },
+    Temp {
+        temp_source: Option<TempSource>,
+    },
+    Carousel {
+        carousel: Option<LcdCarouselSettings>,
+    },
+}
+
+impl LcdSettings {
+    /// The mode-name discriminant, for comparisons and the wire `mode` string.
+    pub fn mode_name(&self) -> LcdModeName {
+        match self.mode {
+            LcdModeKind::None => LcdModeName::None,
+            LcdModeKind::Liquid => LcdModeName::Liquid,
+            LcdModeKind::Image { .. } => LcdModeName::Image,
+            LcdModeKind::Temp { .. } => LcdModeName::Temp,
+            LcdModeKind::Carousel { .. } => LcdModeName::Carousel,
+        }
+    }
+
+    /// The processed image path, if this is an `Image` mode with one set.
+    pub fn image_file_processed(&self) -> Option<&String> {
+        match &self.mode {
+            LcdModeKind::Image {
+                image_file_processed,
+            } => image_file_processed.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The temp source, if this is a `Temp` mode with one set.
+    pub fn temp_source(&self) -> Option<&TempSource> {
+        match &self.mode {
+            LcdModeKind::Temp { temp_source } => temp_source.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The carousel settings, if this is a `Carousel` mode with them set.
+    pub fn carousel(&self) -> Option<&LcdCarouselSettings> {
+        match &self.mode {
+            LcdModeKind::Carousel { carousel } => carousel.as_ref(),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for LcdModeKind {
+    /// The lowercase mode name, matching the serialized `mode` tag and the prior `LcdModeName`
+    /// display, so existing log/format sites keep their output.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            LcdModeKind::None => "none",
+            LcdModeKind::Liquid => "liquid",
+            LcdModeKind::Image { .. } => "image",
+            LcdModeKind::Temp { .. } => "temp",
+            LcdModeKind::Carousel { .. } => "carousel",
+        };
+        f.write_str(name)
+    }
+}
+
+impl LcdModeKind {
+    /// Builds the variant for `mode`, taking the matching field from the provided options. The
+    /// others are dropped, which is behavior-preserving: the old flat struct's mismatched fields
+    /// (e.g. a `temp_source` on an Image setting) were already ignored at apply-time.
+    pub fn from_name(
+        mode: LcdModeName,
+        image_file_processed: Option<String>,
+        temp_source: Option<TempSource>,
+        carousel: Option<LcdCarouselSettings>,
+    ) -> Self {
+        match mode {
+            LcdModeName::None => LcdModeKind::None,
+            LcdModeName::Liquid => LcdModeKind::Liquid,
+            LcdModeName::Image => LcdModeKind::Image {
+                image_file_processed,
+            },
+            LcdModeName::Temp => LcdModeKind::Temp { temp_source },
+            LcdModeName::Carousel => LcdModeKind::Carousel { carousel },
+        }
+    }
 }
 
 /// Settings for the LCD Carousel.
@@ -656,19 +750,111 @@ mod tests {
             channel_name: "screen".to_string(),
             kind: SettingKind::Lcd {
                 lcd: LcdSettings {
-                    mode: LcdModeName::Liquid,
                     brightness: Some(80),
                     orientation: None,
-                    image_file_processed: None,
-                    carousel: None,
                     colors: Vec::new(),
-                    temp_source: None,
+                    mode: LcdModeKind::Liquid,
                 },
             },
         };
         let serialized: Value = serde_json::to_value(&setting).unwrap();
         let parsed: Setting = serde_json::from_value(serialized).unwrap();
         assert_eq!(parsed, setting);
+    }
+
+    fn lcd(mode: LcdModeKind) -> LcdSettings {
+        LcdSettings {
+            brightness: Some(80),
+            orientation: None,
+            colors: Vec::new(),
+            mode,
+        }
+    }
+
+    fn lcd_temp_source() -> TempSource {
+        TempSource {
+            temp_name: "Temp1".to_string(),
+            device_uid: "dev-1".to_string(),
+        }
+    }
+
+    // An Image LcdSettings keeps the lowercase `mode` tag and `image_file_processed` beside the
+    // shared fields, and omits the other modes' fields. Round-trips to the Image variant.
+    #[test]
+    fn lcd_image_mode_round_trip() {
+        let lcd_settings = lcd(LcdModeKind::Image {
+            image_file_processed: Some("/tmp/img.png".to_string()),
+        });
+        let v = serde_json::to_value(&lcd_settings).unwrap();
+        assert_eq!(v["mode"], json!("image"));
+        assert_eq!(v["image_file_processed"], json!("/tmp/img.png"));
+        assert!(v.get("temp_source").is_none());
+        assert!(v.get("carousel").is_none());
+        assert!(v.get("brightness").is_some());
+
+        let parsed: LcdSettings = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.mode, LcdModeKind::Image { .. }));
+    }
+
+    // A Temp LcdSettings carries `temp_source` under the `temp` tag and omits other modes' fields.
+    #[test]
+    fn lcd_temp_mode_round_trip() {
+        let lcd_settings = lcd(LcdModeKind::Temp {
+            temp_source: Some(lcd_temp_source()),
+        });
+        let v = serde_json::to_value(&lcd_settings).unwrap();
+        assert_eq!(v["mode"], json!("temp"));
+        assert!(v.get("temp_source").is_some());
+        assert!(v.get("image_file_processed").is_none());
+        assert!(v.get("carousel").is_none());
+
+        let parsed: LcdSettings = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.mode, LcdModeKind::Temp { .. }));
+    }
+
+    // A Carousel LcdSettings carries `carousel` under the `carousel` tag.
+    #[test]
+    fn lcd_carousel_mode_round_trip() {
+        let lcd_settings = lcd(LcdModeKind::Carousel {
+            carousel: Some(LcdCarouselSettings::default()),
+        });
+        let v = serde_json::to_value(&lcd_settings).unwrap();
+        assert_eq!(v["mode"], json!("carousel"));
+        assert!(v.get("carousel").is_some());
+        assert!(v.get("temp_source").is_none());
+
+        let parsed: LcdSettings = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.mode, LcdModeKind::Carousel { .. }));
+    }
+
+    // A unit mode (None) serializes to just the lowercase tag beside the shared fields.
+    #[test]
+    fn lcd_none_mode_serializes_tag_only() {
+        let v = serde_json::to_value(lcd(LcdModeKind::None)).unwrap();
+        assert_eq!(v["mode"], json!("none"));
+        assert!(v.get("image_file_processed").is_none());
+        assert!(v.get("temp_source").is_none());
+        assert!(v.get("carousel").is_none());
+
+        let parsed: LcdSettings = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.mode, LcdModeKind::None));
+    }
+
+    // A legacy Image payload that still carries other modes' fields (temp_source, carousel) must
+    // deserialize and ignore them, so pre-refactor configs/clients keep working.
+    #[test]
+    fn lcd_reads_legacy_dead_fields() {
+        let legacy = json!({
+            "mode": "image",
+            "brightness": 80,
+            "orientation": null,
+            "colors": [],
+            "image_file_processed": "/tmp/img.png",
+            "temp_source": null,
+            "carousel": null
+        });
+        let parsed: LcdSettings = serde_json::from_value(legacy).unwrap();
+        assert!(matches!(parsed.mode, LcdModeKind::Image { .. }));
     }
 
     // Verifies the Reset variant serializes to `{ "reset_to_default": true }`, matching

@@ -36,9 +36,9 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
-    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
-    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, SensorKind, Setting,
-    SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind, LcdModeName,
+    LcdSettings, LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType,
+    SensorKind, Setting, SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -402,7 +402,7 @@ impl Config {
     fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] =
-            Item::Value(Value::String(Formatted::new(lcd.mode.to_string())));
+            Item::Value(Value::String(Formatted::new(lcd.mode_name().to_string())));
         if let Some(brightness) = lcd.brightness {
             channel_setting["lcd"]["brightness"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(brightness))));
@@ -411,11 +411,11 @@ impl Config {
             channel_setting["lcd"]["orientation"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
         }
-        if let Some(image_file_processed) = &lcd.image_file_processed {
+        if let Some(image_file_processed) = lcd.image_file_processed() {
             channel_setting["lcd"]["image_file_processed"] =
                 Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
         }
-        if let Some(carousel_settings) = &lcd.carousel {
+        if let Some(carousel_settings) = lcd.carousel() {
             channel_setting["lcd"]["carousel"]["interval"] = Item::Value(Value::Integer(
                 Formatted::new(carousel_settings.interval as i64),
             ));
@@ -433,7 +433,7 @@ impl Config {
             color_array.push(rgb_array);
         }
         channel_setting["lcd"]["colors"] = Item::Value(Value::Array(color_array));
-        if let Some(temp_source) = &lcd.temp_source {
+        if let Some(temp_source) = lcd.temp_source() {
             channel_setting["lcd"]["temp_source"]["temp_name"] =
                 Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
             channel_setting["lcd"]["temp_source"]["device_uid"] = Item::Value(Value::String(
@@ -947,13 +947,10 @@ impl Config {
             }
             let temp_source = Self::get_temp_source(&lcd_table.clone().into_table())?;
             Some(LcdSettings {
-                mode,
                 brightness,
                 orientation,
-                image_file_processed,
-                carousel,
                 colors,
-                temp_source,
+                mode: LcdModeKind::from_name(mode, image_file_processed, temp_source, carousel),
             })
         } else {
             None
@@ -2780,7 +2777,7 @@ offset = 5
     #[serial]
     fn test_lcd_shutdown_setting_roundtrip() {
         cc_fs::test_runtime(async {
-            use crate::setting::{LcdModeName, LcdSettings};
+            use crate::setting::{LcdModeKind, LcdModeName, LcdSettings};
 
             let path = Path::new("/tmp/config-lcd-shutdown-test.toml").to_path_buf();
             let path_ui = Path::new("/tmp/config-ui-lcd-shutdown-test.json").to_path_buf();
@@ -2795,15 +2792,14 @@ offset = 5
             let device_uid = "test-device-uid";
             let channel_name = "lcd1";
             let lcd = LcdSettings {
-                mode: LcdModeName::Image,
                 brightness: Some(50),
                 orientation: Some(90),
-                image_file_processed: Some(
-                    "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
-                ),
-                carousel: None,
-                temp_source: None,
                 colors: vec![],
+                mode: LcdModeKind::Image {
+                    image_file_processed: Some(
+                        "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
+                    ),
+                },
             };
 
             // Initially empty
@@ -2819,12 +2815,12 @@ offset = 5
             let (uid, ch, retrieved) = &all[0];
             assert_eq!(uid, device_uid);
             assert_eq!(ch, channel_name);
-            assert_eq!(retrieved.mode, LcdModeName::Image);
+            assert_eq!(retrieved.mode_name(), LcdModeName::Image);
             assert_eq!(retrieved.brightness, Some(50));
             assert_eq!(retrieved.orientation, Some(90));
             assert_eq!(
-                retrieved.image_file_processed,
-                Some("/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string())
+                retrieved.image_file_processed().map(String::as_str),
+                Some("/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png")
             );
 
             // Remove the setting
@@ -3130,7 +3126,7 @@ offset = 5
     #[serial]
     fn test_setting_round_trip_lcd() {
         cc_fs::test_runtime(async {
-            use crate::setting::{LcdModeName, LcdSettings, Setting, SettingKind};
+            use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
 
             let (config, path) = make_test_config("lcd").await;
             let device_uid = "dev-lcd";
@@ -3138,13 +3134,12 @@ offset = 5
                 channel_name: "lcd1".to_string(),
                 kind: SettingKind::Lcd {
                     lcd: LcdSettings {
-                        mode: LcdModeName::Image,
                         brightness: Some(80),
                         orientation: Some(180),
-                        image_file_processed: Some("/tmp/img.png".to_string()),
-                        carousel: None,
-                        temp_source: None,
                         colors: vec![],
+                        mode: LcdModeKind::Image {
+                            image_file_processed: Some("/tmp/img.png".to_string()),
+                        },
                     },
                 },
             };

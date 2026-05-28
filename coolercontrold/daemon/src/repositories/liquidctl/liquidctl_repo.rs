@@ -40,7 +40,9 @@ use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::repositories::utils::apply_device_command_delay;
-use crate::setting::{LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource};
+use crate::setting::{
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource,
+};
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -760,8 +762,8 @@ impl LiquidctlRepo {
                 warn!("Error setting lcd/screen orientation {orientation} | {err}.");
             }
         }
-        if lcd_settings.mode == LcdModeName::Image {
-            if let Some(image_file) = &lcd_settings.image_file_processed {
+        if lcd_settings.mode_name() == LcdModeName::Image {
+            if let Some(image_file) = lcd_settings.image_file_processed() {
                 let mode = if image_file.contains(".gif") {
                     // tmp image is pre-processed
                     "gif".to_string()
@@ -778,7 +780,7 @@ impl LiquidctlRepo {
                 .await
                 .map_err(|err| anyhow!("Setting lcd/screen 'image/gif' - {err}"))?;
             }
-        } else if lcd_settings.mode == LcdModeName::Liquid {
+        } else if lcd_settings.mode_name() == LcdModeName::Liquid {
             self.send_screen_request(
                 &device_data.type_index,
                 &device_data.uid,
@@ -874,13 +876,10 @@ impl LiquidctlRepo {
                     continue;
                 }
                 let lcd_settings = LcdSettings {
-                    mode: LcdModeName::Liquid,
                     brightness: None,
                     orientation: None,
-                    image_file_processed: None,
-                    carousel: None,
                     colors: Vec::new(),
-                    temp_source: None,
+                    mode: LcdModeKind::Liquid,
                 };
                 if let Ok(cached_device_data) = self.cache_device_data(&device_uid) {
                     if let Err(err) = self
