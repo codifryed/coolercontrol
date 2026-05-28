@@ -874,7 +874,10 @@ mod tests {
         assert!(v.get("mix_function").is_none());
 
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
-        assert!(matches!(parsed.kind, SensorKind::ExponentialMovingAvg { .. }));
+        assert!(matches!(
+            parsed.kind,
+            SensorKind::ExponentialMovingAvg { .. }
+        ));
     }
 
     // A legacy persisted File row carries fields that are no longer part of the File variant

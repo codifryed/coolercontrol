@@ -2504,8 +2504,9 @@ impl Config {
             } => {
                 cs_table["cs_type"] =
                     Item::Value(Value::String(Formatted::new("TimeAverage".to_string())));
-                cs_table["time_window_seconds"] =
-                    Item::Value(Value::Integer(Formatted::new(i64::from(time_window_seconds))));
+                cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
+                    i64::from(time_window_seconds),
+                )));
                 Self::write_custom_sensor_sources(cs_table, &sources);
             }
             SensorKind::ExponentialMovingAvg {
@@ -2515,8 +2516,9 @@ impl Config {
                 cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
                     "ExponentialMovingAvg".to_string(),
                 )));
-                cs_table["time_window_seconds"] =
-                    Item::Value(Value::Integer(Formatted::new(i64::from(time_window_seconds))));
+                cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
+                    i64::from(time_window_seconds),
+                )));
                 Self::write_custom_sensor_sources(cs_table, &sources);
             }
         }
@@ -2680,7 +2682,8 @@ mod tests {
             SensorKind::TimeAverage { time_window_seconds, .. } if *time_window_seconds == 30
         ));
         let SensorKind::ExponentialMovingAvg {
-            time_window_seconds, ..
+            time_window_seconds,
+            ..
         } = &sensors[4].kind
         else {
             panic!("expected ExponentialMovingAvg");
