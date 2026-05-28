@@ -427,6 +427,65 @@ impl CustomSensorsRepo {
         self.emit_real_temp(id, reduce(&temp_data))
     }
 
+    /// Computes one sensor's current-tick temp and pushes it to `custom_temps`. `File` sensors
+    /// are deferred into `file_sensors` so their async read happens outside the sensors borrow.
+    /// Shared by the children-first and parents passes of `update_statuses`; parents are never
+    /// `File`, so that arm is inert for them.
+    fn process_live_sensor(
+        &self,
+        sensor: &CustomSensor,
+        custom_temps: &mut Vec<TempStatus>,
+        file_sensors: &mut Vec<(TempName, PathBuf)>,
+    ) {
+        match &sensor.kind {
+            SensorKind::Mix {
+                mix_function,
+                sources,
+            } => {
+                let temp_status =
+                    self.process_reduced_current(&sensor.id, sources, custom_temps, |data| {
+                        Self::process_temp_data(mix_function, data)
+                    });
+                custom_temps.push(temp_status);
+            }
+            SensorKind::Offset { offset, sources } => {
+                let temp_status =
+                    self.process_reduced_current(&sensor.id, sources, custom_temps, |data| {
+                        Self::process_offset_temp_data(*offset, data)
+                    });
+                custom_temps.push(temp_status);
+            }
+            SensorKind::File { file_path } => {
+                // Clone into owned data to avoid holding the sensors borrow over the await.
+                file_sensors.push((sensor.id.clone(), file_path.clone()));
+            }
+            SensorKind::TimeAverage {
+                time_window_seconds,
+                sources,
+            } => {
+                let temp_status = self.process_time_average_current(
+                    &sensor.id,
+                    &sources[0],
+                    *time_window_seconds,
+                    custom_temps,
+                );
+                custom_temps.push(temp_status);
+            }
+            SensorKind::ExponentialMovingAvg {
+                time_window_seconds,
+                sources,
+            } => {
+                let temp_status = self.process_ema_current(
+                    &sensor.id,
+                    &sources[0],
+                    *time_window_seconds,
+                    custom_temps,
+                );
+                custom_temps.push(temp_status);
+            }
+        }
+    }
+
     /// Processes a `TimeAverage` Custom Sensor for the current tick. Reads the last
     /// `window_seconds / poll_rate` samples from the source's `status_history` and emits
     /// their arithmetic mean. If the source is structurally absent (no samples collectible),
@@ -1075,61 +1134,13 @@ impl Repository for CustomSensorsRepo {
         let start_update = Instant::now();
         let mut custom_temps = Vec::new();
         let mut file_sensors: Vec<(TempName, PathBuf)> = Vec::new();
-        // process children and standalone sensors first
+        // Children and standalone sensors first, so parents can read child values this tick.
         self.sensors
             .borrow()
             .iter()
             .filter(|s| s.children.is_empty()) // not parents
-            .for_each(|sensor| match &sensor.kind {
-                SensorKind::Mix {
-                    mix_function,
-                    sources,
-                } => {
-                    let temp_status = self.process_reduced_current(
-                        &sensor.id,
-                        sources,
-                        &custom_temps,
-                        |data| Self::process_temp_data(mix_function, data),
-                    );
-                    custom_temps.push(temp_status);
-                }
-                SensorKind::Offset { offset, sources } => {
-                    let temp_status = self.process_reduced_current(
-                        &sensor.id,
-                        sources,
-                        &custom_temps,
-                        |data| Self::process_offset_temp_data(*offset, data),
-                    );
-                    custom_temps.push(temp_status);
-                }
-                SensorKind::File { file_path } => {
-                    // Clone into owned data to avoid holding the sensors borrow over the await.
-                    file_sensors.push((sensor.id.clone(), file_path.clone()));
-                }
-                SensorKind::TimeAverage {
-                    time_window_seconds,
-                    sources,
-                } => {
-                    let temp_status = self.process_time_average_current(
-                        &sensor.id,
-                        &sources[0],
-                        *time_window_seconds,
-                        &custom_temps,
-                    );
-                    custom_temps.push(temp_status);
-                }
-                SensorKind::ExponentialMovingAvg {
-                    time_window_seconds,
-                    sources,
-                } => {
-                    let temp_status = self.process_ema_current(
-                        &sensor.id,
-                        &sources[0],
-                        *time_window_seconds,
-                        &custom_temps,
-                    );
-                    custom_temps.push(temp_status);
-                }
+            .for_each(|sensor| {
+                self.process_live_sensor(sensor, &mut custom_temps, &mut file_sensors);
             });
         for (id, file_path) in &file_sensors {
             let temp_status = self
@@ -1141,54 +1152,8 @@ impl Repository for CustomSensorsRepo {
             .borrow()
             .iter()
             .filter(|s| s.children.is_empty().not()) // parents
-            .for_each(|sensor| match &sensor.kind {
-                SensorKind::Mix {
-                    mix_function,
-                    sources,
-                } => {
-                    let temp_status = self.process_reduced_current(
-                        &sensor.id,
-                        sources,
-                        &custom_temps,
-                        |data| Self::process_temp_data(mix_function, data),
-                    );
-                    custom_temps.push(temp_status);
-                }
-                SensorKind::Offset { offset, sources } => {
-                    let temp_status = self.process_reduced_current(
-                        &sensor.id,
-                        sources,
-                        &custom_temps,
-                        |data| Self::process_offset_temp_data(*offset, data),
-                    );
-                    custom_temps.push(temp_status);
-                }
-                // Parent sensors cannot be File types.
-                SensorKind::File { .. } => {}
-                SensorKind::TimeAverage {
-                    time_window_seconds,
-                    sources,
-                } => {
-                    let temp_status = self.process_time_average_current(
-                        &sensor.id,
-                        &sources[0],
-                        *time_window_seconds,
-                        &custom_temps,
-                    );
-                    custom_temps.push(temp_status);
-                }
-                SensorKind::ExponentialMovingAvg {
-                    time_window_seconds,
-                    sources,
-                } => {
-                    let temp_status = self.process_ema_current(
-                        &sensor.id,
-                        &sources[0],
-                        *time_window_seconds,
-                        &custom_temps,
-                    );
-                    custom_temps.push(temp_status);
-                }
+            .for_each(|sensor| {
+                self.process_live_sensor(sensor, &mut custom_temps, &mut file_sensors);
             });
         self.custom_sensor_device
             .as_ref()
