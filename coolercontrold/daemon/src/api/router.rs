@@ -18,7 +18,7 @@
 
 use crate::api::{
     alerts, auth, base, calibration, custom_sensors, detect, functions, metrics, modes, plugins,
-    profiles, settings, sse, stats, status, stress_test, tokens,
+    profile_generation, profiles, settings, sse, stats, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -532,6 +532,20 @@ fn profile_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/profiles/generate",
+            post_with(profile_generation::generate, |o| {
+                o.summary("Generate Profiles")
+                    .description(
+                        "Proposes profiles, functions, and custom sensors for the given fan \
+                    assignments and presets, without persisting them.",
+                    )
+                    .tag("profile")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 

@@ -29,6 +29,7 @@ mod functions;
 mod metrics;
 pub mod modes;
 mod plugins;
+mod profile_generation;
 mod profiles;
 mod router;
 mod session_store;
