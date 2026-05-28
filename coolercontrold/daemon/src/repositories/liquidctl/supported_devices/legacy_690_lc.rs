@@ -18,7 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -44,25 +46,25 @@ impl DeviceSupport for Legacy690LcSupport {
         channels.insert(
             "pump".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 50,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "fan".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         let color_channels = vec!["logo".to_string()];
@@ -71,8 +73,8 @@ impl DeviceSupport for Legacy690LcSupport {
             channels.insert(
                 channel_name,
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }

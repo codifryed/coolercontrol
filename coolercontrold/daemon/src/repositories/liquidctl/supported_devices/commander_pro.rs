@@ -18,7 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -44,14 +46,14 @@ impl DeviceSupport for CommanderProSupport {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
                         fixed_enabled: true,
                         // Internal profiles for the commander pro only work with RPMs! not duty %
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }
@@ -60,8 +62,8 @@ impl DeviceSupport for CommanderProSupport {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }

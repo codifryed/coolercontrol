@@ -19,7 +19,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -57,13 +58,13 @@ impl DeviceSupport for H1V2Support {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
                         fixed_enabled: true,
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }

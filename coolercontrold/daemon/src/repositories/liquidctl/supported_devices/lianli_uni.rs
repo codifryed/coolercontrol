@@ -18,7 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
@@ -48,13 +50,13 @@ impl DeviceSupport for LianLiUniSupport {
             channels.insert(
                 format!("fan{i}"),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
                         fixed_enabled: true,
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }

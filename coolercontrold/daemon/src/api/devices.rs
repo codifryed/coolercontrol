@@ -85,7 +85,7 @@ pub fn apply_effective_speed_options(
 ) {
     for device in &mut *devices {
         for (channel_name, channel_info) in &mut device.info.channels {
-            if let Some(so) = channel_info.speed_options.as_mut() {
+            if let Some(so) = channel_info.speed_options_mut() {
                 let key: ChannelKey = (device.uid.clone(), channel_name.clone());
                 *so = effective_speed_options(so, cal_map.get(&key));
             }

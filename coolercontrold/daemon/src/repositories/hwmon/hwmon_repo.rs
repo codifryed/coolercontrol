@@ -73,9 +73,9 @@
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName,
-    TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device,
+    DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp,
+    TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
@@ -519,21 +519,20 @@ impl HwmonRepo {
                         };
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
-                            speed_options: Some(SpeedOptions {
+                            kind: ChannelKind::Speed(SpeedOptions {
                                 fixed_enabled: channel
                                     .caps
                                     .contains(HwmonChannelCapabilities::FAN_WRITABLE),
                                 extension,
                                 ..Default::default()
                             }),
-                            ..Default::default()
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
                     HwmonChannelType::Power => {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }

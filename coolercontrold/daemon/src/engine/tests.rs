@@ -25,8 +25,8 @@ mod engine_tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
-        ChannelInfo, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty, SpeedOptions,
-        Status, Temp, TempName, TempStatus, UID,
+        ChannelInfo, ChannelKind, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty,
+        SpeedOptions, Status, Temp, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
@@ -197,11 +197,11 @@ mod engine_tests {
         device.borrow_mut().info.channels.insert(
             fan_channel_name.clone(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     fixed_enabled: true,
                     ..Default::default()
                 }),
-                ..Default::default()
             },
         );
         fan_channel_name

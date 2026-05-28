@@ -311,8 +311,8 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
         let temp_source = profile.temp_source().unwrap();
         let channel_supports_hw_curve = speed_options.extension.is_some_and(|s| {
@@ -375,8 +375,8 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profiles = self
             .get_ordered_member_profiles(profile.member_profile_uids())
@@ -481,8 +481,8 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profile = self
             .config
@@ -552,7 +552,7 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .lcd_modes
+            .lcd_modes()
             .is_empty();
         if lcd_not_enabled {
             return Err(anyhow!(
@@ -612,8 +612,8 @@ impl Engine {
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}"),
             })?
-            .lcd_info
-            .clone()
+            .lcd_info()
+            .cloned()
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
             })?;
@@ -785,7 +785,7 @@ impl Engine {
         for (device_uid, device_lock) in self.all_devices.as_ref() {
             let device = device_lock.borrow();
             for (channel_name, channel_info) in &device.info.channels {
-                if channel_info.lcd_info.is_none() {
+                if channel_info.lcd_info().is_none() {
                     continue;
                 }
                 if channels_with_settings.contains(&(device_uid.clone(), channel_name.clone())) {
@@ -819,7 +819,7 @@ impl Engine {
             let Some(info) = device.info.channels.get(channel_name) else {
                 return;
             };
-            let Some(lcd_info) = info.lcd_info.clone() else {
+            let Some(lcd_info) = info.lcd_info().cloned() else {
                 return;
             };
             lcd_info
@@ -943,7 +943,7 @@ impl Engine {
             .info
             .channels
             .iter()
-            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
+            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes().is_empty().not())
             .map(|(ch_name, _ch_info)| ch_name.clone())
             .collect::<Vec<String>>();
         if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {

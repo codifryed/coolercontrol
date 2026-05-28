@@ -19,7 +19,7 @@
 use crate::api::actor::{DeviceHandle, StatusHandle};
 use crate::api::devices::DeviceDto;
 use crate::api::status::DeviceStatusDto;
-use crate::device::{ChannelInfo, ChannelStatus, TempInfo, TempStatus};
+use crate::device::{ChannelInfo, ChannelKind, ChannelStatus, TempInfo, TempStatus};
 use crate::grpc_api::device_service::v1::device_service_server::DeviceService;
 use crate::grpc_api::device_service::v1::{health_response, HealthRequest, HealthResponse};
 use crate::grpc_api::device_service::v1::{CustomFunctionOneRequest, CustomFunctionOneResponse};
@@ -248,7 +248,8 @@ impl DeviceService for CCDeviceService {
 impl From<ChannelInfo> for models::v1::ChannelInfo {
     fn from(value: ChannelInfo) -> Self {
         // We only expose Speed ChannelInfo, as all channels are read-only anyway.
-        let options = if let Some(speed_opt) = value.speed_options {
+        let ChannelInfo { label, kind } = value;
+        let options = if let ChannelKind::Speed(speed_opt) = kind {
             Some(models::v1::channel_info::Options::SpeedOptions(
                 models::v1::SpeedOptions {
                     min_duty: u32::from(speed_opt.min_duty),
@@ -260,10 +261,7 @@ impl From<ChannelInfo> for models::v1::ChannelInfo {
         } else {
             None
         };
-        Self {
-            label: value.label,
-            options,
-        }
+        Self { label, options }
     }
 }
 
@@ -318,6 +316,57 @@ impl From<ChannelStatus> for models::v1::Status {
         Self {
             id: value.name,
             metric,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::device::SpeedOptions;
+    use std::ops::Not;
+
+    // The gRPC contract exposes only Speed channels' options (forcing `fixed_enabled = false` and
+    // dropping the extension). This must stay byte-identical after the ChannelKind refactor.
+    #[test]
+    fn grpc_channel_info_exposes_only_speed_options() {
+        let speed = models::v1::ChannelInfo::from(ChannelInfo {
+            label: Some("Fan 1".to_string()),
+            kind: ChannelKind::Speed(SpeedOptions {
+                min_duty: 10,
+                max_duty: 90,
+                fixed_enabled: true,
+                extension: None,
+            }),
+        });
+        assert_eq!(speed.label, Some("Fan 1".to_string()));
+        match speed.options {
+            Some(models::v1::channel_info::Options::SpeedOptions(o)) => {
+                assert_eq!(o.min_duty, 10);
+                assert_eq!(o.max_duty, 90);
+                assert!(o.fixed_enabled.not());
+                assert!(o.extension.is_none());
+            }
+            other => panic!("expected SpeedOptions, got {other:?}"),
+        }
+    }
+
+    // Lighting/Lcd/info-only channels expose no `options` over gRPC, as before.
+    #[test]
+    fn grpc_channel_info_non_speed_has_no_options() {
+        for kind in [
+            ChannelKind::Lighting(Vec::new()),
+            ChannelKind::Lcd {
+                modes: Vec::new(),
+                info: None,
+            },
+            ChannelKind::InfoOnly,
+        ] {
+            let proto = models::v1::ChannelInfo::from(ChannelInfo { label: None, kind });
+            assert!(
+                proto.options.is_none(),
+                "non-speed channels must not expose options over gRPC"
+            );
         }
     }
 }

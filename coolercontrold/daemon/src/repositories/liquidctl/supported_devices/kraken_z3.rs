@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LcdInfo, LcdMode,
-    LcdModeType, LightingMode, SpeedOptions,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType, LcdInfo,
+    LcdMode, LcdModeType, LightingMode, SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -47,25 +47,25 @@ impl DeviceSupport for KrakenZ3Support {
         channels.insert(
             "pump".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: Some(ChannelExtensionNames::AutoHWCurve),
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "fan".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: Some(ChannelExtensionNames::AutoHWCurve),
                 }),
-                ..Default::default()
             },
         );
         // Kraken2023 and KrakenZ have different color channels:
@@ -74,8 +74,8 @@ impl DeviceSupport for KrakenZ3Support {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }
@@ -94,54 +94,56 @@ impl DeviceSupport for KrakenZ3Support {
         channels.insert(
             "lcd".to_string(),
             ChannelInfo {
-                lcd_modes: vec![
-                    LcdMode {
-                        name: "liquid".to_string(),
-                        frontend_name: "Liquid(default)".to_string(),
-                        brightness: true,
-                        orientation: true,
-                        image: false,
-                        colors_min: 0,
-                        colors_max: 0,
-                        type_: LcdModeType::Liquidctl,
-                    },
-                    LcdMode {
-                        name: "image".to_string(),
-                        frontend_name: "Image/gif".to_string(),
-                        brightness: true,
-                        orientation: true,
-                        image: true,
-                        colors_min: 0,
-                        colors_max: 0,
-                        type_: LcdModeType::Liquidctl,
-                    },
-                    LcdMode {
-                        name: "temp".to_string(),
-                        frontend_name: "Single Temp".to_string(),
-                        brightness: true,
-                        orientation: true,
-                        image: false,
-                        colors_min: 0, // for custom types
-                        colors_max: 0,
-                        type_: LcdModeType::Custom,
-                    },
-                    LcdMode {
-                        name: "carousel".to_string(),
-                        frontend_name: "Carousel".to_string(),
-                        brightness: true,
-                        orientation: true,
-                        image: false,
-                        colors_min: 0, // for custom types
-                        colors_max: 0,
-                        type_: LcdModeType::Custom,
-                    },
-                ],
-                lcd_info: Some(LcdInfo {
-                    screen_width: lcd_resolution.0,
-                    screen_height: lcd_resolution.1,
-                    max_image_size_bytes: 24_320 * 1024, // 24,320 KB/KiB
-                }),
-                ..Default::default()
+                label: None,
+                kind: ChannelKind::Lcd {
+                    modes: vec![
+                        LcdMode {
+                            name: "liquid".to_string(),
+                            frontend_name: "Liquid(default)".to_string(),
+                            brightness: true,
+                            orientation: true,
+                            image: false,
+                            colors_min: 0,
+                            colors_max: 0,
+                            type_: LcdModeType::Liquidctl,
+                        },
+                        LcdMode {
+                            name: "image".to_string(),
+                            frontend_name: "Image/gif".to_string(),
+                            brightness: true,
+                            orientation: true,
+                            image: true,
+                            colors_min: 0,
+                            colors_max: 0,
+                            type_: LcdModeType::Liquidctl,
+                        },
+                        LcdMode {
+                            name: "temp".to_string(),
+                            frontend_name: "Single Temp".to_string(),
+                            brightness: true,
+                            orientation: true,
+                            image: false,
+                            colors_min: 0, // for custom types
+                            colors_max: 0,
+                            type_: LcdModeType::Custom,
+                        },
+                        LcdMode {
+                            name: "carousel".to_string(),
+                            frontend_name: "Carousel".to_string(),
+                            brightness: true,
+                            orientation: true,
+                            image: false,
+                            colors_min: 0, // for custom types
+                            colors_max: 0,
+                            type_: LcdModeType::Custom,
+                        },
+                    ],
+                    info: Some(LcdInfo {
+                        screen_width: lcd_resolution.0,
+                        screen_height: lcd_resolution.1,
+                        max_image_size_bytes: 24_320 * 1024, // 24,320 KB/KiB
+                    }),
+                },
             },
         );
 

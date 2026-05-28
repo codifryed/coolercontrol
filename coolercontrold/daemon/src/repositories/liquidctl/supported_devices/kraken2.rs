@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType,
+    LightingMode, SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -58,13 +58,13 @@ impl DeviceSupport for Kraken2Support {
                 channels.insert(
                     speed_channel.clone(),
                     ChannelInfo {
-                        speed_options: Some(SpeedOptions {
+                        label: None,
+                        kind: ChannelKind::Speed(SpeedOptions {
                             min_duty: 0,
                             max_duty: 100,
                             fixed_enabled: true,
                             extension: settings_option,
                         }),
-                        ..Default::default()
                     },
                 );
             }
@@ -76,8 +76,8 @@ impl DeviceSupport for Kraken2Support {
                 channels.insert(
                     channel_name,
                     ChannelInfo {
-                        lighting_modes,
-                        ..Default::default()
+                        label: None,
+                        kind: ChannelKind::Lighting(lighting_modes),
                     },
                 );
             }

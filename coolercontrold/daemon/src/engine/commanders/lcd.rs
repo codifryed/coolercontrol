@@ -123,8 +123,8 @@ impl LcdCommander {
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}"),
             })?
-            .lcd_info
-            .clone()
+            .lcd_info()
+            .cloned()
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
             })?;

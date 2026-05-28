@@ -20,7 +20,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -59,13 +60,13 @@ impl DeviceSupport for SmartDeviceSupport {
             channels.insert(
                 name.clone(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
                         fixed_enabled: true,
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }
@@ -78,8 +79,8 @@ impl DeviceSupport for SmartDeviceSupport {
             channels.insert(
                 name.to_owned(),
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }

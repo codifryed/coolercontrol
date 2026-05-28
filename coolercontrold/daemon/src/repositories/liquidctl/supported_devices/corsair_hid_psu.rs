@@ -19,7 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -45,7 +46,8 @@ impl DeviceSupport for CorsairHidPsuSupport {
         channels.insert(
             "fan".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     // We override the driver's min duty of 30%.
                     // 15% is half as fast rpm-wise, noticeably less noisy, and still offers
                     // decent cooling in lower power draw situations.
@@ -60,42 +62,41 @@ impl DeviceSupport for CorsairHidPsuSupport {
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "total-power".to_string(),
             ChannelInfo {
                 label: Some("Total Power".to_owned()),
-                ..Default::default()
+                kind: ChannelKind::InfoOnly,
             },
         );
         channels.insert(
             "estimated-input-power".to_string(),
             ChannelInfo {
                 label: Some("Estimated Input Power".to_owned()),
-                ..Default::default()
+                kind: ChannelKind::InfoOnly,
             },
         );
         channels.insert(
             "12v-power".to_string(),
             ChannelInfo {
                 label: Some("+12V Power".to_owned()),
-                ..Default::default()
+                kind: ChannelKind::InfoOnly,
             },
         );
         channels.insert(
             "5v-power".to_string(),
             ChannelInfo {
                 label: Some("+5V Power".to_owned()),
-                ..Default::default()
+                kind: ChannelKind::InfoOnly,
             },
         );
         channels.insert(
             "3.3v-power".to_string(),
             ChannelInfo {
                 label: Some("+3.3V Power".to_owned()),
-                ..Default::default()
+                kind: ChannelKind::InfoOnly,
             },
         );
         DeviceInfo {

@@ -338,7 +338,7 @@ impl GraphProfileCommander {
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
         })?;
-        let raw_speed_options = channel_info.speed_options.as_ref().with_context(|| {
+        let raw_speed_options = channel_info.speed_options().with_context(|| {
             format!("Speed Options must be present for target device: {device_uid}")
         })?;
         // Consult the calibration store so a Smooth calibration's

@@ -19,7 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -51,13 +52,13 @@ impl DeviceSupport for ControlHubSupport {
             channels.insert(
                 name.clone(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: MIN_DUTY,
                         max_duty: MAX_DUTY,
                         fixed_enabled: true,
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }
@@ -67,8 +68,8 @@ impl DeviceSupport for ControlHubSupport {
             channels.insert(
                 name.to_owned(),
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }
