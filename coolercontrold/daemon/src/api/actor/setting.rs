@@ -477,7 +477,7 @@ fn verify_disable_does_not_orphan_temp_sources(
     }
     let mut broken_sensors: Vec<(String, String)> = Vec::with_capacity(custom_sensors.len());
     for sensor in custom_sensors {
-        for sensor_source in &sensor.sources {
+        for sensor_source in sensor.sources() {
             if is_broken(&sensor_source.temp_source) {
                 broken_sensors.push((
                     sensor.id.clone(),
@@ -522,10 +522,12 @@ mod tests {
         CCError, CustomSensor, Profile, ProfileType, TempSource,
     };
     use crate::setting::{
-        CCChannelSettings, CustomSensorType, CustomTempSourceData, DeviceExtensions,
+        CCChannelSettings, CustomSensorMixFunctionType, CustomTempSourceData, DeviceExtensions,
+        SensorKind,
     };
     use std::collections::HashMap;
     use std::ops::Not;
+    use std::path::PathBuf;
 
     const DEVICE_A: &str = "uid_a";
     const DEVICE_B: &str = "uid_b";
@@ -566,15 +568,18 @@ mod tests {
     fn mix_sensor(id: &str, source_uid: &str, source_temp: &str) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
-            cs_type: CustomSensorType::Mix,
-            sources: vec![CustomTempSourceData {
-                weight: 1,
-                temp_source: TempSource {
-                    temp_name: source_temp.to_string(),
-                    device_uid: source_uid.to_string(),
-                },
-            }],
-            ..Default::default()
+            kind: SensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![CustomTempSourceData {
+                    weight: 1,
+                    temp_source: TempSource {
+                        temp_name: source_temp.to_string(),
+                        device_uid: source_uid.to_string(),
+                    },
+                }],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
         }
     }
 
@@ -778,9 +783,11 @@ mod tests {
         let update = settings(&[("Tctl", true)], false);
         let file_sensor = CustomSensor {
             id: "FromFile".to_string(),
-            cs_type: CustomSensorType::File,
-            sources: Vec::new(),
-            ..Default::default()
+            kind: SensorKind::File {
+                file_path: PathBuf::from("/tmp/from_file"),
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
         };
         let result = verify_disable_does_not_orphan_temp_sources(
             &DEVICE_A.to_string(),

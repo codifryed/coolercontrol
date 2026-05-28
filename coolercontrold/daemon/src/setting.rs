@@ -526,6 +526,30 @@ pub enum SensorKind {
     },
 }
 
+impl CustomSensor {
+    /// The temp sources this sensor reads from. `File` sensors have none.
+    pub fn sources(&self) -> &[CustomTempSourceData] {
+        match &self.kind {
+            SensorKind::Mix { sources, .. }
+            | SensorKind::Offset { sources, .. }
+            | SensorKind::TimeAverage { sources, .. }
+            | SensorKind::ExponentialMovingAvg { sources, .. } => sources,
+            SensorKind::File { .. } => &[],
+        }
+    }
+
+    /// Mutable access to this sensor's temp sources, or `None` for `File` sensors.
+    pub fn sources_mut(&mut self) -> Option<&mut Vec<CustomTempSourceData>> {
+        match &mut self.kind {
+            SensorKind::Mix { sources, .. }
+            | SensorKind::Offset { sources, .. }
+            | SensorKind::TimeAverage { sources, .. }
+            | SensorKind::ExponentialMovingAvg { sources, .. } => Some(sources),
+            SensorKind::File { .. } => None,
+        }
+    }
+}
+
 /// A source for displaying sensor data that is related to a particular channel.
 /// This is like `TempSource` but not limited to temperature sensors. (Load, Duty, etc.)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
