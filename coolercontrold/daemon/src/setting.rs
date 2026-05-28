@@ -474,17 +474,11 @@ pub struct CustomTempSourceData {
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
     pub id: TempName,
-    pub cs_type: CustomSensorType,
-    pub mix_function: CustomSensorMixFunctionType,
-    pub sources: Vec<CustomTempSourceData>,
-    pub file_path: Option<PathBuf>,
-    pub offset: Option<Offset>,
 
-    /// The window in seconds over which a `TimeAverage` or `ExponentialMovingAvg` Custom
-    /// Sensor smooths its source. Required for both, ignored for other types. Validated at
-    /// the API boundary to be within `1..=300`.
-    #[serde(default)]
-    pub time_window_seconds: Option<u16>,
+    /// Variant payload, flattened so its fields and the `cs_type` discriminator stay flat
+    /// siblings of `id` on the wire (the legacy shape).
+    #[serde(flatten)]
+    pub kind: SensorKind,
 
     /// The Custom Sensor's children, if any.
     ///
@@ -503,20 +497,33 @@ pub struct CustomSensor {
     pub parents: Vec<TempName>,
 }
 
-impl Default for CustomSensor {
-    fn default() -> Self {
-        Self {
-            id: "default".to_string(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: Vec::new(),
-            file_path: None,
-            offset: None,
-            time_window_seconds: None,
-            children: Vec::new(),
-            parents: Vec::new(),
-        }
-    }
+/// Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one
+/// variant is valid per sensor. Constraints the type cannot express (single source for
+/// `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,
+/// `time_window_seconds` in `1..=300`) are enforced at the API boundary in
+/// `validate_custom_sensor`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "cs_type")]
+pub enum SensorKind {
+    Mix {
+        mix_function: CustomSensorMixFunctionType,
+        sources: Vec<CustomTempSourceData>,
+    },
+    File {
+        file_path: PathBuf,
+    },
+    Offset {
+        offset: Offset,
+        sources: Vec<CustomTempSourceData>,
+    },
+    TimeAverage {
+        time_window_seconds: u16,
+        sources: Vec<CustomTempSourceData>,
+    },
+    ExponentialMovingAvg {
+        time_window_seconds: u16,
+        sources: Vec<CustomTempSourceData>,
+    },
 }
 
 /// A source for displaying sensor data that is related to a particular channel.
@@ -704,6 +711,192 @@ mod tests {
     fn empty_kind_rejected() {
         let payload = json!({ "channel_name": "fan1" });
         let result: Result<Setting, _> = serde_json::from_value(payload);
+        assert!(result.is_err());
+    }
+
+    fn sample_source() -> CustomTempSourceData {
+        CustomTempSourceData {
+            temp_source: TempSource {
+                temp_name: "Temp1".to_string(),
+                device_uid: "dev-1".to_string(),
+            },
+            weight: 1,
+        }
+    }
+
+    // A Mix sensor serializes to the legacy flat shape: the cs_type tag and mix_function sit
+    // beside id, sources is present, and no other variant's fields leak in. It deserializes
+    // back to the Mix variant.
+    #[test]
+    fn custom_sensor_mix_round_trip() {
+        let sensor = CustomSensor {
+            id: "mix1".to_string(),
+            kind: SensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Avg,
+                sources: vec![sample_source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["cs_type"], json!("Mix"));
+        assert_eq!(v["mix_function"], json!("Avg"));
+        assert!(v.get("sources").is_some());
+        assert!(v.get("file_path").is_none());
+        assert!(v.get("offset").is_none());
+        assert!(v.get("time_window_seconds").is_none());
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert!(matches!(
+            parsed.kind,
+            SensorKind::Mix { mix_function, .. } if mix_function == CustomSensorMixFunctionType::Avg
+        ));
+    }
+
+    // A File sensor serializes with only file_path beside the tag. The fields belonging to
+    // other variants are absent, not null. mix_function in particular was always present on
+    // the old flat struct, so its absence is the notable wire change. Round-trips to File.
+    #[test]
+    fn custom_sensor_file_round_trip() {
+        let sensor = CustomSensor {
+            id: "file1".to_string(),
+            kind: SensorKind::File {
+                file_path: PathBuf::from("/tmp/temp"),
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["cs_type"], json!("File"));
+        assert_eq!(v["file_path"], json!("/tmp/temp"));
+        assert!(v.get("mix_function").is_none());
+        assert!(v.get("sources").is_none());
+        assert!(v.get("offset").is_none());
+        assert!(v.get("time_window_seconds").is_none());
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.kind, SensorKind::File { .. }));
+    }
+
+    // An Offset sensor serializes with offset and sources beside the tag and nothing from
+    // the other variants, then deserializes back with the offset value preserved.
+    #[test]
+    fn custom_sensor_offset_round_trip() {
+        let sensor = CustomSensor {
+            id: "off1".to_string(),
+            kind: SensorKind::Offset {
+                offset: -7,
+                sources: vec![sample_source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["cs_type"], json!("Offset"));
+        assert_eq!(v["offset"], json!(-7));
+        assert!(v.get("sources").is_some());
+        assert!(v.get("mix_function").is_none());
+        assert!(v.get("file_path").is_none());
+        assert!(v.get("time_window_seconds").is_none());
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.kind, SensorKind::Offset { offset, .. } if offset == -7));
+    }
+
+    // A TimeAverage sensor serializes with time_window_seconds and sources beside the tag.
+    // mix_function and the other variants' fields are absent. Round-trips to TimeAverage.
+    #[test]
+    fn custom_sensor_time_average_round_trip() {
+        let sensor = CustomSensor {
+            id: "ta1".to_string(),
+            kind: SensorKind::TimeAverage {
+                time_window_seconds: 30,
+                sources: vec![sample_source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["cs_type"], json!("TimeAverage"));
+        assert_eq!(v["time_window_seconds"], json!(30));
+        assert!(v.get("sources").is_some());
+        assert!(v.get("mix_function").is_none());
+        assert!(v.get("file_path").is_none());
+        assert!(v.get("offset").is_none());
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert!(matches!(
+            parsed.kind,
+            SensorKind::TimeAverage { time_window_seconds, .. } if time_window_seconds == 30
+        ));
+    }
+
+    // An ExponentialMovingAvg sensor serializes like TimeAverage but under its own tag, and
+    // round-trips back to the EMA variant.
+    #[test]
+    fn custom_sensor_ema_round_trip() {
+        let sensor = CustomSensor {
+            id: "ema1".to_string(),
+            kind: SensorKind::ExponentialMovingAvg {
+                time_window_seconds: 15,
+                sources: vec![sample_source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["cs_type"], json!("ExponentialMovingAvg"));
+        assert_eq!(v["time_window_seconds"], json!(15));
+        assert!(v.get("mix_function").is_none());
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.kind, SensorKind::ExponentialMovingAvg { .. }));
+    }
+
+    // A legacy persisted File row carries fields that are no longer part of the File variant
+    // (mix_function, sources, offset, time_window_seconds). The internally-tagged enum must
+    // ignore those dead siblings and deserialize cleanly, so existing configs keep loading.
+    #[test]
+    fn custom_sensor_reads_legacy_payload_with_dead_fields() {
+        let legacy = json!({
+            "id": "legacy-file",
+            "cs_type": "File",
+            "file_path": "/tmp/legacy",
+            "mix_function": "Min",
+            "sources": [],
+            "offset": null,
+            "time_window_seconds": null,
+            "children": [],
+            "parents": []
+        });
+        let parsed: CustomSensor = serde_json::from_value(legacy).unwrap();
+        assert!(matches!(parsed.kind, SensorKind::File { .. }));
+    }
+
+    // Without the cs_type discriminator there is no variant to construct, so the payload is
+    // rejected at the deserialization boundary rather than defaulting silently.
+    #[test]
+    fn custom_sensor_missing_cs_type_rejected() {
+        let payload = json!({ "id": "x", "mix_function": "Avg", "sources": [] });
+        let result: Result<CustomSensor, _> = serde_json::from_value(payload);
+        assert!(result.is_err());
+    }
+
+    // mix_function is required for Mix and no longer Option, so a Mix payload missing it
+    // fails to parse instead of reaching a runtime validator branch.
+    #[test]
+    fn custom_sensor_mix_without_mix_function_rejected() {
+        let payload = json!({ "id": "x", "cs_type": "Mix", "sources": [] });
+        let result: Result<CustomSensor, _> = serde_json::from_value(payload);
+        assert!(result.is_err());
+    }
+
+    // time_window_seconds is required for TimeAverage and no longer Option, so a payload
+    // missing it fails to parse.
+    #[test]
+    fn custom_sensor_time_average_without_window_rejected() {
+        let payload = json!({ "id": "x", "cs_type": "TimeAverage", "sources": [] });
+        let result: Result<CustomSensor, _> = serde_json::from_value(payload);
         assert!(result.is_err());
     }
 }

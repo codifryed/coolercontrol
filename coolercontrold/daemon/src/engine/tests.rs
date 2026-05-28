@@ -1503,7 +1503,7 @@ mod engine_tests {
         // stored setting must be left untouched. Verifies both the
         // snapshot classification and the restore routing.
         use crate::calibration::{DiagnosisHost, SnapshotKind};
-        use crate::setting::{Setting, DEFAULT_PROFILE_UID};
+        use crate::setting::{Setting, SettingKind, DEFAULT_PROFILE_UID};
         cc_fs::test_runtime(async {
             let (engine, config, device_uid, set_speeds) = setup_engine_with_speed_recorder();
 
@@ -1513,11 +1513,9 @@ mod engine_tests {
                 &device_uid,
                 &Setting {
                     channel_name: chan_default.clone(),
-                    speed_fixed: None,
-                    lighting: None,
-                    lcd: None,
-                    reset_to_default: None,
-                    profile_uid: Some(DEFAULT_PROFILE_UID.to_string()),
+                    kind: SettingKind::Profile {
+                        profile_uid: DEFAULT_PROFILE_UID.to_string(),
+                    },
                 },
             );
             let snapshot = engine.snapshot_setting(&device_uid, &chan_default);
@@ -1535,13 +1533,14 @@ mod engine_tests {
                 "restoring Unmanaged must take the reset path, not write a manual duty: {:?}",
                 set_speeds.borrow()
             );
-            assert_eq!(
-                config
-                    .get_device_channel_settings(&device_uid, &chan_default)
-                    .expect("setting present")
-                    .profile_uid
-                    .as_deref(),
-                Some(DEFAULT_PROFILE_UID),
+            let stored = config
+                .get_device_channel_settings(&device_uid, &chan_default)
+                .expect("setting present");
+            assert!(
+                matches!(
+                    &stored.kind,
+                    SettingKind::Profile { profile_uid } if profile_uid == DEFAULT_PROFILE_UID
+                ),
                 "calibration must leave the stored Unmanaged setting untouched"
             );
 

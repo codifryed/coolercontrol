@@ -1907,15 +1907,13 @@ impl DiagnosisHost for Engine {
             .config
             .get_device_channel_settings(device_uid, channel_name)
         {
-            Ok(setting) => {
-                if let Some(profile_uid) = setting.profile_uid {
-                    SnapshotKind::Profile(profile_uid)
-                } else if let Some(speed_fixed) = setting.speed_fixed {
-                    SnapshotKind::Manual(speed_fixed)
-                } else {
-                    SnapshotKind::None
-                }
-            }
+            Ok(setting) => match setting.kind {
+                SettingKind::Profile { profile_uid } => SnapshotKind::Profile(profile_uid),
+                SettingKind::SpeedFixed { speed_fixed } => SnapshotKind::Manual(speed_fixed),
+                SettingKind::Lighting { .. }
+                | SettingKind::Lcd { .. }
+                | SettingKind::Reset { .. } => SnapshotKind::None,
+            },
             Err(_) => SnapshotKind::None,
         };
         SettingsSnapshot {

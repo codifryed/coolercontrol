@@ -37,8 +37,8 @@ use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
     Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
-    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, SettingKind,
-    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, SensorKind, Setting,
+    SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -2162,79 +2162,9 @@ impl Config {
         if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
             let c_sensors_array = custom_sensors_item
                 .as_array_of_tables()
-                .with_context(|| "customer_sensors should be an array of tables")?;
+                .with_context(|| "custom_sensors should be an array of tables")?;
             for c_sensor_table in c_sensors_array {
-                let id = c_sensor_table
-                    .get("id")
-                    .with_context(|| "Sensor ID should be present")?
-                    .as_str()
-                    .with_context(|| "ID should be a string")?
-                    .to_owned();
-                let cs_type_str = c_sensor_table
-                    .get("cs_type")
-                    .with_context(|| "Sensor type should be present")?
-                    .as_str()
-                    .with_context(|| "Sensor type should be a string")?
-                    .to_owned();
-                let cs_type = CustomSensorType::from_str(&cs_type_str)
-                    .with_context(|| "Sensor type should be a valid member")?;
-                let mix_function_str = c_sensor_table
-                    .get("mix_function")
-                    .with_context(|| "mix_func_type should be present")?
-                    .as_str()
-                    .with_context(|| "mix_func_type should be a string")?
-                    .to_owned();
-                let mix_function = CustomSensorMixFunctionType::from_str(&mix_function_str)
-                    .with_context(|| "mix_func_type should be a valid member")?;
-                let mut sources = Vec::new();
-                if let Some(sources_item) = c_sensor_table.get("sources") {
-                    let sources_array = sources_item
-                        .as_array_of_tables()
-                        .with_context(|| "custom_sensors.sources should be an array")?;
-                    for source_data_table in sources_array {
-                        let temp_source =
-                            Self::get_temp_source(source_data_table)?.with_context(|| {
-                                "TempSource should always be present for Custom Sensor Sources"
-                            })?;
-                        let weight_raw: u8 = source_data_table
-                            .get("weight")
-                            .with_context(|| "weight should be present")?
-                            .as_integer()
-                            .with_context(|| "weight should be an integer")?
-                            .try_into()
-                            .ok()
-                            .with_context(|| "weight must be a value between 1-254")?;
-                        let weight = weight_raw.clamp(1, 254);
-                        let custom_temp_source_data = CustomTempSourceData {
-                            temp_source,
-                            weight,
-                        };
-                        sources.push(custom_temp_source_data);
-                    }
-                }
-                let file_path = if let Some(file_path_value) = c_sensor_table.get("file_path") {
-                    let file_path_str = file_path_value
-                        .as_str()
-                        .with_context(|| "file_path should be a string")?
-                        .to_string();
-                    Some(Path::new(&file_path_str).to_path_buf())
-                } else {
-                    None
-                };
-                let offset = Self::parse_custom_sensor_offset(c_sensor_table)?;
-                let time_window_seconds = Self::parse_time_window_seconds(c_sensor_table)?;
-                let custom_sensor = CustomSensor {
-                    id,
-                    cs_type,
-                    mix_function,
-                    sources,
-                    file_path,
-                    offset,
-                    time_window_seconds,
-                    children: vec![],
-                    parents: vec![],
-                };
-                custom_sensors.push(custom_sensor);
+                custom_sensors.push(Self::parse_custom_sensor(c_sensor_table)?);
             }
         }
         let mut ids = Vec::new();
@@ -2248,6 +2178,124 @@ impl Config {
             ids.push(custom_sensor.id.clone());
         }
         Ok(custom_sensors)
+    }
+
+    /// Parses one persisted custom-sensor table, dispatching on the `cs_type` discriminator
+    /// so only the active variant's fields are read. The single-source cardinality for
+    /// `Offset`/`TimeAverage`/`ExponentialMovingAvg` is checked here because a hand-edited
+    /// config could violate what the API boundary enforces for live requests.
+    fn parse_custom_sensor(c_sensor_table: &Table) -> Result<CustomSensor> {
+        let id = c_sensor_table
+            .get("id")
+            .with_context(|| "Sensor ID should be present")?
+            .as_str()
+            .with_context(|| "ID should be a string")?
+            .to_owned();
+        let cs_type_str = c_sensor_table
+            .get("cs_type")
+            .with_context(|| "Sensor type should be present")?
+            .as_str()
+            .with_context(|| "Sensor type should be a string")?;
+        let kind = match CustomSensorType::from_str(cs_type_str)
+            .with_context(|| "Sensor type should be a valid member")?
+        {
+            CustomSensorType::Mix => SensorKind::Mix {
+                mix_function: Self::parse_mix_function(c_sensor_table)?,
+                sources: Self::parse_custom_sensor_sources(c_sensor_table)?,
+            },
+            CustomSensorType::File => SensorKind::File {
+                file_path: Self::parse_custom_sensor_file_path(c_sensor_table)?,
+            },
+            CustomSensorType::Offset => SensorKind::Offset {
+                offset: Self::parse_custom_sensor_offset(c_sensor_table)?
+                    .with_context(|| "Offset Custom Sensor must have an offset")?,
+                sources: Self::parse_single_source(c_sensor_table, "Offset")?,
+            },
+            CustomSensorType::TimeAverage => SensorKind::TimeAverage {
+                time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
+                    .with_context(|| "TimeAverage Custom Sensor must have time_window_seconds")?,
+                sources: Self::parse_single_source(c_sensor_table, "TimeAverage")?,
+            },
+            CustomSensorType::ExponentialMovingAvg => SensorKind::ExponentialMovingAvg {
+                time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
+                    .with_context(|| {
+                        "ExponentialMovingAvg Custom Sensor must have time_window_seconds"
+                    })?,
+                sources: Self::parse_single_source(c_sensor_table, "ExponentialMovingAvg")?,
+            },
+        };
+        Ok(CustomSensor {
+            id,
+            kind,
+            children: vec![],
+            parents: vec![],
+        })
+    }
+
+    fn parse_mix_function(c_sensor_table: &Table) -> Result<CustomSensorMixFunctionType> {
+        let mix_function_str = c_sensor_table
+            .get("mix_function")
+            .with_context(|| "mix_function should be present")?
+            .as_str()
+            .with_context(|| "mix_function should be a string")?;
+        let mix_function = CustomSensorMixFunctionType::from_str(mix_function_str)
+            .with_context(|| "mix_function should be a valid member")?;
+        Ok(mix_function)
+    }
+
+    fn parse_custom_sensor_file_path(c_sensor_table: &Table) -> Result<PathBuf> {
+        let file_path_str = c_sensor_table
+            .get("file_path")
+            .with_context(|| "File Custom Sensor must have a file_path")?
+            .as_str()
+            .with_context(|| "file_path should be a string")?;
+        Ok(Path::new(file_path_str).to_path_buf())
+    }
+
+    /// Parses the `sources` array. Any length is accepted here; per-variant cardinality is
+    /// applied by callers (`parse_single_source` for the single-source variants).
+    fn parse_custom_sensor_sources(c_sensor_table: &Table) -> Result<Vec<CustomTempSourceData>> {
+        let mut sources = Vec::new();
+        let Some(sources_item) = c_sensor_table.get("sources") else {
+            return Ok(sources);
+        };
+        let sources_array = sources_item
+            .as_array_of_tables()
+            .with_context(|| "custom_sensors.sources should be an array")?;
+        for source_data_table in sources_array {
+            let temp_source = Self::get_temp_source(source_data_table)?
+                .with_context(|| "TempSource should always be present for Custom Sensor Sources")?;
+            let weight_raw: u8 = source_data_table
+                .get("weight")
+                .with_context(|| "weight should be present")?
+                .as_integer()
+                .with_context(|| "weight should be an integer")?
+                .try_into()
+                .ok()
+                .with_context(|| "weight must be a value between 1-254")?;
+            let weight = weight_raw.clamp(1, 254);
+            sources.push(CustomTempSourceData {
+                temp_source,
+                weight,
+            });
+        }
+        Ok(sources)
+    }
+
+    /// Parses `sources` and enforces exactly one element, for the variants derived from a
+    /// single source.
+    fn parse_single_source(
+        c_sensor_table: &Table,
+        type_name: &str,
+    ) -> Result<Vec<CustomTempSourceData>> {
+        let sources = Self::parse_custom_sensor_sources(c_sensor_table)?;
+        if sources.len() != 1 {
+            return Err(CCError::InternalError {
+                msg: format!("{type_name} Custom Sensor must have exactly one temp source"),
+            }
+            .into());
+        }
+        Ok(sources)
     }
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
@@ -2415,18 +2463,72 @@ impl Config {
         cs_table: &mut Table,
     ) {
         cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
-        cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
-            custom_sensor.cs_type.to_string(),
-        )));
-        cs_table["mix_function"] = Item::Value(Value::String(Formatted::new(
-            custom_sensor.mix_function.to_string(),
-        )));
+        // Scrub every variant-specific key first so a variant change on update (e.g. a File
+        // sensor re-saved as Mix) cannot leave a stale field behind. The active variant
+        // rewrites only the keys it owns.
+        for key in [
+            "mix_function",
+            "sources",
+            "file_path",
+            "offset",
+            "time_window_seconds",
+        ] {
+            cs_table.remove(key);
+        }
+        match custom_sensor.kind {
+            SensorKind::Mix {
+                mix_function,
+                sources,
+            } => {
+                cs_table["cs_type"] = Item::Value(Value::String(Formatted::new("Mix".to_string())));
+                cs_table["mix_function"] =
+                    Item::Value(Value::String(Formatted::new(mix_function.to_string())));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            SensorKind::File { file_path } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("File".to_string())));
+                cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
+                    file_path.to_string_lossy().to_string(),
+                )));
+            }
+            SensorKind::Offset { offset, sources } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("Offset".to_string())));
+                cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            SensorKind::TimeAverage {
+                time_window_seconds,
+                sources,
+            } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("TimeAverage".to_string())));
+                cs_table["time_window_seconds"] =
+                    Item::Value(Value::Integer(Formatted::new(i64::from(time_window_seconds))));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            SensorKind::ExponentialMovingAvg {
+                time_window_seconds,
+                sources,
+            } => {
+                cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
+                    "ExponentialMovingAvg".to_string(),
+                )));
+                cs_table["time_window_seconds"] =
+                    Item::Value(Value::Integer(Formatted::new(i64::from(time_window_seconds))));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+        }
+    }
+
+    fn write_custom_sensor_sources(cs_table: &mut Table, sources: &[CustomTempSourceData]) {
         let sources_array = cs_table["sources"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
-        sources_array.clear(); // remove any existing temp sources
-        for source in &custom_sensor.sources {
+        sources_array.clear();
+        for source in sources {
             let mut source_table = Table::new();
             source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
                 source.temp_source.temp_name.clone(),
@@ -2437,25 +2539,6 @@ impl Config {
             source_table["weight"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(source.weight))));
             sources_array.push(source_table);
-        }
-        if let Some(file_path) = custom_sensor.file_path {
-            cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
-                file_path.to_string_lossy().to_string(),
-            )));
-        } else {
-            cs_table["file_path"] = Item::None;
-        }
-        if let Some(offset) = custom_sensor.offset {
-            cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
-        } else {
-            cs_table["offset"] = Item::None;
-        }
-        if let Some(time_window_seconds) = custom_sensor.time_window_seconds {
-            cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
-                i64::from(time_window_seconds),
-            )));
-        } else {
-            cs_table["time_window_seconds"] = Item::None;
         }
     }
 }
@@ -2508,6 +2591,186 @@ mod tests {
             // teardown:
             cc_fs::remove_file(path).await.unwrap();
         });
+    }
+
+    // Each custom-sensor variant survives a write to the document and a read back, with the
+    // discriminator and only that variant's fields persisted. Sensors come back in insertion
+    // order, so the indices below match the set order above. Locks the on-disk dispatch in
+    // get_custom_sensors and add_custom_sensor_properties_to_custom_sensor_table.
+    #[test]
+    fn custom_sensor_variants_toml_round_trip() {
+        use crate::setting::{
+            CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, SensorKind, TempSource,
+        };
+        use std::path::PathBuf;
+
+        let source = || CustomTempSourceData {
+            temp_source: TempSource {
+                temp_name: "Temp1".to_string(),
+                device_uid: "dev-1".to_string(),
+            },
+            weight: 1,
+        };
+        let make = |id: &str, kind: SensorKind| CustomSensor {
+            id: id.to_string(),
+            kind,
+            children: vec![],
+            parents: vec![],
+        };
+        let config = Config {
+            path: Path::new("/tmp/cs-roundtrip.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-roundtrip-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_custom_sensor(make(
+                "mix",
+                SensorKind::Mix {
+                    mix_function: CustomSensorMixFunctionType::Avg,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "file",
+                SensorKind::File {
+                    file_path: PathBuf::from("/tmp/temp"),
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "offset",
+                SensorKind::Offset {
+                    offset: -7,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "tavg",
+                SensorKind::TimeAverage {
+                    time_window_seconds: 30,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "ema",
+                SensorKind::ExponentialMovingAvg {
+                    time_window_seconds: 15,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+
+        let sensors = config.get_custom_sensors().unwrap();
+        assert_eq!(sensors.len(), 5);
+        assert!(matches!(
+            &sensors[0].kind,
+            SensorKind::Mix { mix_function, .. } if *mix_function == CustomSensorMixFunctionType::Avg
+        ));
+        assert!(matches!(sensors[1].kind, SensorKind::File { .. }));
+        assert!(matches!(&sensors[2].kind, SensorKind::Offset { offset, .. } if *offset == -7));
+        assert!(matches!(
+            &sensors[3].kind,
+            SensorKind::TimeAverage { time_window_seconds, .. } if *time_window_seconds == 30
+        ));
+        let SensorKind::ExponentialMovingAvg {
+            time_window_seconds, ..
+        } = &sensors[4].kind
+        else {
+            panic!("expected ExponentialMovingAvg");
+        };
+        assert_eq!(*time_window_seconds, 15);
+    }
+
+    // A legacy persisted File row carries fields no longer part of the File variant
+    // (mix_function, offset). get_custom_sensors must dispatch on cs_type and ignore those
+    // dead siblings, so pre-refactor configs keep loading.
+    #[test]
+    fn custom_sensor_reads_legacy_toml_with_dead_fields() {
+        use crate::setting::SensorKind;
+
+        let legacy = r#"
+[[custom_sensors]]
+id = "legacy-file"
+cs_type = "File"
+file_path = "/tmp/legacy"
+mix_function = "Min"
+offset = 5
+"#;
+        let config = Config {
+            path: Path::new("/tmp/cs-legacy.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-legacy-ui.json").to_path_buf(),
+            document: RefCell::new(legacy.parse::<DocumentMut>().unwrap()),
+        };
+        let sensors = config.get_custom_sensors().unwrap();
+        assert_eq!(sensors.len(), 1);
+        assert!(matches!(sensors[0].kind, SensorKind::File { .. }));
+    }
+
+    // Updating a sensor from File to Mix must scrub the File-only keys from the stored table,
+    // so a later read sees a clean Mix row with no stale file_path.
+    #[test]
+    fn custom_sensor_variant_change_scrubs_stale_keys() {
+        use crate::setting::{
+            CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, SensorKind, TempSource,
+        };
+        use std::path::PathBuf;
+
+        let config = Config {
+            path: Path::new("/tmp/cs-change.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-change-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_custom_sensor(CustomSensor {
+                id: "s1".to_string(),
+                kind: SensorKind::File {
+                    file_path: PathBuf::from("/tmp/x"),
+                },
+                children: vec![],
+                parents: vec![],
+            })
+            .unwrap();
+        config
+            .update_custom_sensor(CustomSensor {
+                id: "s1".to_string(),
+                kind: SensorKind::Mix {
+                    mix_function: CustomSensorMixFunctionType::Max,
+                    sources: vec![CustomTempSourceData {
+                        temp_source: TempSource {
+                            temp_name: "T".to_string(),
+                            device_uid: "d".to_string(),
+                        },
+                        weight: 1,
+                    }],
+                },
+                children: vec![],
+                parents: vec![],
+            })
+            .unwrap();
+
+        let doc = config.document.borrow();
+        let cs = doc["custom_sensors"]
+            .as_array_of_tables()
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+        assert_eq!(cs["cs_type"].as_str(), Some("Mix"));
+        assert!(
+            cs.get("file_path").is_none(),
+            "stale file_path must be scrubbed on variant change"
+        );
+        drop(doc);
+
+        let sensors = config.get_custom_sensors().unwrap();
+        assert!(matches!(sensors[0].kind, SensorKind::Mix { .. }));
     }
 
     #[test]
