@@ -134,9 +134,6 @@ pub struct LcdSettings {
     /// The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.
     pub orientation: Option<u16>,
 
-    /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-    pub colors: Vec<(R, G, B)>,
-
     /// The mode and its mode-specific fields. Flattened so `mode` and the payload stay flat
     /// siblings of the shared fields on the wire (the legacy shape).
     #[serde(flatten)]
@@ -752,7 +749,6 @@ mod tests {
                 lcd: LcdSettings {
                     brightness: Some(80),
                     orientation: None,
-                    colors: Vec::new(),
                     mode: LcdModeKind::Liquid,
                 },
             },
@@ -766,7 +762,6 @@ mod tests {
         LcdSettings {
             brightness: Some(80),
             orientation: None,
-            colors: Vec::new(),
             mode,
         }
     }

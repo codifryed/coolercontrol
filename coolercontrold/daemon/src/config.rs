@@ -424,15 +424,6 @@ impl Config {
                     Item::Value(Value::String(Formatted::new(images_path.clone())));
             }
         }
-        let mut color_array = toml_edit::Array::new();
-        for (r, g, b) in lcd.colors.clone() {
-            let mut rgb_array = toml_edit::Array::new();
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(r))));
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(g))));
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(b))));
-            color_array.push(rgb_array);
-        }
-        channel_setting["lcd"]["colors"] = Item::Value(Value::Array(color_array));
         if let Some(temp_source) = lcd.temp_source() {
             channel_setting["lcd"]["temp_source"]["temp_name"] =
                 Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
@@ -909,47 +900,10 @@ impl Config {
                     None
                 };
             let carousel = Self::get_carousel(&lcd_table.clone().into_table())?;
-            let mut colors = Vec::new();
-            let colors_array = lcd_table
-                .get("colors")
-                .with_context(|| "lcd.colors should always be present")?
-                .as_array()
-                .with_context(|| "lcd.colors should be an array")?;
-            for rgb_value in colors_array {
-                let rgb_array = rgb_value
-                    .as_array()
-                    .with_context(|| "RGB values should be an array")?;
-                let r: u8 = rgb_array
-                    .get(0)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                let g: u8 = rgb_array
-                    .get(1)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                let b: u8 = rgb_array
-                    .get(2)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                colors.push((r, g, b));
-            }
             let temp_source = Self::get_temp_source(&lcd_table.clone().into_table())?;
             Some(LcdSettings {
                 brightness,
                 orientation,
-                colors,
                 mode: LcdModeKind::from_name(mode, image_file_processed, temp_source, carousel),
             })
         } else {
@@ -2794,7 +2748,6 @@ offset = 5
             let lcd = LcdSettings {
                 brightness: Some(50),
                 orientation: Some(90),
-                colors: vec![],
                 mode: LcdModeKind::Image {
                     image_file_processed: Some(
                         "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
@@ -3136,7 +3089,6 @@ offset = 5
                     lcd: LcdSettings {
                         brightness: Some(80),
                         orientation: Some(180),
-                        colors: vec![],
                         mode: LcdModeKind::Image {
                             image_file_processed: Some("/tmp/img.png".to_string()),
                         },
