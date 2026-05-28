@@ -29,8 +29,8 @@ use crate::api::devices::{apply_effective_speed_options, build_calibration_map, 
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, CustomTempSourceData, Function, FunctionUID, Profile, ProfileKind, ProfileUID,
-    SensorKind, TempSource,
+    CustomSensor, CustomTempSourceData, Function, FunctionUID, Offset, Profile, ProfileKind,
+    ProfileMixFunctionType, ProfileUID, SensorKind, TempSource, DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
 use axum::Json;
@@ -198,6 +198,7 @@ fn generate_proposal(
     request: &GenerateProfilesRequest,
     context: &DeviceContext,
 ) -> Result<GenerateProfilesResponse, CCError> {
+    validate_case_preset_coupling(request)?;
     let mut proposal = Proposal::with_capacity(request.assignments.len());
     for assignment in &request.assignments {
         let preset = request.effective_preset(assignment.kind);
@@ -210,6 +211,26 @@ fn generate_proposal(
         )?;
     }
     Ok(proposal.into_response())
+}
+
+/// Case intake and exhaust share one base profile, so they must use the same preset. With case
+/// fans present, reject a request that overrides them to different presets.
+fn validate_case_preset_coupling(request: &GenerateProfilesRequest) -> Result<(), CCError> {
+    let has_case_fan = request
+        .assignments
+        .iter()
+        .any(|assignment| matches!(assignment.kind, FanKind::CaseIntake | FanKind::CaseExhaust));
+    if has_case_fan.not() {
+        return Ok(());
+    }
+    if request.effective_preset(FanKind::CaseIntake)
+        != request.effective_preset(FanKind::CaseExhaust)
+    {
+        return Err(CCError::UserError {
+            msg: "Case intake and exhaust must use the same preset".to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Dispatches one fan assignment to its kind-specific generator. The match is exhaustive so
@@ -235,11 +256,27 @@ fn add_assignment(
             })?;
             add_gpu_fan(proposal, context, assignment, gpu_temp, preset);
         }
-        FanKind::AioRadiator
-        | FanKind::AioPump
-        | FanKind::CaseIntake
-        | FanKind::CaseExhaust
-        | FanKind::LaptopFan => {}
+        FanKind::CaseIntake => {
+            add_case_fan(
+                proposal,
+                context,
+                key_temps,
+                assignment,
+                preset,
+                CaseRole::Intake,
+            )?;
+        }
+        FanKind::CaseExhaust => {
+            add_case_fan(
+                proposal,
+                context,
+                key_temps,
+                assignment,
+                preset,
+                CaseRole::Exhaust,
+            )?;
+        }
+        FanKind::AioRadiator | FanKind::AioPump | FanKind::LaptopFan => {}
     }
     Ok(())
 }
@@ -254,7 +291,7 @@ fn add_cpu_cooler(
     cpu_temp: &TempSource,
     preset: Preset,
 ) {
-    let source = resolve_smoothed_source(proposal, context, cpu_temp, preset, "CPU");
+    let source = resolve_smoothed_source(proposal, context, cpu_temp, preset);
     let function_uid = proposal.intern_function(build_preset_function(preset));
     let min_duty = context.min_duty(&assignment.device_uid, &assignment.channel_name);
     let curve = clamp_curve_floor(cpu_cooler_curve(preset), min_duty);
@@ -278,13 +315,151 @@ fn add_gpu_fan(
     gpu_temp: &TempSource,
     preset: Preset,
 ) {
-    let source = resolve_smoothed_source(proposal, context, gpu_temp, preset, "GPU");
+    let source = resolve_smoothed_source(proposal, context, gpu_temp, preset);
     let function_uid = proposal.intern_function(build_preset_function(preset));
     let curve = gpu_fan_curve(preset);
     assert_valid_curve(&curve);
     let profile = build_graph_profile(&format!("GPU Fan ({preset})"), source, function_uid, curve);
     let profile_uid = proposal.intern_profile(profile);
     proposal.assign(assignment, profile_uid);
+}
+
+/// One of the two case-fan roles. They share a base profile and differ only by the overlay
+/// offset applied for positive-pressure bias.
+#[derive(Debug, Clone, Copy)]
+enum CaseRole {
+    Intake,
+    Exhaust,
+}
+
+/// Case fan: an Overlay on the shared case base (Mix(CPU, GPU) Max, or a CPU graph when there is
+/// no GPU temp). Intake follows the base; exhaust runs 15% below it for positive pressure. Both
+/// keep a 1% floor so the fan stays addressable at idle. Intake and exhaust share one base via
+/// de-duplication.
+fn add_case_fan(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    assignment: &FanAssignment,
+    preset: Preset,
+    role: CaseRole,
+) -> Result<(), CCError> {
+    let base_uid = build_case_base(proposal, context, key_temps, preset)?;
+    let (name, offset_profile) = match role {
+        CaseRole::Intake => (format!("Case Intake ({preset})"), intake_offset_profile()),
+        CaseRole::Exhaust => (format!("Case Exhaust ({preset})"), exhaust_offset_profile()),
+    };
+    let overlay = build_overlay_profile(&name, base_uid, offset_profile);
+    let profile_uid = proposal.intern_profile(overlay);
+    proposal.assign(assignment, profile_uid);
+    Ok(())
+}
+
+/// The shared base profile case fans overlay onto: Mix(CPU, GPU) Max when a GPU temp exists,
+/// otherwise the CPU graph alone. Members carry the per-preset curve and smoothing. Returns the
+/// base profile UID (de-duplicated, so intake and exhaust share one base).
+fn build_case_base(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    preset: Preset,
+) -> Result<ProfileUID, CCError> {
+    let cpu_temp = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
+        msg: "Case fans were assigned but no CPU temp was selected".to_string(),
+    })?;
+    let cpu_member_uid = build_case_member(proposal, context, cpu_temp, preset, "CPU");
+    let Some(gpu_temp) = key_temps.gpu.as_ref() else {
+        return Ok(cpu_member_uid);
+    };
+    let gpu_member_uid = build_case_member(proposal, context, gpu_temp, preset, "GPU");
+    let mix = build_mix_profile(
+        &format!("Case Airflow ({preset})"),
+        vec![cpu_member_uid, gpu_member_uid],
+        ProfileMixFunctionType::Max,
+    );
+    Ok(proposal.intern_profile(mix))
+}
+
+/// A Mix member for case fans: a Graph off the given temp using the case curve and the preset's
+/// smoothing. Case members are not floor-clamped to `min_duty`: the 1% overlay floor intentionally
+/// allows near-stop at idle.
+fn build_case_member(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    temp: &TempSource,
+    preset: Preset,
+    label: &str,
+) -> ProfileUID {
+    let source = resolve_smoothed_source(proposal, context, temp, preset);
+    let function_uid = proposal.intern_function(build_preset_function(preset));
+    let curve = case_curve(preset);
+    assert_valid_curve(&curve);
+    let profile = build_graph_profile(
+        &format!("Case {label} ({preset})"),
+        source,
+        function_uid,
+        curve,
+    );
+    proposal.intern_profile(profile)
+}
+
+/// Case fan curves per preset (CPU or GPU temp in Celsius, duty percent). Strawman values
+/// pending tuning at the phase checkpoint.
+fn case_curve(preset: Preset) -> Vec<(Temp, Duty)> {
+    match preset {
+        Preset::Silent => vec![(50.0, 20), (65.0, 40), (78.0, 70)],
+        Preset::Balanced => vec![(45.0, 30), (65.0, 70), (78.0, 100)],
+        Preset::Performance => vec![(40.0, 40), (60.0, 80), (72.0, 100)],
+    }
+}
+
+/// Intake overlay offset: output = max(base, 1%). Keeps the fan addressable at idle without
+/// reducing the airflow the thermal curve asks for.
+fn intake_offset_profile() -> Vec<(Duty, Offset)> {
+    vec![(0, 1), (1, 0), (100, 0)]
+}
+
+/// Exhaust overlay offset: output = max(base - 15%, 1%). Running 15% below the shared thermal
+/// demand biases the case toward positive pressure (more intake than exhaust). The breakpoint at
+/// duty 16 is where base minus 15 meets the 1% floor.
+fn exhaust_offset_profile() -> Vec<(Duty, Offset)> {
+    vec![(0, 1), (16, -15), (100, -15)]
+}
+
+/// A Mix profile combining member profiles with the given function. Its own function is the
+/// default identity: the members already carry their curves and smoothing.
+fn build_mix_profile(
+    name: &str,
+    member_profile_uids: Vec<ProfileUID>,
+    mix_function_type: ProfileMixFunctionType,
+) -> Profile {
+    Profile {
+        uid: Uuid::new_v4().to_string(),
+        name: name.to_string(),
+        function_uid: DEFAULT_FUNCTION_UID.to_string(),
+        kind: ProfileKind::Mix {
+            member_profile_uids,
+            mix_function_type: Some(mix_function_type),
+        },
+    }
+}
+
+/// An Overlay profile applying an offset to a single base profile. Its own function is the
+/// default identity: the offset is the transform.
+fn build_overlay_profile(
+    name: &str,
+    base_uid: ProfileUID,
+    offset_profile: Vec<(Duty, Offset)>,
+) -> Profile {
+    Profile {
+        uid: Uuid::new_v4().to_string(),
+        name: name.to_string(),
+        function_uid: DEFAULT_FUNCTION_UID.to_string(),
+        kind: ProfileKind::Overlay {
+            member_profile_uids: vec![base_uid],
+            offset_profile: Some(offset_profile),
+        },
+    }
 }
 
 /// The temp source a profile should follow. For Silent, the base temp is wrapped in an EMA
@@ -295,7 +470,6 @@ fn resolve_smoothed_source(
     context: &DeviceContext,
     base: &TempSource,
     preset: Preset,
-    label: &str,
 ) -> TempSource {
     if preset != Preset::Silent {
         return base.clone();
@@ -303,17 +477,18 @@ fn resolve_smoothed_source(
     let Some(custom_sensors_device_uid) = context.custom_sensors_device_uid.clone() else {
         return base.clone();
     };
-    let sensor_id = proposal.intern_custom_sensor(build_ema_sensor(label, base.clone()));
+    let sensor_id = proposal.intern_custom_sensor(build_ema_sensor(base.clone()));
     TempSource {
         temp_name: sensor_id,
         device_uid: custom_sensors_device_uid,
     }
 }
 
-/// An EMA custom sensor wrapping a single temp source, named after the role it smooths.
-fn build_ema_sensor(label: &str, source: TempSource) -> CustomSensor {
+/// An EMA custom sensor wrapping a single temp source. The id is derived from the source temp
+/// name so that different fans smoothing the same temp share one sensor via de-duplication.
+fn build_ema_sensor(source: TempSource) -> CustomSensor {
     CustomSensor {
-        id: format!("Auto EMA {label}"),
+        id: format!("Auto EMA {}", source.temp_name),
         kind: SensorKind::ExponentialMovingAvg {
             time_window_seconds: SILENT_EMA_WINDOW_SECONDS,
             sources: vec![CustomTempSourceData {
@@ -917,5 +1092,175 @@ mod tests {
         let mut request = gpu_request(&["fan1"], Preset::Balanced);
         request.key_temps.gpu = None;
         assert!(generate_proposal(&request, &test_context()).is_err());
+    }
+
+    fn case_request(preset: Preset, with_gpu: bool) -> GenerateProfilesRequest {
+        GenerateProfilesRequest {
+            assignments: vec![
+                FanAssignment {
+                    device_uid: "dev-mb-1".to_string(),
+                    channel_name: "fan2".to_string(),
+                    kind: FanKind::CaseIntake,
+                    position: Some(FanPosition::Front),
+                    laptop_temp_strategy: None,
+                },
+                FanAssignment {
+                    device_uid: "dev-mb-1".to_string(),
+                    channel_name: "fan3".to_string(),
+                    kind: FanKind::CaseExhaust,
+                    position: Some(FanPosition::Back),
+                    laptop_temp_strategy: None,
+                },
+            ],
+            key_temps: KeyTemps {
+                cpu: Some(cpu_temp()),
+                gpu: with_gpu.then(gpu_temp),
+                liquid: None,
+                ambient: None,
+            },
+            global_preset: preset,
+            preset_overrides: Vec::new(),
+        }
+    }
+
+    fn count_p_type(profiles: &[Profile], p_type: &ProfileType) -> usize {
+        profiles.iter().filter(|p| &p.p_type() == p_type).count()
+    }
+
+    /// Goal: with a GPU temp, case fans produce two member graphs, one Max Mix base, and two
+    /// Overlays, and each fan is assigned. Method: generate and assert the per-type profile
+    /// counts and the assignment count.
+    #[test]
+    fn case_fans_build_mix_base_and_two_overlays() {
+        let response = generate_proposal(&case_request(Preset::Balanced, true), &test_context())
+            .expect("generates");
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Graph), 2);
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Mix), 1);
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Overlay), 2);
+        assert_eq!(response.assignments.len(), 2);
+    }
+
+    /// Goal: intake and exhaust overlay the SAME base, and exhaust carries a negative offset for
+    /// positive pressure while intake never does. Method: generate, then assert both overlays
+    /// reference the Mix and check the offset signs.
+    #[test]
+    fn case_intake_and_exhaust_share_base_with_pressure_bias() {
+        let response = generate_proposal(&case_request(Preset::Balanced, true), &test_context())
+            .expect("generates");
+        let mix = response
+            .profiles
+            .iter()
+            .find(|p| p.p_type() == ProfileType::Mix)
+            .expect("has a mix base");
+        for overlay in response
+            .profiles
+            .iter()
+            .filter(|p| p.p_type() == ProfileType::Overlay)
+        {
+            assert_eq!(overlay.member_profile_uids(), [mix.uid.clone()].as_slice());
+        }
+        let exhaust = response
+            .profiles
+            .iter()
+            .find(|p| p.name.contains("Exhaust"))
+            .expect("has exhaust");
+        assert!(
+            exhaust
+                .offset_profile()
+                .unwrap()
+                .iter()
+                .any(|(_, off)| *off < 0),
+            "exhaust runs below the base for positive pressure"
+        );
+        let intake = response
+            .profiles
+            .iter()
+            .find(|p| p.name.contains("Intake"))
+            .expect("has intake");
+        assert!(
+            intake
+                .offset_profile()
+                .unwrap()
+                .iter()
+                .all(|(_, off)| *off >= 0),
+            "intake never runs below the base"
+        );
+    }
+
+    /// Goal: without a GPU temp, the base degrades to a single CPU graph (no Mix), still with two
+    /// overlays referencing it. Method: generate without a GPU temp and assert the shape.
+    #[test]
+    fn case_fans_degrade_to_cpu_graph_without_gpu() {
+        let response = generate_proposal(&case_request(Preset::Balanced, false), &test_context())
+            .expect("generates");
+        assert_eq!(
+            count_p_type(&response.profiles, &ProfileType::Mix),
+            0,
+            "no GPU temp means no Mix"
+        );
+        assert_eq!(
+            count_p_type(&response.profiles, &ProfileType::Graph),
+            1,
+            "single CPU base graph"
+        );
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Overlay), 2);
+        let graph = response
+            .profiles
+            .iter()
+            .find(|p| p.p_type() == ProfileType::Graph)
+            .expect("has the base graph");
+        for overlay in response
+            .profiles
+            .iter()
+            .filter(|p| p.p_type() == ProfileType::Overlay)
+        {
+            assert_eq!(
+                overlay.member_profile_uids(),
+                [graph.uid.clone()].as_slice()
+            );
+        }
+    }
+
+    /// Goal: case fans need a CPU temp. Method: omit the CPU temp and assert generation errors.
+    #[test]
+    fn case_fans_without_cpu_temp_errors() {
+        let mut request = case_request(Preset::Balanced, true);
+        request.key_temps.cpu = None;
+        assert!(generate_proposal(&request, &test_context()).is_err());
+    }
+
+    /// Goal: case intake and exhaust must share a preset. Method: override them to different
+    /// presets and assert generation errors.
+    #[test]
+    fn case_preset_coupling_conflict_errors() {
+        let mut request = case_request(Preset::Balanced, true);
+        request.preset_overrides = vec![
+            PresetOverride {
+                kind: FanKind::CaseIntake,
+                preset: Preset::Silent,
+            },
+            PresetOverride {
+                kind: FanKind::CaseExhaust,
+                preset: Preset::Performance,
+            },
+        ];
+        assert!(generate_proposal(&request, &test_context()).is_err());
+    }
+
+    /// Goal: Silent case fans smooth both members, creating one EMA sensor per temp. Method:
+    /// generate Silent with CPU and GPU temps and assert two EMA sensors.
+    #[test]
+    fn case_fans_silent_create_ema_per_member() {
+        let response = generate_proposal(&case_request(Preset::Silent, true), &test_context())
+            .expect("generates");
+        assert_eq!(
+            response.custom_sensors.len(),
+            2,
+            "one EMA sensor for CPU, one for GPU"
+        );
+        assert!(response
+            .custom_sensors
+            .iter()
+            .all(|s| matches!(s.kind, SensorKind::ExponentialMovingAvg { .. })));
     }
 }
