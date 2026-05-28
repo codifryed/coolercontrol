@@ -23,7 +23,7 @@ use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID};
 use crate::setting::{
     CCDeviceSettings, CoolerControlSettings, CustomSensor, DeviceExtensions, Profile, ProfileType,
-    Setting, TempSource,
+    Setting, SettingKind, TempSource,
 };
 use crate::AllDevices;
 use anyhow::Result;
