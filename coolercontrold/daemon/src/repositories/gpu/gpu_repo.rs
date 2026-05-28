@@ -114,7 +114,7 @@ impl GpuRepo {
         // `poll_rate` is captured at daemon startup and cannot change
         // without a restart, so the derived permit timeouts are frozen
         // here for the repo's lifetime.
-        let poll_rate = config.get_settings().map(|s| s.poll_rate).unwrap_or(1.0);
+        let poll_rate = config.get_settings().map_or(1.0, |s| s.poll_rate);
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         Self {

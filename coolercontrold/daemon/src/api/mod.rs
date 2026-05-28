@@ -646,6 +646,9 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         })
 }
 
+// The `stats_handle` local reads as similar to the `status_handle` param, but
+// stats (metrics actor) and status (SSE) are distinct domains; names deliberate.
+#[allow(clippy::similar_names)]
 async fn create_app_state<'s>(
     all_devices: AllDevices,
     repos: Repos,

@@ -754,9 +754,8 @@ impl ServicePluginRepo {
         channel_name: &str,
         disabled_channels_for_device: Option<&HashSet<String>>,
     ) -> bool {
-        disabled_channels_for_device.is_none()
-            || disabled_channels_for_device
-                .is_some_and(|disabled_channels| disabled_channels.contains(channel_name).not())
+        disabled_channels_for_device
+            .is_none_or(|disabled_channels| disabled_channels.contains(channel_name).not())
     }
 
     pub fn is_systemd(&self) -> bool {

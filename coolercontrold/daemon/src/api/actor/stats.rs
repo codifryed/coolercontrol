@@ -121,6 +121,7 @@ impl StatsHandle {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
 mod tests {
     use super::*;
     use crate::device::{
@@ -168,8 +169,8 @@ mod tests {
         Rc::new(map)
     }
 
-    /// snapshot() must return one DTO per device with the channel and
-    /// temp maps populated from each device's stats(), without mutating
+    /// `snapshot()` must return one `DTO` per device with the channel and
+    /// temp maps populated from each device's `stats()`, without mutating
     /// any device state.
     #[test]
     fn snapshot_returns_one_dto_per_device() {
@@ -199,7 +200,7 @@ mod tests {
         );
     }
 
-    /// Driving the actor's ResetAll handler must reset each device's
+    /// Driving the actor's `ResetAll` handler must reset each device's
     /// stats and the returned snapshot reflects the post-reset state
     /// (count=1, min=max=avg=most-recent-value).
     #[tokio::test(flavor = "current_thread")]

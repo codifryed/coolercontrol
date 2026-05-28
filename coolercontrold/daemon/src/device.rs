@@ -722,6 +722,7 @@ impl Default for DriverInfo {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
 mod tests {
     use super::*;
     use chrono::Local;
@@ -729,9 +730,9 @@ mod tests {
 
     const POLL_RATE: f64 = 1.0;
 
-    /// A test StatusAugmenter that rewrites every channel's duty to a
-    /// fixed sentinel. Lets us verify that record_stats reads post-augmenter
-    /// values, not the pre-augmenter status passed into set_status.
+    /// A test `StatusAugmenter` that rewrites every channel's duty to a
+    /// fixed sentinel. Lets us verify that `record_stats` reads post-augmenter
+    /// values, not the pre-augmenter status passed into `set_status`.
     struct FixedDutyAugmenter {
         target_duty: f64,
         invocations: RefCell<u32>,
@@ -785,10 +786,10 @@ mod tests {
         }
     }
 
-    /// Verify the canonical happy path: a status pushed via set_status
+    /// Verify the canonical happy path: a status pushed via `set_status`
     /// updates min/max/avg/count for every present temp and channel
     /// data field, lazily creating entries the first time. Init seeds
-    /// history only; the first set_status seeds stats.
+    /// history only; the first `set_status` seeds stats.
     #[test]
     fn set_status_records_stats_for_all_present_fields() {
         let mut device = make_test_device();
@@ -811,9 +812,9 @@ mod tests {
         assert_eq!(fan1.get(&ChannelDataType::Rpm).unwrap().avg, 1200.0);
     }
 
-    /// Multiple set_status calls accumulate. Min tracks the lowest, max
+    /// Multiple `set_status` calls accumulate. Min tracks the lowest, max
     /// the highest, avg is the cumulative mean, count is total samples.
-    /// Init seeds history only and is not counted; the first set_status
+    /// Init seeds history only and is not counted; the first `set_status`
     /// is observation #1.
     #[test]
     fn record_stats_folds_running_min_max_avg_count() {
@@ -831,8 +832,8 @@ mod tests {
 
     /// Channels absent from a tick (e.g. hwmon failsafe omission) must
     /// not pollute their stats. The remaining present channels do update.
-    /// Init seeds history only; the first set_status seeds stats for all
-    /// present fields, and a later set_status that omits some leaves
+    /// Init seeds history only; the first `set_status` seeds stats for all
+    /// present fields, and a later `set_status` that omits some leaves
     /// those untouched.
     #[test]
     fn record_stats_skips_absent_channels() {
@@ -868,10 +869,10 @@ mod tests {
         );
     }
 
-    /// initialize_status_history_with deliberately does NOT seed stats:
+    /// `initialize_status_history_with` deliberately does NOT seed stats:
     /// some channels (CPU watts from a joule-counter delta) have no real
     /// reading at init, and folding a fabricated 0.0 would lock min there
-    /// forever. Stats are seeded by the first main-loop set_status.
+    /// forever. Stats are seeded by the first main-loop `set_status`.
     #[test]
     fn initialize_status_history_does_not_record_stats() {
         let mut device = make_test_device();
@@ -887,7 +888,7 @@ mod tests {
         assert!(stats.channels.is_empty());
     }
 
-    /// zero_status_history wipes history to zeros for wake-from-sleep
+    /// `zero_status_history` wipes history to zeros for wake-from-sleep
     /// recovery, but must NOT record those zeros into stats (would
     /// otherwise pull min to 0 and skew avg).
     #[test]
@@ -922,7 +923,7 @@ mod tests {
     }
 
     /// The augmenter fires on the just-pushed entry for both init and
-    /// set_status. Stats are only recorded by set_status and must see
+    /// `set_status`. Stats are only recorded by `set_status` and must see
     /// the post-augmenter value (the true-duty rewrite), not the raw
     /// duty passed in.
     #[test]
@@ -955,7 +956,7 @@ mod tests {
         assert_eq!(duty_stats.min, 99.0);
     }
 
-    /// reset_stats clears everything then reseeds from the most recent
+    /// `reset_stats` clears everything then reseeds from the most recent
     /// status with count=1. UI never sees a zero-count window.
     #[test]
     fn reset_stats_reseeds_from_latest_status_with_count_one() {

@@ -341,8 +341,7 @@ fn main() -> Result<()> {
                 engine.set_notification_handle(notification_handle.clone());
                 let device_listener_enabled = config
                     .get_settings()
-                    .map(|s| s.device_listener_enabled)
-                    .unwrap_or(true);
+                    .map_or(true, |s| s.device_listener_enabled);
                 let _device_listener = device_listener::DeviceListener::new(
                     &config,
                     Rc::clone(&all_devices),

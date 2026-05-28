@@ -177,6 +177,14 @@ pub trait DiagnosisHost {
         1000
     }
 
+    /// Enable manual (direct duty) control on the channel before the
+    /// sweep writes any duty. On hwmon this sets `pwm_enable=1`; a
+    /// board left in automatic mode (every channel Unmanaged, so the
+    /// firmware drives its own fan curve) rejects or ignores raw duty
+    /// writes on some drivers until then. Non-controllable device
+    /// types treat this as a no-op.
+    async fn enter_manual_control(&self, device_uid: &UID, channel_name: &str) -> Result<()>;
+
     /// Writes raw duty, bypassing dispatch (channel is `under_diagnosis`).
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()>;
 
@@ -217,6 +225,16 @@ pub async fn run_diagnosis<H: DiagnosisHost + ?Sized>(
     // prior sustain over the sweep, and so the post-sweep restore
     // dispatches a fresh kick under the new mapping.
     state.begin_diagnosis(key.clone());
+
+    // Enable manual control before any duty write. A channel left in
+    // automatic mode (all channels Unmanaged) rejects or ignores raw
+    // duty writes on some drivers. The post-sweep restore returns the
+    // channel to its prior mode. Failure here aborts before the sweep.
+    if let Err(err) = host.enter_manual_control(&device_uid, &channel_name).await {
+        state.set_under_diagnosis(key, false);
+        let _ = host.restore_setting(&snapshot).await;
+        return Err(DiagnosisFailure::WriteFailed(err.to_string()));
+    }
 
     // 0% baseline: let prior momentum or a pending firmware kick decay.
     // Write failures here are not fatal; perform_sweep surfaces its own.
@@ -318,7 +336,7 @@ async fn finalize_diagnosis<H: DiagnosisHost + ?Sized>(
     device_uid: &DeviceUID,
     channel_name: &ChannelName,
     sweep_data: (Vec<DutySample>, Vec<DutySample>, Vec<bool>),
-    scalars: Option<crate::calibration::curve::DerivedScalars>,
+    scalars: Option<DerivedScalars>,
     kick_duration_ms: u32,
 ) -> Result<Calibration, DiagnosisFailure> {
     emit_phase(
@@ -353,7 +371,7 @@ fn build_calibration(
     up_curve: Vec<DutySample>,
     down_curve: Vec<DutySample>,
     down_stable: &[bool],
-    scalars: Option<crate::calibration::curve::DerivedScalars>,
+    scalars: Option<DerivedScalars>,
     kick_duration_ms: u32,
 ) -> Calibration {
     use crate::calibration::curve::{derive_min_stable_duty, derive_warnings, CalibrationWarning};
@@ -965,6 +983,13 @@ mod tests {
         // that has not yet refreshed after a duty write.
         stale_reads_remaining: Cell<usize>,
         stale_rpm: Cell<RPM>,
+        // Records each enter_manual_control call and the step_counter at
+        // call time, so tests can assert manual control was entered
+        // before any duty write. `fail_manual_control` forces the call
+        // to error, exercising the abort-and-restore path.
+        manual_control_calls: RefCell<Vec<(String, String)>>,
+        step_at_manual_control: Cell<Option<usize>>,
+        fail_manual_control: Cell<bool>,
     }
 
     impl MockHost {
@@ -988,6 +1013,9 @@ mod tests {
                 step_cap_ms: Cell::new(2500),
                 stale_reads_remaining: Cell::new(0),
                 stale_rpm: Cell::new(0),
+                manual_control_calls: RefCell::new(Vec::new()),
+                step_at_manual_control: Cell::new(None),
+                fail_manual_control: Cell::new(false),
             }
         }
 
@@ -1054,6 +1082,26 @@ mod tests {
                 .copied()
         }
 
+        async fn latest_status_timestamp_ms(&self, _device_uid: &UID) -> Option<i64> {
+            Some(self.status_timestamp_ms.get())
+        }
+
+        fn step_settle_cap_ms(&self, _device_uid: &UID) -> u32 {
+            self.step_cap_ms.get()
+        }
+
+        async fn enter_manual_control(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+            self.step_at_manual_control
+                .set(Some(self.step_counter.get()));
+            self.manual_control_calls
+                .borrow_mut()
+                .push((device_uid.clone(), channel_name.to_string()));
+            if self.fail_manual_control.get() {
+                return Err(anyhow!("simulated manual-control failure"));
+            }
+            Ok(())
+        }
+
         async fn write_raw_duty(
             &self,
             _device_uid: &UID,
@@ -1107,14 +1155,6 @@ mod tests {
                 .set(self.status_timestamp_ms.get() + i64::from(ms.max(1)));
         }
 
-        async fn latest_status_timestamp_ms(&self, _device_uid: &UID) -> Option<i64> {
-            Some(self.status_timestamp_ms.get())
-        }
-
-        fn step_settle_cap_ms(&self, _device_uid: &UID) -> u32 {
-            self.step_cap_ms.get()
-        }
-
         fn emit_progress(&self, progress: DiagnosisProgress) {
             self.progress_events.borrow_mut().push(progress);
         }
@@ -1151,6 +1191,46 @@ mod tests {
         assert!(result.rpm_max > 0);
         assert!(store.has(&key("dev-a", "fan1")));
         assert_eq!(host.snapshots_taken.borrow().len(), 1);
+        assert_eq!(host.restores_applied.borrow().len(), 1);
+        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        // Manual control must be entered exactly once, before any duty
+        // write (step_counter still 0). Boards left in automatic mode
+        // otherwise reject the sweep's raw writes.
+        assert_eq!(host.manual_control_calls.borrow().len(), 1);
+        assert_eq!(host.step_at_manual_control.get(), Some(0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn manual_control_failure_aborts_before_sweep_and_restores() {
+        // Goal: when entering manual control fails (a driver rejects
+        // pwm_enable=1), the diagnosis aborts before writing any duty,
+        // restores the snapshot, clears under_diagnosis, and persists
+        // no calibration. The failure surfaces as WriteFailed.
+        let state = FanStateMap::new();
+        let store = CalibrationStore::empty();
+        let host = MockHost::new().with_smooth_fan();
+        host.fail_manual_control.set(true);
+        let settings = DiagnosisSettings::default();
+        let cancellation = CancellationToken::new();
+
+        let err = run_diagnosis(
+            &state,
+            &store,
+            &host,
+            &settings,
+            "dev-a".to_string(),
+            "fan1".to_string(),
+            cancellation,
+        )
+        .await
+        .expect_err("manual-control failure aborts diagnosis");
+
+        assert!(matches!(err, DiagnosisFailure::WriteFailed(_)));
+        assert!(
+            host.duty_writes.borrow().is_empty(),
+            "no duty may be written when manual control could not be entered"
+        );
+        assert!(store.has(&key("dev-a", "fan1")).not());
         assert_eq!(host.restores_applied.borrow().len(), 1);
         assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
     }
@@ -1511,6 +1591,9 @@ mod tests {
             }
             fn step_settle_cap_ms(&self, d: &UID) -> u32 {
                 self.inner.step_settle_cap_ms(d)
+            }
+            async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
+                self.inner.enter_manual_control(d, c).await
             }
             async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
                 self.state_seen_during_writes
@@ -2064,6 +2147,9 @@ mod tests {
             }
             fn step_settle_cap_ms(&self, d: &UID) -> u32 {
                 self.inner.step_settle_cap_ms(d)
+            }
+            async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
+                self.inner.enter_manual_control(d, c).await
             }
             async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
                 self.inner.write_raw_duty(d, c, duty).await

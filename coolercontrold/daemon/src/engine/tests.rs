@@ -1402,6 +1402,47 @@ mod engine_tests {
         (device, engine, calibration_store)
     }
 
+    /// Build an Engine over one hwmon mock device, returning the config
+    /// and the repo's recorded fixed-speed writes. Mirrors
+    /// `setup_calibrated_device` but exposes the `config` and
+    /// `set_speeds` handles a snapshot/restore test needs to assert on.
+    fn setup_engine_with_speed_recorder() -> (Engine, Rc<Config>, DeviceUID, Rc<RefCell<Vec<u8>>>) {
+        let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
+        let mut repos = Repositories::default();
+        let set_speeds = Rc::new(RefCell::new(Vec::new()));
+        let mock_repo = Rc::new(MockRepository {
+            device_type: DeviceType::Hwmon,
+            set_speeds: Rc::clone(&set_speeds),
+            should_fail: Rc::new(Cell::new(false)),
+        });
+        repos.hwmon = Some(mock_repo);
+
+        let device = Rc::new(RefCell::new(Device::new(
+            "Test Device".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        )));
+        let device_uid = device.borrow().uid.clone();
+        devices.insert(device_uid.clone(), Rc::clone(&device));
+
+        let all_devices = Rc::new(devices);
+        let all_repos = Rc::new(repos);
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+        let engine = Engine::new(
+            all_devices,
+            &all_repos,
+            Rc::clone(&config),
+            Rc::new(crate::calibration::CalibrationStore::empty()),
+            Rc::new(crate::calibration::FanStateMap::new()),
+        );
+        (engine, config, device_uid, set_speeds)
+    }
+
     fn sample_smooth_calibration() -> crate::calibration::Calibration {
         use crate::calibration::{CurveKind, DutySample};
         let up: Vec<DutySample> = (0..21usize)
@@ -1448,6 +1489,79 @@ mod engine_tests {
             ..Default::default()
         });
         device.borrow_mut().set_status(status);
+    }
+
+    #[test]
+    #[serial]
+    fn unmanaged_channel_restores_to_auto_not_manual() {
+        // Goal: the sweep now sets pwm_enable=1, so the post-sweep
+        // restore-to-auto is load-bearing. A channel that starts
+        // Unmanaged, whether via the Default profile "0" or with no
+        // stored setting, must come back Unmanaged: snapshot must
+        // classify it as a reset-bound kind, restore must take the
+        // reset path (write no manual duty to the repo), and the
+        // stored setting must be left untouched. Verifies both the
+        // snapshot classification and the restore routing.
+        use crate::calibration::{DiagnosisHost, SnapshotKind};
+        use crate::setting::{Setting, DEFAULT_PROFILE_UID};
+        cc_fs::test_runtime(async {
+            let (engine, config, device_uid, set_speeds) = setup_engine_with_speed_recorder();
+
+            // Case 1: explicitly Unmanaged via the Default profile "0".
+            let chan_default = "fan1".to_string();
+            config.set_device_setting(
+                &device_uid,
+                &Setting {
+                    channel_name: chan_default.clone(),
+                    speed_fixed: None,
+                    lighting: None,
+                    lcd: None,
+                    reset_to_default: None,
+                    profile_uid: Some(DEFAULT_PROFILE_UID.to_string()),
+                },
+            );
+            let snapshot = engine.snapshot_setting(&device_uid, &chan_default);
+            assert!(
+                matches!(&snapshot.kind, SnapshotKind::Profile(uid) if uid == DEFAULT_PROFILE_UID),
+                "Unmanaged (Default profile) must snapshot as Profile(\"0\"), got {:?}",
+                snapshot.kind
+            );
+            engine
+                .restore_setting(&snapshot)
+                .await
+                .expect("restore default profile");
+            assert!(
+                set_speeds.borrow().is_empty(),
+                "restoring Unmanaged must take the reset path, not write a manual duty: {:?}",
+                set_speeds.borrow()
+            );
+            assert_eq!(
+                config
+                    .get_device_channel_settings(&device_uid, &chan_default)
+                    .expect("setting present")
+                    .profile_uid
+                    .as_deref(),
+                Some(DEFAULT_PROFILE_UID),
+                "calibration must leave the stored Unmanaged setting untouched"
+            );
+
+            // Case 2: Unmanaged by absence of any stored setting.
+            let chan_unset = "fan2".to_string();
+            let snapshot_unset = engine.snapshot_setting(&device_uid, &chan_unset);
+            assert!(
+                matches!(snapshot_unset.kind, SnapshotKind::None),
+                "an unset channel must snapshot as None, got {:?}",
+                snapshot_unset.kind
+            );
+            engine
+                .restore_setting(&snapshot_unset)
+                .await
+                .expect("restore unset channel");
+            assert!(
+                set_speeds.borrow().is_empty(),
+                "restoring an unset channel must not write a manual duty"
+            );
+        });
     }
 
     #[test]

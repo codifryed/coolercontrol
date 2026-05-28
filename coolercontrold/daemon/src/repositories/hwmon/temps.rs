@@ -75,7 +75,7 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
             });
         }
     }
-    temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
+    temps.sort_by_key(|t| t.number);
     trace!(
         "Hwmon Temps detected: {temps:?} for {}",
         base_path.display()
