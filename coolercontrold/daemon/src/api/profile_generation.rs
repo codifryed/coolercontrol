@@ -25,10 +25,12 @@
 //! logic is built up across phases: currently the CPU air cooler is implemented end to end,
 //! and the remaining kinds are skipped until their phase.
 
+use crate::api::devices::{apply_effective_speed_options, build_calibration_map, DeviceDto};
 use crate::api::{AppState, CCError};
-use crate::device::{ChannelName, DeviceUID, Duty, Temp};
+use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, Function, FunctionUID, Profile, ProfileKind, ProfileUID, TempSource,
+    CustomSensor, CustomTempSourceData, Function, FunctionUID, Profile, ProfileKind, ProfileUID,
+    SensorKind, TempSource,
 };
 use axum::extract::State;
 use axum::Json;
@@ -169,33 +171,53 @@ pub struct GenerateProfilesResponse {
     pub assignments: Vec<ChannelAssignment>,
 }
 
-/// Proposes profiles, functions, and custom sensors for the assigned fans, without
-/// persisting anything. The UI previews the result and the user confirms before it is saved.
+/// EMA smoothing window for the Silent preset, in seconds. Long enough to absorb brief temp
+/// spikes so a quiet fan does not chase them.
+const SILENT_EMA_WINDOW_SECONDS: u16 = 8;
+
+/// Proposes profiles, functions, and custom sensors for the assigned fans, without persisting
+/// anything. The UI previews the result and the user confirms before it is saved.
 pub async fn generate(
-    State(AppState { .. }): State<AppState>,
+    State(AppState {
+        device_handle,
+        calibration_handle,
+        ..
+    }): State<AppState>,
     Json(request): Json<GenerateProfilesRequest>,
 ) -> Result<Json<GenerateProfilesResponse>, CCError> {
-    generate_proposal(&request).map(Json)
+    let mut devices = device_handle.devices_get().await?;
+    let calibration_map = build_calibration_map(&calibration_handle).await;
+    apply_effective_speed_options(&mut devices, &calibration_map);
+    let context = DeviceContext::from_devices(&devices);
+    generate_proposal(&request, &context).map(Json)
 }
 
-/// Builds the proposed entity set for a request. Pure and synchronous: it depends only on the
-/// request, so it is fully unit-testable without the daemon's state.
+/// Builds the proposed entity set for a request. Pure and synchronous: given the request and a
+/// device snapshot it is fully unit-testable without the daemon's live state.
 fn generate_proposal(
     request: &GenerateProfilesRequest,
+    context: &DeviceContext,
 ) -> Result<GenerateProfilesResponse, CCError> {
     let mut proposal = Proposal::with_capacity(request.assignments.len());
     for assignment in &request.assignments {
         let preset = request.effective_preset(assignment.kind);
-        add_assignment(&mut proposal, &request.key_temps, assignment, preset)?;
+        add_assignment(
+            &mut proposal,
+            context,
+            &request.key_temps,
+            assignment,
+            preset,
+        )?;
     }
     Ok(proposal.into_response())
 }
 
 /// Dispatches one fan assignment to its kind-specific generator. The match is exhaustive so
-/// that adding a kind later is a compile error until it is handled here. Kinds beyond the CPU
-/// cooler are filled in their later phase and currently contribute nothing.
+/// that adding a kind later is a compile error until it is handled here. Kinds not yet
+/// implemented are filled in their later phase and currently contribute nothing.
 fn add_assignment(
     proposal: &mut Proposal,
+    context: &DeviceContext,
     key_temps: &KeyTemps,
     assignment: &FanAssignment,
     preset: Preset,
@@ -205,10 +227,15 @@ fn add_assignment(
             let cpu_temp = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
                 msg: "A CPU air cooler was assigned but no CPU temp was selected".to_string(),
             })?;
-            add_cpu_cooler(proposal, assignment, cpu_temp, preset);
+            add_cpu_cooler(proposal, context, assignment, cpu_temp, preset);
         }
-        FanKind::GpuFan
-        | FanKind::AioRadiator
+        FanKind::GpuFan => {
+            let gpu_temp = key_temps.gpu.as_ref().ok_or_else(|| CCError::UserError {
+                msg: "A GPU fan was assigned but no GPU temp was selected".to_string(),
+            })?;
+            add_gpu_fan(proposal, context, assignment, gpu_temp, preset);
+        }
+        FanKind::AioRadiator
         | FanKind::AioPump
         | FanKind::CaseIntake
         | FanKind::CaseExhaust
@@ -217,48 +244,163 @@ fn add_assignment(
     Ok(())
 }
 
-/// Generates a CPU-air-cooler profile (Graph off the CPU temp) plus its hysteresis function,
-/// and assigns the fan to it. The curve here is a simple placeholder ramp; the expert,
-/// preset-specific curves and Silent EMA smoothing land in a later phase.
+/// CPU air cooler: a Graph off the CPU temp. Silent smooths the input via an EMA sensor;
+/// Balanced and Performance use downward-only hysteresis. The curve floor is raised to the
+/// channel's minimum duty so a low Silent floor never stalls the fan.
 fn add_cpu_cooler(
     proposal: &mut Proposal,
+    context: &DeviceContext,
     assignment: &FanAssignment,
     cpu_temp: &TempSource,
     preset: Preset,
 ) {
-    let function_uid = proposal.intern_function(build_downward_function(&format!("Auto {preset}")));
-    let speed_profile = placeholder_cpu_curve();
-    debug_assert!(speed_profile.is_empty().not(), "curve must have points");
+    let source = resolve_smoothed_source(proposal, context, cpu_temp, preset, "CPU");
+    let function_uid = proposal.intern_function(build_preset_function(preset));
+    let min_duty = context.min_duty(&assignment.device_uid, &assignment.channel_name);
+    let curve = clamp_curve_floor(cpu_cooler_curve(preset), min_duty);
+    assert_valid_curve(&curve);
+    let profile = build_graph_profile(
+        &format!("CPU Cooler ({preset})"),
+        source,
+        function_uid,
+        curve,
+    );
+    let profile_uid = proposal.intern_profile(profile);
+    proposal.assign(assignment, profile_uid);
+}
+
+/// GPU fan: a Graph off the GPU temp. The curve may idle at 0% to preserve the card's
+/// zero-RPM behavior, so its floor is NOT raised to the channel minimum.
+fn add_gpu_fan(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    assignment: &FanAssignment,
+    gpu_temp: &TempSource,
+    preset: Preset,
+) {
+    let source = resolve_smoothed_source(proposal, context, gpu_temp, preset, "GPU");
+    let function_uid = proposal.intern_function(build_preset_function(preset));
+    let curve = gpu_fan_curve(preset);
+    assert_valid_curve(&curve);
+    let profile = build_graph_profile(&format!("GPU Fan ({preset})"), source, function_uid, curve);
+    let profile_uid = proposal.intern_profile(profile);
+    proposal.assign(assignment, profile_uid);
+}
+
+/// The temp source a profile should follow. For Silent, the base temp is wrapped in an EMA
+/// custom sensor (created and de-duplicated here) so the fan follows a smoothed signal rather
+/// than chasing spikes. With no custom-sensors device available, the raw temp is used.
+fn resolve_smoothed_source(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    base: &TempSource,
+    preset: Preset,
+    label: &str,
+) -> TempSource {
+    if preset != Preset::Silent {
+        return base.clone();
+    }
+    let Some(custom_sensors_device_uid) = context.custom_sensors_device_uid.clone() else {
+        return base.clone();
+    };
+    let sensor_id = proposal.intern_custom_sensor(build_ema_sensor(label, base.clone()));
+    TempSource {
+        temp_name: sensor_id,
+        device_uid: custom_sensors_device_uid,
+    }
+}
+
+/// An EMA custom sensor wrapping a single temp source, named after the role it smooths.
+fn build_ema_sensor(label: &str, source: TempSource) -> CustomSensor {
+    CustomSensor {
+        id: format!("Auto EMA {label}"),
+        kind: SensorKind::ExponentialMovingAvg {
+            time_window_seconds: SILENT_EMA_WINDOW_SECONDS,
+            sources: vec![CustomTempSourceData {
+                temp_source: source,
+                weight: 1,
+            }],
+        },
+        children: Vec::new(),
+        parents: Vec::new(),
+    }
+}
+
+/// The hysteresis function for a preset. Silent relies on EMA smoothing of its source, so it
+/// keeps a plain function; Balanced and Performance ramp up promptly but ease down via
+/// downward-only hysteresis, Performance being the snappier of the two. Strawman values pending
+/// tuning.
+fn build_preset_function(preset: Preset) -> Function {
+    let name = format!("Auto Fan ({preset})");
+    match preset {
+        Preset::Silent => Function {
+            uid: Uuid::new_v4().to_string(),
+            name,
+            ..Function::default()
+        },
+        Preset::Balanced => Function {
+            uid: Uuid::new_v4().to_string(),
+            name,
+            only_downward: Some(true),
+            deviance: Some(2.0),
+            response_delay: Some(2),
+            ..Function::default()
+        },
+        Preset::Performance => Function {
+            uid: Uuid::new_v4().to_string(),
+            name,
+            only_downward: Some(true),
+            deviance: Some(1.0),
+            response_delay: Some(1),
+            ..Function::default()
+        },
+    }
+}
+
+/// CPU cooler curves per preset (CPU temp in Celsius, duty percent). Strawman values pending
+/// tuning at the phase checkpoint.
+fn cpu_cooler_curve(preset: Preset) -> Vec<(Temp, Duty)> {
+    match preset {
+        Preset::Silent => vec![(45.0, 25), (60.0, 40), (75.0, 70), (85.0, 100)],
+        Preset::Balanced => vec![(35.0, 30), (55.0, 55), (75.0, 90), (85.0, 100)],
+        Preset::Performance => vec![(30.0, 40), (50.0, 70), (65.0, 100)],
+    }
+}
+
+/// GPU fan curves per preset (GPU temp in Celsius, duty percent). The low-temp 0% entries
+/// preserve the card's zero-RPM idle. Strawman values pending tuning.
+fn gpu_fan_curve(preset: Preset) -> Vec<(Temp, Duty)> {
+    match preset {
+        Preset::Silent => vec![(45.0, 0), (55.0, 30), (70.0, 60), (83.0, 90)],
+        Preset::Balanced => vec![(45.0, 0), (60.0, 40), (75.0, 80), (85.0, 100)],
+        Preset::Performance => vec![(40.0, 30), (55.0, 65), (70.0, 100)],
+    }
+}
+
+/// Raises every duty in the curve to at least `min_duty` so a low floor cannot stall a fan
+/// that needs more to spin. Monotonicity is preserved because the clamp is applied uniformly.
+fn clamp_curve_floor(curve: Vec<(Temp, Duty)>, min_duty: Duty) -> Vec<(Temp, Duty)> {
+    curve
+        .into_iter()
+        .map(|(temp, duty)| (temp, duty.max(min_duty)))
+        .collect()
+}
+
+/// Asserts a generated curve is well-formed: non-empty, temps strictly increasing, duties
+/// non-decreasing.
+fn assert_valid_curve(curve: &[(Temp, Duty)]) {
+    debug_assert!(curve.is_empty().not(), "curve must have points");
     debug_assert!(
-        speed_profile.windows(2).all(|w| w[0].0 < w[1].0),
+        curve.windows(2).all(|w| w[0].0 < w[1].0),
         "curve temps must strictly increase"
     );
     debug_assert!(
-        speed_profile.windows(2).all(|w| w[0].1 <= w[1].1),
+        curve.windows(2).all(|w| w[0].1 <= w[1].1),
         "curve duties must not decrease"
     );
-    let profile = build_graph_profile(
-        &format!("CPU Cooler ({preset})"),
-        cpu_temp.clone(),
-        function_uid,
-        speed_profile,
-    );
-    let profile_uid = proposal.intern_profile(profile);
-    proposal.assignments.push(ChannelAssignment {
-        device_uid: assignment.device_uid.clone(),
-        channel_name: assignment.channel_name.clone(),
-        profile_uid,
-        replaces_profile_name: None,
-    });
 }
 
-/// A simple monotonic CPU ramp used until the expert per-preset curves arrive.
-fn placeholder_cpu_curve() -> Vec<(Temp, Duty)> {
-    vec![(30.0, 30), (50.0, 50), (70.0, 80), (85.0, 100)]
-}
-
-/// A Graph profile following a single temp source. Members, mix, offset, and fixed speed are
-/// left unset; a fresh UID is assigned.
+/// A Graph profile following a single temp source. A fresh UID is assigned.
 fn build_graph_profile(
     name: &str,
     temp_source: TempSource,
@@ -278,24 +420,53 @@ fn build_graph_profile(
     }
 }
 
-/// A downward-only hysteresis function, used by the Balanced and Performance presets so fans
-/// ramp up promptly but settle down gently. A fresh UID is assigned.
-fn build_downward_function(name: &str) -> Function {
-    Function {
-        uid: Uuid::new_v4().to_string(),
-        name: name.to_string(),
-        only_downward: Some(true),
-        ..Function::default()
+/// The device facts the generator needs: each controllable channel's effective (calibration
+/// aware) minimum duty, and the custom-sensors device UID where generated EMA and Delta sensors
+/// live so a profile can reference them.
+struct DeviceContext {
+    min_duty_by_channel: HashMap<ChannelKey, Duty>,
+    custom_sensors_device_uid: Option<DeviceUID>,
+}
+
+type ChannelKey = (DeviceUID, ChannelName);
+
+impl DeviceContext {
+    fn from_devices(devices: &[DeviceDto]) -> Self {
+        let mut min_duty_by_channel = HashMap::new();
+        let mut custom_sensors_device_uid = None;
+        for device in devices {
+            if device.d_type == DeviceType::CustomSensors {
+                custom_sensors_device_uid = Some(device.uid.clone());
+            }
+            for (channel_name, channel_info) in &device.info.channels {
+                if let Some(speed_options) = channel_info.speed_options() {
+                    let key = (device.uid.clone(), channel_name.clone());
+                    min_duty_by_channel.insert(key, speed_options.min_duty);
+                }
+            }
+        }
+        Self {
+            min_duty_by_channel,
+            custom_sensors_device_uid,
+        }
+    }
+
+    /// The channel's effective minimum duty, or 0 when the channel is unknown.
+    fn min_duty(&self, device_uid: &str, channel_name: &str) -> Duty {
+        let key = (device_uid.to_string(), channel_name.to_string());
+        self.min_duty_by_channel.get(&key).copied().unwrap_or(0)
     }
 }
 
-/// Accumulates the entities a generation run proposes, de-duplicating functions and profiles
-/// that share an identical definition so the user's lists are not cluttered with copies.
+/// Accumulates the entities a generation run proposes, de-duplicating custom sensors,
+/// functions, and profiles that share an identical definition so the user's lists are not
+/// cluttered with copies.
 struct Proposal {
     custom_sensors: Vec<CustomSensor>,
     functions: Vec<Function>,
     profiles: Vec<Profile>,
     assignments: Vec<ChannelAssignment>,
+    custom_sensor_id_by_signature: HashMap<String, TempName>,
     function_uid_by_signature: HashMap<String, FunctionUID>,
     profile_uid_by_signature: HashMap<String, ProfileUID>,
 }
@@ -307,9 +478,24 @@ impl Proposal {
             functions: Vec::with_capacity(fan_count),
             profiles: Vec::with_capacity(fan_count),
             assignments: Vec::with_capacity(fan_count),
+            custom_sensor_id_by_signature: HashMap::new(),
             function_uid_by_signature: HashMap::with_capacity(fan_count),
             profile_uid_by_signature: HashMap::with_capacity(fan_count),
         }
+    }
+
+    /// Returns the id of an already-proposed identical custom sensor, or stores this one and
+    /// returns its id.
+    fn intern_custom_sensor(&mut self, sensor: CustomSensor) -> TempName {
+        let signature = custom_sensor_signature(&sensor);
+        if let Some(existing_id) = self.custom_sensor_id_by_signature.get(&signature) {
+            return existing_id.clone();
+        }
+        let id = sensor.id.clone();
+        self.custom_sensor_id_by_signature
+            .insert(signature, id.clone());
+        self.custom_sensors.push(sensor);
+        id
     }
 
     /// Returns the UID of an already-proposed identical function, or stores this one and
@@ -339,6 +525,16 @@ impl Proposal {
         uid
     }
 
+    /// Records that a fan channel should be assigned the given profile.
+    fn assign(&mut self, assignment: &FanAssignment, profile_uid: ProfileUID) {
+        self.assignments.push(ChannelAssignment {
+            device_uid: assignment.device_uid.clone(),
+            channel_name: assignment.channel_name.clone(),
+            profile_uid,
+            replaces_profile_name: None,
+        });
+    }
+
     fn into_response(self) -> GenerateProfilesResponse {
         GenerateProfilesResponse {
             custom_sensors: self.custom_sensors,
@@ -347,6 +543,12 @@ impl Proposal {
             assignments: self.assignments,
         }
     }
+}
+
+/// A definition fingerprint of a custom sensor, including its id and kind, so duplicate
+/// definitions collapse to one.
+fn custom_sensor_signature(sensor: &CustomSensor) -> String {
+    format!("{}|{:?}", sensor.id, sensor.kind)
 }
 
 /// A definition fingerprint of a function, excluding its UID and name, so two functions that
@@ -500,13 +702,69 @@ mod tests {
         }
     }
 
+    fn gpu_temp() -> TempSource {
+        TempSource {
+            temp_name: "GPU Temp".to_string(),
+            device_uid: "dev-gpu-1".to_string(),
+        }
+    }
+
+    fn gpu_request(channel_names: &[&str], preset: Preset) -> GenerateProfilesRequest {
+        let assignments = channel_names
+            .iter()
+            .map(|channel_name| FanAssignment {
+                device_uid: "dev-mb-1".to_string(),
+                channel_name: (*channel_name).to_string(),
+                kind: FanKind::GpuFan,
+                position: None,
+                laptop_temp_strategy: None,
+            })
+            .collect();
+        GenerateProfilesRequest {
+            assignments,
+            key_temps: KeyTemps {
+                cpu: None,
+                gpu: Some(gpu_temp()),
+                liquid: None,
+                ambient: None,
+            },
+            global_preset: preset,
+            preset_overrides: Vec::new(),
+        }
+    }
+
+    /// A context with a custom-sensors device present and no per-channel minimum duties.
+    fn test_context() -> DeviceContext {
+        DeviceContext {
+            min_duty_by_channel: HashMap::new(),
+            custom_sensors_device_uid: Some("dev-custom-sensors".to_string()),
+        }
+    }
+
+    /// A context that reports one channel's effective minimum duty.
+    fn context_with_min_duty(
+        device_uid: &str,
+        channel_name: &str,
+        min_duty: Duty,
+    ) -> DeviceContext {
+        let mut min_duty_by_channel = HashMap::new();
+        min_duty_by_channel.insert((device_uid.to_string(), channel_name.to_string()), min_duty);
+        DeviceContext {
+            min_duty_by_channel,
+            custom_sensors_device_uid: Some("dev-custom-sensors".to_string()),
+        }
+    }
+
     /// Goal: a single CPU cooler yields a valid Graph profile plus its function, wired
     /// together and assigned to the fan. Method: generate, then assert the entity counts, the
     /// profile shape, and that the assignment points at the produced profile.
     #[test]
     fn generates_cpu_cooler_profile_and_function() {
-        let response =
-            generate_proposal(&cpu_cooler_request(&["fan1"], Preset::Balanced)).expect("generates");
+        let response = generate_proposal(
+            &cpu_cooler_request(&["fan1"], Preset::Balanced),
+            &test_context(),
+        )
+        .expect("generates");
         assert_eq!(response.profiles.len(), 1);
         assert_eq!(response.functions.len(), 1);
         assert_eq!(response.assignments.len(), 1);
@@ -528,8 +786,11 @@ mod tests {
     /// and assert the dedup leaves one profile/function but two assignments to the same UID.
     #[test]
     fn dedups_identical_cpu_coolers() {
-        let response = generate_proposal(&cpu_cooler_request(&["fan1", "fan2"], Preset::Balanced))
-            .expect("generates");
+        let response = generate_proposal(
+            &cpu_cooler_request(&["fan1", "fan2"], Preset::Balanced),
+            &test_context(),
+        )
+        .expect("generates");
         assert_eq!(response.profiles.len(), 1, "identical profiles share one");
         assert_eq!(response.functions.len(), 1, "identical functions share one");
         assert_eq!(
@@ -549,7 +810,7 @@ mod tests {
     fn cpu_cooler_without_cpu_temp_errors() {
         let mut request = cpu_cooler_request(&["fan1"], Preset::Balanced);
         request.key_temps.cpu = None;
-        assert!(generate_proposal(&request).is_err());
+        assert!(generate_proposal(&request, &test_context()).is_err());
     }
 
     /// Goal: per-kind overrides win over the global preset, and unlisted kinds fall back to
@@ -580,10 +841,81 @@ mod tests {
             global_preset: Preset::Silent,
             preset_overrides: Vec::new(),
         };
-        let response = generate_proposal(&request).expect("generates");
+        let response = generate_proposal(&request, &test_context()).expect("generates");
         assert!(response.profiles.is_empty());
         assert!(response.functions.is_empty());
         assert!(response.custom_sensors.is_empty());
         assert!(response.assignments.is_empty());
+    }
+
+    /// Goal: the Silent preset wraps the temp in an EMA custom sensor and points the profile at
+    /// it. Method: generate a Silent CPU cooler and assert one EMA sensor exists and the
+    /// profile's source is that sensor on the custom-sensors device.
+    #[test]
+    fn cpu_cooler_silent_wraps_source_in_ema_sensor() {
+        let response = generate_proposal(
+            &cpu_cooler_request(&["fan1"], Preset::Silent),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(response.custom_sensors.len(), 1);
+        let sensor = &response.custom_sensors[0];
+        assert!(matches!(
+            sensor.kind,
+            SensorKind::ExponentialMovingAvg { .. }
+        ));
+        let source = response.profiles[0]
+            .temp_source()
+            .expect("graph has a source");
+        assert_eq!(source.device_uid, "dev-custom-sensors");
+        assert_eq!(source.temp_name, sensor.id);
+    }
+
+    /// Goal: non-Silent presets follow the raw temp with no EMA sensor. Method: generate a
+    /// Balanced CPU cooler and assert no custom sensors and the raw CPU source.
+    #[test]
+    fn cpu_cooler_balanced_uses_raw_temp() {
+        let response = generate_proposal(
+            &cpu_cooler_request(&["fan1"], Preset::Balanced),
+            &test_context(),
+        )
+        .expect("generates");
+        assert!(response.custom_sensors.is_empty());
+        assert_eq!(response.profiles[0].temp_source(), Some(&cpu_temp()));
+    }
+
+    /// Goal: a channel minimum duty raises the CPU cooler curve floor so it cannot stall.
+    /// Method: generate with `min_duty` 40 and assert every curve duty is at least 40.
+    #[test]
+    fn cpu_cooler_curve_floor_clamped_to_min_duty() {
+        let context = context_with_min_duty("dev-mb-1", "fan1", 40);
+        let response = generate_proposal(&cpu_cooler_request(&["fan1"], Preset::Silent), &context)
+            .expect("generates");
+        let curve = response.profiles[0].speed_profile().expect("has curve");
+        assert!(curve.iter().all(|(_, duty)| *duty >= 40));
+    }
+
+    /// Goal: GPU fans keep a 0% idle even when the channel reports a non-zero minimum duty, to
+    /// preserve zero-RPM. Method: generate with `min_duty` 30 and assert the curve still has a 0%
+    /// point.
+    #[test]
+    fn gpu_fan_preserves_zero_rpm_idle() {
+        let context = context_with_min_duty("dev-mb-1", "fan1", 30);
+        let response = generate_proposal(&gpu_request(&["fan1"], Preset::Silent), &context)
+            .expect("generates");
+        let curve = response.profiles[0].speed_profile().expect("has curve");
+        assert!(
+            curve.iter().any(|(_, duty)| *duty == 0),
+            "zero-RPM idle preserved"
+        );
+    }
+
+    /// Goal: assigning a GPU fan without a GPU temp is a user error. Method: omit the GPU temp
+    /// and assert generation errors.
+    #[test]
+    fn gpu_fan_without_gpu_temp_errors() {
+        let mut request = gpu_request(&["fan1"], Preset::Balanced);
+        request.key_temps.gpu = None;
+        assert!(generate_proposal(&request, &test_context()).is_err());
     }
 }
