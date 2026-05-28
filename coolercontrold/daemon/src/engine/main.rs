@@ -259,14 +259,14 @@ impl Engine {
             .find(|p| &p.uid == profile_uid)
             .with_context(|| "Profile should be present")?
             .clone();
-        match profile.p_type {
+        match profile.p_type() {
             ProfileType::Default => self.set_reset(device_uid, channel_name).await,
             ProfileType::Fixed => {
                 self.set_fixed_speed(
                     device_uid,
                     channel_name,
                     profile
-                        .speed_fixed
+                        .speed_fixed()
                         .with_context(|| "Speed Fixed should be preset for Fixed Profiles")?,
                 )
                 .await
@@ -299,7 +299,7 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.speed_profile.is_none() || profile.temp_source.is_none() {
+        if profile.speed_profile().is_none() || profile.temp_source().is_none() {
             return Err(anyhow!(
                 "Speed Profile and Temp Source must be present for a Graph Profile"
             ));
@@ -314,7 +314,7 @@ impl Engine {
             .speed_options
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
-        let temp_source = profile.temp_source.as_ref().unwrap();
+        let temp_source = profile.temp_source().unwrap();
         let channel_supports_hw_curve = speed_options.extension.is_some_and(|s| {
             s == ChannelExtensionNames::AutoHWCurve || s == ChannelExtensionNames::AmdRdnaGpu
         });
@@ -336,7 +336,7 @@ impl Engine {
                 device_uid,
                 channel_name,
                 temp_source,
-                profile.speed_profile.as_ref().unwrap(),
+                profile.speed_profile().unwrap(),
             )
             .await
         } else if speed_options.fixed_enabled {
@@ -362,10 +362,10 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.member_profile_uids.is_empty() {
+        if profile.member_profile_uids().is_empty() {
             return Err(anyhow!("Mix Profile should have member profiles"));
         }
-        if profile.mix_function_type.is_none() {
+        if profile.mix_function_type().is_none() {
             return Err(anyhow!("Mix Profile should have a mix function type"));
         }
         let (device_lock, repo) = self.get_device_repo(device_uid)?;
@@ -379,7 +379,7 @@ impl Engine {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profiles = self
-            .get_ordered_member_profiles(&profile.member_profile_uids)
+            .get_ordered_member_profiles(profile.member_profile_uids())
             .await?;
         let all_function_uids = self
             .config
@@ -392,14 +392,14 @@ impl Engine {
         let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
             HashMap::with_capacity(member_profiles.len());
         for member in &member_profiles {
-            if member.p_type == ProfileType::Mix {
+            if member.p_type() == ProfileType::Mix {
                 let sub_members = self
-                    .get_ordered_member_profiles(&member.member_profile_uids)
+                    .get_ordered_member_profiles(member.member_profile_uids())
                     .await?;
                 // Single-level enforcement: sub-members must all be Graph or Fixed
                 if sub_members
                     .iter()
-                    .any(|p| p.p_type != ProfileType::Graph && p.p_type != ProfileType::Fixed)
+                    .any(|p| p.p_type() != ProfileType::Graph && p.p_type() != ProfileType::Fixed)
                 {
                     return Err(anyhow!(
                         "Mix member '{}' contains non-Graph/Fixed sub-members \
@@ -410,7 +410,7 @@ impl Engine {
                 // Validate sub-member functions exist (Graph profiles only)
                 if sub_members
                     .iter()
-                    .filter(|p| p.p_type == ProfileType::Graph)
+                    .filter(|p| p.p_type() == ProfileType::Graph)
                     .any(|p| all_function_uids.contains(&p.function_uid).not())
                 {
                     return Err(anyhow!(
@@ -422,7 +422,7 @@ impl Engine {
         }
         let member_profile_functions_all_present = member_profiles
             .iter()
-            .filter(|p| p.p_type == ProfileType::Graph)
+            .filter(|p| p.p_type() == ProfileType::Graph)
             .all(|p| all_function_uids.contains(&p.function_uid));
         if member_profile_functions_all_present.not() {
             return Err(anyhow!("All Member Profile Functions should be present"));
@@ -463,10 +463,10 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.member_profile_uids.len() != 1 {
+        if profile.member_profile_uids().len() != 1 {
             return Err(anyhow!("Overlay Profile should one member profile"));
         }
-        let Some(offset_profile) = profile.offset_profile.as_ref() else {
+        let Some(offset_profile) = profile.offset_profile() else {
             return Err(anyhow!("Overlay Profile should have an offset profile"));
         };
         if offset_profile.is_empty() {
@@ -489,19 +489,19 @@ impl Engine {
             .get_profiles()
             .await?
             .into_iter()
-            .find(|p| profile.member_profile_uids.contains(&p.uid))
+            .find(|p| profile.member_profile_uids().contains(&p.uid))
             .ok_or(anyhow!("Overlay Member Profile should be present"))?;
         let member_profile_members = self
-            .get_ordered_member_profiles(&member_profile.member_profile_uids)
+            .get_ordered_member_profiles(member_profile.member_profile_uids())
             .await?;
         // Resolve sub-members if the overlay's member Mix has Mix sub-members
         let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
             HashMap::with_capacity(member_profile_members.len());
-        if member_profile.p_type == ProfileType::Mix {
+        if member_profile.p_type() == ProfileType::Mix {
             for sub_member in &member_profile_members {
-                if sub_member.p_type == ProfileType::Mix {
+                if sub_member.p_type() == ProfileType::Mix {
                     let sub_sub_members = self
-                        .get_ordered_member_profiles(&sub_member.member_profile_uids)
+                        .get_ordered_member_profiles(sub_member.member_profile_uids())
                         .await?;
                     member_sub_profiles.insert(sub_member.uid.clone(), sub_sub_members);
                 }
@@ -1093,8 +1093,8 @@ impl Engine {
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|p| {
-                    p.p_type == ProfileType::Mix
-                        && p.member_profile_uids
+                    p.p_type() == ProfileType::Mix
+                        && p.member_profile_uids()
                             .iter()
                             .any(|uid| child_mix_uids.contains(uid))
                 })
@@ -1149,8 +1149,8 @@ impl Engine {
             .await?
             .into_iter()
             .filter(|profile| {
-                profile.p_type == ProfileType::Mix
-                    && profile.member_profile_uids.contains(profile_uid)
+                profile.p_type() == ProfileType::Mix
+                    && profile.member_profile_uids().contains(profile_uid)
             })
             .collect::<Vec<_>>();
         if self
@@ -1159,8 +1159,8 @@ impl Engine {
             .await?
             .into_iter()
             .any(|profile| {
-                profile.p_type == ProfileType::Overlay
-                    && profile.member_profile_uids.contains(profile_uid)
+                profile.p_type() == ProfileType::Overlay
+                    && profile.member_profile_uids().contains(profile_uid)
             })
         {
             return Err(CCError::UserError {
@@ -1171,7 +1171,7 @@ impl Engine {
         }
         if affected_mix_profiles
             .iter()
-            .any(|p| p.member_profile_uids.len() < 2)
+            .any(|p| p.member_profile_uids().len() < 2)
         {
             return Err(CCError::UserError {
                 msg: "Mix Profiles must have at least 1 member profiles".to_string(),
@@ -1179,9 +1179,9 @@ impl Engine {
             .into());
         }
         for mix_profile in &mut affected_mix_profiles {
-            mix_profile
-                .member_profile_uids
-                .retain(|p_uid| p_uid != profile_uid);
+            if let Some(member_profile_uids) = mix_profile.member_profile_uids_mut() {
+                member_profile_uids.retain(|p_uid| p_uid != profile_uid);
+            }
             self.config.update_profile(mix_profile.clone())?;
         }
         for (device_uid, _device) in self.all_devices.iter() {
@@ -1238,9 +1238,9 @@ impl Engine {
             .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| {
-                profile.p_type == ProfileType::Mix
+                profile.p_type() == ProfileType::Mix
                     && profile
-                        .member_profile_uids
+                        .member_profile_uids()
                         .iter()
                         .any(|p_uid| affected_profiles.iter().any(|p| &p.uid == p_uid))
             })
@@ -1303,8 +1303,8 @@ impl Engine {
             .unwrap_or(Vec::new())
             .iter()
             .any(|profile| {
-                profile.temp_source.is_some()
-                    && profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
+                profile.temp_source().is_some()
+                    && profile.temp_source().unwrap().temp_name == custom_sensor_id
             });
         let affects_lcd_settings =
             self.config
@@ -1335,7 +1335,7 @@ impl Engine {
 
     async fn get_ordered_member_profiles(
         &self,
-        member_profile_uids: &Vec<UID>,
+        member_profile_uids: &[UID],
     ) -> Result<Vec<Profile>> {
         let mut all_profiles = self.config.get_profiles().await?;
         let mut member_profiles = Vec::with_capacity(member_profile_uids.len());
@@ -1364,8 +1364,8 @@ impl Engine {
             .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| {
-                profile.p_type == profile_type
-                    && profile.member_profile_uids.contains(changed_profile_uid)
+                profile.p_type() == profile_type
+                    && profile.member_profile_uids().contains(changed_profile_uid)
             })
             .collect::<Vec<_>>()
     }

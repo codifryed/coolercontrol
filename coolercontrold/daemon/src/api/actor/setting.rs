@@ -465,10 +465,10 @@ fn verify_disable_does_not_orphan_temp_sources(
     };
     let mut broken_profiles: Vec<(String, String)> = Vec::with_capacity(profiles.len());
     for profile in profiles {
-        if profile.p_type != ProfileType::Graph {
+        if profile.p_type() != ProfileType::Graph {
             continue;
         }
-        let Some(source) = profile.temp_source.as_ref() else {
+        let Some(source) = profile.temp_source() else {
             continue;
         };
         if is_broken(source) {
@@ -519,11 +519,11 @@ fn build_orphan_error_message(
 mod tests {
     use super::{
         build_orphan_error_message, verify_disable_does_not_orphan_temp_sources, CCDeviceSettings,
-        CCError, CustomSensor, Profile, ProfileType, TempSource,
+        CCError, CustomSensor, Profile, TempSource,
     };
     use crate::setting::{
         CCChannelSettings, CustomSensorMixFunctionType, CustomTempSourceData, DeviceExtensions,
-        SensorKind,
+        ProfileKind, SensorKind,
     };
     use std::collections::HashMap;
     use std::ops::Not;
@@ -555,12 +555,16 @@ mod tests {
     fn graph_profile(name: &str, source_uid: &str, source_temp: &str) -> Profile {
         Profile {
             uid: format!("profile-{name}"),
-            p_type: ProfileType::Graph,
             name: name.to_string(),
-            temp_source: Some(TempSource {
-                temp_name: source_temp.to_string(),
-                device_uid: source_uid.to_string(),
-            }),
+            kind: ProfileKind::Graph {
+                speed_profile: None,
+                temp_source: Some(TempSource {
+                    temp_name: source_temp.to_string(),
+                    device_uid: source_uid.to_string(),
+                }),
+                temp_min: None,
+                temp_max: None,
+            },
             ..Default::default()
         }
     }
@@ -759,10 +763,12 @@ mod tests {
         let current = settings(&[("Tctl", false)], false);
         let update = settings(&[("Tctl", true)], false);
         let mut fixed_profile = graph_profile("Fixed", DEVICE_A, "Tctl");
-        fixed_profile.p_type = ProfileType::Fixed;
-        fixed_profile.temp_source = None;
+        fixed_profile.kind = ProfileKind::Fixed { speed_fixed: None };
         let mut mix_profile = graph_profile("Mix", DEVICE_A, "Tctl");
-        mix_profile.p_type = ProfileType::Mix;
+        mix_profile.kind = ProfileKind::Mix {
+            member_profile_uids: Vec::new(),
+            mix_function_type: None,
+        };
         let profiles = vec![fixed_profile, mix_profile];
         let result = verify_disable_does_not_orphan_temp_sources(
             &DEVICE_A.to_string(),

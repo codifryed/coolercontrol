@@ -31,7 +31,7 @@ mod engine_tests {
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
+        Function, FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
         ProfileUID, TempSource,
     };
     use anyhow::{anyhow, Result};
@@ -251,9 +251,12 @@ mod engine_tests {
         let profile = Profile {
             uid: profile_uid.clone(),
             name: "Test Profile".to_string(),
-            p_type: ProfileType::Graph,
-            speed_profile: Some(speed_profile),
-            temp_source: Some(temp_source),
+            kind: ProfileKind::Graph {
+                speed_profile: Some(speed_profile),
+                temp_source: Some(temp_source),
+                temp_min: None,
+                temp_max: None,
+            },
             ..Default::default()
         };
         config.set_profile(profile).unwrap();
@@ -270,11 +273,13 @@ mod engine_tests {
         let profile = Profile {
             uid: profile_uid.clone(),
             name: "Test Profile".to_string(),
-            p_type: ProfileType::Graph,
-            speed_profile: Some(speed_profile),
-            temp_source: Some(temp_source),
             function_uid: function_uid.clone(),
-            ..Default::default()
+            kind: ProfileKind::Graph {
+                speed_profile: Some(speed_profile),
+                temp_source: Some(temp_source),
+                temp_min: None,
+                temp_max: None,
+            },
         };
         config.set_profile(profile).unwrap();
         profile_uid

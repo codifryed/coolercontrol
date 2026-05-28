@@ -66,12 +66,12 @@ impl OverlayProfileCommander {
         member_profile_members: Vec<Profile>,
         member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> anyhow::Result<()> {
-        if overlay_profile.p_type != ProfileType::Overlay {
+        if overlay_profile.p_type() != ProfileType::Overlay {
             return Err(anyhow!(
                 "Only Overlay Profiles are supported for scheduling in the MixProfileCommander"
             ));
         }
-        let Some(offset_profile) = overlay_profile.offset_profile.as_ref() else {
+        let Some(offset_profile) = overlay_profile.offset_profile() else {
             return Err(anyhow!(
                 "Offset Profile must be present for an Overlay Profile"
             ));
@@ -132,7 +132,7 @@ impl OverlayProfileCommander {
     ) -> anyhow::Result<()> {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         // Add the Overlay settings for the member profile to be processed
-        match member_profile.p_type {
+        match member_profile.p_type() {
             ProfileType::Graph => {
                 self.graph_commander
                     .schedule_setting(device_channel.clone(), member_profile)?;
@@ -288,12 +288,12 @@ impl OverlayProfileCommander {
         member_profile: &Profile,
     ) -> NormalizedOverlayProfile {
         let normalized_offset_profile =
-            utils::normalize_offset_profile(profile.offset_profile.as_ref().unwrap());
+            utils::normalize_offset_profile(profile.offset_profile().unwrap());
         NormalizedOverlayProfile {
             profile_uid: profile.uid.clone(),
             offset_profile: normalized_offset_profile,
             member_profile_uid: member_profile.uid.clone(),
-            member_profile_type: member_profile.p_type.clone(),
+            member_profile_type: member_profile.p_type().clone(),
         }
     }
 }

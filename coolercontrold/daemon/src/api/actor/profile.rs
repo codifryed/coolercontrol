@@ -78,7 +78,7 @@ impl ProfileActor {
 
     fn verify_graph_profile(&self, profile: &Profile) -> Result<()> {
         let _ = self.config.get_function(&profile.function_uid)?;
-        let Some(temp_source) = profile.temp_source.as_ref() else {
+        let Some(temp_source) = profile.temp_source() else {
             return Err(CCError::UserError {
                 msg: "Temp Source not present in Profile".to_string(),
             }
@@ -108,11 +108,11 @@ impl ProfileActor {
     }
 
     async fn verify_profile_internals(&self, profile: &Profile) -> Result<()> {
-        if profile.p_type == ProfileType::Graph {
+        if profile.p_type() == ProfileType::Graph {
             self.verify_graph_profile(profile)?;
-        } else if profile.p_type == ProfileType::Mix {
+        } else if profile.p_type() == ProfileType::Mix {
             let all_profiles = self.config.get_profiles().await?;
-            for member_uid in &profile.member_profile_uids {
+            for member_uid in profile.member_profile_uids() {
                 Self::verify_mix_member(profile, member_uid, &all_profiles)?;
             }
             Self::verify_mix_nesting_constraints(profile, &all_profiles)?;
@@ -133,7 +133,7 @@ impl ProfileActor {
             }
             .into());
         };
-        if matches!(member.p_type, ProfileType::Default | ProfileType::Overlay) {
+        if matches!(member.p_type(), ProfileType::Default | ProfileType::Overlay) {
             return Err(CCError::UserError {
                 msg: format!(
                     "Mix member '{}' must be a Graph, Fixed, or Mix profile",
@@ -142,15 +142,15 @@ impl ProfileActor {
             }
             .into());
         }
-        if member.p_type != ProfileType::Mix {
+        if member.p_type() != ProfileType::Mix {
             return Ok(());
         }
         // For Mix members: verify single-level (no Mix sub-members).
-        let has_mix_sub_members = member.member_profile_uids.iter().any(|sub_uid| {
+        let has_mix_sub_members = member.member_profile_uids().iter().any(|sub_uid| {
             all_profiles
                 .iter()
                 .find(|p| &p.uid == sub_uid)
-                .is_some_and(|p| p.p_type == ProfileType::Mix)
+                .is_some_and(|p| p.p_type() == ProfileType::Mix)
         });
         if has_mix_sub_members {
             return Err(CCError::UserError {
@@ -162,7 +162,7 @@ impl ProfileActor {
             }
             .into());
         }
-        if member.member_profile_uids.contains(&profile.uid) {
+        if member.member_profile_uids().contains(&profile.uid) {
             return Err(CCError::UserError {
                 msg: format!(
                     "Circular reference: Mix member '{}' contains this profile",
@@ -177,19 +177,19 @@ impl ProfileActor {
     /// If this profile already has Mix members, it cannot itself be a child of
     /// another Mix (enforces single-level nesting from the parent side).
     fn verify_mix_nesting_constraints(profile: &Profile, all_profiles: &[Profile]) -> Result<()> {
-        let has_mix_members = profile.member_profile_uids.iter().any(|uid| {
+        let has_mix_members = profile.member_profile_uids().iter().any(|uid| {
             all_profiles
                 .iter()
                 .find(|p| &p.uid == uid)
-                .is_some_and(|p| p.p_type == ProfileType::Mix)
+                .is_some_and(|p| p.p_type() == ProfileType::Mix)
         });
         if has_mix_members.not() {
             return Ok(());
         }
         let is_child_of_another_mix = all_profiles.iter().any(|p| {
-            p.p_type == ProfileType::Mix
+            p.p_type() == ProfileType::Mix
                 && p.uid != profile.uid
-                && p.member_profile_uids.contains(&profile.uid)
+                && p.member_profile_uids().contains(&profile.uid)
         });
         if is_child_of_another_mix {
             return Err(CCError::UserError {

@@ -67,12 +67,12 @@ impl MixProfileCommander {
         member_profiles: Vec<Profile>,
         member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> Result<()> {
-        if mix_profile.p_type != ProfileType::Mix {
+        if mix_profile.p_type() != ProfileType::Mix {
             return Err(anyhow!(
                 "Only Mix Profiles are supported for scheduling in the MixProfileCommander"
             ));
         }
-        if mix_profile.mix_function_type.is_none() {
+        if mix_profile.mix_function_type().is_none() {
             return Err(anyhow!(
                 "Mix Function Type must be present for a Mix Profile"
             ));
@@ -119,7 +119,7 @@ impl MixProfileCommander {
     ) -> Result<()> {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
-            match member_profile.p_type {
+            match member_profile.p_type() {
                 ProfileType::Graph => {
                     self.graph_commander
                         .schedule_setting(device_channel.clone(), &member_profile)?;
@@ -130,7 +130,7 @@ impl MixProfileCommander {
                     // stored directly in the child's NormalizedMixProfile.
                     if let Some(sub_profiles) = member_sub_profiles.get(&member_profile.uid) {
                         for sub_profile in sub_profiles {
-                            if sub_profile.p_type == ProfileType::Graph {
+                            if sub_profile.p_type() == ProfileType::Graph {
                                 self.graph_commander
                                     .schedule_setting(device_channel.clone(), sub_profile)?;
                             }
@@ -500,7 +500,7 @@ impl MixProfileCommander {
         member_profiles: &[Profile],
     ) -> NormalizedMixProfile {
         debug_assert!(
-            profile.mix_function_type.is_some(),
+            profile.mix_function_type().is_some(),
             "mix_function_type must be validated before normalization"
         );
         debug_assert!(
@@ -510,16 +510,16 @@ impl MixProfileCommander {
         NormalizedMixProfile {
             profile_uid: profile.uid.clone(),
             // Validated in schedule_setting before reaching here.
-            mix_function: profile.mix_function_type.unwrap(),
+            mix_function: profile.mix_function_type().unwrap(),
             member_mix_profile_uids: member_profiles
                 .iter()
-                .filter(|p| p.p_type == ProfileType::Mix)
+                .filter(|p| p.p_type() == ProfileType::Mix)
                 .map(|p| p.uid.clone())
                 .collect(),
             member_fixed_profile_duties: member_profiles
                 .iter()
-                .filter(|p| p.p_type == ProfileType::Fixed)
-                .filter_map(|p| p.speed_fixed.map(|duty| (p.uid.clone(), duty)))
+                .filter(|p| p.p_type() == ProfileType::Fixed)
+                .filter_map(|p| p.speed_fixed().map(|duty| (p.uid.clone(), duty)))
                 .collect(),
             member_profile_uids: member_profiles.iter().map(|p| p.uid.clone()).collect(),
         }

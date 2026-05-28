@@ -368,61 +368,133 @@ pub enum ChannelExtensions {
 /// Profile Settings
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Profile {
-    /// The Unique Identifier for this Profile
     pub uid: ProfileUID,
 
-    /// The profile type
-    pub p_type: ProfileType,
-
-    /// The User given name for this Profile
     pub name: String,
 
-    /// The fixed duty speed to set. eg: 20 (%)
-    pub speed_fixed: Option<Duty>,
-
-    #[allow(clippy::struct_field_names)]
-    /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
-    pub speed_profile: Option<Vec<(Temp, Duty)>>,
-
-    /// The associated temperature source
-    pub temp_source: Option<TempSource>,
-
-    /// The minimum temp for this profile
-    pub temp_min: Option<Temp>,
-
-    /// The maximum temp for this profile
-    pub temp_max: Option<Temp>,
-
-    /// The function uid to apply to this profile
+    /// The function uid to apply to this profile.
     pub function_uid: FunctionUID,
 
-    /// The profiles that make up the mix profile
-    pub member_profile_uids: Vec<ProfileUID>,
+    /// The profile type and its type-specific fields. Flattened to keep the wire shape
+    /// (`p_type` plus the active fields at the top level) identical to the pre-enum struct.
+    #[serde(flatten)]
+    pub kind: ProfileKind,
+}
 
-    /// The function to mix the members with if this is a Mix Profile
-    pub mix_function_type: Option<ProfileMixFunctionType>,
-
-    #[allow(clippy::struct_field_names)]
-    /// The graph offset to apply to the associated member profile
-    /// This can also be used as a static offset when there is only one duty/offset pair.
-    pub offset_profile: Option<Vec<(Duty, Offset)>>,
+/// The profile type discriminator (`p_type`) and the fields valid for that type. Mutual
+/// exclusivity is enforced by the type; per-variant fields stay `Option` so requiredness is left to
+/// apply-time validation, keeping the input wire contract backward-compatible.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "p_type")]
+pub enum ProfileKind {
+    Default,
+    Fixed {
+        /// The fixed duty speed to set. eg: 20 (%)
+        speed_fixed: Option<Duty>,
+    },
+    Graph {
+        /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
+        speed_profile: Option<Vec<(Temp, Duty)>>,
+        temp_source: Option<TempSource>,
+        temp_min: Option<Temp>,
+        temp_max: Option<Temp>,
+    },
+    Mix {
+        member_profile_uids: Vec<ProfileUID>,
+        mix_function_type: Option<ProfileMixFunctionType>,
+    },
+    Overlay {
+        member_profile_uids: Vec<ProfileUID>,
+        /// The graph offset to apply to the associated member profile. Can also be a static
+        /// offset when there is only one duty/offset pair.
+        offset_profile: Option<Vec<(Duty, Offset)>>,
+    },
 }
 
 impl Default for Profile {
     fn default() -> Self {
         Self {
             uid: DEFAULT_PROFILE_UID.to_string(),
-            p_type: ProfileType::Default,
             name: "Unmanaged".to_string(),
-            speed_fixed: None,
-            speed_profile: None,
-            temp_source: None,
-            temp_min: None,
-            temp_max: None,
             function_uid: DEFAULT_FUNCTION_UID.to_string(),
-            member_profile_uids: Vec::new(),
-            mix_function_type: None,
-            offset_profile: None,
+            kind: ProfileKind::Default,
+        }
+    }
+}
+
+impl Profile {
+    pub fn p_type(&self) -> ProfileType {
+        match self.kind {
+            ProfileKind::Default => ProfileType::Default,
+            ProfileKind::Fixed { .. } => ProfileType::Fixed,
+            ProfileKind::Graph { .. } => ProfileType::Graph,
+            ProfileKind::Mix { .. } => ProfileType::Mix,
+            ProfileKind::Overlay { .. } => ProfileType::Overlay,
+        }
+    }
+
+    pub fn speed_fixed(&self) -> Option<Duty> {
+        match &self.kind {
+            ProfileKind::Fixed { speed_fixed } => *speed_fixed,
+            _ => None,
+        }
+    }
+
+    pub fn speed_profile(&self) -> Option<&Vec<(Temp, Duty)>> {
+        match &self.kind {
+            ProfileKind::Graph { speed_profile, .. } => speed_profile.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn temp_source(&self) -> Option<&TempSource> {
+        match &self.kind {
+            ProfileKind::Graph { temp_source, .. } => temp_source.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn member_profile_uids(&self) -> &[ProfileUID] {
+        match &self.kind {
+            ProfileKind::Mix {
+                member_profile_uids,
+                ..
+            }
+            | ProfileKind::Overlay {
+                member_profile_uids,
+                ..
+            } => member_profile_uids,
+            _ => &[],
+        }
+    }
+
+    pub fn member_profile_uids_mut(&mut self) -> Option<&mut Vec<ProfileUID>> {
+        match &mut self.kind {
+            ProfileKind::Mix {
+                member_profile_uids,
+                ..
+            }
+            | ProfileKind::Overlay {
+                member_profile_uids,
+                ..
+            } => Some(member_profile_uids),
+            _ => None,
+        }
+    }
+
+    pub fn mix_function_type(&self) -> Option<ProfileMixFunctionType> {
+        match &self.kind {
+            ProfileKind::Mix {
+                mix_function_type, ..
+            } => *mix_function_type,
+            _ => None,
+        }
+    }
+
+    pub fn offset_profile(&self) -> Option<&Vec<(Duty, Offset)>> {
+        match &self.kind {
+            ProfileKind::Overlay { offset_profile, .. } => offset_profile.as_ref(),
+            _ => None,
         }
     }
 }
@@ -850,6 +922,142 @@ mod tests {
         });
         let parsed: LcdSettings = serde_json::from_value(legacy).unwrap();
         assert!(matches!(parsed.mode, LcdModeKind::Image { .. }));
+    }
+
+    fn profile(kind: ProfileKind) -> Profile {
+        Profile {
+            uid: "prof-1".to_string(),
+            name: "Test".to_string(),
+            function_uid: "fn-1".to_string(),
+            kind,
+        }
+    }
+
+    fn graph_temp_source() -> TempSource {
+        TempSource {
+            temp_name: "Temp1".to_string(),
+            device_uid: "dev-1".to_string(),
+        }
+    }
+
+    // A Fixed Profile keeps `p_type: "Fixed"` and `speed_fixed` beside the shared fields
+    // (uid/name/function_uid) and omits every other type's fields. Dropping the previously-null
+    // speed_profile/temp_source and the empty member_profile_uids is the intended output reduction.
+    #[test]
+    fn profile_fixed_round_trip() {
+        let p = profile(ProfileKind::Fixed {
+            speed_fixed: Some(42),
+        });
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["p_type"], json!("Fixed"));
+        assert_eq!(v["speed_fixed"], json!(42));
+        assert_eq!(v["uid"], json!("prof-1"));
+        assert_eq!(v["function_uid"], json!("fn-1"));
+        assert!(v.get("speed_profile").is_none());
+        assert!(v.get("member_profile_uids").is_none());
+        assert!(v.get("offset_profile").is_none());
+
+        let parsed: Profile = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, p.kind);
+    }
+
+    // A Graph Profile carries speed_profile/temp_source/temp_min/temp_max under `p_type: "Graph"`
+    // and omits the other types' fields.
+    #[test]
+    fn profile_graph_round_trip() {
+        let p = profile(ProfileKind::Graph {
+            speed_profile: Some(vec![(20.0, 30), (50.0, 80)]),
+            temp_source: Some(graph_temp_source()),
+            temp_min: Some(20.0),
+            temp_max: Some(80.0),
+        });
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["p_type"], json!("Graph"));
+        assert!(v.get("speed_profile").is_some());
+        assert!(v.get("temp_source").is_some());
+        assert!(v.get("temp_min").is_some());
+        assert!(v.get("temp_max").is_some());
+        assert!(v.get("speed_fixed").is_none());
+        assert!(v.get("member_profile_uids").is_none());
+
+        let parsed: Profile = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, p.kind);
+    }
+
+    // A Mix Profile carries member_profile_uids + mix_function_type under `p_type: "Mix"`.
+    #[test]
+    fn profile_mix_round_trip() {
+        let p = profile(ProfileKind::Mix {
+            member_profile_uids: vec!["a".to_string(), "b".to_string()],
+            mix_function_type: Some(ProfileMixFunctionType::Max),
+        });
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["p_type"], json!("Mix"));
+        assert_eq!(v["member_profile_uids"], json!(["a", "b"]));
+        assert!(v.get("mix_function_type").is_some());
+        assert!(v.get("speed_fixed").is_none());
+        assert!(v.get("offset_profile").is_none());
+
+        let parsed: Profile = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, p.kind);
+    }
+
+    // An Overlay Profile carries member_profile_uids + offset_profile under `p_type: "Overlay"`.
+    #[test]
+    fn profile_overlay_round_trip() {
+        let p = profile(ProfileKind::Overlay {
+            member_profile_uids: vec!["a".to_string()],
+            offset_profile: Some(vec![(50, -5)]),
+        });
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["p_type"], json!("Overlay"));
+        assert_eq!(v["member_profile_uids"], json!(["a"]));
+        assert!(v.get("offset_profile").is_some());
+        assert!(v.get("mix_function_type").is_none());
+
+        let parsed: Profile = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, p.kind);
+    }
+
+    // A Default Profile serializes to just `p_type: "Default"` beside the shared fields.
+    #[test]
+    fn profile_default_serializes_tag_only() {
+        let v = serde_json::to_value(profile(ProfileKind::Default)).unwrap();
+        assert_eq!(v["p_type"], json!("Default"));
+        assert!(v.get("speed_fixed").is_none());
+        assert!(v.get("speed_profile").is_none());
+        assert!(v.get("member_profile_uids").is_none());
+
+        let parsed: Profile = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.kind, ProfileKind::Default));
+    }
+
+    // A legacy Fixed payload that still carries the other types' fields (null speed_profile, empty
+    // member_profile_uids, null offset_profile) must deserialize and ignore them, so pre-refactor
+    // configs and existing REST/TOML clients keep working.
+    #[test]
+    fn profile_reads_legacy_dead_fields() {
+        let legacy = json!({
+            "uid": "prof-1",
+            "name": "Test",
+            "function_uid": "fn-1",
+            "p_type": "Fixed",
+            "speed_fixed": 42,
+            "speed_profile": null,
+            "temp_source": null,
+            "temp_min": null,
+            "temp_max": null,
+            "member_profile_uids": [],
+            "mix_function_type": null,
+            "offset_profile": null
+        });
+        let parsed: Profile = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            parsed.kind,
+            ProfileKind::Fixed {
+                speed_fixed: Some(42)
+            }
+        );
     }
 
     // Verifies the Reset variant serializes to `{ "reset_to_default": true }`, matching

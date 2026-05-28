@@ -30,15 +30,16 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::{ChannelName, Duty, UID};
+use crate::device::{ChannelName, Duty, Temp, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
     Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind, LcdModeName,
-    LcdSettings, LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType,
-    SensorKind, Setting, SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    LcdSettings, LightingSettings, Offset, Profile, ProfileKind, ProfileMixFunctionType,
+    ProfileType, ProfileUID, SensorKind, Setting, SettingKind, TempSource, DEFAULT_FUNCTION_UID,
+    DEFAULT_PROFILE_UID,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -1509,19 +1510,29 @@ impl Config {
                 let member_profile_uids = Self::get_profile_uids(profile_table)?;
                 let mix_function_type = Self::get_mix_function_type(profile_table)?;
                 let offset_profile = Self::get_offset_profile(profile_table)?;
+                let kind = match p_type {
+                    ProfileType::Default => ProfileKind::Default,
+                    ProfileType::Fixed => ProfileKind::Fixed { speed_fixed },
+                    ProfileType::Graph => ProfileKind::Graph {
+                        speed_profile,
+                        temp_source,
+                        temp_min,
+                        temp_max,
+                    },
+                    ProfileType::Mix => ProfileKind::Mix {
+                        member_profile_uids,
+                        mix_function_type,
+                    },
+                    ProfileType::Overlay => ProfileKind::Overlay {
+                        member_profile_uids,
+                        offset_profile,
+                    },
+                };
                 let profile = Profile {
                     uid,
-                    p_type,
                     name,
-                    speed_fixed,
-                    speed_profile,
-                    temp_source,
-                    temp_min,
-                    temp_max,
                     function_uid,
-                    member_profile_uids,
-                    mix_function_type,
-                    offset_profile,
+                    kind,
                 };
                 profiles.push(profile);
             }
@@ -1636,77 +1647,119 @@ impl Config {
     }
 
     fn add_profile_properties_to_profile_table(profile: Profile, profile_table: &mut Table) {
-        profile_table["uid"] = Item::Value(Value::String(Formatted::new(profile.uid)));
-        profile_table["name"] = Item::Value(Value::String(Formatted::new(profile.name)));
-        profile_table["p_type"] =
-            Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
-        if let Some(speed_fixed) = profile.speed_fixed {
-            profile_table["speed_fixed"] =
-                Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
-        } else {
-            profile_table["speed_fixed"] = Item::None;
+        let p_type = profile.p_type();
+        let Profile {
+            uid,
+            name,
+            function_uid,
+            kind,
+        } = profile;
+        profile_table["uid"] = Item::Value(Value::String(Formatted::new(uid)));
+        profile_table["name"] = Item::Value(Value::String(Formatted::new(name)));
+        profile_table["p_type"] = Item::Value(Value::String(Formatted::new(p_type.to_string())));
+        profile_table["function_uid"] = Item::Value(Value::String(Formatted::new(function_uid)));
+        Self::add_profile_kind_to_profile_table(kind, profile_table);
+    }
+
+    /// Writes the type-specific Profile fields. Every such key is cleared first so that changing a
+    /// Profile's type on re-save cannot leave a stale key from the previous type behind.
+    fn add_profile_kind_to_profile_table(kind: ProfileKind, profile_table: &mut Table) {
+        for key in [
+            "speed_fixed",
+            "speed_profile",
+            "temp_source",
+            "temp_min",
+            "temp_max",
+            "member_profile_uids",
+            "mix_function_type",
+            "offset_profile",
+        ] {
+            profile_table[key] = Item::None;
         }
-        if let Some(speed_profile) = profile.speed_profile {
-            let mut profile_array = toml_edit::Array::new();
-            for (temp, duty) in speed_profile {
-                let mut pair_array = toml_edit::Array::new();
-                pair_array.push(Value::Float(Formatted::new(temp)));
-                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
-                profile_array.push(pair_array);
+        match kind {
+            ProfileKind::Default => {}
+            ProfileKind::Fixed { speed_fixed } => {
+                if let Some(speed_fixed) = speed_fixed {
+                    profile_table["speed_fixed"] =
+                        Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
+                }
             }
-            profile_table["speed_profile"] = Item::Value(Value::Array(profile_array));
-        } else {
-            profile_table["speed_profile"] = Item::None;
-        }
-        if let Some(temp_source) = profile.temp_source {
-            profile_table["temp_source"]["temp_name"] =
-                Item::Value(Value::String(Formatted::new(temp_source.temp_name)));
-            profile_table["temp_source"]["device_uid"] =
-                Item::Value(Value::String(Formatted::new(temp_source.device_uid)));
-        } else {
-            profile_table["temp_source"] = Item::None;
-        }
-        if let Some(temp_min) = profile.temp_min {
-            profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
-        } else {
-            profile_table["temp_min"] = Item::None;
-        }
-        if let Some(temp_max) = profile.temp_max {
-            profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
-        } else {
-            profile_table["temp_max"] = Item::None;
-        }
-        profile_table["function_uid"] =
-            Item::Value(Value::String(Formatted::new(profile.function_uid)));
-        if profile.member_profile_uids.is_empty().not() {
-            profile_table["member_profile_uids"] = Item::Value(Value::Array(
-                profile
-                    .member_profile_uids
-                    .iter()
-                    .map(|uid| Value::String(Formatted::new(uid.clone())))
-                    .collect(),
-            ));
-        } else {
-            profile_table["member_profile_uids"] = Item::None;
-        }
-        if let Some(mix_function_type) = profile.mix_function_type {
-            profile_table["mix_function_type"] =
-                Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
-        } else {
-            profile_table["mix_function_type"] = Item::None;
-        }
-        if let Some(offset_profile) = profile.offset_profile {
-            let mut array = toml_edit::Array::new();
-            for (duty, offset) in offset_profile {
-                let mut pair_array = toml_edit::Array::new();
-                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
-                pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
-                array.push(pair_array);
+            ProfileKind::Graph {
+                speed_profile,
+                temp_source,
+                temp_min,
+                temp_max,
+            } => {
+                if let Some(speed_profile) = speed_profile {
+                    profile_table["speed_profile"] = Self::speed_profile_to_item(speed_profile);
+                }
+                if let Some(temp_source) = temp_source {
+                    profile_table["temp_source"]["temp_name"] =
+                        Item::Value(Value::String(Formatted::new(temp_source.temp_name)));
+                    profile_table["temp_source"]["device_uid"] =
+                        Item::Value(Value::String(Formatted::new(temp_source.device_uid)));
+                }
+                if let Some(temp_min) = temp_min {
+                    profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
+                }
+                if let Some(temp_max) = temp_max {
+                    profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
+                }
             }
-            profile_table["offset_profile"] = Item::Value(Value::Array(array));
-        } else {
-            profile_table["offset_profile"] = Item::None;
+            ProfileKind::Mix {
+                member_profile_uids,
+                mix_function_type,
+            } => {
+                Self::set_member_profile_uids(&member_profile_uids, profile_table);
+                if let Some(mix_function_type) = mix_function_type {
+                    profile_table["mix_function_type"] =
+                        Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
+                }
+            }
+            ProfileKind::Overlay {
+                member_profile_uids,
+                offset_profile,
+            } => {
+                Self::set_member_profile_uids(&member_profile_uids, profile_table);
+                if let Some(offset_profile) = offset_profile {
+                    profile_table["offset_profile"] = Self::offset_profile_to_item(offset_profile);
+                }
+            }
         }
+    }
+
+    fn set_member_profile_uids(member_profile_uids: &[ProfileUID], profile_table: &mut Table) {
+        if member_profile_uids.is_empty() {
+            return;
+        }
+        profile_table["member_profile_uids"] = Item::Value(Value::Array(
+            member_profile_uids
+                .iter()
+                .map(|uid| Value::String(Formatted::new(uid.clone())))
+                .collect(),
+        ));
+    }
+
+    fn speed_profile_to_item(speed_profile: Vec<(Temp, Duty)>) -> Item {
+        let mut profile_array = toml_edit::Array::new();
+        for (temp, duty) in speed_profile {
+            let mut pair_array = toml_edit::Array::new();
+            pair_array.push(Value::Float(Formatted::new(temp)));
+            pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+            profile_array.push(pair_array);
+        }
+        Item::Value(Value::Array(profile_array))
+    }
+
+    fn offset_profile_to_item(offset_profile: Vec<(Duty, Offset)>) -> Item {
+        let mut array = toml_edit::Array::new();
+        for (duty, offset) in offset_profile {
+            let mut pair_array = toml_edit::Array::new();
+            pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+            pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
+            array.push(pair_array);
+        }
+        Item::Value(Value::Array(array))
     }
 
     /*
