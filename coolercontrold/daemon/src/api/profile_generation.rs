@@ -29,9 +29,9 @@ use crate::api::devices::{apply_effective_speed_options, build_calibration_map, 
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, Function, FunctionUID, Offset,
-    Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, CustomSensorKind, TempSource,
-    DEFAULT_FUNCTION_UID,
+    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, Function,
+    FunctionKind, FunctionUID, Offset, Profile, ProfileKind, ProfileMixFunctionType, ProfileUID,
+    TempSource, DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
 use axum::Json;
@@ -769,9 +769,11 @@ fn build_laptop_function(preset: Preset) -> Function {
     Function {
         uid: Uuid::new_v4().to_string(),
         name: format!("Auto Laptop ({preset})"),
-        only_downward: Some(true),
-        deviance: Some(deviance),
-        response_delay: Some(response_delay),
+        kind: FunctionKind::Standard {
+            deviance: Some(deviance),
+            only_downward: Some(true),
+            response_delay: Some(response_delay),
+        },
         ..Function::default()
     }
 }
@@ -843,17 +845,21 @@ fn build_preset_function(preset: Preset) -> Function {
         Preset::Balanced => Function {
             uid: Uuid::new_v4().to_string(),
             name,
-            only_downward: Some(true),
-            deviance: Some(2.0),
-            response_delay: Some(2),
+            kind: FunctionKind::Standard {
+                deviance: Some(2.0),
+                only_downward: Some(true),
+                response_delay: Some(2),
+            },
             ..Function::default()
         },
         Preset::Performance => Function {
             uid: Uuid::new_v4().to_string(),
             name,
-            only_downward: Some(true),
-            deviance: Some(1.0),
-            response_delay: Some(1),
+            kind: FunctionKind::Standard {
+                deviance: Some(1.0),
+                only_downward: Some(true),
+                response_delay: Some(1),
+            },
             ..Function::default()
         },
     }
@@ -1054,22 +1060,18 @@ fn custom_sensor_signature(sensor: &CustomSensor) -> String {
 }
 
 /// A definition fingerprint of a function, excluding its UID and name, so two functions that
-/// only differ by those are treated as duplicates. Debug formatting is a compact, stable
-/// stand-in for structural equality (the types do not derive `PartialEq`).
+/// only differ by those are treated as duplicates. Combines the shared step-size/safety fields
+/// with the `kind` (which carries the type and all type-specific fields) via Debug formatting.
 fn function_signature(function: &Function) -> String {
     format!(
-        "{:?}|{}|{}|{}|{}|{:?}|{:?}|{:?}|{:?}|{}|{}",
-        function.f_type,
+        "{}|{}|{}|{}|{}|{}|{:?}",
         function.step_size_min,
         function.step_size_max,
         function.step_size_min_decreasing,
         function.step_size_max_decreasing,
-        function.response_delay,
-        function.deviance,
-        function.only_downward,
-        function.sample_window,
         function.threshold_hopping,
         function.bypass_min_at_extremes,
+        function.kind,
     )
 }
 
@@ -1277,7 +1279,7 @@ mod tests {
         assert!(profile.speed_profile().is_some_and(|c| c.is_empty().not()));
 
         let function = &response.functions[0];
-        assert_eq!(function.only_downward, Some(true));
+        assert_eq!(function.only_downward(), Some(true));
         assert_eq!(profile.function_uid, function.uid);
         assert_eq!(response.assignments[0].profile_uid, profile.uid);
         assert!(response.assignments[0].replaces_profile_name.is_none());
@@ -1840,7 +1842,7 @@ mod tests {
             laptop.temp_source().unwrap().device_uid,
             "dev-custom-sensors"
         );
-        assert_eq!(response.functions[0].only_downward, Some(true));
+        assert_eq!(response.functions[0].only_downward(), Some(true));
     }
 
     /// Goal: the ThinkPad-sensor strategy follows the raw CPU temp with no EMA sensor. Method:
