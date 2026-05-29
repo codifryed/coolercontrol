@@ -1812,6 +1812,25 @@ impl Config {
             .ok_or(anyhow!("Function not found"))
     }
 
+    /// Logs a one-time deprecation warning for each Function still using the deprecated EMA type.
+    /// Called once at startup so the per-channel config reads do not spam the log.
+    pub fn log_deprecated_function_warnings(&self) {
+        let Ok(functions) = self.get_current_functions() else {
+            return;
+        };
+        for function in &functions {
+            if function.f_type() == FunctionType::ExponentialMovingAvg {
+                warn!(
+                    "Function '{}' ({}) uses the deprecated ExponentialMovingAvg type, \
+                     please change this and use a EMA Custom Sensor for temperature smoothing, \
+                     which has improved controls and visibility.
+                     The EMA Function type will be removed in a future release.",
+                    function.name, function.uid
+                );
+            }
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     fn get_current_functions(&self) -> Result<Vec<Function>> {
         let mut functions = Vec::new();
@@ -1978,10 +1997,6 @@ impl Config {
                         response_delay,
                     },
                     FunctionType::ExponentialMovingAvg => {
-                        warn!(
-                            "Function '{name}' ({uid}) uses the deprecated ExponentialMovingAvg \
-                             type; prefer the EMA custom-sensor type for temperature smoothing."
-                        );
                         FunctionKind::ExponentialMovingAvg { sample_window }
                     }
                 };
