@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiArrowLeft, mdiAutoFix } from '@mdi/js'
+import { mdiArrowLeft, mdiAutoFix, mdiContentSaveOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
@@ -30,11 +30,13 @@ import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType } from '@/models/Device.ts'
-import { ProfileTempSource } from '@/models/Profile.ts'
+import { getProfileTypeDisplayName, ProfileTempSource } from '@/models/Profile.ts'
+import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
 import {
     FanAssignment,
     FanKind,
     GenerateProfilesRequest,
+    type GenerateProfilesResponse,
     KeyTemps,
     Preset,
     PresetOverride,
@@ -190,8 +192,7 @@ const goToPresets = (): void => {
 const toTempSource = (option: TempOption | null): ProfileTempSource | undefined =>
     option == null ? undefined : new ProfileTempSource(option.tempName, option.deviceUID)
 
-const generating: Ref<boolean> = ref(false)
-const generate = async (): Promise<void> => {
+const buildRequest = (): GenerateProfilesRequest => {
     const request = new GenerateProfilesRequest()
     request.global_preset = globalPreset.value
     request.assignments = fanRows.value
@@ -210,10 +211,18 @@ const generate = async (): Promise<void> => {
         }
     }
     request.preset_overrides = overrides
+    return request
+}
 
-    generating.value = true
-    const response = await deviceStore.daemonClient.generateProfiles(request)
-    generating.value = false
+// Step 4: the proposed entities, fetched but not yet persisted.
+const proposal: Ref<GenerateProfilesResponse | null> = ref(null)
+const building: Ref<boolean> = ref(false)
+const applying: Ref<boolean> = ref(false)
+
+const buildPreview = async (): Promise<void> => {
+    building.value = true
+    const response = await deviceStore.daemonClient.generateProfiles(buildRequest())
+    building.value = false
     if (response == null) {
         toast.add({
             severity: 'error',
@@ -223,11 +232,111 @@ const generate = async (): Promise<void> => {
         })
         return
     }
-    // Phase 4 will render a preview and a Create & Apply step. For now, report the result.
+    proposal.value = response
+    step.value = 4
+}
+
+const profileNameByUid = (uid: string): string =>
+    proposal.value?.profiles.find((profile) => profile.uid === uid)?.name ?? uid
+
+const fanLabel = (deviceUID: string, channelName: string): string =>
+    fanRows.value.find((row) => row.deviceUID === deviceUID && row.channelName === channelName)
+        ?.label ?? channelName
+
+// The non-default profile a channel currently has, so the preview can warn before replacing it.
+const currentProfileName = (deviceUID: string, channelName: string): string | undefined => {
+    const profileUid = settingsStore.allDaemonDeviceSettings
+        .get(deviceUID)
+        ?.settings.get(channelName)?.profile_uid
+    if (profileUid == null || profileUid === '0') return undefined
+    return settingsStore.profiles.find((profile) => profile.uid === profileUid)?.name
+}
+
+const anyCaseFanAssigned = (): boolean =>
+    fanRows.value.some((row) => row.kind === FanKind.CaseIntake || row.kind === FanKind.CaseExhaust)
+
+const uniqueName = (base: string, existing: Set<string>): string => {
+    if (!existing.has(base)) return base
+    let suffix = 2
+    while (existing.has(`${base} ${suffix}`)) suffix++
+    return `${base} ${suffix}`
+}
+
+const applyError = (): void => {
+    toast.add({
+        severity: 'error',
+        summary: t('common.error'),
+        detail: t('components.wizards.generate.applyError'),
+        life: 4000,
+    })
+}
+
+// Persists the proposal in dependency order (custom sensors, functions, then profiles with
+// members before Mix/Overlay parents) and applies each fan to its generated profile.
+const createAndApply = async (): Promise<void> => {
+    if (proposal.value == null) return
+    applying.value = true
+    try {
+        // Custom sensor ids are the key, so rename on collision and rewire references.
+        const existingSensorIds = new Set(
+            (await settingsStore.getCustomSensors()).map((sensor) => sensor.id),
+        )
+        const sensorIdRename = new Map<string, string>()
+        for (const sensor of proposal.value.custom_sensors) {
+            const newId = uniqueName(sensor.id, existingSensorIds)
+            existingSensorIds.add(newId)
+            if (newId !== sensor.id) sensorIdRename.set(sensor.id, newId)
+            sensor.id = newId
+        }
+        for (const profile of proposal.value.profiles) {
+            const source = profile.temp_source
+            if (source != null && sensorIdRename.has(source.temp_name)) {
+                profile.temp_source = new ProfileTempSource(
+                    sensorIdRename.get(source.temp_name)!,
+                    source.device_uid,
+                )
+            }
+        }
+        for (const sensor of proposal.value.custom_sensors) {
+            if (!(await settingsStore.saveCustomSensor(sensor))) return
+        }
+        // Functions and profiles keep their UID, so a name suffix never breaks references.
+        const existingFunctionNames = new Set(settingsStore.functions.map((fn) => fn.name))
+        for (const fn of proposal.value.functions) {
+            fn.name = uniqueName(fn.name, existingFunctionNames)
+            existingFunctionNames.add(fn.name)
+            settingsStore.functions.push(fn)
+            if (!(await settingsStore.saveFunction(fn.uid))) {
+                applyError()
+                return
+            }
+        }
+        const existingProfileNames = new Set(settingsStore.profiles.map((profile) => profile.name))
+        for (const profile of proposal.value.profiles) {
+            profile.name = uniqueName(profile.name, existingProfileNames)
+            existingProfileNames.add(profile.name)
+            settingsStore.profiles.push(profile)
+            if (!(await settingsStore.saveProfile(profile.uid))) {
+                applyError()
+                return
+            }
+        }
+        for (const assignment of proposal.value.assignments) {
+            await settingsStore.saveDaemonDeviceSettingProfile(
+                assignment.device_uid,
+                assignment.channel_name,
+                new DeviceSettingWriteProfileDTO(assignment.profile_uid),
+            )
+        }
+    } finally {
+        applying.value = false
+    }
     toast.add({
         severity: 'success',
         summary: t('common.success'),
-        detail: t('components.wizards.generate.generated', { count: response.profiles.length }),
+        detail: t('components.wizards.generate.generated', {
+            count: proposal.value.profiles.length,
+        }),
         life: 4000,
     })
     closeDialog()
@@ -347,7 +456,7 @@ const generate = async (): Promise<void> => {
         </div>
 
         <!-- Step 3: preset -->
-        <div v-else class="flex flex-col gap-y-4">
+        <div v-else-if="step === 3" class="flex flex-col gap-y-4">
             <small class="ml-1 font-light text-sm">
                 {{ t('components.wizards.generate.presetIntro') }}
             </small>
@@ -378,6 +487,63 @@ const generate = async (): Promise<void> => {
                 </div>
             </div>
             <small class="ml-1 font-light text-xs text-text-color-secondary">
+                {{ t('components.wizards.generate.cfmCaveat') }}
+            </small>
+        </div>
+
+        <!-- Step 4: preview -->
+        <div v-else class="flex flex-col gap-y-2 overflow-y-auto">
+            <small class="ml-1 font-light text-sm">
+                {{ t('components.wizards.generate.previewIntro') }}
+            </small>
+            <div
+                v-for="assignment in proposal?.assignments ?? []"
+                :key="assignment.device_uid + assignment.channel_name"
+                class="flex items-start justify-between gap-x-3"
+            >
+                <span class="truncate">{{
+                    fanLabel(assignment.device_uid, assignment.channel_name)
+                }}</span>
+                <div class="text-right">
+                    <span class="font-bold">{{ profileNameByUid(assignment.profile_uid) }}</span>
+                    <span
+                        v-if="currentProfileName(assignment.device_uid, assignment.channel_name)"
+                        class="block text-xs text-yellow-500"
+                    >
+                        {{
+                            t('components.wizards.generate.replaces', {
+                                name: currentProfileName(
+                                    assignment.device_uid,
+                                    assignment.channel_name,
+                                ),
+                            })
+                        }}
+                    </span>
+                </div>
+            </div>
+            <small class="ml-1 mt-2 font-light text-sm">
+                {{
+                    t('components.wizards.generate.willCreate', {
+                        profiles: proposal?.profiles.length ?? 0,
+                        functions: proposal?.functions.length ?? 0,
+                        sensors: proposal?.custom_sensors.length ?? 0,
+                    })
+                }}
+            </small>
+            <div
+                v-for="profile in proposal?.profiles ?? []"
+                :key="profile.uid"
+                class="flex items-center justify-between gap-x-3 text-sm"
+            >
+                <span class="truncate">{{ profile.name }}</span>
+                <span class="text-text-color-secondary">{{
+                    getProfileTypeDisplayName(profile.p_type)
+                }}</span>
+            </div>
+            <small
+                v-if="anyCaseFanAssigned()"
+                class="ml-1 mt-1 font-light text-xs text-text-color-secondary"
+            >
                 {{ t('components.wizards.generate.cfmCaveat') }}
             </small>
         </div>
@@ -417,16 +583,30 @@ const generate = async (): Promise<void> => {
                 @click="goToPresets"
             />
             <Button
-                v-else
+                v-else-if="step === 3"
                 class="bg-accent/80 hover:!bg-accent w-32"
-                :label="t('components.wizards.generate.generate')"
-                :disabled="assignedCount() === 0 || generating"
-                @click="generate"
+                :label="t('components.wizards.generate.preview')"
+                :disabled="assignedCount() === 0 || building"
+                @click="buildPreview"
             >
                 <svg-icon
                     class="outline-0"
                     type="mdi"
                     :path="mdiAutoFix"
+                    :size="deviceStore.getREMSize(1.5)"
+                />
+            </Button>
+            <Button
+                v-else
+                class="bg-accent/80 hover:!bg-accent w-40"
+                :label="t('components.wizards.generate.createApply')"
+                :disabled="applying"
+                @click="createAndApply"
+            >
+                <svg-icon
+                    class="outline-0"
+                    type="mdi"
+                    :path="mdiContentSaveOutline"
                     :size="deviceStore.getREMSize(1.5)"
                 />
             </Button>
