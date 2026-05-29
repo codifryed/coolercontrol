@@ -17,9 +17,10 @@
  */
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{Function, FunctionUID};
+use crate::setting::{Function, FunctionType, FunctionUID};
 use axum::extract::{Path, State};
 use axum::Json;
+use log::warn;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +59,7 @@ pub async fn create(
     Json(function): Json<Function>,
 ) -> Result<(), CCError> {
     validate_function(&function)?;
+    warn_if_deprecated_function_type(&function);
     function_handle.create(function).await.map_err(handle_error)
 }
 
@@ -68,6 +70,7 @@ pub async fn update(
     Json(function): Json<Function>,
 ) -> Result<(), CCError> {
     validate_function(&function)?;
+    warn_if_deprecated_function_type(&function);
     function_handle.update(function).await.map_err(handle_error)
 }
 
@@ -113,6 +116,18 @@ fn validate_function(function: &Function) -> Result<(), CCError> {
     }
 }
 
+/// Logs a deprecation warning when a Function uses the deprecated EMA type. The function is still
+/// accepted; temperature smoothing should move to the EMA custom-sensor type.
+fn warn_if_deprecated_function_type(function: &Function) {
+    if function.f_type() == FunctionType::ExponentialMovingAvg {
+        warn!(
+            "Function '{}' ({}) uses the deprecated ExponentialMovingAvg type; \
+             prefer the EMA custom-sensor type for temperature smoothing.",
+            function.name, function.uid
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionsDto {
     functions: Vec<Function>,
@@ -126,23 +141,23 @@ pub struct FunctionPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::FunctionType;
+    use crate::setting::FunctionKind;
 
     fn valid_function() -> Function {
         Function {
             uid: "test-uid".to_string(),
             name: "Test Function".to_string(),
-            f_type: FunctionType::Standard,
             step_size_min: 2,
             step_size_max: 100,
             step_size_min_decreasing: 0,
             step_size_max_decreasing: 0,
-            response_delay: None,
-            deviance: None,
-            only_downward: None,
-            sample_window: None,
             threshold_hopping: true,
             bypass_min_at_extremes: false,
+            kind: FunctionKind::Standard {
+                deviance: None,
+                only_downward: None,
+                response_delay: None,
+            },
         }
     }
 

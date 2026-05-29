@@ -516,9 +516,6 @@ pub struct Function {
     /// The user given name for this function
     pub name: String,
 
-    /// The type of this function
-    pub f_type: FunctionType,
-
     /// The minimum duty change (step size) to apply
     /// Previously `duty_minimum`.
     #[serde(rename = "duty_minimum")]
@@ -538,18 +535,6 @@ pub struct Function {
     /// A value of `0` indicates a fixed step size. Use `step_size_minimum_decreasing` to set the step size.
     pub step_size_max_decreasing: Duty,
 
-    /// The response delay in seconds
-    pub response_delay: Option<u8>,
-
-    /// The temperature deviance threshold in degrees
-    pub deviance: Option<Temp>,
-
-    /// Whether to apply settings only on the way down
-    pub only_downward: Option<bool>,
-
-    /// The sample window this function should use, particularly applicable to moving averages
-    pub sample_window: Option<u8>,
-
     /// Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.
     pub threshold_hopping: bool,
 
@@ -558,6 +543,11 @@ pub struct Function {
     /// minimum step size. The maximum step size is still respected. Disabled by default.
     #[serde(default)]
     pub bypass_min_at_extremes: bool,
+
+    /// The function type and its type-specific fields. Flattened to keep the wire shape (`f_type`
+    /// plus the active fields at the top level) identical to the pre-enum struct.
+    #[serde(flatten)]
+    pub kind: FunctionKind,
 }
 
 impl Default for Function {
@@ -565,17 +555,51 @@ impl Default for Function {
         Self {
             uid: DEFAULT_FUNCTION_UID.to_string(),
             name: "Default Function".to_string(),
-            f_type: FunctionType::Identity,
             step_size_min: 2,
             step_size_max: 100,          // 0 = fixed step size
             step_size_min_decreasing: 0, // 0 = disabled/symmetric step size
             step_size_max_decreasing: 0, // 0 = fixed step size
-            response_delay: None,
-            deviance: None,
-            only_downward: None,
-            sample_window: None,
             threshold_hopping: true,
             bypass_min_at_extremes: false,
+            kind: FunctionKind::Identity,
+        }
+    }
+}
+
+impl Function {
+    pub fn f_type(&self) -> FunctionType {
+        match self.kind {
+            FunctionKind::Identity => FunctionType::Identity,
+            FunctionKind::Standard { .. } => FunctionType::Standard,
+            FunctionKind::ExponentialMovingAvg { .. } => FunctionType::ExponentialMovingAvg,
+        }
+    }
+
+    pub fn deviance(&self) -> Option<Temp> {
+        match &self.kind {
+            FunctionKind::Standard { deviance, .. } => *deviance,
+            _ => None,
+        }
+    }
+
+    pub fn only_downward(&self) -> Option<bool> {
+        match &self.kind {
+            FunctionKind::Standard { only_downward, .. } => *only_downward,
+            _ => None,
+        }
+    }
+
+    pub fn response_delay(&self) -> Option<u8> {
+        match &self.kind {
+            FunctionKind::Standard { response_delay, .. } => *response_delay,
+            _ => None,
+        }
+    }
+
+    pub fn sample_window(&self) -> Option<u8> {
+        match &self.kind {
+            FunctionKind::ExponentialMovingAvg { sample_window } => *sample_window,
+            _ => None,
         }
     }
 }
@@ -584,7 +608,35 @@ impl Default for Function {
 pub enum FunctionType {
     Identity,
     Standard,
+    /// DEPRECATED in favor of the EMA custom-sensor type. See `FunctionKind::ExponentialMovingAvg`.
     ExponentialMovingAvg,
+}
+
+/// The function type discriminator (`f_type`) and the fields valid for that type. Most `Function`
+/// fields (the step-size/hysteresis and safety-latch config) apply to every type and stay on
+/// `Function`; only these are type-specific. Per-variant fields stay `Option` so requiredness is left
+/// to apply-time validation, keeping the input wire contract backward-compatible.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "f_type")]
+pub enum FunctionKind {
+    Identity,
+    Standard {
+        /// The temperature deviance threshold in degrees
+        deviance: Option<Temp>,
+
+        /// Whether to apply settings only on the way down
+        only_downward: Option<bool>,
+
+        /// The response delay in seconds
+        response_delay: Option<u8>,
+    },
+    /// DEPRECATED in favor of the EMA custom-sensor type (`CustomSensorKind::ExponentialMovingAvg`),
+    /// which is a visible, reusable temp source rather than smoothing hidden inside the profile.
+    /// Retained for backward compatibility; the daemon warns when one is loaded or saved.
+    ExponentialMovingAvg {
+        /// The sample window for the moving average.
+        sample_window: Option<u8>,
+    },
 }
 
 #[derive(
@@ -1057,6 +1109,138 @@ mod tests {
             ProfileKind::Fixed {
                 speed_fixed: Some(42)
             }
+        );
+    }
+
+    fn function(kind: FunctionKind) -> Function {
+        Function {
+            uid: "fn-1".to_string(),
+            name: "Test".to_string(),
+            step_size_min: 2,
+            step_size_max: 100,
+            step_size_min_decreasing: 0,
+            step_size_max_decreasing: 0,
+            threshold_hopping: true,
+            bypass_min_at_extremes: false,
+            kind,
+        }
+    }
+
+    // A Standard Function keeps `f_type: "Standard"` plus deviance/only_downward beside the shared
+    // step-size fields, and omits the EMA-only sample_window. The shared fields stay present.
+    #[test]
+    fn function_standard_round_trip() {
+        let f = function(FunctionKind::Standard {
+            deviance: Some(2.0),
+            only_downward: Some(true),
+            response_delay: Some(5),
+        });
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["f_type"], json!("Standard"));
+        assert_eq!(v["deviance"], json!(2.0));
+        assert_eq!(v["only_downward"], json!(true));
+        assert_eq!(v["response_delay"], json!(5));
+        assert_eq!(v["duty_minimum"], json!(2));
+        assert!(v.get("sample_window").is_none());
+
+        let parsed: Function = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, f.kind);
+    }
+
+    // An EMA Function carries sample_window under `f_type: "ExponentialMovingAvg"` and omits the
+    // Standard-only fields. The type is deprecated but must still round-trip.
+    #[test]
+    fn function_ema_round_trip() {
+        let f = function(FunctionKind::ExponentialMovingAvg {
+            sample_window: Some(8),
+        });
+        let v = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["f_type"], json!("ExponentialMovingAvg"));
+        assert_eq!(v["sample_window"], json!(8));
+        assert!(v.get("deviance").is_none());
+        assert!(v.get("only_downward").is_none());
+        assert!(v.get("response_delay").is_none());
+
+        let parsed: Function = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.kind, f.kind);
+    }
+
+    // An Identity Function serializes to just `f_type: "Identity"` beside the shared fields, with
+    // none of the type-specific fields.
+    #[test]
+    fn function_identity_serializes_tag_only() {
+        let v = serde_json::to_value(function(FunctionKind::Identity)).unwrap();
+        assert_eq!(v["f_type"], json!("Identity"));
+        assert!(v.get("deviance").is_none());
+        assert!(v.get("only_downward").is_none());
+        assert!(v.get("response_delay").is_none());
+        assert!(v.get("sample_window").is_none());
+
+        let parsed: Function = serde_json::from_value(v).unwrap();
+        assert!(matches!(parsed.kind, FunctionKind::Identity));
+    }
+
+    // A legacy Standard payload that still carries the EMA-only sample_window must deserialize and
+    // ignore it, so pre-refactor configs and REST clients keep working.
+    #[test]
+    fn function_reads_legacy_dead_fields() {
+        let legacy = json!({
+            "uid": "fn-1",
+            "name": "Test",
+            "f_type": "Standard",
+            "duty_minimum": 2,
+            "duty_maximum": 100,
+            "step_size_min_decreasing": 0,
+            "step_size_max_decreasing": 0,
+            "response_delay": 5,
+            "deviance": 2.0,
+            "only_downward": false,
+            "sample_window": 8,
+            "threshold_hopping": true,
+            "bypass_min_at_extremes": false
+        });
+        let parsed: Function = serde_json::from_value(legacy).unwrap();
+        assert_eq!(
+            parsed.kind,
+            FunctionKind::Standard {
+                deviance: Some(2.0),
+                only_downward: Some(false),
+                response_delay: Some(5),
+            }
+        );
+    }
+
+    // Without the f_type discriminator there is no variant to construct, so the payload is rejected
+    // at the deserialization boundary.
+    #[test]
+    fn function_missing_f_type_rejected() {
+        let payload = json!({ "uid": "x", "name": "x", "duty_minimum": 2 });
+        let result: Result<Function, _> = serde_json::from_value(payload);
+        assert!(result.is_err());
+    }
+
+    // The f_type() accessor maps each kind back to its FunctionType discriminant.
+    #[test]
+    fn function_f_type_accessor() {
+        assert_eq!(
+            function(FunctionKind::Identity).f_type(),
+            FunctionType::Identity
+        );
+        assert_eq!(
+            function(FunctionKind::Standard {
+                deviance: None,
+                only_downward: None,
+                response_delay: None,
+            })
+            .f_type(),
+            FunctionType::Standard
+        );
+        assert_eq!(
+            function(FunctionKind::ExponentialMovingAvg {
+                sample_window: None
+            })
+            .f_type(),
+            FunctionType::ExponentialMovingAvg
         );
     }
 

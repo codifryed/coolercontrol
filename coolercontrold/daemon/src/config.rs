@@ -36,8 +36,8 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
-    DeviceExtensions, Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind,
-    LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
+    DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
     ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
     DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
@@ -1970,20 +1970,31 @@ impl Config {
                     } else {
                         false
                     };
+                let kind = match f_type {
+                    FunctionType::Identity => FunctionKind::Identity,
+                    FunctionType::Standard => FunctionKind::Standard {
+                        deviance,
+                        only_downward,
+                        response_delay,
+                    },
+                    FunctionType::ExponentialMovingAvg => {
+                        warn!(
+                            "Function '{name}' ({uid}) uses the deprecated ExponentialMovingAvg \
+                             type; prefer the EMA custom-sensor type for temperature smoothing."
+                        );
+                        FunctionKind::ExponentialMovingAvg { sample_window }
+                    }
+                };
                 let function = Function {
                     uid,
                     name,
-                    f_type,
                     step_size_min: duty_minimum,
                     step_size_max: duty_maximum,
                     step_size_min_decreasing,
                     step_size_max_decreasing,
-                    response_delay,
-                    deviance,
-                    only_downward,
-                    sample_window,
                     threshold_hopping,
                     bypass_min_at_extremes,
+                    kind,
                 };
                 functions.push(function);
             }
@@ -2104,10 +2115,15 @@ impl Config {
     }
 
     fn add_function_properties_to_function_table(function: Function, function_table: &mut Table) {
+        // Extract the variant-specific values before any field is moved out of `function`.
+        let f_type = function.f_type();
+        let response_delay = function.response_delay();
+        let deviance = function.deviance();
+        let only_downward = function.only_downward();
+        let sample_window = function.sample_window();
         function_table["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
         function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
-        function_table["f_type"] =
-            Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
+        function_table["f_type"] = Item::Value(Value::String(Formatted::new(f_type.to_string())));
         function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
             function.step_size_min,
         ))));
@@ -2120,24 +2136,24 @@ impl Config {
         function_table["step_size_max_decreasing"] = Item::Value(Value::Integer(Formatted::new(
             i64::from(function.step_size_max_decreasing),
         )));
-        if let Some(response_delay) = function.response_delay {
+        if let Some(response_delay) = response_delay {
             function_table["response_delay"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(response_delay))));
         } else {
             function_table["response_delay"] = Item::None;
         }
-        if let Some(deviance) = function.deviance {
+        if let Some(deviance) = deviance {
             function_table["deviance"] = Item::Value(Value::Float(Formatted::new(deviance)));
         } else {
             function_table["deviance"] = Item::None;
         }
-        if let Some(only_downward) = function.only_downward {
+        if let Some(only_downward) = only_downward {
             function_table["only_downward"] =
                 Item::Value(Value::Boolean(Formatted::new(only_downward)));
         } else {
             function_table["only_downward"] = Item::None;
         }
-        if let Some(sample_window) = function.sample_window {
+        if let Some(sample_window) = sample_window {
             let validated_window = if (1..=16).contains(&sample_window) {
                 sample_window
             } else {
@@ -3036,6 +3052,113 @@ offset = 5
 
     /// Builds a fresh in-memory `Config` backed by a real temp file path. Used by
     /// the Setting-kind round-trip tests to exercise the full TOML write/read path.
+    // Each Function variant survives a write to the document and a read back, with `f_type` and
+    // only that variant's fields persisted. Locks the on-disk dispatch in get_current_functions and
+    // add_function_properties_to_function_table.
+    #[test]
+    fn function_variants_toml_round_trip() {
+        use crate::setting::{Function, FunctionKind};
+
+        let make = |uid: &str, kind: FunctionKind| Function {
+            uid: uid.to_string(),
+            name: uid.to_string(),
+            kind,
+            ..Default::default()
+        };
+        let config = Config {
+            path: Path::new("/tmp/fn-roundtrip.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/fn-roundtrip-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_function(make("identity", FunctionKind::Identity))
+            .unwrap();
+        config
+            .set_function(make(
+                "standard",
+                FunctionKind::Standard {
+                    deviance: Some(3.0),
+                    only_downward: Some(true),
+                    response_delay: Some(4),
+                },
+            ))
+            .unwrap();
+        config
+            .set_function(make(
+                "ema",
+                FunctionKind::ExponentialMovingAvg {
+                    sample_window: Some(10),
+                },
+            ))
+            .unwrap();
+
+        let functions = config.get_current_functions().unwrap();
+        assert_eq!(functions.len(), 3);
+        assert!(matches!(functions[0].kind, FunctionKind::Identity));
+        assert_eq!(
+            functions[1].kind,
+            FunctionKind::Standard {
+                deviance: Some(3.0),
+                only_downward: Some(true),
+                response_delay: Some(4),
+            }
+        );
+        assert!(matches!(
+            functions[2].kind,
+            FunctionKind::ExponentialMovingAvg {
+                sample_window: Some(10)
+            }
+        ));
+    }
+
+    // Updating a Standard function to Identity must scrub the Standard-only keys from the stored
+    // table so they do not linger in the persisted config.
+    #[test]
+    fn function_toml_variant_change_scrubs_stale_keys() {
+        use crate::setting::{Function, FunctionKind};
+        use std::ops::Not;
+
+        let config = Config {
+            path: Path::new("/tmp/fn-scrub.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/fn-scrub-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_function(Function {
+                uid: "f1".to_string(),
+                name: "f1".to_string(),
+                kind: FunctionKind::Standard {
+                    deviance: Some(3.0),
+                    only_downward: Some(true),
+                    response_delay: Some(4),
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        config
+            .update_function(Function {
+                uid: "f1".to_string(),
+                name: "f1".to_string(),
+                kind: FunctionKind::Identity,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let functions = config.get_current_functions().unwrap();
+        assert_eq!(functions.len(), 1);
+        assert!(matches!(functions[0].kind, FunctionKind::Identity));
+
+        let doc = config.document.borrow();
+        let table = doc["functions"]
+            .as_array_of_tables()
+            .unwrap()
+            .get(0)
+            .unwrap();
+        assert!(table.contains_key("deviance").not());
+        assert!(table.contains_key("only_downward").not());
+        assert!(table.contains_key("response_delay").not());
+    }
+
     async fn make_test_config(tag: &str) -> (Config, std::path::PathBuf) {
         let path = Path::new(&format!("/tmp/config-setting-kind-{tag}.toml")).to_path_buf();
         let path_ui = Path::new(&format!("/tmp/config-ui-setting-kind-{tag}.json")).to_path_buf();

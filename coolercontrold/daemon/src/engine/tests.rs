@@ -31,7 +31,7 @@ mod engine_tests {
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
+        Function, FunctionKind, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
         ProfileUID, TempSource,
     };
     use anyhow::{anyhow, Result};
@@ -294,7 +294,6 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "Function1".to_string(),
-            f_type: FunctionType::Identity,
             step_size_min: duty_minimum,
             step_size_max: duty_maximum,
             ..Default::default()
@@ -313,12 +312,13 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "StandardFunction".to_string(),
-            f_type: FunctionType::Standard,
             step_size_min: 2,
             step_size_max: 100,
-            response_delay: Some(response_delay),
-            deviance: Some(deviance),
-            only_downward: Some(only_downward),
+            kind: FunctionKind::Standard {
+                deviance: Some(deviance),
+                only_downward: Some(only_downward),
+                response_delay: Some(response_delay),
+            },
             ..Default::default()
         };
         config.set_function(function).unwrap();
@@ -337,12 +337,13 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "StandardFunction".to_string(),
-            f_type: FunctionType::Standard,
             step_size_min,
             step_size_max,
-            response_delay: Some(response_delay),
-            deviance: Some(deviance),
-            only_downward: Some(only_downward),
+            kind: FunctionKind::Standard {
+                deviance: Some(deviance),
+                only_downward: Some(only_downward),
+                response_delay: Some(response_delay),
+            },
             ..Default::default()
         };
         config.set_function(function).unwrap();
@@ -359,7 +360,6 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "BypassFunction".to_string(),
-            f_type: FunctionType::Identity,
             step_size_min,
             step_size_max,
             bypass_min_at_extremes,
