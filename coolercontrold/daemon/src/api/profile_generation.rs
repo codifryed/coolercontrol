@@ -279,7 +279,7 @@ fn add_assignment(
         }
         FanKind::AioPump => add_aio_pump(proposal, context, key_temps, assignment, preset)?,
         FanKind::AioRadiator => add_aio_radiator(proposal, context, key_temps, assignment, preset)?,
-        FanKind::LaptopFan => {}
+        FanKind::LaptopFan => add_laptop_fan(proposal, context, key_temps, assignment, preset)?,
     }
     Ok(())
 }
@@ -628,6 +628,165 @@ fn build_fixed_profile(name: &str, duty: Duty) -> Profile {
     }
 }
 
+/// Laptop fan. Laptops run hot and hold heat, so every preset uses downward-only hysteresis and
+/// Silent additionally sustains via a long EMA window and a high knee. The temp source follows the
+/// chosen strategy: an EMA of the CPU (default), the CPU temp read directly, or a Mix of CPU and
+/// GPU (Max, so a powered-off dGPU reading 0C is ignored). A Mix request with no GPU temp degrades
+/// to the EMA-CPU default.
+fn add_laptop_fan(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    assignment: &FanAssignment,
+    preset: Preset,
+) -> Result<(), CCError> {
+    let strategy = assignment
+        .laptop_temp_strategy
+        .unwrap_or(LaptopTempStrategy::EmaCpu);
+    let profile_uid = match strategy {
+        LaptopTempStrategy::MixCpuGpu if key_temps.gpu.is_some() => {
+            build_laptop_mix(proposal, context, key_temps, preset)?
+        }
+        LaptopTempStrategy::ThinkpadSensor => {
+            build_laptop_graph(proposal, context, key_temps, preset, false)?
+        }
+        // EmaCpu, or MixCpuGpu with no GPU temp (degrade to the EMA-CPU default).
+        _ => build_laptop_graph(proposal, context, key_temps, preset, true)?,
+    };
+    proposal.assign(assignment, profile_uid);
+    Ok(())
+}
+
+/// A laptop fan as a single Graph off the CPU temp, optionally EMA-smoothed.
+fn build_laptop_graph(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    preset: Preset,
+    smooth: bool,
+) -> Result<ProfileUID, CCError> {
+    let cpu = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
+        msg: "A laptop fan was assigned but no CPU temp was selected".to_string(),
+    })?;
+    let source = if smooth {
+        laptop_ema_source(proposal, context, cpu, preset)
+    } else {
+        cpu.clone()
+    };
+    let function_uid = proposal.intern_function(build_laptop_function(preset));
+    let curve = laptop_curve(preset);
+    assert_valid_curve(&curve);
+    let profile = build_graph_profile(
+        &format!("Laptop Fan ({preset})"),
+        source,
+        function_uid,
+        curve,
+    );
+    Ok(proposal.intern_profile(profile))
+}
+
+/// A laptop fan as a Mix(CPU, GPU) Max, each member an EMA-smoothed Graph. Used when the user
+/// picks the Mix strategy and a GPU temp is available.
+fn build_laptop_mix(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    key_temps: &KeyTemps,
+    preset: Preset,
+) -> Result<ProfileUID, CCError> {
+    let cpu = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
+        msg: "A laptop fan was assigned but no CPU temp was selected".to_string(),
+    })?;
+    let gpu = key_temps.gpu.as_ref().ok_or_else(|| CCError::UserError {
+        msg: "A laptop Mix source needs a GPU temp".to_string(),
+    })?;
+    let cpu_member = build_laptop_member(proposal, context, cpu, preset);
+    let gpu_member = build_laptop_member(proposal, context, gpu, preset);
+    let mix = build_mix_profile(
+        &format!("Laptop Mix ({preset})"),
+        vec![cpu_member, gpu_member],
+        ProfileMixFunctionType::Max,
+    );
+    Ok(proposal.intern_profile(mix))
+}
+
+/// One EMA-smoothed Graph member of a laptop Mix.
+fn build_laptop_member(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    temp: &TempSource,
+    preset: Preset,
+) -> ProfileUID {
+    let source = laptop_ema_source(proposal, context, temp, preset);
+    let function_uid = proposal.intern_function(build_laptop_function(preset));
+    let curve = laptop_curve(preset);
+    let profile = build_graph_profile(
+        &format!("Laptop {} ({preset})", temp.temp_name),
+        source,
+        function_uid,
+        curve,
+    );
+    proposal.intern_profile(profile)
+}
+
+/// Wraps a laptop temp in an EMA sensor sized for the preset (Silent gets the longest window for
+/// sustain). Falls back to the raw temp if there is no custom-sensors device.
+fn laptop_ema_source(
+    proposal: &mut Proposal,
+    context: &DeviceContext,
+    base: &TempSource,
+    preset: Preset,
+) -> TempSource {
+    let Some(custom_sensors_device_uid) = context.custom_sensors_device_uid.clone() else {
+        return base.clone();
+    };
+    let sensor_id =
+        proposal.intern_custom_sensor(build_ema_sensor(base.clone(), laptop_ema_window(preset)));
+    TempSource {
+        temp_name: sensor_id,
+        device_uid: custom_sensors_device_uid,
+    }
+}
+
+/// Laptop EMA window per preset, in seconds. Silent is long to sustain through brief load before
+/// ramping; Performance is short to react quickly. Strawman values pending tuning.
+fn laptop_ema_window(preset: Preset) -> u16 {
+    match preset {
+        Preset::Silent => 30,
+        Preset::Balanced => 15,
+        Preset::Performance => 10,
+    }
+}
+
+/// Laptop hysteresis function per preset. All presets use downward-only hysteresis with a large
+/// deviance because laptops hold heat (a slow down-ramp avoids surging). Silent is the slowest.
+/// Strawman values pending tuning.
+fn build_laptop_function(preset: Preset) -> Function {
+    let (deviance, response_delay) = match preset {
+        Preset::Silent => (5.0, 5),
+        Preset::Balanced => (3.0, 3),
+        Preset::Performance => (2.0, 1),
+    };
+    Function {
+        uid: Uuid::new_v4().to_string(),
+        name: format!("Auto Laptop ({preset})"),
+        only_downward: Some(true),
+        deviance: Some(deviance),
+        response_delay: Some(response_delay),
+        ..Function::default()
+    }
+}
+
+/// Laptop fan curves per preset (CPU temp in Celsius, duty percent). High knees keep the fan
+/// quiet until temps are genuinely high, matching how laptops run hot. Strawman values pending
+/// tuning.
+fn laptop_curve(preset: Preset) -> Vec<(Temp, Duty)> {
+    match preset {
+        Preset::Silent => vec![(60.0, 20), (80.0, 40), (95.0, 100)],
+        Preset::Balanced => vec![(55.0, 30), (75.0, 60), (90.0, 100)],
+        Preset::Performance => vec![(50.0, 40), (70.0, 80), (85.0, 100)],
+    }
+}
+
 /// The temp source a profile should follow. For Silent, the base temp is wrapped in an EMA
 /// custom sensor (created and de-duplicated here) so the fan follows a smoothed signal rather
 /// than chasing spikes. With no custom-sensors device available, the raw temp is used.
@@ -643,20 +802,22 @@ fn resolve_smoothed_source(
     let Some(custom_sensors_device_uid) = context.custom_sensors_device_uid.clone() else {
         return base.clone();
     };
-    let sensor_id = proposal.intern_custom_sensor(build_ema_sensor(base.clone()));
+    let sensor_id =
+        proposal.intern_custom_sensor(build_ema_sensor(base.clone(), SILENT_EMA_WINDOW_SECONDS));
     TempSource {
         temp_name: sensor_id,
         device_uid: custom_sensors_device_uid,
     }
 }
 
-/// An EMA custom sensor wrapping a single temp source. The id is derived from the source temp
-/// name so that different fans smoothing the same temp share one sensor via de-duplication.
-fn build_ema_sensor(source: TempSource) -> CustomSensor {
+/// An EMA custom sensor wrapping a single temp source. The id encodes both the source temp name
+/// and the window, so fans smoothing the same temp with the same window share one sensor via
+/// de-duplication, while differing windows (e.g. the laptop's longer Silent window) stay distinct.
+fn build_ema_sensor(source: TempSource, window_seconds: u16) -> CustomSensor {
     CustomSensor {
-        id: format!("Auto EMA {}", source.temp_name),
+        id: format!("Auto EMA {} {window_seconds}s", source.temp_name),
         kind: SensorKind::ExponentialMovingAvg {
-            time_window_seconds: SILENT_EMA_WINDOW_SECONDS,
+            time_window_seconds: window_seconds,
             sources: vec![CustomTempSourceData {
                 temp_source: source,
                 weight: 1,
@@ -1634,6 +1795,146 @@ mod tests {
         };
         assert!(generate_proposal(
             &aio_request(FanKind::AioRadiator, Preset::Balanced, empty),
+            &test_context()
+        )
+        .is_err());
+    }
+
+    fn laptop_request(
+        preset: Preset,
+        strategy: Option<LaptopTempStrategy>,
+        key_temps: KeyTemps,
+    ) -> GenerateProfilesRequest {
+        GenerateProfilesRequest {
+            assignments: vec![FanAssignment {
+                device_uid: "dev-laptop-1".to_string(),
+                channel_name: "fan1".to_string(),
+                kind: FanKind::LaptopFan,
+                position: None,
+                laptop_temp_strategy: strategy,
+            }],
+            key_temps,
+            global_preset: preset,
+            preset_overrides: Vec::new(),
+        }
+    }
+
+    /// Goal: the default laptop strategy is EMA of the CPU, with a downward-only function.
+    /// Method: generate with no explicit strategy and assert an EMA sensor source plus
+    /// `only_downward`.
+    #[test]
+    fn laptop_default_uses_ema_cpu() {
+        let response = generate_proposal(
+            &laptop_request(Preset::Balanced, None, cpu_only()),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(response.custom_sensors.len(), 1);
+        assert!(matches!(
+            response.custom_sensors[0].kind,
+            SensorKind::ExponentialMovingAvg { .. }
+        ));
+        let laptop = &response.profiles[0];
+        assert_eq!(laptop.p_type(), ProfileType::Graph);
+        assert_eq!(
+            laptop.temp_source().unwrap().device_uid,
+            "dev-custom-sensors"
+        );
+        assert_eq!(response.functions[0].only_downward, Some(true));
+    }
+
+    /// Goal: the ThinkPad-sensor strategy follows the raw CPU temp with no EMA sensor. Method:
+    /// generate with that strategy and assert no custom sensors and the raw CPU source.
+    #[test]
+    fn laptop_thinkpad_sensor_uses_raw_cpu() {
+        let response = generate_proposal(
+            &laptop_request(
+                Preset::Balanced,
+                Some(LaptopTempStrategy::ThinkpadSensor),
+                cpu_only(),
+            ),
+            &test_context(),
+        )
+        .expect("generates");
+        assert!(response.custom_sensors.is_empty());
+        assert_eq!(response.profiles[0].temp_source(), Some(&cpu_temp()));
+    }
+
+    /// Goal: the Silent laptop uses a longer EMA window than other kinds, to sustain before
+    /// ramping. Method: generate Silent and assert the window exceeds the default Silent window.
+    #[test]
+    fn laptop_silent_uses_long_ema_window() {
+        let response = generate_proposal(
+            &laptop_request(Preset::Silent, None, cpu_only()),
+            &test_context(),
+        )
+        .expect("generates");
+        let SensorKind::ExponentialMovingAvg {
+            time_window_seconds,
+            ..
+        } = response.custom_sensors[0].kind
+        else {
+            panic!("expected an EMA sensor");
+        };
+        assert!(
+            time_window_seconds > SILENT_EMA_WINDOW_SECONDS,
+            "laptop Silent sustains with a longer window"
+        );
+    }
+
+    /// Goal: the Mix strategy with a GPU temp builds a Mix(CPU, GPU) of two smoothed members.
+    /// Method: generate with the Mix strategy and assert one Mix, two member graphs, two EMA
+    /// sensors.
+    #[test]
+    fn laptop_mix_strategy_builds_mix_when_gpu_present() {
+        let key_temps = KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: Some(gpu_temp()),
+            liquid: None,
+            ambient: None,
+        };
+        let response = generate_proposal(
+            &laptop_request(
+                Preset::Balanced,
+                Some(LaptopTempStrategy::MixCpuGpu),
+                key_temps,
+            ),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Mix), 1);
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Graph), 2);
+        assert_eq!(response.custom_sensors.len(), 2);
+    }
+
+    /// Goal: the Mix strategy degrades to the EMA-CPU graph when there is no GPU temp. Method:
+    /// generate the Mix strategy with only a CPU temp and assert no Mix profile.
+    #[test]
+    fn laptop_mix_strategy_degrades_without_gpu() {
+        let response = generate_proposal(
+            &laptop_request(
+                Preset::Balanced,
+                Some(LaptopTempStrategy::MixCpuGpu),
+                cpu_only(),
+            ),
+            &test_context(),
+        )
+        .expect("generates");
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Mix), 0);
+        assert_eq!(count_p_type(&response.profiles, &ProfileType::Graph), 1);
+    }
+
+    /// Goal: a laptop fan needs a CPU temp. Method: omit it and assert generation errors.
+    #[test]
+    fn laptop_without_cpu_temp_errors() {
+        let empty = KeyTemps {
+            cpu: None,
+            gpu: None,
+            liquid: None,
+            ambient: None,
+        };
+        assert!(generate_proposal(
+            &laptop_request(Preset::Balanced, None, empty),
             &test_context()
         )
         .is_err());
