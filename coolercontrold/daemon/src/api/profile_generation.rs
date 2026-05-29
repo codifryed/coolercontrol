@@ -30,7 +30,7 @@ use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, Function, FunctionUID, Offset,
-    Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, SensorKind, TempSource,
+    Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, CustomSensorKind, TempSource,
     DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
@@ -598,7 +598,7 @@ fn radiator_curve(preset: Preset, band: RadiatorBand) -> Vec<(Temp, Duty)> {
 fn build_delta_sensor(liquid: TempSource, ambient: TempSource) -> CustomSensor {
     CustomSensor {
         id: format!("Auto Delta {} {}", liquid.temp_name, ambient.temp_name),
-        kind: SensorKind::Mix {
+        kind: CustomSensorKind::Mix {
             mix_function: CustomSensorMixFunctionType::Delta,
             sources: vec![
                 CustomTempSourceData {
@@ -816,7 +816,7 @@ fn resolve_smoothed_source(
 fn build_ema_sensor(source: TempSource, window_seconds: u16) -> CustomSensor {
     CustomSensor {
         id: format!("Auto EMA {} {window_seconds}s", source.temp_name),
-        kind: SensorKind::ExponentialMovingAvg {
+        kind: CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds: window_seconds,
             sources: vec![CustomTempSourceData {
                 temp_source: source,
@@ -1364,7 +1364,7 @@ mod tests {
         let sensor = &response.custom_sensors[0];
         assert!(matches!(
             sensor.kind,
-            SensorKind::ExponentialMovingAvg { .. }
+            CustomSensorKind::ExponentialMovingAvg { .. }
         ));
         let source = response.profiles[0]
             .temp_source()
@@ -1588,7 +1588,7 @@ mod tests {
         assert!(response
             .custom_sensors
             .iter()
-            .all(|s| matches!(s.kind, SensorKind::ExponentialMovingAvg { .. })));
+            .all(|s| matches!(s.kind, CustomSensorKind::ExponentialMovingAvg { .. })));
     }
 
     fn liquid_temp() -> TempSource {
@@ -1751,7 +1751,7 @@ mod tests {
         let sensor = &response.custom_sensors[0];
         assert!(matches!(
             sensor.kind,
-            SensorKind::Mix {
+            CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Delta,
                 ..
             }
@@ -1832,7 +1832,7 @@ mod tests {
         assert_eq!(response.custom_sensors.len(), 1);
         assert!(matches!(
             response.custom_sensors[0].kind,
-            SensorKind::ExponentialMovingAvg { .. }
+            CustomSensorKind::ExponentialMovingAvg { .. }
         ));
         let laptop = &response.profiles[0];
         assert_eq!(laptop.p_type(), ProfileType::Graph);
@@ -1869,7 +1869,7 @@ mod tests {
             &test_context(),
         )
         .expect("generates");
-        let SensorKind::ExponentialMovingAvg {
+        let CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds,
             ..
         } = response.custom_sensors[0].kind
