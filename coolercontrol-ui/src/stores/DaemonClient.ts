@@ -32,6 +32,7 @@ import {
     DeviceSettingWritePWMModeDTO,
 } from '@/models/DaemonSettings'
 import { Function, FunctionsDTO, Profile, ProfilesDTO } from '@/models/Profile'
+import { GenerateProfilesRequest, GenerateProfilesResponse } from '@/models/ProfileGeneration'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import {
     CoolerControlAllDeviceSettingsDTO,
@@ -937,6 +938,28 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return false
+        }
+    }
+
+    /**
+     * Asks the daemon to generate a proposed set of profiles, functions, and custom sensors for
+     * the given fan assignments and presets. Nothing is persisted: the proposal is previewed and
+     * the user confirms before the normal save endpoints persist it. Returns undefined on error.
+     * @param request
+     */
+    async generateProfiles(
+        request: GenerateProfilesRequest,
+    ): Promise<GenerateProfilesResponse | undefined> {
+        try {
+            const response = await this.getClient().post(
+                '/profiles/generate',
+                instanceToPlain(request),
+            )
+            this.logDaemonResponse(response, 'Generate Profiles')
+            return plainToInstance(GenerateProfilesResponse, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return undefined
         }
     }
 
