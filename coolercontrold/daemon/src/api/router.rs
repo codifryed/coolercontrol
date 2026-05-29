@@ -843,13 +843,22 @@ fn settings_routes() -> ApiRouter<AppState> {
         )
         .api_route(
             "/settings/ui",
+            // Read-only: a Bearer access token (or a session) may read UI
+            // settings. This is so read-only clients can use user-defined channel colors / labels
+            // without an admin session.
             get_with(settings::get_ui, |o| {
                 o.summary("CoolerControl UI Settings")
                     .description("Returns the current CoolerControl UI Settings.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
             })
-                .put_with(settings::update_ui, |o| {
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/settings/ui",
+            // Writes remain UI session-only.
+            put_with(settings::update_ui, |o| {
                 o.summary("Update CoolerControl UI Settings")
                     .description("Updates and persists the CoolerControl UI settings.")
                     .tag("setting")
