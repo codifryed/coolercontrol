@@ -83,10 +83,18 @@ let startingOnlyDownward = currentFunction.value.only_downward ?? false
 
 const selectedType: Ref<FunctionType> = ref(newFunction.f_type)
 const functionTypeOptions = computed(() => {
-    return [...$enum(FunctionType).values()].map((type) => ({
-        value: type,
-        label: getFunctionTypeDisplayName(type),
-    }))
+    // EMA is deprecated in favor of the EMA custom-sensor type. Hide it when creating a function,
+    // but keep it selectable when editing one that already uses it.
+    return [...$enum(FunctionType).values()]
+        .filter(
+            (type) =>
+                type !== FunctionType.ExponentialMovingAvg ||
+                newFunction.f_type === FunctionType.ExponentialMovingAvg,
+        )
+        .map((type) => ({
+            value: type,
+            label: getFunctionTypeDisplayName(type),
+        }))
 })
 const nameInput: Ref<string> = ref(newFunction.name)
 const nameInvalid = computed(() => {
