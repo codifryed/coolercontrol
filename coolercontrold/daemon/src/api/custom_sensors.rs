@@ -17,7 +17,7 @@
  */
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{CustomSensor, CustomTempSourceData, SensorKind};
+use crate::setting::{CustomSensor, CustomSensorKind, CustomTempSourceData};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -114,9 +114,9 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
     // the value ranges and source cardinality the type cannot express remain here.
     match &custom_sensor.kind {
-        SensorKind::Mix { sources, .. } => validate_custom_sensor_sources(sources),
-        SensorKind::File { .. } => Ok(()),
-        SensorKind::Offset { offset, sources } => {
+        CustomSensorKind::Mix { sources, .. } => validate_custom_sensor_sources(sources),
+        CustomSensorKind::File { .. } => Ok(()),
+        CustomSensorKind::Offset { offset, sources } => {
             validate_single_source(sources)?;
             if (-100..=100).contains(offset) {
                 Ok(())
@@ -127,11 +127,11 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
                 })
             }
         }
-        SensorKind::TimeAverage {
+        CustomSensorKind::TimeAverage {
             time_window_seconds,
             sources,
         }
-        | SensorKind::ExponentialMovingAvg {
+        | CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds,
             sources,
         } => {
@@ -215,7 +215,7 @@ mod tests {
     fn time_average(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
         CustomSensor {
             id: "ta".to_string(),
-            kind: SensorKind::TimeAverage {
+            kind: CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
             },
@@ -227,7 +227,7 @@ mod tests {
     fn ema(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
         CustomSensor {
             id: "ema".to_string(),
-            kind: SensorKind::ExponentialMovingAvg {
+            kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
             },

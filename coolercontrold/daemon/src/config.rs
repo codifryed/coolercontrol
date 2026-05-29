@@ -35,11 +35,11 @@ use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
-    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind, LcdModeName,
-    LcdSettings, LightingSettings, Offset, Profile, ProfileKind, ProfileMixFunctionType,
-    ProfileType, ProfileUID, SensorKind, Setting, SettingKind, TempSource, DEFAULT_FUNCTION_UID,
-    DEFAULT_PROFILE_UID,
+    CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
+    DeviceExtensions, Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind,
+    LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
+    ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
+    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -2203,24 +2203,24 @@ impl Config {
         let kind = match CustomSensorType::from_str(cs_type_str)
             .with_context(|| "Sensor type should be a valid member")?
         {
-            CustomSensorType::Mix => SensorKind::Mix {
+            CustomSensorType::Mix => CustomSensorKind::Mix {
                 mix_function: Self::parse_mix_function(c_sensor_table)?,
                 sources: Self::parse_custom_sensor_sources(c_sensor_table)?,
             },
-            CustomSensorType::File => SensorKind::File {
+            CustomSensorType::File => CustomSensorKind::File {
                 file_path: Self::parse_custom_sensor_file_path(c_sensor_table)?,
             },
-            CustomSensorType::Offset => SensorKind::Offset {
+            CustomSensorType::Offset => CustomSensorKind::Offset {
                 offset: Self::parse_custom_sensor_offset(c_sensor_table)?
                     .with_context(|| "Offset Custom Sensor must have an offset")?,
                 sources: Self::parse_single_source(c_sensor_table, "Offset")?,
             },
-            CustomSensorType::TimeAverage => SensorKind::TimeAverage {
+            CustomSensorType::TimeAverage => CustomSensorKind::TimeAverage {
                 time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
                     .with_context(|| "TimeAverage Custom Sensor must have time_window_seconds")?,
                 sources: Self::parse_single_source(c_sensor_table, "TimeAverage")?,
             },
-            CustomSensorType::ExponentialMovingAvg => SensorKind::ExponentialMovingAvg {
+            CustomSensorType::ExponentialMovingAvg => CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
                     .with_context(|| {
                         "ExponentialMovingAvg Custom Sensor must have time_window_seconds"
@@ -2480,7 +2480,7 @@ impl Config {
             cs_table.remove(key);
         }
         match custom_sensor.kind {
-            SensorKind::Mix {
+            CustomSensorKind::Mix {
                 mix_function,
                 sources,
             } => {
@@ -2489,20 +2489,20 @@ impl Config {
                     Item::Value(Value::String(Formatted::new(mix_function.to_string())));
                 Self::write_custom_sensor_sources(cs_table, &sources);
             }
-            SensorKind::File { file_path } => {
+            CustomSensorKind::File { file_path } => {
                 cs_table["cs_type"] =
                     Item::Value(Value::String(Formatted::new("File".to_string())));
                 cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
                     file_path.to_string_lossy().to_string(),
                 )));
             }
-            SensorKind::Offset { offset, sources } => {
+            CustomSensorKind::Offset { offset, sources } => {
                 cs_table["cs_type"] =
                     Item::Value(Value::String(Formatted::new("Offset".to_string())));
                 cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
                 Self::write_custom_sensor_sources(cs_table, &sources);
             }
-            SensorKind::TimeAverage {
+            CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
             } => {
@@ -2513,7 +2513,7 @@ impl Config {
                 )));
                 Self::write_custom_sensor_sources(cs_table, &sources);
             }
-            SensorKind::ExponentialMovingAvg {
+            CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
             } => {
@@ -2606,7 +2606,8 @@ mod tests {
     #[test]
     fn custom_sensor_variants_toml_round_trip() {
         use crate::setting::{
-            CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, SensorKind, TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+            TempSource,
         };
         use std::path::PathBuf;
 
@@ -2617,7 +2618,7 @@ mod tests {
             },
             weight: 1,
         };
-        let make = |id: &str, kind: SensorKind| CustomSensor {
+        let make = |id: &str, kind: CustomSensorKind| CustomSensor {
             id: id.to_string(),
             kind,
             children: vec![],
@@ -2631,7 +2632,7 @@ mod tests {
         config
             .set_custom_sensor(make(
                 "mix",
-                SensorKind::Mix {
+                CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Avg,
                     sources: vec![source()],
                 },
@@ -2640,7 +2641,7 @@ mod tests {
         config
             .set_custom_sensor(make(
                 "file",
-                SensorKind::File {
+                CustomSensorKind::File {
                     file_path: PathBuf::from("/tmp/temp"),
                 },
             ))
@@ -2648,7 +2649,7 @@ mod tests {
         config
             .set_custom_sensor(make(
                 "offset",
-                SensorKind::Offset {
+                CustomSensorKind::Offset {
                     offset: -7,
                     sources: vec![source()],
                 },
@@ -2657,7 +2658,7 @@ mod tests {
         config
             .set_custom_sensor(make(
                 "tavg",
-                SensorKind::TimeAverage {
+                CustomSensorKind::TimeAverage {
                     time_window_seconds: 30,
                     sources: vec![source()],
                 },
@@ -2666,7 +2667,7 @@ mod tests {
         config
             .set_custom_sensor(make(
                 "ema",
-                SensorKind::ExponentialMovingAvg {
+                CustomSensorKind::ExponentialMovingAvg {
                     time_window_seconds: 15,
                     sources: vec![source()],
                 },
@@ -2677,15 +2678,17 @@ mod tests {
         assert_eq!(sensors.len(), 5);
         assert!(matches!(
             &sensors[0].kind,
-            SensorKind::Mix { mix_function, .. } if *mix_function == CustomSensorMixFunctionType::Avg
+            CustomSensorKind::Mix { mix_function, .. } if *mix_function == CustomSensorMixFunctionType::Avg
         ));
-        assert!(matches!(sensors[1].kind, SensorKind::File { .. }));
-        assert!(matches!(&sensors[2].kind, SensorKind::Offset { offset, .. } if *offset == -7));
+        assert!(matches!(sensors[1].kind, CustomSensorKind::File { .. }));
+        assert!(
+            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7)
+        );
         assert!(matches!(
             &sensors[3].kind,
-            SensorKind::TimeAverage { time_window_seconds, .. } if *time_window_seconds == 30
+            CustomSensorKind::TimeAverage { time_window_seconds, .. } if *time_window_seconds == 30
         ));
-        let SensorKind::ExponentialMovingAvg {
+        let CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds,
             ..
         } = &sensors[4].kind
@@ -2700,7 +2703,7 @@ mod tests {
     // dead siblings, so pre-refactor configs keep loading.
     #[test]
     fn custom_sensor_reads_legacy_toml_with_dead_fields() {
-        use crate::setting::SensorKind;
+        use crate::setting::CustomSensorKind;
 
         let legacy = r#"
 [[custom_sensors]]
@@ -2717,7 +2720,7 @@ offset = 5
         };
         let sensors = config.get_custom_sensors().unwrap();
         assert_eq!(sensors.len(), 1);
-        assert!(matches!(sensors[0].kind, SensorKind::File { .. }));
+        assert!(matches!(sensors[0].kind, CustomSensorKind::File { .. }));
     }
 
     // Updating a sensor from File to Mix must scrub the File-only keys from the stored table,
@@ -2725,7 +2728,8 @@ offset = 5
     #[test]
     fn custom_sensor_variant_change_scrubs_stale_keys() {
         use crate::setting::{
-            CustomSensor, CustomSensorMixFunctionType, CustomTempSourceData, SensorKind, TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+            TempSource,
         };
         use std::path::PathBuf;
 
@@ -2737,7 +2741,7 @@ offset = 5
         config
             .set_custom_sensor(CustomSensor {
                 id: "s1".to_string(),
-                kind: SensorKind::File {
+                kind: CustomSensorKind::File {
                     file_path: PathBuf::from("/tmp/x"),
                 },
                 children: vec![],
@@ -2747,7 +2751,7 @@ offset = 5
         config
             .update_custom_sensor(CustomSensor {
                 id: "s1".to_string(),
-                kind: SensorKind::Mix {
+                kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Max,
                     sources: vec![CustomTempSourceData {
                         temp_source: TempSource {
@@ -2777,7 +2781,7 @@ offset = 5
         drop(doc);
 
         let sensors = config.get_custom_sensors().unwrap();
-        assert!(matches!(sensors[0].kind, SensorKind::Mix { .. }));
+        assert!(matches!(sensors[0].kind, CustomSensorKind::Mix { .. }));
     }
 
     #[test]

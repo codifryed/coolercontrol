@@ -641,7 +641,7 @@ pub struct CustomSensor {
     /// Variant payload, flattened so its fields and the `cs_type` discriminator stay flat
     /// siblings of `id` on the wire (the legacy shape).
     #[serde(flatten)]
-    pub kind: SensorKind,
+    pub kind: CustomSensorKind,
 
     /// The Custom Sensor's children, if any.
     ///
@@ -667,7 +667,7 @@ pub struct CustomSensor {
 /// `validate_custom_sensor`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "cs_type")]
-pub enum SensorKind {
+pub enum CustomSensorKind {
     Mix {
         mix_function: CustomSensorMixFunctionType,
         sources: Vec<CustomTempSourceData>,
@@ -693,22 +693,22 @@ impl CustomSensor {
     /// The temp sources this sensor reads from. `File` sensors have none.
     pub fn sources(&self) -> &[CustomTempSourceData] {
         match &self.kind {
-            SensorKind::Mix { sources, .. }
-            | SensorKind::Offset { sources, .. }
-            | SensorKind::TimeAverage { sources, .. }
-            | SensorKind::ExponentialMovingAvg { sources, .. } => sources,
-            SensorKind::File { .. } => &[],
+            CustomSensorKind::Mix { sources, .. }
+            | CustomSensorKind::Offset { sources, .. }
+            | CustomSensorKind::TimeAverage { sources, .. }
+            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => sources,
+            CustomSensorKind::File { .. } => &[],
         }
     }
 
     /// Mutable access to this sensor's temp sources, or `None` for `File` sensors.
     pub fn sources_mut(&mut self) -> Option<&mut Vec<CustomTempSourceData>> {
         match &mut self.kind {
-            SensorKind::Mix { sources, .. }
-            | SensorKind::Offset { sources, .. }
-            | SensorKind::TimeAverage { sources, .. }
-            | SensorKind::ExponentialMovingAvg { sources, .. } => Some(sources),
-            SensorKind::File { .. } => None,
+            CustomSensorKind::Mix { sources, .. }
+            | CustomSensorKind::Offset { sources, .. }
+            | CustomSensorKind::TimeAverage { sources, .. }
+            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => Some(sources),
+            CustomSensorKind::File { .. } => None,
         }
     }
 }
@@ -1144,7 +1144,7 @@ mod tests {
     fn custom_sensor_mix_round_trip() {
         let sensor = CustomSensor {
             id: "mix1".to_string(),
-            kind: SensorKind::Mix {
+            kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Avg,
                 sources: vec![sample_source()],
             },
@@ -1162,7 +1162,7 @@ mod tests {
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
         assert!(matches!(
             parsed.kind,
-            SensorKind::Mix { mix_function, .. } if mix_function == CustomSensorMixFunctionType::Avg
+            CustomSensorKind::Mix { mix_function, .. } if mix_function == CustomSensorMixFunctionType::Avg
         ));
     }
 
@@ -1173,7 +1173,7 @@ mod tests {
     fn custom_sensor_file_round_trip() {
         let sensor = CustomSensor {
             id: "file1".to_string(),
-            kind: SensorKind::File {
+            kind: CustomSensorKind::File {
                 file_path: PathBuf::from("/tmp/temp"),
             },
             children: Vec::new(),
@@ -1188,7 +1188,7 @@ mod tests {
         assert!(v.get("time_window_seconds").is_none());
 
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
-        assert!(matches!(parsed.kind, SensorKind::File { .. }));
+        assert!(matches!(parsed.kind, CustomSensorKind::File { .. }));
     }
 
     // An Offset sensor serializes with offset and sources beside the tag and nothing from
@@ -1197,7 +1197,7 @@ mod tests {
     fn custom_sensor_offset_round_trip() {
         let sensor = CustomSensor {
             id: "off1".to_string(),
-            kind: SensorKind::Offset {
+            kind: CustomSensorKind::Offset {
                 offset: -7,
                 sources: vec![sample_source()],
             },
@@ -1213,7 +1213,7 @@ mod tests {
         assert!(v.get("time_window_seconds").is_none());
 
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
-        assert!(matches!(parsed.kind, SensorKind::Offset { offset, .. } if offset == -7));
+        assert!(matches!(parsed.kind, CustomSensorKind::Offset { offset, .. } if offset == -7));
     }
 
     // A TimeAverage sensor serializes with time_window_seconds and sources beside the tag.
@@ -1222,7 +1222,7 @@ mod tests {
     fn custom_sensor_time_average_round_trip() {
         let sensor = CustomSensor {
             id: "ta1".to_string(),
-            kind: SensorKind::TimeAverage {
+            kind: CustomSensorKind::TimeAverage {
                 time_window_seconds: 30,
                 sources: vec![sample_source()],
             },
@@ -1240,7 +1240,7 @@ mod tests {
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
         assert!(matches!(
             parsed.kind,
-            SensorKind::TimeAverage { time_window_seconds, .. } if time_window_seconds == 30
+            CustomSensorKind::TimeAverage { time_window_seconds, .. } if time_window_seconds == 30
         ));
     }
 
@@ -1250,7 +1250,7 @@ mod tests {
     fn custom_sensor_ema_round_trip() {
         let sensor = CustomSensor {
             id: "ema1".to_string(),
-            kind: SensorKind::ExponentialMovingAvg {
+            kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds: 15,
                 sources: vec![sample_source()],
             },
@@ -1265,7 +1265,7 @@ mod tests {
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
         assert!(matches!(
             parsed.kind,
-            SensorKind::ExponentialMovingAvg { .. }
+            CustomSensorKind::ExponentialMovingAvg { .. }
         ));
     }
 
@@ -1286,7 +1286,7 @@ mod tests {
             "parents": []
         });
         let parsed: CustomSensor = serde_json::from_value(legacy).unwrap();
-        assert!(matches!(parsed.kind, SensorKind::File { .. }));
+        assert!(matches!(parsed.kind, CustomSensorKind::File { .. }));
     }
 
     // Without the cs_type discriminator there is no variant to construct, so the payload is

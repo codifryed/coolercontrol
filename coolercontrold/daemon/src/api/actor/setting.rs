@@ -522,8 +522,8 @@ mod tests {
         CCError, CustomSensor, Profile, TempSource,
     };
     use crate::setting::{
-        CCChannelSettings, CustomSensorMixFunctionType, CustomTempSourceData, DeviceExtensions,
-        ProfileKind, SensorKind,
+        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+        DeviceExtensions, ProfileKind,
     };
     use std::collections::HashMap;
     use std::ops::Not;
@@ -572,7 +572,7 @@ mod tests {
     fn mix_sensor(id: &str, source_uid: &str, source_temp: &str) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
-            kind: SensorKind::Mix {
+            kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Min,
                 sources: vec![CustomTempSourceData {
                     weight: 1,
@@ -789,7 +789,7 @@ mod tests {
         let update = settings(&[("Tctl", true)], false);
         let file_sensor = CustomSensor {
             id: "FromFile".to_string(),
-            kind: SensorKind::File {
+            kind: CustomSensorKind::File {
                 file_path: PathBuf::from("/tmp/from_file"),
             },
             children: Vec::new(),
