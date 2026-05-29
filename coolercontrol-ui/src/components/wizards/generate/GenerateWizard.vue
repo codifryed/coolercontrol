@@ -298,7 +298,11 @@ const createAndApply = async (): Promise<void> => {
             }
         }
         for (const sensor of proposal.value.custom_sensors) {
-            if (!(await settingsStore.saveCustomSensor(sensor))) return
+            // Use the daemon client directly to avoid a success toast per sensor.
+            if ((await deviceStore.daemonClient.saveCustomSensor(sensor)) != null) {
+                applyError()
+                return
+            }
         }
         // Functions and profiles keep their UID, so a name suffix never breaks references.
         const existingFunctionNames = new Set(settingsStore.functions.map((fn) => fn.name))
