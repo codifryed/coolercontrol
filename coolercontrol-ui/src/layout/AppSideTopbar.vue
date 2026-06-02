@@ -22,6 +22,7 @@ import { computed, defineAsyncComponent, inject, onBeforeUnmount, onMounted, ref
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiArrowLeft,
+    mdiAutoFix,
     mdiBellOutline,
     mdiBellPlusOutline,
     mdiBellRingOutline,
@@ -385,6 +386,14 @@ const restartItems = computed(() => {
 
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
+    {
+        label: t('components.wizards.generate.title'),
+        mdiIcon: mdiAutoFix,
+        command: () => {
+            addMenuRef.value?.handleClose()
+            emitter.emit('profile-generate')
+        },
+    },
     {
         label: t('layout.add.dashboard'),
         mdiIcon: mdiChartBoxPlusOutline,

@@ -22,13 +22,15 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiAutoFix } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, inject, onBeforeUnmount } from 'vue'
+import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const dialog = useDialog()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const generateWizard = defineAsyncComponent(() => import('../wizards/generate/GenerateWizard.vue'))
 
 const openWizard = (): void => {
@@ -42,6 +44,10 @@ const openWizard = (): void => {
         data: {},
     })
 }
+
+// Also launchable from the Quick-Add menu and the Info & Tools page.
+emitter.on('profile-generate', openWizard)
+onBeforeUnmount(() => emitter.off('profile-generate', openWizard))
 </script>
 
 <template>
