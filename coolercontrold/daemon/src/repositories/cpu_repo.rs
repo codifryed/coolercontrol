@@ -25,8 +25,8 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
-    Status, TempInfo, TempStatus, Watts, UID,
+    ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
+    DriverType, Mhz, Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::repositories::cpu_percent::CpuPercentCollector;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -824,7 +824,7 @@ impl Repository for CpuRepo {
                             channel.name.clone(),
                             ChannelInfo {
                                 label: channel.label.clone(),
-                                ..Default::default()
+                                kind: ChannelKind::InfoOnly,
                             },
                         );
                     }

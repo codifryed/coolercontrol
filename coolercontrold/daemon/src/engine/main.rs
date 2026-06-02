@@ -44,8 +44,8 @@ use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    ChannelExtensions, FunctionUID, LcdModeName, LcdSettings, LightingSettings, Profile,
-    ProfileType, ProfileUID, Setting, DEFAULT_FUNCTION_UID,
+    ChannelExtensions, FunctionUID, LcdModeKind, LcdModeName, LcdSettings, LightingSettings,
+    Profile, ProfileType, ProfileUID, Setting, SettingKind, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
@@ -165,22 +165,29 @@ impl Engine {
     /// This is used to set the config Setting model configuration.
     /// Currently used at startup to apply saved settings and by Modes.
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
-        if let Some(true) = setting.reset_to_default {
-            self.set_reset(device_uid, &setting.channel_name).await
-        } else if let Some(speed_fixed) = setting.speed_fixed {
-            self.set_fixed_speed(device_uid, &setting.channel_name, speed_fixed)
-                .await
-        } else if let Some(lighting) = &setting.lighting {
-            self.set_lighting(device_uid, &setting.channel_name, lighting)
-                .await
-        } else if let Some(lcd) = &setting.lcd {
-            self.set_lcd(device_uid, &setting.channel_name, lcd, true)
-                .await
-        } else if let Some(profile_uid) = &setting.profile_uid {
-            self.set_profile(device_uid, &setting.channel_name, profile_uid)
-                .await
-        } else {
-            Err(anyhow!("Invalid Setting combination: {setting:?}"))
+        match &setting.kind {
+            SettingKind::Reset {
+                reset_to_default: true,
+            } => self.set_reset(device_uid, &setting.channel_name).await,
+            SettingKind::Reset {
+                reset_to_default: false,
+            } => Ok(()),
+            SettingKind::SpeedFixed { speed_fixed } => {
+                self.set_fixed_speed(device_uid, &setting.channel_name, *speed_fixed)
+                    .await
+            }
+            SettingKind::Lighting { lighting } => {
+                self.set_lighting(device_uid, &setting.channel_name, lighting)
+                    .await
+            }
+            SettingKind::Lcd { lcd } => {
+                self.set_lcd(device_uid, &setting.channel_name, lcd, true)
+                    .await
+            }
+            SettingKind::Profile { profile_uid } => {
+                self.set_profile(device_uid, &setting.channel_name, profile_uid)
+                    .await
+            }
         }
     }
 
@@ -252,14 +259,14 @@ impl Engine {
             .find(|p| &p.uid == profile_uid)
             .with_context(|| "Profile should be present")?
             .clone();
-        match profile.p_type {
+        match profile.p_type() {
             ProfileType::Default => self.set_reset(device_uid, channel_name).await,
             ProfileType::Fixed => {
                 self.set_fixed_speed(
                     device_uid,
                     channel_name,
                     profile
-                        .speed_fixed
+                        .speed_fixed()
                         .with_context(|| "Speed Fixed should be preset for Fixed Profiles")?,
                 )
                 .await
@@ -292,7 +299,7 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.speed_profile.is_none() || profile.temp_source.is_none() {
+        if profile.speed_profile().is_none() || profile.temp_source().is_none() {
             return Err(anyhow!(
                 "Speed Profile and Temp Source must be present for a Graph Profile"
             ));
@@ -304,10 +311,10 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
-        let temp_source = profile.temp_source.as_ref().unwrap();
+        let temp_source = profile.temp_source().unwrap();
         let channel_supports_hw_curve = speed_options.extension.is_some_and(|s| {
             s == ChannelExtensionNames::AutoHWCurve || s == ChannelExtensionNames::AmdRdnaGpu
         });
@@ -329,7 +336,7 @@ impl Engine {
                 device_uid,
                 channel_name,
                 temp_source,
-                profile.speed_profile.as_ref().unwrap(),
+                profile.speed_profile().unwrap(),
             )
             .await
         } else if speed_options.fixed_enabled {
@@ -355,10 +362,10 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.member_profile_uids.is_empty() {
+        if profile.member_profile_uids().is_empty() {
             return Err(anyhow!("Mix Profile should have member profiles"));
         }
-        if profile.mix_function_type.is_none() {
+        if profile.mix_function_type().is_none() {
             return Err(anyhow!("Mix Profile should have a mix function type"));
         }
         let (device_lock, repo) = self.get_device_repo(device_uid)?;
@@ -368,11 +375,11 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profiles = self
-            .get_ordered_member_profiles(&profile.member_profile_uids)
+            .get_ordered_member_profiles(profile.member_profile_uids())
             .await?;
         let all_function_uids = self
             .config
@@ -385,14 +392,14 @@ impl Engine {
         let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
             HashMap::with_capacity(member_profiles.len());
         for member in &member_profiles {
-            if member.p_type == ProfileType::Mix {
+            if member.p_type() == ProfileType::Mix {
                 let sub_members = self
-                    .get_ordered_member_profiles(&member.member_profile_uids)
+                    .get_ordered_member_profiles(member.member_profile_uids())
                     .await?;
                 // Single-level enforcement: sub-members must all be Graph or Fixed
                 if sub_members
                     .iter()
-                    .any(|p| p.p_type != ProfileType::Graph && p.p_type != ProfileType::Fixed)
+                    .any(|p| p.p_type() != ProfileType::Graph && p.p_type() != ProfileType::Fixed)
                 {
                     return Err(anyhow!(
                         "Mix member '{}' contains non-Graph/Fixed sub-members \
@@ -403,7 +410,7 @@ impl Engine {
                 // Validate sub-member functions exist (Graph profiles only)
                 if sub_members
                     .iter()
-                    .filter(|p| p.p_type == ProfileType::Graph)
+                    .filter(|p| p.p_type() == ProfileType::Graph)
                     .any(|p| all_function_uids.contains(&p.function_uid).not())
                 {
                     return Err(anyhow!(
@@ -415,7 +422,7 @@ impl Engine {
         }
         let member_profile_functions_all_present = member_profiles
             .iter()
-            .filter(|p| p.p_type == ProfileType::Graph)
+            .filter(|p| p.p_type() == ProfileType::Graph)
             .all(|p| all_function_uids.contains(&p.function_uid));
         if member_profile_functions_all_present.not() {
             return Err(anyhow!("All Member Profile Functions should be present"));
@@ -456,10 +463,10 @@ impl Engine {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.member_profile_uids.len() != 1 {
+        if profile.member_profile_uids().len() != 1 {
             return Err(anyhow!("Overlay Profile should one member profile"));
         }
-        let Some(offset_profile) = profile.offset_profile.as_ref() else {
+        let Some(offset_profile) = profile.offset_profile() else {
             return Err(anyhow!("Overlay Profile should have an offset profile"));
         };
         if offset_profile.is_empty() {
@@ -474,27 +481,27 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .speed_options
-            .clone()
+            .speed_options()
+            .cloned()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profile = self
             .config
             .get_profiles()
             .await?
             .into_iter()
-            .find(|p| profile.member_profile_uids.contains(&p.uid))
+            .find(|p| profile.member_profile_uids().contains(&p.uid))
             .ok_or(anyhow!("Overlay Member Profile should be present"))?;
         let member_profile_members = self
-            .get_ordered_member_profiles(&member_profile.member_profile_uids)
+            .get_ordered_member_profiles(member_profile.member_profile_uids())
             .await?;
         // Resolve sub-members if the overlay's member Mix has Mix sub-members
         let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
             HashMap::with_capacity(member_profile_members.len());
-        if member_profile.p_type == ProfileType::Mix {
+        if member_profile.p_type() == ProfileType::Mix {
             for sub_member in &member_profile_members {
-                if sub_member.p_type == ProfileType::Mix {
+                if sub_member.p_type() == ProfileType::Mix {
                     let sub_sub_members = self
-                        .get_ordered_member_profiles(&sub_member.member_profile_uids)
+                        .get_ordered_member_profiles(sub_member.member_profile_uids())
                         .await?;
                     member_sub_profiles.insert(sub_member.uid.clone(), sub_sub_members);
                 }
@@ -545,22 +552,22 @@ impl Engine {
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
-            .lcd_modes
+            .lcd_modes()
             .is_empty();
         if lcd_not_enabled {
             return Err(anyhow!(
                 "LCD Screen modes not enabled for this device: {device_uid}"
             ));
         }
-        let result = if lcd_settings.mode == LcdModeName::Temp {
-            if lcd_settings.temp_source.is_none() {
+        let result = if lcd_settings.mode_name() == LcdModeName::Temp {
+            if lcd_settings.temp_source().is_none() {
                 return Err(anyhow!(
                     "A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"
                 ));
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
-        } else if lcd_settings.mode == LcdModeName::Carousel {
+        } else if lcd_settings.mode_name() == LcdModeName::Carousel {
             self.lcd_commander
                 .schedule_carousel(device_uid, channel_name, lcd_settings)
                 .await
@@ -605,8 +612,8 @@ impl Engine {
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}"),
             })?
-            .lcd_info
-            .clone()
+            .lcd_info()
+            .cloned()
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
             })?;
@@ -708,11 +715,14 @@ impl Engine {
         else {
             return; // If there are currently no settings applied, leave the device alone.
         };
-        let Some(ref settings_lcd_current) = settings_current.lcd else {
+        let SettingKind::Lcd {
+            lcd: ref settings_lcd_current,
+        } = settings_current.kind
+        else {
             return; // If there are currently no LCD settings applied, leave the device alone.
         };
-        if settings_lcd_current.mode == LcdModeName::None
-            || settings_lcd_current.mode == LcdModeName::Liquid
+        if settings_lcd_current.mode_name() == LcdModeName::None
+            || settings_lcd_current.mode_name() == LcdModeName::Liquid
         {
             return; // These settings mean we should also leave the device alone.
         }
@@ -730,8 +740,7 @@ impl Engine {
                         let _ = async {
                             let config_setting = Setting {
                                 channel_name: channel_name.to_string(),
-                                lcd: Some(lcd_settings),
-                                ..Default::default()
+                                kind: SettingKind::Lcd { lcd: lcd_settings },
                             };
                             self.config.set_device_setting(device_uid, &config_setting);
                             self.config.save_config_file().await
@@ -776,7 +785,7 @@ impl Engine {
         for (device_uid, device_lock) in self.all_devices.as_ref() {
             let device = device_lock.borrow();
             for (channel_name, channel_info) in &device.info.channels {
-                if channel_info.lcd_info.is_none() {
+                if channel_info.lcd_info().is_none() {
                     continue;
                 }
                 if channels_with_settings.contains(&(device_uid.clone(), channel_name.clone())) {
@@ -788,10 +797,11 @@ impl Engine {
                 else {
                     continue;
                 };
-                let Some(ref lcd) = settings.lcd else {
+                let SettingKind::Lcd { ref lcd } = settings.kind else {
                     continue;
                 };
-                if lcd.mode == LcdModeName::Temp || lcd.mode == LcdModeName::Carousel {
+                if lcd.mode_name() == LcdModeName::Temp || lcd.mode_name() == LcdModeName::Carousel
+                {
                     result.push((device_uid.clone(), channel_name.clone()));
                 }
             }
@@ -809,7 +819,7 @@ impl Engine {
             let Some(info) = device.info.channels.get(channel_name) else {
                 return;
             };
-            let Some(lcd_info) = info.lcd_info.clone() else {
+            let Some(lcd_info) = info.lcd_info().cloned() else {
                 return;
             };
             lcd_info
@@ -843,13 +853,11 @@ impl Engine {
             }
         };
         let lcd_settings = LcdSettings {
-            mode: LcdModeName::Image,
             brightness: None,
             orientation: None,
-            image_file_processed: Some(image_path),
-            carousel: None,
-            colors: Vec::new(),
-            temp_source: None,
+            mode: LcdModeKind::Image {
+                image_file_processed: Some(image_path),
+            },
         };
         match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
@@ -878,12 +886,13 @@ impl Engine {
     /// This is used to determine if a setting should be saved to the config file and thereby
     /// used again on startup, since the currently applied image may not exist on restart.
     fn current_setting_is_externally_applied(settings_current: &Setting) -> bool {
-        settings_current.lcd.as_ref().is_some_and(|lcd| {
-            lcd.image_file_processed.as_ref().is_some_and(|path_image| {
-                std::path::Path::new(path_image)
-                    .starts_with(paths::config_dir())
-                    .not()
-            })
+        let SettingKind::Lcd { ref lcd } = settings_current.kind else {
+            return false;
+        };
+        lcd.image_file_processed().is_some_and(|path_image| {
+            std::path::Path::new(path_image)
+                .starts_with(paths::config_dir())
+                .not()
         })
     }
 
@@ -896,14 +905,19 @@ impl Engine {
         let setting = self
             .config
             .get_device_channel_settings(device_uid, channel_name)?;
-        let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound {
-            msg: "LCD Settings".to_string(),
-        })?;
-        let image_path = lcd_setting
-            .image_file_processed
-            .ok_or_else(|| CCError::NotFound {
-                msg: "LCD Image File Path".to_string(),
-            })?;
+        let SettingKind::Lcd { lcd: lcd_setting } = setting.kind else {
+            return Err(CCError::NotFound {
+                msg: "LCD Settings".to_string(),
+            }
+            .into());
+        };
+        let image_path =
+            lcd_setting
+                .image_file_processed()
+                .cloned()
+                .ok_or_else(|| CCError::NotFound {
+                    msg: "LCD Image File Path".to_string(),
+                })?;
         let image_data = cc_fs::read_image(std::path::Path::new(&image_path))
             .await
             .map_err(|err| CCError::InternalError {
@@ -929,7 +943,7 @@ impl Engine {
             .info
             .channels
             .iter()
-            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
+            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes().is_empty().not())
             .map(|(ch_name, _ch_info)| ch_name.clone())
             .collect::<Vec<String>>();
         if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
@@ -940,16 +954,18 @@ impl Engine {
                     }
                     let reset_setting = Setting {
                         channel_name: ch.clone(),
-                        reset_to_default: Some(true),
-                        ..Default::default()
+                        kind: SettingKind::Reset {
+                            reset_to_default: true,
+                        },
                     };
                     self.config.set_device_setting(device_uid, &reset_setting);
                 }
             } else {
                 let reset_setting = Setting {
                     channel_name: SYNC_CHANNEL_NAME.to_string(),
-                    reset_to_default: Some(true),
-                    ..Default::default()
+                    kind: SettingKind::Reset {
+                        reset_to_default: true,
+                    },
                 };
                 self.config.set_device_setting(device_uid, &reset_setting);
             }
@@ -1077,8 +1093,8 @@ impl Engine {
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|p| {
-                    p.p_type == ProfileType::Mix
-                        && p.member_profile_uids
+                    p.p_type() == ProfileType::Mix
+                        && p.member_profile_uids()
                             .iter()
                             .any(|uid| child_mix_uids.contains(uid))
                 })
@@ -1091,10 +1107,12 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let SettingKind::Profile {
+                        profile_uid: ref setting_profile_uid,
+                    } = setting.kind
+                    else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
                     if setting_profile_uid == profile_uid {
                         // If this device channel setting contains the updated Profile:
                         self.set_profile(device_uid, &setting.channel_name, profile_uid)
@@ -1131,8 +1149,8 @@ impl Engine {
             .await?
             .into_iter()
             .filter(|profile| {
-                profile.p_type == ProfileType::Mix
-                    && profile.member_profile_uids.contains(profile_uid)
+                profile.p_type() == ProfileType::Mix
+                    && profile.member_profile_uids().contains(profile_uid)
             })
             .collect::<Vec<_>>();
         if self
@@ -1141,8 +1159,8 @@ impl Engine {
             .await?
             .into_iter()
             .any(|profile| {
-                profile.p_type == ProfileType::Overlay
-                    && profile.member_profile_uids.contains(profile_uid)
+                profile.p_type() == ProfileType::Overlay
+                    && profile.member_profile_uids().contains(profile_uid)
             })
         {
             return Err(CCError::UserError {
@@ -1153,7 +1171,7 @@ impl Engine {
         }
         if affected_mix_profiles
             .iter()
-            .any(|p| p.member_profile_uids.len() < 2)
+            .any(|p| p.member_profile_uids().len() < 2)
         {
             return Err(CCError::UserError {
                 msg: "Mix Profiles must have at least 1 member profiles".to_string(),
@@ -1161,23 +1179,26 @@ impl Engine {
             .into());
         }
         for mix_profile in &mut affected_mix_profiles {
-            mix_profile
-                .member_profile_uids
-                .retain(|p_uid| p_uid != profile_uid);
+            if let Some(member_profile_uids) = mix_profile.member_profile_uids_mut() {
+                member_profile_uids.retain(|p_uid| p_uid != profile_uid);
+            }
             self.config.update_profile(mix_profile.clone())?;
         }
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let SettingKind::Profile {
+                        profile_uid: ref setting_profile_uid,
+                    } = setting.kind
+                    else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
                     if setting_profile_uid == profile_uid {
                         let default_setting = Setting {
                             channel_name: setting.channel_name,
-                            reset_to_default: Some(true),
-                            ..Default::default()
+                            kind: SettingKind::Reset {
+                                reset_to_default: true,
+                            },
                         };
                         self.config.set_device_setting(device_uid, &default_setting);
                         self.set_reset(device_uid, &default_setting.channel_name)
@@ -1217,9 +1238,9 @@ impl Engine {
             .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| {
-                profile.p_type == ProfileType::Mix
+                profile.p_type() == ProfileType::Mix
                     && profile
-                        .member_profile_uids
+                        .member_profile_uids()
                         .iter()
                         .any(|p_uid| affected_profiles.iter().any(|p| &p.uid == p_uid))
             })
@@ -1227,7 +1248,10 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    let Some(setting_profile_uid) = setting.profile_uid else {
+                    let SettingKind::Profile {
+                        profile_uid: setting_profile_uid,
+                    } = setting.kind
+                    else {
                         continue;
                     };
 
@@ -1279,34 +1303,22 @@ impl Engine {
             .unwrap_or(Vec::new())
             .iter()
             .any(|profile| {
-                profile.temp_source.is_some()
-                    && profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
+                profile.temp_source().is_some()
+                    && profile.temp_source().unwrap().temp_name == custom_sensor_id
             });
         let affects_lcd_settings =
             self.config
                 .get_device_settings(cs_device_uid)?
                 .iter()
                 .any(|setting| {
-                    setting.lcd.is_some()
-                        && setting.lcd.as_ref().unwrap().temp_source.is_some()
-                        && setting
-                            .lcd
-                            .as_ref()
-                            .unwrap()
-                            .temp_source
-                            .as_ref()
-                            .unwrap()
-                            .device_uid
-                            == cs_device_uid
-                        && setting
-                            .lcd
-                            .as_ref()
-                            .unwrap()
-                            .temp_source
-                            .as_ref()
-                            .unwrap()
-                            .temp_name
-                            == custom_sensor_id
+                    let SettingKind::Lcd { lcd } = &setting.kind else {
+                        return false;
+                    };
+                    let Some(temp_source) = lcd.temp_source() else {
+                        return false;
+                    };
+                    temp_source.device_uid == cs_device_uid
+                        && temp_source.temp_name == custom_sensor_id
                 });
         if affects_profiles || affects_lcd_settings {
             Err(CCError::UserError {
@@ -1323,7 +1335,7 @@ impl Engine {
 
     async fn get_ordered_member_profiles(
         &self,
-        member_profile_uids: &Vec<UID>,
+        member_profile_uids: &[UID],
     ) -> Result<Vec<Profile>> {
         let mut all_profiles = self.config.get_profiles().await?;
         let mut member_profiles = Vec::with_capacity(member_profile_uids.len());
@@ -1352,8 +1364,8 @@ impl Engine {
             .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| {
-                profile.p_type == profile_type
-                    && profile.member_profile_uids.contains(changed_profile_uid)
+                profile.p_type() == profile_type
+                    && profile.member_profile_uids().contains(changed_profile_uid)
             })
             .collect::<Vec<_>>()
     }
@@ -1896,15 +1908,13 @@ impl DiagnosisHost for Engine {
             .config
             .get_device_channel_settings(device_uid, channel_name)
         {
-            Ok(setting) => {
-                if let Some(profile_uid) = setting.profile_uid {
-                    SnapshotKind::Profile(profile_uid)
-                } else if let Some(speed_fixed) = setting.speed_fixed {
-                    SnapshotKind::Manual(speed_fixed)
-                } else {
-                    SnapshotKind::None
-                }
-            }
+            Ok(setting) => match setting.kind {
+                SettingKind::Profile { profile_uid } => SnapshotKind::Profile(profile_uid),
+                SettingKind::SpeedFixed { speed_fixed } => SnapshotKind::Manual(speed_fixed),
+                SettingKind::Lighting { .. }
+                | SettingKind::Lcd { .. }
+                | SettingKind::Reset { .. } => SnapshotKind::None,
+            },
             Err(_) => SnapshotKind::None,
         };
         SettingsSnapshot {
@@ -1954,26 +1964,24 @@ impl DiagnosisHost for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{LcdModeName, LcdSettings, Setting};
+    use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
 
     fn lcd_settings_with_image(image_path: Option<String>) -> LcdSettings {
         LcdSettings {
-            mode: LcdModeName::Image,
             brightness: None,
             orientation: None,
-            image_file_processed: image_path,
-            carousel: None,
-            colors: Vec::new(),
-            temp_source: None,
+            mode: LcdModeKind::Image {
+                image_file_processed: image_path,
+            },
         }
     }
 
-    // Returns false when the setting has no LCD settings at all.
+    // Returns false when the setting is not an LCD variant.
     #[test]
     fn externally_applied_no_lcd() {
         let setting = Setting {
-            lcd: None,
-            ..Default::default()
+            channel_name: "fan1".to_string(),
+            kind: SettingKind::SpeedFixed { speed_fixed: 50 },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -1982,8 +1990,10 @@ mod tests {
     #[test]
     fn externally_applied_lcd_no_image_path() {
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(None)),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(None),
+            },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -1997,8 +2007,10 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(Some(internal_path))),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(Some(internal_path)),
+            },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -2009,8 +2021,10 @@ mod tests {
     fn externally_applied_external_image_path() {
         let external_path = "/tmp/external_lcd_image.png".to_string();
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(Some(external_path))),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(Some(external_path)),
+            },
         };
         assert!(Engine::current_setting_is_externally_applied(&setting));
     }

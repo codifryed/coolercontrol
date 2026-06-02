@@ -18,7 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode};
+use crate::device::{
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{
@@ -54,8 +56,8 @@ impl DeviceSupport for AuraLedSupport {
             channels.insert(
                 channel_name,
                 ChannelInfo {
-                    lighting_modes,
-                    ..Default::default()
+                    label: None,
+                    kind: ChannelKind::Lighting(lighting_modes),
                 },
             );
         }

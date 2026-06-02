@@ -17,9 +17,9 @@
  */
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID,
-    DriverInfo, DriverType, Duty, LcdInfo, LcdMode, LcdModeType, LightingMode, LightingModeType,
-    SpeedOptions, Temp, TempInfo, TempStatus,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DeviceUID, DriverInfo, DriverType, Duty, LcdInfo, LcdMode, LcdModeType, LightingMode,
+    LightingModeType, SpeedOptions, Temp, TempInfo, TempStatus,
 };
 use crate::grpc_api::device_service::v1::{
     device_service_client, CustomFunctionOneRequest, EnableManualFanControlRequest,
@@ -298,67 +298,62 @@ impl DeviceServiceClient {
         channel_info_res
             .into_iter()
             .map(|(channel_name, channel_info_res)| {
-                let mut channel_info = ChannelInfo {
-                    label: channel_info_res.label,
-                    ..Default::default()
-                };
-                if let Some(options) = channel_info_res.options {
-                    match options {
-                        Options::SpeedOptions(speed_options) => {
-                            channel_info.speed_options = Some(SpeedOptions {
-                                min_duty: safe_u8(speed_options.min_duty),
-                                max_duty: safe_u8(speed_options.max_duty),
-                                fixed_enabled: speed_options.fixed_enabled,
-                                extension: Self::map_channel_extension_names(
-                                    speed_options.extension,
-                                ),
-                            });
-                        }
-                        Options::LightingModes(lighting_modes) => {
-                            channel_info.lighting_modes = lighting_modes
-                                .lighting_mode
-                                .into_iter()
-                                .map(|mode| LightingMode {
-                                    frontend_name: mode
-                                        .frontend_name
-                                        .unwrap_or_else(|| mode.name.clone()),
-                                    name: mode.name,
-                                    min_colors: safe_u8(mode.min_colors),
-                                    max_colors: safe_u8(mode.max_colors),
-                                    speed_enabled: mode.speed_enabled,
-                                    backward_enabled: mode.backward_enabled,
-                                    type_: LightingModeType::Custom,
-                                })
-                                .collect();
-                        }
-                        Options::LcdInfo(lcd_info) => {
-                            channel_info.lcd_modes = lcd_info
-                                .lcd_modes
-                                .into_iter()
-                                .map(|mode| LcdMode {
-                                    frontend_name: mode
-                                        .frontend_name
-                                        .unwrap_or_else(|| mode.name.clone()),
-                                    name: mode.name,
-                                    brightness: mode.brightness,
-                                    orientation: mode.orientation,
-                                    image: mode.image,
-                                    colors_min: 0,
-                                    colors_max: 0,
-                                    type_: LcdModeType::None,
-                                })
-                                .collect();
-                            channel_info.lcd_info = Some(LcdInfo {
-                                screen_width: lcd_info.screen_width,
-                                screen_height: lcd_info.screen_height,
-                                max_image_size_bytes: lcd_info.max_image_size_bytes,
-                            });
-                        }
-                    }
-                }
-                (channel_name, channel_info)
+                (channel_name, Self::map_channel_info(channel_info_res))
             })
             .collect()
+    }
+
+    fn map_channel_info(channel_info_res: models::v1::ChannelInfo) -> ChannelInfo {
+        let kind = match channel_info_res.options {
+            Some(Options::SpeedOptions(speed_options)) => ChannelKind::Speed(SpeedOptions {
+                min_duty: safe_u8(speed_options.min_duty),
+                max_duty: safe_u8(speed_options.max_duty),
+                fixed_enabled: speed_options.fixed_enabled,
+                extension: Self::map_channel_extension_names(speed_options.extension),
+            }),
+            Some(Options::LightingModes(lighting_modes)) => ChannelKind::Lighting(
+                lighting_modes
+                    .lighting_mode
+                    .into_iter()
+                    .map(|mode| LightingMode {
+                        frontend_name: mode.frontend_name.unwrap_or_else(|| mode.name.clone()),
+                        name: mode.name,
+                        min_colors: safe_u8(mode.min_colors),
+                        max_colors: safe_u8(mode.max_colors),
+                        speed_enabled: mode.speed_enabled,
+                        backward_enabled: mode.backward_enabled,
+                        type_: LightingModeType::Custom,
+                    })
+                    .collect(),
+            ),
+            Some(Options::LcdInfo(lcd_info)) => {
+                let modes = lcd_info
+                    .lcd_modes
+                    .into_iter()
+                    .map(|mode| LcdMode {
+                        frontend_name: mode.frontend_name.unwrap_or_else(|| mode.name.clone()),
+                        name: mode.name,
+                        brightness: mode.brightness,
+                        orientation: mode.orientation,
+                        image: mode.image,
+                        colors_min: 0,
+                        colors_max: 0,
+                        type_: LcdModeType::None,
+                    })
+                    .collect();
+                let info = Some(LcdInfo {
+                    screen_width: lcd_info.screen_width,
+                    screen_height: lcd_info.screen_height,
+                    max_image_size_bytes: lcd_info.max_image_size_bytes,
+                });
+                ChannelKind::Lcd { modes, info }
+            }
+            None => ChannelKind::InfoOnly,
+        };
+        ChannelInfo {
+            label: channel_info_res.label,
+            kind,
+        }
     }
 
     fn map_channel_extension_names(extension_res: Option<i32>) -> Option<ChannelExtensionNames> {
@@ -609,7 +604,7 @@ impl DeviceServiceClient {
                     mode: lcd.mode.to_string(),
                     brightness: lcd.brightness.map(u32::from),
                     orientation: lcd.orientation.map(u32::from),
-                    image_path: lcd.image_file_processed.clone(),
+                    image_path: lcd.image_file_processed().cloned(),
                 };
                 let request = Request::new(LcdRequest {
                     device_id: self.get_service_device_id(device_uid)?,

@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
-    TempStatus,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -49,61 +49,61 @@ impl DeviceSupport for MpgCoolerSupport {
         channels.insert(
             "pump".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 60,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "waterblock-fan".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "fan1".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "fan2".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         channels.insert(
             "fan3".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
 
@@ -112,8 +112,8 @@ impl DeviceSupport for MpgCoolerSupport {
         channels.insert(
             "sync".to_string(),
             ChannelInfo {
-                lighting_modes,
-                ..Default::default()
+                label: None,
+                kind: ChannelKind::Lighting(lighting_modes),
             },
         );
 

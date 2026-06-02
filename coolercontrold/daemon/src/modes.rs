@@ -34,7 +34,7 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, UID};
 use crate::engine::main::Engine;
 use crate::paths;
-use crate::setting::{ProfileUID, Setting};
+use crate::setting::{ProfileUID, Setting, SettingKind};
 use crate::{cc_fs, AllDevices};
 
 /// The `ModeController` is responsible for managing mode snapshots of all the device settings and
@@ -288,8 +288,9 @@ impl ModeController {
             let channel_name = setting.channel_name.clone();
             let reset_setting = Setting {
                 channel_name: setting.channel_name,
-                reset_to_default: Some(true),
-                ..Default::default()
+                kind: SettingKind::Reset {
+                    reset_to_default: true,
+                },
             };
             scope.spawn(async move {
                 debug!("Applying RESET Mode Setting: {reset_setting:?} to device: {device_uid}");
@@ -322,8 +323,9 @@ impl ModeController {
                 let channel_name = saved_setting_channel_name.clone();
                 let reset_setting = Setting {
                     channel_name: channel_name.clone(),
-                    reset_to_default: Some(true),
-                    ..Default::default()
+                    kind: SettingKind::Reset {
+                        reset_to_default: true,
+                    },
                 };
                 scope.spawn(async move {
                     debug!("Applying Mode Setting: {reset_setting:?} to device: {device_uid}");
@@ -633,16 +635,14 @@ impl ModeController {
         for mode in modes.values() {
             for (device_uid, device_settings) in &mode.all_device_settings {
                 for (channel_name, setting) in device_settings {
-                    if setting
-                        .profile_uid
-                        .as_ref()
-                        .is_some_and(|p_uid| p_uid == profile_uid)
-                    {
-                        settings_to_delete.push((
-                            mode.uid.clone(),
-                            device_uid.clone(),
-                            channel_name.clone(),
-                        ));
+                    if let SettingKind::Profile { profile_uid: p_uid } = &setting.kind {
+                        if p_uid == profile_uid {
+                            settings_to_delete.push((
+                                mode.uid.clone(),
+                                device_uid.clone(),
+                                channel_name.clone(),
+                            ));
+                        }
                     }
                 }
             }

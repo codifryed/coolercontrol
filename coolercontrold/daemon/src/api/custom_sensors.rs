@@ -17,7 +17,7 @@
  */
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{CustomSensor, CustomSensorType};
+use crate::setting::{CustomSensor, CustomSensorKind, CustomTempSourceData};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -110,88 +110,81 @@ pub async fn delete(
 
 fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     validate_name_string(&custom_sensor.id)?;
-    let mut invalid_msg: Option<String> = None;
-    // This limit is not a hard-limit, but to protect the API.
-    if custom_sensor.sources.len() > 50 {
-        invalid_msg = Some("sources cannot have more than 50 temps".to_string());
-    } else if custom_sensor.sources.iter().any(|s| s.weight > 254) {
-        invalid_msg = Some("sources cannot have a weight greater than 254".to_string());
-    } else if custom_sensor
-        .sources
-        .iter()
-        .any(|s| s.temp_source.device_uid.is_empty())
-    {
-        invalid_msg =
-            Some("sources cannot have a temp_source with an empty device UID".to_string());
-    } else if custom_sensor
-        .sources
-        .iter()
-        .any(|s| s.temp_source.temp_name.is_empty())
-    {
-        invalid_msg = Some("sources cannot have a temp_source with an empty Temp Name".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::Mix && custom_sensor.file_path.is_some() {
-        invalid_msg = Some("Custom Sensor Mix type cannot have a file path".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::File && custom_sensor.file_path.is_none() {
-        invalid_msg = Some("Custom Sensor File type must have a file path".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::File && !custom_sensor.sources.is_empty() {
-        invalid_msg = Some("Custom Sensor File type should not have sources".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.offset.is_none() {
-        invalid_msg = Some("Custom Sensor Offset type must have an offset".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::Offset
-        && custom_sensor.offset.unwrap() < -100
-    {
-        invalid_msg = Some("Custom Sensor Offset type offset cannot be less than -100".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::Offset
-        && custom_sensor.offset.unwrap() > 100
-    {
-        invalid_msg =
-            Some("Custom Sensor Offset type offset cannot be greater than 100".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.sources.len() != 1
-    {
-        invalid_msg = Some("Custom Sensor Offset type must have exactly 1 temp source".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
-        && custom_sensor.sources.len() != 1
-    {
-        invalid_msg =
-            Some("Custom Sensor TimeAverage type must have exactly 1 temp source".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
-        && custom_sensor.time_window_seconds.is_none()
-    {
-        invalid_msg = Some(
-            "Custom Sensor TimeAverage type must have a time_window_seconds value".to_string(),
-        );
-    } else if custom_sensor.cs_type == CustomSensorType::TimeAverage
-        && !(1..=300).contains(&custom_sensor.time_window_seconds.unwrap())
-    {
-        invalid_msg = Some(
-            "Custom Sensor TimeAverage time_window_seconds must be between 1 and 300".to_string(),
-        );
-    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
-        && custom_sensor.sources.len() != 1
-    {
-        invalid_msg = Some(
-            "Custom Sensor ExponentialMovingAvg type must have exactly 1 temp source".to_string(),
-        );
-    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
-        && custom_sensor.time_window_seconds.is_none()
-    {
-        invalid_msg = Some(
-            "Custom Sensor ExponentialMovingAvg type must have a time_window_seconds value"
-                .to_string(),
-        );
-    } else if custom_sensor.cs_type == CustomSensorType::ExponentialMovingAvg
-        && !(1..=300).contains(&custom_sensor.time_window_seconds.unwrap())
-    {
-        invalid_msg = Some(
-            "Custom Sensor ExponentialMovingAvg time_window_seconds must be between 1 and 300"
-                .to_string(),
-        );
+    // The enum already enforces that each variant carries exactly its own fields (file_path
+    // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
+    // the value ranges and source cardinality the type cannot express remain here.
+    match &custom_sensor.kind {
+        CustomSensorKind::Mix { sources, .. } => validate_custom_sensor_sources(sources),
+        CustomSensorKind::File { .. } => Ok(()),
+        CustomSensorKind::Offset { offset, sources } => {
+            validate_single_source(sources)?;
+            if (-100..=100).contains(offset) {
+                Ok(())
+            } else {
+                Err(CCError::UserError {
+                    msg: "Custom Sensor Offset type offset must be between -100 and 100"
+                        .to_string(),
+                })
+            }
+        }
+        CustomSensorKind::TimeAverage {
+            time_window_seconds,
+            sources,
+        }
+        | CustomSensorKind::ExponentialMovingAvg {
+            time_window_seconds,
+            sources,
+        } => {
+            validate_single_source(sources)?;
+            if (1..=300).contains(time_window_seconds) {
+                Ok(())
+            } else {
+                Err(CCError::UserError {
+                    msg: "Custom Sensor time_window_seconds must be between 1 and 300".to_string(),
+                })
+            }
+        }
     }
-    if let Some(msg) = invalid_msg {
-        Err(CCError::UserError { msg })
-    } else {
-        Ok(())
+}
+
+/// Validates the `sources` constraints the type cannot express: a cap that protects the API,
+/// per-source weight, and non-empty source identifiers.
+fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+    // Not a hard limit, just protects the API.
+    if sources.len() > 50 {
+        return Err(CCError::UserError {
+            msg: "sources cannot have more than 50 temps".to_string(),
+        });
     }
+    for source in sources {
+        if source.weight > 254 {
+            return Err(CCError::UserError {
+                msg: "sources cannot have a weight greater than 254".to_string(),
+            });
+        }
+        if source.temp_source.device_uid.is_empty() {
+            return Err(CCError::UserError {
+                msg: "sources cannot have a temp_source with an empty device UID".to_string(),
+            });
+        }
+        if source.temp_source.temp_name.is_empty() {
+            return Err(CCError::UserError {
+                msg: "sources cannot have a temp_source with an empty Temp Name".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validates the variants derived from a single source: exactly one source, plus the shared
+/// source constraints.
+fn validate_single_source(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+    if sources.len() != 1 {
+        return Err(CCError::UserError {
+            msg: "Custom Sensor must have exactly 1 temp source".to_string(),
+        });
+    }
+    validate_custom_sensor_sources(sources)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -207,143 +200,109 @@ pub struct CSPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{CustomSensorMixFunctionType, CustomTempSourceData, TempSource};
+    use crate::setting::TempSource;
 
-    fn time_average_sensor() -> CustomSensor {
+    fn source() -> CustomTempSourceData {
+        CustomTempSourceData {
+            temp_source: TempSource {
+                device_uid: "device-uid".to_string(),
+                temp_name: "cpu_temp".to_string(),
+            },
+            weight: 1,
+        }
+    }
+
+    fn time_average(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
         CustomSensor {
             id: "ta".to_string(),
-            cs_type: CustomSensorType::TimeAverage,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![CustomTempSourceData {
-                temp_source: TempSource {
-                    device_uid: "device-uid".to_string(),
-                    temp_name: "cpu_temp".to_string(),
-                },
-                weight: 1,
-            }],
-            file_path: None,
-            offset: None,
-            time_window_seconds: Some(10),
+            kind: CustomSensorKind::TimeAverage {
+                time_window_seconds,
+                sources,
+            },
             children: Vec::new(),
             parents: Vec::new(),
         }
     }
 
-    // Valid TimeAverage sensor with one source and a window in [1, 60] passes validation.
+    fn ema(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+        CustomSensor {
+            id: "ema".to_string(),
+            kind: CustomSensorKind::ExponentialMovingAvg {
+                time_window_seconds,
+                sources,
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    // Note: "missing time_window_seconds" is no longer testable here because the type makes
+    // it a required field; that rejection is now a deserialize-time failure covered in
+    // setting.rs. The same applies to "missing sources".
+
+    // A TimeAverage with one source and an in-range window passes.
     #[test]
     fn time_average_valid_passes() {
-        let sensor = time_average_sensor();
-        assert!(validate_custom_sensor(&sensor).is_ok());
+        assert!(validate_custom_sensor(&time_average(10, vec![source()])).is_ok());
     }
 
     // time_window_seconds == 0 is rejected (lower bound is 1).
     #[test]
     fn time_average_rejects_zero_window() {
-        let mut sensor = time_average_sensor();
-        sensor.time_window_seconds = Some(0);
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&time_average(0, vec![source()])).is_err());
     }
 
     // time_window_seconds == 300 is the upper bound and must pass.
     #[test]
     fn time_average_accepts_window_300() {
-        let mut sensor = time_average_sensor();
-        sensor.time_window_seconds = Some(300);
-        assert!(validate_custom_sensor(&sensor).is_ok());
+        assert!(validate_custom_sensor(&time_average(300, vec![source()])).is_ok());
     }
 
     // time_window_seconds > 300 is rejected (upper bound is 300).
     #[test]
     fn time_average_rejects_window_above_300() {
-        let mut sensor = time_average_sensor();
-        sensor.time_window_seconds = Some(301);
-        assert!(validate_custom_sensor(&sensor).is_err());
-    }
-
-    // Missing time_window_seconds is rejected for TimeAverage type (required field).
-    #[test]
-    fn time_average_rejects_missing_window() {
-        let mut sensor = time_average_sensor();
-        sensor.time_window_seconds = None;
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&time_average(301, vec![source()])).is_err());
     }
 
     // TimeAverage requires exactly one source. Zero or two are both rejected.
     #[test]
     fn time_average_rejects_zero_sources() {
-        let mut sensor = time_average_sensor();
-        sensor.sources.clear();
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&time_average(10, vec![])).is_err());
     }
 
     #[test]
     fn time_average_rejects_two_sources() {
-        let mut sensor = time_average_sensor();
-        let extra = sensor.sources[0].clone();
-        sensor.sources.push(extra);
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&time_average(10, vec![source(), source()])).is_err());
     }
 
-    fn ema_sensor() -> CustomSensor {
-        let mut sensor = time_average_sensor();
-        sensor.id = "ema".to_string();
-        sensor.cs_type = CustomSensorType::ExponentialMovingAvg;
-        sensor
-    }
-
-    // Valid EMA sensor with one source and a window in [1, 300] passes validation. Mirrors
-    // TimeAverage's happy-path test; the validator path is parallel.
+    // EMA mirrors TimeAverage: the validator path is parallel.
     #[test]
     fn ema_valid_passes() {
-        let sensor = ema_sensor();
-        assert!(validate_custom_sensor(&sensor).is_ok());
+        assert!(validate_custom_sensor(&ema(10, vec![source()])).is_ok());
     }
 
-    // time_window_seconds == 0 is rejected (lower bound is 1).
     #[test]
     fn ema_rejects_zero_window() {
-        let mut sensor = ema_sensor();
-        sensor.time_window_seconds = Some(0);
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&ema(0, vec![source()])).is_err());
     }
 
-    // time_window_seconds == 300 is the upper bound and must pass.
     #[test]
     fn ema_accepts_window_300() {
-        let mut sensor = ema_sensor();
-        sensor.time_window_seconds = Some(300);
-        assert!(validate_custom_sensor(&sensor).is_ok());
+        assert!(validate_custom_sensor(&ema(300, vec![source()])).is_ok());
     }
 
-    // time_window_seconds > 300 is rejected (upper bound is 300).
     #[test]
     fn ema_rejects_window_above_300() {
-        let mut sensor = ema_sensor();
-        sensor.time_window_seconds = Some(301);
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&ema(301, vec![source()])).is_err());
     }
 
-    // Missing time_window_seconds is rejected for EMA type (required field).
-    #[test]
-    fn ema_rejects_missing_window() {
-        let mut sensor = ema_sensor();
-        sensor.time_window_seconds = None;
-        assert!(validate_custom_sensor(&sensor).is_err());
-    }
-
-    // EMA requires exactly one source. Zero or two are both rejected.
     #[test]
     fn ema_rejects_zero_sources() {
-        let mut sensor = ema_sensor();
-        sensor.sources.clear();
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&ema(10, vec![])).is_err());
     }
 
     #[test]
     fn ema_rejects_two_sources() {
-        let mut sensor = ema_sensor();
-        let extra = sensor.sources[0].clone();
-        sensor.sources.push(extra);
-        assert!(validate_custom_sensor(&sensor).is_err());
+        assert!(validate_custom_sensor(&ema(10, vec![source(), source()])).is_err());
     }
 }

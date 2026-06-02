@@ -75,7 +75,7 @@ impl FunctionIdentityPreProcessor {
 
 impl Processor for FunctionIdentityPreProcessor {
     fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
+        data.profile.function.f_type() == FunctionType::Identity && data.temp.is_none()
         // preprocessor only
     }
 
@@ -135,15 +135,15 @@ impl FunctionStandardPreProcessor {
     }
 
     fn data_is_sane(data: &SpeedProfileData) -> bool {
-        if data.profile.function.response_delay.is_none()
-            || data.profile.function.deviance.is_none()
-            || data.profile.function.only_downward.is_none()
+        if data.profile.function.response_delay().is_none()
+            || data.profile.function.deviance().is_none()
+            || data.profile.function.only_downward().is_none()
         {
             error!(
                 "All required fields must be set for the standard Function: {:?}, {:?}, {:?}",
-                data.profile.function.response_delay,
-                data.profile.function.deviance,
-                data.profile.function.only_downward,
+                data.profile.function.response_delay(),
+                data.profile.function.deviance(),
+                data.profile.function.only_downward(),
             );
             return false;
         }
@@ -217,8 +217,8 @@ impl FunctionStandardPreProcessor {
         metadata: &mut ChannelSettingMetadata,
         data: &'a mut SpeedProfileData,
     ) -> &'a mut SpeedProfileData {
-        let only_downward = data.profile.function.only_downward.unwrap_or(false);
-        let deviance = data.profile.function.deviance.unwrap_or(2.0);
+        let only_downward = data.profile.function.only_downward().unwrap_or(false);
+        let deviance = data.profile.function.deviance().unwrap_or(2.0);
         debug_assert!(deviance >= 0.0, "deviance must not be negative");
 
         if only_downward {
@@ -319,7 +319,7 @@ impl FunctionStandardPreProcessor {
         let response_delay_secs = f64::from(
             profile
                 .function
-                .response_delay
+                .response_delay()
                 .unwrap_or(DEFAULT_MAX_NO_DUTY_SET_SECONDS as u8),
         );
         (response_delay_secs / profile.poll_rate).ceil() as u8
@@ -328,7 +328,7 @@ impl FunctionStandardPreProcessor {
 
 impl Processor for FunctionStandardPreProcessor {
     fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
+        data.profile.function.f_type() == FunctionType::Standard && data.temp.is_none()
     }
 
     fn init_state(&self, profile_uid: &ProfileUID) {
@@ -408,7 +408,7 @@ pub struct FunctionStandardPostProcessor {
 
 impl Processor for FunctionStandardPostProcessor {
     fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.function.f_type == FunctionType::Standard && data.duty.is_some()
+        data.profile.function.f_type() == FunctionType::Standard && data.duty.is_some()
     }
 
     fn init_state(&self, _profile_uid: &ProfileUID) {
@@ -477,7 +477,7 @@ impl FunctionEMAPreProcessor {
 
 impl Processor for FunctionEMAPreProcessor {
     fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
+        data.profile.function.f_type() == FunctionType::ExponentialMovingAvg && data.temp.is_none()
         // preprocessor only
     }
 
@@ -515,7 +515,7 @@ impl Processor for FunctionEMAPreProcessor {
         } else {
             Some(Self::current_temp_from_exponential_moving_average(
                 &temps,
-                data.profile.function.sample_window,
+                data.profile.function.sample_window(),
             ))
         };
         data
@@ -721,7 +721,7 @@ impl FunctionSafetyLatchProcessor {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn initial_max_no_duty_set_count(profile: &NormalizedGraphProfile) -> u8 {
-        if let Some(response_delay) = profile.function.response_delay {
+        if let Some(response_delay) = profile.function.response_delay() {
             let response_delay_secs = f64::from(response_delay);
             let response_delay_count = response_delay_secs / profile.poll_rate;
             // use response_delay but within a reasonable limit
@@ -829,7 +829,7 @@ mod tests {
         FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionStandardPreProcessor,
     };
     use crate::engine::{NormalizedGraphProfile, SpeedProfileData, TempSource};
-    use crate::setting::Function;
+    use crate::setting::{Function, FunctionKind};
 
     #[test]
     #[allow(clippy::float_cmp)]
@@ -1613,9 +1613,11 @@ mod tests {
     ) -> SpeedProfileData {
         let function = Function {
             step_size_min,
-            only_downward: Some(true),
-            response_delay: Some(5),
-            deviance: Some(2.0),
+            kind: FunctionKind::Standard {
+                deviance: Some(2.0),
+                only_downward: Some(true),
+                response_delay: Some(5),
+            },
             ..Default::default()
         };
         SpeedProfileData {
@@ -1756,9 +1758,11 @@ mod tests {
         let function = Function {
             step_size_min: 2,
             step_size_min_decreasing: 10,
-            only_downward: Some(true),
-            response_delay: Some(5),
-            deviance: Some(2.0),
+            kind: FunctionKind::Standard {
+                deviance: Some(2.0),
+                only_downward: Some(true),
+                response_delay: Some(5),
+            },
             ..Default::default()
         };
         let mut data = SpeedProfileData {
@@ -1820,7 +1824,11 @@ mod tests {
         // Goal: verify that zero response_delay produces a raw stack size of 0.
         // The MIN clamp is applied at the call site, not inside calc_ideal_stack_size.
         let function = Function {
-            response_delay: Some(0),
+            kind: FunctionKind::Standard {
+                deviance: None,
+                only_downward: None,
+                response_delay: Some(0),
+            },
             ..Default::default()
         };
         let profile = create_test_profile(function);
@@ -1833,7 +1841,11 @@ mod tests {
         // Goal: verify that response_delay=5 with poll_rate=1.0 gives exactly 5,
         // not 6 (the old off-by-one behavior).
         let function = Function {
-            response_delay: Some(5),
+            kind: FunctionKind::Standard {
+                deviance: None,
+                only_downward: None,
+                response_delay: Some(5),
+            },
             ..Default::default()
         };
         let profile = create_test_profile(function);
@@ -1846,7 +1858,11 @@ mod tests {
         // Goal: verify ceiling division with a sub-second poll rate.
         // response_delay=3 / poll_rate=0.5 = 6.0 (exact, no rounding needed).
         let function = Function {
-            response_delay: Some(3),
+            kind: FunctionKind::Standard {
+                deviance: None,
+                only_downward: None,
+                response_delay: Some(3),
+            },
             ..Default::default()
         };
         let profile = std::rc::Rc::new(NormalizedGraphProfile {

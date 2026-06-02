@@ -38,8 +38,8 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
-    DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
@@ -324,11 +324,10 @@ impl GpuNVidia {
                         fan_name.clone(),
                         ChannelInfo {
                             label: Some(fan_name.clone()),
-                            speed_options: Some(SpeedOptions {
+                            kind: ChannelKind::Speed(SpeedOptions {
                                 fixed_enabled: true,
                                 ..Default::default()
                             }),
-                            ..Default::default()
                         },
                     );
                     channel_status.push(ChannelStatus {
@@ -346,7 +345,7 @@ impl GpuNVidia {
                         load_name.clone(),
                         ChannelInfo {
                             label: Some(load_name.clone()),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         },
                     );
                     channel_status.push(ChannelStatus {
@@ -442,7 +441,7 @@ impl GpuNVidia {
                         power_name.clone(),
                         ChannelInfo {
                             label: Some(power_name.clone()),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         },
                     );
                     channel_status.push(ChannelStatus {
@@ -535,7 +534,7 @@ impl GpuNVidia {
                 clock_name.to_string(),
                 ChannelInfo {
                     label: Some(label),
-                    ..Default::default()
+                    kind: ChannelKind::InfoOnly,
                 },
             );
             nvidia_freq_infos.push(clock_type);
@@ -916,11 +915,11 @@ impl GpuNVidia {
                         channels.insert(
                             NVIDIA_FAN_NAME.to_string(),
                             ChannelInfo {
-                                speed_options: Some(SpeedOptions {
+                                label: None,
+                                kind: ChannelKind::Speed(SpeedOptions {
                                     fixed_enabled: has_xauth, // disable if xauth not found
                                     ..Default::default()
                                 }),
-                                ..Default::default()
                             },
                         );
                     }
@@ -933,7 +932,7 @@ impl GpuNVidia {
                             GPU_LOAD_NAME.to_string(),
                             ChannelInfo {
                                 label: Some(GPU_LOAD_NAME.to_string()),
-                                ..Default::default()
+                                kind: ChannelKind::InfoOnly,
                             },
                         );
                     }

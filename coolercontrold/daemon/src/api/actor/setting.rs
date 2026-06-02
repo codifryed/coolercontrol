@@ -23,7 +23,7 @@ use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID};
 use crate::setting::{
     CCDeviceSettings, CoolerControlSettings, CustomSensor, DeviceExtensions, Profile, ProfileType,
-    Setting, TempSource,
+    Setting, SettingKind, TempSource,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -267,8 +267,9 @@ impl ApiActor<SettingMessage> for SettingActor {
                             {
                                 let reset_setting = Setting {
                                     channel_name: setting.channel_name,
-                                    reset_to_default: Some(true),
-                                    ..Default::default()
+                                    kind: SettingKind::Reset {
+                                        reset_to_default: true,
+                                    },
                                 };
                                 self.config.set_device_setting(&device_uid, &reset_setting);
                             }
@@ -464,10 +465,10 @@ fn verify_disable_does_not_orphan_temp_sources(
     };
     let mut broken_profiles: Vec<(String, String)> = Vec::with_capacity(profiles.len());
     for profile in profiles {
-        if profile.p_type != ProfileType::Graph {
+        if profile.p_type() != ProfileType::Graph {
             continue;
         }
-        let Some(source) = profile.temp_source.as_ref() else {
+        let Some(source) = profile.temp_source() else {
             continue;
         };
         if is_broken(source) {
@@ -476,7 +477,7 @@ fn verify_disable_does_not_orphan_temp_sources(
     }
     let mut broken_sensors: Vec<(String, String)> = Vec::with_capacity(custom_sensors.len());
     for sensor in custom_sensors {
-        for sensor_source in &sensor.sources {
+        for sensor_source in sensor.sources() {
             if is_broken(&sensor_source.temp_source) {
                 broken_sensors.push((
                     sensor.id.clone(),
@@ -518,13 +519,15 @@ fn build_orphan_error_message(
 mod tests {
     use super::{
         build_orphan_error_message, verify_disable_does_not_orphan_temp_sources, CCDeviceSettings,
-        CCError, CustomSensor, Profile, ProfileType, TempSource,
+        CCError, CustomSensor, Profile, TempSource,
     };
     use crate::setting::{
-        CCChannelSettings, CustomSensorType, CustomTempSourceData, DeviceExtensions,
+        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+        DeviceExtensions, ProfileKind,
     };
     use std::collections::HashMap;
     use std::ops::Not;
+    use std::path::PathBuf;
 
     const DEVICE_A: &str = "uid_a";
     const DEVICE_B: &str = "uid_b";
@@ -552,12 +555,16 @@ mod tests {
     fn graph_profile(name: &str, source_uid: &str, source_temp: &str) -> Profile {
         Profile {
             uid: format!("profile-{name}"),
-            p_type: ProfileType::Graph,
             name: name.to_string(),
-            temp_source: Some(TempSource {
-                temp_name: source_temp.to_string(),
-                device_uid: source_uid.to_string(),
-            }),
+            kind: ProfileKind::Graph {
+                speed_profile: None,
+                temp_source: Some(TempSource {
+                    temp_name: source_temp.to_string(),
+                    device_uid: source_uid.to_string(),
+                }),
+                temp_min: None,
+                temp_max: None,
+            },
             ..Default::default()
         }
     }
@@ -565,15 +572,18 @@ mod tests {
     fn mix_sensor(id: &str, source_uid: &str, source_temp: &str) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
-            cs_type: CustomSensorType::Mix,
-            sources: vec![CustomTempSourceData {
-                weight: 1,
-                temp_source: TempSource {
-                    temp_name: source_temp.to_string(),
-                    device_uid: source_uid.to_string(),
-                },
-            }],
-            ..Default::default()
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![CustomTempSourceData {
+                    weight: 1,
+                    temp_source: TempSource {
+                        temp_name: source_temp.to_string(),
+                        device_uid: source_uid.to_string(),
+                    },
+                }],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
         }
     }
 
@@ -753,10 +763,12 @@ mod tests {
         let current = settings(&[("Tctl", false)], false);
         let update = settings(&[("Tctl", true)], false);
         let mut fixed_profile = graph_profile("Fixed", DEVICE_A, "Tctl");
-        fixed_profile.p_type = ProfileType::Fixed;
-        fixed_profile.temp_source = None;
+        fixed_profile.kind = ProfileKind::Fixed { speed_fixed: None };
         let mut mix_profile = graph_profile("Mix", DEVICE_A, "Tctl");
-        mix_profile.p_type = ProfileType::Mix;
+        mix_profile.kind = ProfileKind::Mix {
+            member_profile_uids: Vec::new(),
+            mix_function_type: None,
+        };
         let profiles = vec![fixed_profile, mix_profile];
         let result = verify_disable_does_not_orphan_temp_sources(
             &DEVICE_A.to_string(),
@@ -777,9 +789,11 @@ mod tests {
         let update = settings(&[("Tctl", true)], false);
         let file_sensor = CustomSensor {
             id: "FromFile".to_string(),
-            cs_type: CustomSensorType::File,
-            sources: Vec::new(),
-            ..Default::default()
+            kind: CustomSensorKind::File {
+                file_path: PathBuf::from("/tmp/from_file"),
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
         };
         let result = verify_disable_does_not_orphan_temp_sources(
             &DEVICE_A.to_string(),

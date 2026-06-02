@@ -1027,8 +1027,7 @@ impl Repository for ServicePluginRepo {
                 .get(channel_name)
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
             if channel_info
-                .speed_options
-                .as_ref()
+                .speed_options()
                 .is_some_and(|opt| opt.fixed_enabled)
                 .not()
             {
@@ -1069,8 +1068,7 @@ impl Repository for ServicePluginRepo {
                 .get(channel_name)
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
             if channel_info
-                .speed_options
-                .as_ref()
+                .speed_options()
                 .is_some_and(|opt| opt.fixed_enabled)
                 .not()
             {
@@ -1110,8 +1108,7 @@ impl Repository for ServicePluginRepo {
                 .get(channel_name)
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
             if channel_info
-                .speed_options
-                .as_ref()
+                .speed_options()
                 .is_some_and(|opt| {
                     opt.extension
                         .as_ref()
@@ -1174,7 +1171,7 @@ impl Repository for ServicePluginRepo {
                 .channels
                 .get(channel_name)
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-            if channel_info.lighting_modes.is_empty() {
+            if channel_info.lighting_modes().is_empty() {
                 return Err(anyhow!(
                     "Channel: {channel_name} does not support lighting modes"
                 ));
@@ -1211,7 +1208,7 @@ impl Repository for ServicePluginRepo {
                 .channels
                 .get(channel_name)
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-            if channel_info.lcd_modes.is_empty() {
+            if channel_info.lcd_modes().is_empty() {
                 return Err(anyhow!(
                     "Channel: {channel_name} does not support LCD modes"
                 ));

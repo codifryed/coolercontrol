@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode,
-    SpeedOptions,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, DeviceInfo, DriverInfo, DriverType,
+    LightingMode, SpeedOptions,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -46,26 +46,26 @@ impl DeviceSupport for HydroProSupport {
         channels.insert(
             "pump".to_string(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
                 }),
-                ..Default::default()
             },
         );
         for channel_name in &device_response.properties.speed_channels {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
                         fixed_enabled: true,
                         extension: Some(ChannelExtensionNames::AutoHWCurve),
                     }),
-                    ..Default::default()
                 },
             );
         }
@@ -73,8 +73,8 @@ impl DeviceSupport for HydroProSupport {
         channels.insert(
             "logo".to_string(),
             ChannelInfo {
-                lighting_modes,
-                ..Default::default()
+                label: None,
+                kind: ChannelKind::Lighting(lighting_modes),
             },
         );
         let lighting_speeds = vec![

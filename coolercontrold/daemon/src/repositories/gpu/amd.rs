@@ -25,8 +25,8 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
-    DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
@@ -357,20 +357,19 @@ impl GpuAMD {
                         };
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
-                            speed_options: Some(SpeedOptions {
+                            kind: ChannelKind::Speed(SpeedOptions {
                                 extension,
                                 fixed_enabled: fan_is_controllable,
                                 min_duty,
                                 max_duty,
                             }),
-                            ..Default::default()
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
                     HwmonChannelType::Load => {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
@@ -381,7 +380,7 @@ impl GpuAMD {
                             .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                         let channel_info = ChannelInfo {
                             label: Some(format!("{GPU_FREQ_NAME} {label_base}")),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
@@ -393,7 +392,7 @@ impl GpuAMD {
                             .unwrap_or_default();
                         let channel_info = ChannelInfo {
                             label: Some(format!("{GPU_POWER_NAME}{label_ext}")),
-                            ..Default::default()
+                            kind: ChannelKind::InfoOnly,
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }

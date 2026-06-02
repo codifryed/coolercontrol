@@ -25,13 +25,13 @@ mod engine_tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
-        ChannelInfo, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty, SpeedOptions,
-        Status, Temp, TempName, TempStatus, UID,
+        ChannelInfo, ChannelKind, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty,
+        SpeedOptions, Status, Temp, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
+        Function, FunctionKind, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
         ProfileUID, TempSource,
     };
     use anyhow::{anyhow, Result};
@@ -197,11 +197,11 @@ mod engine_tests {
         device.borrow_mut().info.channels.insert(
             fan_channel_name.clone(),
             ChannelInfo {
-                speed_options: Some(SpeedOptions {
+                label: None,
+                kind: ChannelKind::Speed(SpeedOptions {
                     fixed_enabled: true,
                     ..Default::default()
                 }),
-                ..Default::default()
             },
         );
         fan_channel_name
@@ -251,9 +251,12 @@ mod engine_tests {
         let profile = Profile {
             uid: profile_uid.clone(),
             name: "Test Profile".to_string(),
-            p_type: ProfileType::Graph,
-            speed_profile: Some(speed_profile),
-            temp_source: Some(temp_source),
+            kind: ProfileKind::Graph {
+                speed_profile: Some(speed_profile),
+                temp_source: Some(temp_source),
+                temp_min: None,
+                temp_max: None,
+            },
             ..Default::default()
         };
         config.set_profile(profile).unwrap();
@@ -270,11 +273,13 @@ mod engine_tests {
         let profile = Profile {
             uid: profile_uid.clone(),
             name: "Test Profile".to_string(),
-            p_type: ProfileType::Graph,
-            speed_profile: Some(speed_profile),
-            temp_source: Some(temp_source),
             function_uid: function_uid.clone(),
-            ..Default::default()
+            kind: ProfileKind::Graph {
+                speed_profile: Some(speed_profile),
+                temp_source: Some(temp_source),
+                temp_min: None,
+                temp_max: None,
+            },
         };
         config.set_profile(profile).unwrap();
         profile_uid
@@ -289,7 +294,6 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "Function1".to_string(),
-            f_type: FunctionType::Identity,
             step_size_min: duty_minimum,
             step_size_max: duty_maximum,
             ..Default::default()
@@ -308,12 +312,13 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "StandardFunction".to_string(),
-            f_type: FunctionType::Standard,
             step_size_min: 2,
             step_size_max: 100,
-            response_delay: Some(response_delay),
-            deviance: Some(deviance),
-            only_downward: Some(only_downward),
+            kind: FunctionKind::Standard {
+                deviance: Some(deviance),
+                only_downward: Some(only_downward),
+                response_delay: Some(response_delay),
+            },
             ..Default::default()
         };
         config.set_function(function).unwrap();
@@ -332,12 +337,13 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "StandardFunction".to_string(),
-            f_type: FunctionType::Standard,
             step_size_min,
             step_size_max,
-            response_delay: Some(response_delay),
-            deviance: Some(deviance),
-            only_downward: Some(only_downward),
+            kind: FunctionKind::Standard {
+                deviance: Some(deviance),
+                only_downward: Some(only_downward),
+                response_delay: Some(response_delay),
+            },
             ..Default::default()
         };
         config.set_function(function).unwrap();
@@ -354,7 +360,6 @@ mod engine_tests {
         let function = Function {
             uid: function_uid.clone(),
             name: "BypassFunction".to_string(),
-            f_type: FunctionType::Identity,
             step_size_min,
             step_size_max,
             bypass_min_at_extremes,
@@ -1503,7 +1508,7 @@ mod engine_tests {
         // stored setting must be left untouched. Verifies both the
         // snapshot classification and the restore routing.
         use crate::calibration::{DiagnosisHost, SnapshotKind};
-        use crate::setting::{Setting, DEFAULT_PROFILE_UID};
+        use crate::setting::{Setting, SettingKind, DEFAULT_PROFILE_UID};
         cc_fs::test_runtime(async {
             let (engine, config, device_uid, set_speeds) = setup_engine_with_speed_recorder();
 
@@ -1513,11 +1518,9 @@ mod engine_tests {
                 &device_uid,
                 &Setting {
                     channel_name: chan_default.clone(),
-                    speed_fixed: None,
-                    lighting: None,
-                    lcd: None,
-                    reset_to_default: None,
-                    profile_uid: Some(DEFAULT_PROFILE_UID.to_string()),
+                    kind: SettingKind::Profile {
+                        profile_uid: DEFAULT_PROFILE_UID.to_string(),
+                    },
                 },
             );
             let snapshot = engine.snapshot_setting(&device_uid, &chan_default);
@@ -1535,13 +1538,14 @@ mod engine_tests {
                 "restoring Unmanaged must take the reset path, not write a manual duty: {:?}",
                 set_speeds.borrow()
             );
-            assert_eq!(
-                config
-                    .get_device_channel_settings(&device_uid, &chan_default)
-                    .expect("setting present")
-                    .profile_uid
-                    .as_deref(),
-                Some(DEFAULT_PROFILE_UID),
+            let stored = config
+                .get_device_channel_settings(&device_uid, &chan_default)
+                .expect("setting present");
+            assert!(
+                matches!(
+                    &stored.kind,
+                    SettingKind::Profile { profile_uid } if profile_uid == DEFAULT_PROFILE_UID
+                ),
                 "calibration must leave the stored Unmanaged setting untouched"
             );
 

@@ -90,10 +90,18 @@ const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const chosenThresholdHopping: Ref<boolean> = ref(currentFunction.value.threshold_hopping)
 const chosenBypassMinAtExtremes: Ref<boolean> = ref(currentFunction.value.bypass_min_at_extremes)
 const functionTypeOptions = computed(() => {
-    return [...$enum(FunctionType).values()].map((type) => ({
-        value: type,
-        label: getFunctionTypeDisplayName(type),
-    }))
+    // EMA is deprecated in favor of the EMA custom-sensor type. Hide it unless this function
+    // already uses it, so existing EMA functions stay editable but new adoption is discouraged.
+    return [...$enum(FunctionType).values()]
+        .filter(
+            (type) =>
+                type !== FunctionType.ExponentialMovingAvg ||
+                currentFunction.value.f_type === FunctionType.ExponentialMovingAvg,
+        )
+        .map((type) => ({
+            value: type,
+            label: getFunctionTypeDisplayName(type),
+        }))
 })
 
 const saveFunctionState = async () => {

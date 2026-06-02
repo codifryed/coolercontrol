@@ -569,13 +569,141 @@ impl Default for DeviceInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
+/// Describes a single device channel. A channel is exactly one of {speed, lighting, lcd} or
+/// info-only; the mutual exclusivity is enforced by [`ChannelKind`]. `label` is presentation-only
+/// and may accompany any kind.
+///
+/// NOTE: serde and `JsonSchema` are bridged through the private [`ChannelInfoWire`] (below) solely
+/// to keep the REST/OpenAPI wire shape byte-identical to the pre-enum flat struct (all five fields
+/// always present). That bridge, the `#[serde(into/from)]` attribute, and the manual `JsonSchema`
+/// impl are a backward-compatibility shim and can all be deleted together at the next API major
+/// version, after which this type can derive `Serialize`/`Deserialize`/`JsonSchema` directly.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(into = "ChannelInfoWire", from = "ChannelInfoWire")]
 pub struct ChannelInfo {
     pub label: Option<String>,
-    pub speed_options: Option<SpeedOptions>,
-    pub lighting_modes: Vec<LightingMode>,
-    pub lcd_modes: Vec<LcdMode>,
-    pub lcd_info: Option<LcdInfo>,
+    pub kind: ChannelKind,
+}
+
+/// The channel type and its type-specific data. Exactly one variant holds for a given channel.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ChannelKind {
+    Speed(SpeedOptions),
+    Lighting(Vec<LightingMode>),
+    Lcd {
+        modes: Vec<LcdMode>,
+        info: Option<LcdInfo>,
+    },
+    #[default]
+    InfoOnly,
+}
+
+impl ChannelInfo {
+    pub fn speed_options(&self) -> Option<&SpeedOptions> {
+        match &self.kind {
+            ChannelKind::Speed(speed_options) => Some(speed_options),
+            _ => None,
+        }
+    }
+
+    pub fn lighting_modes(&self) -> &[LightingMode] {
+        match &self.kind {
+            ChannelKind::Lighting(lighting_modes) => lighting_modes,
+            _ => &[],
+        }
+    }
+
+    pub fn lcd_modes(&self) -> &[LcdMode] {
+        match &self.kind {
+            ChannelKind::Lcd { modes, .. } => modes,
+            _ => &[],
+        }
+    }
+
+    pub fn lcd_info(&self) -> Option<&LcdInfo> {
+        match &self.kind {
+            ChannelKind::Lcd { info, .. } => info.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn speed_options_mut(&mut self) -> Option<&mut SpeedOptions> {
+        match &mut self.kind {
+            ChannelKind::Speed(speed_options) => Some(speed_options),
+            _ => None,
+        }
+    }
+}
+
+// Backward-compatibility wire shim for `ChannelInfo` (see the NOTE on that type). Preserves the
+// legacy flat JSON shape for REST and OpenAPI so existing clients keep working (the UI reads
+// `lighting_modes`/`lcd_modes` without null-guards). Delete this struct, the `#[serde(into/from)]`
+// attribute on `ChannelInfo`, and the manual `JsonSchema for ChannelInfo` impl together at the next
+// API major version.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+struct ChannelInfoWire {
+    label: Option<String>,
+    speed_options: Option<SpeedOptions>,
+    lighting_modes: Vec<LightingMode>,
+    lcd_modes: Vec<LcdMode>,
+    lcd_info: Option<LcdInfo>,
+}
+
+impl From<ChannelInfo> for ChannelInfoWire {
+    fn from(value: ChannelInfo) -> Self {
+        let ChannelInfo { label, kind } = value;
+        let mut wire = ChannelInfoWire {
+            label,
+            ..Default::default()
+        };
+        match kind {
+            ChannelKind::Speed(speed_options) => wire.speed_options = Some(speed_options),
+            ChannelKind::Lighting(lighting_modes) => wire.lighting_modes = lighting_modes,
+            ChannelKind::Lcd { modes, info } => {
+                wire.lcd_modes = modes;
+                wire.lcd_info = info;
+            }
+            ChannelKind::InfoOnly => {}
+        }
+        wire
+    }
+}
+
+impl From<ChannelInfoWire> for ChannelInfo {
+    fn from(value: ChannelInfoWire) -> Self {
+        let ChannelInfoWire {
+            label,
+            speed_options,
+            lighting_modes,
+            lcd_modes,
+            lcd_info,
+        } = value;
+        // Deterministic precedence for a malformed multi-field payload: speed, then lighting, then
+        // lcd, else info-only. Daemon-produced payloads only ever set one category.
+        let kind = if let Some(speed_options) = speed_options {
+            ChannelKind::Speed(speed_options)
+        } else if lighting_modes.is_empty().not() {
+            ChannelKind::Lighting(lighting_modes)
+        } else if lcd_modes.is_empty().not() || lcd_info.is_some() {
+            ChannelKind::Lcd {
+                modes: lcd_modes,
+                info: lcd_info,
+            }
+        } else {
+            ChannelKind::InfoOnly
+        };
+        Self { label, kind }
+    }
+}
+
+impl JsonSchema for ChannelInfo {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ChannelInfo")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        ChannelInfoWire::json_schema(generator)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
@@ -1088,5 +1216,165 @@ mod tests {
         assert_eq!(watts.min, 120.0);
         assert_eq!(watts.max, 120.0);
         assert_eq!(watts.avg, 120.0);
+    }
+
+    fn a_lighting_mode() -> LightingMode {
+        LightingMode {
+            name: "fixed".to_string(),
+            frontend_name: "Fixed".to_string(),
+            min_colors: 0,
+            max_colors: 1,
+            speed_enabled: false,
+            backward_enabled: false,
+            type_: LightingModeType::Liquidctl,
+        }
+    }
+
+    fn an_lcd_mode() -> LcdMode {
+        LcdMode {
+            name: "liquid".to_string(),
+            frontend_name: "Liquid".to_string(),
+            brightness: true,
+            orientation: false,
+            image: false,
+            colors_min: 0,
+            colors_max: 0,
+            type_: LcdModeType::Liquidctl,
+        }
+    }
+
+    // The wire shim must always emit all five legacy fields, regardless of variant. This is the
+    // contract the UI depends on (it reads `lighting_modes`/`lcd_modes` without null-guards).
+    fn assert_all_wire_keys(v: &serde_json::Value) {
+        for key in [
+            "label",
+            "speed_options",
+            "lighting_modes",
+            "lcd_modes",
+            "lcd_info",
+        ] {
+            assert!(
+                v.get(key).is_some(),
+                "wire JSON must always include `{key}`"
+            );
+        }
+    }
+
+    // A Speed channel serializes to the legacy flat shape (speed_options set, the rest empty/null)
+    // and round-trips. Verifies the byte-identical wire contract for REST clients.
+    #[test]
+    fn channel_info_speed_wire_is_flat() {
+        let ci = ChannelInfo {
+            label: Some("Fan 1".to_string()),
+            kind: ChannelKind::Speed(SpeedOptions::default()),
+        };
+        let v = serde_json::to_value(&ci).unwrap();
+        assert_all_wire_keys(&v);
+        assert!(v.get("speed_options").unwrap().is_object());
+        assert_eq!(v["lighting_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_info"], serde_json::json!(null));
+        let back: ChannelInfo = serde_json::from_value(v).unwrap();
+        assert_eq!(back, ci);
+    }
+
+    // A Lighting channel: lighting_modes populated, everything else empty/null.
+    #[test]
+    fn channel_info_lighting_wire_is_flat() {
+        let ci = ChannelInfo {
+            label: None,
+            kind: ChannelKind::Lighting(vec![a_lighting_mode()]),
+        };
+        let v = serde_json::to_value(&ci).unwrap();
+        assert_all_wire_keys(&v);
+        assert_eq!(v["speed_options"], serde_json::json!(null));
+        assert_eq!(v["lighting_modes"].as_array().unwrap().len(), 1);
+        assert_eq!(v["lcd_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_info"], serde_json::json!(null));
+        // No deser round-trip here: `LightingMode` uses a serialize-only `rename` on `type_` (a
+        // pre-existing asymmetry). ChannelInfo is response-only, so JSON deser is not a real path.
+    }
+
+    // An Lcd channel: lcd_modes + lcd_info populated, everything else empty/null.
+    #[test]
+    fn channel_info_lcd_wire_is_flat() {
+        let ci = ChannelInfo {
+            label: None,
+            kind: ChannelKind::Lcd {
+                modes: vec![an_lcd_mode()],
+                info: Some(LcdInfo {
+                    screen_width: 320,
+                    screen_height: 320,
+                    max_image_size_bytes: 100_000,
+                }),
+            },
+        };
+        let v = serde_json::to_value(&ci).unwrap();
+        assert_all_wire_keys(&v);
+        assert_eq!(v["speed_options"], serde_json::json!(null));
+        assert_eq!(v["lighting_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_modes"].as_array().unwrap().len(), 1);
+        assert!(v.get("lcd_info").unwrap().is_object());
+        // No deser round-trip here: `LcdMode` uses a serialize-only `rename` on `type_` (a
+        // pre-existing asymmetry). ChannelInfo is response-only, so JSON deser is not a real path.
+    }
+
+    // An info-only channel (label only): every type-specific field is empty/null but present.
+    #[test]
+    fn channel_info_info_only_wire_is_flat() {
+        let ci = ChannelInfo {
+            label: Some("CPU Temp".to_string()),
+            kind: ChannelKind::InfoOnly,
+        };
+        let v = serde_json::to_value(&ci).unwrap();
+        assert_all_wire_keys(&v);
+        assert_eq!(v["speed_options"], serde_json::json!(null));
+        assert_eq!(v["lighting_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_modes"], serde_json::json!([]));
+        assert_eq!(v["lcd_info"], serde_json::json!(null));
+        let back: ChannelInfo = serde_json::from_value(v).unwrap();
+        assert_eq!(back, ci);
+    }
+
+    // Deserializing a malformed flat payload with multiple categories resolves deterministically by
+    // precedence (speed wins), matching the documented `From<ChannelInfoWire>` behavior.
+    #[test]
+    fn channel_info_deser_precedence_prefers_speed() {
+        let v = serde_json::json!({
+            "label": null,
+            "speed_options": { "min_duty": 0, "max_duty": 100, "fixed_enabled": true, "extension": null },
+            "lighting_modes": [],
+            "lcd_modes": [],
+            "lcd_info": null
+        });
+        let ci: ChannelInfo = serde_json::from_value(v).unwrap();
+        assert!(matches!(ci.kind, ChannelKind::Speed(_)));
+    }
+
+    // The OpenAPI/JsonSchema for ChannelInfo must remain the flat five-field object (via the wire
+    // shim), so the generated API spec does not change.
+    #[test]
+    fn channel_info_schema_stays_flat() {
+        let schema = schemars::schema_for!(ChannelInfo);
+        let value = serde_json::to_value(&schema).unwrap();
+        let props = value
+            .get("properties")
+            .expect("schema should expose object properties");
+        for key in [
+            "label",
+            "speed_options",
+            "lighting_modes",
+            "lcd_modes",
+            "lcd_info",
+        ] {
+            assert!(
+                props.get(key).is_some(),
+                "schema must keep the flat `{key}` property"
+            );
+        }
+        assert!(
+            props.get("kind").is_none(),
+            "schema must not expose the enum `kind`"
+        );
     }
 }

@@ -32,7 +32,7 @@ use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::engine::main::ReposByType;
 use crate::engine::processors;
 use crate::paths;
-use crate::setting::{LcdModeName, LcdSettings};
+use crate::setting::{LcdModeKind, LcdModeName, LcdSettings};
 use crate::AllDevices;
 
 const IMAGE_FILENAME_SINGLE_TEMP: &str = "single_temp.png";
@@ -65,8 +65,8 @@ impl LcdCommander {
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
         let temp_source = lcd_settings
-            .temp_source
-            .clone()
+            .temp_source()
+            .cloned()
             .with_context(|| "Temp Source should be present for LCD Temp Scheduling")?;
         let _ = self
             .all_devices
@@ -100,8 +100,8 @@ impl LcdCommander {
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
         let carousel = lcd_settings
-            .carousel
-            .clone()
+            .carousel()
+            .cloned()
             .with_context(|| "CarouselSettings should be present for LCD Carousel Scheduling")?;
         let images_path = carousel
             .images_path
@@ -123,8 +123,8 @@ impl LcdCommander {
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}"),
             })?
-            .lcd_info
-            .clone()
+            .lcd_info()
+            .cloned()
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
             })?;
@@ -194,7 +194,7 @@ impl LcdCommander {
         let mut temps_to_display = Vec::new();
         for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
-                if lcd_settings.mode != LcdModeName::Temp {
+                if lcd_settings.mode_name() != LcdModeName::Temp {
                     continue;
                 }
                 if let Some(current_source_temp_data) = self.get_source_temp_data(lcd_settings) {
@@ -226,7 +226,7 @@ impl LcdCommander {
     }
 
     fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
-        let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
+        let setting_temp_source = lcd_settings.temp_source().unwrap();
         if let Some(temp_source_device_lock) = self
             .all_devices
             .get(setting_temp_source.device_uid.as_str())
@@ -275,7 +275,7 @@ impl LcdCommander {
         lcd_settings: LcdSettings,
         temp_data_to_display: Rc<TempData>,
     ) {
-        if lcd_settings.mode != LcdModeName::Temp {
+        if lcd_settings.mode_name() != LcdModeName::Temp {
             return;
         }
         let start = Instant::now();
@@ -348,13 +348,11 @@ impl LcdCommander {
             None
         };
         let lcd_settings = LcdSettings {
-            mode: LcdModeName::Image,
             brightness,
             orientation,
-            image_file_processed: Some(image_path_str),
-            carousel: None,
-            colors: Vec::new(),
-            temp_source: None,
+            mode: LcdModeKind::Image {
+                image_file_processed: Some(image_path_str),
+            },
         };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
@@ -389,7 +387,7 @@ impl LcdCommander {
     fn set_carousel_lcd_image<'s>(&'s self, scope: &'s Scope<'s, 's, ()>) {
         for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
-                if lcd_settings.mode != LcdModeName::Carousel {
+                if lcd_settings.mode_name() != LcdModeName::Carousel {
                     continue;
                 }
                 let elapsed_secs = self
@@ -405,8 +403,7 @@ impl LcdCommander {
                     .round() as u64;
                 if elapsed_secs
                     < lcd_settings
-                        .carousel
-                        .as_ref()
+                        .carousel()
                         .expect("carousel lcd settings should be present")
                         .interval
                 {
@@ -443,13 +440,11 @@ impl LcdCommander {
                     None
                 };
                 let lcd_settings = LcdSettings {
-                    mode: LcdModeName::Image,
                     brightness,
                     orientation,
-                    image_file_processed: Some(image_path),
-                    carousel: None,
-                    colors: Vec::new(),
-                    temp_source: None,
+                    mode: LcdModeKind::Image {
+                        image_file_processed: Some(image_path),
+                    },
                 };
                 let device_type = self.all_devices[device_uid].borrow().d_type;
                 debug!(

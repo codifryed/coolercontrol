@@ -30,14 +30,15 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::{ChannelName, Duty, UID};
+use crate::device::{ChannelName, Duty, Temp, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
-    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
-    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
+    CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
+    DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
+    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
+    ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
     DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
@@ -277,23 +278,30 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if setting.reset_to_default.unwrap_or(false) {
-            *channel_setting = Item::None; // removes channel from settings
-        } else if let Some(speed_fixed) = setting.speed_fixed {
-            Self::set_setting_fixed_speed(channel_setting, speed_fixed);
-        } else if let Some(lighting) = &setting.lighting {
-            Self::set_setting_lighting(channel_setting, lighting);
-        } else if let Some(lcd) = &setting.lcd {
-            Self::set_setting_lcd(channel_setting, lcd);
-        } else if let Some(profile_uid) = &setting.profile_uid {
-            Self::set_profile_uid(channel_setting, profile_uid);
-        } else {
-            // If there's nothing to set, this is an invalid/empty setting.
-            warn!(
-                "Invalid Setting: {device_uid} | {} - has nothing to set. This shouldn't happen, removing setting.",
-                setting.channel_name
-            );
-            *channel_setting = Item::None; // removes channel from settings
+        match &setting.kind {
+            SettingKind::Reset {
+                reset_to_default: true,
+            } => {
+                *channel_setting = Item::None; // removes channel from settings
+            }
+            SettingKind::Reset {
+                reset_to_default: false,
+            } => {
+                // No-op marker; reachable only from external JSON. Do not touch the
+                // existing entry, since `false` carries no state to persist.
+            }
+            SettingKind::SpeedFixed { speed_fixed } => {
+                Self::set_setting_fixed_speed(channel_setting, *speed_fixed);
+            }
+            SettingKind::Profile { profile_uid } => {
+                Self::set_profile_uid(channel_setting, profile_uid);
+            }
+            SettingKind::Lighting { lighting } => {
+                Self::set_setting_lighting(channel_setting, lighting);
+            }
+            SettingKind::Lcd { lcd } => {
+                Self::set_setting_lcd(channel_setting, lcd);
+            }
         }
     }
 
@@ -395,7 +403,7 @@ impl Config {
     fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] =
-            Item::Value(Value::String(Formatted::new(lcd.mode.to_string())));
+            Item::Value(Value::String(Formatted::new(lcd.mode_name().to_string())));
         if let Some(brightness) = lcd.brightness {
             channel_setting["lcd"]["brightness"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(brightness))));
@@ -404,11 +412,11 @@ impl Config {
             channel_setting["lcd"]["orientation"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
         }
-        if let Some(image_file_processed) = &lcd.image_file_processed {
+        if let Some(image_file_processed) = lcd.image_file_processed() {
             channel_setting["lcd"]["image_file_processed"] =
                 Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
         }
-        if let Some(carousel_settings) = &lcd.carousel {
+        if let Some(carousel_settings) = lcd.carousel() {
             channel_setting["lcd"]["carousel"]["interval"] = Item::Value(Value::Integer(
                 Formatted::new(carousel_settings.interval as i64),
             ));
@@ -417,16 +425,7 @@ impl Config {
                     Item::Value(Value::String(Formatted::new(images_path.clone())));
             }
         }
-        let mut color_array = toml_edit::Array::new();
-        for (r, g, b) in lcd.colors.clone() {
-            let mut rgb_array = toml_edit::Array::new();
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(r))));
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(g))));
-            rgb_array.push(Value::Integer(Formatted::new(i64::from(b))));
-            color_array.push(rgb_array);
-        }
-        channel_setting["lcd"]["colors"] = Item::Value(Value::Array(color_array));
-        if let Some(temp_source) = &lcd.temp_source {
+        if let Some(temp_source) = lcd.temp_source() {
             channel_setting["lcd"]["temp_source"]["temp_name"] =
                 Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
             channel_setting["lcd"]["temp_source"]["device_uid"] = Item::Value(Value::String(
@@ -472,32 +471,65 @@ impl Config {
                     .with_context(|| "Channel Setting should be an inline table")?
                     .clone()
                     .into_table();
-                let speed_fixed = Self::get_speed_fixed(&setting_table)?;
-                let lighting = Self::get_lighting(&setting_table)?;
-                let lcd = Self::get_lcd(&setting_table)?;
-                let profile_uid = Self::get_profile_uid(&setting_table)?;
-                if speed_fixed.is_none()
-                    && lighting.is_none()
-                    && lcd.is_none()
-                    && profile_uid.is_none()
-                {
-                    debug!(
-                        "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
-                        This setting will be ignored."
-                    );
+                let Some(kind) =
+                    Self::resolve_setting_kind(device_uid, channel_name, &setting_table)?
+                else {
                     continue;
-                }
+                };
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
-                    speed_fixed,
-                    lighting,
-                    lcd,
-                    reset_to_default: None,
-                    profile_uid,
+                    kind,
                 });
             }
         }
         Ok(settings)
+    }
+
+    /// Determines the `SettingKind` from a parsed channel-setting TOML table.
+    ///
+    /// Returns `Ok(None)` (and logs at debug) if no kind-discriminating field is present so
+    /// the caller can skip the entry. When more than one is present (a malformed config), the
+    /// first detected wins by deliberate precedence: `SpeedFixed` -> `Profile` -> `Lighting`
+    /// -> `Lcd`. `Reset` is omitted because it is never persisted to the config.
+    fn resolve_setting_kind(
+        device_uid: &str,
+        channel_name: &str,
+        setting_table: &Table,
+    ) -> Result<Option<SettingKind>> {
+        let speed_fixed = Self::get_speed_fixed(setting_table)?;
+        let profile_uid = Self::get_profile_uid(setting_table)?;
+        let lighting = Self::get_lighting(setting_table)?;
+        let lcd = Self::get_lcd(setting_table)?;
+
+        let present_count = u8::from(speed_fixed.is_some())
+            + u8::from(profile_uid.is_some())
+            + u8::from(lighting.is_some())
+            + u8::from(lcd.is_some());
+        if present_count > 1 {
+            debug!(
+                "Multiple Setting kinds present for {device_uid} | {channel_name}; \
+                keeping first by precedence (speed_fixed, profile_uid, lighting, lcd)."
+            );
+        }
+
+        if let Some(speed_fixed) = speed_fixed {
+            return Ok(Some(SettingKind::SpeedFixed { speed_fixed }));
+        }
+        if let Some(profile_uid) = profile_uid {
+            return Ok(Some(SettingKind::Profile { profile_uid }));
+        }
+        if let Some(lighting) = lighting {
+            return Ok(Some(SettingKind::Lighting { lighting }));
+        }
+        if let Some(lcd) = lcd {
+            return Ok(Some(SettingKind::Lcd { lcd }));
+        }
+
+        debug!(
+            "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
+            This setting will be ignored."
+        );
+        Ok(None)
     }
 
     pub fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
@@ -766,7 +798,7 @@ impl Config {
             } else {
                 None
             };
-            let backward = if let Some(value) = setting_table.get("backward") {
+            let backward = if let Some(value) = lighting_table.get("backward") {
                 Some(
                     value
                         .as_bool()
@@ -869,51 +901,11 @@ impl Config {
                     None
                 };
             let carousel = Self::get_carousel(&lcd_table.clone().into_table())?;
-            let mut colors = Vec::new();
-            let colors_array = lcd_table
-                .get("colors")
-                .with_context(|| "lcd.colors should always be present")?
-                .as_array()
-                .with_context(|| "lcd.colors should be an array")?;
-            for rgb_value in colors_array {
-                let rgb_array = rgb_value
-                    .as_array()
-                    .with_context(|| "RGB values should be an array")?;
-                let r: u8 = rgb_array
-                    .get(0)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                let g: u8 = rgb_array
-                    .get(1)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                let b: u8 = rgb_array
-                    .get(2)
-                    .with_context(|| "RGB values must be in arrays of 3")?
-                    .as_integer()
-                    .with_context(|| "RGB values must be integers")?
-                    .try_into()
-                    .ok()
-                    .with_context(|| "RGB values must be between 0-255")?;
-                colors.push((r, g, b));
-            }
             let temp_source = Self::get_temp_source(&lcd_table.clone().into_table())?;
             Some(LcdSettings {
-                mode,
                 brightness,
                 orientation,
-                image_file_processed,
-                carousel,
-                colors,
-                temp_source,
+                mode: LcdModeKind::from_name(mode, image_file_processed, temp_source, carousel),
             })
         } else {
             None
@@ -1518,19 +1510,29 @@ impl Config {
                 let member_profile_uids = Self::get_profile_uids(profile_table)?;
                 let mix_function_type = Self::get_mix_function_type(profile_table)?;
                 let offset_profile = Self::get_offset_profile(profile_table)?;
+                let kind = match p_type {
+                    ProfileType::Default => ProfileKind::Default,
+                    ProfileType::Fixed => ProfileKind::Fixed { speed_fixed },
+                    ProfileType::Graph => ProfileKind::Graph {
+                        speed_profile,
+                        temp_source,
+                        temp_min,
+                        temp_max,
+                    },
+                    ProfileType::Mix => ProfileKind::Mix {
+                        member_profile_uids,
+                        mix_function_type,
+                    },
+                    ProfileType::Overlay => ProfileKind::Overlay {
+                        member_profile_uids,
+                        offset_profile,
+                    },
+                };
                 let profile = Profile {
                     uid,
-                    p_type,
                     name,
-                    speed_fixed,
-                    speed_profile,
-                    temp_source,
-                    temp_min,
-                    temp_max,
                     function_uid,
-                    member_profile_uids,
-                    mix_function_type,
-                    offset_profile,
+                    kind,
                 };
                 profiles.push(profile);
             }
@@ -1645,77 +1647,119 @@ impl Config {
     }
 
     fn add_profile_properties_to_profile_table(profile: Profile, profile_table: &mut Table) {
-        profile_table["uid"] = Item::Value(Value::String(Formatted::new(profile.uid)));
-        profile_table["name"] = Item::Value(Value::String(Formatted::new(profile.name)));
-        profile_table["p_type"] =
-            Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
-        if let Some(speed_fixed) = profile.speed_fixed {
-            profile_table["speed_fixed"] =
-                Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
-        } else {
-            profile_table["speed_fixed"] = Item::None;
+        let p_type = profile.p_type();
+        let Profile {
+            uid,
+            name,
+            function_uid,
+            kind,
+        } = profile;
+        profile_table["uid"] = Item::Value(Value::String(Formatted::new(uid)));
+        profile_table["name"] = Item::Value(Value::String(Formatted::new(name)));
+        profile_table["p_type"] = Item::Value(Value::String(Formatted::new(p_type.to_string())));
+        profile_table["function_uid"] = Item::Value(Value::String(Formatted::new(function_uid)));
+        Self::add_profile_kind_to_profile_table(kind, profile_table);
+    }
+
+    /// Writes the type-specific Profile fields. Every such key is cleared first so that changing a
+    /// Profile's type on re-save cannot leave a stale key from the previous type behind.
+    fn add_profile_kind_to_profile_table(kind: ProfileKind, profile_table: &mut Table) {
+        for key in [
+            "speed_fixed",
+            "speed_profile",
+            "temp_source",
+            "temp_min",
+            "temp_max",
+            "member_profile_uids",
+            "mix_function_type",
+            "offset_profile",
+        ] {
+            profile_table[key] = Item::None;
         }
-        if let Some(speed_profile) = profile.speed_profile {
-            let mut profile_array = toml_edit::Array::new();
-            for (temp, duty) in speed_profile {
-                let mut pair_array = toml_edit::Array::new();
-                pair_array.push(Value::Float(Formatted::new(temp)));
-                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
-                profile_array.push(pair_array);
+        match kind {
+            ProfileKind::Default => {}
+            ProfileKind::Fixed { speed_fixed } => {
+                if let Some(speed_fixed) = speed_fixed {
+                    profile_table["speed_fixed"] =
+                        Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
+                }
             }
-            profile_table["speed_profile"] = Item::Value(Value::Array(profile_array));
-        } else {
-            profile_table["speed_profile"] = Item::None;
-        }
-        if let Some(temp_source) = profile.temp_source {
-            profile_table["temp_source"]["temp_name"] =
-                Item::Value(Value::String(Formatted::new(temp_source.temp_name)));
-            profile_table["temp_source"]["device_uid"] =
-                Item::Value(Value::String(Formatted::new(temp_source.device_uid)));
-        } else {
-            profile_table["temp_source"] = Item::None;
-        }
-        if let Some(temp_min) = profile.temp_min {
-            profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
-        } else {
-            profile_table["temp_min"] = Item::None;
-        }
-        if let Some(temp_max) = profile.temp_max {
-            profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
-        } else {
-            profile_table["temp_max"] = Item::None;
-        }
-        profile_table["function_uid"] =
-            Item::Value(Value::String(Formatted::new(profile.function_uid)));
-        if profile.member_profile_uids.is_empty().not() {
-            profile_table["member_profile_uids"] = Item::Value(Value::Array(
-                profile
-                    .member_profile_uids
-                    .iter()
-                    .map(|uid| Value::String(Formatted::new(uid.clone())))
-                    .collect(),
-            ));
-        } else {
-            profile_table["member_profile_uids"] = Item::None;
-        }
-        if let Some(mix_function_type) = profile.mix_function_type {
-            profile_table["mix_function_type"] =
-                Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
-        } else {
-            profile_table["mix_function_type"] = Item::None;
-        }
-        if let Some(offset_profile) = profile.offset_profile {
-            let mut array = toml_edit::Array::new();
-            for (duty, offset) in offset_profile {
-                let mut pair_array = toml_edit::Array::new();
-                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
-                pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
-                array.push(pair_array);
+            ProfileKind::Graph {
+                speed_profile,
+                temp_source,
+                temp_min,
+                temp_max,
+            } => {
+                if let Some(speed_profile) = speed_profile {
+                    profile_table["speed_profile"] = Self::speed_profile_to_item(speed_profile);
+                }
+                if let Some(temp_source) = temp_source {
+                    profile_table["temp_source"]["temp_name"] =
+                        Item::Value(Value::String(Formatted::new(temp_source.temp_name)));
+                    profile_table["temp_source"]["device_uid"] =
+                        Item::Value(Value::String(Formatted::new(temp_source.device_uid)));
+                }
+                if let Some(temp_min) = temp_min {
+                    profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
+                }
+                if let Some(temp_max) = temp_max {
+                    profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
+                }
             }
-            profile_table["offset_profile"] = Item::Value(Value::Array(array));
-        } else {
-            profile_table["offset_profile"] = Item::None;
+            ProfileKind::Mix {
+                member_profile_uids,
+                mix_function_type,
+            } => {
+                Self::set_member_profile_uids(&member_profile_uids, profile_table);
+                if let Some(mix_function_type) = mix_function_type {
+                    profile_table["mix_function_type"] =
+                        Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
+                }
+            }
+            ProfileKind::Overlay {
+                member_profile_uids,
+                offset_profile,
+            } => {
+                Self::set_member_profile_uids(&member_profile_uids, profile_table);
+                if let Some(offset_profile) = offset_profile {
+                    profile_table["offset_profile"] = Self::offset_profile_to_item(offset_profile);
+                }
+            }
         }
+    }
+
+    fn set_member_profile_uids(member_profile_uids: &[ProfileUID], profile_table: &mut Table) {
+        if member_profile_uids.is_empty() {
+            return;
+        }
+        profile_table["member_profile_uids"] = Item::Value(Value::Array(
+            member_profile_uids
+                .iter()
+                .map(|uid| Value::String(Formatted::new(uid.clone())))
+                .collect(),
+        ));
+    }
+
+    fn speed_profile_to_item(speed_profile: Vec<(Temp, Duty)>) -> Item {
+        let mut profile_array = toml_edit::Array::new();
+        for (temp, duty) in speed_profile {
+            let mut pair_array = toml_edit::Array::new();
+            pair_array.push(Value::Float(Formatted::new(temp)));
+            pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+            profile_array.push(pair_array);
+        }
+        Item::Value(Value::Array(profile_array))
+    }
+
+    fn offset_profile_to_item(offset_profile: Vec<(Duty, Offset)>) -> Item {
+        let mut array = toml_edit::Array::new();
+        for (duty, offset) in offset_profile {
+            let mut pair_array = toml_edit::Array::new();
+            pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+            pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
+            array.push(pair_array);
+        }
+        Item::Value(Value::Array(array))
     }
 
     /*
@@ -1766,6 +1810,25 @@ impl Config {
                 }
             })
             .ok_or(anyhow!("Function not found"))
+    }
+
+    /// Logs a one-time deprecation warning for each Function still using the deprecated EMA type.
+    /// Called once at startup so the per-channel config reads do not spam the log.
+    pub fn log_deprecated_function_warnings(&self) {
+        let Ok(functions) = self.get_current_functions() else {
+            return;
+        };
+        for function in &functions {
+            if function.f_type() == FunctionType::ExponentialMovingAvg {
+                warn!(
+                    "Function '{}' ({}) uses the deprecated ExponentialMovingAvg type, \
+                     please change this and use a EMA Custom Sensor for temperature smoothing, \
+                     which has improved controls and visibility.
+                     The EMA Function type will be removed in a future release.",
+                    function.name, function.uid
+                );
+            }
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1926,20 +1989,27 @@ impl Config {
                     } else {
                         false
                     };
+                let kind = match f_type {
+                    FunctionType::Identity => FunctionKind::Identity,
+                    FunctionType::Standard => FunctionKind::Standard {
+                        deviance,
+                        only_downward,
+                        response_delay,
+                    },
+                    FunctionType::ExponentialMovingAvg => {
+                        FunctionKind::ExponentialMovingAvg { sample_window }
+                    }
+                };
                 let function = Function {
                     uid,
                     name,
-                    f_type,
                     step_size_min: duty_minimum,
                     step_size_max: duty_maximum,
                     step_size_min_decreasing,
                     step_size_max_decreasing,
-                    response_delay,
-                    deviance,
-                    only_downward,
-                    sample_window,
                     threshold_hopping,
                     bypass_min_at_extremes,
+                    kind,
                 };
                 functions.push(function);
             }
@@ -2060,10 +2130,15 @@ impl Config {
     }
 
     fn add_function_properties_to_function_table(function: Function, function_table: &mut Table) {
+        // Extract the variant-specific values before any field is moved out of `function`.
+        let f_type = function.f_type();
+        let response_delay = function.response_delay();
+        let deviance = function.deviance();
+        let only_downward = function.only_downward();
+        let sample_window = function.sample_window();
         function_table["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
         function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
-        function_table["f_type"] =
-            Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
+        function_table["f_type"] = Item::Value(Value::String(Formatted::new(f_type.to_string())));
         function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
             function.step_size_min,
         ))));
@@ -2076,24 +2151,24 @@ impl Config {
         function_table["step_size_max_decreasing"] = Item::Value(Value::Integer(Formatted::new(
             i64::from(function.step_size_max_decreasing),
         )));
-        if let Some(response_delay) = function.response_delay {
+        if let Some(response_delay) = response_delay {
             function_table["response_delay"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(response_delay))));
         } else {
             function_table["response_delay"] = Item::None;
         }
-        if let Some(deviance) = function.deviance {
+        if let Some(deviance) = deviance {
             function_table["deviance"] = Item::Value(Value::Float(Formatted::new(deviance)));
         } else {
             function_table["deviance"] = Item::None;
         }
-        if let Some(only_downward) = function.only_downward {
+        if let Some(only_downward) = only_downward {
             function_table["only_downward"] =
                 Item::Value(Value::Boolean(Formatted::new(only_downward)));
         } else {
             function_table["only_downward"] = Item::None;
         }
-        if let Some(sample_window) = function.sample_window {
+        if let Some(sample_window) = sample_window {
             let validated_window = if (1..=16).contains(&sample_window) {
                 sample_window
             } else {
@@ -2122,79 +2197,9 @@ impl Config {
         if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
             let c_sensors_array = custom_sensors_item
                 .as_array_of_tables()
-                .with_context(|| "customer_sensors should be an array of tables")?;
+                .with_context(|| "custom_sensors should be an array of tables")?;
             for c_sensor_table in c_sensors_array {
-                let id = c_sensor_table
-                    .get("id")
-                    .with_context(|| "Sensor ID should be present")?
-                    .as_str()
-                    .with_context(|| "ID should be a string")?
-                    .to_owned();
-                let cs_type_str = c_sensor_table
-                    .get("cs_type")
-                    .with_context(|| "Sensor type should be present")?
-                    .as_str()
-                    .with_context(|| "Sensor type should be a string")?
-                    .to_owned();
-                let cs_type = CustomSensorType::from_str(&cs_type_str)
-                    .with_context(|| "Sensor type should be a valid member")?;
-                let mix_function_str = c_sensor_table
-                    .get("mix_function")
-                    .with_context(|| "mix_func_type should be present")?
-                    .as_str()
-                    .with_context(|| "mix_func_type should be a string")?
-                    .to_owned();
-                let mix_function = CustomSensorMixFunctionType::from_str(&mix_function_str)
-                    .with_context(|| "mix_func_type should be a valid member")?;
-                let mut sources = Vec::new();
-                if let Some(sources_item) = c_sensor_table.get("sources") {
-                    let sources_array = sources_item
-                        .as_array_of_tables()
-                        .with_context(|| "custom_sensors.sources should be an array")?;
-                    for source_data_table in sources_array {
-                        let temp_source =
-                            Self::get_temp_source(source_data_table)?.with_context(|| {
-                                "TempSource should always be present for Custom Sensor Sources"
-                            })?;
-                        let weight_raw: u8 = source_data_table
-                            .get("weight")
-                            .with_context(|| "weight should be present")?
-                            .as_integer()
-                            .with_context(|| "weight should be an integer")?
-                            .try_into()
-                            .ok()
-                            .with_context(|| "weight must be a value between 1-254")?;
-                        let weight = weight_raw.clamp(1, 254);
-                        let custom_temp_source_data = CustomTempSourceData {
-                            temp_source,
-                            weight,
-                        };
-                        sources.push(custom_temp_source_data);
-                    }
-                }
-                let file_path = if let Some(file_path_value) = c_sensor_table.get("file_path") {
-                    let file_path_str = file_path_value
-                        .as_str()
-                        .with_context(|| "file_path should be a string")?
-                        .to_string();
-                    Some(Path::new(&file_path_str).to_path_buf())
-                } else {
-                    None
-                };
-                let offset = Self::parse_custom_sensor_offset(c_sensor_table)?;
-                let time_window_seconds = Self::parse_time_window_seconds(c_sensor_table)?;
-                let custom_sensor = CustomSensor {
-                    id,
-                    cs_type,
-                    mix_function,
-                    sources,
-                    file_path,
-                    offset,
-                    time_window_seconds,
-                    children: vec![],
-                    parents: vec![],
-                };
-                custom_sensors.push(custom_sensor);
+                custom_sensors.push(Self::parse_custom_sensor(c_sensor_table)?);
             }
         }
         let mut ids = Vec::new();
@@ -2208,6 +2213,124 @@ impl Config {
             ids.push(custom_sensor.id.clone());
         }
         Ok(custom_sensors)
+    }
+
+    /// Parses one persisted custom-sensor table, dispatching on the `cs_type` discriminator
+    /// so only the active variant's fields are read. The single-source cardinality for
+    /// `Offset`/`TimeAverage`/`ExponentialMovingAvg` is checked here because a hand-edited
+    /// config could violate what the API boundary enforces for live requests.
+    fn parse_custom_sensor(c_sensor_table: &Table) -> Result<CustomSensor> {
+        let id = c_sensor_table
+            .get("id")
+            .with_context(|| "Sensor ID should be present")?
+            .as_str()
+            .with_context(|| "ID should be a string")?
+            .to_owned();
+        let cs_type_str = c_sensor_table
+            .get("cs_type")
+            .with_context(|| "Sensor type should be present")?
+            .as_str()
+            .with_context(|| "Sensor type should be a string")?;
+        let kind = match CustomSensorType::from_str(cs_type_str)
+            .with_context(|| "Sensor type should be a valid member")?
+        {
+            CustomSensorType::Mix => CustomSensorKind::Mix {
+                mix_function: Self::parse_mix_function(c_sensor_table)?,
+                sources: Self::parse_custom_sensor_sources(c_sensor_table)?,
+            },
+            CustomSensorType::File => CustomSensorKind::File {
+                file_path: Self::parse_custom_sensor_file_path(c_sensor_table)?,
+            },
+            CustomSensorType::Offset => CustomSensorKind::Offset {
+                offset: Self::parse_custom_sensor_offset(c_sensor_table)?
+                    .with_context(|| "Offset Custom Sensor must have an offset")?,
+                sources: Self::parse_single_source(c_sensor_table, "Offset")?,
+            },
+            CustomSensorType::TimeAverage => CustomSensorKind::TimeAverage {
+                time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
+                    .with_context(|| "TimeAverage Custom Sensor must have time_window_seconds")?,
+                sources: Self::parse_single_source(c_sensor_table, "TimeAverage")?,
+            },
+            CustomSensorType::ExponentialMovingAvg => CustomSensorKind::ExponentialMovingAvg {
+                time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
+                    .with_context(|| {
+                        "ExponentialMovingAvg Custom Sensor must have time_window_seconds"
+                    })?,
+                sources: Self::parse_single_source(c_sensor_table, "ExponentialMovingAvg")?,
+            },
+        };
+        Ok(CustomSensor {
+            id,
+            kind,
+            children: vec![],
+            parents: vec![],
+        })
+    }
+
+    fn parse_mix_function(c_sensor_table: &Table) -> Result<CustomSensorMixFunctionType> {
+        let mix_function_str = c_sensor_table
+            .get("mix_function")
+            .with_context(|| "mix_function should be present")?
+            .as_str()
+            .with_context(|| "mix_function should be a string")?;
+        let mix_function = CustomSensorMixFunctionType::from_str(mix_function_str)
+            .with_context(|| "mix_function should be a valid member")?;
+        Ok(mix_function)
+    }
+
+    fn parse_custom_sensor_file_path(c_sensor_table: &Table) -> Result<PathBuf> {
+        let file_path_str = c_sensor_table
+            .get("file_path")
+            .with_context(|| "File Custom Sensor must have a file_path")?
+            .as_str()
+            .with_context(|| "file_path should be a string")?;
+        Ok(Path::new(file_path_str).to_path_buf())
+    }
+
+    /// Parses the `sources` array. Any length is accepted here; per-variant cardinality is
+    /// applied by callers (`parse_single_source` for the single-source variants).
+    fn parse_custom_sensor_sources(c_sensor_table: &Table) -> Result<Vec<CustomTempSourceData>> {
+        let mut sources = Vec::new();
+        let Some(sources_item) = c_sensor_table.get("sources") else {
+            return Ok(sources);
+        };
+        let sources_array = sources_item
+            .as_array_of_tables()
+            .with_context(|| "custom_sensors.sources should be an array")?;
+        for source_data_table in sources_array {
+            let temp_source = Self::get_temp_source(source_data_table)?
+                .with_context(|| "TempSource should always be present for Custom Sensor Sources")?;
+            let weight_raw: u8 = source_data_table
+                .get("weight")
+                .with_context(|| "weight should be present")?
+                .as_integer()
+                .with_context(|| "weight should be an integer")?
+                .try_into()
+                .ok()
+                .with_context(|| "weight must be a value between 1-254")?;
+            let weight = weight_raw.clamp(1, 254);
+            sources.push(CustomTempSourceData {
+                temp_source,
+                weight,
+            });
+        }
+        Ok(sources)
+    }
+
+    /// Parses `sources` and enforces exactly one element, for the variants derived from a
+    /// single source.
+    fn parse_single_source(
+        c_sensor_table: &Table,
+        type_name: &str,
+    ) -> Result<Vec<CustomTempSourceData>> {
+        let sources = Self::parse_custom_sensor_sources(c_sensor_table)?;
+        if sources.len() != 1 {
+            return Err(CCError::InternalError {
+                msg: format!("{type_name} Custom Sensor must have exactly one temp source"),
+            }
+            .into());
+        }
+        Ok(sources)
     }
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
@@ -2375,18 +2498,74 @@ impl Config {
         cs_table: &mut Table,
     ) {
         cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
-        cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
-            custom_sensor.cs_type.to_string(),
-        )));
-        cs_table["mix_function"] = Item::Value(Value::String(Formatted::new(
-            custom_sensor.mix_function.to_string(),
-        )));
+        // Scrub every variant-specific key first so a variant change on update (e.g. a File
+        // sensor re-saved as Mix) cannot leave a stale field behind. The active variant
+        // rewrites only the keys it owns.
+        for key in [
+            "mix_function",
+            "sources",
+            "file_path",
+            "offset",
+            "time_window_seconds",
+        ] {
+            cs_table.remove(key);
+        }
+        match custom_sensor.kind {
+            CustomSensorKind::Mix {
+                mix_function,
+                sources,
+            } => {
+                cs_table["cs_type"] = Item::Value(Value::String(Formatted::new("Mix".to_string())));
+                cs_table["mix_function"] =
+                    Item::Value(Value::String(Formatted::new(mix_function.to_string())));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            CustomSensorKind::File { file_path } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("File".to_string())));
+                cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
+                    file_path.to_string_lossy().to_string(),
+                )));
+            }
+            CustomSensorKind::Offset { offset, sources } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("Offset".to_string())));
+                cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            CustomSensorKind::TimeAverage {
+                time_window_seconds,
+                sources,
+            } => {
+                cs_table["cs_type"] =
+                    Item::Value(Value::String(Formatted::new("TimeAverage".to_string())));
+                cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
+                    i64::from(time_window_seconds),
+                )));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+            CustomSensorKind::ExponentialMovingAvg {
+                time_window_seconds,
+                sources,
+            } => {
+                cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
+                    "ExponentialMovingAvg".to_string(),
+                )));
+                cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
+                    i64::from(time_window_seconds),
+                )));
+                Self::write_custom_sensor_sources(cs_table, &sources);
+            }
+        }
+    }
+
+    fn write_custom_sensor_sources(cs_table: &mut Table, sources: &[CustomTempSourceData]) {
         let sources_array = cs_table["sources"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
-        sources_array.clear(); // remove any existing temp sources
-        for source in &custom_sensor.sources {
+        sources_array.clear();
+        for source in sources {
             let mut source_table = Table::new();
             source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
                 source.temp_source.temp_name.clone(),
@@ -2398,25 +2577,6 @@ impl Config {
                 Item::Value(Value::Integer(Formatted::new(i64::from(source.weight))));
             sources_array.push(source_table);
         }
-        if let Some(file_path) = custom_sensor.file_path {
-            cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
-                file_path.to_string_lossy().to_string(),
-            )));
-        } else {
-            cs_table["file_path"] = Item::None;
-        }
-        if let Some(offset) = custom_sensor.offset {
-            cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
-        } else {
-            cs_table["offset"] = Item::None;
-        }
-        if let Some(time_window_seconds) = custom_sensor.time_window_seconds {
-            cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
-                i64::from(time_window_seconds),
-            )));
-        } else {
-            cs_table["time_window_seconds"] = Item::None;
-        }
     }
 }
 
@@ -2427,7 +2587,7 @@ mod tests {
     use serial_test::serial;
     use std::cell::RefCell;
     use std::path::Path;
-    use toml_edit::DocumentMut;
+    use toml_edit::{DocumentMut, Item};
 
     #[test]
     #[serial]
@@ -2470,11 +2630,196 @@ mod tests {
         });
     }
 
+    // Each custom-sensor variant survives a write to the document and a read back, with the
+    // discriminator and only that variant's fields persisted. Sensors come back in insertion
+    // order, so the indices below match the set order above. Locks the on-disk dispatch in
+    // get_custom_sensors and add_custom_sensor_properties_to_custom_sensor_table.
+    #[test]
+    fn custom_sensor_variants_toml_round_trip() {
+        use crate::setting::{
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+            TempSource,
+        };
+        use std::path::PathBuf;
+
+        let source = || CustomTempSourceData {
+            temp_source: TempSource {
+                temp_name: "Temp1".to_string(),
+                device_uid: "dev-1".to_string(),
+            },
+            weight: 1,
+        };
+        let make = |id: &str, kind: CustomSensorKind| CustomSensor {
+            id: id.to_string(),
+            kind,
+            children: vec![],
+            parents: vec![],
+        };
+        let config = Config {
+            path: Path::new("/tmp/cs-roundtrip.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-roundtrip-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_custom_sensor(make(
+                "mix",
+                CustomSensorKind::Mix {
+                    mix_function: CustomSensorMixFunctionType::Avg,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "file",
+                CustomSensorKind::File {
+                    file_path: PathBuf::from("/tmp/temp"),
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "offset",
+                CustomSensorKind::Offset {
+                    offset: -7,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "tavg",
+                CustomSensorKind::TimeAverage {
+                    time_window_seconds: 30,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+        config
+            .set_custom_sensor(make(
+                "ema",
+                CustomSensorKind::ExponentialMovingAvg {
+                    time_window_seconds: 15,
+                    sources: vec![source()],
+                },
+            ))
+            .unwrap();
+
+        let sensors = config.get_custom_sensors().unwrap();
+        assert_eq!(sensors.len(), 5);
+        assert!(matches!(
+            &sensors[0].kind,
+            CustomSensorKind::Mix { mix_function, .. } if *mix_function == CustomSensorMixFunctionType::Avg
+        ));
+        assert!(matches!(sensors[1].kind, CustomSensorKind::File { .. }));
+        assert!(
+            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7)
+        );
+        assert!(matches!(
+            &sensors[3].kind,
+            CustomSensorKind::TimeAverage { time_window_seconds, .. } if *time_window_seconds == 30
+        ));
+        let CustomSensorKind::ExponentialMovingAvg {
+            time_window_seconds,
+            ..
+        } = &sensors[4].kind
+        else {
+            panic!("expected ExponentialMovingAvg");
+        };
+        assert_eq!(*time_window_seconds, 15);
+    }
+
+    // A legacy persisted File row carries fields no longer part of the File variant
+    // (mix_function, offset). get_custom_sensors must dispatch on cs_type and ignore those
+    // dead siblings, so pre-refactor configs keep loading.
+    #[test]
+    fn custom_sensor_reads_legacy_toml_with_dead_fields() {
+        use crate::setting::CustomSensorKind;
+
+        let legacy = r#"
+[[custom_sensors]]
+id = "legacy-file"
+cs_type = "File"
+file_path = "/tmp/legacy"
+mix_function = "Min"
+offset = 5
+"#;
+        let config = Config {
+            path: Path::new("/tmp/cs-legacy.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-legacy-ui.json").to_path_buf(),
+            document: RefCell::new(legacy.parse::<DocumentMut>().unwrap()),
+        };
+        let sensors = config.get_custom_sensors().unwrap();
+        assert_eq!(sensors.len(), 1);
+        assert!(matches!(sensors[0].kind, CustomSensorKind::File { .. }));
+    }
+
+    // Updating a sensor from File to Mix must scrub the File-only keys from the stored table,
+    // so a later read sees a clean Mix row with no stale file_path.
+    #[test]
+    fn custom_sensor_variant_change_scrubs_stale_keys() {
+        use crate::setting::{
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
+            TempSource,
+        };
+        use std::path::PathBuf;
+
+        let config = Config {
+            path: Path::new("/tmp/cs-change.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/cs-change-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_custom_sensor(CustomSensor {
+                id: "s1".to_string(),
+                kind: CustomSensorKind::File {
+                    file_path: PathBuf::from("/tmp/x"),
+                },
+                children: vec![],
+                parents: vec![],
+            })
+            .unwrap();
+        config
+            .update_custom_sensor(CustomSensor {
+                id: "s1".to_string(),
+                kind: CustomSensorKind::Mix {
+                    mix_function: CustomSensorMixFunctionType::Max,
+                    sources: vec![CustomTempSourceData {
+                        temp_source: TempSource {
+                            temp_name: "T".to_string(),
+                            device_uid: "d".to_string(),
+                        },
+                        weight: 1,
+                    }],
+                },
+                children: vec![],
+                parents: vec![],
+            })
+            .unwrap();
+
+        let doc = config.document.borrow();
+        let cs = doc["custom_sensors"]
+            .as_array_of_tables()
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+        assert_eq!(cs["cs_type"].as_str(), Some("Mix"));
+        assert!(
+            cs.get("file_path").is_none(),
+            "stale file_path must be scrubbed on variant change"
+        );
+        drop(doc);
+
+        let sensors = config.get_custom_sensors().unwrap();
+        assert!(matches!(sensors[0].kind, CustomSensorKind::Mix { .. }));
+    }
+
     #[test]
     #[serial]
     fn test_lcd_shutdown_setting_roundtrip() {
         cc_fs::test_runtime(async {
-            use crate::setting::{LcdModeName, LcdSettings};
+            use crate::setting::{LcdModeKind, LcdModeName, LcdSettings};
 
             let path = Path::new("/tmp/config-lcd-shutdown-test.toml").to_path_buf();
             let path_ui = Path::new("/tmp/config-ui-lcd-shutdown-test.json").to_path_buf();
@@ -2489,15 +2834,13 @@ mod tests {
             let device_uid = "test-device-uid";
             let channel_name = "lcd1";
             let lcd = LcdSettings {
-                mode: LcdModeName::Image,
                 brightness: Some(50),
                 orientation: Some(90),
-                image_file_processed: Some(
-                    "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
-                ),
-                carousel: None,
-                temp_source: None,
-                colors: vec![],
+                mode: LcdModeKind::Image {
+                    image_file_processed: Some(
+                        "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
+                    ),
+                },
             };
 
             // Initially empty
@@ -2513,12 +2856,12 @@ mod tests {
             let (uid, ch, retrieved) = &all[0];
             assert_eq!(uid, device_uid);
             assert_eq!(ch, channel_name);
-            assert_eq!(retrieved.mode, LcdModeName::Image);
+            assert_eq!(retrieved.mode_name(), LcdModeName::Image);
             assert_eq!(retrieved.brightness, Some(50));
             assert_eq!(retrieved.orientation, Some(90));
             assert_eq!(
-                retrieved.image_file_processed,
-                Some("/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string())
+                retrieved.image_file_processed().map(String::as_str),
+                Some("/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png")
             );
 
             // Remove the setting
@@ -2718,6 +3061,378 @@ mod tests {
                     "key should be removed from document"
                 );
             }
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Builds a fresh in-memory `Config` backed by a real temp file path. Used by
+    /// the Setting-kind round-trip tests to exercise the full TOML write/read path.
+    // Each Function variant survives a write to the document and a read back, with `f_type` and
+    // only that variant's fields persisted. Locks the on-disk dispatch in get_current_functions and
+    // add_function_properties_to_function_table.
+    #[test]
+    fn function_variants_toml_round_trip() {
+        use crate::setting::{Function, FunctionKind};
+
+        let make = |uid: &str, kind: FunctionKind| Function {
+            uid: uid.to_string(),
+            name: uid.to_string(),
+            kind,
+            ..Default::default()
+        };
+        let config = Config {
+            path: Path::new("/tmp/fn-roundtrip.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/fn-roundtrip-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_function(make("identity", FunctionKind::Identity))
+            .unwrap();
+        config
+            .set_function(make(
+                "standard",
+                FunctionKind::Standard {
+                    deviance: Some(3.0),
+                    only_downward: Some(true),
+                    response_delay: Some(4),
+                },
+            ))
+            .unwrap();
+        config
+            .set_function(make(
+                "ema",
+                FunctionKind::ExponentialMovingAvg {
+                    sample_window: Some(10),
+                },
+            ))
+            .unwrap();
+
+        let functions = config.get_current_functions().unwrap();
+        assert_eq!(functions.len(), 3);
+        assert!(matches!(functions[0].kind, FunctionKind::Identity));
+        assert_eq!(
+            functions[1].kind,
+            FunctionKind::Standard {
+                deviance: Some(3.0),
+                only_downward: Some(true),
+                response_delay: Some(4),
+            }
+        );
+        assert!(matches!(
+            functions[2].kind,
+            FunctionKind::ExponentialMovingAvg {
+                sample_window: Some(10)
+            }
+        ));
+    }
+
+    // Updating a Standard function to Identity must scrub the Standard-only keys from the stored
+    // table so they do not linger in the persisted config.
+    #[test]
+    fn function_toml_variant_change_scrubs_stale_keys() {
+        use crate::setting::{Function, FunctionKind};
+        use std::ops::Not;
+
+        let config = Config {
+            path: Path::new("/tmp/fn-scrub.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/fn-scrub-ui.json").to_path_buf(),
+            document: RefCell::new(DocumentMut::new()),
+        };
+        config
+            .set_function(Function {
+                uid: "f1".to_string(),
+                name: "f1".to_string(),
+                kind: FunctionKind::Standard {
+                    deviance: Some(3.0),
+                    only_downward: Some(true),
+                    response_delay: Some(4),
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        config
+            .update_function(Function {
+                uid: "f1".to_string(),
+                name: "f1".to_string(),
+                kind: FunctionKind::Identity,
+                ..Default::default()
+            })
+            .unwrap();
+
+        let functions = config.get_current_functions().unwrap();
+        assert_eq!(functions.len(), 1);
+        assert!(matches!(functions[0].kind, FunctionKind::Identity));
+
+        let doc = config.document.borrow();
+        let table = doc["functions"]
+            .as_array_of_tables()
+            .unwrap()
+            .get(0)
+            .unwrap();
+        assert!(table.contains_key("deviance").not());
+        assert!(table.contains_key("only_downward").not());
+        assert!(table.contains_key("response_delay").not());
+    }
+
+    async fn make_test_config(tag: &str) -> (Config, std::path::PathBuf) {
+        let path = Path::new(&format!("/tmp/config-setting-kind-{tag}.toml")).to_path_buf();
+        let path_ui = Path::new(&format!("/tmp/config-ui-setting-kind-{tag}.json")).to_path_buf();
+        let config_content = Config::create_new_config_file(&path).await.unwrap();
+        let document = config_content.parse::<DocumentMut>().unwrap();
+        let config = Config {
+            path: path.clone(),
+            path_ui,
+            document: RefCell::new(document),
+        };
+        (config, path)
+    }
+
+    /// Round-trips a `SpeedFixed` setting through the TOML writer and reader to
+    /// confirm the new enum-shaped persistence preserves the variant exactly.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_speed_fixed() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("speed-fixed").await;
+            let device_uid = "dev-speed";
+            let original = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 42 },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips a `Profile` setting and confirms it does not get confused with
+    /// a fixed-speed entry on read-back.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_profile() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("profile").await;
+            let device_uid = "dev-profile";
+            let original = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::Profile {
+                    profile_uid: "profile-uid-abc".to_string(),
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips a `Lighting` setting through the TOML writer and reader to
+    /// confirm the nested lighting table survives serialization.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_lighting() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{LightingSettings, Setting, SettingKind};
+
+            let (config, path) = make_test_config("lighting").await;
+            let device_uid = "dev-lighting";
+            let original = Setting {
+                channel_name: "ring".to_string(),
+                kind: SettingKind::Lighting {
+                    lighting: LightingSettings {
+                        mode: "fixed".to_string(),
+                        speed: Some("medium".to_string()),
+                        backward: Some(true),
+                        colors: vec![(10, 20, 30), (255, 0, 0)],
+                    },
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips an `Lcd` setting through the TOML writer and reader to confirm
+    /// the nested LCD table survives serialization.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_lcd() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
+
+            let (config, path) = make_test_config("lcd").await;
+            let device_uid = "dev-lcd";
+            let original = Setting {
+                channel_name: "lcd1".to_string(),
+                kind: SettingKind::Lcd {
+                    lcd: LcdSettings {
+                        brightness: Some(80),
+                        orientation: Some(180),
+                        mode: LcdModeKind::Image {
+                            image_file_processed: Some("/tmp/img.png".to_string()),
+                        },
+                    },
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms that applying `Reset { reset_to_default: true }` to a previously
+    /// persisted channel removes the channel entry from the TOML, matching the
+    /// pre-refactor "reset wipes the channel" semantics.
+    #[test]
+    #[serial]
+    fn test_setting_reset_true_removes_channel() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("reset-true").await;
+            let device_uid = "dev-reset";
+            let written = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 50 },
+            };
+            config.set_device_setting(device_uid, &written);
+            assert_eq!(config.get_device_settings(device_uid).unwrap().len(), 1);
+
+            config.set_device_setting(
+                device_uid,
+                &Setting {
+                    channel_name: "fan1".to_string(),
+                    kind: SettingKind::Reset {
+                        reset_to_default: true,
+                    },
+                },
+            );
+            assert!(
+                config.get_device_settings(device_uid).unwrap().is_empty(),
+                "Reset {{ true }} should drop the channel from device-settings"
+            );
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms that `Reset { reset_to_default: false }` is a no-op and leaves
+    /// the existing persisted entry intact.
+    #[test]
+    #[serial]
+    fn test_setting_reset_false_is_noop() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("reset-false").await;
+            let device_uid = "dev-reset-noop";
+            let written = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 33 },
+            };
+            config.set_device_setting(device_uid, &written);
+
+            config.set_device_setting(
+                device_uid,
+                &Setting {
+                    channel_name: "fan1".to_string(),
+                    kind: SettingKind::Reset {
+                        reset_to_default: false,
+                    },
+                },
+            );
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], written);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms a hand-written legacy TOML payload (the historical flat shape)
+    /// parses into the correct `SettingKind` variant via `get_device_settings`.
+    /// This locks in backward compatibility for users with existing config files.
+    #[test]
+    #[serial]
+    fn test_setting_legacy_toml_parses() {
+        use crate::setting::SettingKind;
+        use toml_edit::Table;
+
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("legacy").await;
+            {
+                let mut doc = config.document.borrow_mut();
+                let mut device_table = Table::new();
+                device_table["fan1"] = "{ speed_fixed = 30 }".parse::<Item>().unwrap();
+                device_table["fan2"] = "{ profile_uid = \"prof-xyz\" }".parse::<Item>().unwrap();
+                doc["device-settings"]["dev-legacy"] = Item::Table(device_table);
+            }
+
+            let loaded = config.get_device_settings("dev-legacy").unwrap();
+            assert_eq!(loaded.len(), 2);
+            // BTreeMap iteration order is alphabetical by channel name.
+            assert_eq!(loaded[0].channel_name, "fan1");
+            assert!(matches!(
+                loaded[0].kind,
+                SettingKind::SpeedFixed { speed_fixed: 30 }
+            ));
+            assert_eq!(loaded[1].channel_name, "fan2");
+            match &loaded[1].kind {
+                SettingKind::Profile { profile_uid } => assert_eq!(profile_uid, "prof-xyz"),
+                other => panic!("expected Profile, got {other:?}"),
+            }
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms a malformed config row carrying multiple kind-discriminating
+    /// fields resolves to the deliberate first-by-precedence variant
+    /// (`SpeedFixed` -> `Profile` -> `Lighting` -> `Lcd`) rather than failing.
+    #[test]
+    #[serial]
+    fn test_setting_multi_key_toml_precedence() {
+        use crate::setting::SettingKind;
+        use toml_edit::Table;
+
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("multi-key").await;
+            {
+                let mut doc = config.document.borrow_mut();
+                let mut device_table = Table::new();
+                device_table["fan1"] = "{ speed_fixed = 22, profile_uid = \"prof-shadowed\" }"
+                    .parse::<Item>()
+                    .unwrap();
+                doc["device-settings"]["dev-multi"] = Item::Table(device_table);
+            }
+
+            let loaded = config.get_device_settings("dev-multi").unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert!(
+                matches!(loaded[0].kind, SettingKind::SpeedFixed { speed_fixed: 22 }),
+                "speed_fixed must win over profile_uid by declared precedence"
+            );
+
             cc_fs::remove_file(path).await.unwrap();
         });
     }

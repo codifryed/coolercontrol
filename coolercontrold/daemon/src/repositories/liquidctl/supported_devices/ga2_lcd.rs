@@ -17,8 +17,8 @@
  */
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
-    TempStatus,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -90,13 +90,13 @@ impl DeviceSupport for Ga2LcdSupport {
             channels.insert(
                 speed_channel.to_string(),
                 ChannelInfo {
-                    speed_options: Some(SpeedOptions {
+                    label: None,
+                    kind: ChannelKind::Speed(SpeedOptions {
                         min_duty: MIN_DUTY,
                         max_duty: MAX_DUTY,
                         fixed_enabled: true,
                         extension: None,
                     }),
-                    ..Default::default()
                 },
             );
         }
@@ -108,15 +108,19 @@ impl DeviceSupport for Ga2LcdSupport {
         channels.insert(
             CC_PUMP_COLOR_CHANNEL.to_string(),
             ChannelInfo {
-                lighting_modes: self.get_color_channel_modes(Some(LIQUIDCTL_PUMP_COLOR_CHANNEL)),
-                ..Default::default()
+                label: None,
+                kind: ChannelKind::Lighting(
+                    self.get_color_channel_modes(Some(LIQUIDCTL_PUMP_COLOR_CHANNEL)),
+                ),
             },
         );
         channels.insert(
             CC_FAN_COLOR_CHANNEL.to_string(),
             ChannelInfo {
-                lighting_modes: self.get_color_channel_modes(Some(LIQUIDCTL_FAN_COLOR_CHANNEL)),
-                ..Default::default()
+                label: None,
+                kind: ChannelKind::Lighting(
+                    self.get_color_channel_modes(Some(LIQUIDCTL_FAN_COLOR_CHANNEL)),
+                ),
             },
         );
         let lighting_speeds = vec![
@@ -233,8 +237,7 @@ mod tests {
 
         let fan_channel = info.channels.get("fan").expect("fan channel should exist");
         let fan_speed = fan_channel
-            .speed_options
-            .as_ref()
+            .speed_options()
             .expect("fan should have speed options");
         assert_eq!(fan_speed.min_duty, 0);
         assert_eq!(fan_speed.max_duty, 100);
@@ -246,8 +249,7 @@ mod tests {
             .get("pump")
             .expect("pump channel should exist");
         let pump_speed = pump_channel
-            .speed_options
-            .as_ref()
+            .speed_options()
             .expect("pump should have speed options");
         assert_eq!(pump_speed.min_duty, 0);
         assert_eq!(pump_speed.max_duty, 100);
@@ -266,26 +268,26 @@ mod tests {
             .channels
             .get("led-pump")
             .expect("LED-pump channel should exist");
-        assert!(pump_led.speed_options.is_none());
-        assert!(pump_led.lighting_modes.is_empty().not());
+        assert!(pump_led.speed_options().is_none());
+        assert!(pump_led.lighting_modes().is_empty().not());
 
         let fan_led = info
             .channels
             .get("led-fan")
             .expect("LED-fan channel should exist");
-        assert!(fan_led.speed_options.is_none());
-        assert!(fan_led.lighting_modes.is_empty().not());
+        assert!(fan_led.speed_options().is_none());
+        assert!(fan_led.lighting_modes().is_empty().not());
         // Fan has fewer lighting modes than pump.
-        assert!(fan_led.lighting_modes.len() < pump_led.lighting_modes.len());
+        assert!(fan_led.lighting_modes().len() < pump_led.lighting_modes().len());
 
         // Speed channels must not have lighting modes.
         let pump_speed = info
             .channels
             .get("pump")
             .expect("pump channel should exist");
-        assert!(pump_speed.lighting_modes.is_empty());
+        assert!(pump_speed.lighting_modes().is_empty());
         let fan_speed = info.channels.get("fan").expect("fan channel should exist");
-        assert!(fan_speed.lighting_modes.is_empty());
+        assert!(fan_speed.lighting_modes().is_empty());
     }
 
     #[test]

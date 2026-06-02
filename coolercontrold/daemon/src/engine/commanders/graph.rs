@@ -106,7 +106,7 @@ impl GraphProfileCommander {
         device_channel: DeviceChannelProfileSetting,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.p_type != ProfileType::Graph {
+        if profile.p_type() != ProfileType::Graph {
             return Err(anyhow!(
                 "Only Graph Profiles are supported for scheduling in the GraphProfileCommander"
             ));
@@ -298,7 +298,7 @@ impl GraphProfileCommander {
         profile: &Profile,
     ) -> Result<NormalizedGraphProfile> {
         let (Some(temp_source), Some(speed_profile)) =
-            (profile.temp_source.as_ref(), profile.speed_profile.as_ref())
+            (profile.temp_source(), profile.speed_profile())
         else {
             return Err(anyhow!(
                 "Not enough info to schedule a manual speed profile"
@@ -338,7 +338,7 @@ impl GraphProfileCommander {
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
         })?;
-        let raw_speed_options = channel_info.speed_options.as_ref().with_context(|| {
+        let raw_speed_options = channel_info.speed_options().with_context(|| {
             format!("Speed Options must be present for target device: {device_uid}")
         })?;
         // Consult the calibration store so a Smooth calibration's
