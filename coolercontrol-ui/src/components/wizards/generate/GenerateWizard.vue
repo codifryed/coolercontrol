@@ -344,6 +344,9 @@ const createAndApply = async (): Promise<void> => {
         life: 4000,
     })
     closeDialog()
+    // Reload so the new profiles, functions, and custom-sensor channels surface (the menu tree is
+    // event-driven and new sensors add device channels), as the custom-sensor wizard does.
+    await deviceStore.waitAndReload(1)
 }
 </script>
 
