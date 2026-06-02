@@ -19,7 +19,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiArrowLeft, mdiAutoFix, mdiContentSaveOutline } from '@mdi/js'
+import {
+    mdiArrowLeft,
+    mdiAutoFix,
+    mdiContentSaveOutline,
+    mdiInformationSlabCircleOutline,
+} from '@mdi/js'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
@@ -503,6 +508,17 @@ const createAndApply = async (): Promise<void> => {
             <small class="ml-1 font-light text-sm">
                 {{ t('components.wizards.generate.previewIntro') }}
             </small>
+            <div class="flex items-start gap-x-2 ml-1 mt-1">
+                <svg-icon
+                    type="mdi"
+                    class="shrink-0 mt-0.5"
+                    :path="mdiInformationSlabCircleOutline"
+                    :size="deviceStore.getREMSize(1.2)"
+                />
+                <span class="text-sm">
+                    {{ t('components.wizards.generate.startingPointNote') }}
+                </span>
+            </div>
             <div
                 v-for="assignment in proposal?.assignments ?? []"
                 :key="assignment.device_uid + assignment.channel_name"
