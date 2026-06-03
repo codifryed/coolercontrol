@@ -46,6 +46,7 @@ import {
     mdiPower,
     mdiPowerPlugOutline,
     mdiSitemapOutline,
+    mdiTuneVerticalVariant,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -70,6 +71,9 @@ const confirm = useConfirm()
 const toast = useToast()
 const dialog = useDialog()
 const shortcutsView = defineAsyncComponent(() => import('../components/ShortcutsView.vue'))
+const calibrationWizard = defineAsyncComponent(
+    () => import('../components/wizards/calibration/CalibrationWizard.vue'),
+)
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = computed(() => (settingsStore.eyeCandy ? `/logo-animated.gif` : `/logo.svg`))
@@ -384,6 +388,20 @@ const restartItems = computed(() => {
     return items
 })
 
+// Launchable from the Quick-Add menu (direct) and the Info & Tools page (via `calibrate-fans`).
+const openCalibrationWizard = (): void => {
+    dialog.open(calibrationWizard, {
+        props: {
+            header: t('components.wizards.calibration.title'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
+    })
+}
+emitter.on('calibrate-fans', openCalibrationWizard)
+
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
     {
@@ -392,6 +410,14 @@ const addItems = computed(() => [
         command: () => {
             addMenuRef.value?.handleClose()
             emitter.emit('profile-generate')
+        },
+    },
+    {
+        label: t('components.wizards.calibration.title'),
+        mdiIcon: mdiTuneVerticalVariant,
+        command: () => {
+            addMenuRef.value?.handleClose()
+            openCalibrationWizard()
         },
     },
     {
@@ -468,6 +494,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    emitter.off('calibrate-fans', openCalibrationWizard)
     scrollContainerRef.value?.removeEventListener('scroll', updateScrollIndicators)
     resizeObserver?.disconnect()
 })

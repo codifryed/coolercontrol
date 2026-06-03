@@ -205,3 +205,31 @@ export interface CalibrationStatusFailed {
     /** Human-readable explanation for display. */
     message: string
 }
+
+/**
+ * One entry in the calibration batch, from `GET /calibrations/batch`.
+ * The daemon's batch driver owns `phase`, so the UI renders it directly
+ * (no need to disambiguate a fan's sticky prior calibration). `percent`
+ * and `stage` are populated only while `phase === 'running'`; `message`
+ * only when `phase === 'failed'`. Mirrors
+ * `coolercontrold::api::actor::CalibrationBatchEntry`.
+ */
+export interface CalibrationBatchEntry {
+    device_uid: UID
+    channel_name: string
+    phase: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+    percent: number | null
+    stage: CalibrationStage | null
+    message: string | null
+}
+
+/**
+ * Status of the single active (or most recent) calibration batch. The
+ * daemon owns the queue, so the UI polls this and re-attaches after a
+ * reload. Mirrors `coolercontrold::api::actor::CalibrationBatchStatus`.
+ */
+export interface CalibrationBatchStatus {
+    active: boolean
+    started_at: string
+    entries: CalibrationBatchEntry[]
+}

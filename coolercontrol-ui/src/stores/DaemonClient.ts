@@ -50,7 +50,12 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
-import type { Calibration, CalibrationEntry, CalibrationStatus } from '@/models/Calibration.ts'
+import type {
+    Calibration,
+    CalibrationBatchStatus,
+    CalibrationEntry,
+    CalibrationStatus,
+} from '@/models/Calibration.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto, { HasUiDto, PluginStatusDto } from '@/models/Plugins.ts'
@@ -1749,6 +1754,65 @@ export default class DaemonClient {
                 `/calibrations/${deviceUID}/channels/${channelName}/cancel`,
             )
             this.logDaemonResponse(response, 'Cancel Calibration')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Begin a sequential calibration batch. Returns `true` on 202, an
+     * ErrorResponse on 409 (a batch is already active) or other failure.
+     * The daemon drives the queue; poll `getCalibrationBatchStatus`.
+     */
+    async startCalibrationBatch(
+        channels: Array<{ device_uid: UID; channel_name: string }>,
+    ): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/calibrations/batch/start`, { channels })
+            this.logDaemonResponse(response, 'Start Calibration Batch')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Fetch the active or most recent calibration batch. Returns `null`
+     * when no batch has run this session, `undefined` on transport
+     * failure (so the caller keeps the last-known value).
+     */
+    async getCalibrationBatchStatus(): Promise<CalibrationBatchStatus | null | undefined> {
+        try {
+            const response = await this.getClient().get(`/calibrations/batch`)
+            this.logDaemonResponse(response, 'Get Calibration Batch Status')
+            return (response.data as CalibrationBatchStatus | null) ?? null
+        } catch (err: any) {
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    /**
+     * Cancel the active calibration batch. Returns `true` on success,
+     * `ErrorResponse` when none was active (404).
+     */
+    async cancelCalibrationBatch(): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/calibrations/batch/cancel`)
+            this.logDaemonResponse(response, 'Cancel Calibration Batch')
             return true
         } catch (err: any) {
             this.logError(err)

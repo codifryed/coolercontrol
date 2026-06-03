@@ -533,6 +533,19 @@ onBeforeUnmount(() => {
                                 </template>
                             </i18n-t>
                         </p>
+                        <p class="mt-2 ml-2 text-sm text-text-color-secondary">
+                            <i18n-t keypath="views.appInfo.calibrateFans" tag="span">
+                                <template #wizard>
+                                    <a
+                                        href="#"
+                                        class="text-accent hover:underline cursor-pointer"
+                                        @click.prevent="emitter.emit('calibrate-fans')"
+                                    >
+                                        {{ t('views.appInfo.calibrateFansLink') }}
+                                    </a>
+                                </template>
+                            </i18n-t>
+                        </p>
                     </div>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
