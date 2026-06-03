@@ -28,7 +28,7 @@ import {
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
-import { inject, ref, type Ref } from 'vue'
+import { inject, ref, watch, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
@@ -188,6 +188,15 @@ const buildOverrideRows = (): void => {
     }
     overrideRows.value = rows
 }
+
+// Untouched override rows follow the global preset. Otherwise rows built (in goToPresets) with
+// the old default stay stale and buildRequest sends them as spurious overrides, which pinned
+// every kind to Balanced regardless of the chosen preset.
+watch(globalPreset, (newPreset, oldPreset) => {
+    for (const row of overrideRows.value) {
+        if (row.preset === oldPreset) row.preset = newPreset
+    }
+})
 
 const goToPresets = (): void => {
     buildOverrideRows()
@@ -504,71 +513,100 @@ const createAndApply = async (): Promise<void> => {
         </div>
 
         <!-- Step 4: preview -->
-        <div v-else class="flex flex-col gap-y-2 overflow-y-auto">
+        <div v-else class="flex flex-col gap-y-3 overflow-y-auto">
             <small class="ml-1 font-light text-sm">
                 {{ t('components.wizards.generate.previewIntro') }}
             </small>
-            <div class="flex items-start gap-x-2 ml-1 mt-1">
-                <svg-icon
-                    type="mdi"
-                    class="shrink-0 mt-0.5"
-                    :path="mdiInformationSlabCircleOutline"
-                    :size="deviceStore.getREMSize(1.2)"
-                />
-                <span class="text-sm">
-                    {{ t('components.wizards.generate.startingPointNote') }}
-                </span>
-            </div>
-            <div
-                v-for="assignment in proposal?.assignments ?? []"
-                :key="assignment.device_uid + assignment.channel_name"
-                class="flex items-start justify-between gap-x-3"
-            >
-                <span class="truncate">{{
-                    fanLabel(assignment.device_uid, assignment.channel_name)
-                }}</span>
-                <div class="text-right">
-                    <span class="font-bold">{{ profileNameByUid(assignment.profile_uid) }}</span>
-                    <span
-                        v-if="currentProfileName(assignment.device_uid, assignment.channel_name)"
-                        class="block text-xs text-yellow-500"
-                    >
-                        {{
-                            t('components.wizards.generate.replaces', {
-                                name: currentProfileName(
-                                    assignment.device_uid,
-                                    assignment.channel_name,
-                                ),
-                            })
-                        }}
-                    </span>
+
+            <!-- Fan assignments -->
+            <div class="flex flex-col gap-y-1">
+                <div class="ml-1 pb-1 border-b border-border-one text-sm font-semibold">
+                    {{ t('components.wizards.generate.previewAssignments') }}
+                </div>
+                <div
+                    v-for="assignment in proposal?.assignments ?? []"
+                    :key="assignment.device_uid + assignment.channel_name"
+                    class="flex items-start justify-between gap-x-3 ml-1"
+                >
+                    <span class="truncate">{{
+                        fanLabel(assignment.device_uid, assignment.channel_name)
+                    }}</span>
+                    <div class="text-right">
+                        <span class="font-bold">{{
+                            profileNameByUid(assignment.profile_uid)
+                        }}</span>
+                        <span
+                            v-if="
+                                currentProfileName(assignment.device_uid, assignment.channel_name)
+                            "
+                            class="block text-xs text-yellow-500"
+                        >
+                            {{
+                                t('components.wizards.generate.replaces', {
+                                    name: currentProfileName(
+                                        assignment.device_uid,
+                                        assignment.channel_name,
+                                    ),
+                                })
+                            }}
+                        </span>
+                    </div>
                 </div>
             </div>
-            <small class="ml-1 mt-2 font-light text-sm">
-                {{
-                    t('components.wizards.generate.willCreate', {
-                        profiles: proposal?.profiles.length ?? 0,
-                        functions: proposal?.functions.length ?? 0,
-                        sensors: proposal?.custom_sensors.length ?? 0,
-                    })
-                }}
-            </small>
-            <div
-                v-for="profile in proposal?.profiles ?? []"
-                :key="profile.uid"
-                class="flex items-center justify-between gap-x-3 text-sm"
-            >
-                <span class="truncate">{{ profile.name }}</span>
-                <span class="text-text-color-secondary">{{
-                    getProfileTypeDisplayName(profile.p_type)
-                }}</span>
+
+            <!-- Will be created -->
+            <div class="flex flex-col gap-y-1">
+                <div class="ml-1 pb-1 border-b border-border-one text-sm font-semibold">
+                    {{ t('components.wizards.generate.willCreateHeader') }}
+                </div>
+                <div class="flex items-start gap-x-2 ml-1 mb-1">
+                    <svg-icon
+                        type="mdi"
+                        class="shrink-0 mt-0.5"
+                        :path="mdiInformationSlabCircleOutline"
+                        :size="deviceStore.getREMSize(1.2)"
+                    />
+                    <span class="text-sm">
+                        {{ t('components.wizards.generate.startingPointNote') }}
+                    </span>
+                </div>
+                <div
+                    v-for="profile in proposal?.profiles ?? []"
+                    :key="profile.uid"
+                    class="flex items-center justify-between gap-x-3 ml-1 text-sm"
+                >
+                    <span class="truncate">{{ profile.name }}</span>
+                    <span class="shrink-0 text-text-color-secondary">{{
+                        `${getProfileTypeDisplayName(profile.p_type)} ${t('layout.add.profile')}`
+                    }}</span>
+                </div>
+                <div
+                    v-for="fn in proposal?.functions ?? []"
+                    :key="fn.uid"
+                    class="flex items-center justify-between gap-x-3 ml-1 text-sm"
+                >
+                    <span class="truncate">{{ fn.name }}</span>
+                    <span class="shrink-0 text-text-color-secondary">{{
+                        t('layout.add.function')
+                    }}</span>
+                </div>
+                <div
+                    v-for="sensor in proposal?.custom_sensors ?? []"
+                    :key="sensor.id"
+                    class="flex items-center justify-between gap-x-3 ml-1 text-sm"
+                >
+                    <span class="truncate">{{ sensor.id }}</span>
+                    <span class="shrink-0 text-text-color-secondary">{{
+                        t('layout.add.customSensor')
+                    }}</span>
+                </div>
+                <small
+                    v-if="anyCaseFanAssigned()"
+                    class="ml-1 mt-1 font-light text-xs text-text-color-secondary"
+                >
+                    {{ t('components.wizards.generate.cfmCaveat') }}
+                </small>
             </div>
-            <small
-                v-if="anyCaseFanAssigned()"
-                class="ml-1 mt-1 font-light text-xs text-text-color-secondary"
-            >
-                {{ t('components.wizards.generate.cfmCaveat') }}
-            </small>
         </div>
 
         <!-- Footer -->
