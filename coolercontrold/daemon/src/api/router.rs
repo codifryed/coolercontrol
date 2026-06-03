@@ -45,6 +45,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(plugins_routes())
         .merge(alert_routes())
         .merge(calibration_routes())
+        .merge(calibration_batch_routes())
         .merge(detect_routes())
         .merge(stress_test_routes())
         .merge(metrics_routes())
@@ -1071,6 +1072,57 @@ fn alert_routes() -> ApiRouter<AppState> {
                 o.summary("Delete Alert")
                     .description("Deletes the Alert with the given Alert UID")
                     .tag("alert")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+}
+
+/// Batch-level calibration routes. Split from `calibration_routes` so
+/// neither registration function exceeds the line budget. The daemon
+/// owns the queue, so these are how the UI submits, polls, and cancels
+/// a multi-fan calibration that survives a reload.
+fn calibration_batch_routes() -> ApiRouter<AppState> {
+    ApiRouter::new()
+        .api_route(
+            "/calibrations/batch",
+            get_with(calibration::batch_status, |o| {
+                o.summary("Get the calibration batch status")
+                    .description(
+                        "Returns the active or most recent calibration batch, or null when \
+                         no batch has run this session. The daemon owns the queue, so the UI \
+                         polls this and re-attaches after a reload.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/calibrations/batch/start",
+            post_with(calibration::batch_start, |o| {
+                o.summary("Start a calibration batch")
+                    .description(
+                        "Queues sequential calibration of the given channels and returns 202. \
+                         Returns 409 when a batch is already active or the request is invalid.",
+                    )
+                    .tag("calibration")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/calibrations/batch/cancel",
+            post_with(calibration::batch_cancel, |o| {
+                o.summary("Cancel the calibration batch")
+                    .description(
+                        "Cancels the active batch and stops its queue. Returns 404 when no \
+                         batch is active.",
+                    )
+                    .tag("calibration")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })

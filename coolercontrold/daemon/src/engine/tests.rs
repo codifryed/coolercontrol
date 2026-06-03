@@ -1817,6 +1817,73 @@ mod engine_tests {
 
     #[test]
     #[serial]
+    fn calibration_batch_drives_each_channel_to_terminal() {
+        // Goal: begin + drive a batch end to end. With a hot system every
+        // sweep short-circuits in preflight, so the driver marks each
+        // entry Failed and the batch finishes inactive, proving the queue
+        // advances through every channel and ends.
+        cc_fs::test_runtime(async {
+            let (device, engine, _store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "cpu".to_string(),
+                temp: 80.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let channels = vec![
+                (device_uid.clone(), "fan1".to_string()),
+                (device_uid.clone(), "fan2".to_string()),
+            ];
+            engine
+                .begin_calibration_batch(channels)
+                .expect("batch begins");
+            engine.drive_calibration_batch().await;
+            let status = engine
+                .calibration_batch_status()
+                .expect("batch status present");
+            assert!(!status.active);
+            assert_eq!(status.entries.len(), 2);
+            assert_eq!(status.entries[0].phase, "failed");
+            assert_eq!(status.entries[1].phase, "failed");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn calibration_batch_rejects_second_while_active() {
+        // Goal: the engine refuses a second batch while one is active and
+        // allows a fresh one once the first has gone inactive.
+        cc_fs::test_runtime(async {
+            let (device, engine, _store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "cpu".to_string(),
+                temp: 80.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let channels = vec![(device_uid.clone(), "fan1".to_string())];
+            engine
+                .begin_calibration_batch(channels.clone())
+                .expect("first begin");
+            let err = engine
+                .begin_calibration_batch(channels.clone())
+                .expect_err("second begin conflicts");
+            assert!(err.to_string().contains("already in progress"));
+            engine.drive_calibration_batch().await;
+            engine
+                .begin_calibration_batch(channels)
+                .expect("begin allowed after finish");
+        });
+    }
+
+    #[test]
+    #[serial]
     fn cancel_calibration_returns_false_when_not_running() {
         // Goal: the engine's cancel entry point returns false when
         // nothing is in flight; the REST layer maps this to a 404.

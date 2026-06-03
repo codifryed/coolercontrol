@@ -23,12 +23,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
-use crate::api::actor::CalibrationStatus;
+use crate::api::actor::{CalibrationBatchEntry, CalibrationBatchStatus, CalibrationStatus};
 use crate::api::CCError;
 use crate::calibration::{
-    self, Calibration, CalibrationEntry, CalibrationStore, ChannelKey, DiagnosisFailure,
-    DiagnosisHost, DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap,
-    RepoWriter, SettingsSnapshot, SnapshotKind,
+    self, BatchBeginError, BatchEntry, BatchEntryPhase, Calibration, CalibrationBatchState,
+    CalibrationEntry, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
+    DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter,
+    SettingsSnapshot, SnapshotKind,
 };
 use crate::config::Config;
 use crate::device::{
@@ -79,6 +80,10 @@ pub struct Engine {
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
     diagnosis_registry: Rc<DiagnosisRegistry>,
+    /// The single active calibration batch (at most one). The actor
+    /// spawns a driver that sequences per-channel diagnoses through it,
+    /// so the daemon owns the queue and a UI reload never strands work.
+    calibration_batch: Rc<CalibrationBatchState>,
     /// Per-channel snapshot of the most recent calibration progress
     /// or terminal outcome. The diagnoser updates this on every sweep
     /// step and once more on completion / failure. The UI polls via
@@ -157,6 +162,7 @@ impl Engine {
             calibration_store,
             fan_state_map,
             diagnosis_registry: Rc::new(DiagnosisRegistry::new()),
+            calibration_batch: Rc::new(CalibrationBatchState::new()),
             calibration_statuses: RefCell::new(HashMap::new()),
             notification_handle: RefCell::new(None),
         }
@@ -1751,6 +1757,115 @@ impl Engine {
     /// to render the in-progress state.
     pub fn is_calibration_in_progress(&self, key: &ChannelKey) -> bool {
         self.diagnosis_registry.is_in_flight(key)
+    }
+
+    /// Validate and install a calibration batch without running it; the
+    /// actor spawns `drive_calibration_batch` next. Maps the state
+    /// machine's typed rejection onto a daemon error for the boundary.
+    pub fn begin_calibration_batch(&self, channels: Vec<ChannelKey>) -> Result<()> {
+        self.calibration_batch
+            .try_begin(channels)
+            .map(|_token| ())
+            .map_err(|err| match err {
+                BatchBeginError::Empty => anyhow!("calibration batch has no channels"),
+                BatchBeginError::TooManyChannels { requested, max } => {
+                    anyhow!("calibration batch has {requested} channels, max is {max}")
+                }
+                BatchBeginError::AlreadyActive => {
+                    anyhow!("a calibration batch is already in progress")
+                }
+            })
+    }
+
+    /// Sequentially calibrate every channel in the active batch, awaiting
+    /// each sweep before the next. Spawned by the actor so the daemon
+    /// owns the queue: a UI reload never strands the remaining fans. Each
+    /// per-channel diagnosis updates its own status; this only sequences
+    /// and records batch phase, never holding a borrow across `await`.
+    pub async fn drive_calibration_batch(&self) {
+        let Some(keys) = self.calibration_batch.entry_keys() else {
+            return;
+        };
+        for (index, key) in keys.iter().enumerate() {
+            if self.calibration_batch.is_cancelled() {
+                self.calibration_batch.mark_remaining_cancelled(index);
+                break;
+            }
+            self.calibration_batch.mark_running(index);
+            let outcome = self
+                .start_calibration_diagnosis(key.0.clone(), key.1.clone())
+                .await;
+            let (phase, message) = batch_phase_for_outcome(&outcome);
+            self.calibration_batch.mark_terminal(index, phase, message);
+        }
+        self.calibration_batch.set_inactive();
+    }
+
+    /// Cancel the active batch: trip its queue and interrupt the in-flight
+    /// sweep (if any). `false` when no batch is active.
+    pub fn cancel_calibration_batch(&self) -> bool {
+        if self.calibration_batch.is_active().not() {
+            return false;
+        }
+        if let Some(running_key) = self.calibration_batch.cancel() {
+            self.cancel_calibration_diagnosis(&running_key);
+        }
+        true
+    }
+
+    /// Assemble the batch status view: the driver's phase per channel plus
+    /// live percent/stage for the running one. `None` when no batch has
+    /// run this session.
+    pub fn calibration_batch_status(&self) -> Option<CalibrationBatchStatus> {
+        let snapshot = self.calibration_batch.snapshot()?;
+        let entries = snapshot
+            .entries
+            .iter()
+            .map(|entry| self.batch_entry_view(entry))
+            .collect();
+        Some(CalibrationBatchStatus {
+            active: snapshot.active,
+            started_at: snapshot.started_at,
+            entries,
+        })
+    }
+
+    fn batch_entry_view(&self, entry: &BatchEntry) -> CalibrationBatchEntry {
+        let (percent, stage) = self.batch_entry_progress(entry);
+        CalibrationBatchEntry {
+            device_uid: entry.device_uid.clone(),
+            channel_name: entry.channel_name.clone(),
+            phase: entry.phase.as_str().to_string(),
+            percent,
+            stage,
+            message: entry.message.clone(),
+        }
+    }
+
+    /// Live percent/stage for a `Running` entry, lifted from its
+    /// per-channel status. `(None, None)` for any other phase.
+    fn batch_entry_progress(&self, entry: &BatchEntry) -> (Option<u8>, Option<String>) {
+        if entry.phase != BatchEntryPhase::Running {
+            return (None, None);
+        }
+        let key = (entry.device_uid.clone(), entry.channel_name.clone());
+        match self.calibration_status(&key) {
+            CalibrationStatus::InProgress { percent, stage, .. } => (Some(percent), Some(stage)),
+            _ => (None, None),
+        }
+    }
+}
+
+/// Classify a diagnosis outcome into a batch entry phase, preserving the
+/// failure detail for the UI. Cancellation is distinct from failure so
+/// the user sees "skipped" rather than an error.
+fn batch_phase_for_outcome(
+    outcome: &std::result::Result<Calibration, DiagnosisFailure>,
+) -> (BatchEntryPhase, Option<String>) {
+    match outcome {
+        Ok(_) => (BatchEntryPhase::Done, None),
+        Err(DiagnosisFailure::Cancelled) => (BatchEntryPhase::Cancelled, None),
+        Err(failure) => (BatchEntryPhase::Failed, Some(describe_failure(failure))),
     }
 }
 

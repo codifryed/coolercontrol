@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::actor::CalibrationStatus;
+use crate::api::actor::{CalibrationBatchStatus, CalibrationStatus};
 use crate::api::devices::DeviceChannelPath;
 use crate::api::{AppState, CCError};
 use crate::calibration::{Calibration, CalibrationEntry};
@@ -142,6 +142,67 @@ pub async fn status(
         .ok_or(CCError::InternalError {
             msg: "calibration actor is not responding".to_string(),
         })
+}
+
+/// One channel reference in a batch request body.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchChannel {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
+}
+
+/// Body for `POST /calibrations/batch/start`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StartCalibrationBatchRequest {
+    pub channels: Vec<BatchChannel>,
+}
+
+/// Begin a sequential calibration batch. 202 once queued, or 409 if a
+/// batch is already active or the request is invalid (empty or over the
+/// channel cap).
+pub async fn batch_start(
+    State(AppState {
+        calibration_handle, ..
+    }): State<AppState>,
+    Json(request): Json<StartCalibrationBatchRequest>,
+) -> Result<NoApi<StatusCode>, CCError> {
+    let channels = request
+        .channels
+        .into_iter()
+        .map(|channel| (channel.device_uid, channel.channel_name))
+        .collect();
+    calibration_handle
+        .start_batch(channels)
+        .await
+        .map(|()| NoApi(StatusCode::ACCEPTED))
+        .map_err(|err| CCError::Conflict {
+            msg: err.to_string(),
+        })
+}
+
+/// Current calibration batch status. Always 200; the body is `null` when
+/// no batch has run this session.
+pub async fn batch_status(
+    State(AppState {
+        calibration_handle, ..
+    }): State<AppState>,
+) -> Json<Option<CalibrationBatchStatus>> {
+    Json(calibration_handle.batch_status().await)
+}
+
+/// Cancel the active batch and stop its queue. 404 when none is active.
+pub async fn batch_cancel(
+    State(AppState {
+        calibration_handle, ..
+    }): State<AppState>,
+) -> Result<(), CCError> {
+    if calibration_handle.cancel_batch().await {
+        Ok(())
+    } else {
+        Err(CCError::NotFound {
+            msg: "no calibration batch is active".to_string(),
+        })
+    }
 }
 
 /// Snapshot of every persisted calibration. Empty list when nothing
