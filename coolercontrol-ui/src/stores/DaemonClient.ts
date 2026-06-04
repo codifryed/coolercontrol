@@ -1791,8 +1791,10 @@ export default class DaemonClient {
 
     /**
      * Fetch the active or most recent calibration batch. Returns `null`
-     * when no batch has run this session, `undefined` on transport
-     * failure (so the caller keeps the last-known value).
+     * when no batch has run this session (or the daemon predates this
+     * endpoint), `undefined` on transport failure (so the caller keeps
+     * the last-known value). This is polled on every app load, so a 404
+     * is treated as "no batch" silently rather than logged as an error.
      */
     async getCalibrationBatchStatus(): Promise<CalibrationBatchStatus | null | undefined> {
         try {
@@ -1800,6 +1802,9 @@ export default class DaemonClient {
             this.logDaemonResponse(response, 'Get Calibration Batch Status')
             return (response.data as CalibrationBatchStatus | null) ?? null
         } catch (err: any) {
+            if (err.response?.status === 404) {
+                return null
+            }
             this.logError(err)
             return undefined
         }
