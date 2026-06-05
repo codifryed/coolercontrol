@@ -63,6 +63,7 @@ mod paths;
 mod repositories;
 mod rt;
 mod setting;
+mod sidecar;
 mod sleep_listener;
 mod token;
 
