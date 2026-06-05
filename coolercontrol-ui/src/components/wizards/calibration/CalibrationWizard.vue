@@ -100,6 +100,13 @@ const toggleAll = (): void => {
     const target = !allSelected.value
     for (const row of fanRows.value) row.selected = target
 }
+// Master "select all" checkbox: indeterminate when only some are selected,
+// and clicking it (any state) toggles the whole list.
+const partiallySelected = computed(() => selectedRows.value.length > 0 && !allSelected.value)
+const selectAllModel = computed<boolean>({
+    get: () => allSelected.value,
+    set: () => toggleAll(),
+})
 
 // How many fans to calibrate at once. 1 (sequential) is the safe default;
 // the daemon clamps it to the number of selected fans.
@@ -214,16 +221,12 @@ const phaseClass = (phase: CalibrationBatchEntry['phase']): string => {
                 {{ t('components.wizards.calibration.noFans') }}
             </div>
             <template v-else>
-                <button
-                    class="ml-1 self-start text-sm text-text-color-secondary hover:text-text-color"
-                    @click="toggleAll"
-                >
-                    {{
-                        allSelected
-                            ? t('components.wizards.calibration.deselectAll')
-                            : t('components.wizards.calibration.selectAll')
-                    }}
-                </button>
+                <div class="flex items-center gap-x-2 ml-1 pb-2 border-b border-border-one">
+                    <Checkbox v-model="selectAllModel" :indeterminate="partiallySelected" binary />
+                    <span class="text-sm font-medium cursor-pointer select-none" @click="toggleAll">
+                        {{ t('components.wizards.calibration.selectAll') }}
+                    </span>
+                </div>
                 <div
                     v-for="(row, index) in fanRows"
                     :key="row.deviceUID + row.channelName"
@@ -272,12 +275,7 @@ const phaseClass = (phase: CalibrationBatchEntry['phase']): string => {
                     :path="mdiInformationSlabCircleOutline"
                     :size="deviceStore.getREMSize(1.2)"
                 />
-                <div class="flex flex-col gap-y-1">
-                    <span class="text-sm">{{ t('components.wizards.calibration.idleNote') }}</span>
-                    <span class="text-xs text-text-color-secondary">
-                        {{ t('components.wizards.calibration.pumpCaveat') }}
-                    </span>
-                </div>
+                <span class="text-sm">{{ t('components.wizards.calibration.idleNote') }}</span>
             </div>
         </div>
 
