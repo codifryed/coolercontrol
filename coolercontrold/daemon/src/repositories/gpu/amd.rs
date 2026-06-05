@@ -1715,7 +1715,7 @@ mod tests {
                 Some("edge"),
                 Some("sclk"),
                 Some("mclk"),
-                None,
+                Some("PPT"),
             ]
         );
     }
