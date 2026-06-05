@@ -1838,7 +1838,43 @@ mod engine_tests {
                 (device_uid.clone(), "fan2".to_string()),
             ];
             engine
-                .begin_calibration_batch(channels)
+                .begin_calibration_batch(channels, 1)
+                .expect("batch begins");
+            engine.drive_calibration_batch().await;
+            let status = engine
+                .calibration_batch_status()
+                .expect("batch status present");
+            assert!(!status.active);
+            assert_eq!(status.entries.len(), 2);
+            assert_eq!(status.entries[0].phase, "failed");
+            assert_eq!(status.entries[1].phase, "failed");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn calibration_batch_drives_a_concurrent_group() {
+        // Goal: with concurrency 2 the driver runs both channels in one
+        // group (the moro_local scope), and both still reach a terminal
+        // phase and the batch ends inactive. Hot system => both fail
+        // preflight, proving the concurrent path drives and joins.
+        cc_fs::test_runtime(async {
+            let (device, engine, _store) = setup_calibrated_device();
+            let device_uid = device.borrow().uid.clone();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: "cpu".to_string(),
+                temp: 80.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let channels = vec![
+                (device_uid.clone(), "fan1".to_string()),
+                (device_uid.clone(), "fan2".to_string()),
+            ];
+            engine
+                .begin_calibration_batch(channels, 2)
                 .expect("batch begins");
             engine.drive_calibration_batch().await;
             let status = engine
@@ -1869,15 +1905,15 @@ mod engine_tests {
                 .initialize_status_history_with(status, 1.0);
             let channels = vec![(device_uid.clone(), "fan1".to_string())];
             engine
-                .begin_calibration_batch(channels.clone())
+                .begin_calibration_batch(channels.clone(), 1)
                 .expect("first begin");
             let err = engine
-                .begin_calibration_batch(channels.clone())
+                .begin_calibration_batch(channels.clone(), 1)
                 .expect_err("second begin conflicts");
             assert!(err.to_string().contains("already in progress"));
             engine.drive_calibration_batch().await;
             engine
-                .begin_calibration_batch(channels)
+                .begin_calibration_batch(channels, 1)
                 .expect("begin allowed after finish");
         });
     }

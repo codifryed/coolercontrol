@@ -30,6 +30,7 @@ import {
 } from '@mdi/js'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+import InputNumber from 'primevue/inputnumber'
 import { computed, inject, onMounted, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import { useI18n } from 'vue-i18n'
@@ -100,6 +101,9 @@ const toggleAll = (): void => {
     for (const row of fanRows.value) row.selected = target
 }
 
+// How many fans to calibrate at once. 1 (sequential) is the safe default;
+// the daemon clamps it to the number of selected fans.
+const concurrency: Ref<number> = ref(1)
 const starting: Ref<boolean> = ref(false)
 const startBatch = async (): Promise<void> => {
     starting.value = true
@@ -107,7 +111,7 @@ const startBatch = async (): Promise<void> => {
         device_uid: row.deviceUID,
         channel_name: row.channelName,
     }))
-    const result = await calibrationStore.startBatch(channels)
+    const result = await calibrationStore.startBatch(channels, concurrency.value)
     starting.value = false
     if (result !== true) {
         toast.add({
@@ -232,6 +236,24 @@ const phaseClass = (phase: CalibrationBatchEntry['phase']): string => {
                         {{ t('components.wizards.calibration.calibratedBadge') }}
                     </span>
                 </div>
+            </template>
+            <template v-if="fanRows.length > 1">
+                <div class="flex items-center justify-between gap-x-3 ml-1 mt-1">
+                    <span class="text-sm">
+                        {{ t('components.wizards.calibration.concurrencyLabel') }}
+                    </span>
+                    <InputNumber
+                        v-model="concurrency"
+                        :min="1"
+                        :max="fanRows.length"
+                        show-buttons
+                        button-layout="horizontal"
+                        class="w-28"
+                    />
+                </div>
+                <span class="text-xs text-text-color-secondary ml-1">
+                    {{ t('components.wizards.calibration.concurrencyNote') }}
+                </span>
             </template>
             <div class="flex items-start gap-x-2 ml-1 mt-1">
                 <svg-icon

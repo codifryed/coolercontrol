@@ -228,6 +228,7 @@ pub enum CalibrationMessage {
     },
     StartBatch {
         channels: Vec<ChannelKey>,
+        concurrency: usize,
         respond_to: oneshot::Sender<Result<()>>,
     },
     CancelBatch {
@@ -264,8 +265,8 @@ impl CalibrationActor {
     /// Install the batch synchronously so the caller gets an immediate
     /// conflict, then spawn the long-running driver off the mailbox so
     /// `handle_message` is not blocked for the minutes a sweep takes.
-    fn begin_and_spawn_batch(&self, channels: Vec<ChannelKey>) -> Result<()> {
-        self.engine.begin_calibration_batch(channels)?;
+    fn begin_and_spawn_batch(&self, channels: Vec<ChannelKey>, concurrency: usize) -> Result<()> {
+        self.engine.begin_calibration_batch(channels, concurrency)?;
         let engine = Rc::clone(&self.engine);
         tokio::task::spawn_local(async move {
             engine.drive_calibration_batch().await;
@@ -361,9 +362,10 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
             }
             CalibrationMessage::StartBatch {
                 channels,
+                concurrency,
                 respond_to,
             } => {
-                let _ = respond_to.send(self.begin_and_spawn_batch(channels));
+                let _ = respond_to.send(self.begin_and_spawn_batch(channels, concurrency));
             }
             CalibrationMessage::CancelBatch { respond_to } => {
                 let _ = respond_to.send(self.engine.cancel_calibration_batch());
@@ -534,14 +536,16 @@ impl CalibrationHandle {
         rx.await.ok()
     }
 
-    /// Begin a sequential calibration batch. `Err` when one is already
-    /// active or the request is invalid (the handler maps it to 409).
-    pub async fn start_batch(&self, channels: Vec<ChannelKey>) -> Result<()> {
+    /// Begin a calibration batch, `concurrency` sweeps at a time (1 =
+    /// sequential). `Err` when one is already active or the request is
+    /// invalid (the handler maps it to 409).
+    pub async fn start_batch(&self, channels: Vec<ChannelKey>, concurrency: usize) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let _ = self
             .sender
             .send(CalibrationMessage::StartBatch {
                 channels,
+                concurrency,
                 respond_to: tx,
             })
             .await;

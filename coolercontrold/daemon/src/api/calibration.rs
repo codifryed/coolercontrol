@@ -151,15 +151,19 @@ pub struct BatchChannel {
     pub channel_name: ChannelName,
 }
 
-/// Body for `POST /calibrations/batch/start`.
+/// Body for `POST /calibrations/batch/start`. `concurrency` is how many
+/// sweeps run at once (1 = sequential); omitted or 0 is treated as 1, and
+/// the daemon clamps it to the channel count.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StartCalibrationBatchRequest {
     pub channels: Vec<BatchChannel>,
+    #[serde(default)]
+    pub concurrency: usize,
 }
 
-/// Begin a sequential calibration batch. 202 once queued, or 409 if a
-/// batch is already active or the request is invalid (empty or over the
-/// channel cap).
+/// Begin a calibration batch. 202 once queued, or 409 if a batch is
+/// already active or the request is invalid (empty or over the channel
+/// cap).
 pub async fn batch_start(
     State(AppState {
         calibration_handle, ..
@@ -172,7 +176,7 @@ pub async fn batch_start(
         .map(|channel| (channel.device_uid, channel.channel_name))
         .collect();
     calibration_handle
-        .start_batch(channels)
+        .start_batch(channels, request.concurrency)
         .await
         .map(|()| NoApi(StatusCode::ACCEPTED))
         .map_err(|err| CCError::Conflict {

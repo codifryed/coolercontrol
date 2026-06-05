@@ -1773,9 +1773,13 @@ export default class DaemonClient {
      */
     async startCalibrationBatch(
         channels: Array<{ device_uid: UID; channel_name: string }>,
+        concurrency: number,
     ): Promise<boolean | ErrorResponse> {
         try {
-            const response = await this.getClient().post(`/calibrations/batch/start`, { channels })
+            const response = await this.getClient().post(`/calibrations/batch/start`, {
+                channels,
+                concurrency,
+            })
             this.logDaemonResponse(response, 'Start Calibration Batch')
             return true
         } catch (err: any) {

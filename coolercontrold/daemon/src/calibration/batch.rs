@@ -91,6 +91,9 @@ struct Batch {
     cancel_token: CancellationToken,
     started_at: DateTime<Local>,
     active: bool,
+    /// How many sweeps run at once. 1 is sequential; the driver
+    /// processes the queue in groups of this size.
+    concurrency: usize,
 }
 
 /// Why a batch could not begin. Mapped to a REST error at the boundary.
@@ -119,12 +122,15 @@ impl CalibrationBatchState {
         }
     }
 
-    /// Validate and install a new batch. Rejects an empty or oversized
-    /// request, or a second batch while one is still active. Returns the
-    /// driver's cancellation token on success.
+    /// Validate and install a new batch. `concurrency` is how many sweeps
+    /// run at once (1 = sequential), clamped to `[1, channel count]` so a
+    /// bogus value can never schedule more work than there are fans.
+    /// Rejects an empty or oversized request, or a second batch while one
+    /// is still active. Returns the driver's cancellation token on success.
     pub fn try_begin(
         &self,
         channels: Vec<ChannelKey>,
+        concurrency: usize,
     ) -> Result<CancellationToken, BatchBeginError> {
         if channels.is_empty() {
             return Err(BatchBeginError::Empty);
@@ -150,12 +156,16 @@ impl CalibrationBatchState {
             .collect();
         assert!(entries.is_empty().not());
         assert!(entries.len() <= MAX_BATCH_CHANNELS);
+        let concurrency = concurrency.clamp(1, entries.len());
+        assert!(concurrency >= 1);
+        assert!(concurrency <= entries.len());
         let cancel_token = CancellationToken::new();
         *slot = Some(Batch {
             entries,
             cancel_token: cancel_token.clone(),
             started_at: Local::now(),
             active: true,
+            concurrency,
         });
         Ok(cancel_token)
     }
@@ -182,6 +192,13 @@ impl CalibrationBatchState {
         let slot = self.inner.borrow();
         slot.as_ref()
             .is_some_and(|batch| batch.cancel_token.is_cancelled())
+    }
+
+    /// How many sweeps the driver runs at once. 1 (sequential) when no
+    /// batch is installed.
+    pub fn concurrency(&self) -> usize {
+        let slot = self.inner.borrow();
+        slot.as_ref().map_or(1, |batch| batch.concurrency)
     }
 
     /// Move one entry to `Running`. The index comes from the driver's own
@@ -232,21 +249,25 @@ impl CalibrationBatchState {
         }
     }
 
-    /// Trip the cancel token and report the channel currently running so
-    /// the engine can interrupt that in-flight sweep. `None` when no
-    /// batch is active or none is running yet (cancel between fans).
-    pub fn cancel(&self) -> Option<ChannelKey> {
+    /// Trip the cancel token and report every channel currently running
+    /// (a concurrent group can have several) so the engine can interrupt
+    /// each in-flight sweep. Empty when no batch is active or none is
+    /// running yet (cancel between groups).
+    pub fn cancel(&self) -> Vec<ChannelKey> {
         let slot = self.inner.borrow();
-        let batch = slot.as_ref()?;
+        let Some(batch) = slot.as_ref() else {
+            return Vec::new();
+        };
         if batch.active.not() {
-            return None;
+            return Vec::new();
         }
         batch.cancel_token.cancel();
         batch
             .entries
             .iter()
-            .find(|entry| entry.phase == BatchEntryPhase::Running)
+            .filter(|entry| entry.phase == BatchEntryPhase::Running)
             .map(|entry| (entry.device_uid.clone(), entry.channel_name.clone()))
+            .collect()
     }
 
     /// Clone the current batch for the status endpoint. `None` when no
@@ -275,7 +296,7 @@ mod tests {
         // start Queued, ready for the driver to advance.
         let state = CalibrationBatchState::new();
         let token = state
-            .try_begin(vec![key("d", "fan1"), key("d", "fan2")])
+            .try_begin(vec![key("d", "fan1"), key("d", "fan2")], 1)
             .expect("begin");
         assert!(token.is_cancelled().not());
         let snapshot = state.snapshot().expect("snapshot");
@@ -292,7 +313,10 @@ mod tests {
         // Goal: an empty channel list is malformed and refused before
         // any state is installed.
         let state = CalibrationBatchState::new();
-        assert_eq!(state.try_begin(vec![]).unwrap_err(), BatchBeginError::Empty);
+        assert_eq!(
+            state.try_begin(vec![], 1).unwrap_err(),
+            BatchBeginError::Empty
+        );
         assert!(state.snapshot().is_none());
     }
 
@@ -305,7 +329,7 @@ mod tests {
             .map(|i| key("d", &format!("fan{i}")))
             .collect();
         assert_eq!(channels.len(), MAX_BATCH_CHANNELS + 1);
-        let err = state.try_begin(channels).unwrap_err();
+        let err = state.try_begin(channels, 1).unwrap_err();
         assert!(matches!(err, BatchBeginError::TooManyChannels { .. }));
     }
 
@@ -313,9 +337,9 @@ mod tests {
     fn try_begin_rejects_second_while_active() {
         // Goal: only one batch may be active at a time.
         let state = CalibrationBatchState::new();
-        state.try_begin(vec![key("d", "fan1")]).expect("first");
+        state.try_begin(vec![key("d", "fan1")], 1).expect("first");
         assert_eq!(
-            state.try_begin(vec![key("d", "fan2")]).unwrap_err(),
+            state.try_begin(vec![key("d", "fan2")], 1).unwrap_err(),
             BatchBeginError::AlreadyActive
         );
     }
@@ -324,9 +348,9 @@ mod tests {
     fn try_begin_allowed_after_previous_inactive() {
         // Goal: once a batch finishes (inactive), a fresh one can begin.
         let state = CalibrationBatchState::new();
-        state.try_begin(vec![key("d", "fan1")]).expect("first");
+        state.try_begin(vec![key("d", "fan1")], 1).expect("first");
         state.set_inactive();
-        state.try_begin(vec![key("d", "fan2")]).expect("second");
+        state.try_begin(vec![key("d", "fan2")], 1).expect("second");
         let snapshot = state.snapshot().expect("snapshot");
         assert!(snapshot.active);
         assert_eq!(snapshot.entries[0].channel_name, "fan2");
@@ -338,7 +362,7 @@ mod tests {
         // and a failure message is preserved for the UI.
         let state = CalibrationBatchState::new();
         state
-            .try_begin(vec![key("d", "fan1"), key("d", "fan2")])
+            .try_begin(vec![key("d", "fan1"), key("d", "fan2")], 1)
             .expect("begin");
         state.mark_running(0);
         assert_eq!(
@@ -360,7 +384,7 @@ mod tests {
         // Cancelled; an already-finished entry keeps its outcome.
         let state = CalibrationBatchState::new();
         state
-            .try_begin(vec![key("d", "a"), key("d", "b"), key("d", "c")])
+            .try_begin(vec![key("d", "a"), key("d", "b"), key("d", "c")], 1)
             .expect("begin");
         state.mark_terminal(0, BatchEntryPhase::Done, None);
         state.mark_remaining_cancelled(1);
@@ -377,24 +401,41 @@ mod tests {
         // interrupt that sweep.
         let state = CalibrationBatchState::new();
         let token = state
-            .try_begin(vec![key("d", "fan1"), key("d", "fan2")])
+            .try_begin(vec![key("d", "fan1"), key("d", "fan2")], 1)
             .expect("begin");
         state.mark_running(1);
         let running = state.cancel();
-        assert_eq!(running, Some(key("d", "fan2")));
+        assert_eq!(running, vec![key("d", "fan2")]);
         assert!(token.is_cancelled());
         assert!(state.is_cancelled());
     }
 
     #[test]
-    fn cancel_without_running_entry_returns_none_but_trips_token() {
-        // Goal: cancelling between fans (none Running) still trips the
+    fn cancel_without_running_entry_returns_empty_but_trips_token() {
+        // Goal: cancelling between groups (none Running) still trips the
         // token so the queue tail does not start.
         let state = CalibrationBatchState::new();
-        let token = state.try_begin(vec![key("d", "fan1")]).expect("begin");
+        let token = state.try_begin(vec![key("d", "fan1")], 1).expect("begin");
         let running = state.cancel();
-        assert_eq!(running, None);
+        assert!(running.is_empty());
         assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn try_begin_clamps_concurrency_to_channel_count() {
+        // Goal: concurrency is clamped to [1, channel count]. A 0 (or
+        // omitted) value becomes 1 (sequential); an over-large value
+        // becomes "all selected at once".
+        let state = CalibrationBatchState::new();
+        state
+            .try_begin(vec![key("d", "a"), key("d", "b")], 0)
+            .expect("begin");
+        assert_eq!(state.concurrency(), 1);
+        state.set_inactive();
+        state
+            .try_begin(vec![key("d", "a"), key("d", "b")], 9)
+            .expect("begin");
+        assert_eq!(state.concurrency(), 2);
     }
 
     #[test]
@@ -404,5 +445,6 @@ mod tests {
         assert!(state.snapshot().is_none());
         assert!(state.is_active().not());
         assert!(state.is_cancelled().not());
+        assert_eq!(state.concurrency(), 1);
     }
 }

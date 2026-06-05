@@ -431,8 +431,9 @@ export const useCalibrationStore = defineStore('calibration', () => {
      */
     async function startBatch(
         channels: Array<{ device_uid: UID; channel_name: string }>,
+        concurrency: number,
     ): Promise<boolean | ErrorResponse> {
-        const result = await deviceStore.daemonClient.startCalibrationBatch(channels)
+        const result = await deviceStore.daemonClient.startCalibrationBatch(channels, concurrency)
         if (result === true) {
             await refreshBatchStatus()
             startBatchPolling()

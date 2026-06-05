@@ -1762,9 +1762,13 @@ impl Engine {
     /// Validate and install a calibration batch without running it; the
     /// actor spawns `drive_calibration_batch` next. Maps the state
     /// machine's typed rejection onto a daemon error for the boundary.
-    pub fn begin_calibration_batch(&self, channels: Vec<ChannelKey>) -> Result<()> {
+    pub fn begin_calibration_batch(
+        &self,
+        channels: Vec<ChannelKey>,
+        concurrency: usize,
+    ) -> Result<()> {
         self.calibration_batch
-            .try_begin(channels)
+            .try_begin(channels, concurrency)
             .map(|_token| ())
             .map_err(|err| match err {
                 BatchBeginError::Empty => anyhow!("calibration batch has no channels"),
@@ -1777,37 +1781,60 @@ impl Engine {
             })
     }
 
-    /// Sequentially calibrate every channel in the active batch, awaiting
-    /// each sweep before the next. Spawned by the actor so the daemon
-    /// owns the queue: a UI reload never strands the remaining fans. Each
-    /// per-channel diagnosis updates its own status; this only sequences
-    /// and records batch phase, never holding a borrow across `await`.
+    /// Calibrate every channel in the active batch, `concurrency` at a
+    /// time: process the queue in groups, awaiting each group before the
+    /// next. Spawned by the actor so the daemon owns the queue (a UI
+    /// reload never strands the remaining fans). A borrow is never held
+    /// across `await`.
     pub async fn drive_calibration_batch(&self) {
         let Some(keys) = self.calibration_batch.entry_keys() else {
             return;
         };
-        for (index, key) in keys.iter().enumerate() {
+        let concurrency = self.calibration_batch.concurrency().max(1);
+        let mut index = 0;
+        while index < keys.len() {
             if self.calibration_batch.is_cancelled() {
                 self.calibration_batch.mark_remaining_cancelled(index);
                 break;
             }
-            self.calibration_batch.mark_running(index);
-            let outcome = self
-                .start_calibration_diagnosis(key.0.clone(), key.1.clone())
-                .await;
-            let (phase, message) = batch_phase_for_outcome(&outcome);
-            self.calibration_batch.mark_terminal(index, phase, message);
+            let end = (index + concurrency).min(keys.len());
+            self.drive_calibration_group(&keys[index..end], index).await;
+            index = end;
         }
         self.calibration_batch.set_inactive();
     }
 
-    /// Cancel the active batch: trip its queue and interrupt the in-flight
-    /// sweep (if any). `false` when no batch is active.
+    /// Run one group of channels concurrently, recording each entry's
+    /// terminal phase as its sweep finishes. The `moro_local` scope lets
+    /// the spawned sweeps borrow `&self` without a `'static` bound and
+    /// joins them all before returning.
+    async fn drive_calibration_group(&self, keys: &[ChannelKey], base_index: usize) {
+        moro_local::async_scope!(|scope| {
+            for (offset, key) in keys.iter().enumerate() {
+                let index = base_index + offset;
+                let device_uid = key.0.clone();
+                let channel_name = key.1.clone();
+                self.calibration_batch.mark_running(index);
+                scope.spawn(async move {
+                    let outcome = self
+                        .start_calibration_diagnosis(device_uid, channel_name)
+                        .await;
+                    let (phase, message) = batch_phase_for_outcome(&outcome);
+                    self.calibration_batch.mark_terminal(index, phase, message);
+                });
+            }
+        })
+        .await;
+    }
+
+    /// Cancel the active batch: trip its queue and interrupt every
+    /// in-flight sweep (a concurrent group can have several). `false`
+    /// when no batch is active.
     pub fn cancel_calibration_batch(&self) -> bool {
         if self.calibration_batch.is_active().not() {
             return false;
         }
-        if let Some(running_key) = self.calibration_batch.cancel() {
+        for running_key in self.calibration_batch.cancel() {
             self.cancel_calibration_diagnosis(&running_key);
         }
         true
