@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
 import { PanOnScrollMode, useVueFlow, VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import {
@@ -32,7 +32,9 @@ import LightingChannelNode from '@/components/control-flow/LightingChannelNode.v
 import DeviceLabelNode from '@/components/control-flow/DeviceLabelNode.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiHelpCircleOutline } from '@mdi/js'
+import Button from 'primevue/button'
+import { mdiAutoFix, mdiHelpCircleOutline, mdiTuneVerticalVariant } from '@mdi/js'
+import { Emitter, EventType } from 'mitt'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useI18n } from 'vue-i18n'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
@@ -40,6 +42,7 @@ import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 provide('flowViewMode', 'overview')
 
@@ -124,21 +127,43 @@ onUnmounted(() => {
     <div ref="containerRef" class="flex h-full flex-col">
         <div class="flex items-center justify-between border-b-4 border-border-one px-4 py-2">
             <span class="text-2xl font-bold text-text-color">{{ t('views.controls.title') }}</span>
-            <div class="flex items-center gap-x-1 text-sm text-text-color-secondary">
-                <svg-icon
-                    type="mdi"
-                    class="inline"
-                    :path="mdiHelpCircleOutline"
-                    :size="deviceStore.getREMSize(1.3)"
-                />
-                {{ t('layout.settings.devices.detectionIssues') }}
-                <a
-                    target="_blank"
-                    href="https://docs.coolercontrol.org/hardware-support.html"
-                    class="text-accent"
-                >
-                    {{ t('layout.settings.devices.hardwareSupportDoc') }}
-                </a>
+            <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                <div class="flex items-center gap-x-1 text-sm text-text-color-secondary">
+                    <svg-icon
+                        type="mdi"
+                        class="inline"
+                        :path="mdiHelpCircleOutline"
+                        :size="deviceStore.getREMSize(1.3)"
+                    />
+                    {{ t('layout.settings.devices.detectionIssues') }}
+                    <a
+                        target="_blank"
+                        href="https://docs.coolercontrol.org/hardware-support.html"
+                        class="text-accent"
+                    >
+                        {{ t('layout.settings.devices.hardwareSupportDoc') }}
+                    </a>
+                </div>
+                <div class="flex items-center gap-x-2">
+                    <Button class="h-9" @click="emitter.emit('profile-generate')">
+                        <svg-icon
+                            class="outline-0"
+                            type="mdi"
+                            :path="mdiAutoFix"
+                            :size="deviceStore.getREMSize(1.25)"
+                        />
+                        <span class="ml-1.5">{{ t('components.wizards.generate.title') }}</span>
+                    </Button>
+                    <Button class="h-9" @click="emitter.emit('calibrate-fans')">
+                        <svg-icon
+                            class="outline-0"
+                            type="mdi"
+                            :path="mdiTuneVerticalVariant"
+                            :size="deviceStore.getREMSize(1.25)"
+                        />
+                        <span class="ml-1.5">{{ t('components.wizards.calibration.title') }}</span>
+                    </Button>
+                </div>
             </div>
         </div>
 
