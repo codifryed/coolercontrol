@@ -42,9 +42,6 @@ use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
-use tokio::signal;
-use tokio::signal::unix::SignalKind;
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 mod admin;
@@ -64,6 +61,7 @@ mod modes;
 mod notifier;
 mod paths;
 mod repositories;
+mod rt;
 mod setting;
 mod sleep_listener;
 mod token;
@@ -274,7 +272,7 @@ struct Args {
 #[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
-    cc_fs::runtime(async {
+    rt::runtime(async {
         let run_token = setup_termination_signals();
         handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
@@ -377,7 +375,7 @@ fn main() -> Result<()> {
                 }
 
                 // give concurrent services a moment to finish initializing:
-                sleep(Duration::from_millis(10)).await;
+                rt::sleep(Duration::from_millis(10)).await;
                 set_cpu_affinity()?;
                 info!("Initialization Complete");
                 main_loop::run(
@@ -424,37 +422,9 @@ fn verify_is_root() -> Result<()> {
 /// the signal handlers.
 fn setup_termination_signals() -> CancellationToken {
     let run_token = CancellationToken::new();
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-    let sigterm = async {
-        signal::unix::signal(SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-    let sigint = async {
-        signal::unix::signal(SignalKind::interrupt())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-    let sigquit = async {
-        signal::unix::signal(SignalKind::quit())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
     let sig_run_token = run_token.clone();
-    tokio::task::spawn_local(async move {
-        tokio::select! {
-            () = ctrl_c => {},
-            () = sigterm => {},
-            () = sigint => {},
-            () = sigquit => {},
-        }
+    rt::spawn(async move {
+        rt::shutdown_signal().await;
         sig_run_token.cancel();
     });
     run_token
@@ -649,7 +619,7 @@ async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
             startup_delay.as_secs()
         );
     }
-    sleep(startup_delay).await;
+    rt::sleep(startup_delay).await;
     Ok(())
 }
 

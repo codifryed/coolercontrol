@@ -23,7 +23,7 @@ use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
-use crate::{cc_fs, AllDevices};
+use crate::{cc_fs, rt, AllDevices};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use indexmap::IndexMap;
@@ -450,7 +450,7 @@ impl AlertController {
         }
         self.logs_dirty.set(false);
         self.last_log_flush.set(Instant::now());
-        tokio::task::spawn_local({
+        rt::spawn({
             let logs: Vec<AlertLog> = self.logs.borrow().iter().cloned().collect();
             async move {
                 match serde_json::to_string(&AlertLogsFile { logs }) {
@@ -726,7 +726,7 @@ impl AlertController {
 
     fn fire_command(cmd: &str) {
         let cmd = cmd.to_string();
-        tokio::task::spawn_local(async move {
+        rt::spawn(async move {
             if let ShellCommandResult::Error(err) =
                 ShellCommand::new(&cmd, Duration::from_secs(20)).run().await
             {

@@ -31,41 +31,7 @@ pub use self::write::*;
 mod open;
 pub use self::open::*;
 
-use std::future::Future;
-use std::time::Duration;
-use tokio::runtime::Builder;
-use tokio::task::LocalSet;
-
-/// Initialize and run the Tokio runtime.
-pub fn runtime<F: Future>(future: F) -> F::Output {
-    let rt_builder = Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        // By default, this pool can grow large and fluctuate over time.
-        // A large thread pool is less efficient for us, but we want more than a single
-        // thread in case a device has severe latency:
-        .max_blocking_threads(4)
-        .thread_keep_alive(Duration::from_secs(60))
-        .thread_name("cc-wrk")
-        .event_interval(200)
-        .global_queue_interval(200)
-        .build();
-    // requires tokio unstable: (but would make all our spawns !Send by default)
-    // .build_local(&Default::default());
-    // ^ until then, this allows us to use spawn_local:
-    let rt = rt_builder.unwrap();
-    let output = rt.block_on(LocalSet::new().run_until(future));
-    // should a background thread still be running, this will force the runtime process to stop:
-    rt.shutdown_timeout(Duration::from_secs(3));
-    output
-}
-
-/// Initialize and run a Tokio runtime for tests.
-///
-/// Important: cargo tests need to be run single threaded, i.e. `-- --test-threads=1`, as cargo
-/// runs test in parallel by default. We use the `serial_test` crate to explicitly ensure this.
-#[allow(dead_code)]
-pub fn test_runtime<F: Future>(future: F) -> F::Output {
-    let rt = Builder::new_current_thread().enable_all().build();
-    rt.unwrap().block_on(LocalSet::new().run_until(future))
-}
+// The runtime entry lives in `crate::rt`. Re-exported here so the many fs-touching tests can keep
+// calling `cc_fs::test_runtime`.
+#[cfg(test)]
+pub use crate::rt::test_runtime;

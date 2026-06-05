@@ -44,6 +44,7 @@ use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
+use crate::rt;
 use crate::setting::{
     ChannelExtensions, FunctionUID, LcdModeKind, LcdModeName, LcdSettings, LightingSettings,
     Profile, ProfileType, ProfileUID, Setting, SettingKind, DEFAULT_FUNCTION_UID,
@@ -2084,7 +2085,7 @@ impl DiagnosisHost for Engine {
     }
 
     async fn sleep_millis(&self, millis: u32) {
-        tokio::time::sleep(StdDuration::from_millis(u64::from(millis))).await;
+        rt::sleep(StdDuration::from_millis(u64::from(millis))).await;
     }
 
     fn emit_progress(&self, progress: DiagnosisProgress) {

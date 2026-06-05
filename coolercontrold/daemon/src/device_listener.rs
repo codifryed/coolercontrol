@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::rt;
 use crate::setting::CCDeviceSettings;
 use crate::{cc_fs, AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
@@ -36,8 +37,8 @@ use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::io::unix::{AsyncFd, AsyncFdReadyGuard};
-use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
@@ -290,7 +291,7 @@ async fn run_event_loop(
 /// Sleeps until the debounce deadline, or waits forever if no deadline set.
 async fn sleep_until_deadline(deadline: Option<Instant>) {
     match deadline {
-        Some(dl) => tokio::time::sleep_until(dl).await,
+        Some(dl) => rt::sleep_until(dl).await,
         None => std::future::pending::<()>().await,
     }
 }

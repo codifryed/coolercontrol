@@ -84,6 +84,7 @@ use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -100,7 +101,9 @@ use std::rc::Rc;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
-use tokio::time::{sleep, timeout, Instant};
+#[cfg(test)]
+use tokio::time::sleep;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 /// Init-time slow-device detection threshold as a fraction of
@@ -560,7 +563,7 @@ impl HwmonRepo {
             // threshold flips this device onto the duty-cache path.
             let extract_start = Instant::now();
             let Ok((mut channel_statuses, _)) =
-                timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
+                rt::timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial fan statuses \
@@ -571,7 +574,7 @@ impl HwmonRepo {
                 continue;
             };
             let Ok((power_statuses, _)) =
-                timeout(extract_timeout, power::extract_power_status(&driver)).await
+                rt::timeout(extract_timeout, power::extract_power_status(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial power statuses \
@@ -582,7 +585,7 @@ impl HwmonRepo {
             };
             channel_statuses.extend(power_statuses);
             let Ok((temp_statuses, _)) =
-                timeout(extract_timeout, temps::extract_temp_statuses(&driver)).await
+                rt::timeout(extract_timeout, temps::extract_temp_statuses(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial temp statuses \
@@ -715,7 +718,7 @@ impl HwmonRepo {
         );
         let permit_acquire = tokio::select! {
             () = self.shutdown_token.cancelled() => return,
-            () = sleep(self.device_read_permit_timeout) => None,
+            () = rt::sleep(self.device_read_permit_timeout) => None,
             permit = semaphore.acquire() => permit.ok(),
         };
         let Some(permit) = permit_acquire else {
@@ -982,7 +985,7 @@ impl HwmonRepo {
         channel_name: &str,
     ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
-            () = sleep(self.device_write_permit_timeout) => Err(anyhow!(
+            () = rt::sleep(self.device_write_permit_timeout) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
                 fan speed. There will be significant issues handling this device due to extreme lag."
             )),
@@ -1066,7 +1069,7 @@ impl HwmonRepo {
             return;
         };
         let permit = Rc::clone(permit);
-        tokio::task::spawn_local(async move {
+        rt::spawn(async move {
             let Ok(_held) = permit.acquire().await else {
                 // Semaphore closed; daemon is shutting down.
                 return;
@@ -1098,7 +1101,7 @@ impl HwmonRepo {
                 write_permit_timeout,
                 delay_millis: self.device_delay(device_uid),
             };
-            tokio::task::spawn_local(run_writer_task(task));
+            rt::spawn(run_writer_task(task));
         }
     }
 
@@ -1281,7 +1284,7 @@ async fn run_one_pending_write(
         () = task.shutdown.cancelled() => Err(format!(
             "HWMon write cancelled for {driver_name}:{channel_name}: daemon shutting down"
         )),
-        () = sleep(task.write_permit_timeout) => Err(format!(
+        () = rt::sleep(task.write_permit_timeout) => Err(format!(
             "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
              fan speed. There will be significant issues handling this device due to extreme lag."
         )),
@@ -1951,7 +1954,7 @@ impl Repository for HwmonRepo {
                     &hwmon_driver.path,
                     channel_info,
                 );
-                match timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
+                match rt::timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
                     Ok(Ok(())) => {}
                     Ok(Err(err)) => {
                         warn!(

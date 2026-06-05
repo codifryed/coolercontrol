@@ -63,6 +63,7 @@ use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
+use crate::rt;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};
@@ -71,8 +72,6 @@ use moro_local::Scope;
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::time;
-use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
 /// Hard cap on how long the main loop waits for device preloads
@@ -109,7 +108,7 @@ pub async fn run(
             .with_context(|| "Creating DBus Sleep Listener")?;
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
-        let mut loop_interval = time::interval(Duration::from_secs_f64(poll_rate));
+        let mut loop_interval = rt::interval(Duration::from_secs_f64(poll_rate));
         let mut sleep_prepared = false;
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
@@ -127,7 +126,7 @@ pub async fn run(
                     // background and land in the next tick's
                     // snapshot. See the module-level doc for the
                     // full timing model.
-                    () = sleep(snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
+                    () = rt::sleep(snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
                 fire_snapshots_and_processes(&repos, &engine, &mut lcd_update_trigger, &status_handle, scope).await;
@@ -180,7 +179,7 @@ async fn align_loop_timing_with_clock() {
         .unwrap()
         .subsec_millis();
     let wait_duration = FULL_SECOND_MS - u64::from(current_millis);
-    sleep(Duration::from_millis(wait_duration)).await;
+    rt::sleep(Duration::from_millis(wait_duration)).await;
 }
 
 /// Initiates the preload process for all repositories.
@@ -250,7 +249,7 @@ fn fire_lcd_update<'s>(
     }
     let lcd_commander = Rc::clone(&engine.lcd_commander);
     scope.spawn(async move {
-        if timeout(
+        if rt::timeout(
             Duration::from_secs(LCD_TIMEOUT_S),
             lcd_commander.update_lcd(),
         )
@@ -287,7 +286,7 @@ async fn wake_from_sleep(
         "Waiting {}s before resuming after waking from sleep.",
         startup_delay.as_secs()
     );
-    sleep(startup_delay).await;
+    rt::sleep(startup_delay).await;
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         engine.reinitialize_devices().await;

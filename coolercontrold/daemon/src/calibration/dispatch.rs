@@ -44,6 +44,7 @@ use super::store::CalibrationStore;
 use super::ChannelKey;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::repositories::repository::Repository;
+use crate::rt;
 use anyhow::Result;
 use async_trait::async_trait;
 use log::warn;
@@ -172,8 +173,8 @@ pub async fn dispatch(
     {
         let state_owned = Rc::clone(state);
         let writer_owned = Rc::clone(writer);
-        tokio::task::spawn_local(async move {
-            tokio::time::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
+        rt::spawn(async move {
+            rt::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
             if walk_enabled {
                 complete_kick_with_walk(
                     &state_owned,
@@ -458,7 +459,7 @@ pub async fn complete_kick_with_walk(
         write_walk_step(writer, device_uid, channel_name, next).await;
         walk_position = next;
         steps_taken += 1;
-        tokio::time::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS)).await;
+        rt::sleep(Duration::from_millis(WALK_STEP_INTERVAL_MS)).await;
     }
 }
 

@@ -22,6 +22,7 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::rt;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::{debug, error, info, trace, warn};
@@ -29,7 +30,7 @@ use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
-use tokio::time::{sleep, Instant};
+use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
@@ -164,7 +165,7 @@ impl GpuRepo {
             return Err(anyhow!("No device permit found for AMD GPU: {device_uid}"));
         };
         tokio::select! {
-            () = sleep(self.device_write_permit_timeout) => Err(anyhow!(
+            () = rt::sleep(self.device_write_permit_timeout) => Err(anyhow!(
                 "TIMEOUT AMD GPU device: {device_uid} channel: {channel_name}; waiting to apply \
                 setting. There will be significant issues handling this device due to extreme lag."
             )),
@@ -216,7 +217,7 @@ impl GpuRepo {
                         return;
                     };
                     tokio::select! {
-                        () = sleep(read_permit_timeout) => {
+                        () = rt::sleep(read_permit_timeout) => {
                             warn!(
                                 "TIMEOUT waiting for AMD GPU device permit: {uid}. \
                                 Skipping status preload for this cycle."
