@@ -37,7 +37,7 @@ use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
-use libdrm_amdgpu_sys::AMDGPU::GPU_INFO;
+use libdrm_amdgpu_sys::AMDGPU::{AmdgpuDeviceHandle, GPU_INFO};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 
@@ -168,8 +168,9 @@ impl GpuAMD {
     }
 
     async fn init_load(device_path: &Path) -> Option<HwmonChannelInfo> {
-        if let Ok(load) = cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
-            match fans::check_parsing_8(load) {
+        let load_path = device_path.join("gpu_busy_percent");
+        match cc_fs::read_sysfs(&load_path).await {
+            Ok(load) => match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
@@ -177,20 +178,27 @@ impl GpuAMD {
                     ..Default::default()
                 }),
                 Err(err) => {
-                    warn!("Error reading AMD busy percent value: {err}");
+                    warn!("Error parsing AMD GPU load from {}: {err}", load_path.display());
                     None
                 }
+            },
+            Err(err) => {
+                // The file may be absent or present-but-unreadable on older ASICs.
+                // The libdrm fallback covers this when available, so this is expected.
+                debug!(
+                    "AMD GPU load unavailable from hwmon at {}: {err}",
+                    load_path.display()
+                );
+                None
             }
-        } else {
-            warn!(
-                "No AMDGPU load found: {}/device/gpu_busy_percent",
-                device_path.display()
-            );
-            None
         }
     }
 
-    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
+    /// Opens the amdgpu DRM render node for the device and returns an owned
+    /// handle. The handle keeps its file descriptor alive for its lifetime, so
+    /// it is safe to retain for repeated sensor queries. Returns None when
+    /// libdrm is not present at runtime or the device has no render node.
+    async fn open_drm_handle(base_path: &Path) -> Option<AmdgpuDeviceHandle> {
         let drm_amdgpu = LibDrmAmdgpu::new().ok()?;
         let slot_name = devices::get_pci_slot_name(base_path).await?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
@@ -199,7 +207,12 @@ impl GpuAMD {
             .write(true)
             .open(&path)
             .ok()?;
-        let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
+        let (handle, _, _) = drm_amdgpu.init_amdgpu_device_handle(drm_file).ok()?;
+        Some(handle)
+    }
+
+    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
+        let handle = Self::open_drm_handle(base_path).await?;
         Some(handle.device_info().ok()?.find_device_name_or_default())
     }
 
