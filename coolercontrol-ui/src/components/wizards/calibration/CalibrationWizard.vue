@@ -271,12 +271,16 @@ const phaseClass = (phase: CalibrationBatchEntry['phase']): string => {
                 class="flex items-center justify-between gap-x-3 ml-1"
             >
                 <div class="flex items-center gap-x-2 min-w-0">
-                    <svg-icon
-                        type="mdi"
-                        :class="phaseClass(entry.phase)"
-                        :path="phaseIcon(entry.phase)"
-                        :size="deviceStore.getREMSize(1.2)"
-                    />
+                    <!-- overflow-hidden clips the running spinner's rotation to its own box so it
+                         does not expand the scroll container and flicker a scrollbar. -->
+                    <span class="shrink-0 inline-flex overflow-hidden">
+                        <svg-icon
+                            type="mdi"
+                            :class="phaseClass(entry.phase)"
+                            :path="phaseIcon(entry.phase)"
+                            :size="deviceStore.getREMSize(1.2)"
+                        />
+                    </span>
                     <span class="truncate">{{
                         entryLabel(entry.device_uid, entry.channel_name)
                     }}</span>
