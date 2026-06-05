@@ -21,6 +21,8 @@ use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::cc_fs;
 use crate::config::Config;
@@ -29,7 +31,7 @@ use crate::device::{
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
-    GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
+    GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME, READ_PERMIT_RATIO,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
@@ -37,6 +39,7 @@ use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
+use libdrm_amdgpu_sys::AMDGPU::SENSOR_INFO::SENSOR_TYPE;
 use libdrm_amdgpu_sys::AMDGPU::{AmdgpuDeviceHandle, GPU_INFO};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
@@ -52,8 +55,24 @@ const PATTERN_ZERO_RPM_STOP_LIMITS_TEMP: &str =
     r"ZERO_RPM_STOP_TEMPERATURE:\s+(?P<temp_min>\d+)\s+(?P<temp_max>\d+)";
 type CurveTemp = u8;
 
+/// Wall-clock budget for one libdrm `sensor_info` ioctl, expressed as a ratio
+/// of the poll rate like `gpu_repo`'s other read timeouts. `gpu_repo` lacks the
+/// per-channel device-delay resilience hwmon has, so the budget stays near a
+/// single poll interval rather than hwmon's multi-interval ioctl budget. Reuses
+/// `gpu_repo::READ_PERMIT_RATIO` so both share one poll-rate budgeting source.
+/// The ioctl is offloaded and only nears this ceiling when the GPU is wedged
+/// (powering down/up or saturated); a healthy read returns in microseconds.
+fn drm_ioctl_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * READ_PERMIT_RATIO)
+}
+
 pub struct GpuAMD {
     config: Rc<Config>,
+    /// Per-ioctl timeout for libdrm sensor reads. Frozen at construction since
+    /// `poll_rate` only changes on restart.
+    drm_ioctl_timeout: Duration,
     pub amd_devices: HashMap<UID, DeviceLock>,
     pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
     pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
@@ -61,14 +80,19 @@ pub struct GpuAMD {
 
 impl GpuAMD {
     pub fn new(config: Rc<Config>) -> Self {
+        let poll_rate = config
+            .get_settings()
+            .map_or(1.0, |settings| settings.poll_rate);
         Self {
             config,
+            drm_ioctl_timeout: drm_ioctl_timeout_for(poll_rate),
             amd_devices: HashMap::new(),
             amd_driver_infos: HashMap::new(),
             amd_preloaded_statuses: RefCell::new(HashMap::new()),
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn init_devices(&self) -> Vec<AMDDriverInfo> {
         let base_paths = devices::find_all_hwmon_device_paths();
         let mut amd_infos = vec![];
@@ -148,6 +172,13 @@ impl GpuAMD {
                 .await
                 .or(drm_device_name)
                 .or_else(|| pci_device_names.and_then(|names| names.device_name));
+            let drm = Self::init_drm_metrics(
+                &path,
+                &channels,
+                &disabled_channels,
+                self.drm_ioctl_timeout,
+            )
+            .await;
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -161,6 +192,7 @@ impl GpuAMD {
                 fan_curve_info,
                 has_rdna_fan_ctrl,
                 overdrive_enabled,
+                drm,
             };
             amd_infos.push(amd_driver_info);
         }
@@ -178,7 +210,10 @@ impl GpuAMD {
                     ..Default::default()
                 }),
                 Err(err) => {
-                    warn!("Error parsing AMD GPU load from {}: {err}", load_path.display());
+                    warn!(
+                        "Error parsing AMD GPU load from {}: {err}",
+                        load_path.display()
+                    );
                     None
                 }
             },
@@ -186,7 +221,7 @@ impl GpuAMD {
                 // The file may be absent or present-but-unreadable on older ASICs.
                 // The libdrm fallback covers this when available, so this is expected.
                 debug!(
-                    "AMD GPU load unavailable from hwmon at {}: {err}",
+                    "AMD GPU load unavailable from hwmon at {}. Will try with libdrm. {err}",
                     load_path.display()
                 );
                 None
@@ -360,7 +395,7 @@ impl GpuAMD {
                 .fan_curve_info
                 .as_ref()
                 .is_some_and(|fc| fc.changeable);
-            for channel in &amd_driver.hwmon.channels {
+            for channel in amd_driver.all_channel_infos() {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
                         let extension = if supports_internal_profiles {
@@ -417,9 +452,7 @@ impl GpuAMD {
                 .borrow_mut()
                 .insert(id, amd_status.clone());
             let temps = amd_driver
-                .hwmon
-                .channels
-                .iter()
+                .all_channel_infos()
                 .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
                 .map(|channel| {
                     let label_base = channel
@@ -543,13 +576,19 @@ impl GpuAMD {
         let (power_statuses, _) = power::extract_power_status(&amd_driver.hwmon).await;
         status_channels.extend(power_statuses);
         let (extracted_temps, _) = temps::extract_temp_statuses(&amd_driver.hwmon).await;
-        let temps = extracted_temps
+        let mut temps: Vec<TempStatus> = extracted_temps
             .iter()
             .map(|temp| TempStatus {
                 name: temp.name.clone(),
                 temp: temp.temp,
             })
             .collect();
+        if let Some(drm) = &amd_driver.drm {
+            let (drm_channels, drm_temps) =
+                Self::extract_drm_statuses(drm, self.drm_ioctl_timeout).await;
+            status_channels.extend(drm_channels);
+            temps.extend(drm_temps);
+        }
         (status_channels, temps)
     }
 
@@ -577,6 +616,211 @@ impl GpuAMD {
             }
         }
         channels
+    }
+
+    /// Probes libdrm for the metric types the hwmon driver does not expose and
+    /// returns a `DrmMetrics` fallback for them. Returns None when libdrm is
+    /// unavailable at runtime, every type is already covered by hwmon, or no
+    /// candidate sensor reads successfully on this device.
+    async fn init_drm_metrics(
+        base_path: &Path,
+        hwmon_channels: &[HwmonChannelInfo],
+        disabled_channels: &[String],
+        ioctl_timeout: Duration,
+    ) -> Option<DrmMetrics> {
+        let candidates = Self::drm_fallback_candidates(hwmon_channels);
+        if candidates.is_empty() {
+            return None;
+        }
+        let handle = Arc::new(Self::open_drm_handle(base_path).await?);
+        let mut channels = Vec::with_capacity(candidates.len());
+        for (info, sensor) in candidates {
+            if disabled_channels.contains(&info.name) {
+                continue;
+            }
+            // Only keep metrics the device actually answers for.
+            if Self::read_drm_sensor(Arc::clone(&handle), sensor, ioctl_timeout)
+                .await
+                .is_none()
+            {
+                continue;
+            }
+            channels.push(DrmChannel { info, sensor });
+        }
+        if channels.is_empty() {
+            return None;
+        }
+        let names: Vec<&str> = channels.iter().map(|c| c.info.name.as_str()).collect();
+        info!(
+            "AMD GPU libdrm fallback active for hwmon-missing metrics: {}",
+            names.join(", ")
+        );
+        Some(DrmMetrics { handle, channels })
+    }
+
+    /// Builds the candidate libdrm channels for each metric type absent from
+    /// the hwmon channel set. Pure (no I/O) so the missing-type logic and the
+    /// channel identities are unit-testable.
+    fn drm_fallback_candidates(
+        hwmon_channels: &[HwmonChannelInfo],
+    ) -> Vec<(HwmonChannelInfo, SENSOR_TYPE)> {
+        let has_type = |hwmon_type: HwmonChannelType| {
+            hwmon_channels.iter().any(|c| c.hwmon_type == hwmon_type)
+        };
+        let mut candidates = Vec::new();
+        if has_type(HwmonChannelType::Load).not() {
+            candidates.push((
+                Self::drm_channel_info(
+                    HwmonChannelType::Load,
+                    GPU_LOAD_NAME,
+                    Some(GPU_LOAD_NAME),
+                    0,
+                ),
+                SENSOR_TYPE::GPU_LOAD,
+            ));
+        }
+        if has_type(HwmonChannelType::Temp).not() {
+            // Named `temp1` so it slots in like a hwmon edge temp, including
+            // eligibility as the fan-curve source (`TEMP_FOR_FAN_CURVE`).
+            candidates.push((
+                Self::drm_channel_info(HwmonChannelType::Temp, TEMP_FOR_FAN_CURVE, Some("edge"), 1),
+                SENSOR_TYPE::GPU_TEMP,
+            ));
+        }
+        if has_type(HwmonChannelType::Freq).not() {
+            candidates.push((
+                Self::drm_channel_info(HwmonChannelType::Freq, "freq1", Some("sclk"), 1),
+                SENSOR_TYPE::GFX_SCLK,
+            ));
+            candidates.push((
+                Self::drm_channel_info(HwmonChannelType::Freq, "freq2", Some("mclk"), 2),
+                SENSOR_TYPE::GFX_MCLK,
+            ));
+        }
+        if has_type(HwmonChannelType::Power).not() {
+            candidates.push((
+                Self::drm_channel_info(HwmonChannelType::Power, "power1", Some("PPT"), 1),
+                SENSOR_TYPE::GPU_AVG_POWER,
+            ));
+        }
+        candidates
+    }
+
+    fn drm_channel_info(
+        hwmon_type: HwmonChannelType,
+        name: &str,
+        label: Option<&str>,
+        number: u8,
+    ) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type,
+            number,
+            name: name.to_string(),
+            label: label.map(ToString::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// Reads every libdrm fallback channel and returns the converted statuses.
+    /// Failed or timed-out reads are omitted (no sentinel), matching the hwmon
+    /// read paths; the status cache and failsafe layer cover the gap.
+    async fn extract_drm_statuses(
+        drm: &DrmMetrics,
+        ioctl_timeout: Duration,
+    ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+        let mut channels = Vec::with_capacity(drm.channels.len());
+        let mut temps = Vec::with_capacity(1); // max 1 temp from drm
+        for channel in &drm.channels {
+            let Some(value) =
+                Self::read_drm_sensor(Arc::clone(&drm.handle), channel.sensor, ioctl_timeout).await
+            else {
+                continue;
+            };
+            match Self::drm_status_from(channel, value) {
+                DrmStatus::Channel(status) => channels.push(status),
+                DrmStatus::Temp(status) => temps.push(status),
+            }
+        }
+        (channels, temps)
+    }
+
+    /// Converts a raw libdrm sensor value to a status entry for its channel.
+    /// Pure so the unit conversions are testable without hardware.
+    fn drm_status_from(channel: &DrmChannel, value: u32) -> DrmStatus {
+        let name = channel.info.name.clone();
+        match channel.info.hwmon_type {
+            // libdrm reports temperature in millidegrees Celsius.
+            HwmonChannelType::Temp => DrmStatus::Temp(TempStatus {
+                name,
+                temp: f64::from(value) / 1000.0,
+            }),
+            // GPU load is already a percentage.
+            HwmonChannelType::Load => DrmStatus::Channel(ChannelStatus {
+                name,
+                duty: Some(f64::from(value)),
+                ..Default::default()
+            }),
+            // Clocks are reported in MHz.
+            HwmonChannelType::Freq => DrmStatus::Channel(ChannelStatus {
+                name,
+                freq: Some(value),
+                ..Default::default()
+            }),
+            // GPU_AVG_POWER is reported in whole watts.
+            _ => DrmStatus::Channel(ChannelStatus {
+                name,
+                watts: Some(f64::from(value)),
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Reads one libdrm sensor, offloaded to the blocking pool and bounded by
+    /// `ioctl_timeout`. libdrm ioctls are not cancellable and can block while
+    /// the GPU powers down/up or is saturated, so they must never run inline on
+    /// the single-threaded runtime. Returns None on timeout, join panic, or a
+    /// sensor errno.
+    async fn read_drm_sensor(
+        handle: Arc<AmdgpuDeviceHandle>,
+        sensor: SENSOR_TYPE,
+        ioctl_timeout: Duration,
+    ) -> Option<u32> {
+        match Self::run_drm_blocking(ioctl_timeout, move || handle.sensor_info(sensor)).await {
+            Ok(value) => Some(value),
+            Err(DrmReadError::Sensor(errno)) => {
+                debug!("libdrm sensor {sensor:?} read error: {errno}");
+                None
+            }
+            Err(DrmReadError::Join(err)) => {
+                warn!("libdrm sensor {sensor:?} task panicked: {err}");
+                None
+            }
+            Err(DrmReadError::TimedOut(elapsed)) => {
+                warn!("libdrm sensor {sensor:?} ioctl exceeded {elapsed:?}; omitting this tick");
+                None
+            }
+        }
+    }
+
+    /// Offloads a blocking libdrm call to the Tokio blocking pool and bounds the
+    /// await with `ioctl_timeout`. Generic over the closure so the timeout and
+    /// error branches are unit-testable with fake closures (no hardware).
+    async fn run_drm_blocking<F, T>(
+        ioctl_timeout: Duration,
+        blocking_fn: F,
+    ) -> Result<T, DrmReadError>
+    where
+        F: FnOnce() -> Result<T, i32> + Send + 'static,
+        T: Send + 'static,
+    {
+        debug_assert!(ioctl_timeout > Duration::ZERO);
+        let handle = tokio::task::spawn_blocking(blocking_fn);
+        match tokio::time::timeout(ioctl_timeout, handle).await {
+            Ok(Ok(Ok(value))) => Ok(value),
+            Ok(Ok(Err(errno))) => Err(DrmReadError::Sensor(errno)),
+            Ok(Err(join_err)) => Err(DrmReadError::Join(join_err)),
+            Err(_elapsed) => Err(DrmReadError::TimedOut(ioctl_timeout)),
+        }
     }
 
     pub fn update_all_statuses(&self) {
@@ -963,6 +1207,69 @@ pub struct AMDDriverInfo {
     has_rdna_fan_ctrl: bool,
     /// Whether the ppfeaturemask has the overdrive bit enabled.
     overdrive_enabled: bool,
+    /// libdrm-sourced metrics that the hwmon driver does not expose, or None
+    /// when hwmon covers everything or libdrm is unavailable.
+    drm: Option<DrmMetrics>,
+}
+
+impl AMDDriverInfo {
+    /// Iterates the hwmon channels followed by any libdrm fallback channels.
+    /// Device building treats both uniformly; only the status source differs.
+    fn all_channel_infos(&self) -> impl Iterator<Item = &HwmonChannelInfo> {
+        self.hwmon.channels.iter().chain(
+            self.drm
+                .iter()
+                .flat_map(|drm| drm.channels.iter().map(|channel| &channel.info)),
+        )
+    }
+}
+
+/// libdrm-sourced GPU metrics, used as a fallback when the amdgpu hwmon driver
+/// does not expose a metric type. Only present when libdrm loaded at runtime
+/// and at least one sensor read succeeded.
+#[derive(Clone)]
+struct DrmMetrics {
+    /// Owns the render-node fd for the daemon's life. `Arc` (not `Rc`) because
+    /// the handle is moved to the blocking pool for each sensor ioctl, which
+    /// requires `Send`. `AmdgpuDeviceHandle` is `Send`: the crate unsafe-impls
+    /// `Send` for the inner handle and `OwnedFd` is `Send`.
+    handle: Arc<AmdgpuDeviceHandle>,
+    channels: Vec<DrmChannel>,
+}
+
+impl std::fmt::Debug for DrmMetrics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The libdrm handle is not Debug; surface only the backed channels.
+        f.debug_struct("DrmMetrics")
+            .field("channels", &self.channels)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DrmChannel {
+    info: HwmonChannelInfo,
+    sensor: SENSOR_TYPE,
+}
+
+/// One converted libdrm reading, routed to the channel or temp status vec.
+enum DrmStatus {
+    Channel(ChannelStatus),
+    Temp(TempStatus),
+}
+
+/// Failure modes of a single libdrm sensor read. Mirrors
+/// `drivetemp::BlockingTimeoutError` so timeouts (an expected transient while
+/// the GPU powers down/up) are distinguishable from genuine errors.
+#[derive(Debug)]
+enum DrmReadError {
+    /// The libdrm `sensor_info` ioctl returned a negative errno.
+    Sensor(i32),
+    /// The blocking task failed to join (typically a panic in the closure).
+    Join(tokio::task::JoinError),
+    /// The ioctl exceeded its wall-clock budget; the blocking thread is leaked
+    /// until the kernel returns, but the caller is freed.
+    TimedOut(Duration),
 }
 
 /// The PMFW (power management firmware) fan curve information.
@@ -1188,6 +1495,7 @@ mod tests {
             fan_curve_info,
             has_rdna_fan_ctrl,
             overdrive_enabled,
+            drm: None,
         }
     }
 
@@ -1276,6 +1584,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                drm: None,
             };
 
             // when:
@@ -1311,6 +1620,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                drm: None,
             };
 
             // when:
@@ -1345,6 +1655,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                drm: None,
             };
 
             // when:
@@ -1353,6 +1664,187 @@ mod tests {
             // then:
             load_teardown(&ctx).await;
             assert_eq!(result.len(), 0);
+        });
+    }
+
+    use super::{drm_ioctl_timeout_for, DrmChannel, DrmReadError, DrmStatus};
+    use crate::repositories::gpu::gpu_repo::GPU_LOAD_NAME;
+    use libdrm_amdgpu_sys::AMDGPU::SENSOR_INFO::SENSOR_TYPE;
+    use std::time::Duration;
+
+    #[test]
+    fn drm_ioctl_timeout_scales_with_poll_rate() {
+        // Goal: the libdrm ioctl budget is a ratio of the poll rate
+        // (poll_rate * READ_PERMIT_RATIO, 0.7) and grows with poll_rate, so it
+        // stays near one poll interval rather than hwmon's larger ioctl budget.
+        assert_eq!(drm_ioctl_timeout_for(1.0), Duration::from_secs_f64(0.7));
+        assert_eq!(drm_ioctl_timeout_for(0.5), Duration::from_secs_f64(0.35));
+        assert!(drm_ioctl_timeout_for(0.5) < drm_ioctl_timeout_for(5.0));
+    }
+
+    #[test]
+    fn drm_fallback_candidates_when_hwmon_empty() {
+        // Goal: with no hwmon channels, libdrm backs all four metric types,
+        // splitting freq into sclk + mclk, using hwmon-convention names.
+        let candidates = GpuAMD::drm_fallback_candidates(&[]);
+        let pairs: Vec<(&str, SENSOR_TYPE)> = candidates
+            .iter()
+            .map(|(info, sensor)| (info.name.as_str(), *sensor))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                (GPU_LOAD_NAME, SENSOR_TYPE::GPU_LOAD),
+                ("temp1", SENSOR_TYPE::GPU_TEMP),
+                ("freq1", SENSOR_TYPE::GFX_SCLK),
+                ("freq2", SENSOR_TYPE::GFX_MCLK),
+                ("power1", SENSOR_TYPE::GPU_AVG_POWER),
+            ]
+        );
+        // Labels feed the GPU_* base device-build arms: load carries its full
+        // label directly (InfoOnly copies it), temp/freq carry the hwmon-style
+        // descriptor the arm prefixes, and power has none (arm yields "GPU Power").
+        let labels: Vec<Option<&str>> = candidates
+            .iter()
+            .map(|(info, _)| info.label.as_deref())
+            .collect();
+        assert_eq!(
+            labels,
+            vec![
+                Some(GPU_LOAD_NAME),
+                Some("edge"),
+                Some("sclk"),
+                Some("mclk"),
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn drm_fallback_candidates_none_when_hwmon_covers_all() {
+        // Goal: when hwmon already exposes every metric type, libdrm adds nothing.
+        let hwmon = vec![
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Load,
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Freq,
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Power,
+                ..Default::default()
+            },
+        ];
+        assert!(GpuAMD::drm_fallback_candidates(&hwmon).is_empty());
+    }
+
+    #[test]
+    fn drm_fallback_candidates_only_missing_types() {
+        // Goal: a present hwmon temp means libdrm backs only load, freq, power.
+        let hwmon = vec![HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            ..Default::default()
+        }];
+        let types: Vec<HwmonChannelType> = GpuAMD::drm_fallback_candidates(&hwmon)
+            .iter()
+            .map(|(info, _)| info.hwmon_type.clone())
+            .collect();
+        assert_eq!(
+            types,
+            vec![
+                HwmonChannelType::Load,
+                HwmonChannelType::Freq,
+                HwmonChannelType::Freq,
+                HwmonChannelType::Power,
+            ]
+        );
+    }
+
+    fn drm_channel(hwmon_type: HwmonChannelType, sensor: SENSOR_TYPE) -> DrmChannel {
+        DrmChannel {
+            info: GpuAMD::drm_channel_info(hwmon_type, "x", None, 0),
+            sensor,
+        }
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact conversions, no rounding
+    fn drm_status_from_converts_units() {
+        // Goal: each sensor's raw value maps to the right status field and unit:
+        // temp is millidegrees C, load is %, sclk is MHz, power is W.
+        let temp = drm_channel(HwmonChannelType::Temp, SENSOR_TYPE::GPU_TEMP);
+        match GpuAMD::drm_status_from(&temp, 45000) {
+            DrmStatus::Temp(status) => assert_eq!(status.temp, 45.0),
+            DrmStatus::Channel(_) => panic!("temp should map to TempStatus"),
+        }
+        let load = drm_channel(HwmonChannelType::Load, SENSOR_TYPE::GPU_LOAD);
+        match GpuAMD::drm_status_from(&load, 42) {
+            DrmStatus::Channel(status) => assert_eq!(status.duty, Some(42.0)),
+            DrmStatus::Temp(_) => panic!("load should map to ChannelStatus"),
+        }
+        let freq = drm_channel(HwmonChannelType::Freq, SENSOR_TYPE::GFX_SCLK);
+        match GpuAMD::drm_status_from(&freq, 1500) {
+            DrmStatus::Channel(status) => assert_eq!(status.freq, Some(1500)),
+            DrmStatus::Temp(_) => panic!("freq should map to ChannelStatus"),
+        }
+        let power = drm_channel(HwmonChannelType::Power, SENSOR_TYPE::GPU_AVG_POWER);
+        match GpuAMD::drm_status_from(&power, 120) {
+            DrmStatus::Channel(status) => assert_eq!(status.watts, Some(120.0)),
+            DrmStatus::Temp(_) => panic!("power should map to ChannelStatus"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn run_drm_blocking_returns_value_when_fast() {
+        // Goal: a prompt closure yields its value unchanged.
+        cc_fs::test_runtime(async {
+            let result = GpuAMD::run_drm_blocking(Duration::from_secs(1), || Ok(42u32)).await;
+            assert!(matches!(result, Ok(42)), "expected Ok(42), got {result:?}");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn run_drm_blocking_times_out_on_slow_closure() {
+        // Goal: a closure that blocks past the timeout yields TimedOut without
+        // stalling the caller (the libdrm ioctl analog of a wedged GPU).
+        cc_fs::test_runtime(async {
+            let start = std::time::Instant::now();
+            let result = GpuAMD::run_drm_blocking(Duration::from_millis(100), || {
+                std::thread::sleep(Duration::from_secs(5));
+                Ok(0u32)
+            })
+            .await;
+            assert!(
+                matches!(result, Err(DrmReadError::TimedOut(_))),
+                "expected TimedOut, got {result:?}"
+            );
+            assert!(
+                start.elapsed() < Duration::from_secs(2),
+                "caller was stalled: {:?}",
+                start.elapsed()
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn run_drm_blocking_surfaces_sensor_errno() {
+        // Goal: a negative errno from the ioctl surfaces as DrmReadError::Sensor.
+        cc_fs::test_runtime(async {
+            let result: Result<u32, DrmReadError> =
+                GpuAMD::run_drm_blocking(Duration::from_secs(1), || Err(-22)).await;
+            assert!(
+                matches!(result, Err(DrmReadError::Sensor(-22))),
+                "expected Sensor(-22), got {result:?}"
+            );
         });
     }
 }
