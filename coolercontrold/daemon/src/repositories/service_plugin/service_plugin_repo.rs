@@ -45,8 +45,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
-use std::time::Duration;
-use tokio::time::{sleep, Instant};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use toml_edit::DocumentMut;
 

@@ -34,8 +34,8 @@ use nvml_wrapper::sys_exports::field_id;
 use nvml_wrapper::Nvml;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use tokio::sync::OnceCell;
-use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{

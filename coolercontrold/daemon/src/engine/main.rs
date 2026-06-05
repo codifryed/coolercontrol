@@ -55,7 +55,7 @@ use chrono::Local;
 use log::{debug, error, info, log, trace, warn, Level};
 use mime::Mime;
 use moro_local::Scope;
-use tokio::time::Instant;
+use std::time::Instant;
 
 const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";

@@ -24,8 +24,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
 use std::rc::Rc;
-use std::time::Duration;
-use tokio::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::api::CCError;
 use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
@@ -130,8 +129,11 @@ impl LcdCommander {
             })?;
         let processed_images =
             processors::image::process_carousel_images(images_path, lcd_info).await?;
-        // This makes it so the carousel starts right after scheduling:
-        let interval_instant = Instant::now() - Duration::from_secs(carousel.interval);
+        // Backdate one interval so the carousel starts right after scheduling. Saturate at "now"
+        // on the early-boot chance the subtraction would underflow the monotonic clock.
+        let interval_instant = Instant::now()
+            .checked_sub(Duration::from_secs(carousel.interval))
+            .unwrap_or_else(Instant::now);
         let setting_metadata = SettingMetadata {
             interval_instant,
             processed_images,

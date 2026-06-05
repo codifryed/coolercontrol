@@ -99,11 +99,11 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use std::time::Instant;
 use strum::{Display, EnumString};
 use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
 #[cfg(test)]
 use tokio::time::sleep;
-use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 /// Init-time slow-device detection threshold as a fraction of

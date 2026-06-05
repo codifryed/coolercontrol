@@ -28,9 +28,9 @@ use async_trait::async_trait;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
-use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
