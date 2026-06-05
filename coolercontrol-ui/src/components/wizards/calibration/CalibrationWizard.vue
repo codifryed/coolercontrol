@@ -244,12 +244,22 @@ const phaseClass = (phase: CalibrationBatchEntry['phase']): string => {
                     </span>
                     <InputNumber
                         v-model="concurrency"
-                        :min="1"
-                        :max="fanRows.length"
+                        mode="decimal"
                         show-buttons
                         button-layout="horizontal"
-                        class="w-28"
-                    />
+                        :min="1"
+                        :max="fanRows.length"
+                        :step="1"
+                        :use-grouping="false"
+                        :input-style="{ width: '3rem' }"
+                    >
+                        <template #incrementicon>
+                            <span class="pi pi-plus" />
+                        </template>
+                        <template #decrementicon>
+                            <span class="pi pi-minus" />
+                        </template>
+                    </InputNumber>
                 </div>
                 <span class="text-xs text-text-color-secondary ml-1">
                     {{ t('components.wizards.calibration.concurrencyNote') }}
