@@ -89,7 +89,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::net::{TcpListener, ToSocketAddrs};
-use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::CompressionLayer;
@@ -131,6 +130,7 @@ pub async fn start_server<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     cancel_token: CancellationToken,
+    sidecar: &crate::sidecar::Sidecar,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
     let rest_port = env::var(ENV_PORT)
@@ -234,19 +234,10 @@ pub async fn start_server<'s>(
     let allow_unencrypted = settings.allow_unencrypted;
     let protocol_header = settings.protocol_header.clone();
 
-    // Spawn all API servers on a dedicated thread
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_io()
-            .enable_time()
-            .max_blocking_threads(1) // rarely needed for the API servers
-            .thread_keep_alive(Duration::from_secs(60))
-            .thread_name("cc-api")
-            .event_interval(200)
-            .global_queue_interval(200)
-            .build()
-            .expect("Failed to create API server runtime");
-        rt.block_on(LocalSet::new().run_until(run_all_api_servers(
+    // Run all API servers on the shared sidecar thread. The builder closure captures only `Send`
+    // data and is invoked on the sidecar to construct the `!Send` server future.
+    sidecar.spawn(move || {
+        run_all_api_servers(
             ipv4.ok(),
             ipv6.ok(),
             grpc_ipv4.ok(),
@@ -260,7 +251,7 @@ pub async fn start_server<'s>(
             cors_origins,
             allow_unencrypted,
             protocol_header,
-        )));
+        )
     });
     Ok(())
 }

@@ -28,9 +28,8 @@
 //! the `!Send` future, then drives it locally. Main-thread state is reached only over `tokio::sync`
 //! channels.
 //!
-//! Wired into production by the subsequent Phase 1 sub-deliverables (servers, sleep listener,
-//! liqctld and service-plugin transports); unused until then.
-#![allow(dead_code)]
+//! The REST/gRPC servers run here; the dbus sleep listener and the liqctld/service-plugin
+//! transports move here in the subsequent Phase 1 sub-deliverables.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -80,7 +79,8 @@ impl Sidecar {
 
     /// Join the sidecar thread. The caller must already have cancelled the token so the hosted
     /// actors can finish. (A bounded join with a force-exit fallback is added with the shutdown
-    /// sub-deliverable.)
+    /// sub-deliverable, which is also where this is first called.)
+    #[allow(dead_code)]
     pub fn join(self) {
         drop(self.task_tx);
         let _ = self.thread.join();

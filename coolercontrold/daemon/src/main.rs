@@ -275,6 +275,11 @@ fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     rt::runtime(async {
         let run_token = setup_termination_signals();
+        // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, and
+        // later the dbus sleep listener and liqctld/service-plugin transports). Started early so it
+        // exists before device-repo init. Dropped at the end of main(); a bounded join is added
+        // with the shutdown sub-deliverable.
+        let sidecar = sidecar::Sidecar::start(run_token.clone());
         handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
@@ -367,6 +372,7 @@ fn main() -> Result<()> {
                     status_handle.clone(),
                     notification_handle,
                     run_token.clone(),
+                    &sidecar,
                     main_scope,
                 )
                 .await
