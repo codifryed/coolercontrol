@@ -575,6 +575,12 @@ export default {
             duplicateDashboard: 'ダッシュボードを複製',
         },
         appInfo: {
+            gettingStartedAutoCreate:
+                '{wizard} を使うと、すべてのファンの基本的なプロファイルを一度に設定できます。',
+            gettingStartedAutoCreateLink: 'プロファイルの自動作成',
+            calibrateFans:
+                '一貫した制御のために、{wizard}。これにより、同じ % が各ファンで同程度の速度を意味するようになります。',
+            calibrateFansLink: 'ファンをキャリブレーション',
             title: '情報とツール',
             noWarranty: 'このプログラムは絶対に保証がありません。',
             changeStartupPage: '設定で起動時のページを変更',
@@ -1106,6 +1112,79 @@ export default {
             deleteTag: 'タグを削除',
         },
         wizards: {
+            calibration: {
+                title: 'ファンのキャリブレーション',
+                tooltip: '一貫した速度制御のために複数のファンをキャリブレーションします',
+                pickIntro:
+                    'キャリブレーションするファンを選択してください。キャリブレーション済みのファンは既定でオフになっています。',
+                noFans: '制御可能なファンが検出されませんでした。',
+                selectAll: 'すべて選択',
+                calibratedBadge: 'キャリブレーション済み',
+                idleNote:
+                    'キャリブレーションでは各ファンを全範囲で動作させます。アイドル時の実行を推奨します。動作音が大きく、ファンごとに数分かかります。',
+                concurrencyLabel: '同時に処理するファン数',
+                concurrencyNote:
+                    '同時に多く処理するほど速くなりますが、隣接するファンが互いの測定値を乱すことがあります（クロスウィンド、プッシュプル）。1台ずつが最も正確です。',
+                start: '開始',
+                close: '閉じる',
+                running: '{total} 台中 {current} 台をキャリブレーション中...',
+                queued: '待機中',
+                done: '完了',
+                failed: '失敗',
+                skipped: 'スキップ',
+                startFailed: '開始できませんでした',
+                summary: '{done} 台成功、{failed} 台失敗、{skipped} 台スキップ。',
+                reloadBatch:
+                    '{count} 台のファンをキャリブレーションしました。新しいRPM正規化制御を適用するために再読み込みしますか？',
+                stagePreflight: '事前チェック',
+                stageUpSweep: 'アップスイープ',
+                stageDownSweep: 'ダウンスイープ',
+                stageFinalizing: '完了処理中',
+            },
+            generate: {
+                title: 'プロファイルの自動作成',
+                tooltip: 'いくつかの選択からファン用のプロファイルを自動作成します',
+                stepFans: 'ファンの割り当て',
+                stepTemps: '主要な温度',
+                stepPreset: 'パフォーマンス',
+                assignIntro:
+                    '各ファンに役割を割り当ててください。ファンを未設定のままにするとスキップされます。',
+                skip: 'スキップ',
+                noFans: '制御可能なファンが検出されませんでした。',
+                tempsIntro:
+                    '主要な温度を確認してください。これらは推測値として事前入力されています。確認してください。',
+                cpuTemp: 'CPU温度',
+                gpuTemp: 'GPU温度',
+                liquidTemp: '液体温度',
+                ambientTemp: '周囲温度（任意）',
+                tempNone: 'なし',
+                presetIntro: 'ファンをどの程度積極的に回転させるかを選択してください。',
+                perKindOverrides: '役割ごとの上書き（詳細）',
+                cfmCaveat:
+                    '正圧バイアスは風量ではなくデューティに基づいています。ファンの数が偏っている場合、正圧は保証できません。',
+                generate: '生成',
+                preview: 'プレビュー',
+                previewIntro:
+                    '作成および適用される内容を確認してください。確認するまで何も保存されません。',
+                previewAssignments: 'ファンの割り当て',
+                willCreateHeader: '作成される項目',
+                startingPointNote:
+                    'ゼロから作るのではなく、手軽な出発点です。すべてのシステムで完璧というわけではないため、作成後に確認・テスト・調整してください。',
+                replaces: '{name} を置き換えます',
+                createApply: '作成して適用',
+                generated: '{count} 個のプロファイルを生成しました。',
+                generateError: 'プロファイルを生成できませんでした。',
+                applyError: 'プロファイルを作成できませんでした。',
+                kind: {
+                    CpuCooler: 'CPU空冷クーラー',
+                    GpuFan: 'GPUファン',
+                    AioRadiator: 'AIOラジエーター',
+                    AioPump: 'AIOポンプ',
+                    CaseIntake: 'ケース吸気',
+                    CaseExhaust: 'ケース排気',
+                    LaptopFan: 'ノートPCファン',
+                },
+            },
             fanControl: {
                 fanControlWizard: 'ファン制御ウィザード',
                 editCurrentProfile: 'プロファイルを編集',

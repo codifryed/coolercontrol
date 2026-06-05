@@ -538,6 +538,12 @@ export default {
             duplicateDashboard: 'Dashboard duplizieren',
         },
         appInfo: {
+            gettingStartedAutoCreate:
+                'Mit {wizard} lassen sich grundlegende Profile für alle Ihre Lüfter auf einmal einrichten.',
+            gettingStartedAutoCreateLink: 'Profile automatisch erstellen',
+            calibrateFans:
+                'Für eine gleichmäßige Steuerung {wizard}, damit ein bestimmter Prozentsatz bei jedem Lüfter eine ähnliche Drehzahl bedeutet.',
+            calibrateFansLink: 'kalibrieren Sie Ihre Lüfter',
             title: 'Info & Werkzeuge',
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',
             changeStartupPage: 'Startseite in den Einstellungen ändern',
@@ -1120,6 +1126,79 @@ export default {
             deleteTag: 'Tag löschen',
         },
         wizards: {
+            calibration: {
+                title: 'Lüfter kalibrieren',
+                tooltip: 'Mehrere Lüfter für eine gleichmäßige Drehzahlsteuerung kalibrieren',
+                pickIntro:
+                    'Wählen Sie die zu kalibrierenden Lüfter aus. Bereits kalibrierte Lüfter sind standardmäßig nicht ausgewählt.',
+                noFans: 'Keine steuerbaren Lüfter erkannt.',
+                selectAll: 'Alle auswählen',
+                calibratedBadge: 'kalibriert',
+                idleNote:
+                    'Bei der Kalibrierung wird jeder Lüfter über seinen gesamten Bereich hochgefahren. Am besten im Leerlauf ausführen: Es ist laut und dauert einige Minuten pro Lüfter.',
+                concurrencyLabel: 'Lüfter gleichzeitig',
+                concurrencyNote:
+                    'Mehrere gleichzeitig sind schneller, aber benachbarte Lüfter können die Messwerte des jeweils anderen verfälschen (Querströmung, Push-Pull). Einzeln ist am genauesten.',
+                start: 'Start',
+                close: 'Schließen',
+                running: 'Kalibriere {current} von {total}...',
+                queued: 'In Warteschlange',
+                done: 'Fertig',
+                failed: 'Fehlgeschlagen',
+                skipped: 'Übersprungen',
+                startFailed: 'Konnte nicht gestartet werden',
+                summary: '{done} kalibriert, {failed} fehlgeschlagen, {skipped} übersprungen.',
+                reloadBatch:
+                    '{count} Lüfter kalibriert. Neu laden, um die neue RPM-normalisierte Steuerung anzuwenden?',
+                stagePreflight: 'Vorprüfung',
+                stageUpSweep: 'Aufwärts-Sweep',
+                stageDownSweep: 'Abwärts-Sweep',
+                stageFinalizing: 'Abschluss',
+            },
+            generate: {
+                title: 'Profile automatisch erstellen',
+                tooltip: 'Profile für Ihre Lüfter aus wenigen Angaben automatisch erstellen',
+                stepFans: 'Lüfter zuweisen',
+                stepTemps: 'Wichtige Temperaturen',
+                stepPreset: 'Leistung',
+                assignIntro:
+                    'Weisen Sie jedem Lüfter eine Rolle zu. Lassen Sie einen Lüfter ohne Auswahl, um ihn zu überspringen.',
+                skip: 'Überspringen',
+                noFans: 'Keine steuerbaren Lüfter erkannt.',
+                tempsIntro:
+                    'Bestätigen Sie Ihre wichtigen Temperaturen. Diese sind als beste Schätzung vorausgefüllt: Bitte überprüfen Sie sie.',
+                cpuTemp: 'CPU-Temp.',
+                gpuTemp: 'GPU-Temp.',
+                liquidTemp: 'Flüssigkeitstemp.',
+                ambientTemp: 'Umgebungstemp. (optional)',
+                tempNone: 'Keine',
+                presetIntro: 'Wählen Sie, wie aggressiv die Lüfter hochdrehen sollen.',
+                perKindOverrides: 'Überschreibungen pro Rolle (erweitert)',
+                cfmCaveat:
+                    'Die Überdruck-Vorgabe basiert auf der Leistung (Duty), nicht auf dem Luftstrom: Bei ungleichen Lüfterzahlen kann kein Überdruck garantiert werden.',
+                generate: 'Erstellen',
+                preview: 'Vorschau',
+                previewIntro:
+                    'Überprüfen Sie, was erstellt und angewendet wird. Es wird nichts gespeichert, bis Sie bestätigen.',
+                previewAssignments: 'Lüfterzuweisungen',
+                willCreateHeader: 'Wird erstellt',
+                startingPointNote:
+                    'Ein einfacher Ausgangspunkt, statt bei null anzufangen. Sie sind nicht für jedes System perfekt, also überprüfen, testen und passen Sie sie nach dem Erstellen an.',
+                replaces: 'ersetzt {name}',
+                createApply: 'Erstellen & Anwenden',
+                generated: '{count} Profile erstellt.',
+                generateError: 'Profile konnten nicht erstellt werden.',
+                applyError: 'Die Profile konnten nicht erstellt werden.',
+                kind: {
+                    CpuCooler: 'CPU-Luftkühler',
+                    GpuFan: 'GPU-Lüfter',
+                    AioRadiator: 'AIO-Radiator',
+                    AioPump: 'AIO-Pumpe',
+                    CaseIntake: 'Gehäuse-Zuluft',
+                    CaseExhaust: 'Gehäuse-Abluft',
+                    LaptopFan: 'Laptop-Lüfter',
+                },
+            },
             fanControl: {
                 fanControlWizard: 'Fan Control Wizard',
                 editCurrentProfile: 'Profil bearbeiten',

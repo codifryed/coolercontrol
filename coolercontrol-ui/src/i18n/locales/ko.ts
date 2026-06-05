@@ -524,6 +524,12 @@ export default {
             duplicateDashboard: '대시보드 복제',
         },
         appInfo: {
+            gettingStartedAutoCreate:
+                '{wizard}을(를) 사용하면 모든 팬의 기본 프로필을 한 번에 설정할 수 있습니다.',
+            gettingStartedAutoCreateLink: '프로필 자동 생성',
+            calibrateFans:
+                '일관된 제어를 위해 {wizard}. 그러면 특정 %가 모든 팬에서 비슷한 속도를 의미하게 됩니다.',
+            calibrateFansLink: '팬을 보정하세요',
             title: '정보 및 도구',
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
             changeStartupPage: '설정에서 시작 페이지 변경',
@@ -1081,6 +1087,78 @@ export default {
             deleteTag: '태그 삭제',
         },
         wizards: {
+            calibration: {
+                title: '팬 보정',
+                tooltip: '일관된 속도 제어를 위해 여러 팬을 보정합니다',
+                pickIntro:
+                    '보정할 팬을 선택하세요. 이미 보정된 팬은 기본적으로 선택 해제되어 있습니다.',
+                noFans: '제어 가능한 팬이 감지되지 않았습니다.',
+                selectAll: '모두 선택',
+                calibratedBadge: '보정됨',
+                idleNote:
+                    '보정은 각 팬을 전체 범위에 걸쳐 가동합니다. 유휴 상태에서 실행하는 것이 가장 좋습니다. 소음이 크고 팬당 몇 분이 걸립니다.',
+                concurrencyLabel: '동시 보정 팬 수',
+                concurrencyNote:
+                    '한 번에 더 많이 처리하면 빠르지만, 인접한 팬이 서로의 측정값을 왜곡할 수 있습니다(맞바람, 푸시풀). 한 번에 하나씩이 가장 정확합니다.',
+                start: '시작',
+                close: '닫기',
+                running: '{total}개 중 {current}개 보정 중...',
+                queued: '대기 중',
+                done: '완료',
+                failed: '실패',
+                skipped: '건너뜀',
+                startFailed: '시작할 수 없습니다',
+                summary: '{done}개 보정, {failed}개 실패, {skipped}개 건너뜀.',
+                reloadBatch:
+                    '팬 {count}개를 보정했습니다. 새로운 RPM 정규화 제어를 적용하려면 새로 고침하시겠습니까?',
+                stagePreflight: '사전 점검',
+                stageUpSweep: '상승 스윕',
+                stageDownSweep: '하강 스윕',
+                stageFinalizing: '마무리 중',
+            },
+            generate: {
+                title: '프로필 자동 생성',
+                tooltip: '몇 가지 선택만으로 팬용 프로필을 자동 생성합니다',
+                stepFans: '팬 할당',
+                stepTemps: '주요 온도',
+                stepPreset: '성능',
+                assignIntro: '각 팬에 역할을 할당하세요. 팬을 설정하지 않으면 건너뜁니다.',
+                skip: '건너뛰기',
+                noFans: '제어 가능한 팬이 감지되지 않았습니다.',
+                tempsIntro:
+                    '주요 온도를 확인하세요. 최선의 추정값으로 미리 채워져 있으니 확인해 주세요.',
+                cpuTemp: 'CPU 온도',
+                gpuTemp: 'GPU 온도',
+                liquidTemp: '액체 온도',
+                ambientTemp: '주변 온도(선택 사항)',
+                tempNone: '없음',
+                presetIntro: '팬을 얼마나 적극적으로 가속할지 선택하세요.',
+                perKindOverrides: '역할별 재정의(고급)',
+                cfmCaveat:
+                    '양압 편향은 공기 흐름이 아니라 듀티를 기준으로 합니다. 팬 수가 불균형하면 양압을 보장할 수 없습니다.',
+                generate: '생성',
+                preview: '미리 보기',
+                previewIntro:
+                    '생성 및 적용될 내용을 검토하세요. 확인하기 전에는 아무것도 저장되지 않습니다.',
+                previewAssignments: '팬 할당',
+                willCreateHeader: '생성될 항목',
+                startingPointNote:
+                    '처음부터 만드는 대신 간편한 출발점입니다. 모든 시스템에 완벽하지는 않으므로 생성 후 확인, 테스트, 조정하세요.',
+                replaces: '{name} 대체',
+                createApply: '생성 및 적용',
+                generated: '프로필 {count}개를 생성했습니다.',
+                generateError: '프로필을 생성할 수 없습니다.',
+                applyError: '프로필을 만들 수 없습니다.',
+                kind: {
+                    CpuCooler: 'CPU 공랭 쿨러',
+                    GpuFan: 'GPU 팬',
+                    AioRadiator: 'AIO 라디에이터',
+                    AioPump: 'AIO 펌프',
+                    CaseIntake: '케이스 흡기',
+                    CaseExhaust: '케이스 배기',
+                    LaptopFan: '노트북 팬',
+                },
+            },
             fanControl: {
                 fanControlWizard: '팬 제어 마법사',
                 editCurrentProfile: '프로파일 편집',

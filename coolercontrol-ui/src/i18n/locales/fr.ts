@@ -545,6 +545,12 @@ export default {
             duplicateDashboard: 'Dupliquer le Tableau de Bord',
         },
         appInfo: {
+            gettingStartedAutoCreate:
+                '{wizard} permet de configurer des profils de base pour tous vos ventilateurs en une seule fois.',
+            gettingStartedAutoCreateLink: 'Créer des profils automatiquement',
+            calibrateFans:
+                "Pour un contrôle cohérent, {wizard} afin qu'un % donné corresponde à une vitesse similaire sur chaque ventilateur.",
+            calibrateFansLink: 'étalonnez vos ventilateurs',
             title: 'Info & Outils',
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',
             changeStartupPage: 'Modifier la page de démarrage dans les paramètres',
@@ -1120,6 +1126,80 @@ export default {
             deleteTag: 'Supprimer le tag',
         },
         wizards: {
+            calibration: {
+                title: 'Étalonner les ventilateurs',
+                tooltip: 'Étalonner plusieurs ventilateurs pour un contrôle de vitesse cohérent',
+                pickIntro:
+                    'Sélectionnez les ventilateurs à étalonner. Les ventilateurs déjà étalonnés sont décochés par défaut.',
+                noFans: 'Aucun ventilateur contrôlable détecté.',
+                selectAll: 'Tout sélectionner',
+                calibratedBadge: 'étalonné',
+                idleNote:
+                    "L'étalonnage fait varier chaque ventilateur sur toute sa plage. À exécuter de préférence au repos : c'est bruyant et prend quelques minutes par ventilateur.",
+                concurrencyLabel: 'Ventilateurs à la fois',
+                concurrencyNote:
+                    'Plusieurs à la fois est plus rapide, mais des ventilateurs adjacents peuvent fausser les mesures les uns des autres (vent croisé, push-pull). Un à la fois est le plus précis.',
+                start: 'Démarrer',
+                close: 'Fermer',
+                running: 'Étalonnage de {current} sur {total}...',
+                queued: "En file d'attente",
+                done: 'Terminé',
+                failed: 'Échec',
+                skipped: 'Ignoré',
+                startFailed: 'Impossible de démarrer',
+                summary: '{done} étalonnés, {failed} en échec, {skipped} ignorés.',
+                reloadBatch:
+                    '{count} ventilateurs étalonnés. Recharger pour appliquer le nouveau contrôle normalisé par RPM ?',
+                stagePreflight: 'Pré-vérification',
+                stageUpSweep: 'Balayage ascendant',
+                stageDownSweep: 'Balayage descendant',
+                stageFinalizing: 'Finalisation',
+            },
+            generate: {
+                title: 'Créer des profils automatiquement',
+                tooltip:
+                    'Créer automatiquement des profils pour vos ventilateurs à partir de quelques choix',
+                stepFans: 'Attribuer les ventilateurs',
+                stepTemps: 'Températures clés',
+                stepPreset: 'Performance',
+                assignIntro:
+                    "Attribuez un rôle à chaque ventilateur. Laissez un ventilateur sans rôle pour l'ignorer.",
+                skip: 'Ignorer',
+                noFans: 'Aucun ventilateur contrôlable détecté.',
+                tempsIntro:
+                    'Confirmez vos températures clés. Elles sont pré-remplies comme meilleure estimation : veuillez les vérifier.',
+                cpuTemp: 'Temp. CPU',
+                gpuTemp: 'Temp. GPU',
+                liquidTemp: 'Temp. du liquide',
+                ambientTemp: 'Temp. ambiante (facultatif)',
+                tempNone: 'Aucune',
+                presetIntro: "Choisissez l'agressivité de la montée en régime des ventilateurs.",
+                perKindOverrides: 'Remplacements par rôle (avancé)',
+                cfmCaveat:
+                    "Le biais de pression positive est basé sur le rapport cyclique (duty), pas sur le flux d'air : avec des nombres de ventilateurs déséquilibrés, il ne peut pas garantir une pression positive.",
+                generate: 'Générer',
+                preview: 'Aperçu',
+                previewIntro:
+                    "Vérifiez ce qui sera créé et appliqué. Rien n'est enregistré tant que vous n'avez pas confirmé.",
+                previewAssignments: 'Attributions des ventilateurs',
+                willCreateHeader: 'Sera créé',
+                startingPointNote:
+                    'Un point de départ simple plutôt que de partir de zéro. Ils ne seront pas parfaits pour chaque système, alors vérifiez-les, testez-les et ajustez-les après la création.',
+                replaces: 'remplace {name}',
+                createApply: 'Créer et appliquer',
+                generated: '{count} profils générés.',
+                generateError: 'Impossible de générer les profils.',
+                applyError: 'Impossible de créer les profils.',
+                kind: {
+                    CpuCooler: 'Refroidisseur à air CPU',
+                    GpuFan: 'Ventilateur GPU',
+                    AioRadiator: 'Radiateur AIO',
+                    AioPump: 'Pompe AIO',
+                    CaseIntake: 'Admission du boîtier',
+                    CaseExhaust: 'Extraction du boîtier',
+                    LaptopFan: 'Ventilateur de portable',
+                },
+            },
             fanControl: {
                 fanControlWizard: 'Assistant de Contrôle des Ventilateurs',
                 editCurrentProfile: 'Modifier le Profil',
