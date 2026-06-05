@@ -18,8 +18,6 @@
 
 use anyhow::Result;
 use std::path::Path;
-#[cfg(feature = "io_uring")]
-use tokio_uring::fs::File;
 
 /// Writes the given string `txt` to a file at the given `path`.
 ///
@@ -31,18 +29,8 @@ pub async fn write_string(path: impl AsRef<Path>, txt: String) -> Result<()> {
 
 /// Writes the given `data` to a file at the given `path`.
 ///
-/// This function opens the file at `path` and writes all of `data` to it.
-/// If any of the operations fail, the function will return an error.
-#[cfg(feature = "io_uring")]
-pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
-    let file = File::create(path).await?;
-    let (res, _) = file.write_all_at(data, 0).await;
-    res?;
-    file.close().await?;
-    Ok(())
-}
-
-#[cfg(not(feature = "io_uring"))]
+/// Opens (or creates/truncates) the file at `path` and writes all of `data` to it. Returns an error
+/// if any of the operations fail.
 pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
     tokio::fs::write(path, data).await?;
     Ok(())

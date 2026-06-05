@@ -268,9 +268,9 @@ struct Args {
     command: Option<SubCommands>,
 }
 
-/// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
-/// It uses a structured concurrency model for consistent and efficient performance while
-/// concurrently handling varying device latencies.
+/// `coolercontrold` uses a single-threaded asynchronous runtime. It uses a structured concurrency
+/// model for consistent and efficient performance while concurrently handling varying device
+/// latencies.
 #[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
@@ -280,8 +280,6 @@ fn main() -> Result<()> {
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
-        #[cfg(feature = "io_uring")]
-        cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability()?;
