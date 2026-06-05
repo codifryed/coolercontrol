@@ -64,9 +64,10 @@ use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::rt;
+use crate::sidecar::Sidecar;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use std::ops::Not;
@@ -98,14 +99,13 @@ pub async fn run(
     alert_controller: Rc<AlertController>,
     status_handle: StatusHandle,
     run_token: CancellationToken,
+    sidecar: &Sidecar,
 ) -> Result<()> {
     let poll_rate = config.get_settings()?.poll_rate;
     let snapshot_timeout_duration = Duration::from_millis(SNAPSHOT_TIMEOUT_MS);
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
-        let sleep_listener = SleepListener::new(run_token.clone(), scope)
-            .await
-            .with_context(|| "Creating DBus Sleep Listener")?;
+        let sleep_listener = SleepListener::new(run_token.clone(), sidecar);
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
         let mut loop_interval = rt::interval(Duration::from_secs_f64(poll_rate));

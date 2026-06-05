@@ -393,6 +393,7 @@ fn main() -> Result<()> {
                     alert_controller,
                     status_handle,
                     run_token.clone(),
+                    &sidecar,
                 )
                 .await?;
                 Ok(())
