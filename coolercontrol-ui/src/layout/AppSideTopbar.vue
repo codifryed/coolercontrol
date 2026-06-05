@@ -405,22 +405,6 @@ emitter.on('calibrate-fans', openCalibrationWizard)
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
     {
-        label: t('components.wizards.generate.title'),
-        mdiIcon: mdiAutoFix,
-        command: () => {
-            addMenuRef.value?.handleClose()
-            emitter.emit('profile-generate')
-        },
-    },
-    {
-        label: t('components.wizards.calibration.title'),
-        mdiIcon: mdiTuneVerticalVariant,
-        command: () => {
-            addMenuRef.value?.handleClose()
-            openCalibrationWizard()
-        },
-    },
-    {
         label: t('layout.add.dashboard'),
         mdiIcon: mdiChartBoxPlusOutline,
         command: () => {
@@ -466,6 +450,22 @@ const addItems = computed(() => [
         command: () => {
             addMenuRef.value?.handleClose()
             emitter.emit('custom-sensor-add')
+        },
+    },
+    {
+        label: t('components.wizards.generate.title'),
+        mdiIcon: mdiAutoFix,
+        command: () => {
+            addMenuRef.value?.handleClose()
+            emitter.emit('profile-generate')
+        },
+    },
+    {
+        label: t('components.wizards.calibration.title'),
+        mdiIcon: mdiTuneVerticalVariant,
+        command: () => {
+            addMenuRef.value?.handleClose()
+            openCalibrationWizard()
         },
     },
 ])
