@@ -29,7 +29,6 @@ use anyhow::{bail, Result};
 use log::{debug, info, warn};
 use mime::Mime;
 use sha2::Sha256;
-use tokio::io::AsyncReadExt;
 
 pub use cc_image::{process_image, supported_image_types};
 
@@ -182,19 +181,10 @@ fn create_carousel_lcd_image_path(content_type: &Mime, image_hash: String) -> Pa
 }
 
 async fn image_digest(path: &Path) -> Result<String> {
-    let file = tokio::fs::File::open(path).await?;
-    let mut reader = tokio::io::BufReader::new(file);
-    let sha256_hash = {
-        let mut hasher = Sha256::new();
-        let mut buffer = [0; 8192];
-        loop {
-            let count = reader.read(&mut buffer).await?;
-            if count == 0 {
-                break;
-            }
-            hasher.update(&buffer[..count]);
-        }
-        hasher.finalize()
-    };
-    Ok(crate::hashutil::to_lower_hex(&sha256_hash))
+    // Read via cc_fs so this runs on the active runtime (the engine is on the main thread). Image
+    // files are bounded, so reading whole-to-memory to hash is fine.
+    let bytes = crate::cc_fs::read_image(path).await?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Ok(crate::hashutil::to_lower_hex(&hasher.finalize()))
 }

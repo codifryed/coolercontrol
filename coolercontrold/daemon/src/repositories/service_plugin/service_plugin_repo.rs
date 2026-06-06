@@ -36,6 +36,7 @@ use crate::repositories::service_plugin::service_management::{
 };
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt::sleep;
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
@@ -46,7 +47,6 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use toml_edit::DocumentMut;
 
@@ -465,7 +465,7 @@ impl ServicePluginRepo {
     ) {
         let service_id = service_id.clone();
         let service_manager = service_manager.clone();
-        tokio::task::spawn_local(async move {
+        crate::rt::spawn(async move {
             tokio::select! {
                 // The api_up_token will be canceld once the daemon's API is up, making sure
                 // that integration services connect at the proper time.

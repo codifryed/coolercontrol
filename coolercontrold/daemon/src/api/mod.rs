@@ -88,7 +88,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::net::{TcpListener, ToSocketAddrs};
+use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::CompressionLayer;
@@ -143,10 +143,8 @@ pub async fn start_server<'s>(
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
     let ipv4 = determine_ipv4_address(&config, rest_port)
-        .await
         .inspect_err(|err| warn!("IPv4 bind error: {err}"));
     let ipv6 = determine_ipv6_address(&config, rest_port)
-        .await
         .inspect_err(|err| warn!("IPv6 bind error: {err}"));
     if ipv4.is_err() && ipv6.is_err() {
         return Err(anyhow!(
@@ -221,10 +219,8 @@ pub async fn start_server<'s>(
                 .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
         });
     let grpc_ipv4 = determine_ipv4_address(&config, grpc_port)
-        .await
         .inspect_err(|err| warn!("IPv4 GRPC bind error: {err}"));
     let grpc_ipv6 = determine_ipv6_address(&config, grpc_port)
-        .await
         .inspect_err(|err| warn!("IPv6 GRPC bind error: {err}"));
     if grpc_ipv4.is_err() && grpc_ipv6.is_err() {
         return Err(anyhow!(
@@ -826,10 +822,20 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             warn!("Failed to ensure TLS certificates: {err}");
         })
         .ok()?;
-    match RustlsConfig::from_pem_file(&cert_path, &key_path).await {
-        Ok(tls_config) => Some(tls_config),
-        Err(err) => {
+    // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
+    // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
+    // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
+    match crate::sidecar::handle()
+        .run(move || RustlsConfig::from_pem_file(cert_path, key_path))
+        .await
+    {
+        Ok(Ok(tls_config)) => Some(tls_config),
+        Ok(Err(err)) => {
             warn!("Failed to load TLS certificates: {err}");
+            None
+        }
+        Err(err) => {
+            warn!("Sidecar dispatch for TLS load failed: {err}");
             None
         }
     }
@@ -881,16 +887,19 @@ pub fn validate_name_string(name: &str) -> Result<(), CCError> {
     }
 }
 
-async fn can_bind_tcp<A: ToSocketAddrs>(addrs: A) -> bool {
-    TcpListener::bind(addrs).await.is_ok()
+/// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
+/// on the main thread (which may be compio) during API init, before the server moves to the sidecar.
+/// The actual server listener is bound on the sidecar (see `create_api_server`).
+fn can_bind_tcp<A: std::net::ToSocketAddrs>(addrs: A) -> bool {
+    std::net::TcpListener::bind(addrs).is_ok()
 }
 
-async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
+fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
     if let Some(addr) = address {
         match addr.parse::<Ipv4Addr>() {
             Ok(ipv4_addr) => {
                 let ipv4 = SocketAddrV4::new(ipv4_addr, port);
-                if can_bind_tcp(ipv4).await {
+                if can_bind_tcp(ipv4) {
                     Ok(ipv4)
                 } else {
                     Err(anyhow!(
@@ -903,7 +912,7 @@ async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAdd
     } else {
         // try standard loopback address
         let ipv4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
-        if can_bind_tcp(ipv4).await {
+        if can_bind_tcp(ipv4) {
             Ok(ipv4)
         } else {
             Err(anyhow!(
@@ -913,12 +922,12 @@ async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
+fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
     if let Some(addr) = address {
         match addr.parse::<Ipv6Addr>() {
             Ok(ipv6_addr) => {
                 let ipv6 = SocketAddrV6::new(ipv6_addr, port, 0, 0);
-                if can_bind_tcp(ipv6).await {
+                if can_bind_tcp(ipv6) {
                     Ok(ipv6)
                 } else {
                     Err(anyhow!(
@@ -931,7 +940,7 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     } else {
         // try standard loopback address
         let ipv6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0);
-        if can_bind_tcp(ipv6).await {
+        if can_bind_tcp(ipv6) {
             Ok(ipv6)
         } else {
             Err(anyhow!(
@@ -941,13 +950,13 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
+fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
     match env::var(ENV_HOST_IP4) {
         Ok(env_ipv4) => {
             if env_ipv4.trim().is_empty() {
                 return Err(anyhow!("IPv4 address disabled"));
             }
-            is_free_tcp_ipv4(Some(&env_ipv4), port).await
+            is_free_tcp_ipv4(Some(&env_ipv4), port)
         }
         Err(_) => {
             // get from config
@@ -956,22 +965,22 @@ async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<Socket
                     if ipv4_str.is_empty() {
                         Err(anyhow!("IPv4 address disabled"))
                     } else {
-                        is_free_tcp_ipv4(Some(&ipv4_str), port).await
+                        is_free_tcp_ipv4(Some(&ipv4_str), port)
                     }
                 }
-                None => is_free_tcp_ipv4(None, port).await, // Defaults to loopback
+                None => is_free_tcp_ipv4(None, port), // Defaults to loopback
             }
         }
     }
 }
 
-async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
+fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
     match env::var(ENV_HOST_IP6) {
         Ok(env_ipv6) => {
             if env_ipv6.trim().is_empty() {
                 return Err(anyhow!("IPv6 address disabled"));
             }
-            is_free_tcp_ipv6(Some(&env_ipv6), port).await
+            is_free_tcp_ipv6(Some(&env_ipv6), port)
         }
         Err(_) => {
             // get from config
@@ -980,10 +989,10 @@ async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<Socket
                     if ipv6_str.is_empty() {
                         Err(anyhow!("IPv6 address disabled"))
                     } else {
-                        is_free_tcp_ipv6(Some(&ipv6_str), port).await
+                        is_free_tcp_ipv6(Some(&ipv6_str), port)
                     }
                 }
-                None => is_free_tcp_ipv6(None, port).await, // Defaults to loopback
+                None => is_free_tcp_ipv6(None, port), // Defaults to loopback
             }
         }
     }
