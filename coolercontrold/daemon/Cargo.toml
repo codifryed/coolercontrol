@@ -182,8 +182,6 @@ libdrm_amdgpu_sys = { version = "0.8.16", default-features = false, features = [
   "dynamic_loading",
 ] }
 indexmap = "2.14"
-# image 0.25.9 requires >=1.87 (minimal features for notifier.rs PNG decoding)
-image = { version = "=0.25.8", default-features = false, features = ["png"] }
 uuid = { version = "1.23.1", features = ["v4"] }
 # service plugin dependencies
 # >= 0.14.6 requires rustc 1.88:

@@ -449,23 +449,6 @@ fn setup_termination_signals() -> CancellationToken {
 
 #[derive(Debug, clap::Subcommand)]
 enum SubCommands {
-    #[command(hide = true)]
-    Notify {
-        #[arg(required = true)]
-        title: String,
-
-        #[arg(required = true)]
-        message: String,
-
-        #[arg()]
-        icon: Option<u8>,
-
-        #[arg()]
-        audio: Option<bool>,
-
-        #[arg()]
-        urgency: Option<String>,
-    },
     /// Run hardware detection and print results
     Detect {
         /// Also load detected kernel modules
@@ -503,25 +486,6 @@ enum SubCommands {
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
-    if let Some(SubCommands::Notify {
-        title,
-        message,
-        icon,
-        audio,
-        urgency,
-    }) = &args.command
-    {
-        notifier::notify(
-            title,
-            message,
-            icon.unwrap_or(0),
-            audio.is_some_and(|a| a),
-            urgency.as_ref().map_or("1", |u| u.as_str()),
-            args.debug,
-        )
-        .await?;
-        exit_successfully();
-    }
     if let Some(SubCommands::StressCpu { threads, timeout }) = &args.command {
         cc_stress::run_cpu_stress(*threads, *timeout)?;
         exit_successfully();

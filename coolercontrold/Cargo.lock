@@ -1136,7 +1136,6 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "image",
  "include_dir",
  "indexmap",
  "libdrm_amdgpu_sys",
