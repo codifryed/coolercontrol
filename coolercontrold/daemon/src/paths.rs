@@ -417,63 +417,71 @@ mod tests {
         assert_eq!(legacy_plugins_dir().file_name().unwrap(), "plugins");
     }
 
-    #[tokio::test]
-    async fn migrate_fresh_install() {
-        let tmp = tempfile::tempdir().unwrap();
-        let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
-        let legacy = tmp.path().join("etc/coolercontrol/plugins");
-        // Ensure parent of legacy exists.
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    #[test]
+    fn migrate_fresh_install() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
+            let legacy = tmp.path().join("etc/coolercontrol/plugins");
+            // Ensure parent of legacy exists.
+            std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
 
-        migrate_plugins_dir(&canonical, &legacy).await.unwrap();
+            migrate_plugins_dir(&canonical, &legacy).await.unwrap();
 
-        assert!(canonical.is_dir());
-        assert!(legacy.is_symlink());
-        assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+            assert!(canonical.is_dir());
+            assert!(legacy.is_symlink());
+            assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+        });
     }
 
-    #[tokio::test]
-    async fn migrate_old_directory() {
-        let tmp = tempfile::tempdir().unwrap();
-        let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
-        let legacy = tmp.path().join("etc/coolercontrol/plugins");
-        // Create legacy dir with a plugin inside.
-        std::fs::create_dir_all(legacy.join("test-plugin")).unwrap();
-        std::fs::write(legacy.join("test-plugin/manifest.toml"), "id = \"test\"").unwrap();
+    #[test]
+    fn migrate_old_directory() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
+            let legacy = tmp.path().join("etc/coolercontrol/plugins");
+            // Create legacy dir with a plugin inside.
+            std::fs::create_dir_all(legacy.join("test-plugin")).unwrap();
+            std::fs::write(legacy.join("test-plugin/manifest.toml"), "id = \"test\"").unwrap();
 
-        migrate_plugins_dir(&canonical, &legacy).await.unwrap();
+            migrate_plugins_dir(&canonical, &legacy).await.unwrap();
 
-        assert!(canonical.join("test-plugin/manifest.toml").exists());
-        assert!(legacy.is_symlink());
-        assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+            assert!(canonical.join("test-plugin/manifest.toml").exists());
+            assert!(legacy.is_symlink());
+            assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+        });
     }
 
-    #[tokio::test]
-    async fn migrate_already_done() {
-        let tmp = tempfile::tempdir().unwrap();
-        let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
-        let legacy = tmp.path().join("etc/coolercontrol/plugins");
-        std::fs::create_dir_all(&canonical).unwrap();
-        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink(&canonical, &legacy).unwrap();
+    #[test]
+    fn migrate_already_done() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let canonical = tmp.path().join("var/lib/coolercontrol/plugins");
+            let legacy = tmp.path().join("etc/coolercontrol/plugins");
+            std::fs::create_dir_all(&canonical).unwrap();
+            std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&canonical, &legacy).unwrap();
 
-        // Should be a no-op.
-        migrate_plugins_dir(&canonical, &legacy).await.unwrap();
+            // Should be a no-op.
+            migrate_plugins_dir(&canonical, &legacy).await.unwrap();
 
-        assert!(canonical.is_dir());
-        assert!(legacy.is_symlink());
-        assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+            assert!(canonical.is_dir());
+            assert!(legacy.is_symlink());
+            assert_eq!(std::fs::read_link(&legacy).unwrap(), canonical);
+        });
     }
 
-    #[tokio::test]
-    async fn migrate_same_path_skips_symlink() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("plugins");
+    #[test]
+    fn migrate_same_path_skips_symlink() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().join("plugins");
 
-        migrate_plugins_dir(&dir, &dir).await.unwrap();
+            migrate_plugins_dir(&dir, &dir).await.unwrap();
 
-        assert!(dir.is_dir());
-        assert!(!dir.is_symlink());
+            assert!(dir.is_dir());
+            assert!(!dir.is_symlink());
+        });
     }
 
     #[test]

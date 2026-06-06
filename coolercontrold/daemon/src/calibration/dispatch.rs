@@ -621,291 +621,307 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn uncalibrated_channel_passes_through() {
-        // Goal: with no calibration stored, dispatch must write the
-        // user's true_duty value verbatim. This is the path most users
-        // start on before opting into calibration.
-        let state = Rc::new(FanStateMap::new());
-        let store = CalibrationStore::empty();
-        let (writer, writes) = MockWriter::make();
-        dispatch(
-            &state,
-            &store,
-            &writer,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            42,
-        )
-        .await
-        .expect("ok");
-        assert_eq!(
-            writes.borrow().as_slice(),
-            &[("dev-a".to_string(), "fan1".to_string(), 42)]
-        );
-        assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+    #[test]
+    fn uncalibrated_channel_passes_through() {
+        crate::rt::test_runtime(async {
+            // Goal: with no calibration stored, dispatch must write the
+            // user's true_duty value verbatim. This is the path most users
+            // start on before opting into calibration.
+            let state = Rc::new(FanStateMap::new());
+            let store = CalibrationStore::empty();
+            let (writer, writes) = MockWriter::make();
+            dispatch(
+                &state,
+                &store,
+                &writer,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                42,
+            )
+            .await
+            .expect("ok");
+            assert_eq!(
+                writes.borrow().as_slice(),
+                &[("dev-a".to_string(), "fan1".to_string(), 42)]
+            );
+            assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn stepped_calibration_passes_through() {
-        // Goal: a stepped calibration must keep mapping disabled so
-        // the user's value reaches the hardware unchanged. The state
-        // machine must not transition into Kicking.
-        let state = Rc::new(FanStateMap::new());
-        let store = CalibrationStore::empty();
-        store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
-        let (writer, writes) = MockWriter::make();
-        dispatch(
-            &state,
-            &store,
-            &writer,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            42,
-        )
-        .await
-        .expect("ok");
-        assert_eq!(writes.borrow().len(), 1);
-        assert_eq!(writes.borrow()[0].2, 42);
-        assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+    #[test]
+    fn stepped_calibration_passes_through() {
+        crate::rt::test_runtime(async {
+            // Goal: a stepped calibration must keep mapping disabled so
+            // the user's value reaches the hardware unchanged. The state
+            // machine must not transition into Kicking.
+            let state = Rc::new(FanStateMap::new());
+            let store = CalibrationStore::empty();
+            store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
+            let (writer, writes) = MockWriter::make();
+            dispatch(
+                &state,
+                &store,
+                &writer,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                42,
+            )
+            .await
+            .expect("ok");
+            assert_eq!(writes.borrow().len(), 1);
+            assert_eq!(writes.borrow()[0].2, 42);
+            assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn channel_under_diagnosis_is_a_noop() {
-        // Goal: while the diagnoser owns the channel, dispatch must do
-        // nothing. The diagnoser writes directly to the repo so engine
-        // ticks would otherwise stomp the sweep.
-        let state = Rc::new(FanStateMap::new());
-        state.set_under_diagnosis(k("dev-a", "fan1"), true);
-        let store = CalibrationStore::empty();
-        store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-        let (writer, writes) = MockWriter::make();
-        dispatch(
-            &state,
-            &store,
-            &writer,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            42,
-        )
-        .await
-        .expect("ok");
-        assert!(writes.borrow().is_empty());
+    #[test]
+    fn channel_under_diagnosis_is_a_noop() {
+        crate::rt::test_runtime(async {
+            // Goal: while the diagnoser owns the channel, dispatch must do
+            // nothing. The diagnoser writes directly to the repo so engine
+            // ticks would otherwise stomp the sweep.
+            let state = Rc::new(FanStateMap::new());
+            state.set_under_diagnosis(k("dev-a", "fan1"), true);
+            let store = CalibrationStore::empty();
+            store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
+            let (writer, writes) = MockWriter::make();
+            dispatch(
+                &state,
+                &store,
+                &writer,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                42,
+            )
+            .await
+            .expect("ok");
+            assert!(writes.borrow().is_empty());
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn off_to_kicking_writes_kick_duty_and_updates_state() {
-        // Goal: a calibrated smooth channel transitioning out of Off
-        // must (1) write the kick duty to hardware, (2) record the
-        // intended sustain duty in the state map for the deferred
-        // task to consume.
-        let local = tokio::task::LocalSet::new();
-        local
-            .run_until(async {
-                let state = Rc::new(FanStateMap::new());
-                let store = CalibrationStore::empty();
-                store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::make();
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    50,
-                )
-                .await
-                .expect("ok");
-                // One write so far: the kick. The sustain write is
-                // scheduled via spawn_local; we never drive the timer in
-                // this test, so the spawned future never fires before
-                // the LocalSet is dropped.
-                assert_eq!(writes.borrow().len(), 1);
-                let kick_written = writes.borrow()[0].2;
-                let mapped = smooth_cal().true_to_device(50).expect("smooth");
-                assert_eq!(kick_written, mapped.kick);
-                let entry = state.entry(&k("dev-a", "fan1"));
-                assert_eq!(
-                    entry.state,
-                    FanState::Kicking {
-                        sustain_target: mapped.sustain
-                    }
-                );
-            })
-            .await;
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn write_zero_from_kicking_returns_to_off() {
-        // Goal: a user-cancel (true_duty=0) while a kick is in flight
-        // must immediately write 0 and set state to Off. The deferred
-        // task, when it eventually fires, must observe Off and skip.
-        let local = tokio::task::LocalSet::new();
-        local
-            .run_until(async {
-                let state = Rc::new(FanStateMap::new());
-                let store = CalibrationStore::empty();
-                store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::make();
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    50,
-                )
-                .await
-                .expect("kick");
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    0,
-                )
-                .await
-                .expect("zero");
-                let log = writes.borrow().clone();
-                assert_eq!(log.len(), 2);
-                assert_eq!(log[1].2, 0);
-                assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
-                // Now finalize the kick manually; should be a no-op
-                // because state has moved to Off.
-                complete_kick(
-                    &state,
-                    &writer,
-                    &k("dev-a", "fan1"),
-                    &"dev-a".to_string(),
-                    "fan1",
-                )
+    #[test]
+    fn off_to_kicking_writes_kick_duty_and_updates_state() {
+        crate::rt::test_runtime(async {
+            // Goal: a calibrated smooth channel transitioning out of Off
+            // must (1) write the kick duty to hardware, (2) record the
+            // intended sustain duty in the state map for the deferred
+            // task to consume.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let store = CalibrationStore::empty();
+                    store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
+                    let (writer, writes) = MockWriter::make();
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await
+                    .expect("ok");
+                    // One write so far: the kick. The sustain write is
+                    // scheduled via spawn_local; we never drive the timer in
+                    // this test, so the spawned future never fires before
+                    // the LocalSet is dropped.
+                    assert_eq!(writes.borrow().len(), 1);
+                    let kick_written = writes.borrow()[0].2;
+                    let mapped = smooth_cal().true_to_device(50).expect("smooth");
+                    assert_eq!(kick_written, mapped.kick);
+                    let entry = state.entry(&k("dev-a", "fan1"));
+                    assert_eq!(
+                        entry.state,
+                        FanState::Kicking {
+                            sustain_target: mapped.sustain
+                        }
+                    );
+                })
                 .await;
-                assert_eq!(writes.borrow().len(), 2);
-                assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
-            })
-            .await;
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn mid_kick_dispatch_updates_sustain_target_without_writing() {
-        // Goal: while the fan is mid-kick, a new dispatch only updates
-        // the pending sustain target. No hardware write happens until
-        // the deferred task fires; then the latest sustain wins.
-        let local = tokio::task::LocalSet::new();
-        local
-            .run_until(async {
-                let state = Rc::new(FanStateMap::new());
-                let store = CalibrationStore::empty();
-                store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
-                let (writer, writes) = MockWriter::make();
-                let cal = smooth_cal();
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    50,
-                )
-                .await
-                .expect("kick");
-                assert_eq!(writes.borrow().len(), 1);
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    70,
-                )
-                .await
-                .expect("mid-kick update");
-                assert_eq!(writes.borrow().len(), 1, "no extra hardware write");
-                let expected_sustain = cal.true_to_device(70).expect("smooth").sustain;
-                assert_eq!(
-                    state.entry(&k("dev-a", "fan1")).state,
-                    FanState::Kicking {
-                        sustain_target: expected_sustain
-                    }
-                );
-                // Finalize manually: now the second sustain target
-                // should be written, state becomes On.
-                complete_kick(
-                    &state,
-                    &writer,
-                    &k("dev-a", "fan1"),
-                    &"dev-a".to_string(),
-                    "fan1",
-                )
+    #[test]
+    fn write_zero_from_kicking_returns_to_off() {
+        crate::rt::test_runtime(async {
+            // Goal: a user-cancel (true_duty=0) while a kick is in flight
+            // must immediately write 0 and set state to Off. The deferred
+            // task, when it eventually fires, must observe Off and skip.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let store = CalibrationStore::empty();
+                    store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
+                    let (writer, writes) = MockWriter::make();
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await
+                    .expect("kick");
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        0,
+                    )
+                    .await
+                    .expect("zero");
+                    let log = writes.borrow().clone();
+                    assert_eq!(log.len(), 2);
+                    assert_eq!(log[1].2, 0);
+                    assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+                    // Now finalize the kick manually; should be a no-op
+                    // because state has moved to Off.
+                    complete_kick(
+                        &state,
+                        &writer,
+                        &k("dev-a", "fan1"),
+                        &"dev-a".to_string(),
+                        "fan1",
+                    )
+                    .await;
+                    assert_eq!(writes.borrow().len(), 2);
+                    assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
+                })
                 .await;
-                assert_eq!(writes.borrow().len(), 2);
-                assert_eq!(writes.borrow()[1].2, expected_sustain);
-                assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::On);
-            })
-            .await;
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn on_state_writes_sustain_directly() {
-        // Goal: once the channel is On, subsequent dispatches go
-        // straight to the new sustain duty with no kick. The deferred
-        // task does not run because the state machine never re-entered
-        // Off.
-        let local = tokio::task::LocalSet::new();
-        local
-            .run_until(async {
-                let state = Rc::new(FanStateMap::new());
-                let key = k("dev-a", "fan1");
-                state.replace(
-                    key.clone(),
-                    ChannelEntry {
-                        state: FanState::On,
-                        under_diagnosis: false,
-                        commanded_true_duty: None,
-                    },
-                );
-                let store = CalibrationStore::empty();
-                store.insert_unsaved(key.clone(), smooth_cal());
-                let (writer, writes) = MockWriter::make();
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    80,
-                )
-                .await
-                .expect("ok");
-                let expected = smooth_cal().true_to_device(80).expect("smooth").sustain;
-                assert_eq!(writes.borrow().len(), 1);
-                assert_eq!(writes.borrow()[0].2, expected);
-                assert_eq!(state.entry(&key).state, FanState::On);
-            })
-            .await;
+    #[test]
+    fn mid_kick_dispatch_updates_sustain_target_without_writing() {
+        crate::rt::test_runtime(async {
+            // Goal: while the fan is mid-kick, a new dispatch only updates
+            // the pending sustain target. No hardware write happens until
+            // the deferred task fires; then the latest sustain wins.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let store = CalibrationStore::empty();
+                    store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
+                    let (writer, writes) = MockWriter::make();
+                    let cal = smooth_cal();
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await
+                    .expect("kick");
+                    assert_eq!(writes.borrow().len(), 1);
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        70,
+                    )
+                    .await
+                    .expect("mid-kick update");
+                    assert_eq!(writes.borrow().len(), 1, "no extra hardware write");
+                    let expected_sustain = cal.true_to_device(70).expect("smooth").sustain;
+                    assert_eq!(
+                        state.entry(&k("dev-a", "fan1")).state,
+                        FanState::Kicking {
+                            sustain_target: expected_sustain
+                        }
+                    );
+                    // Finalize manually: now the second sustain target
+                    // should be written, state becomes On.
+                    complete_kick(
+                        &state,
+                        &writer,
+                        &k("dev-a", "fan1"),
+                        &"dev-a".to_string(),
+                        "fan1",
+                    )
+                    .await;
+                    assert_eq!(writes.borrow().len(), 2);
+                    assert_eq!(writes.borrow()[1].2, expected_sustain);
+                    assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::On);
+                })
+                .await;
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn complete_kick_on_off_state_is_noop() {
-        // Goal: complete_kick must defensively no-op if the state is
-        // already Off or On (e.g. a stale spawned task whose channel
-        // got reset). Prevents the task from overwriting a user-set
-        // zero with a stale sustain.
-        let state = Rc::new(FanStateMap::new());
-        let key = k("dev-a", "fan1");
-        state.replace(
-            key.clone(),
-            ChannelEntry {
-                state: FanState::Off,
-                under_diagnosis: false,
-                commanded_true_duty: None,
-            },
-        );
-        let (writer, writes) = MockWriter::make();
-        complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
-        assert!(writes.borrow().is_empty());
-        assert_eq!(state.entry(&key).state, FanState::Off);
+    #[test]
+    fn on_state_writes_sustain_directly() {
+        crate::rt::test_runtime(async {
+            // Goal: once the channel is On, subsequent dispatches go
+            // straight to the new sustain duty with no kick. The deferred
+            // task does not run because the state machine never re-entered
+            // Off.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let key = k("dev-a", "fan1");
+                    state.replace(
+                        key.clone(),
+                        ChannelEntry {
+                            state: FanState::On,
+                            under_diagnosis: false,
+                            commanded_true_duty: None,
+                        },
+                    );
+                    let store = CalibrationStore::empty();
+                    store.insert_unsaved(key.clone(), smooth_cal());
+                    let (writer, writes) = MockWriter::make();
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        80,
+                    )
+                    .await
+                    .expect("ok");
+                    let expected = smooth_cal().true_to_device(80).expect("smooth").sustain;
+                    assert_eq!(writes.borrow().len(), 1);
+                    assert_eq!(writes.borrow()[0].2, expected);
+                    assert_eq!(state.entry(&key).state, FanState::On);
+                })
+                .await;
+        });
+    }
+
+    #[test]
+    fn complete_kick_on_off_state_is_noop() {
+        crate::rt::test_runtime(async {
+            // Goal: complete_kick must defensively no-op if the state is
+            // already Off or On (e.g. a stale spawned task whose channel
+            // got reset). Prevents the task from overwriting a user-set
+            // zero with a stale sustain.
+            let state = Rc::new(FanStateMap::new());
+            let key = k("dev-a", "fan1");
+            state.replace(
+                key.clone(),
+                ChannelEntry {
+                    state: FanState::Off,
+                    under_diagnosis: false,
+                    commanded_true_duty: None,
+                },
+            );
+            let (writer, writes) = MockWriter::make();
+            complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
+            assert!(writes.borrow().is_empty());
+            assert_eq!(state.entry(&key).state, FanState::Off);
+        });
     }
 
     // Step interval is 0 in tests so the walk's inter-step sleeps resolve instantly on any runtime
@@ -1101,79 +1117,81 @@ mod tests {
         });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn dispatch_records_commanded_true_duty_across_state_transitions() {
-        // Goal: every write-bearing transition records the input true_duty
-        // in the state map so the augmenter's hybrid path can read it back.
-        // Off->Kicking, Kicking-update, write-zero, and the On-state write
-        // each must update commanded_true_duty.
-        let local = tokio::task::LocalSet::new();
-        local
-            .run_until(async {
-                let state = Rc::new(FanStateMap::new());
-                let store = CalibrationStore::empty();
-                let key = k("dev-a", "fan1");
-                store.insert_unsaved(key.clone(), smooth_cal());
-                let (writer, _writes) = MockWriter::make();
+    #[test]
+    fn dispatch_records_commanded_true_duty_across_state_transitions() {
+        crate::rt::test_runtime(async {
+            // Goal: every write-bearing transition records the input true_duty
+            // in the state map so the augmenter's hybrid path can read it back.
+            // Off->Kicking, Kicking-update, write-zero, and the On-state write
+            // each must update commanded_true_duty.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let store = CalibrationStore::empty();
+                    let key = k("dev-a", "fan1");
+                    store.insert_unsaved(key.clone(), smooth_cal());
+                    let (writer, _writes) = MockWriter::make();
 
-                // Off -> Kicking with commanded=50.
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    50,
-                )
-                .await
-                .expect("kick");
-                assert_eq!(state.entry(&key).commanded_true_duty, Some(50));
+                    // Off -> Kicking with commanded=50.
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await
+                    .expect("kick");
+                    assert_eq!(state.entry(&key).commanded_true_duty, Some(50));
 
-                // Mid-kick update to commanded=70.
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    70,
-                )
-                .await
-                .expect("update");
-                assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
+                    // Mid-kick update to commanded=70.
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        70,
+                    )
+                    .await
+                    .expect("update");
+                    assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 
-                // Finalize the kick so state moves to On.
-                complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
-                assert_eq!(state.entry(&key).state, FanState::On);
-                assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
+                    // Finalize the kick so state moves to On.
+                    complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
+                    assert_eq!(state.entry(&key).state, FanState::On);
+                    assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 
-                // On-state write at commanded=40.
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    40,
-                )
-                .await
-                .expect("on-write");
-                assert_eq!(state.entry(&key).commanded_true_duty, Some(40));
+                    // On-state write at commanded=40.
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        40,
+                    )
+                    .await
+                    .expect("on-write");
+                    assert_eq!(state.entry(&key).commanded_true_duty, Some(40));
 
-                // Write-zero clears the channel and records the zero command.
-                dispatch(
-                    &state,
-                    &store,
-                    &writer,
-                    "dev-a".to_string(),
-                    "fan1".to_string(),
-                    0,
-                )
-                .await
-                .expect("zero");
-                assert_eq!(state.entry(&key).state, FanState::Off);
-                assert_eq!(state.entry(&key).commanded_true_duty, Some(0));
-            })
-            .await;
+                    // Write-zero clears the channel and records the zero command.
+                    dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        0,
+                    )
+                    .await
+                    .expect("zero");
+                    assert_eq!(state.entry(&key).state, FanState::Off);
+                    assert_eq!(state.entry(&key).commanded_true_duty, Some(0));
+                })
+                .await;
+        });
     }
 }
