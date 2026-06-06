@@ -275,11 +275,12 @@ fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     rt::runtime(async {
         let run_token = setup_termination_signals();
-        // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, and
-        // later the dbus sleep listener and liqctld/service-plugin transports). Started early so it
-        // exists before device-repo init. Dropped at the end of main(); a bounded join is added
-        // with the shutdown sub-deliverable.
-        let sidecar = sidecar::Sidecar::start(run_token.clone());
+        // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, the dbus
+        // sleep listener, the service-plugin tonic transport). Started early so it exists before
+        // device-repo init. Its own token is cancelled only after `shutdown(repos)` (not on
+        // `run_token`), so transports the repos round-trip during shutdown stay alive long enough.
+        let sidecar_token = CancellationToken::new();
+        let sidecar = sidecar::Sidecar::start(sidecar_token.clone());
         handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
@@ -408,7 +409,12 @@ fn main() -> Result<()> {
             error!("Main scope failed to start: {err}");
         });
         // all tasks from the main scope must have completed by this point.
-        shutdown(repos, config).await
+        let shutdown_result = shutdown(repos, config).await;
+        // Repos have finished their shutdown (incl. any sidecar round-trips like the service-plugin
+        // gRPC shutdown), so the sidecar can now be torn down and joined (bounded, force-exit).
+        sidecar_token.cancel();
+        sidecar.join();
+        shutdown_result
     })
 }
 

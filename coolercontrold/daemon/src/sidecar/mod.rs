@@ -20,7 +20,8 @@
 //!
 //! A single long-lived OS thread running a current-thread Tokio runtime. It hosts the parts of the
 //! daemon that require a Tokio reactor (the REST/gRPC servers, the dbus sleep listener, and the
-//! liqctld/service-plugin transports) so the main thread can run a non-Tokio runtime.
+//! service-plugin tonic transport) so the main thread can run a non-Tokio runtime. (liqctld is the
+//! exception: it becomes compio-native rather than moving here.)
 //!
 //! The hosted actors are `!Send` (they hold `Rc`/`RefCell` state), and a `!Send` future cannot be
 //! moved across threads. So the main thread does not send a future: it sends a `Send` *builder*
@@ -28,10 +29,12 @@
 //! the `!Send` future, then drives it locally. Main-thread state is reached only over `tokio::sync`
 //! channels.
 //!
-//! The REST/gRPC servers run here; the dbus sleep listener and the liqctld/service-plugin
-//! transports move here in the subsequent Phase 1 sub-deliverables.
+//! Lifecycle: the hosted actors watch the run token and stop early on shutdown; the sidecar itself
+//! watches a separate token cancelled only after `shutdown(repos)`, so transports that the repos
+//! round-trip during shutdown (the service-plugin gRPC shutdown) stay alive long enough to finish.
 
 use anyhow::{anyhow, Result};
+use log::warn;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
@@ -72,7 +75,6 @@ impl SidecarHandle {
     /// Run a one-shot task on the sidecar and await its result. `make_fut` is `Send` (captures only
     /// `Send` data) and builds the future on the sidecar; `T` is `Send` so it returns over the
     /// channel. Errors only if the sidecar thread has already exited.
-    #[allow(dead_code)]
     pub async fn run<F, Fut, T>(&self, make_fut: F) -> Result<T>
     where
         F: FnOnce() -> Fut + Send + 'static,
@@ -109,7 +111,6 @@ impl Sidecar {
     }
 
     /// A cloneable handle for submitting work to the sidecar from elsewhere.
-    #[allow(dead_code)]
     pub fn handle(&self) -> SidecarHandle {
         self.handle.clone()
     }
@@ -123,13 +124,22 @@ impl Sidecar {
         self.handle.spawn(make_actor);
     }
 
-    /// Join the sidecar thread. The caller must already have cancelled the token so the hosted
-    /// actors can finish. (A bounded join with a force-exit fallback is added with the shutdown
-    /// sub-deliverable, which is also where this is first called.)
-    #[allow(dead_code)]
+    /// Join the sidecar thread after its lifecycle token has been cancelled. Bounded: `std` has no
+    /// join-with-timeout, so we join on a helper thread and wait with a deadline. If the sidecar
+    /// does not finish in time (a wedged hosted task), force the process down so a hung shutdown
+    /// never blocks past systemd's `TimeoutStopSec`.
     pub fn join(self) {
+        // Closing the task channel lets the run loop finish once its hosted tasks complete.
         drop(self.handle);
-        let _ = self.thread.join();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = self.thread.join();
+            let _ = done_tx.send(());
+        });
+        if done_rx.recv_timeout(SHUTDOWN_GRACE).is_err() {
+            warn!("Sidecar did not shut down within {SHUTDOWN_GRACE:?}; forcing process exit");
+            std::process::exit(0);
+        }
     }
 }
 
