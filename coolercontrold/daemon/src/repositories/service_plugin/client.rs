@@ -68,8 +68,6 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
 #[derive(Debug)]
 pub struct DeviceServiceClient {
     service_id: ServiceId,
-    client_address: String,
-    poll_rate: f64,
 
     /// Snapshot of the service-plugin wait timeout. `poll_rate` only
     /// changes on daemon restart, so this value is constant for the
@@ -96,28 +94,28 @@ pub struct DeviceServiceClient {
 
 impl DeviceServiceClient {
     pub async fn connect(service_manifest: &ServiceManifest, poll_rate: f64) -> Result<Self> {
-        let address = match &service_manifest.address {
-            ConnectionType::Uds(uds) => {
-                format!("unix://{}", uds.display())
-            }
-            ConnectionType::Tcp(tcp_addr) => {
-                format!("http://{tcp_addr}")
-            }
-            ConnectionType::None => return Err(anyhow!("Invalid Connection Type: NONE!")),
-        };
+        let address = Self::address_from_manifest(service_manifest)?;
         let grpc_client =
             device_service_client::DeviceServiceClient::connect(address.clone()).await?;
         Ok(Self::new(
             service_manifest.id.clone(),
-            address,
             poll_rate,
             grpc_client,
         ))
     }
 
+    /// Derives the gRPC connection address from a manifest. Shared by `connect` and the main-side
+    /// proxy handle (which needs the address to map device locations without holding the client).
+    pub fn address_from_manifest(service_manifest: &ServiceManifest) -> Result<String> {
+        match &service_manifest.address {
+            ConnectionType::Uds(uds) => Ok(format!("unix://{}", uds.display())),
+            ConnectionType::Tcp(tcp_addr) => Ok(format!("http://{tcp_addr}")),
+            ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
+        }
+    }
+
     fn new(
         service_id: ServiceId,
-        client_address: String,
         poll_rate: f64,
         client: device_service_client::DeviceServiceClient<Channel>,
     ) -> Self {
@@ -125,8 +123,6 @@ impl DeviceServiceClient {
         let service_wait_timeout = service_wait_timeout_for(poll_rate);
         Self {
             service_id,
-            client_address,
-            poll_rate,
             service_wait_timeout,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
@@ -196,7 +192,9 @@ impl DeviceServiceClient {
         }
     }
 
-    pub async fn list_devices(&self) -> Result<Vec<(ServiceDeviceID, Device)>> {
+    /// Performs the gRPC list-devices call and returns the raw (`Send`) response. Mapping to
+    /// `Device` (which is `!Send`) is done by the caller on the main thread via `map_devices`.
+    pub async fn list_devices_raw(&self) -> Result<ListDevicesResponse> {
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to list devices. \
@@ -207,7 +205,7 @@ impl DeviceServiceClient {
                 let request = Request::new(ListDevicesRequest{});
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
-                .map(|r| self.map_devices(r))
+                .map(tonic::Response::into_inner)
                 .map_err(|s| anyhow!("Failed to list devices: {s}"))
             }
         }
@@ -252,17 +250,16 @@ impl DeviceServiceClient {
         }
     }
 
-    fn map_devices(
-        &self,
-        devices_response: tonic::Response<ListDevicesResponse>,
+    /// Maps a raw list-devices response into `Device`s. Static (takes `client_address`/`poll_rate`)
+    /// so the main-side proxy handle can map without holding the sidecar-resident client, since
+    /// `Device` is `!Send` and cannot be built on the sidecar and sent back.
+    pub fn map_devices(
+        client_address: &str,
+        poll_rate: f64,
+        devices_response: ListDevicesResponse,
     ) -> Vec<(ServiceDeviceID, Device)> {
         let mut devices = vec![];
-        for (index, device_res) in devices_response
-            .into_inner()
-            .devices
-            .into_iter()
-            .enumerate()
-        {
+        for (index, device_res) in devices_response.devices.into_iter().enumerate() {
             let device_info = device_res
                 .info
                 .map_or_else(DeviceInfo::default, |info_res| DeviceInfo {
@@ -285,7 +282,7 @@ impl DeviceServiceClient {
                             drv_type: DriverType::External,
                             name: d.name,
                             version: d.version,
-                            locations: self.add_address_to_locations(d.locations),
+                            locations: Self::add_address_to_locations(client_address, d.locations),
                         },
                     ),
                 });
@@ -299,7 +296,7 @@ impl DeviceServiceClient {
                     None,
                     device_info,
                     device_res.uid_info,
-                    self.poll_rate,
+                    poll_rate,
                 ),
             ));
         }
@@ -395,8 +392,8 @@ impl DeviceServiceClient {
             .collect()
     }
 
-    fn add_address_to_locations(&self, mut locations: Vec<String>) -> Vec<String> {
-        locations.push(self.client_address.clone());
+    fn add_address_to_locations(client_address: &str, mut locations: Vec<String>) -> Vec<String> {
+        locations.push(client_address.to_owned());
         locations
     }
 

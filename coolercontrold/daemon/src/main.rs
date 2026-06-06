@@ -295,7 +295,8 @@ fn main() -> Result<()> {
         run_sensors_detection(&config);
 
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
-            initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
+            initialize_device_repos(&config, &cmd_args, run_token.clone(), sidecar.handle())
+                .await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
         let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
@@ -635,6 +636,7 @@ async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
     run_token: CancellationToken,
+    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -686,6 +688,7 @@ async fn initialize_device_repos(
                 config.clone(),
                 api_up_token.clone(),
                 cmd_args.reset_plugin_user,
+                sidecar.clone(),
             )
             .await
             {
@@ -757,8 +760,10 @@ async fn init_service_plugin_repo(
     config: Rc<Config>,
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
+    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<ServicePluginRepo> {
-    let mut external_repo = ServicePluginRepo::new(config, api_up_token, reset_plugin_user)?;
+    let mut external_repo =
+        ServicePluginRepo::new(config, api_up_token, reset_plugin_user, sidecar)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)
 }
