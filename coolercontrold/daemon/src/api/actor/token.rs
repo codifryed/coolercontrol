@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::sidecar::SidecarHandle;
 use crate::token::{self, StoredToken};
 use anyhow::Result;
 use chrono::{DateTime, Local};
@@ -42,19 +43,27 @@ pub struct TokenHandle {
 }
 
 impl TokenHandle {
-    pub async fn new(cancel_token: CancellationToken) -> Self {
-        let tokens = token::load_tokens().await.unwrap_or_else(|err| {
-            error!("Failed to load access tokens: {err}");
-            Vec::new()
-        });
+    pub async fn new(cancel_token: CancellationToken, sidecar: &SidecarHandle) -> Self {
+        // Token IO uses `sidecar_fs` (always Tokio), so load on the sidecar Tokio runtime.
+        let tokens = match sidecar.run(token::load_tokens).await {
+            Ok(Ok(tokens)) => tokens,
+            Ok(Err(err)) => {
+                error!("Failed to load access tokens: {err}");
+                Vec::new()
+            }
+            Err(err) => {
+                error!("Sidecar dispatch for token load failed: {err}");
+                Vec::new()
+            }
+        };
         let handle = Self {
             tokens: Arc::new(RwLock::new(tokens)),
             last_used_cache: Arc::new(Mutex::new(HashMap::new())),
         };
 
-        // Spawn background flush task
+        // Spawn the background flush task on the sidecar: it also writes via `sidecar_fs`.
         let flush_handle = handle.clone();
-        tokio::spawn(async move {
+        sidecar.spawn(move || async move {
             let mut flush_interval =
                 tokio::time::interval(tokio::time::Duration::from_secs(FLUSH_INTERVAL_SECS));
             flush_interval.tick().await; // skip first immediate tick

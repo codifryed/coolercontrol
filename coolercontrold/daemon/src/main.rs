@@ -286,11 +286,13 @@ fn main() -> Result<()> {
         verify_is_root()?;
         handle_detect_command(&cmd_args);
         let config = Rc::new(Config::load_config_file().await?);
-        parse_cmd_args(&cmd_args, &config).await?;
+        parse_cmd_args(&cmd_args, &config, &sidecar.handle()).await?;
         config.verify_writeability()?;
         config.log_deprecated_function_warnings();
         paths::ensure_data_dir().await?;
-        admin::load_passwd().await?;
+        // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
+        // reactor, so run it on the sidecar. Harmless on the Tokio backend too.
+        sidecar.handle().run(admin::load_passwd).await??;
 
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
@@ -548,7 +550,11 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
+async fn parse_cmd_args(
+    cmd_args: &Args,
+    config: &Rc<Config>,
+    sidecar: &crate::sidecar::SidecarHandle,
+) -> Result<()> {
     if cmd_args.config {
         exit_successfully();
     } else if cmd_args.backup {
@@ -565,7 +571,9 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
         }
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
-        match admin::reset_passwd().await {
+        // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
+        // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
+        match sidecar.run(admin::reset_passwd).await.unwrap_or_else(Err) {
             Ok(()) => exit_successfully(),
             Err(err) => exit_with_error(&err),
         }

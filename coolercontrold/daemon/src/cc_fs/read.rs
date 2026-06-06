@@ -24,15 +24,39 @@ use std::path::Path;
 ///
 /// Tailored for sysfs files, which are typically small and contain few values. Returns an error if
 /// the file cannot be opened or read, or if the contents are not valid UTF-8.
+///
+/// This is the hot read path (every sensor, every tick). On the compio backend it does a single
+/// managed read from the runtime's buffer pool: registered buffers plus completion-based IO are
+/// where the idle-CPU win comes from. sysfs single-value files are far smaller than the pool's
+/// buffers, so one read captures the whole file.
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
-    Ok(tokio::fs::read_to_string(path).await?)
+    #[cfg(not(feature = "compio-rt"))]
+    {
+        Ok(tokio::fs::read_to_string(path).await?)
+    }
+    #[cfg(feature = "compio-rt")]
+    {
+        use compio::io::AsyncReadManagedAt;
+        let file = compio::fs::File::open(path.as_ref()).await?;
+        match file.read_managed_at(0, 0).await? {
+            Some(buf) => Ok(std::str::from_utf8(&buf)?.to_owned()),
+            None => Ok(String::new()),
+        }
+    }
 }
 
 /// Reads the entire contents of a text file into a UTF-8 encoded string.
 ///
 /// Returns an error if the file cannot be opened or read, or if the contents are not valid UTF-8.
 pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
-    Ok(tokio::fs::read_to_string(path).await?)
+    #[cfg(not(feature = "compio-rt"))]
+    {
+        Ok(tokio::fs::read_to_string(path).await?)
+    }
+    #[cfg(feature = "compio-rt")]
+    {
+        Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
+    }
 }
 
 /// Reads the entire contents of a file into a vector of bytes. Tailored for reading images, which
@@ -40,7 +64,14 @@ pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
 ///
 /// Returns an error if the file cannot be opened or read.
 pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-    Ok(tokio::fs::read(path).await?)
+    #[cfg(not(feature = "compio-rt"))]
+    {
+        Ok(tokio::fs::read(path).await?)
+    }
+    #[cfg(feature = "compio-rt")]
+    {
+        Ok(compio::fs::read(path.as_ref()).await?)
+    }
 }
 
 /// Reads the contents of a directory.

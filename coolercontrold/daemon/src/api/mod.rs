@@ -174,11 +174,17 @@ pub async fn start_server<'s>(
         status_handle,
         notification_handle,
         &cancel_token,
+        sidecar.handle(),
         main_scope,
     )
     .await;
     let tls_config = tls_config(&settings).await;
-    let session_key = admin::load_or_generate_session_key().await?;
+    // admin uses `sidecar_fs` (always Tokio); this runs during main-thread API init, so dispatch
+    // it to the sidecar (no Tokio reactor on the compio main thread).
+    let session_key = sidecar
+        .handle()
+        .run(admin::load_or_generate_session_key)
+        .await??;
     let sessions_dir = paths::sessions_dir().to_path_buf();
     let file_store = FileSessionStore::new(sessions_dir);
     let memory_store = MemorySessionStore::new(10);
@@ -361,7 +367,7 @@ async fn watch_passwd_file(
         tokio::select! {
             biased;
             () = cancel_token.cancelled() => break,
-            () = tokio::time::sleep(interval) => {
+            () = crate::rt::sleep(interval) => {
                 let current_mtime = passwd_file_mtime(&passwd_file);
                 if current_mtime == last_mtime {
                     continue;
@@ -654,6 +660,7 @@ async fn create_app_state<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     cancel_token: &CancellationToken,
+    sidecar: crate::sidecar::SidecarHandle,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
@@ -662,8 +669,8 @@ async fn create_app_state<'s>(
         cancel_token.clone(),
         main_scope,
     );
-    let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
-    let token_handle = TokenHandle::new(cancel_token.clone()).await;
+    let auth_handle = AuthHandle::new(cancel_token.clone(), &sidecar);
+    let token_handle = TokenHandle::new(cancel_token.clone(), &sidecar).await;
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
@@ -1530,72 +1537,76 @@ mod tests {
         assert!(validate_name_string("émojis 🎉").is_ok());
     }
 
-    #[tokio::test]
-    async fn test_watch_passwd_file_clears_cache_on_mtime_change() {
+    #[test]
+    fn test_watch_passwd_file_clears_cache_on_mtime_change() {
         // Goal: verify that the watcher clears the in-memory session
         // cache when the password file's mtime changes (simulating a
-        // CLI `--reset-password` against a running daemon).
+        // CLI `--reset-password` against a running daemon). Runs on the
+        // active runtime (Tokio or compio) since the watcher uses the rt facade.
         use std::collections::HashMap;
         use time::OffsetDateTime;
         use tower_sessions::session::Record;
 
-        let dir = tempfile::tempdir().unwrap();
-        let passwd_file = dir.path().join("passwd");
-        std::fs::write(&passwd_file, b"original-hash").unwrap();
-        // Initial mtime needs to be old enough that a rewrite below
-        // produces a strictly different mtime even on filesystems with
-        // 1s mtime resolution.
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_file = dir.path().join("passwd");
+            std::fs::write(&passwd_file, b"original-hash").unwrap();
+            // Initial mtime needs to be old enough that a rewrite below
+            // produces a strictly different mtime even on filesystems with
+            // 1s mtime resolution.
+            crate::rt::sleep(Duration::from_millis(1100)).await;
 
-        let store = MemorySessionStore::new(10);
-        let mut record = Record {
-            id: Id::default(),
-            data: HashMap::default(),
-            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
-        };
-        store.create(&mut record).await.unwrap();
-        let stored_id = record.id;
-        assert!(
-            store.load(&stored_id).await.unwrap().is_some(),
-            "Session should exist before reset."
-        );
+            let store = MemorySessionStore::new(10);
+            let mut record = Record {
+                id: Id::default(),
+                data: HashMap::default(),
+                expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+            };
+            store.create(&mut record).await.unwrap();
+            let stored_id = record.id;
+            assert!(
+                store.load(&stored_id).await.unwrap().is_some(),
+                "Session should exist before reset."
+            );
 
-        let cancel_token = CancellationToken::new();
-        let watcher_handle = tokio::spawn(watch_passwd_file(
-            passwd_file.clone(),
-            store.clone(),
-            cancel_token.clone(),
-            Duration::from_millis(50),
-        ));
-        // Let the watcher run its initial mtime read before we mutate
-        // the file. Without this, the watcher's first read sees the
-        // post-mutation mtime as its baseline and never detects a
-        // change.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+            let cancel_token = CancellationToken::new();
+            // rt::spawn is detached; the poll loop below plus the cancel token
+            // synchronize the test without a join handle.
+            crate::rt::spawn(watch_passwd_file(
+                passwd_file.clone(),
+                store.clone(),
+                cancel_token.clone(),
+                Duration::from_millis(50),
+            ));
+            // Let the watcher run its initial mtime read before we mutate
+            // the file. Without this, the watcher's first read sees the
+            // post-mutation mtime as its baseline and never detects a
+            // change.
+            crate::rt::sleep(Duration::from_millis(100)).await;
 
-        // Simulate `coolercontrold --reset-password`: rewrite the file.
-        std::fs::write(&passwd_file, b"default-hash").unwrap();
+            // Simulate `coolercontrold --reset-password`: rewrite the file.
+            std::fs::write(&passwd_file, b"default-hash").unwrap();
 
-        // Poll until the watcher catches the change. Bound the wait so
-        // a regression cannot hang the test runner.
-        let mut cleared = false;
-        for _ in 0..50 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            if store.load(&stored_id).await.unwrap().is_none() {
-                cleared = true;
-                break;
+            // Poll until the watcher catches the change. Bound the wait so
+            // a regression cannot hang the test runner.
+            let mut cleared = false;
+            for _ in 0..50 {
+                crate::rt::sleep(Duration::from_millis(50)).await;
+                if store.load(&stored_id).await.unwrap().is_none() {
+                    cleared = true;
+                    break;
+                }
             }
-        }
-        cancel_token.cancel();
-        let _ = watcher_handle.await;
-        assert!(
-            cleared,
-            "Session cache should be cleared after password file mtime changes."
-        );
+            cancel_token.cancel();
+            assert!(
+                cleared,
+                "Session cache should be cleared after password file mtime changes."
+            );
+        });
     }
 
-    #[tokio::test]
-    async fn test_watch_passwd_file_no_clear_when_unchanged() {
+    #[test]
+    fn test_watch_passwd_file_no_clear_when_unchanged() {
         // Goal: verify that the watcher leaves the cache alone when
         // the password file is untouched, so we do not invalidate
         // sessions on every poll.
@@ -1603,35 +1614,36 @@ mod tests {
         use time::OffsetDateTime;
         use tower_sessions::session::Record;
 
-        let dir = tempfile::tempdir().unwrap();
-        let passwd_file = dir.path().join("passwd");
-        std::fs::write(&passwd_file, b"hash").unwrap();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_file = dir.path().join("passwd");
+            std::fs::write(&passwd_file, b"hash").unwrap();
 
-        let store = MemorySessionStore::new(10);
-        let mut record = Record {
-            id: Id::default(),
-            data: HashMap::default(),
-            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
-        };
-        store.create(&mut record).await.unwrap();
-        let stored_id = record.id;
+            let store = MemorySessionStore::new(10);
+            let mut record = Record {
+                id: Id::default(),
+                data: HashMap::default(),
+                expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+            };
+            store.create(&mut record).await.unwrap();
+            let stored_id = record.id;
 
-        let cancel_token = CancellationToken::new();
-        let watcher_handle = tokio::spawn(watch_passwd_file(
-            passwd_file,
-            store.clone(),
-            cancel_token.clone(),
-            Duration::from_millis(20),
-        ));
+            let cancel_token = CancellationToken::new();
+            crate::rt::spawn(watch_passwd_file(
+                passwd_file,
+                store.clone(),
+                cancel_token.clone(),
+                Duration::from_millis(20),
+            ));
 
-        // Let several poll cycles run without modifying the file.
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        cancel_token.cancel();
-        let _ = watcher_handle.await;
+            // Let several poll cycles run without modifying the file.
+            crate::rt::sleep(Duration::from_millis(150)).await;
+            cancel_token.cancel();
 
-        assert!(
-            store.load(&stored_id).await.unwrap().is_some(),
-            "Session should still be present when password file is unchanged."
-        );
+            assert!(
+                store.load(&stored_id).await.unwrap().is_some(),
+                "Session should still be present when password file is unchanged."
+            );
+        });
     }
 }
