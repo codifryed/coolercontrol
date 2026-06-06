@@ -18,34 +18,37 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = []
-# Opt-in compio main runtime (Phase 2 of the tokio->compio migration). When off, the daemon main
-# thread runs on tokio; when on, it runs on compio with the fusion driver (io-uring + polling). The
-# tokio sidecar (crate::sidecar) is always present either way, hosting the reactor-bound libs.
-compio-rt = ["dep:compio", "dep:cyper-core"]
+# Opt-in compio main runtime. When off, the daemon main thread runs on tokio; when on, it runs on
+# compio with the fusion driver (io-uring + polling). The tokio sidecar (crate::sidecar) is always
+# present either way, hosting the reactor-bound libs.
+compio-rt = ["dep:compio", "dep:cyper-core", "dep:compio-buf"]
 
 [dependencies]
 cc-detect = { path = "../cc-detect" }
 cc-image = { path = "../cc-image" }
 cc-stress = { path = "../cc-stress" }
-# compio is pinned exactly: it is edition 2024 and declares no MSRV policy, so a patch bump could
-# raise the floor past our MSRV target without warning.
+# compio (opt-in `compio-rt` feature). Pinned to 0.18: the compio ecosystem adopts just-stabilized
+# stdlib features aggressively, which raises the MSRV. 0.18 + the `compio-buf` pin below builds on
+# Rust 1.88 (0.19 needs 1.95: `cfg_select`).
 # Fusion driver = io-uring + polling: auto-falls-back to polling when io_uring is unavailable
-# (e.g. kernel.io_uring_disabled=2), so the daemon still boots.
-# macros feature requires >=1.88
-compio = { version = "=0.19.0", default-features = false, features = [
+# (e.g. kernel.io_uring_disabled=2). (0.18 has no `fs-dir` feature; the directory helpers we use
+# live under `fs`.
+compio = { version = "=0.18.0", default-features = false, features = [
   "runtime",
   "time",
   "signal",
   "fs",
-  "fs-dir",
   "net",
   "process",
   "io-uring",
   "polling",
 ], optional = true }
 # cyper-core bridges a compio stream (our UDS to liqctld) into hyper's IO traits via `HyperStream`.
-# Pinned: it must resolve to the same compio 0.19 as above, or the stream types will not match.
-cyper-core = { version = "=0.9.0", default-features = false, optional = true }
+# Pinned to 0.8: it must resolve to the same compio 0.18 as above, or the stream types will not match.
+cyper-core = { version = "=0.8.0", default-features = false, optional = true }
+# Pin compio-buf below 0.8.2: 0.8.2 uses the `maybe_uninit_slice` stdlib method (Rust 1.93), which
+# would raise the compio-rt MSRV from 1.88 to 1.93. 0.8.1 is the newest that compiles on 1.88.
+compio-buf = { version = "=0.8.1", default-features = false, optional = true }
 log = "0.4.30"
 env_logger = "0.11.10"
 systemd-journal-logger = "2.2.2"

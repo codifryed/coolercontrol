@@ -84,7 +84,7 @@ impl<T> Future for SpawnTask<T> {
     ) -> std::task::Poll<Self::Output> {
         std::pin::Pin::new(&mut self.0)
             .poll(cx)
-            .map_err(|err| super::JoinError::new(err.to_string()))
+            .map_err(|payload| super::JoinError::new(panic_message(&payload)))
     }
 }
 
@@ -100,7 +100,20 @@ where
 {
     compio::runtime::spawn_blocking(f)
         .await
-        .map_err(|err| super::JoinError::new(err.to_string()))
+        .map_err(|payload| super::JoinError::new(panic_message(&payload)))
+}
+
+/// Extract a human-readable message from a panic payload. compio's join/blocking error is the raw
+/// `Box<dyn Any + Send>` from `catch_unwind` (no `Display`), so recover the common `&str`/`String`
+/// cases and fall back to a generic note.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_owned()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "task panicked".to_owned()
+    }
 }
 
 /// Sleep until the given deadline. Takes a `std::time::Instant` so call sites stay runtime-neutral.

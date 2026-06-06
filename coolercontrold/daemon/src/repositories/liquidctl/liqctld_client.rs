@@ -58,7 +58,7 @@ async fn connect_liqctld_io(
 async fn connect_liqctld_io(
 ) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
     let unix_stream = compio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
-    Ok(cyper_core::HyperStream::new_plain(unix_stream))
+    Ok(cyper_core::HyperStream::new(unix_stream))
 }
 
 /// Spawns the hyper connection-driver future on the active runtime and returns its handle. The

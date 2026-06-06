@@ -20,15 +20,35 @@ use anyhow::Result;
 use std::fs::ReadDir;
 use std::path::Path;
 
+#[cfg(feature = "compio-rt")]
+thread_local! {
+    /// Reused buffer pool for sysfs reads: registered buffers plus completion IO are where the
+    /// idle-CPU win comes from. Compio's pool is caller-managed, so we keep one per thread (the
+    /// main runtime is single-threaded) and reuse it for every read. A 4 KiB buffer covers a full
+    /// sysfs page; the count bounds how many reads can be in flight at once during the per-tick
+    /// fan-out (extra reads simply wait for a free buffer).
+    static SYSFS_BUFFER_POOL: std::rc::Rc<compio::runtime::BufferPool> = std::rc::Rc::new(
+        compio::runtime::BufferPool::new(SYSFS_POOL_BUFFER_COUNT, SYSFS_POOL_BUFFER_BYTES)
+            .expect("sysfs buffer pool"),
+    );
+}
+
+/// Number of buffers in the sysfs pool. Must be a power of two (`io_uring` buffer-ring constraint).
+#[cfg(feature = "compio-rt")]
+const SYSFS_POOL_BUFFER_COUNT: u16 = 64;
+/// Bytes per sysfs pool buffer. One memory page, which bounds any single sysfs read.
+#[cfg(feature = "compio-rt")]
+const SYSFS_POOL_BUFFER_BYTES: usize = 4096;
+
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
 ///
 /// Tailored for sysfs files, which are typically small and contain few values. Returns an error if
 /// the file cannot be opened or read, or if the contents are not valid UTF-8.
 ///
 /// This is the hot read path (every sensor, every tick). On the compio backend it does a single
-/// managed read from the runtime's buffer pool: registered buffers plus completion-based IO are
-/// where the idle-CPU win comes from. sysfs single-value files are far smaller than the pool's
-/// buffers, so one read captures the whole file.
+/// managed read from a reused buffer pool: registered buffers plus completion-based IO are where the
+/// idle-CPU win comes from. sysfs single-value files are far smaller than a pool buffer, so one read
+/// captures the whole file.
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
     #[cfg(not(feature = "compio-rt"))]
     {
@@ -37,11 +57,11 @@ pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
     #[cfg(feature = "compio-rt")]
     {
         use compio::io::AsyncReadManagedAt;
+        let pool = SYSFS_BUFFER_POOL.with(std::rc::Rc::clone);
         let file = compio::fs::File::open(path.as_ref()).await?;
-        match file.read_managed_at(0, 0).await? {
-            Some(buf) => Ok(std::str::from_utf8(&buf)?.to_owned()),
-            None => Ok(String::new()),
-        }
+        // len 0 reads up to one pool buffer; sysfs single-value files fit easily.
+        let buf = file.read_managed_at(&pool, 0, 0).await?;
+        Ok(std::str::from_utf8(&buf)?.to_owned())
     }
 }
 
