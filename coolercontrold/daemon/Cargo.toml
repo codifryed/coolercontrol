@@ -25,13 +25,15 @@ compio-rt = ["dep:compio", "dep:cyper-core"]
 
 [dependencies]
 cc-detect = { path = "../cc-detect" }
+cc-image = { path = "../cc-image" }
+cc-stress = { path = "../cc-stress" }
 # compio is pinned exactly: it is edition 2024 and declares no MSRV policy, so a patch bump could
-# raise the floor past our 1.85 target without warning. Bump deliberately, behind a 1.85 CI gate.
+# raise the floor past our MSRV target without warning.
 # Fusion driver = io-uring + polling: auto-falls-back to polling when io_uring is unavailable
 # (e.g. kernel.io_uring_disabled=2), so the daemon still boots.
+# macros feature requires >=1.88
 compio = { version = "=0.19.0", default-features = false, features = [
   "runtime",
-  "macros",
   "time",
   "signal",
   "fs",
@@ -44,8 +46,6 @@ compio = { version = "=0.19.0", default-features = false, features = [
 # cyper-core bridges a compio stream (our UDS to liqctld) into hyper's IO traits via `HyperStream`.
 # Pinned: it must resolve to the same compio 0.19 as above, or the stream types will not match.
 cyper-core = { version = "=0.9.0", default-features = false, optional = true }
-cc-image = { path = "../cc-image" }
-cc-stress = { path = "../cc-stress" }
 log = "0.4.30"
 env_logger = "0.11.10"
 systemd-journal-logger = "2.2.2"
