@@ -18,9 +18,29 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = []
+# Opt-in compio main runtime (Phase 2 of the tokio->compio migration). When off, the daemon main
+# thread runs on tokio; when on, it runs on compio with the fusion driver (io-uring + polling). The
+# tokio sidecar (crate::sidecar) is always present either way, hosting the reactor-bound libs.
+compio-rt = ["dep:compio"]
 
 [dependencies]
 cc-detect = { path = "../cc-detect" }
+# compio is pinned exactly: it is edition 2024 and declares no MSRV policy, so a patch bump could
+# raise the floor past our 1.85 target without warning. Bump deliberately, behind a 1.85 CI gate.
+# Fusion driver = io-uring + polling: auto-falls-back to polling when io_uring is unavailable
+# (e.g. kernel.io_uring_disabled=2), so the daemon still boots.
+compio = { version = "=0.19.0", default-features = false, features = [
+  "runtime",
+  "macros",
+  "time",
+  "signal",
+  "fs",
+  "fs-dir",
+  "net",
+  "process",
+  "io-uring",
+  "polling",
+], optional = true }
 cc-image = { path = "../cc-image" }
 cc-stress = { path = "../cc-stress" }
 log = "0.4.30"
