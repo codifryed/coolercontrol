@@ -40,9 +40,11 @@ use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt::sleep;
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource,
 };
+use crate::sidecar::SidecarHandle;
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -51,8 +53,9 @@ use futures_util::TryFutureExt;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
@@ -62,7 +65,16 @@ const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
-    liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
+    /// The liqctld supervisor (Python process spawn + log piping) runs on the Tokio sidecar, since
+    /// it relies on `tokio::process`/`tokio_stream` that have no compio equivalent and it is not on
+    /// the device hot path. `sidecar` is used to (re)spawn it and run `verify_env` there.
+    sidecar: SidecarHandle,
+    /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
+    /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
+    liqctld_service_running: Arc<AtomicBool>,
+    /// Receives the supervisor's exit `Result` so shutdown can await its graceful exit and startup
+    /// can report why it died. Replaced on each (re)spawn.
+    liqctld_service_done: RefCell<Option<oneshot::Receiver<Result<()>>>>,
     liqctld_stop_token: RefCell<CancellationToken>,
     run_token: CancellationToken,
     device_mapper: DeviceMapper,
@@ -75,7 +87,11 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
+    pub async fn new(
+        config: Rc<Config>,
+        run_token: CancellationToken,
+        sidecar: SidecarHandle,
+    ) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -90,7 +106,13 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        if let Err(err) = liqctld_service::verify_env().await {
+        // verify_env spawns a Python process via the supervisor's `tokio::process`, so it must run
+        // on the sidecar Tokio runtime (no Tokio reactor on the compio main thread).
+        if let Err(err) = sidecar
+            .run(liqctld_service::verify_env)
+            .await
+            .unwrap_or_else(Err)
+        {
             let msg = format!(
                 "Python liquidctl system package not detected. If you want liquidctl device \
                 support, please make sure the liquidctl package is installed with your \
@@ -100,25 +122,15 @@ impl LiquidctlRepo {
             return Err(InitError::PythonEnv { msg }.into());
         }
         let stop_token = CancellationToken::new();
-        let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(run_token.clone(), stop_token.clone()));
+        let running = Arc::new(AtomicBool::new(false));
+        let done_rx =
+            Self::spawn_service_task(&sidecar, &running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
             Ok(client) => client,
             Err(err) => {
-                let err_msg = if service_handle.is_finished() {
-                    match service_handle.await {
-                        Ok(_) => {
-                            format!("liqctld service exited without error. Client error: {err}")
-                        }
-                        Err(service_err) => format!(
-                            "liqctld service exited with error: {service_err} ; Client error: {err}"
-                        ),
-                    }
-                } else {
-                    err.to_string()
-                };
+                let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
                 return Err(InitError::Connection { msg: err_msg }.into());
             }
         };
@@ -131,7 +143,9 @@ impl LiquidctlRepo {
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
-            liqctld_service_handle: RefCell::new(Some(service_handle)),
+            sidecar,
+            liqctld_service_running: running,
+            liqctld_service_done: RefCell::new(Some(done_rx)),
             liqctld_stop_token: RefCell::new(stop_token),
             run_token,
             device_mapper: DeviceMapper::new(),
@@ -141,6 +155,50 @@ impl LiquidctlRepo {
             disabled_channels: RefCell::new(HashMap::new()),
             device_delays: HashMap::new(),
         })
+    }
+
+    /// Spawns the liqctld supervisor on the sidecar Tokio runtime. Sets `running` true now and
+    /// returns a receiver for the supervisor's exit `Result`; the spawned task clears `running` and
+    /// sends its result when it exits.
+    fn spawn_service_task(
+        sidecar: &SidecarHandle,
+        running: &Arc<AtomicBool>,
+        run_token: CancellationToken,
+        stop_token: CancellationToken,
+    ) -> oneshot::Receiver<Result<()>> {
+        running.store(true, Ordering::Release);
+        let running = Arc::clone(running);
+        let (done_tx, done_rx) = oneshot::channel();
+        sidecar.spawn(move || async move {
+            let result = liqctld_service::run(run_token, stop_token).await;
+            running.store(false, Ordering::Release);
+            let _ = done_tx.send(result);
+        });
+        done_rx
+    }
+
+    /// Builds the startup connection-failure message. If the supervisor already exited, await its
+    /// result (it sends right after clearing `running`) to report why; otherwise the failure is
+    /// purely client-side.
+    async fn service_exit_message(
+        running: &Arc<AtomicBool>,
+        done_rx: oneshot::Receiver<Result<()>>,
+        client_err: &anyhow::Error,
+    ) -> String {
+        if running.load(Ordering::Acquire) {
+            return client_err.to_string();
+        }
+        match done_rx.await {
+            Ok(Ok(())) => {
+                format!("liqctld service exited without error. Client error: {client_err}")
+            }
+            Ok(Err(service_err)) => {
+                format!(
+                    "liqctld service exited with error: {service_err} ; Client error: {client_err}"
+                )
+            }
+            Err(_) => client_err.to_string(),
+        }
     }
 
     fn load_device_delays(&mut self) {
@@ -255,13 +313,7 @@ impl LiquidctlRepo {
 
     /// Returns whether the liqctld service task is alive.
     pub fn is_service_running(&self) -> bool {
-        let handle = self.liqctld_service_handle.borrow();
-        let running = handle.as_ref().is_some_and(|h| h.is_finished().not());
-        debug_assert!(
-            running || handle.is_none() || handle.as_ref().unwrap().is_finished(),
-            "Service handle must be None, finished, or running."
-        );
-        running
+        self.liqctld_service_running.load(Ordering::Acquire)
     }
 
     /// Spawns the liqctld service and verifies the client can reach it.
@@ -273,9 +325,13 @@ impl LiquidctlRepo {
         );
         let stop_token = CancellationToken::new();
         *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
-        let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(self.run_token.clone(), stop_token));
-        *self.liqctld_service_handle.borrow_mut() = Some(service_handle);
+        let done_rx = Self::spawn_service_task(
+            &self.sidecar,
+            &self.liqctld_service_running,
+            self.run_token.clone(),
+            stop_token,
+        );
+        *self.liqctld_service_done.borrow_mut() = Some(done_rx);
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         self.liqctld_client.handshake().await?;
@@ -836,12 +892,14 @@ impl LiquidctlRepo {
         // sometimes we want to shut the service down before the daemon, hence the stop token:
         self.liqctld_stop_token.borrow().cancel();
         self.liqctld_client.post_quit().await?;
-        // proper shutdown of liqctld service child process:
-        let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
-        if let Some(service_handle) = liqctld_service_handle {
-            // wait for the service to exit
-            if let Err(err) = service_handle.await {
-                warn!("liqctld service did not shutdown properly: {err}");
+        // proper shutdown of liqctld service child process: wait for the supervisor (on the
+        // sidecar) to report its exit over the channel.
+        let done_rx = self.liqctld_service_done.borrow_mut().take();
+        if let Some(done_rx) = done_rx {
+            match done_rx.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => warn!("liqctld service did not shutdown properly: {err}"),
+                Err(_) => debug!("liqctld supervisor already gone before shutdown await"),
             }
         }
         self.liqctld_client.shutdown();

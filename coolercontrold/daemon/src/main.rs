@@ -282,7 +282,8 @@ fn main() -> Result<()> {
         let sidecar_token = CancellationToken::new();
         let sidecar = sidecar::Sidecar::start(sidecar_token.clone());
         handle_non_root_commands(&cmd_args).await?;
-        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
+        let log_buf_handle =
+            logger::setup_logging(&cmd_args, run_token.clone(), &sidecar.handle()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
         let config = Rc::new(Config::load_config_file().await?);
@@ -663,7 +664,7 @@ async fn initialize_device_repos(
     let mut lc_locations = Vec::new();
     let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
-    match init_liquidctl_repo(config.clone(), run_token).await {
+    match init_liquidctl_repo(config.clone(), run_token, sidecar.clone()).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
             lc_repo_typed = Some(Rc::clone(&repo));
@@ -739,8 +740,9 @@ async fn initialize_device_repos(
 async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
+    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
-    let mut lc_repo = LiquidctlRepo::new(config, run_token).await?;
+    let mut lc_repo = LiquidctlRepo::new(config, run_token, sidecar).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();

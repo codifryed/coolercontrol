@@ -18,9 +18,11 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::ops::Not;
 use std::time::Duration;
 
+use crate::rt::{sleep, timeout};
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
@@ -29,7 +31,6 @@ use hyper::body::Incoming;
 use hyper::client::conn::http1::SendRequest;
 use hyper::Response;
 use hyper::{Request, Version};
-use hyper_util::rt::TokioIo;
 use log::error;
 use log::trace;
 use log::warn;
@@ -37,9 +38,39 @@ use log::{debug, info};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::net::UnixStream;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout};
+
+/// The connection-driver task handle. On Tokio it is abortable; under compio it cancels when
+/// dropped (compio's spawn cancels on handle drop). `SocketConnection::abort` unifies the two.
+#[cfg(not(feature = "compio-rt"))]
+type ConnDriver = tokio::task::JoinHandle<()>;
+#[cfg(feature = "compio-rt")]
+type ConnDriver = compio::runtime::JoinHandle<()>;
+
+/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive. Tokio uses `TokioIo`;
+/// compio uses `cyper_core::HyperStream` over a compio `UnixStream`.
+#[cfg(not(feature = "compio-rt"))]
+async fn connect_liqctld_io(
+) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
+    let unix_stream = tokio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
+    Ok(hyper_util::rt::TokioIo::new(unix_stream))
+}
+#[cfg(feature = "compio-rt")]
+async fn connect_liqctld_io(
+) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
+    let unix_stream = compio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
+    Ok(cyper_core::HyperStream::new_plain(unix_stream))
+}
+
+/// Spawns the hyper connection-driver future on the active runtime and returns its handle. The
+/// handle is held (not detached) so the connection can be aborted/cancelled later.
+#[cfg(not(feature = "compio-rt"))]
+fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
+    tokio::task::spawn_local(fut)
+}
+#[cfg(feature = "compio-rt")]
+fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
+    compio::runtime::spawn(fut)
+}
 
 const LIQCTLD_MAX_POOL_SIZE: usize = 15;
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
@@ -104,8 +135,8 @@ impl LiqctldClient {
         // from communicating until that's complete. We need to retry to handle that, and since
         // the embedding of this service, it should be the only time we need to retry at startup.
         while retry_count < connection_tries {
-            let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
-                Ok(stream) => stream,
+            let io_stream = match connect_liqctld_io().await {
+                Ok(io_stream) => io_stream,
                 Err(err) => {
                     debug!(
                         "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",
@@ -115,14 +146,6 @@ impl LiqctldClient {
                     continue;
                 }
             };
-            let io_stream = TokioIo::new(unix_stream);
-            // hyper can now be replaced with reqwest for UDS connections, removing much of our custom low-level code.
-            // That would ease maintenance should we need to adjust this client in the future and
-            //  do things like auto-handle connection retries, timeouts and pooling for us.
-            // The downside to this, besides refactoring and testing effort, is that reqwest
-            //  will introduce more dependencies that we don't really need for our use case,
-            //  and from experience it may be slightly less performant because of this.
-            //reqwest = { version = "0.12.23", default-features = false, features = ["json"]}
             let (sender, connection) = match hyper::client::conn::http1::handshake(io_stream).await
             {
                 Ok((sender, connection)) => (sender, connection),
@@ -135,10 +158,9 @@ impl LiqctldClient {
                     continue;
                 }
             };
-            // keeps the connection open and drives http requests
-            // Tokio::task::spawn here is preferred as we can abort() individual futures
-            // and since it's only for the hyper Connection, is fine to use here.
-            let connection_handle = tokio::task::spawn_local(async {
+            // Keeps the connection open and drives http requests. We hold the handle so individual
+            // connections can be aborted (Tokio) or cancelled on drop (compio).
+            let connection_handle = spawn_conn_driver(async {
                 if let Err(err) = connection.await {
                     error!("Unexpected Error: Connection to socket failed: {err:?}");
                 }
@@ -213,8 +235,7 @@ impl LiqctldClient {
                             debug!(
                                 "Socket Connection no longer valid or closed. Aborting. {err:?}"
                             );
-                            socket_connection.connection_handle.abort();
-                            drop(socket_connection);
+                            socket_connection.abort();
                             continue; // retry with a different connection
                         }
                     }
@@ -223,8 +244,7 @@ impl LiqctldClient {
                     warn!(
                         "Response timed out after {LIQCTLD_RESPONSE_TIMEOUT_SECONDS} seconds: {err:?}"
                     );
-                    socket_connection.connection_handle.abort();
-                    drop(socket_connection);
+                    socket_connection.abort();
                     return Err(anyhow!(
                         "Response timed out, not retrying to avoid overloading service"
                     ));
@@ -615,7 +635,7 @@ impl LiqctldClient {
     /// Shuts down all connections in a connection pool and clears the pool.
     pub fn shutdown(&self) {
         for socket_connect in self.connection_pool.borrow_mut().drain(..) {
-            socket_connect.connection_handle.abort();
+            socket_connect.abort();
         }
     }
 
@@ -632,7 +652,20 @@ impl LiqctldClient {
 
 struct SocketConnection {
     sender: SendRequest<String>,
-    connection_handle: JoinHandle<()>,
+    connection_handle: ConnDriver,
+}
+
+impl SocketConnection {
+    /// Tears down the connection's driver task. On Tokio it aborts the join handle; under compio
+    /// dropping `self` (and its handle) cancels the task, so this just consumes `self`.
+    #[allow(clippy::needless_pass_by_value)] // consumes self so the compio handle drops (cancels)
+    fn abort(self) {
+        #[cfg(not(feature = "compio-rt"))]
+        self.connection_handle.abort();
+        // Dropping a compio JoinHandle cancels its task; do so explicitly.
+        #[cfg(feature = "compio-rt")]
+        drop(self.connection_handle);
+    }
 }
 
 #[derive(Debug, Clone)]

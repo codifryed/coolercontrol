@@ -886,6 +886,7 @@ dependencies = [
  "compio-process",
  "compio-runtime",
  "compio-signal",
+ "compio-tls",
 ]
 
 [[package]]
@@ -971,6 +972,7 @@ dependencies = [
  "futures-util",
  "libc",
  "pastey",
+ "pin-project-lite",
  "rustix",
  "synchrony",
  "windows-sys 0.61.2",
@@ -1078,6 +1080,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "compio-tls"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0177c2684878d0712ccfcf22113a198f5ddf74f0bf323801488dbb47f801a471"
+dependencies = [
+ "compio-buf",
+ "compio-io",
+ "futures-util",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1159,6 +1172,7 @@ dependencies = [
  "chrono",
  "clap",
  "compio",
+ "cyper-core",
  "derive_more",
  "env_logger",
  "futures-util",
@@ -1354,6 +1368,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
 dependencies = [
  "cipher",
+]
+
+[[package]]
+name = "cyper-core"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03c8847069e286c64987119637d5f08cdb71e12e85be0294fed649dc8007d32e"
+dependencies = [
+ "compio",
+ "futures-util",
+ "hyper",
+ "send_wrapper",
 ]
 
 [[package]]
@@ -3997,6 +4023,15 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+
+[[package]]
+name = "send_wrapper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
+dependencies = [
+ "futures-core",
+]
 
 [[package]]
 name = "serde"
