@@ -31,11 +31,12 @@
 //! The REST/gRPC servers run here; the dbus sleep listener and the liqctld/service-plugin
 //! transports move here in the subsequent Phase 1 sub-deliverables.
 
+use anyhow::{anyhow, Result};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 use tokio::runtime::Builder;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 
@@ -47,23 +48,14 @@ type TaskBuilder = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()>>> + Send 
 /// against a wedged hosted task is added with the shutdown sub-deliverable.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
-pub struct Sidecar {
+/// A cheap, cloneable handle for submitting work to the sidecar. Held by anything that needs to run
+/// reactor-bound work there (e.g. the service-plugin transport).
+#[derive(Clone)]
+pub struct SidecarHandle {
     task_tx: mpsc::UnboundedSender<TaskBuilder>,
-    thread: std::thread::JoinHandle<()>,
 }
 
-impl Sidecar {
-    /// Start the sidecar thread. It accepts hosted actors until `cancel_token` fires (then drains
-    /// them) or until the `Sidecar` is dropped and all hosted actors complete.
-    pub fn start(cancel_token: CancellationToken) -> Self {
-        let (task_tx, task_rx) = mpsc::unbounded_channel();
-        let thread = std::thread::Builder::new()
-            .name("cc-sidecar".to_owned())
-            .spawn(move || run(task_rx, cancel_token))
-            .expect("sidecar thread spawns");
-        Self { task_tx, thread }
-    }
-
+impl SidecarHandle {
     /// Submit a `!Send` actor to run on the sidecar. `make_actor` must capture only `Send` data; it
     /// is invoked on the sidecar thread to construct the actor's future.
     pub fn spawn<F, Fut>(&self, make_actor: F)
@@ -77,12 +69,66 @@ impl Sidecar {
         let _ = self.task_tx.send(builder);
     }
 
+    /// Run a one-shot task on the sidecar and await its result. `make_fut` is `Send` (captures only
+    /// `Send` data) and builds the future on the sidecar; `T` is `Send` so it returns over the
+    /// channel. Errors only if the sidecar thread has already exited.
+    #[allow(dead_code)]
+    pub async fn run<F, Fut, T>(&self, make_fut: F) -> Result<T>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = T> + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        self.spawn(move || async move {
+            let _ = tx.send(make_fut().await);
+        });
+        rx.await
+            .map_err(|_| anyhow!("sidecar dropped the task before responding"))
+    }
+}
+
+pub struct Sidecar {
+    handle: SidecarHandle,
+    thread: std::thread::JoinHandle<()>,
+}
+
+impl Sidecar {
+    /// Start the sidecar thread. It accepts hosted actors until `cancel_token` fires (then drains
+    /// them) or until the `Sidecar` is dropped and all hosted actors complete.
+    pub fn start(cancel_token: CancellationToken) -> Self {
+        let (task_tx, task_rx) = mpsc::unbounded_channel();
+        let thread = std::thread::Builder::new()
+            .name("cc-sidecar".to_owned())
+            .spawn(move || run(task_rx, cancel_token))
+            .expect("sidecar thread spawns");
+        Self {
+            handle: SidecarHandle { task_tx },
+            thread,
+        }
+    }
+
+    /// A cloneable handle for submitting work to the sidecar from elsewhere.
+    #[allow(dead_code)]
+    pub fn handle(&self) -> SidecarHandle {
+        self.handle.clone()
+    }
+
+    /// Submit a `!Send` actor to run on the sidecar. See `SidecarHandle::spawn`.
+    pub fn spawn<F, Fut>(&self, make_actor: F)
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + 'static,
+    {
+        self.handle.spawn(make_actor);
+    }
+
     /// Join the sidecar thread. The caller must already have cancelled the token so the hosted
     /// actors can finish. (A bounded join with a force-exit fallback is added with the shutdown
     /// sub-deliverable, which is also where this is first called.)
     #[allow(dead_code)]
     pub fn join(self) {
-        drop(self.task_tx);
+        drop(self.handle);
         let _ = self.thread.join();
     }
 }
@@ -143,6 +189,24 @@ mod tests {
         // Block this thread (no runtime here) until the sidecar actor reports back.
         let value = rx.blocking_recv().expect("actor sends a value");
         assert_eq!(value, 42);
+        cancel.cancel();
+        sidecar.join();
+    }
+
+    // Goal: `run` dispatches a one-shot task to the sidecar and returns its result back to the
+    // caller's runtime. The closure runs on the sidecar thread; the `u32` returns over the channel.
+    #[test]
+    fn run_dispatches_task_and_returns_result() {
+        let cancel = CancellationToken::new();
+        let sidecar = Sidecar::start(cancel.clone());
+        let handle = sidecar.handle();
+        let result: u32 = crate::rt::test_runtime(async move {
+            handle
+                .run(|| async { 7u32 * 6 })
+                .await
+                .expect("sidecar ran the task")
+        });
+        assert_eq!(result, 42);
         cancel.cancel();
         sidecar.join();
     }

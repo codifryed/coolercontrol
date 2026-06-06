@@ -38,8 +38,10 @@ use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
 use log::error;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::default::Default;
+use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
@@ -80,11 +82,16 @@ pub struct DeviceServiceClient {
     service_client: Mutex<device_service_client::DeviceServiceClient<Channel>>,
 
     /// For each device present, we clone the client for it, so we can handle requests per device
-    /// concurrently. Clone is a cheap operation for the tonic Client.
-    device_clients: HashMap<DeviceUID, Mutex<device_service_client::DeviceServiceClient<Channel>>>,
+    /// concurrently. Clone is a cheap operation for the tonic Client. Each per-device client sits
+    /// behind its own `Mutex` (per-device serialization, essential for hardware safety) and an `Rc`
+    /// so a caller can clone the `Rc<Mutex>` out of the map and lock it without holding a `RefCell`
+    /// borrow across the `.await`. The `RefCell` makes the map interior-mutable so `with_device_ids`
+    /// can populate it once at setup while the client is shared (`Rc`) on the sidecar.
+    device_clients:
+        RefCell<HashMap<DeviceUID, Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>>>,
 
     /// Maps the device UID to the service device ID, so we can pass the correct ID to the device service.
-    device_ids: HashMap<DeviceUID, ServiceDeviceID>,
+    device_ids: RefCell<HashMap<DeviceUID, ServiceDeviceID>>,
 }
 
 impl DeviceServiceClient {
@@ -122,29 +129,33 @@ impl DeviceServiceClient {
             poll_rate,
             service_wait_timeout,
             service_client,
-            device_clients: HashMap::new(),
-            device_ids: HashMap::new(),
+            device_clients: RefCell::new(HashMap::new()),
+            device_ids: RefCell::new(HashMap::new()),
         }
     }
 
-    /// This allows us to make a few basic requests with our timeout logic before we have the device IDs.
-    pub async fn with_device_ids(&mut self, device_ids: Vec<(DeviceUID, ServiceDeviceID)>) {
+    /// This allows us to make a few basic requests with our timeout logic before we have the device
+    /// IDs. Populates the per-device clients once at setup (sequential, before any steady-state
+    /// call), so the `RefCell` borrow never overlaps a read.
+    pub async fn with_device_ids(&self, device_ids: Vec<(DeviceUID, ServiceDeviceID)>) {
         let mut device_clients = HashMap::new();
         let mut device_id_map = HashMap::new();
         for (device_uid, service_device_id) in device_ids {
             device_clients.insert(
                 device_uid.clone(),
-                Mutex::new(self.service_client.lock().await.clone()),
+                Rc::new(Mutex::new(self.service_client.lock().await.clone())),
             );
             device_id_map.insert(device_uid, service_device_id);
         }
-        self.device_clients = device_clients;
-        self.device_ids = device_id_map;
+        *self.device_clients.borrow_mut() = device_clients;
+        *self.device_ids.borrow_mut() = device_id_map;
     }
 
-    /// For service-wide requests where we want to make sure all devices clients are inactive.
+    /// For service-wide requests where we want to make sure all devices clients are inactive. Clones
+    /// the `Rc<Mutex>`es out of the map first so the `RefCell` borrow is not held across the locks.
     async fn wait_till_all_clients_are_free(&self) {
-        for device_client in self.device_clients.values() {
+        let device_clients: Vec<_> = self.device_clients.borrow().values().cloned().collect();
+        for device_client in device_clients {
             let _ = device_client.lock().await;
         }
     }
@@ -152,14 +163,17 @@ impl DeviceServiceClient {
     fn get_device_client(
         &self,
         device_uid: &DeviceUID,
-    ) -> Result<&Mutex<device_service_client::DeviceServiceClient<Channel>>> {
+    ) -> Result<Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>> {
         self.device_clients
+            .borrow()
             .get(device_uid)
+            .cloned()
             .ok_or_else(|| anyhow!("Device {device_uid} not found"))
     }
 
     fn get_service_device_id(&self, device_uid: &DeviceUID) -> Result<ServiceDeviceID> {
         self.device_ids
+            .borrow()
             .get(device_uid)
             .cloned()
             .ok_or_else(|| anyhow!("Service Device {device_uid} ID not found"))
@@ -390,13 +404,14 @@ impl DeviceServiceClient {
         &self,
         device_uid: &DeviceUID,
     ) -> Result<(Vec<ChannelStatus>, Vec<TempStatus>)> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to get device: {device_uid} status. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let request = Request::new(StatusRequest{
                     device_id: self.get_service_device_id(device_uid)?
                 });
@@ -452,13 +467,14 @@ impl DeviceServiceClient {
     }
 
     pub async fn reset_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to reset device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let request = Request::new(ResetChannelRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
@@ -474,13 +490,14 @@ impl DeviceServiceClient {
         device_uid: &DeviceUID,
         channel_name: &str,
     ) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to enable manual fan control for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let request = Request::new(EnableManualFanControlRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
@@ -497,13 +514,14 @@ impl DeviceServiceClient {
         channel_name: &str,
         duty: Duty,
     ) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set fixed duty for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let request = Request::new(FixedDutyRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
@@ -522,13 +540,14 @@ impl DeviceServiceClient {
         temp_source: &TempSource,
         speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set speed profile for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let mut req_speed_profile = Vec::new();
                 for (temp, duty) in speed_profile {
                     req_speed_profile.push(SpeedProfilePoint {
@@ -555,13 +574,14 @@ impl DeviceServiceClient {
         channel_name: &str,
         lighting: &LightingSettings,
     ) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set lighting for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let mut colors = vec![];
                 for (r, g, b) in &lighting.colors {
                     colors.push(Rgb {
@@ -593,13 +613,14 @@ impl DeviceServiceClient {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
+        let device_client = self.get_device_client(device_uid)?;
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to set LCD for device: {device_uid} channel: {channel_name}. \
                 There may be significant issues handling this device due to lag.",
                 self.service_id,
             )),
-            mut device_client = self.get_device_client(device_uid)?.lock() => {
+            mut device_client = device_client.lock() => {
                 let lcd_setting = LcdSetting {
                     mode: lcd.mode.to_string(),
                     brightness: lcd.brightness.map(u32::from),

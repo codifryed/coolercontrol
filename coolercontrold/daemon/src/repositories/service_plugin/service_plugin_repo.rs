@@ -347,7 +347,7 @@ impl ServicePluginRepo {
         let mut connect_wait_secs = 0;
         'connection: loop {
             match DeviceServiceClient::connect(&service_manifest, poll_rate).await {
-                Ok(mut client) => {
+                Ok(client) => {
                     let mut version = String::new();
                     let mut retries = 0;
                     'health: while retries < TIMEOUT_SERVICE_START_SECONDS {
