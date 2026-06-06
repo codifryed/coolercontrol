@@ -27,7 +27,7 @@ use std::path::Path;
 ///
 /// This is the hot read path (every sensor, every tick). The idle-CPU win comes from compio's
 /// completion-based IO. A managed buffer pool was tried here for registered buffers, but it
-/// corrupts/fails the per-tick concurrent fan-out (many reads share one pool over the io_uring
+/// corrupts/fails the per-tick concurrent fan-out (many reads share one pool over the `io_uring`
 /// buffer ring: cross-contaminated data or "flags are invalid"). The plain read is correct and
 /// still completion-based.
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
@@ -104,7 +104,8 @@ mod tests {
             for (name, contents) in cases {
                 let read = read_sysfs(dir.path().join(name)).await.unwrap();
                 assert_eq!(
-                    read, contents,
+                    read,
+                    contents,
                     "read_sysfs returned wrong bytes for {name} (len {} vs {})",
                     read.len(),
                     contents.len()

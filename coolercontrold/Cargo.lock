@@ -730,7 +730,6 @@ dependencies = [
  "rgb",
  "ril",
  "tiny-skia",
- "tokio",
 ]
 
 [[package]]

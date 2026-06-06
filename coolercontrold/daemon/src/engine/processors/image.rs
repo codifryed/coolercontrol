@@ -25,12 +25,30 @@ use crate::api::CCError;
 use crate::cc_fs;
 use crate::device::LcdInfo;
 use crate::paths;
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use log::{debug, info, warn};
 use mime::Mime;
 use sha2::Sha256;
 
-pub use cc_image::{process_image, supported_image_types};
+pub use cc_image::supported_image_types;
+
+/// Processes an uploaded image for the LCD, offloaded to a blocking thread.
+///
+/// `cc_image::process_image` is synchronous and CPU-bound (decode, resize, re-encode, plus gifski's
+/// worker threads for GIFs). Running it via `crate::rt::spawn_blocking` keeps it off the async
+/// runtime and works on either backend, so `cc_image` itself stays runtime-agnostic.
+pub async fn process_image(
+    content_type: Mime,
+    file_data: Vec<u8>,
+    screen_width: u32,
+    screen_height: u32,
+) -> Result<(Mime, Vec<u8>)> {
+    crate::rt::spawn_blocking(move || {
+        cc_image::process_image(&content_type, file_data, screen_width, screen_height)
+    })
+    .await
+    .map_err(|err| anyhow!("Image processing task failed: {err}"))?
+}
 
 const SUPPORTED_IMAGE_FORMATS: [&str; 6] = ["jpg", "jpeg", "png", "gif", "tiff", "bmp"];
 // This limits files we try to process to sizes possible to be acceptable to the LCD screen.

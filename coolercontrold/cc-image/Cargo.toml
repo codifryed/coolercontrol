@@ -17,10 +17,6 @@ doctest = false
 anyhow = "1.0.102"
 log = "0.4.30"
 mime = "0.3.17"
-tokio = { version = "1.52.3", default-features = false, features = [
-  "rt",
-  "time",
-] }
 # image processing
 image = { version = "=0.25.8", default-features = false, features = [
   "rayon",
