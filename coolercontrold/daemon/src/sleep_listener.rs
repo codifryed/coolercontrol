@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::sidecar::Sidecar;
 use crate::ENV_DBUS;
 use log::{info, warn};
 use std::env;
@@ -48,7 +47,7 @@ pub struct SleepListener {
 }
 
 impl SleepListener {
-    pub fn new(run_token: CancellationToken, sidecar: &Sidecar) -> Self {
+    pub fn new(run_token: CancellationToken) -> Self {
         let preparing_to_sleep = Arc::new(AtomicBool::new(false));
         let resuming = Arc::new(AtomicBool::new(false));
         if dbus_listener_enabled().not() {
@@ -60,7 +59,7 @@ impl SleepListener {
         }
         let preparing = Arc::clone(&preparing_to_sleep);
         let waking = Arc::clone(&resuming);
-        sidecar.spawn(move || run_listener(run_token, preparing, waking));
+        crate::sidecar::handle().spawn(move || run_listener(run_token, preparing, waking));
         Self {
             preparing_to_sleep,
             resuming,

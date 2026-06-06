@@ -70,71 +70,85 @@ impl ShellCommand {
     }
 
     pub async fn run(&self) -> ShellCommandResult {
-        let mut shell_command = Command::new("sh");
-        shell_command
-            .arg("-c")
-            .arg(&self.command)
-            .kill_on_drop(true)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        for (key, value) in &self.env {
-            shell_command.env(key, value);
-        }
+        // tokio::process needs a Tokio reactor and gives us async wait + kill-on-timeout +
+        // kill_on_drop (so a hung child never blocks the runtime or fills the blocking pool, and is
+        // killed on overrun/cancel), so run it on the sidecar; the main thread may be on compio.
+        let command = self.command.clone();
+        let env = self.env.clone();
+        let timeout = self.timeout;
+        crate::sidecar::handle()
+            .run(move || run_shell_command(command, env, timeout))
+            .await
+            .unwrap_or_else(|err| {
+                ShellCommandResult::Error(format!("sidecar unavailable for command: {err}"))
+            })
+    }
+}
 
-        let mut child = match shell_command.spawn() {
-            Ok(child) => child,
-            Err(err) => {
-                error!(
-                    "Unexpected Error spawning process for command: {}, {err}",
-                    self.command
-                );
-                return ShellCommandResult::Error(err.to_string());
-            }
-        };
+/// Runs a shell command on the sidecar Tokio runtime, bounded by `timeout` (the child is killed if
+/// it overruns), with `kill_on_drop` so a cancelled future cannot orphan the process.
+async fn run_shell_command(
+    command: String,
+    env: HashMap<String, String>,
+    timeout: Duration,
+) -> ShellCommandResult {
+    let mut shell_command = Command::new("sh");
+    shell_command
+        .arg("-c")
+        .arg(&command)
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in &env {
+        shell_command.env(key, value);
+    }
 
-        let successful = match tokio::time::timeout(self.timeout, child.wait()).await {
-            Ok(Ok(status)) => status.success(),
-            Ok(Err(err)) => {
-                warn!(
-                    "Error waiting for process for command: {}, {err}",
-                    self.command
-                );
-                false
-            }
-            Err(_) => {
-                warn!(
-                    "Shell command did not complete within the specified \
-                        timeout: {:?} Killing process for: {}",
-                    self.timeout, self.command
-                );
-                child.kill().await.ok();
-                let _ = child.wait().await;
-                false
-            }
-        };
+    let mut child = match shell_command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            error!("Unexpected Error spawning process for command: {command}, {err}");
+            return ShellCommandResult::Error(err.to_string());
+        }
+    };
 
-        let mut stdout = String::new();
-        let mut stderr = String::new();
-        if let Some(mut child_err) = child.stderr.take() {
-            if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                warn!("Error reading stderr for command: {}, {err}", self.command);
-            }
-            limit_output_length(&mut stderr);
-            stderr = stderr.trim().to_string();
+    let successful = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status.success(),
+        Ok(Err(err)) => {
+            warn!("Error waiting for process for command: {command}, {err}");
+            false
         }
-        if let Some(mut child_out) = child.stdout.take() {
-            if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                warn!("Error reading stdout for command: {}, {err}", self.command);
-            }
-            limit_output_length(&mut stdout);
-            stdout = stdout.trim().to_string();
+        Err(_) => {
+            warn!(
+                "Shell command did not complete within the specified timeout: {timeout:?} \
+                Killing process for: {command}"
+            );
+            child.kill().await.ok();
+            let _ = child.wait().await;
+            false
         }
+    };
 
-        if successful {
-            ShellCommandResult::Success { stdout, stderr }
-        } else {
-            ShellCommandResult::Error(stderr)
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut child_err) = child.stderr.take() {
+        if let Err(err) = child_err.read_to_string(&mut stderr).await {
+            warn!("Error reading stderr for command: {command}, {err}");
         }
+        limit_output_length(&mut stderr);
+        stderr = stderr.trim().to_string();
+    }
+    if let Some(mut child_out) = child.stdout.take() {
+        if let Err(err) = child_out.read_to_string(&mut stdout).await {
+            warn!("Error reading stdout for command: {command}, {err}");
+        }
+        limit_output_length(&mut stdout);
+        stdout = stdout.trim().to_string();
+    }
+
+    if successful {
+        ShellCommandResult::Success { stdout, stderr }
+    } else {
+        ShellCommandResult::Error(stderr)
     }
 }
 
@@ -176,56 +190,62 @@ impl DirectCommand {
     }
 
     async fn execute(self) -> Result<(i32, String, String)> {
-        let mut cmd = Command::new(&self.binary);
-        cmd.args(&self.args)
-            .kill_on_drop(true)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let mut child = cmd
-            .spawn()
-            .map_err(|err| anyhow!("Failed to spawn {}: {err}", self.binary))?;
-
-        let exit_code = match tokio::time::timeout(self.timeout, child.wait()).await {
-            Ok(Ok(status)) => status.code().unwrap_or(-1),
-            Ok(Err(err)) => {
-                return Err(anyhow!("Error waiting for process {}: {err}", self.binary));
-            }
-            Err(_) => {
-                debug!(
-                    "DirectCommand did not complete within timeout: {:?} \
-                        Killing: {}",
-                    self.timeout, self.binary
-                );
-                child.kill().await.ok();
-                let _ = child.wait().await;
-                return Err(anyhow!(
-                    "Command {} timed out after {:?}",
-                    self.binary,
-                    self.timeout
-                ));
-            }
-        };
-
-        let mut stdout = String::new();
-        let mut stderr = String::new();
-        if let Some(mut child_err) = child.stderr.take() {
-            if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                warn!("Error reading stderr for {}: {err}", self.binary);
-            }
-            limit_output_length(&mut stderr);
-            stderr = stderr.trim().to_string();
-        }
-        if let Some(mut child_out) = child.stdout.take() {
-            if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                warn!("Error reading stdout for {}: {err}", self.binary);
-            }
-            limit_output_length(&mut stdout);
-            stdout = stdout.trim().to_string();
-        }
-
-        Ok((exit_code, stdout, stderr))
+        // See `ShellCommand::run`: tokio::process runs on the sidecar for resilient async
+        // wait/kill, off the main (possibly compio) thread and off the blocking pool.
+        crate::sidecar::handle()
+            .run(move || run_direct_command(self.binary, self.args, self.timeout))
+            .await?
     }
+}
+
+/// Runs a binary directly on the sidecar Tokio runtime, bounded by `timeout` (killed on overrun),
+/// with `kill_on_drop`. Returns `(exit_code, stdout, stderr)`; `Err` on spawn failure or timeout.
+async fn run_direct_command(
+    binary: String,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<(i32, String, String)> {
+    let mut cmd = Command::new(&binary);
+    cmd.args(&args)
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|err| anyhow!("Failed to spawn {binary}: {err}"))?;
+
+    let exit_code = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status.code().unwrap_or(-1),
+        Ok(Err(err)) => {
+            return Err(anyhow!("Error waiting for process {binary}: {err}"));
+        }
+        Err(_) => {
+            debug!("DirectCommand did not complete within timeout: {timeout:?} Killing: {binary}");
+            child.kill().await.ok();
+            let _ = child.wait().await;
+            return Err(anyhow!("Command {binary} timed out after {timeout:?}"));
+        }
+    };
+
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut child_err) = child.stderr.take() {
+        if let Err(err) = child_err.read_to_string(&mut stderr).await {
+            warn!("Error reading stderr for {binary}: {err}");
+        }
+        limit_output_length(&mut stderr);
+        stderr = stderr.trim().to_string();
+    }
+    if let Some(mut child_out) = child.stdout.take() {
+        if let Err(err) = child_out.read_to_string(&mut stdout).await {
+            warn!("Error reading stdout for {binary}: {err}");
+        }
+        limit_output_length(&mut stdout);
+        stdout = stdout.trim().to_string();
+    }
+
+    Ok((exit_code, stdout, stderr))
 }
 
 /// This enables or disables the `thinkpad_acpi` kernel module `fan_control` option.

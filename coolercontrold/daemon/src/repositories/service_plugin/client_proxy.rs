@@ -36,7 +36,6 @@ use super::service_plugin_repo::ServiceDeviceID;
 use crate::device::{ChannelStatus, Device, DeviceUID, Duty, Temp, TempStatus};
 use crate::grpc_api::device_service::v1::{HealthResponse, ListDevicesResponse};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
-use crate::sidecar::SidecarHandle;
 use anyhow::{anyhow, Result};
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
@@ -119,15 +118,11 @@ pub struct DeviceServiceClientHandle {
 impl DeviceServiceClientHandle {
     /// Connects on the sidecar (tonic needs a Tokio reactor), starts the dispatcher there, and
     /// returns the main-side handle. Errors if the connection fails or the sidecar is gone.
-    pub async fn connect(
-        service_manifest: &ServiceManifest,
-        poll_rate: f64,
-        sidecar: SidecarHandle,
-    ) -> Result<Self> {
+    pub async fn connect(service_manifest: &ServiceManifest, poll_rate: f64) -> Result<Self> {
         let client_address = DeviceServiceClient::address_from_manifest(service_manifest)?;
         let (request_tx, request_rx) = mpsc::channel(REQUEST_CHANNEL_CAP);
         let manifest = service_manifest.clone();
-        sidecar
+        crate::sidecar::handle()
             .run(move || async move {
                 let client = DeviceServiceClient::connect(&manifest, poll_rate).await?;
                 tokio::task::spawn_local(run_dispatcher(Rc::new(client), request_rx));

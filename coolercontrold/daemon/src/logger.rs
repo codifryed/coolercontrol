@@ -39,11 +39,7 @@ const NEW_LOG_CHANNEL_CAP: usize = 2;
 // log-buffer actor. Sized so bursts rarely overflow; on overflow a UI-buffer line is dropped.
 const LOG_MSG_CHANNEL_CAP: usize = 64;
 
-pub async fn setup_logging(
-    cmd_args: &Args,
-    run_token: CancellationToken,
-    sidecar: &crate::sidecar::SidecarHandle,
-) -> Result<LogBufHandle> {
+pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(ENV_CC_LOG).or_else(|_| std::env::var(ENV_LOG)) {
@@ -111,7 +107,9 @@ pub async fn setup_logging(
     }
     if cmd_args.system_info {
         // verify_env spawns a Python process via `tokio::process`; run it on the sidecar.
-        let _ = sidecar.run(liqctld_service::verify_env).await;
+        let _ = crate::sidecar::handle()
+            .run(liqctld_service::verify_env)
+            .await;
         exit_successfully();
     }
     Ok(log_buf_handle)

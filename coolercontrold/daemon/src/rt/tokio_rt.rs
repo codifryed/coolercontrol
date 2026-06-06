@@ -72,6 +72,35 @@ where
     tokio::task::spawn_local(future);
 }
 
+/// Spawn a `!Send` future eagerly and return an awaitable handle. Test-only: tests need a task to
+/// run concurrently and then await its result. The handle maps the backend join error to
+/// `super::JoinError`; dropping it before awaiting detaches (Tokio) the task.
+#[cfg(test)]
+pub fn spawn_task<F>(future: F) -> SpawnTask<F::Output>
+where
+    F: Future + 'static,
+{
+    SpawnTask(tokio::task::spawn_local(future))
+}
+
+/// Awaitable handle returned by `spawn_task`. See `spawn_task`.
+#[cfg(test)]
+pub struct SpawnTask<T>(tokio::task::JoinHandle<T>);
+
+#[cfg(test)]
+impl<T> Future for SpawnTask<T> {
+    type Output = Result<T, super::JoinError>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::pin::Pin::new(&mut self.0)
+            .poll(cx)
+            .map_err(|err| super::JoinError::new(err.to_string()))
+    }
+}
+
 /// Run a blocking closure on the runtime's blocking-thread pool and await its result.
 ///
 /// The returned future is lazy: the closure is spawned when first polled. If the future is dropped

@@ -281,26 +281,27 @@ fn main() -> Result<()> {
         // `run_token`), so transports the repos round-trip during shutdown stay alive long enough.
         let sidecar_token = CancellationToken::new();
         let sidecar = sidecar::Sidecar::start(sidecar_token.clone());
+        // Publish the sidecar handle process-wide so reactor-bound work (process spawning, the
+        // auth/token/liqctld/service-plugin transports) can reach it without threading a handle.
+        sidecar::install_global(sidecar.handle());
         handle_non_root_commands(&cmd_args).await?;
-        let log_buf_handle =
-            logger::setup_logging(&cmd_args, run_token.clone(), &sidecar.handle()).await?;
+        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
         let config = Rc::new(Config::load_config_file().await?);
-        parse_cmd_args(&cmd_args, &config, &sidecar.handle()).await?;
+        parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability()?;
         config.log_deprecated_function_warnings();
         paths::ensure_data_dir().await?;
         // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
         // reactor, so run it on the sidecar. Harmless on the Tokio backend too.
-        sidecar.handle().run(admin::load_passwd).await??;
+        sidecar::handle().run(admin::load_passwd).await??;
 
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
 
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
-            initialize_device_repos(&config, &cmd_args, run_token.clone(), sidecar.handle())
-                .await?;
+            initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
         let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
@@ -377,7 +378,6 @@ fn main() -> Result<()> {
                     status_handle.clone(),
                     notification_handle,
                     run_token.clone(),
-                    &sidecar,
                     main_scope,
                 )
                 .await
@@ -398,7 +398,6 @@ fn main() -> Result<()> {
                     alert_controller,
                     status_handle,
                     run_token.clone(),
-                    &sidecar,
                 )
                 .await?;
                 Ok(())
@@ -551,11 +550,7 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn parse_cmd_args(
-    cmd_args: &Args,
-    config: &Rc<Config>,
-    sidecar: &crate::sidecar::SidecarHandle,
-) -> Result<()> {
+async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
     if cmd_args.config {
         exit_successfully();
     } else if cmd_args.backup {
@@ -574,7 +569,11 @@ async fn parse_cmd_args(
         info!("Resetting UI password to default");
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
         // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
-        match sidecar.run(admin::reset_passwd).await.unwrap_or_else(Err) {
+        match crate::sidecar::handle()
+            .run(admin::reset_passwd)
+            .await
+            .unwrap_or_else(Err)
+        {
             Ok(()) => exit_successfully(),
             Err(err) => exit_with_error(&err),
         }
@@ -651,7 +650,6 @@ async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
     run_token: CancellationToken,
-    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -664,7 +662,7 @@ async fn initialize_device_repos(
     let mut lc_locations = Vec::new();
     let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
-    match init_liquidctl_repo(config.clone(), run_token, sidecar.clone()).await {
+    match init_liquidctl_repo(config.clone(), run_token).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
             lc_repo_typed = Some(Rc::clone(&repo));
@@ -703,7 +701,6 @@ async fn initialize_device_repos(
                 config.clone(),
                 api_up_token.clone(),
                 cmd_args.reset_plugin_user,
-                sidecar.clone(),
             )
             .await
             {
@@ -740,9 +737,8 @@ async fn initialize_device_repos(
 async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
-    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
-    let mut lc_repo = LiquidctlRepo::new(config, run_token, sidecar).await?;
+    let mut lc_repo = LiquidctlRepo::new(config, run_token).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();
@@ -776,10 +772,8 @@ async fn init_service_plugin_repo(
     config: Rc<Config>,
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
-    sidecar: crate::sidecar::SidecarHandle,
 ) -> Result<ServicePluginRepo> {
-    let mut external_repo =
-        ServicePluginRepo::new(config, api_up_token, reset_plugin_user, sidecar)?;
+    let mut external_repo = ServicePluginRepo::new(config, api_up_token, reset_plugin_user)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)
 }

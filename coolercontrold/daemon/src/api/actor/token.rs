@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::sidecar::SidecarHandle;
 use crate::token::{self, StoredToken};
 use anyhow::Result;
 use chrono::{DateTime, Local};
@@ -43,9 +42,9 @@ pub struct TokenHandle {
 }
 
 impl TokenHandle {
-    pub async fn new(cancel_token: CancellationToken, sidecar: &SidecarHandle) -> Self {
+    pub async fn new(cancel_token: CancellationToken) -> Self {
         // Token IO uses `sidecar_fs` (always Tokio), so load on the sidecar Tokio runtime.
-        let tokens = match sidecar.run(token::load_tokens).await {
+        let tokens = match crate::sidecar::handle().run(token::load_tokens).await {
             Ok(Ok(tokens)) => tokens,
             Ok(Err(err)) => {
                 error!("Failed to load access tokens: {err}");
@@ -63,7 +62,7 @@ impl TokenHandle {
 
         // Spawn the background flush task on the sidecar: it also writes via `sidecar_fs`.
         let flush_handle = handle.clone();
-        sidecar.spawn(move || async move {
+        crate::sidecar::handle().spawn(move || async move {
             let mut flush_interval =
                 tokio::time::interval(tokio::time::Duration::from_secs(FLUSH_INTERVAL_SECS));
             flush_interval.tick().await; // skip first immediate tick

@@ -44,7 +44,6 @@ use crate::rt::sleep;
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource,
 };
-use crate::sidecar::SidecarHandle;
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -65,10 +64,6 @@ const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
-    /// The liqctld supervisor (Python process spawn + log piping) runs on the Tokio sidecar, since
-    /// it relies on `tokio::process`/`tokio_stream` that have no compio equivalent and it is not on
-    /// the device hot path. `sidecar` is used to (re)spawn it and run `verify_env` there.
-    sidecar: SidecarHandle,
     /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
     /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
     liqctld_service_running: Arc<AtomicBool>,
@@ -87,11 +82,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(
-        config: Rc<Config>,
-        run_token: CancellationToken,
-        sidecar: SidecarHandle,
-    ) -> Result<Self> {
+    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -108,7 +99,7 @@ impl LiquidctlRepo {
         }
         // verify_env spawns a Python process via the supervisor's `tokio::process`, so it must run
         // on the sidecar Tokio runtime (no Tokio reactor on the compio main thread).
-        if let Err(err) = sidecar
+        if let Err(err) = crate::sidecar::handle()
             .run(liqctld_service::verify_env)
             .await
             .unwrap_or_else(Err)
@@ -123,8 +114,7 @@ impl LiquidctlRepo {
         }
         let stop_token = CancellationToken::new();
         let running = Arc::new(AtomicBool::new(false));
-        let done_rx =
-            Self::spawn_service_task(&sidecar, &running, run_token.clone(), stop_token.clone());
+        let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
@@ -143,7 +133,6 @@ impl LiquidctlRepo {
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
-            sidecar,
             liqctld_service_running: running,
             liqctld_service_done: RefCell::new(Some(done_rx)),
             liqctld_stop_token: RefCell::new(stop_token),
@@ -161,7 +150,6 @@ impl LiquidctlRepo {
     /// returns a receiver for the supervisor's exit `Result`; the spawned task clears `running` and
     /// sends its result when it exits.
     fn spawn_service_task(
-        sidecar: &SidecarHandle,
         running: &Arc<AtomicBool>,
         run_token: CancellationToken,
         stop_token: CancellationToken,
@@ -169,7 +157,7 @@ impl LiquidctlRepo {
         running.store(true, Ordering::Release);
         let running = Arc::clone(running);
         let (done_tx, done_rx) = oneshot::channel();
-        sidecar.spawn(move || async move {
+        crate::sidecar::handle().spawn(move || async move {
             let result = liqctld_service::run(run_token, stop_token).await;
             running.store(false, Ordering::Release);
             let _ = done_tx.send(result);
@@ -326,7 +314,6 @@ impl LiquidctlRepo {
         let stop_token = CancellationToken::new();
         *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
         let done_rx = Self::spawn_service_task(
-            &self.sidecar,
             &self.liqctld_service_running,
             self.run_token.clone(),
             stop_token,

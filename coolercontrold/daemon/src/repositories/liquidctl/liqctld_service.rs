@@ -242,12 +242,14 @@ async fn process_log_output(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cc_fs;
+    use crate::cc_fs::sidecar_fs;
     use serial_test::serial;
     #[test]
     #[serial]
     fn test_verify_env() {
-        cc_fs::test_runtime(async {
+        // verify_env spawns a Python process via tokio::process, so it needs a Tokio runtime
+        // regardless of the active main-thread backend.
+        sidecar_fs::test_runtime(async {
             let result = verify_env().await;
             // Err would mean that the liquidctl package is not installed, which is fine for testing.
             assert!(result.is_ok() || result.is_err());

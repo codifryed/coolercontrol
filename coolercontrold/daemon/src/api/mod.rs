@@ -130,7 +130,6 @@ pub async fn start_server<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     cancel_token: CancellationToken,
-    sidecar: &crate::sidecar::Sidecar,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
     let rest_port = env::var(ENV_PORT)
@@ -174,15 +173,13 @@ pub async fn start_server<'s>(
         status_handle,
         notification_handle,
         &cancel_token,
-        sidecar.handle(),
         main_scope,
     )
     .await;
     let tls_config = tls_config(&settings).await;
     // admin uses `sidecar_fs` (always Tokio); this runs during main-thread API init, so dispatch
     // it to the sidecar (no Tokio reactor on the compio main thread).
-    let session_key = sidecar
-        .handle()
+    let session_key = crate::sidecar::handle()
         .run(admin::load_or_generate_session_key)
         .await??;
     let sessions_dir = paths::sessions_dir().to_path_buf();
@@ -242,7 +239,7 @@ pub async fn start_server<'s>(
 
     // Run all API servers on the shared sidecar thread. The builder closure captures only `Send`
     // data and is invoked on the sidecar to construct the `!Send` server future.
-    sidecar.spawn(move || {
+    crate::sidecar::handle().spawn(move || {
         run_all_api_servers(
             ipv4.ok(),
             ipv6.ok(),
@@ -660,7 +657,6 @@ async fn create_app_state<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     cancel_token: &CancellationToken,
-    sidecar: crate::sidecar::SidecarHandle,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
@@ -669,8 +665,8 @@ async fn create_app_state<'s>(
         cancel_token.clone(),
         main_scope,
     );
-    let auth_handle = AuthHandle::new(cancel_token.clone(), &sidecar);
-    let token_handle = TokenHandle::new(cancel_token.clone(), &sidecar).await;
+    let auth_handle = AuthHandle::new(cancel_token.clone());
+    let token_handle = TokenHandle::new(cancel_token.clone()).await;
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
@@ -707,7 +703,7 @@ async fn create_app_state<'s>(
     let calibration_handle =
         CalibrationHandle::new(engine.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
-    let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope).await;
+    let stress_test_handle = StressTestHandle::new(cancel_token.clone()).await;
     AppState {
         health,
         detect_handle,

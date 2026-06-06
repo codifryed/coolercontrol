@@ -37,11 +37,49 @@ use anyhow::{anyhow, Result};
 use log::warn;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
+
+/// Process-wide handle to the single sidecar, installed once at startup. The sidecar is a process
+/// singleton (one Tokio reactor thread), so a global accessor avoids threading a `SidecarHandle`
+/// through the many scattered places that must run reactor-bound work there (process spawning, the
+/// auth/token/liqctld/service-plugin transports). `main` still owns the `Sidecar` for lifecycle.
+static GLOBAL_HANDLE: OnceLock<SidecarHandle> = OnceLock::new();
+
+/// Install the process-wide sidecar handle. Call once, right after `Sidecar::start`, before any code
+/// that calls `handle()`. Idempotent calls after the first are ignored.
+pub fn install_global(handle: SidecarHandle) {
+    let _ = GLOBAL_HANDLE.set(handle);
+}
+
+/// The process-wide sidecar handle. Panics if called before `install_global` (a startup-ordering
+/// bug): the sidecar is started before device-repo init, so every legitimate caller runs after it.
+pub fn handle() -> SidecarHandle {
+    GLOBAL_HANDLE
+        .get()
+        .expect(
+            "sidecar global handle not installed; Sidecar::start + install_global must run first",
+        )
+        .clone()
+}
+
+/// Ensure a process-wide sidecar exists for tests that exercise sidecar-dispatched code (e.g.
+/// process spawning). Starts one leaked sidecar shared by all tests, so parallel tests do not race
+/// to set the `OnceLock` or dispatch onto a sidecar that another test has dropped.
+#[cfg(test)]
+pub fn ensure_test_handle() {
+    GLOBAL_HANDLE.get_or_init(|| {
+        let sidecar = Sidecar::start(CancellationToken::new());
+        let handle = sidecar.handle();
+        // Leak it: the test sidecar must outlive every test in the process.
+        std::mem::forget(sidecar);
+        handle
+    });
+}
 
 /// Builds a hosted actor's `!Send` future on the sidecar thread. The closure is `Send` so it can
 /// cross the thread boundary; the future it returns does not need to be.
@@ -110,18 +148,11 @@ impl Sidecar {
         }
     }
 
-    /// A cloneable handle for submitting work to the sidecar from elsewhere.
+    /// A cloneable handle for submitting work to the sidecar from elsewhere. Used to seed the
+    /// process-wide handle via `install_global`; everything else reaches the sidecar through
+    /// `crate::sidecar::handle()`.
     pub fn handle(&self) -> SidecarHandle {
         self.handle.clone()
-    }
-
-    /// Submit a `!Send` actor to run on the sidecar. See `SidecarHandle::spawn`.
-    pub fn spawn<F, Fut>(&self, make_actor: F)
-    where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + 'static,
-    {
-        self.handle.spawn(make_actor);
     }
 
     /// Join the sidecar thread after its lifecycle token has been cancelled. Bounded: `std` has no
@@ -189,7 +220,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let sidecar = Sidecar::start(cancel.clone());
         let (tx, rx) = oneshot::channel::<u32>();
-        sidecar.spawn(move || async move {
+        sidecar.handle().spawn(move || async move {
             // `!Send` state lives entirely on the sidecar thread.
             let counter = Rc::new(RefCell::new(0u32));
             *counter.borrow_mut() += 42;
@@ -228,7 +259,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let sidecar = Sidecar::start(cancel);
         let (tx, rx) = oneshot::channel::<()>();
-        sidecar.spawn(move || async move {
+        sidecar.handle().spawn(move || async move {
             let _ = tx.send(());
         });
         rx.blocking_recv().expect("actor ran");

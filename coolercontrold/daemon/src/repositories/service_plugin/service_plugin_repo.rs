@@ -37,7 +37,6 @@ use crate::repositories::service_plugin::service_management::{
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::repositories::utils::apply_device_command_delay;
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
-use crate::sidecar::SidecarHandle;
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -71,8 +70,6 @@ pub struct ServicePluginRepo {
     config: Rc<Config>,
     service_manager: Manager,
     api_up_token: CancellationToken,
-    /// Handle to the Tokio sidecar where each plugin's tonic transport runs.
-    sidecar: SidecarHandle,
     reset_plugin_user: bool,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
@@ -94,14 +91,12 @@ impl ServicePluginRepo {
         config: Rc<Config>,
         api_up_token: CancellationToken,
         reset_plugin_user: bool,
-        sidecar: SidecarHandle,
     ) -> Result<Self> {
         let service_manager = Manager::detect()?;
         Ok(Self {
             config,
             service_manager,
             api_up_token,
-            sidecar,
             reset_plugin_user,
             services: HashMap::new(),
             devices: HashMap::new(),
@@ -242,7 +237,6 @@ impl ServicePluginRepo {
         devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
         poll_rate: f64,
         api_up_token: CancellationToken,
-        sidecar: SidecarHandle,
     ) {
         let username = service_manifest
             .privileged
@@ -352,9 +346,7 @@ impl ServicePluginRepo {
         }
         let mut connect_wait_secs = 0;
         'connection: loop {
-            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate, sidecar.clone())
-                .await
-            {
+            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate).await {
                 Ok(client) => {
                     let mut version = String::new();
                     let mut retries = 0;
@@ -827,7 +819,6 @@ impl Repository for ServicePluginRepo {
                 let services = Rc::clone(&services);
                 let devices = Rc::clone(&devices);
                 let api_up_token = self.api_up_token.clone();
-                let sidecar = self.sidecar.clone();
                 service_init_scope.spawn(async move {
                     Self::initialize_service(
                         service_id,
@@ -837,7 +828,6 @@ impl Repository for ServicePluginRepo {
                         devices,
                         poll_rate,
                         api_up_token,
-                        sidecar,
                     )
                     .await;
                 });
