@@ -814,8 +814,7 @@ impl GpuAMD {
         T: Send + 'static,
     {
         debug_assert!(ioctl_timeout > Duration::ZERO);
-        let handle = tokio::task::spawn_blocking(blocking_fn);
-        match tokio::time::timeout(ioctl_timeout, handle).await {
+        match crate::rt::timeout(ioctl_timeout, crate::rt::spawn_blocking(blocking_fn)).await {
             Ok(Ok(Ok(value))) => Ok(value),
             Ok(Ok(Err(errno))) => Err(DrmReadError::Sensor(errno)),
             Ok(Err(join_err)) => Err(DrmReadError::Join(join_err)),
@@ -1266,7 +1265,7 @@ enum DrmReadError {
     /// The libdrm `sensor_info` ioctl returned a negative errno.
     Sensor(i32),
     /// The blocking task failed to join (typically a panic in the closure).
-    Join(tokio::task::JoinError),
+    Join(crate::rt::JoinError),
     /// The ioctl exceeded its wall-clock budget; the blocking thread is leaked
     /// until the kernel returns, but the caller is freed.
     TimedOut(Duration),

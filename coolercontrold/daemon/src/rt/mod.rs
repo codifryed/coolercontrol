@@ -37,3 +37,23 @@ pub use tokio_rt::*;
 mod compio_rt;
 #[cfg(feature = "compio-rt")]
 pub use compio_rt::*;
+
+/// Runtime-agnostic blocking-join failure (the spawned closure panicked or the join was cancelled).
+/// The backend's native join error is kept as a string so its concrete type never leaks past the
+/// facade. Returned by `spawn_blocking`.
+#[derive(Debug)]
+pub struct JoinError(String);
+
+impl JoinError {
+    pub(crate) fn new(message: String) -> Self {
+        Self(message)
+    }
+}
+
+impl std::fmt::Display for JoinError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "blocking task failed to join: {}", self.0)
+    }
+}
+
+impl std::error::Error for JoinError {}

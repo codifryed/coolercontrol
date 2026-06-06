@@ -59,6 +59,21 @@ where
     compio::runtime::spawn(future).detach();
 }
 
+/// Run a blocking closure on the runtime's blocking-thread pool and await its result.
+///
+/// The returned future is lazy: the closure is spawned when first polled. If the future is dropped
+/// (e.g. a `timeout` fires) the blocking thread runs to completion in the background (compio does
+/// not cancel blocking tasks).
+pub async fn spawn_blocking<F, T>(f: F) -> Result<T, super::JoinError>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    compio::runtime::spawn_blocking(f)
+        .await
+        .map_err(|err| super::JoinError::new(err.to_string()))
+}
+
 /// Sleep until the given deadline. Takes a `std::time::Instant` so call sites stay runtime-neutral.
 pub async fn sleep_until(deadline: Instant) {
     compio::time::sleep_until(deadline).await;

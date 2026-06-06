@@ -254,7 +254,7 @@ impl CalibrationActor {
             ));
         }
         let engine = Rc::clone(&self.engine);
-        tokio::task::spawn_local(async move {
+        crate::rt::spawn(async move {
             let _ = engine
                 .start_calibration_diagnosis(device_uid, channel_name)
                 .await;
@@ -268,7 +268,7 @@ impl CalibrationActor {
     fn begin_and_spawn_batch(&self, channels: Vec<ChannelKey>, concurrency: usize) -> Result<()> {
         self.engine.begin_calibration_batch(channels, concurrency)?;
         let engine = Rc::clone(&self.engine);
-        tokio::task::spawn_local(async move {
+        crate::rt::spawn(async move {
             engine.drive_calibration_batch().await;
         });
         Ok(())

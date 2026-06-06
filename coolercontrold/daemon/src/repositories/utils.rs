@@ -305,7 +305,7 @@ pub fn find_xauthority_path() -> Option<String> {
 /// configured minimum time gap before the next command can start.
 pub async fn apply_device_command_delay(delay_millis: u16) {
     if delay_millis > 0 {
-        tokio::time::sleep(Duration::from_millis(u64::from(delay_millis))).await;
+        crate::rt::sleep(Duration::from_millis(u64::from(delay_millis))).await;
     }
 }
 

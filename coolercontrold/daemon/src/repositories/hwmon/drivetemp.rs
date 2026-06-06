@@ -146,7 +146,7 @@ enum BlockingTimeoutError {
     TimedOut(Duration),
     /// The Tokio blocking task itself failed to join (typically a
     /// panic inside the closure).
-    Join(tokio::task::JoinError),
+    Join(crate::rt::JoinError),
     /// The closure ran to completion but returned `Err`, e.g. the
     /// device file could not be opened or both ATA power-state
     /// commands returned non-zero.
@@ -284,8 +284,7 @@ where
     T: Send + 'static,
 {
     debug_assert!(timeout > Duration::ZERO);
-    let handle = tokio::task::spawn_blocking(blocking_fn);
-    match tokio::time::timeout(timeout, handle).await {
+    match crate::rt::timeout(timeout, crate::rt::spawn_blocking(blocking_fn)).await {
         Ok(Ok(Ok(value))) => Ok(value),
         Ok(Ok(Err(inner))) => Err(BlockingTimeoutError::Inner(inner)),
         Ok(Err(join_err)) => Err(BlockingTimeoutError::Join(join_err)),

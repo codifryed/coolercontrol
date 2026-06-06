@@ -72,6 +72,20 @@ where
     tokio::task::spawn_local(future);
 }
 
+/// Run a blocking closure on the runtime's blocking-thread pool and await its result.
+///
+/// The returned future is lazy: the closure is spawned when first polled. If the future is dropped
+/// (e.g. a `timeout` fires) the blocking thread is detached and runs to completion in the background.
+pub async fn spawn_blocking<F, T>(f: F) -> Result<T, super::JoinError>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|err| super::JoinError::new(err.to_string()))
+}
+
 /// Sleep until the given deadline. Takes a `std::time::Instant` so call sites stay runtime-neutral.
 pub async fn sleep_until(deadline: Instant) {
     tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
