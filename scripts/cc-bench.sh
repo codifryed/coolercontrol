@@ -41,15 +41,23 @@ sudo -v
 # Prints "core wakeups rss" on stdout; progress goes to stderr.
 run_one() {
   local label="$1"
+  # Never stack a second daemon on a live one (port + hardware clash).
+  if pgrep -x coolercontrold >/dev/null; then
+    echo "  $label: a coolercontrold is still running; refusing to start another." >&2
+    echo "0 0 0"
+    return
+  fi
   sudo "$BIN" >"/tmp/cc-bench-$label.log" 2>&1 &
   local sudopid=$! pid="" i=0
   while [[ -z "$pid" && $i -lt 100 ]]; do
     sleep 0.2
-    pid="$(pgrep -P "$sudopid" -x coolercontrold | head -n1 || true)"
+    # sudo use_pty makes the daemon a grandchild of $sudopid, not a direct child; match by name.
+    pid="$(pgrep -x coolercontrold | head -n1 || true)"
     i=$((i + 1))
   done
   if [[ -z "$pid" ]]; then
     echo "  $label failed to start (see /tmp/cc-bench-$label.log)" >&2
+    sudo kill "$sudopid" 2>/dev/null || true
     echo "0 0 0"
     return
   fi
