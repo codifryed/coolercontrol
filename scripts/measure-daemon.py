@@ -71,7 +71,9 @@ def thread_group(name):
     return "other"
 
 
-def ctxt(pid):  # voluntary/nonvoluntary switches over all threads, plus voluntary split by group
+def ctxt(
+    pid,
+):  # voluntary/nonvoluntary switches over all threads, plus voluntary split by group
     vol = nonvol = 0
     groups = dict.fromkeys(GROUPS, 0)
     for s in glob.glob(f"/proc/{pid}/task/*/status"):
@@ -126,12 +128,18 @@ def sample(pids):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Measure coolercontrold CPU/wakeups/memory.")
+    ap = argparse.ArgumentParser(
+        description="Measure coolercontrold CPU/wakeups/memory."
+    )
     ap.add_argument("-n", "--name", default="coolercontrold")
     ap.add_argument("-p", "--pid", type=int)
     ap.add_argument("-i", "--interval", type=float, default=5.0)
-    ap.add_argument("-d", "--duration", type=float, default=0.0, help="0 = until Ctrl-C")
-    ap.add_argument("--children", action="store_true", help="include child procs (liqctld)")
+    ap.add_argument(
+        "-d", "--duration", type=float, default=0.0, help="0 = until Ctrl-C"
+    )
+    ap.add_argument(
+        "--children", action="store_true", help="include child procs (liqctld)"
+    )
     a = ap.parse_args()
 
     pid = a.pid or find_pid(a.name)
