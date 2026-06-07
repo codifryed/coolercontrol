@@ -17,6 +17,7 @@
  */
 
 mod amd;
+mod amd_fdinfo;
 pub mod amd_overdrive;
 pub mod gpu_repo;
 mod nvapi;

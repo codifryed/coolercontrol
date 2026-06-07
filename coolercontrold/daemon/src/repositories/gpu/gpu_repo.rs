@@ -53,9 +53,8 @@ pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 /// (which use hwmon/sysfs under the hood) share the same budgeting.
 /// See `hwmon_repo::READ_PERMIT_RATIO` and the `main_loop` module
 /// doc for how this layer interacts with the snapshot timeout and
-/// the failsafe layer. Also reused by `amd::drm_ioctl_timeout_for` so the
-/// libdrm sensor budget tracks the same poll-rate ratio.
-pub const READ_PERMIT_RATIO: f64 = 0.7;
+/// the failsafe layer.
+const READ_PERMIT_RATIO: f64 = 0.7;
 
 /// Derives the read permit timeout from `poll_rate`. Pure helper so
 /// the ratio is testable without constructing a full `GpuRepo`.
