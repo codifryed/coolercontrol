@@ -108,9 +108,9 @@ fn busy_percent(last: &HashMap<u64, u64>, cur: &HashMap<u64, u64>, elapsed_ns: u
 }
 
 /// Scans `/proc` for DRM clients of `pci_slot` and returns client-id ->
-/// cumulative gfx+compute busy ns. These are small `/proc` file reads (no
-/// hardware ioctl), so they use the async `cc_fs` APIs directly rather than the
-/// blocking pool.
+/// cumulative gfx+compute busy ns. Small `/proc` reads (no hardware ioctl):
+/// fdinfo content via async `cc_fs::read_txt`, enumeration via the sync `cc_fs`
+/// dir/link helpers (compio has no async equivalent).
 pub async fn scan_clients(pci_slot: &str) -> HashMap<u64, u64> {
     scan_clients_in(Path::new(PROC_ROOT), pci_slot).await
 }
@@ -144,7 +144,7 @@ async fn accumulate_pid_clients(
         return;
     };
     for fd_entry in fds.flatten() {
-        let Ok(target) = std::fs::read_link(fd_entry.path()) else {
+        let Ok(target) = cc_fs::read_link(fd_entry.path()) else {
             continue;
         };
         if target

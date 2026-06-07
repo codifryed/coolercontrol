@@ -22,7 +22,7 @@ use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::amd_fdinfo::{self, FdInfoLoad, FdInfoLoadState};
 use crate::cc_fs;
@@ -46,6 +46,9 @@ use regex::Regex;
 
 pub const TEMP_FOR_FAN_CURVE: &str = "temp1";
 const AMD_HWMON_NAME: &str = "amdgpu";
+/// Cap on the one-shot libdrm device-name lookup at init, so a wedged DRM driver cannot stall
+/// device discovery. The call normally returns in well under a millisecond.
+const DRM_NAME_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
 const PATTERN_FAN_CURVE_LIMITS_TEMP: &str =
     r"FAN_CURVE\(hotspot temp\):\s+(?P<temp_min>\d+)C\s+(?P<temp_max>\d+)C";
@@ -277,16 +280,25 @@ impl GpuAMD {
     }
 
     async fn get_drm_device_name(base_path: &Path) -> Option<String> {
-        let drm_amdgpu = LibDrmAmdgpu::new().ok()?;
         let slot_name = devices::get_pci_slot_name(base_path).await?;
-        let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
-        let drm_file = cc_fs::open_options()
-            .read(true)
-            .write(true)
-            .open(&path)
-            .ok()?;
-        let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
-        Some(handle.device_info().ok()?.find_device_name_or_default())
+        let render_path = format!("/dev/dri/by-path/pci-{slot_name}-render");
+        // libdrm performs synchronous DRM ioctls, so resolve the name off the runtime thread
+        // (the offload-blocking-FFI rule), bounded by a timeout so a wedged driver cannot stall
+        // init. The open and the handle live entirely inside the closure, never crossing threads.
+        let lookup = move || -> Option<String> {
+            let drm_amdgpu = LibDrmAmdgpu::new().ok()?;
+            let drm_file = cc_fs::open_options()
+                .read(true)
+                .write(true)
+                .open(&render_path)
+                .ok()?;
+            let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
+            Some(handle.device_info().ok()?.find_device_name_or_default())
+        };
+        match crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, crate::rt::spawn_blocking(lookup)).await {
+            Ok(Ok(name)) => name,
+            _ => None,
+        }
     }
 
     /// Gets the PMFW (power management firmware) fan curve information.

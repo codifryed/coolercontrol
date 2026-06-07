@@ -18,7 +18,7 @@
 
 use anyhow::Result;
 use std::fs::ReadDir;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
 ///
@@ -77,6 +77,14 @@ pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
 /// but is generally very fast and only used during application startup.
 pub fn read_dir(path: impl AsRef<Path>) -> Result<ReadDir> {
     Ok(std::fs::read_dir(path)?)
+}
+
+/// Reads a symbolic link, returning the path it points to.
+///
+/// Sync `std::fs` wrapper: compio exposes no async `read_link`. Used by the AMD DRM fdinfo scan to
+/// resolve `/proc/<pid>/fd` entries to their targets.
+pub fn read_link(path: impl AsRef<Path>) -> Result<PathBuf> {
+    Ok(std::fs::read_link(path)?)
 }
 
 #[cfg(test)]
