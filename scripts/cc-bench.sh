@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # cc-bench.sh - A/B idle-load comparison of coolercontrold: tokio (default) vs compio-rt.
 #
-# Builds each flavor in turn, runs it under identical conditions, measures it with
-# measure-daemon.py, and prints a side-by-side delta. Paths resolve relative to this script, so
-# it can live in scripts/ and find the daemon crate at ../coolercontrold/daemon.
+# Builds each flavor, runs it under identical conditions for REPS repetitions, measures each run
+# with measure-daemon.py, and prints mean(sd) plus a per-thread-group wakeups breakdown
+# (main poll loop / worker pool / sidecar). Paths resolve relative to this script.
 #
-# Usage:  ./cc-bench.sh [window_sec] [settle_sec] [interval_sec]
-#         defaults: window=180 settle=30 interval=2
+# Usage:  ./cc-bench.sh [window_sec] [settle_sec] [interval_sec] [reps]
+#         defaults: window=180 settle=30 interval=2 reps=3
+#         Total measuring time is about reps * 2 * (settle + window), plus two builds.
 #
 # Before running:
 #   * Stop any other coolercontrold (systemd service or manual) to avoid a port conflict.
@@ -20,6 +21,7 @@ set -euo pipefail
 WINDOW="${1:-180}"
 SETTLE="${2:-30}"
 INTERVAL="${3:-2}"
+REPS="${4:-3}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MEASURE="$HERE/measure-daemon.py"
@@ -37,14 +39,14 @@ fi
 echo "priming sudo (needed to run the daemon) ..."
 sudo -v
 
-# Runs the current target/release/coolercontrold, measures it, stops it.
-# Prints "core wakeups rss" on stdout; progress goes to stderr.
+# One measured run of the current target/release/coolercontrold: start, settle, measure, stop.
+# Echoes "core wakeups rss main pool sidecar other" on stdout; progress goes to stderr.
 run_one() {
   local label="$1"
   # Never stack a second daemon on a live one (port + hardware clash).
   if pgrep -x coolercontrold >/dev/null; then
     echo "  $label: a coolercontrold is still running; refusing to start another." >&2
-    echo "0 0 0"
+    echo "0 0 0 0 0 0 0"
     return
   fi
   sudo "$BIN" >"/tmp/cc-bench-$label.log" 2>&1 &
@@ -58,42 +60,93 @@ run_one() {
   if [[ -z "$pid" ]]; then
     echo "  $label failed to start (see /tmp/cc-bench-$label.log)" >&2
     sudo kill "$sudopid" 2>/dev/null || true
-    echo "0 0 0"
+    echo "0 0 0 0 0 0 0"
     return
   fi
-  echo "  $label pid=$pid: settle ${SETTLE}s, measure ${WINDOW}s ..." >&2
   sleep "$SETTLE"
-  local s
-  s="$(python3 "$MEASURE" -p "$pid" -i "$INTERVAL" -d "$WINDOW" | tail -n1)"
+  local summary
+  summary="$(python3 "$MEASURE" -p "$pid" -i "$INTERVAL" -d "$WINDOW" | grep '^SUMMARY' | tail -n1 || true)"
   sudo kill "$pid" 2>/dev/null || true
   for _ in $(seq 1 25); do sudo kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
   sudo kill -9 "$pid" 2>/dev/null || true
 
-  local core wake rss
-  core="$(sed -nE 's/.* ([0-9.]+)% of one core.*/\1/p' <<<"$s")"
-  wake="$(sed -nE 's/.* ([0-9.]+) wakeups\/s.*/\1/p' <<<"$s")"
-  rss="$(sed -nE 's/.*peak RSS ([0-9.]+) MB.*/\1/p' <<<"$s")"
-  echo "${core:-0} ${wake:-0} ${rss:-0}"
+  # SUMMARY is "SUMMARY key=val ...". Emit the 7 metrics in a fixed order, 0 for any missing.
+  awk '
+    function g(k) { return (k in v) ? v[k] : 0 }
+    { for (i = 1; i <= NF; i++) if (split($i, kv, "=") == 2) v[kv[1]] = kv[2] }
+    END {
+      printf "%s %s %s %s %s %s %s\n",
+        g("core_pct"), g("wakeups"), g("rss_mb"), g("main"), g("pool"), g("sidecar"), g("other")
+    }
+  ' <<<"$summary"
 }
 
-echo ">> building tokio (default) ..."
-(cd "$DAEMON_CRATE" && cargo build --release >/dev/null)
-read -r T_CORE T_WAKE T_RSS < <(run_one tokio)
+# Runs REPS measured reps of the current binary; echoes one metrics line per rep to stdout.
+bench_flavor() {
+  local label="$1" i line
+  for ((i = 1; i <= REPS; i++)); do
+    echo "  [$label] rep $i/$REPS: settle ${SETTLE}s + measure ${WINDOW}s ..." >&2
+    line="$(run_one "${label}-${i}")"
+    echo "    -> wakeups=$(awk '{print $2}' <<<"$line") main=$(awk '{print $4}' <<<"$line")" \
+      "pool=$(awk '{print $5}' <<<"$line") sidecar=$(awk '{print $6}' <<<"$line")" >&2
+    echo "$line"
+  done
+}
 
-echo ">> building compio-rt ..."
-(cd "$DAEMON_CRATE" && cargo build --release --features compio-rt >/dev/null)
-read -r C_CORE C_WAKE C_RSS < <(run_one compio)
+# stdin: rows of 7 numbers (failed runs have wakeups=0 and are skipped).
+# stdout: line 1 = column means, line 2 = column sample standard deviations.
+agg() {
+  awk '
+    ($2 + 0) == 0 { next }
+    { for (i = 1; i <= NF; i++) { sum[i] += $i; sq[i] += $i * $i }; if (NF > nf) nf = NF; rows++ }
+    END {
+      if (rows == 0) { print "0 0 0 0 0 0 0"; print "0 0 0 0 0 0 0"; exit }
+      for (i = 1; i <= nf; i++) printf "%.2f%s", sum[i] / rows, (i < nf ? OFS : ORS)
+      for (i = 1; i <= nf; i++) {
+        m = sum[i] / rows
+        var = (rows > 1) ? (sq[i] - m * m * rows) / (rows - 1) : 0
+        printf "%.2f%s", (var > 0 ? sqrt(var) : 0), (i < nf ? OFS : ORS)
+      }
+    }'
+}
 
 delta() {
   awk -v a="$1" -v b="$2" 'BEGIN { if (a + 0 == 0) print "n/a"; else printf "%+.0f%%", (b - a) / a * 100 }'
 }
 
+est=$((REPS * 2 * (SETTLE + WINDOW)))
+echo ">> reps=$REPS window=${WINDOW}s settle=${SETTLE}s: measuring ~$((est / 60)) min plus builds" >&2
+
+echo ">> building tokio (default) ..."
+(cd "$DAEMON_CRATE" && cargo build --release >/dev/null)
+T_OUT="$(bench_flavor tokio)"
+
+echo ">> building compio-rt ..."
+(cd "$DAEMON_CRATE" && cargo build --release --features compio-rt >/dev/null)
+C_OUT="$(bench_flavor compio)"
+
+mapfile -t TA < <(printf '%s\n' "$T_OUT" | agg)
+mapfile -t CA < <(printf '%s\n' "$C_OUT" | agg)
+read -ra TM <<<"${TA[0]}"; read -ra TSD <<<"${TA[1]}"
+read -ra CM <<<"${CA[0]}"; read -ra CSD <<<"${CA[1]}"
+# column order: 0 core  1 wakeups  2 rss  3 main  4 pool  5 sidecar  6 other
+
+ms() { printf '%s(%s)' "$1" "$2"; }   # mean(sd)
+
 echo
-printf '%-10s %12s %12s %10s\n' build cpu/core% wakeups/s rss_mb
-printf '%-10s %12s %12s %10s\n' tokio "$T_CORE" "$T_WAKE" "$T_RSS"
-printf '%-10s %12s %12s %10s\n' compio "$C_CORE" "$C_WAKE" "$C_RSS"
-printf '%-10s %12s %12s %10s\n' delta \
-  "$(delta "$T_CORE" "$C_CORE")" "$(delta "$T_WAKE" "$C_WAKE")" "$(delta "$T_RSS" "$C_RSS")"
+printf '%-8s %-13s %-14s %-8s %-8s %-9s %-7s\n' build 'cpu/core%' 'wakeups/s' main pool sidecar rss_mb
+printf '%-8s %-13s %-14s %-8s %-8s %-9s %-7s\n' tokio \
+  "$(ms "${TM[0]}" "${TSD[0]}")" "$(ms "${TM[1]}" "${TSD[1]}")" "${TM[3]}" "${TM[4]}" "${TM[5]}" "${TM[2]}"
+printf '%-8s %-13s %-14s %-8s %-8s %-9s %-7s\n' compio \
+  "$(ms "${CM[0]}" "${CSD[0]}")" "$(ms "${CM[1]}" "${CSD[1]}")" "${CM[3]}" "${CM[4]}" "${CM[5]}" "${CM[2]}"
+printf '%-8s %-13s %-14s %-8s %-8s %-9s %-7s\n' delta \
+  "" "$(delta "${TM[1]}" "${CM[1]}")" "$(delta "${TM[3]}" "${CM[3]}")" \
+  "$(delta "${TM[4]}" "${CM[4]}")" "$(delta "${TM[5]}" "${CM[5]}")" ""
+
 echo
-echo "negative delta = compio lower (better). window=${WINDOW}s settle=${SETTLE}s interval=${INTERVAL}s"
-echo "full logs: /tmp/cc-bench-tokio.log  /tmp/cc-bench-compio.log"
+echo "values are mean(sd) over n=$REPS reps/build. wakeups/s = voluntary ctxt switches (lower is"
+echo "better). main=poll loop, pool=blocking/io-wq workers, sidecar=zbus/tonic host."
+echo "The tokio total includes the sidecar; if tokio stays the default the sidecar would be dropped,"
+echo "so for a migrate/no-migrate call compare compio against tokio's (wakeups - sidecar)."
+echo "window=${WINDOW}s settle=${SETTLE}s interval=${INTERVAL}s"
+echo "full logs: /tmp/cc-bench-tokio-*.log  /tmp/cc-bench-compio-*.log"

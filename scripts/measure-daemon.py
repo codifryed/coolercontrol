@@ -4,6 +4,8 @@
 Pure stdlib; reads /proc directly so it works on an SBC without psutil. The most telling metric for
 the tokio-vs-compio comparison is wakeups/s (voluntary context switches): it counts how often the
 runtime activates, where compio's io_uring batching should beat tokio's blocking-pool fs reads.
+The summary also splits wakeups by thread group (main poll loop, worker pool, sidecar) so you can
+see where they occur.
 
 Usage:
     ./measure-daemon.py                 # 5s samples until Ctrl-C, then a summary
@@ -55,18 +57,40 @@ def cpu_jiffies(pid):  # utime+stime across all threads of the process
     return int(r[11]) + int(r[12])  # fields 14 (utime) + 15 (stime)
 
 
-def ctxt(pid):  # sum context switches over every thread
+# Wakeup-accounting buckets, keyed off the thread name (Name: in status, max 15 chars).
+GROUPS = ("main", "pool", "sidecar", "other")
+
+
+def thread_group(name):
+    if name == "coolercontrold":
+        return "main"  # current-thread runtime: poll loop (+ near-idle driver thread)
+    if name == "cc-sidecar":
+        return "sidecar"  # zbus/tonic host runtime
+    if name.startswith("cc-wrk") or name.startswith("iou-wrk"):
+        return "pool"  # tokio blocking pool / io_uring io-wq workers
+    return "other"
+
+
+def ctxt(pid):  # voluntary/nonvoluntary switches over all threads, plus voluntary split by group
     vol = nonvol = 0
+    groups = dict.fromkeys(GROUPS, 0)
     for s in glob.glob(f"/proc/{pid}/task/*/status"):
         try:
+            name = ""
+            v = nv = 0
             for line in open(s):
-                if line.startswith("voluntary_ctxt_switches:"):
-                    vol += int(line.split()[1])
+                if line.startswith("Name:"):
+                    name = line[5:].strip()
+                elif line.startswith("voluntary_ctxt_switches:"):
+                    v = int(line.split()[1])
                 elif line.startswith("nonvoluntary_ctxt_switches:"):
-                    nonvol += int(line.split()[1])
+                    nv = int(line.split()[1])
+            vol += v
+            nonvol += nv
+            groups[thread_group(name)] += v
         except OSError:
             pass
-    return vol, nonvol
+    return vol, nonvol, groups
 
 
 def rss_threads(pid):
@@ -84,18 +108,21 @@ def rss_threads(pid):
 
 def sample(pids):
     cpu = v = nv = rss = thr = 0
+    groups = dict.fromkeys(GROUPS, 0)
     for p in pids:
         try:
             cpu += cpu_jiffies(p)
-            a, b = ctxt(p)
+            a, b, g = ctxt(p)
             v += a
             nv += b
+            for k in GROUPS:
+                groups[k] += g[k]
             r, t = rss_threads(p)
             rss += r
             thr += t
         except OSError:
             pass
-    return cpu, v, nv, rss, thr
+    return cpu, v, nv, rss, thr, groups
 
 
 def main():
@@ -125,18 +152,27 @@ def main():
     )
 
     t0 = pt = time.monotonic()
-    pc, pv, pnv, _, _ = sample(pids())
+    pc, pv, pnv, _, _, pg = sample(pids())
     cpu_sum = wake_sum = n = peak = 0
+    group_sum = dict.fromkeys(GROUPS, 0.0)
 
     def summary(*_):
         wall = time.monotonic() - t0
         avg = cpu_sum / n if n else 0.0
         wake = wake_sum / n if n else 0.0
+        grp = {k: (group_sum[k] / n if n else 0.0) for k in GROUPS}
         print("-" * 62)
         print(
             f"avg over {wall:.0f}s ({n} samples): {avg:.2f}% of one core "
             f"| {avg / NCPU:.2f}% of {NCPU} cores | {wake:.0f} wakeups/s "
+            f"(main {grp['main']:.0f} pool {grp['pool']:.0f} sidecar {grp['sidecar']:.0f}) "
             f"| peak RSS {peak / 1024:.0f} MB"
+        )
+        # Machine-readable line for cc-bench. Groups partition the threads, so they sum to wakeups.
+        print(
+            f"SUMMARY core_pct={avg:.2f} wakeups={wake:.2f} rss_mb={peak / 1024:.0f} "
+            f"main={grp['main']:.2f} pool={grp['pool']:.2f} "
+            f"sidecar={grp['sidecar']:.2f} other={grp['other']:.2f}"
         )
         sys.exit(0)
 
@@ -149,7 +185,7 @@ def main():
             print("process exited", file=sys.stderr)
             summary()
         now = time.monotonic()
-        c, v, nv, rss, thr = sample(ps)
+        c, v, nv, rss, thr, g = sample(ps)
         dt = now - pt
         core = (c - pc) / CLK / dt * 100
         peak = max(peak, rss)
@@ -159,8 +195,10 @@ def main():
         )
         cpu_sum += core
         wake_sum += (v - pv) / dt
+        for k in GROUPS:
+            group_sum[k] += (g[k] - pg[k]) / dt
         n += 1
-        pt, pc, pv, pnv = now, c, v, nv
+        pt, pc, pv, pnv, pg = now, c, v, nv, g
         if a.duration and now - t0 >= a.duration:
             summary()
 
