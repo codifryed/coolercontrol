@@ -440,14 +440,18 @@ impl LiquidctlRepo {
             .filter(|driver| self.device_mapper.is_device_supported(driver))
     }
 
-    async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
+    async fn call_status(&self, device_id: &u8, delay_millis: u16) -> Result<LCStatus> {
         let _permit = self
             .device_permit(*device_id)
             .acquire()
             .await
             .expect("device permit never closed");
-        let status_response = self.liqctld_client.get_status(device_id).await?;
-        Ok(status_response.status)
+        let status_response = self.liqctld_client.get_status(device_id).await;
+        // Hold the permit through the command delay so the next request to this device observes the
+        // gap, matching the write paths. Applied on success or failure (a failed read still spaces
+        // the device's next command).
+        apply_device_command_delay(delay_millis).await;
+        Ok(status_response?.status)
     }
 
     fn create_status_map(lc_statuses: &LCStatus) -> StatusMap {
@@ -1092,7 +1096,7 @@ impl Repository for LiquidctlRepo {
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    match self.call_status(&device_id).await {
+                    match self.call_status(&device_id, delay).await {
                         Ok(status) => {
                             self.preloaded_statuses
                                 .borrow_mut()
@@ -1124,7 +1128,6 @@ impl Repository for LiquidctlRepo {
                             }
                         }
                     }
-                    apply_device_command_delay(delay).await;
                 });
             }
         })
