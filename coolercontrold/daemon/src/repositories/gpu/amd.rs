@@ -19,9 +19,12 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Instant;
 
+use super::amd_fdinfo::{self, FdInfoLoad, FdInfoLoadState};
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
@@ -57,6 +60,9 @@ pub struct GpuAMD {
     pub amd_devices: HashMap<UID, DeviceLock>,
     pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
     pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// Per-device fdinfo delta state, keyed by PCI slot, for GPUs that source
+    /// load from DRM fdinfo instead of `gpu_busy_percent`.
+    amd_fdinfo_state: RefCell<HashMap<String, FdInfoLoadState>>,
 }
 
 impl GpuAMD {
@@ -66,9 +72,11 @@ impl GpuAMD {
             amd_devices: HashMap::new(),
             amd_driver_infos: HashMap::new(),
             amd_preloaded_statuses: RefCell::new(HashMap::new()),
+            amd_fdinfo_state: RefCell::new(HashMap::new()),
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn init_devices(&self) -> Vec<AMDDriverInfo> {
         let base_paths = devices::find_all_hwmon_device_paths();
         let mut amd_infos = vec![];
@@ -111,9 +119,25 @@ impl GpuAMD {
                 .join("device")
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
+            let mut fdinfo_load = None;
             if let Some(load_channel) = Self::init_load(&device_path).await {
                 if disabled_channels.contains(&load_channel.name).not() {
                     channels.push(load_channel);
+                }
+            } else {
+                // hwmon load sensor is unsupported (older ASICs): fall back to
+                // DRM fdinfo, the only load source these GPUs have.
+                let load_disabled = disabled_channels.iter().any(|c| c == GPU_LOAD_NAME);
+                if load_disabled.not() {
+                    if let Some(fd_load) = Self::init_fdinfo_load(&path).await {
+                        channels.push(HwmonChannelInfo {
+                            hwmon_type: HwmonChannelType::Load,
+                            name: GPU_LOAD_NAME.to_string(),
+                            label: Some(GPU_LOAD_NAME.to_string()),
+                            ..Default::default()
+                        });
+                        fdinfo_load = Some(fd_load);
+                    }
                 }
             }
             match freqs::init_freqs(&path).await {
@@ -161,6 +185,7 @@ impl GpuAMD {
                 fan_curve_info,
                 has_rdna_fan_ctrl,
                 overdrive_enabled,
+                fdinfo_load,
             };
             amd_infos.push(amd_driver_info);
         }
@@ -168,8 +193,9 @@ impl GpuAMD {
     }
 
     async fn init_load(device_path: &Path) -> Option<HwmonChannelInfo> {
-        if let Ok(load) = cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
-            match fans::check_parsing_8(load) {
+        let load_path = device_path.join("gpu_busy_percent");
+        match cc_fs::read_sysfs(&load_path).await {
+            Ok(load) => match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
@@ -177,17 +203,77 @@ impl GpuAMD {
                     ..Default::default()
                 }),
                 Err(err) => {
-                    warn!("Error reading AMD busy percent value: {err}");
+                    warn!(
+                        "Error parsing AMD GPU load from {}: {err}",
+                        load_path.display()
+                    );
                     None
                 }
+            },
+            Err(err) => {
+                // The file may be absent, or present but unsupported on this ASIC
+                // (older GPUs return an error rather than a value).
+                debug!(
+                    "AMD GPU load unavailable from hwmon at {}: {err}",
+                    load_path.display()
+                );
+                None
             }
-        } else {
-            warn!(
-                "No AMDGPU load found: {}/device/gpu_busy_percent",
-                device_path.display()
-            );
-            None
         }
+    }
+
+    /// Sets up the DRM fdinfo load fallback for a GPU whose `gpu_busy_percent`
+    /// is unsupported. Gated on `fdinfo_engine_available` (not on a client being
+    /// present), so it works at boot before any GPU client exists yet is not
+    /// enabled on kernels that lack `drm-engine-*` accounting. Load then always
+    /// reports a value (0 while idle).
+    async fn init_fdinfo_load(base_path: &Path) -> Option<FdInfoLoad> {
+        let pci_slot = devices::get_pci_slot_name(base_path).await?;
+        if Self::fdinfo_engine_available(&pci_slot).await.not() {
+            debug!("amdgpu DRM fdinfo engine accounting unavailable for {pci_slot}; GPU load off");
+            return None;
+        }
+        info!("AMD GPU load sourced from DRM fdinfo (hwmon sensor unsupported): {pci_slot}");
+        Some(FdInfoLoad::new(pci_slot))
+    }
+
+    /// Probes whether the amdgpu DRM driver exposes per-engine fdinfo accounting
+    /// for this GPU, independent of any client being active. Opens the GPU's
+    /// render node to create our own DRM client and inspects its
+    /// `/proc/self/fdinfo`: the standard framework that carries `drm-engine-*`
+    /// always emits a `drm-client-id`, even when the engine lines are absent
+    /// because our probe client has submitted no work.
+    async fn fdinfo_engine_available(pci_slot: &str) -> bool {
+        let render_path = format!("/dev/dri/by-path/pci-{pci_slot}-render");
+        let Ok(render_node) = cc_fs::open_options()
+            .read(true)
+            .write(true)
+            .open(&render_path)
+        else {
+            return false;
+        };
+        let fdinfo_path = format!("/proc/self/fdinfo/{}", render_node.as_raw_fd());
+        cc_fs::read_txt(&fdinfo_path)
+            .await
+            .is_ok_and(|content| amd_fdinfo::engine_accounting_available(&content))
+    }
+
+    /// Computes GPU load from DRM fdinfo for a sensor-less GPU. Always returns a
+    /// Load `ChannelStatus` (0 on the first sample and while idle), since once
+    /// fdinfo is the chosen source we report a value every tick.
+    async fn extract_fdinfo_load_status(&self, fdinfo: &FdInfoLoad) -> Vec<ChannelStatus> {
+        let clients = amd_fdinfo::scan_clients(fdinfo.pci_slot()).await;
+        let percent = self
+            .amd_fdinfo_state
+            .borrow_mut()
+            .entry(fdinfo.pci_slot().to_string())
+            .or_default()
+            .update(clients, Instant::now());
+        vec![ChannelStatus {
+            name: GPU_LOAD_NAME.to_string(),
+            duty: Some(percent.round()),
+            ..Default::default()
+        }]
     }
 
     async fn get_drm_device_name(base_path: &Path) -> Option<String> {
@@ -525,7 +611,11 @@ impl GpuAMD {
         amd_driver: &AMDDriverInfo,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let (mut status_channels, _) = fans::extract_fan_statuses(&amd_driver.hwmon).await;
-        status_channels.extend(Self::extract_load_status(amd_driver).await);
+        if let Some(fdinfo) = &amd_driver.fdinfo_load {
+            status_channels.extend(self.extract_fdinfo_load_status(fdinfo).await);
+        } else {
+            status_channels.extend(Self::extract_load_status(amd_driver).await);
+        }
         status_channels.extend(freqs::extract_freq_statuses(&amd_driver.hwmon).await);
         let (power_statuses, _) = power::extract_power_status(&amd_driver.hwmon).await;
         status_channels.extend(power_statuses);
@@ -950,6 +1040,10 @@ pub struct AMDDriverInfo {
     has_rdna_fan_ctrl: bool,
     /// Whether the ppfeaturemask has the overdrive bit enabled.
     overdrive_enabled: bool,
+    /// Set when the hwmon load sensor is unsupported and load is sourced from
+    /// DRM fdinfo instead. The matching per-device delta state lives in
+    /// `GpuAMD::amd_fdinfo_state`.
+    fdinfo_load: Option<FdInfoLoad>,
 }
 
 /// The PMFW (power management firmware) fan curve information.
@@ -1175,6 +1269,7 @@ mod tests {
             fan_curve_info,
             has_rdna_fan_ctrl,
             overdrive_enabled,
+            fdinfo_load: None,
         }
     }
 
@@ -1263,6 +1358,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                fdinfo_load: None,
             };
 
             // when:
@@ -1298,6 +1394,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                fdinfo_load: None,
             };
 
             // when:
@@ -1332,6 +1429,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                fdinfo_load: None,
             };
 
             // when:
