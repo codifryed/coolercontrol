@@ -20,7 +20,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::future::Future;
 use std::ops::Not;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::rt::{sleep, timeout};
 use anyhow::anyhow;
@@ -72,7 +72,16 @@ fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
     compio::runtime::spawn(fut)
 }
 
-const LIQCTLD_MAX_POOL_SIZE: usize = 15;
+/// Ceiling on idle connections kept warm for reuse. NOT a cap on concurrent connections: the client
+/// creates one whenever the pool is empty (`get_socket_connection`), so peak concurrency is bounded
+/// only by the caller's own fan-out. This just bounds retention. Generous so many-device setups
+/// reuse rather than re-handshake under sustained load; `reap_idle_connections` shrinks the pool
+/// back to the working set once a burst subsides, so the headroom does not become a permanent cost.
+const LIQCTLD_MAX_POOL_SIZE: usize = 32;
+/// How long a pooled connection may sit unused before it is closed. Each open connection holds a
+/// thread in liqctld's thread-per-connection server, so surplus connections left over from a burst
+/// are reaped instead of held for the daemon's lifetime.
+const LIQCTLD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_RESPONSE_TIMEOUT_SECONDS: u64 = 15;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
@@ -99,7 +108,7 @@ pub type LCStatus = Vec<(String, String, String)>;
 
 /// `LiqctldClient` represents a client for interacting with a connection pool of socket connections.
 pub struct LiqctldClient {
-    connection_pool: RefCell<VecDeque<SocketConnection>>,
+    connection_pool: RefCell<VecDeque<PooledConnection>>,
 }
 
 impl LiqctldClient {
@@ -112,7 +121,7 @@ impl LiqctldClient {
     pub async fn new(connection_tries: usize) -> Result<Self> {
         let mut connection_pool = VecDeque::with_capacity(LIQCTLD_MAX_POOL_SIZE);
         let connection = Self::create_connection(connection_tries).await?;
-        connection_pool.push_back(connection);
+        connection_pool.push_back(PooledConnection::new(connection));
         Ok(Self {
             connection_pool: RefCell::new(connection_pool),
         })
@@ -196,11 +205,34 @@ impl LiqctldClient {
     /// creating a new connection if necessary,
     /// and returning the `ConnectionUID` of the free connection.
     async fn get_socket_connection(&self) -> Result<SocketConnection> {
-        if let Some(socket_connection) = self.connection_pool.borrow_mut().pop_front() {
+        self.reap_idle_connections();
+        // LIFO: hand out the most-recently-returned connection so surplus connections from a burst
+        // sink to the front of the pool and age out there. Round-robin (pop_front) reuse would keep
+        // every connection warm and defeat idle reaping.
+        if let Some(pooled) = self.connection_pool.borrow_mut().pop_back() {
             trace!("Found a free socket connection");
-            return Ok(socket_connection);
+            return Ok(pooled.connection);
         }
         Self::create_connection(LIQCTLD_CONNECTION_TRIES).await
+    }
+
+    /// Closes connections idle past `LIQCTLD_IDLE_TIMEOUT`, releasing the thread each holds in
+    /// liqctld's thread-per-connection server. The LIFO pool keeps idle connections at the front, so
+    /// reap that stale prefix and stop at the first still-fresh one.
+    fn reap_idle_connections(&self) {
+        let now = Instant::now();
+        let mut pool = self.connection_pool.borrow_mut();
+        let stale = stale_prefix_len(
+            pool.iter().map(|pooled| pooled.idle_since),
+            now,
+            LIQCTLD_IDLE_TIMEOUT,
+        );
+        for _ in 0..stale {
+            if let Some(pooled) = pool.pop_front() {
+                trace!("Reaping idle liqctld connection");
+                pooled.connection.abort();
+            }
+        }
     }
 
     /// Sends a request to a socket connection, handles errors, and returns the deserialized response.
@@ -254,9 +286,10 @@ impl LiqctldClient {
             if self.connection_pool.borrow().len() < LIQCTLD_MAX_POOL_SIZE {
                 self.connection_pool
                     .borrow_mut()
-                    .push_back(socket_connection);
+                    .push_back(PooledConnection::new(socket_connection));
             } else {
-                warn!("Socket connection pool size limit reached, discarding connection.");
+                debug!("liqctld connection pool full; closing the surplus connection.");
+                socket_connection.abort();
             }
             return Ok(serde_json::from_str(&lc_response.body)?);
         }
@@ -634,8 +667,8 @@ impl LiqctldClient {
 
     /// Shuts down all connections in a connection pool and clears the pool.
     pub fn shutdown(&self) {
-        for socket_connect in self.connection_pool.borrow_mut().drain(..) {
-            socket_connect.abort();
+        for pooled in self.connection_pool.borrow_mut().drain(..) {
+            pooled.connection.abort();
         }
     }
 
@@ -648,6 +681,41 @@ impl LiqctldClient {
     pub fn is_connected(&self) -> bool {
         self.connection_pool.borrow().is_empty().not()
     }
+}
+
+/// A pooled connection and the instant it last became idle (was returned to the pool). The pool is
+/// a LIFO stack: `get_socket_connection` takes from the back, so surplus connections sink to the
+/// front and age there until `reap_idle_connections` closes them.
+struct PooledConnection {
+    connection: SocketConnection,
+    idle_since: Instant,
+}
+
+impl PooledConnection {
+    fn new(connection: SocketConnection) -> Self {
+        Self {
+            connection,
+            idle_since: Instant::now(),
+        }
+    }
+}
+
+/// Count of leading entries idle longer than `timeout`, assuming oldest-idle-first ordering. Stops
+/// at the first fresh entry, which the LIFO pool guarantees means the rest are fresh too.
+fn stale_prefix_len(
+    idle_since: impl Iterator<Item = Instant>,
+    now: Instant,
+    timeout: Duration,
+) -> usize {
+    let mut count = 0;
+    for idle_at in idle_since {
+        if now.duration_since(idle_at) > timeout {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    count
 }
 
 struct SocketConnection {
@@ -748,4 +816,40 @@ struct ScreenRequest {
     channel: String,
     mode: String,
     value: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_prefix_len_counts_only_the_leading_expired_run() {
+        // Goal: reaping closes the run of oldest-idle connections that have exceeded the timeout and
+        // stops at the first still-fresh one. Since the pool is LIFO (fresh connections kept at the
+        // back), a fresh entry means every later entry is fresh too, so the scan can stop early.
+        // Method: build instants relative to a fixed `now` and assert the counted prefix.
+        let now = Instant::now();
+        let old = now - Duration::from_secs(120);
+        let fresh = now - Duration::from_secs(1);
+        let timeout = Duration::from_secs(30);
+        assert_eq!(
+            stale_prefix_len([old, old, fresh, fresh].into_iter(), now, timeout),
+            2
+        );
+        assert_eq!(
+            stale_prefix_len([fresh, fresh].into_iter(), now, timeout),
+            0
+        );
+        assert_eq!(
+            stale_prefix_len([old, old, old].into_iter(), now, timeout),
+            3
+        );
+        assert_eq!(stale_prefix_len(std::iter::empty(), now, timeout), 0);
+        // A fresh entry halts the scan even if an older one follows; the straggler is reaped on a
+        // later pass once the fresh ones ahead of it are consumed.
+        assert_eq!(
+            stale_prefix_len([old, fresh, old].into_iter(), now, timeout),
+            1
+        );
+    }
 }
