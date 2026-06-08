@@ -610,7 +610,9 @@ impl LiquidctlRepo {
             .acquire()
             .await
             .expect("device permit never closed");
-        if device_data.driver_type == BaseDriver::HydroPlatinum && channel_name == "pump" {
+        let result = if device_data.driver_type == BaseDriver::HydroPlatinum
+            && channel_name == "pump"
+        {
             // limits from tested Hydro H150i Pro XT
             let pump_mode = if fixed_speed < 56 {
                 "quiet".to_string()
@@ -658,7 +660,11 @@ impl LiquidctlRepo {
                         device_data.uid
                     )
                 })
-        }
+        };
+        // Hold the permit through the configured command delay so the next request to this device
+        // observes the gap (liqctld serializes per device, but the gap itself is ours to enforce).
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     async fn set_speed_profile(
@@ -697,7 +703,8 @@ impl LiquidctlRepo {
         } else {
             None
         };
-        self.liqctld_client
+        let result = self
+            .liqctld_client
             .put_speed_profile(
                 &device_data.type_index,
                 channel_name,
@@ -711,7 +718,9 @@ impl LiquidctlRepo {
                     device_data.type_index,
                     device_data.uid
                 )
-            })
+            });
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     /// Caps the speed profile to the max number of points allowed by the fan curve.
@@ -770,7 +779,8 @@ impl LiquidctlRepo {
         let lc_channel_name = self
             .device_mapper
             .liquidctl_color_channel_name(&device_data.driver_type, channel_name);
-        self.liqctld_client
+        let result = self
+            .liqctld_client
             .put_color(
                 &device_data.type_index,
                 lc_channel_name,
@@ -787,7 +797,9 @@ impl LiquidctlRepo {
                     device_data.type_index,
                     device_data.uid
                 )
-            })
+            });
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     async fn set_screen(
@@ -879,6 +891,10 @@ impl LiquidctlRepo {
             "Time taken to apply all LIQUIDCTL IMAGE LCD settings: {:?}",
             start_lcd_settings_apply.elapsed()
         );
+        // Held under the device permit (acquired at the top of this method) so the next request to
+        // this device observes the configured command gap. Skipped only if a sub-command above
+        // already returned early, in which case the device is failing and the next apply re-delays.
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
         Ok(())
     }
 
@@ -1160,6 +1176,11 @@ impl Repository for LiquidctlRepo {
     /// All internal `CoolerControl` processes for this device channel are reset though.
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
+        let _permit = self
+            .device_permit(cached_device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
         let result = if cached_device_data.driver_type == BaseDriver::CorsairHidPsu {
             // The only device so far that can be reset to hardware control
             self.liqctld_client
@@ -1208,17 +1229,14 @@ impl Repository for LiquidctlRepo {
         debug!(
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        let result = self
-            .set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
+        self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
             .map_err(|err| {
                 anyhow!(
                     "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
                     cached_device_data.driver_type
                 )
-            });
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+            })
     }
 
     async fn apply_setting_speed_profile(
@@ -1232,16 +1250,13 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_speed_profile(
-                &cached_device_data,
-                channel_name,
-                temp_source,
-                speed_profile,
-            )
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_speed_profile(
+            &cached_device_data,
+            channel_name,
+            temp_source,
+            speed_profile,
+        )
+        .await
     }
 
     async fn apply_setting_lighting(
@@ -1254,11 +1269,8 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_color(&cached_device_data, channel_name, lighting)
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_color(&cached_device_data, channel_name, lighting)
+            .await
     }
 
     async fn apply_setting_lcd(
@@ -1269,11 +1281,8 @@ impl Repository for LiquidctlRepo {
     ) -> Result<()> {
         debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; LCD: {lcd:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_screen(&cached_device_data, channel_name, lcd)
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_screen(&cached_device_data, channel_name, lcd)
+            .await
     }
 
     async fn apply_setting_pwm_mode(&self, _: &UID, _: &str, _: u8) -> Result<()> {
@@ -1600,5 +1609,39 @@ mod tests {
             permits.get(&1).unwrap().try_acquire().is_ok(),
             "permit frees on release"
         );
+    }
+
+    #[test]
+    fn command_delay_is_held_under_the_device_permit() {
+        // Goal: a write applies the command delay while still holding the device's permit, so a
+        // concurrent request to that device is blocked until the delay elapses (the fix: the gap
+        // applies to the device's next command, not just the apply caller). Method: one task holds
+        // the permit across a real `apply_device_command_delay`; a spawned waiter for the same
+        // permit must not get in until the delay finishes and the permit drops.
+        crate::rt::test_runtime(async {
+            let sem = Rc::new(Semaphore::new(1));
+            let waiter_entered = Rc::new(RefCell::new(false));
+            let held = sem.acquire().await.expect("permit starts free");
+            let sem_for_waiter = Rc::clone(&sem);
+            let entered = Rc::clone(&waiter_entered);
+            let waiter = crate::rt::spawn_task(async move {
+                let _permit = sem_for_waiter
+                    .acquire()
+                    .await
+                    .expect("permit frees eventually");
+                *entered.borrow_mut() = true;
+            });
+            apply_device_command_delay(20).await; // runs while the permit is held
+            assert!(
+                !*waiter_entered.borrow(),
+                "a same-device request must stay blocked through the command delay"
+            );
+            drop(held);
+            let _ = waiter.await;
+            assert!(
+                *waiter_entered.borrow(),
+                "the waiter proceeds once the delay elapses and the permit drops"
+            );
+        });
     }
 }
