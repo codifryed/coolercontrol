@@ -246,8 +246,16 @@ docker-ci-run:
 docker-ci-run-deb-bookworm:
 	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
 
+# arm64 variant runs the same multi-arch deb-bookworm image; --platform selects the arm64 manifest (needs qemu emulation on amd64)
+docker-ci-run-deb-bookworm-arm64:
+	@docker run --name coolercontrol-ci-deb-arm64 --rm --platform linux/arm64 -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
+
 docker-ci-run-ubuntu:
 	@docker run --name coolercontrol-ci-ubuntu --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) bash
+
+# arm64 variant runs the dedicated ubuntu-arm64 image (needs qemu emulation on amd64)
+docker-ci-run-ubuntu-arm64:
+	@docker run --name coolercontrol-ci-ubuntu-arm64 --rm --platform linux/arm64 -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:$(docker_image_tag) bash
 
 docker-ci-run-appimage:
 	@docker run --name coolercontrol-ci-appimage --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) bash
