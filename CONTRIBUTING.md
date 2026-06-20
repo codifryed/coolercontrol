@@ -11,10 +11,12 @@ addressing your issue, assessing changes, and helping you finalize your pull req
 ## Quicklinks
 
 - [Code of Conduct](#code-of-conduct)
+- [Vision](#vision)
 - [Getting Started](#getting-started)
   - [Issues](#issues)
   - [Merge Requests](#merge-requests)
     - [Development Environment](#development-environment)
+- [AI-Assisted Contributions](#ai-assisted-contributions)
 - [Getting Help](#getting-help)
 
 ## Code of Conduct
@@ -102,6 +104,31 @@ To use it, make sure you have [Nix installed](https://nixos.org/download/#nix-in
 
 Then run `nix-shell /path/to/coolercontrol/shell.nix`. This will give a shell without modifying your
 system.
+
+## AI-Assisted Contributions
+
+AI coding assistants (such as GitHub Copilot, Claude, or ChatGPT) are welcome as tools to help you
+contribute. They do not lower the standards your contribution is held to, and a few expectations
+apply.
+
+- **You are the author, the AI is a tool.** AI may assist you, but it does not contribute on its own
+  behalf.
+- **You are fully accountable.** You own every line you submit, including any bug, regression, or
+  security flaw it introduces. "The AI wrote it" is never an explanation in review.
+- **No purely machine-generated submissions.** Unreviewed, drive-by AI output is not accepted and
+  may be closed without review. We would rather have a small, well-understood change than a large
+  one nobody can stand behind.
+- **You understand and have tested it.** You can explain every change during review, and you have
+  built, run, and tested it yourself rather than trusting the model's word.
+- **You are responsible for licensing.** Make sure AI-suggested code does not introduce material
+  under a license incompatible with this project's GPL-3.0-or-later license, or verbatim copyrighted
+  code. Generated code can reproduce its training data.
+- **Disclose AI use.** Note in your merge request description that AI was used and roughly where. If
+  you want to be precise, you may also add an `Assisted-by:` trailer to your commits, for example
+  `Assisted-by: Claude:claude-opus-4`.
+
+In short: use whatever tools help you, but the work, the understanding, and the responsibility are
+yours.
 
 ## Getting Help
 
