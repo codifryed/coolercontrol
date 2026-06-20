@@ -1,8 +1,7 @@
-> :warning: **Reporting a feature request or documentation issue?**
-> Pick the matching template from the **"Choose a template"** dropdown above.
-> Otherwise, fill out this bug report.
-
 # Bug
+
+> :warning: **Reporting a feature request or documentation issue?** Pick the matching template from
+> the **"Choose a template"** dropdown above. Otherwise, fill out this bug report.
 
 ## Environment
 
@@ -39,9 +38,8 @@ journalctl -e -u coolercontrold
 - [ ] I have not found another existing issue that deals with this problem.
 - [ ] I have filled out all sections of this template
 - [ ] I have attached log output and/or screenshots
-- [ ] I have read the
-      [Hardware Support](https://docs.coolercontrol.org/hardware-support.html) section
-      of the readme and applied all available steps.
+- [ ] I have read the [Hardware Support](https://docs.coolercontrol.org/hardware-support.html)
+      section of the readme and applied all available steps.
 - [x] I have not read any of the above
 
 **Note:** CoolerControl depends on open source drivers to communicate with your hardware. If there
