@@ -33,6 +33,7 @@ import DeviceLabelNode from '@/components/control-flow/DeviceLabelNode.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import Button from 'primevue/button'
+import { features } from '@/features'
 import { mdiAutoFix, mdiHelpCircleOutline, mdiTuneVerticalVariant } from '@mdi/js'
 import { Emitter, EventType } from 'mitt'
 import { useDeviceStore } from '@/stores/DeviceStore'
@@ -145,7 +146,11 @@ onUnmounted(() => {
                     </a>
                 </div>
                 <div class="flex items-center gap-x-2">
-                    <Button class="h-9" @click="emitter.emit('profile-generate')">
+                    <Button
+                        v-if="features.coolingWizard"
+                        class="h-9"
+                        @click="emitter.emit('profile-generate')"
+                    >
                         <svg-icon
                             class="outline-0"
                             type="mdi"

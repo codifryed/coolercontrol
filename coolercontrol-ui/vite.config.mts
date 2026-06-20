@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
@@ -63,8 +64,41 @@ function reflectMetadataPlugin(): Plugin {
     }
 }
 
+// Experimental UI features gated to specific branch builds. Each feature lists
+// the git branches it is enabled on; any other branch (and builds where the
+// branch cannot be detected) leaves it off, so main and release builds stay
+// clean. Consumed at runtime via src/features.ts.
+const FEATURE_BRANCHES: Record<string, string[]> = {
+    coolingWizard: ['cooling-wizard', 'compio-base'],
+}
+
+function currentGitBranch(): string {
+    try {
+        return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+            stdio: ['ignore', 'pipe', 'ignore'],
+        })
+            .toString()
+            .trim()
+    } catch {
+        return 'main'
+    }
+}
+
+function buildFeatureFlags(): Record<string, boolean> {
+    const branch = currentGitBranch()
+    return Object.fromEntries(
+        Object.entries(FEATURE_BRANCHES).map(([feature, branches]) => [
+            feature,
+            branches.includes(branch),
+        ]),
+    )
+}
+
 export default defineConfig({
     base: '/',
+    define: {
+        __FEATURES__: JSON.stringify(buildFeatureFlags()),
+    },
     plugins: [
         reflectMetadataPlugin(),
         vue(),

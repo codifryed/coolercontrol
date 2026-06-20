@@ -49,6 +49,7 @@ import {
     mdiTuneVerticalVariant,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import { features } from '@/features'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import OverlayBadge from 'primevue/overlaybadge'
@@ -452,14 +453,18 @@ const addItems = computed(() => [
             emitter.emit('custom-sensor-add')
         },
     },
-    {
-        label: t('components.wizards.generate.title'),
-        mdiIcon: mdiAutoFix,
-        command: () => {
-            addMenuRef.value?.handleClose()
-            emitter.emit('profile-generate')
-        },
-    },
+    ...(features.coolingWizard
+        ? [
+              {
+                  label: t('components.wizards.generate.title'),
+                  mdiIcon: mdiAutoFix,
+                  command: () => {
+                      addMenuRef.value?.handleClose()
+                      emitter.emit('profile-generate')
+                  },
+              },
+          ]
+        : []),
     {
         label: t('components.wizards.calibration.title'),
         mdiIcon: mdiTuneVerticalVariant,

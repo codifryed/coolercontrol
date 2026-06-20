@@ -72,6 +72,7 @@ import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
 import SubMenuProfileDuplicate from '@/components/menu/SubMenuProfileDuplicate.vue'
 import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
 import MenuProfileGenerate from '@/components/menu/MenuProfileGenerate.vue'
+import { features } from '@/features'
 import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
 import MenuModeRename from '@/components/menu/MenuModeRename.vue'
 import SubMenuModeDelete from '@/components/menu/SubMenuModeDelete.vue'
@@ -472,7 +473,11 @@ const profilesTree = (): any => {
         label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        menus: [Menu.PROFILE_INFO, Menu.PROFILE_ADD, Menu.PROFILE_GENERATE],
+        menus: [
+            Menu.PROFILE_INFO,
+            Menu.PROFILE_ADD,
+            ...(features.coolingWizard ? [Menu.PROFILE_GENERATE] : []),
+        ],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile

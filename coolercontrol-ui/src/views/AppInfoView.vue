@@ -31,6 +31,7 @@ import {
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { features } from '@/features'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Emitter, EventType } from 'mitt'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
@@ -520,7 +521,10 @@ onBeforeUnmount(() => {
                             </li>
                             <li>{{ t('views.appInfo.gettingStartedStep3') }}</li>
                         </ol>
-                        <p class="mt-3 ml-2 text-sm text-text-color-secondary">
+                        <p
+                            v-if="features.coolingWizard"
+                            class="mt-3 ml-2 text-sm text-text-color-secondary"
+                        >
                             <i18n-t keypath="views.appInfo.gettingStartedAutoCreate" tag="span">
                                 <template #wizard>
                                     <a
