@@ -40,7 +40,7 @@ use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
-use libdrm_amdgpu_sys::AMDGPU::GPU_INFO;
+use libdrm_amdgpu_sys::AMDGPU::{CHIP_CLASS, GPU_INFO};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 
@@ -80,6 +80,9 @@ impl GpuAMD {
     pub async fn init_devices(&self) -> Vec<AMDDriverInfo> {
         let base_paths = devices::find_all_hwmon_device_paths();
         let mut amd_infos = vec![];
+        // Set when an amdgpu device is present but libdrm could not be loaded,
+        // so we can warn once after probing all devices.
+        let mut libdrm_unavailable = false;
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {
@@ -166,7 +169,13 @@ impl GpuAMD {
                 .ok();
             let has_rdna_fan_ctrl = device_path.join("gpu_od/fan_ctrl").is_dir();
             let overdrive_enabled = super::amd_overdrive::is_overdrive_enabled().await;
-            let drm_device_name = Self::get_drm_device_name(&path).await;
+            let (drm_device_name, is_rdna3_or_newer) = match Self::get_drm_info(&path).await {
+                DrmProbe::Info(info) => (info.device_name, info.is_rdna3_or_newer),
+                DrmProbe::LibUnavailable => {
+                    libdrm_unavailable = true;
+                    (None, false)
+                }
+            };
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path)
                 .await
@@ -185,9 +194,17 @@ impl GpuAMD {
                 fan_curve_info,
                 has_rdna_fan_ctrl,
                 overdrive_enabled,
+                is_rdna3_or_newer,
                 fdinfo_load,
             };
             amd_infos.push(amd_driver_info);
+        }
+        if libdrm_unavailable {
+            warn!(
+                "libdrm could not be loaded. AMD GPU detection is degraded: \
+                RDNA3/4 cards cannot be identified without the gpu_od interface. \
+                Install the libdrm package for full support."
+            );
         }
         amd_infos
     }
@@ -276,8 +293,22 @@ impl GpuAMD {
         }]
     }
 
-    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
-        let drm_amdgpu = LibDrmAmdgpu::new().ok()?;
+    /// Queries libdrm for the device name and GPU generation. libdrm is loaded
+    /// dynamically, so it may be absent; that case is reported distinctly via
+    /// `DrmProbe::LibUnavailable` so the caller can warn the user to install it.
+    async fn get_drm_info(base_path: &Path) -> DrmProbe {
+        let Ok(drm_amdgpu) = LibDrmAmdgpu::new() else {
+            return DrmProbe::LibUnavailable;
+        };
+        let info = Self::query_drm_gpu_info(&drm_amdgpu, base_path)
+            .await
+            .unwrap_or_default();
+        DrmProbe::Info(info)
+    }
+
+    /// Opens the GPU's DRM render node and reads its device info. Returns `None`
+    /// if the node or any query fails (e.g. no PCI slot, permissions).
+    async fn query_drm_gpu_info(drm_amdgpu: &LibDrmAmdgpu, base_path: &Path) -> Option<DrmGpuInfo> {
         let slot_name = devices::get_pci_slot_name(base_path).await?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
         let drm_file = cc_fs::open_options()
@@ -286,7 +317,15 @@ impl GpuAMD {
             .open(&path)
             .ok()?;
         let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
-        Some(handle.device_info().ok()?.find_device_name_or_default())
+        let device_info = handle.device_info().ok()?;
+        Some(DrmGpuInfo {
+            device_name: Some(device_info.find_device_name_or_default()),
+            // RDNA3 (GFX11) or newer use the PMFW fan-curve interface; the legacy
+            // hwmon pwm controls return EINVAL on these. APUs are excluded: they
+            // have no controllable GPU fan via amdgpu.
+            is_rdna3_or_newer: device_info.is_apu().not()
+                && device_info.get_chip_class() >= CHIP_CLASS::GFX11,
+        })
     }
 
     /// Gets the PMFW (power management firmware) fan curve information.
@@ -524,7 +563,7 @@ impl GpuAMD {
                         .as_ref()
                         .map_or(17, |fc| fc.fan_curve.points.len() as u8),
                     model: amd_driver.hwmon.model.clone(),
-                    amd_gpu_overdrive: if amd_driver.has_rdna_fan_ctrl {
+                    amd_gpu_overdrive: if amd_driver.uses_pmfw_fan_control() {
                         Some(amd_driver.overdrive_enabled)
                     } else {
                         None
@@ -587,8 +626,10 @@ impl GpuAMD {
         if let Some(fan_curve_info) = &amd_driver.fan_curve_info {
             // RDNA3/4 with parsed fan curve: controllable only if overdrive enabled
             fan_curve_info.changeable
-        } else if amd_driver.has_rdna_fan_ctrl {
-            // RDNA3/4 but fan_curve_info failed to parse: check overdrive directly
+        } else if amd_driver.uses_pmfw_fan_control() {
+            // RDNA3/4 without a readable fan curve (overdrive off or gpu_od absent):
+            // the legacy pwm interface returns EINVAL, so the fan only becomes
+            // controllable once overdrive is enabled and the curve appears.
             amd_driver.overdrive_enabled
         } else {
             // Pre-RDNA3: standard hwmon controls, always controllable
@@ -765,8 +806,16 @@ impl GpuAMD {
                         )
                     })
             }
+        } else if amd_driver_info.uses_pmfw_fan_control() {
+            // RDNA3/4 without a usable PMFW fan curve: the legacy pwm interface
+            // returns EINVAL on these cards, so refuse with actionable guidance
+            // rather than attempting a write that cannot succeed.
+            Err(anyhow!(
+                "Fan control on this RDNA3/4 GPU requires AMD GPU Overdrive to be enabled. \
+                Enable it in the device's Advanced Settings, then reboot."
+            ))
         } else {
-            // Standard HWMon Fan controls:
+            // Standard HWMon Fan controls (pre-RDNA3):
             let channel_info = amd_driver_info
                 .hwmon
                 .channels
@@ -1037,13 +1086,41 @@ pub struct AMDDriverInfo {
     device_path: PathBuf,
     pub fan_curve_info: Option<FanCurveInfo>,
     /// Whether the `gpu_od/fan_ctrl/` directory exists (RDNA3/4 indicator).
+    /// Only present once overdrive is enabled, so absence does not rule out RDNA3/4.
     has_rdna_fan_ctrl: bool,
     /// Whether the ppfeaturemask has the overdrive bit enabled.
     overdrive_enabled: bool,
+    /// RDNA3 (GFX11) or newer discrete GPU, detected via libdrm independently of
+    /// the `gpu_od` interface. Lets us identify PMFW cards even when overdrive is
+    /// disabled (so `gpu_od/fan_ctrl` is absent). False when libdrm is unavailable.
+    is_rdna3_or_newer: bool,
     /// Set when the hwmon load sensor is unsupported and load is sourced from
     /// DRM fdinfo instead. The matching per-device delta state lives in
     /// `GpuAMD::amd_fdinfo_state`.
     fdinfo_load: Option<FdInfoLoad>,
+}
+
+impl AMDDriverInfo {
+    /// Whether this card uses the RDNA3/4 PMFW fan-curve interface, for which the
+    /// legacy hwmon pwm controls are non-functional (EINVAL). True if libdrm
+    /// identified it as RDNA3+ or the `gpu_od/fan_ctrl` directory is present.
+    fn uses_pmfw_fan_control(&self) -> bool {
+        self.is_rdna3_or_newer || self.has_rdna_fan_ctrl
+    }
+}
+
+/// Outcome of probing libdrm for an amdgpu device.
+enum DrmProbe {
+    /// libdrm could not be dynamically loaded (package not installed).
+    LibUnavailable,
+    /// libdrm loaded; carries whatever device info could be queried.
+    Info(DrmGpuInfo),
+}
+
+#[derive(Default)]
+struct DrmGpuInfo {
+    device_name: Option<String>,
+    is_rdna3_or_newer: bool,
 }
 
 /// The PMFW (power management firmware) fan curve information.
@@ -1269,6 +1346,21 @@ mod tests {
             fan_curve_info,
             has_rdna_fan_ctrl,
             overdrive_enabled,
+            is_rdna3_or_newer: false,
+            fdinfo_load: None,
+        }
+    }
+
+    /// RDNA3/4 card identified by libdrm while `gpu_od/fan_ctrl` is absent
+    /// (overdrive disabled), i.e. the work-item-589 scenario.
+    fn rdna3_libdrm_driver(overdrive_enabled: bool) -> AMDDriverInfo {
+        AMDDriverInfo {
+            hwmon: HwmonDriverInfo::default(),
+            device_path: PathBuf::default(),
+            fan_curve_info: None,
+            has_rdna_fan_ctrl: false,
+            overdrive_enabled,
+            is_rdna3_or_newer: true,
             fdinfo_load: None,
         }
     }
@@ -1308,6 +1400,32 @@ mod tests {
         // RDNA3/4 GPU where fan_curve_info failed to parse, but overdrive is enabled
         let driver = basic_test_amd_driver(None, true, true);
         assert!(GpuAMD::get_fan_is_controllable(&driver));
+    }
+
+    // Work item 589: RDNA3/4 identified by libdrm while gpu_od is absent (overdrive
+    // off). Must NOT be controllable: the legacy pwm path returns EINVAL on these.
+    #[test]
+    fn fan_not_controllable_rdna3_libdrm_without_overdrive() {
+        let driver = rdna3_libdrm_driver(false);
+        assert!(GpuAMD::get_fan_is_controllable(&driver).not());
+    }
+
+    // Same libdrm-detected RDNA3/4 card once overdrive is enabled: controllable.
+    #[test]
+    fn fan_controllable_rdna3_libdrm_with_overdrive() {
+        let driver = rdna3_libdrm_driver(true);
+        assert!(GpuAMD::get_fan_is_controllable(&driver));
+    }
+
+    // libdrm detection alone marks the card as a PMFW fan-control card, even with
+    // no gpu_od directory; a pre-RDNA3 card (neither signal) does not.
+    #[test]
+    fn uses_pmfw_fan_control_from_libdrm_or_gpu_od() {
+        assert!(rdna3_libdrm_driver(false).uses_pmfw_fan_control());
+        assert!(basic_test_amd_driver(None, true, false).uses_pmfw_fan_control());
+        assert!(basic_test_amd_driver(None, false, false)
+            .uses_pmfw_fan_control()
+            .not());
     }
 
     use crate::cc_fs;
@@ -1358,6 +1476,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                is_rdna3_or_newer: false,
                 fdinfo_load: None,
             };
 
@@ -1394,6 +1513,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                is_rdna3_or_newer: false,
                 fdinfo_load: None,
             };
 
@@ -1429,6 +1549,7 @@ mod tests {
                 fan_curve_info: None,
                 has_rdna_fan_ctrl: false,
                 overdrive_enabled: false,
+                is_rdna3_or_newer: false,
                 fdinfo_load: None,
             };
 
