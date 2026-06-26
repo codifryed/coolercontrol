@@ -776,12 +776,15 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     Rc::new(all_devices)
 }
 
-/// This will make sure that our main tokio task thread stays on the same CPU, reducing
-/// any unnecessary context switching.
+/// Pin our main runtime thread to the CPU it is currently running on, reducing unnecessary
+/// context switching.
 ///
-/// The downside is that the blocking IO thread pool is generally a bit larger, but still
-/// less than the standard multithreaded setup of one thread per core. Due to this, it should
-/// not be called until the main initialization work has been completed.
+/// Deferred until after runtime startup and initialization complete, never at build time.
+/// Linux threads inherit the creating thread's affinity mask, so pinning before the blocking
+/// IO pool has warmed up would trap every later-spawned blocking thread on this one CPU.
+/// Running it now lets those threads spawn while affinity is still all-CPUs and stay spread
+/// across cores. This is also why compio's build-time `RuntimeBuilder::thread_affinity` is
+/// not used: it pins inside `build()`, before any blocking worker exists.
 fn set_cpu_affinity() -> Result<()> {
     let current_cpu = sched_getcpu()?;
     let mut cpu_set = CpuSet::new();
