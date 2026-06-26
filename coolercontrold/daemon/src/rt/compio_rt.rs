@@ -25,6 +25,7 @@ use std::task::Poll;
 use std::time::Instant;
 
 use compio::runtime::Runtime;
+use log::info;
 use nix::sys::signal::{SigSet, Signal};
 
 pub use compio::time::{interval, sleep, timeout};
@@ -42,6 +43,19 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     Runtime::new()
         .expect("compio runtime builds")
         .block_on(future)
+}
+
+/// Log which fusion-driver backend compio selected. The fusion driver uses `io_uring` when the
+/// kernel supports every opcode we need, otherwise it falls back to polling (epoll on Linux, e.g.
+/// when `kernel.io_uring_disabled` blocks it). Call from within the runtime, after logging is set
+/// up, so `with_current` sees the active runtime.
+pub fn log_active_backend() {
+    let driver_type = Runtime::with_current(Runtime::driver_type);
+    if driver_type.is_iouring() {
+        info!("Using the io_uring backend");
+    } else {
+        info!("Using the polling (epoll) fallback backend");
+    }
 }
 
 /// Initialize and run a runtime for tests.
@@ -196,6 +210,7 @@ pub async fn shutdown_signal() {
 mod tests {
     use super::*;
     use nix::sys::signal::{pthread_sigmask, SigmaskHow};
+    use std::ops::Not;
 
     /// Goal: `block_termination_signals` must leave SIGINT, SIGTERM, and SIGQUIT masked on the
     /// calling thread. That mask is what lets compio's signalfd be the sole consumer of these
@@ -220,5 +235,23 @@ mod tests {
 
         pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&original), None)
             .expect("restore original signal mask");
+    }
+
+    /// Goal: `log_active_backend` must be callable from within the compio runtime, where its
+    /// `with_current` query reaches the live driver. The call site relies on this: `with_current`
+    /// panics outside a runtime, so the function must only ever run inside `block_on`. Method: build
+    /// a runtime, and inside `block_on` confirm the selected driver is one of the two Linux fusion
+    /// options (`io_uring` or its polling/epoll fallback, never IOCP) and that the log call returns
+    /// without panicking.
+    #[test]
+    fn log_active_backend_runs_within_runtime() {
+        Runtime::new()
+            .expect("compio runtime builds")
+            .block_on(async {
+                let driver_type = Runtime::with_current(Runtime::driver_type);
+                assert!(driver_type.is_iouring() || driver_type.is_polling());
+                assert!(driver_type.is_iocp().not());
+                log_active_backend();
+            });
     }
 }

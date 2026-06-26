@@ -299,6 +299,7 @@ fn main() -> Result<()> {
 
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
+        rt::log_active_backend();
 
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;

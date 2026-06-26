@@ -19,6 +19,7 @@
 //! Tokio backend for the runtime facade (the default). Selected when the `compio-rt` feature is
 //! off. See `super` for the facade contract.
 
+use log::info;
 use std::future::Future;
 use std::time::{Duration, Instant};
 use tokio::runtime::Builder;
@@ -50,6 +51,10 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     // should a background thread still be running, this will force the runtime process to stop:
     rt.shutdown_timeout(Duration::from_secs(3));
     output
+}
+
+pub fn log_active_backend() {
+    info!("Using the polling (epoll) reactor backend");
 }
 
 /// Initialize and run a runtime for tests.
