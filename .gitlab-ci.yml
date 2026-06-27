@@ -328,7 +328,8 @@ build_deb_bookworm_amd64:
       node --version
       cmake --version
     - dpkg-architecture -l
-    - dpkg-buildpackage -us -B
+    # -d skips dpkg-checkbuilddeps: this image's cargo comes from rustup, not a deb package
+    - dpkg-buildpackage -d -us -B
     - cp ../coolercontrol*_amd64.* ./
     - rm -f coolercontrol*-dbgsym*.*deb
   artifacts:
@@ -384,7 +385,8 @@ build_deb_bookworm_arm64:
       node --version
       cmake --version
     - dpkg-architecture -l
-    - dpkg-buildpackage -us -B
+    # -d skips dpkg-checkbuilddeps: this image's cargo comes from rustup, not a deb package
+    - dpkg-buildpackage -d -us -B
     - ls -lah ../
     - cp ../coolercontrol*_arm64.* ./
     - rm -f coolercontrol*-dbgsym*.*deb
