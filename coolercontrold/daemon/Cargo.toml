@@ -3,9 +3,9 @@ name = "coolercontrold"
 version = "4.3.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
-# MSRV for all included libraries
-# We should only increase this when we drop support for older distros.
-# 1.85 is the newest-supported version for 22.04 LTS Jammy.
+# MSRV. Stays at 1.85 The default features enable `compio-rt`, which pulls in compio and raises
+# the effective default MSRV to 1.88. rust-version is feature-independent, so we cannot encode 1.88
+# here without also rejecting the supported 1.85 no-default build.
 rust-version = "1.85"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://coolercontrol.org"
@@ -17,10 +17,9 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [features]
-default = []
-# Opt-in compio main runtime. When off, the daemon main thread runs on tokio; when on, it runs on
-# compio with the fusion driver (io-uring + polling). The tokio sidecar (crate::sidecar) is always
-# present either way, hosting the reactor-bound libs.
+default = ["compio-rt"]
+# compio main runtime (default, requires Rust 1.88). When off (`--no-default-features`, builds on
+# Rust 1.85).
 compio-rt = ["dep:compio", "dep:cyper-core", "dep:compio-buf"]
 
 [dependencies]

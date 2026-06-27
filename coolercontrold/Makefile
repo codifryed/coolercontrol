@@ -4,8 +4,8 @@ prefix := '/usr'
 executable := 'coolercontrold'
 release :=
 
-# Detect cargo or fallback to cargo-1.85
-CARGO := $(shell command -v cargo || command -v cargo-1.85)
+# Detect cargo or fallback
+CARGO := $(shell command -v cargo || command -v cargo-1.88 || command -v cargo-1.85 || command -v cargo-1.91)
 
 .PHONY: build test clean install uninstall
 
