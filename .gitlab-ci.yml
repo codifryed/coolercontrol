@@ -396,6 +396,35 @@ build_deb_bookworm_arm64:
       - coolercontrol*.deb
     expire_in: 5 days
 
+####################################### Debian Bookworm: daemon MSRV (Rust 1.85) compile check
+# Manual/optional. Confirms the daemon still compiles on Rust 1.85 via --no-default-features (the
+# tokio runtime, our minimum supported toolchain). Stock debian:bookworm + cargo-web pulls Rust 1.85.
+# RUSTFLAGS is cleared so this is a pure compile check, not a warnings gate. Remove this job once the
+# MSRV is officially raised to 1.88.
+build_daemon_msrv_bookworm:
+  image: debian:bookworm
+  stage: build
+  tags:
+    - saas-linux-xlarge-amd64
+  needs: []
+  variables:
+    RUSTFLAGS: ''
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+      when: manual
+      allow_failure: true
+  before_script:
+    - apt-get update
+    - >
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+      cargo-web protobuf-compiler libdrm-dev build-essential ca-certificates
+    - cargo --version
+    - rustc --version
+  script:
+    # Daemon only (no UI build): daemon/resources/app ships a tracked .gitignore so the dir exists
+    # in a fresh checkout, which is all include_dir! needs to compile.
+    - cargo build --manifest-path coolercontrold/Cargo.toml -p coolercontrold --locked --no-default-features
+    - ./coolercontrold/target/debug/coolercontrold --version
 
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
 build_ubuntu:
