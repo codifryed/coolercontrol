@@ -10,7 +10,7 @@ CARGO := $(shell command -v cargo || command -v cargo-1.88 || command -v cargo-1
 # Default build uses the compio runtime (needs Rust 1.88). Older toolchains (>= 1.85) auto fall
 # back to the tokio runtime via --no-default-features, so each OBS/distro target builds the best
 # runtime its cargo supports.
-CARGO_VER := $(shell $(CARGO) --version | awk '{print $$2}')
+CARGO_VER := $(if $(CARGO),$(shell $(CARGO) --version | awk '{print $$2}'))
 # Empty (compio) when cargo >= 1.88, i.e. when [1.88, cargo version] is already in ascending
 # order. Any 1.88+ release (1.88.1, 1.96.0, ...) selects compio; 1.85.x/1.87.x select tokio.
 FEATURES := $(shell printf '1.88\n%s\n' "$(CARGO_VER)" | sort -V -C || echo --no-default-features)
