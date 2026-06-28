@@ -233,6 +233,11 @@ const axisXTempMin: Ref<number> = ref(props.tempMin ?? currentProfile.value.temp
 const axisXTempMax: Ref<number> = ref(props.tempMax ?? currentProfile.value.temp_max ?? 100)
 const dutyMin: number = 0
 const dutyMax: number = 100
+
+// Clamp the live temp indicator to the visible axis range so the line and its
+// label stay pinned to the nearest edge instead of disappearing off-chart.
+const clampTemp = (temp: number | undefined): number | undefined =>
+    temp == null ? temp : Math.min(Math.max(temp, axisXTempMin.value), axisXTempMax.value)
 let firstTimeChoosingTemp: boolean = true
 
 interface PointData {
@@ -541,7 +546,7 @@ const option = {
                 },
                 data: [
                     {
-                        coord: [selectedTempSourceTemp.value, 95],
+                        coord: [clampTemp(selectedTempSourceTemp.value), 95],
                         value: selectedTempSourceTemp.value,
                     },
                 ],
@@ -657,11 +662,11 @@ const setGraphData = () => {
     // @ts-ignore
     option.series[2].markPoint.label.color = selectedTempSource.color
     // @ts-ignore
-    option.series[2].markPoint.data[0].coord[0] = selectedTempSourceTemp.value
+    option.series[2].markPoint.data[0].coord[0] = clampTemp(selectedTempSourceTemp.value)
     // @ts-ignore
     option.series[2].markPoint.data[0].value = selectedTempSourceTemp.value
-    tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
-    tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
+    tempLineData[0].value = [clampTemp(selectedTempSourceTemp.value)!, dutyMin]
+    tempLineData[1].value = [clampTemp(selectedTempSourceTemp.value)!, dutyMax]
 }
 const setFunctionGraphData = (): void => {
     if (chosenFunction.value.f_type === FunctionType.Identity) {
@@ -717,8 +722,8 @@ watch(rawStore.currentDeviceStatus, () => {
         return
     }
     setTempSourceTemp()
-    tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
-    tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
+    tempLineData[0].value = [clampTemp(selectedTempSourceTemp.value)!, dutyMin]
+    tempLineData[1].value = [clampTemp(selectedTempSourceTemp.value)!, dutyMax]
     // there is a strange error only on the first time once switches back to a graph profile: Unknown series error
     controlGraph.value?.setOption({
         series: {
@@ -727,7 +732,7 @@ watch(rawStore.currentDeviceStatus, () => {
             markPoint: {
                 data: [
                     {
-                        coord: [selectedTempSourceTemp.value!, 95],
+                        coord: [clampTemp(selectedTempSourceTemp.value), 95],
                         value: selectedTempSourceTemp.value!,
                     },
                 ],

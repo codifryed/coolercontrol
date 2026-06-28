@@ -102,6 +102,10 @@ if (profileTempMax > 50 && currentAxisTempMax > 100) {
 const axisXTempMin: number = currentAxisTempMin
 const axisXTempMax: number = currentAxisTempMax
 
+// Clamp the live temp indicator to the visible axis range so the line and its
+// label stay pinned to the nearest edge instead of disappearing off-chart.
+const clampTemp = (temp: number): number => Math.min(Math.max(temp, axisXTempMin), axisXTempMax)
+
 interface LineData {
     value: number[]
 }
@@ -327,7 +331,7 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 data:
                     memberProfiles.value[i].p_type === ProfileType.Fixed
                         ? []
-                        : [{ coord: [getTemp(i), 95], value: getTemp(i) }],
+                        : [{ coord: [clampTemp(getTemp(i)), 95], value: getTemp(i) }],
             },
             z: 10,
             silent: true,
@@ -431,8 +435,9 @@ const setGraphData = (profileIndex: number) => {
         return
     }
     const temp = getTemp(profileIndex)
-    tempLineData[profileIndex][0].value = [temp, dutyMin]
-    tempLineData[profileIndex][1].value = [temp, dutyMax]
+    const clampedTemp = clampTemp(temp)
+    tempLineData[profileIndex][0].value = [clampedTemp, dutyMin]
+    tempLineData[profileIndex][1].value = [clampedTemp, dutyMax]
     graphLineData[profileIndex].length = 0
     if (profile.speed_profile.length > 1) {
         const firstPoint = profile.speed_profile[0]
@@ -489,14 +494,15 @@ watch(rawStore.currentDeviceStatus, () => {
     for (let i = 0; i < memberProfiles.value.length; i++) {
         if (memberProfiles.value[i].p_type === ProfileType.Fixed) continue
         const temp = getTemp(i)
-        tempLineData[i][0].value = [temp, dutyMin]
-        tempLineData[i][1].value = [temp, dutyMax]
+        const clampedTemp = clampTemp(temp)
+        tempLineData[i][0].value = [clampedTemp, dutyMin]
+        tempLineData[i][1].value = [clampedTemp, dutyMax]
         mixGraph.value?.setOption({
             series: [
                 {
                     id: 'tempLine' + i,
                     data: tempLineData[i],
-                    markPoint: { data: [{ coord: [temp, 95], value: temp }] },
+                    markPoint: { data: [{ coord: [clampedTemp, 95], value: temp }] },
                 },
             ],
         })
