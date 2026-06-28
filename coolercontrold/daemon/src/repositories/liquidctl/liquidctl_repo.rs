@@ -40,6 +40,7 @@ use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt::sleep;
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource,
 };
@@ -51,8 +52,9 @@ use futures_util::TryFutureExt;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::sync::{oneshot, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
@@ -62,7 +64,12 @@ const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
-    liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
+    /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
+    /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
+    liqctld_service_running: Arc<AtomicBool>,
+    /// Receives the supervisor's exit `Result` so shutdown can await its graceful exit and startup
+    /// can report why it died. Replaced on each (re)spawn.
+    liqctld_service_done: RefCell<Option<oneshot::Receiver<Result<()>>>>,
     liqctld_stop_token: RefCell<CancellationToken>,
     run_token: CancellationToken,
     device_mapper: DeviceMapper,
@@ -72,6 +79,10 @@ pub struct LiquidctlRepo {
     disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
     device_delays: HashMap<UID, u16>,
+    /// One `Semaphore(1)` per device serializes the daemon's liqctld requests for that device, so it
+    /// never opens more concurrent connections to one device than liqctld (which processes each
+    /// device serially) can use.
+    device_permits: HashMap<u8, Semaphore>,
 }
 
 impl LiquidctlRepo {
@@ -90,7 +101,13 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        if let Err(err) = liqctld_service::verify_env().await {
+        // verify_env spawns a Python process via the supervisor's `tokio::process`, so it must run
+        // on the sidecar Tokio runtime (no Tokio reactor on the compio main thread).
+        if let Err(err) = crate::sidecar::handle()
+            .run(liqctld_service::verify_env)
+            .await
+            .unwrap_or_else(Err)
+        {
             let msg = format!(
                 "Python liquidctl system package not detected. If you want liquidctl device \
                 support, please make sure the liquidctl package is installed with your \
@@ -100,25 +117,14 @@ impl LiquidctlRepo {
             return Err(InitError::PythonEnv { msg }.into());
         }
         let stop_token = CancellationToken::new();
-        let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(run_token.clone(), stop_token.clone()));
+        let running = Arc::new(AtomicBool::new(false));
+        let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
             Ok(client) => client,
             Err(err) => {
-                let err_msg = if service_handle.is_finished() {
-                    match service_handle.await {
-                        Ok(_) => {
-                            format!("liqctld service exited without error. Client error: {err}")
-                        }
-                        Err(service_err) => format!(
-                            "liqctld service exited with error: {service_err} ; Client error: {err}"
-                        ),
-                    }
-                } else {
-                    err.to_string()
-                };
+                let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
                 return Err(InitError::Connection { msg: err_msg }.into());
             }
         };
@@ -131,7 +137,8 @@ impl LiquidctlRepo {
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
-            liqctld_service_handle: RefCell::new(Some(service_handle)),
+            liqctld_service_running: running,
+            liqctld_service_done: RefCell::new(Some(done_rx)),
             liqctld_stop_token: RefCell::new(stop_token),
             run_token,
             device_mapper: DeviceMapper::new(),
@@ -140,7 +147,51 @@ impl LiquidctlRepo {
             failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: RefCell::new(HashMap::new()),
             device_delays: HashMap::new(),
+            device_permits: HashMap::new(),
         })
+    }
+
+    /// Spawns the liqctld supervisor on the sidecar Tokio runtime. Sets `running` true now and
+    /// returns a receiver for the supervisor's exit `Result`; the spawned task clears `running` and
+    /// sends its result when it exits.
+    fn spawn_service_task(
+        running: &Arc<AtomicBool>,
+        run_token: CancellationToken,
+        stop_token: CancellationToken,
+    ) -> oneshot::Receiver<Result<()>> {
+        running.store(true, Ordering::Release);
+        let running = Arc::clone(running);
+        let (done_tx, done_rx) = oneshot::channel();
+        crate::sidecar::handle().spawn(move || async move {
+            let result = liqctld_service::run(run_token, stop_token).await;
+            running.store(false, Ordering::Release);
+            let _ = done_tx.send(result);
+        });
+        done_rx
+    }
+
+    /// Builds the startup connection-failure message. If the supervisor already exited, await its
+    /// result (it sends right after clearing `running`) to report why; otherwise the failure is
+    /// purely client-side.
+    async fn service_exit_message(
+        running: &Arc<AtomicBool>,
+        done_rx: oneshot::Receiver<Result<()>>,
+        client_err: &anyhow::Error,
+    ) -> String {
+        if running.load(Ordering::Acquire) {
+            return client_err.to_string();
+        }
+        match done_rx.await {
+            Ok(Ok(())) => {
+                format!("liqctld service exited without error. Client error: {client_err}")
+            }
+            Ok(Err(service_err)) => {
+                format!(
+                    "liqctld service exited with error: {service_err} ; Client error: {client_err}"
+                )
+            }
+            Err(_) => client_err.to_string(),
+        }
     }
 
     fn load_device_delays(&mut self) {
@@ -159,6 +210,13 @@ impl LiquidctlRepo {
 
     fn device_delay(&self, device_uid: &UID) -> u16 {
         self.device_delays.get(device_uid).copied().unwrap_or(0)
+    }
+
+    /// The device's serialization permit.
+    fn device_permit(&self, device_id: u8) -> &Semaphore {
+        self.device_permits
+            .get(&device_id)
+            .expect("device_permits has an entry for every registered device")
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
@@ -223,6 +281,10 @@ impl LiquidctlRepo {
                     error!("Error enabling direct access for: {} - {err}", device.name);
                 }
             }
+            // One serialization permit per device, so the daemon issues at most one liqctld request
+            // per device at a time (see `device_permits`).
+            self.device_permits
+                .insert(device.type_index, Semaphore::new(1));
             self.devices
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
@@ -255,13 +317,7 @@ impl LiquidctlRepo {
 
     /// Returns whether the liqctld service task is alive.
     pub fn is_service_running(&self) -> bool {
-        let handle = self.liqctld_service_handle.borrow();
-        let running = handle.as_ref().is_some_and(|h| h.is_finished().not());
-        debug_assert!(
-            running || handle.is_none() || handle.as_ref().unwrap().is_finished(),
-            "Service handle must be None, finished, or running."
-        );
-        running
+        self.liqctld_service_running.load(Ordering::Acquire)
     }
 
     /// Spawns the liqctld service and verifies the client can reach it.
@@ -273,9 +329,12 @@ impl LiquidctlRepo {
         );
         let stop_token = CancellationToken::new();
         *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
-        let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(self.run_token.clone(), stop_token));
-        *self.liqctld_service_handle.borrow_mut() = Some(service_handle);
+        let done_rx = Self::spawn_service_task(
+            &self.liqctld_service_running,
+            self.run_token.clone(),
+            stop_token,
+        );
+        *self.liqctld_service_done.borrow_mut() = Some(done_rx);
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         self.liqctld_client.handshake().await?;
@@ -381,9 +440,18 @@ impl LiquidctlRepo {
             .filter(|driver| self.device_mapper.is_device_supported(driver))
     }
 
-    async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
-        let status_response = self.liqctld_client.get_status(device_id).await?;
-        Ok(status_response.status)
+    async fn call_status(&self, device_id: &u8, delay_millis: u16) -> Result<LCStatus> {
+        let _permit = self
+            .device_permit(*device_id)
+            .acquire()
+            .await
+            .expect("device permit never closed");
+        let status_response = self.liqctld_client.get_status(device_id).await;
+        // Hold the permit through the command delay so the next request to this device observes the
+        // gap, matching the write paths. Applied on success or failure (a failed read still spaces
+        // the device's next command).
+        apply_device_command_delay(delay_millis).await;
+        Ok(status_response?.status)
     }
 
     fn create_status_map(lc_statuses: &LCStatus) -> StatusMap {
@@ -541,7 +609,14 @@ impl LiquidctlRepo {
         channel_name: &str,
         fixed_speed: u8,
     ) -> Result<()> {
-        if device_data.driver_type == BaseDriver::HydroPlatinum && channel_name == "pump" {
+        let _permit = self
+            .device_permit(device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
+        let result = if device_data.driver_type == BaseDriver::HydroPlatinum
+            && channel_name == "pump"
+        {
             // limits from tested Hydro H150i Pro XT
             let pump_mode = if fixed_speed < 56 {
                 "quiet".to_string()
@@ -589,7 +664,11 @@ impl LiquidctlRepo {
                         device_data.uid
                     )
                 })
-        }
+        };
+        // Hold the permit through the configured command delay so the next request to this device
+        // observes the gap (liqctld serializes per device, but the gap itself is ours to enforce).
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     async fn set_speed_profile(
@@ -599,6 +678,11 @@ impl LiquidctlRepo {
         temp_source: &TempSource,
         profile: &[(f64, u8)],
     ) -> Result<()> {
+        let _permit = self
+            .device_permit(device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
         let max_points = self
             .devices
             .get(&device_data.uid)
@@ -623,7 +707,8 @@ impl LiquidctlRepo {
         } else {
             None
         };
-        self.liqctld_client
+        let result = self
+            .liqctld_client
             .put_speed_profile(
                 &device_data.type_index,
                 channel_name,
@@ -637,7 +722,9 @@ impl LiquidctlRepo {
                     device_data.type_index,
                     device_data.uid
                 )
-            })
+            });
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     /// Caps the speed profile to the max number of points allowed by the fan curve.
@@ -666,6 +753,11 @@ impl LiquidctlRepo {
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
+        let _permit = self
+            .device_permit(device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
         let mode = &lighting_settings.mode;
         let colors = lighting_settings.colors.clone();
         let mut time_per_color: Option<u8> = None;
@@ -691,7 +783,8 @@ impl LiquidctlRepo {
         let lc_channel_name = self
             .device_mapper
             .liquidctl_color_channel_name(&device_data.driver_type, channel_name);
-        self.liqctld_client
+        let result = self
+            .liqctld_client
             .put_color(
                 &device_data.type_index,
                 lc_channel_name,
@@ -708,7 +801,9 @@ impl LiquidctlRepo {
                     device_data.type_index,
                     device_data.uid
                 )
-            })
+            });
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
+        result
     }
 
     async fn set_screen(
@@ -717,6 +812,11 @@ impl LiquidctlRepo {
         channel_name: &str,
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
+        let _permit = self
+            .device_permit(device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
         // We set several settings at once for lcd/screen settings
         // We first start with re-initializing the device, as this helps clear LCD related settings
         // and gives more consistent results when applying images.
@@ -795,6 +895,10 @@ impl LiquidctlRepo {
             "Time taken to apply all LIQUIDCTL IMAGE LCD settings: {:?}",
             start_lcd_settings_apply.elapsed()
         );
+        // Held under the device permit (acquired at the top of this method) so the next request to
+        // this device observes the configured command gap. Skipped only if a sub-command above
+        // already returned early, in which case the device is failing and the next apply re-delays.
+        apply_device_command_delay(self.device_delay(&device_data.uid)).await;
         Ok(())
     }
 
@@ -836,12 +940,14 @@ impl LiquidctlRepo {
         // sometimes we want to shut the service down before the daemon, hence the stop token:
         self.liqctld_stop_token.borrow().cancel();
         self.liqctld_client.post_quit().await?;
-        // proper shutdown of liqctld service child process:
-        let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
-        if let Some(service_handle) = liqctld_service_handle {
-            // wait for the service to exit
-            if let Err(err) = service_handle.await {
-                warn!("liqctld service did not shutdown properly: {err}");
+        // proper shutdown of liqctld service child process: wait for the supervisor (on the
+        // sidecar) to report its exit over the channel.
+        let done_rx = self.liqctld_service_done.borrow_mut().take();
+        if let Some(done_rx) = done_rx {
+            match done_rx.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => warn!("liqctld service did not shutdown properly: {err}"),
+                Err(_) => debug!("liqctld supervisor already gone before shutdown await"),
             }
         }
         self.liqctld_client.shutdown();
@@ -990,7 +1096,7 @@ impl Repository for LiquidctlRepo {
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    match self.call_status(&device_id).await {
+                    match self.call_status(&device_id, delay).await {
                         Ok(status) => {
                             self.preloaded_statuses
                                 .borrow_mut()
@@ -1022,7 +1128,6 @@ impl Repository for LiquidctlRepo {
                             }
                         }
                     }
-                    apply_device_command_delay(delay).await;
                 });
             }
         })
@@ -1074,6 +1179,11 @@ impl Repository for LiquidctlRepo {
     /// All internal `CoolerControl` processes for this device channel are reset though.
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
+        let _permit = self
+            .device_permit(cached_device_data.type_index)
+            .acquire()
+            .await
+            .expect("device permit never closed");
         let result = if cached_device_data.driver_type == BaseDriver::CorsairHidPsu {
             // The only device so far that can be reset to hardware control
             self.liqctld_client
@@ -1122,17 +1232,14 @@ impl Repository for LiquidctlRepo {
         debug!(
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        let result = self
-            .set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
+        self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
             .map_err(|err| {
                 anyhow!(
                     "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
                     cached_device_data.driver_type
                 )
-            });
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+            })
     }
 
     async fn apply_setting_speed_profile(
@@ -1146,16 +1253,13 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_speed_profile(
-                &cached_device_data,
-                channel_name,
-                temp_source,
-                speed_profile,
-            )
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_speed_profile(
+            &cached_device_data,
+            channel_name,
+            temp_source,
+            speed_profile,
+        )
+        .await
     }
 
     async fn apply_setting_lighting(
@@ -1168,11 +1272,8 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_color(&cached_device_data, channel_name, lighting)
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_color(&cached_device_data, channel_name, lighting)
+            .await
     }
 
     async fn apply_setting_lcd(
@@ -1183,11 +1284,8 @@ impl Repository for LiquidctlRepo {
     ) -> Result<()> {
         debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; LCD: {lcd:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
-        let result = self
-            .set_screen(&cached_device_data, channel_name, lcd)
-            .await;
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        self.set_screen(&cached_device_data, channel_name, lcd)
+            .await
     }
 
     async fn apply_setting_pwm_mode(&self, _: &UID, _: &str, _: u8) -> Result<()> {
@@ -1484,5 +1582,69 @@ mod tests {
             Some(&"serialothername".to_string())
         );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
+    }
+
+    #[test]
+    fn device_permits_serialize_one_device_and_overlap_others() {
+        // Goal: the `device_permits` storage (one `Semaphore(1)` per device id, borrowed on acquire
+        // exactly as the repo does) lets two requests to the same device serialize while different
+        // devices overlap. Method: synchronous try_acquire, no runtime needed.
+        let mut permits: HashMap<u8, Semaphore> = HashMap::new();
+        permits.insert(1, Semaphore::new(1));
+        permits.insert(2, Semaphore::new(1));
+        // Holding device 1's only permit blocks a second device-1 acquire...
+        let held = permits
+            .get(&1)
+            .unwrap()
+            .try_acquire()
+            .expect("device 1 free");
+        assert!(
+            permits.get(&1).unwrap().try_acquire().is_err(),
+            "same device must serialize"
+        );
+        // ...but device 2 is independent and proceeds in parallel.
+        assert!(
+            permits.get(&2).unwrap().try_acquire().is_ok(),
+            "different devices must overlap"
+        );
+        drop(held);
+        assert!(
+            permits.get(&1).unwrap().try_acquire().is_ok(),
+            "permit frees on release"
+        );
+    }
+
+    #[test]
+    fn command_delay_is_held_under_the_device_permit() {
+        // Goal: a write applies the command delay while still holding the device's permit, so a
+        // concurrent request to that device is blocked until the delay elapses (the fix: the gap
+        // applies to the device's next command, not just the apply caller). Method: one task holds
+        // the permit across a real `apply_device_command_delay`; a spawned waiter for the same
+        // permit must not get in until the delay finishes and the permit drops.
+        crate::rt::test_runtime(async {
+            let sem = Rc::new(Semaphore::new(1));
+            let waiter_entered = Rc::new(RefCell::new(false));
+            let held = sem.acquire().await.expect("permit starts free");
+            let sem_for_waiter = Rc::clone(&sem);
+            let entered = Rc::clone(&waiter_entered);
+            let waiter = crate::rt::spawn_task(async move {
+                let _permit = sem_for_waiter
+                    .acquire()
+                    .await
+                    .expect("permit frees eventually");
+                *entered.borrow_mut() = true;
+            });
+            apply_device_command_delay(20).await; // runs while the permit is held
+            assert!(
+                !*waiter_entered.borrow(),
+                "a same-device request must stay blocked through the command delay"
+            );
+            drop(held);
+            let _ = waiter.await;
+            assert!(
+                *waiter_entered.borrow(),
+                "the waiter proceeds once the delay elapses and the permit drops"
+            );
+        });
     }
 }

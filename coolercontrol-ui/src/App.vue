@@ -302,6 +302,9 @@ onMounted(async () => {
     // Overview can be the configured startup page, and its FanChannelNode
     // buttons read `statusFor` on first paint.
     await calibrationStore.refreshAllStatuses()
+    // Re-attach to a calibration batch the daemon is still driving after a
+    // reload (the daemon owns the queue, so it survived the suspend/reload).
+    const calibrationBatchResumed = await calibrationStore.ensureBatchPolling()
     // Honor the configured startup page, but only when the user landed on the
     // default root route (no deep link). The empty path's component is
     // AppInfoView, so AppInfo needs no redirect; Controls and HomeDashboard do.
@@ -318,6 +321,12 @@ onMounted(async () => {
     await deviceStore.loadAllPlugins()
     loaded.value = true
     loading.close()
+    // Reopen the calibration wizard to show live progress once the layout
+    // (and its `calibrate-fans` listener) has mounted.
+    if (calibrationBatchResumed) {
+        await nextTick()
+        emitter.emit('calibrate-fans')
+    }
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) startTour()

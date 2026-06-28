@@ -17,6 +17,7 @@ so `import main` works regardless of CWD. Three invocations all work:
     python3 -m unittest discover -s coolercontrold/daemon/resources/liqctld
 """
 
+import concurrent.futures
 import os
 import sys
 import threading
@@ -29,7 +30,10 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
-from main import DeviceExecutor  # noqa: E402  (sys.path mutation above)
+from main import (  # noqa: E402  (sys.path mutation above)
+    WEDGE_THRESHOLD_SECS,
+    DeviceExecutor,
+)
 
 
 class _CallRecorder:
@@ -211,6 +215,61 @@ class DeviceExecutorCoalescerTests(unittest.TestCase):
                 break
             time.sleep(0.01)
         self.assertTrue(self.executor.device_queue_empty(self.device_id))
+
+
+class DeviceExecutorWedgeTests(unittest.TestCase):
+    def setUp(self):
+        self.executor = DeviceExecutor()
+        self.executor.set_number_of_devices(1)
+        self.device_id = 1
+
+    def tearDown(self):
+        self.executor.shutdown()
+
+    def test_wedged_worker_rejects_then_recovers(self):
+        """Goal: once a worker has been stuck on a job past
+        WEDGE_THRESHOLD_SECS, new submits for that device fail fast
+        with a TimeoutError instead of piling up, and resume normally
+        once the worker is free again. Method: hold the worker on a
+        blocked primer, backdate its job-start time past the threshold
+        (so the test needs no real multi-second wait), assert
+        submit/submit_write reject immediately and never reach fn, then
+        release and assert a fresh submit runs.
+        """
+        held = _CallRecorder()
+        held.block()
+        primer = self.executor.submit(self.device_id, held, tag="primer")
+        # Wait for the worker to pick up the primer so its start time is recorded.
+        for _ in range(100):
+            if self.executor._job_running_since.get(self.device_id) is not None:
+                break
+            time.sleep(0.01)
+        self.assertIsNotNone(self.executor._job_running_since.get(self.device_id))
+
+        # Backdate the in-flight job past the wedge threshold to simulate a hung USB call.
+        self.executor._job_running_since[self.device_id] = time.monotonic() - (
+            WEDGE_THRESHOLD_SECS + 1.0
+        )
+
+        rejected = _CallRecorder()
+        f_read = self.executor.submit(self.device_id, rejected, tag="read")
+        f_write = self.executor.submit_write(
+            self.device_id, "speed:fan1", rejected, channel="fan1", duty=10
+        )
+        with self.assertRaises(concurrent.futures.TimeoutError):
+            f_read.result(timeout=1.0)
+        with self.assertRaises(concurrent.futures.TimeoutError):
+            f_write.result(timeout=1.0)
+        self.assertEqual(rejected.call_count, 0, "rejected work must never reach fn")
+
+        # Releasing the primer clears the wedge; new submits run again.
+        held.release()
+        primer.result(timeout=1.0)
+        recovered = _CallRecorder()
+        self.executor.submit(self.device_id, recovered, tag="after").result(timeout=1.0)
+        self.assertEqual(
+            recovered.call_count, 1, "submits run again once the worker frees up"
+        )
 
 
 if __name__ == "__main__":

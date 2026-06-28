@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::cc_fs;
+use crate::cc_fs::sidecar_fs;
 use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -74,13 +74,14 @@ pub fn verify_token(raw: &str, hash: &str) -> bool {
 pub async fn load_tokens() -> Result<Vec<StoredToken>> {
     let tokens_path = paths::tokens_file();
     if tokens_path.exists() {
-        let contents = cc_fs::read_txt(tokens_path).await?;
+        let contents = sidecar_fs::read_txt(tokens_path).await?;
         let trimmed = contents.trim();
         if trimmed.is_empty() {
             return Ok(Vec::new());
         }
         let tokens: Vec<StoredToken> = serde_json::from_str(trimmed)?;
-        cc_fs::set_permissions(tokens_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+        sidecar_fs::set_permissions(tokens_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
+            .await?;
         Ok(tokens)
     } else {
         Ok(Vec::new())
@@ -90,9 +91,9 @@ pub async fn load_tokens() -> Result<Vec<StoredToken>> {
 pub async fn save_tokens(tokens: &[StoredToken]) -> Result<()> {
     let tokens_path = paths::tokens_file();
     let json = serde_json::to_string_pretty(tokens)?;
-    let _ = cc_fs::remove_file(tokens_path).await;
-    cc_fs::write_string(tokens_path, json).await?;
-    cc_fs::set_permissions(tokens_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let _ = sidecar_fs::remove_file(tokens_path).await;
+    sidecar_fs::write_string(tokens_path, json).await?;
+    sidecar_fs::set_permissions(tokens_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
     Ok(())
 }
 
@@ -236,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_load_save_roundtrip() {
-        cc_fs::test_runtime(async {
+        sidecar_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let tokens_path = dir.path().join(".tokens");
 
@@ -253,9 +254,9 @@ mod tests {
             }];
 
             let json = serde_json::to_string_pretty(&tokens).unwrap();
-            cc_fs::write_string(&tokens_path, json).await.unwrap();
+            sidecar_fs::write_string(&tokens_path, json).await.unwrap();
 
-            let contents = cc_fs::read_txt(&tokens_path).await.unwrap();
+            let contents = sidecar_fs::read_txt(&tokens_path).await.unwrap();
             let loaded: Vec<StoredToken> = serde_json::from_str(contents.trim()).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0].id, "id1");

@@ -449,6 +449,12 @@ export default {
             duplicateDashboard: 'Duplicar Painel',
         },
         appInfo: {
+            gettingStartedAutoCreate:
+                '{wizard} pode ser usado para configurar perfis básicos para todos os seus ventiladores de uma vez.',
+            gettingStartedAutoCreateLink: 'Criar perfis automaticamente',
+            calibrateFans:
+                'Para um controle consistente, {wizard} para que uma determinada % signifique uma velocidade semelhante em cada ventilador.',
+            calibrateFansLink: 'calibre seus ventiladores',
             title: 'Info e Ferramentas',
             noWarranty: 'Este programa é fornecido sem absolutamente nenhuma garantia.',
             changeStartupPage: 'Alterar a página inicial nas Configurações',
@@ -1142,6 +1148,80 @@ export default {
                 'Número de cores a serem usadas para o Modo de Iluminação escolhido.',
         },
         wizards: {
+            calibration: {
+                title: 'Calibrar ventiladores',
+                tooltip: 'Calibrar vários ventiladores para um controle de velocidade consistente',
+                pickIntro:
+                    'Selecione os ventiladores a calibrar. Os já calibrados ficam desmarcados por padrão.',
+                noFans: 'Nenhum ventilador controlável detectado.',
+                selectAll: 'Selecionar tudo',
+                calibratedBadge: 'calibrado',
+                idleNote:
+                    'A calibração percorre toda a faixa de cada ventilador. É melhor executar em repouso: faz barulho e leva alguns minutos por ventilador.',
+                concurrencyLabel: 'Ventiladores por vez',
+                concurrencyNote:
+                    'Fazer mais de uma vez é mais rápido, mas ventiladores adjacentes podem distorcer as leituras uns dos outros (vento cruzado, push-pull). Um de cada vez é o mais preciso.',
+                start: 'Iniciar',
+                close: 'Fechar',
+                running: 'Calibrando {current} de {total}...',
+                queued: 'Na fila',
+                done: 'Concluído',
+                failed: 'Falhou',
+                skipped: 'Ignorado',
+                startFailed: 'Não foi possível iniciar',
+                summary: '{done} calibrados, {failed} com falha, {skipped} ignorados.',
+                reloadBatch:
+                    '{count} ventiladores calibrados. Recarregar para aplicar o novo controle normalizado por RPM?',
+                stagePreflight: 'Verificação inicial',
+                stageUpSweep: 'Varredura crescente',
+                stageDownSweep: 'Varredura decrescente',
+                stageFinalizing: 'Finalizando',
+            },
+            generate: {
+                title: 'Criar perfis automaticamente',
+                tooltip:
+                    'Criar automaticamente perfis para seus ventiladores a partir de algumas escolhas',
+                stepFans: 'Atribuir ventiladores',
+                stepTemps: 'Temperaturas principais',
+                stepPreset: 'Desempenho',
+                assignIntro:
+                    'Atribua uma função a cada ventilador. Deixe um ventilador sem função para ignorá-lo.',
+                skip: 'Ignorar',
+                noFans: 'Nenhum ventilador controlável detectado.',
+                tempsIntro:
+                    'Confirme suas temperaturas principais. Elas são pré-preenchidas como melhor estimativa: verifique-as.',
+                cpuTemp: 'Temp. CPU',
+                gpuTemp: 'Temp. GPU',
+                liquidTemp: 'Temp. do líquido',
+                ambientTemp: 'Temp. ambiente (opcional)',
+                tempNone: 'Nenhuma',
+                presetIntro: 'Escolha com que intensidade os ventiladores devem acelerar.',
+                perKindOverrides: 'Substituições por função (avançado)',
+                cfmCaveat:
+                    'O viés de pressão positiva é baseado no ciclo de trabalho (duty), não no fluxo de ar: com quantidades de ventiladores desiguais, ele não pode garantir pressão positiva.',
+                generate: 'Gerar',
+                preview: 'Pré-visualização',
+                previewIntro:
+                    'Revise o que será criado e aplicado. Nada é salvo até você confirmar.',
+                previewAssignments: 'Atribuições de ventiladores',
+                willCreateHeader: 'Será criado',
+                startingPointNote:
+                    'Um ponto de partida fácil em vez de começar do zero. Eles não serão perfeitos para todos os sistemas, então verifique, teste e ajuste-os após criar.',
+                replaces: 'substitui {name}',
+                createApply: 'Criar e aplicar',
+                generated: '{count} perfis gerados.',
+                generateError: 'Não foi possível gerar os perfis.',
+                applyError: 'Não foi possível criar os perfis.',
+                kind: {
+                    CpuCooler: 'Cooler de ar da CPU',
+                    GpuFan: 'Ventilador da GPU',
+                    AioRadiator: 'Radiador AIO',
+                    AioPump: 'Bomba AIO',
+                    CaseIntake: 'Entrada do gabinete',
+                    CaseExhaust: 'Exaustão do gabinete',
+                    LaptopFan: 'Ventilador de notebook',
+                },
+            },
             fanControl: {
                 fanControlWizard: 'Assistente de Controle de Ventilador',
                 editCurrentProfile: 'Editar Perfil',

@@ -31,6 +31,7 @@ import {
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { features } from '@/features'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Emitter, EventType } from 'mitt'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
@@ -520,6 +521,35 @@ onBeforeUnmount(() => {
                             </li>
                             <li>{{ t('views.appInfo.gettingStartedStep3') }}</li>
                         </ol>
+                        <p
+                            v-if="features.coolingWizard"
+                            class="mt-3 ml-2 text-sm text-text-color-secondary"
+                        >
+                            <i18n-t keypath="views.appInfo.gettingStartedAutoCreate" tag="span">
+                                <template #wizard>
+                                    <a
+                                        href="#"
+                                        class="text-accent hover:underline cursor-pointer"
+                                        @click.prevent="emitter.emit('profile-generate')"
+                                    >
+                                        {{ t('views.appInfo.gettingStartedAutoCreateLink') }}
+                                    </a>
+                                </template>
+                            </i18n-t>
+                        </p>
+                        <p class="mt-2 ml-2 text-sm text-text-color-secondary">
+                            <i18n-t keypath="views.appInfo.calibrateFans" tag="span">
+                                <template #wizard>
+                                    <a
+                                        href="#"
+                                        class="text-accent hover:underline cursor-pointer"
+                                        @click.prevent="emitter.emit('calibrate-fans')"
+                                    >
+                                        {{ t('views.appInfo.calibrateFansLink') }}
+                                    </a>
+                                </template>
+                            </i18n-t>
+                        </p>
                     </div>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a

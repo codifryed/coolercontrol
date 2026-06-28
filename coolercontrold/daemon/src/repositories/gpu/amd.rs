@@ -22,7 +22,7 @@ use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::amd_fdinfo::{self, FdInfoLoad, FdInfoLoadState};
 use crate::cc_fs;
@@ -46,6 +46,9 @@ use regex::Regex;
 
 pub const TEMP_FOR_FAN_CURVE: &str = "temp1";
 const AMD_HWMON_NAME: &str = "amdgpu";
+/// Cap on the one-shot libdrm device-name lookup at init, so a wedged DRM driver cannot stall
+/// device discovery. The call normally returns in well under a millisecond.
+const DRM_NAME_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
 const PATTERN_FAN_CURVE_LIMITS_TEMP: &str =
     r"FAN_CURVE\(hotspot temp\):\s+(?P<temp_min>\d+)C\s+(?P<temp_max>\d+)C";
@@ -297,24 +300,36 @@ impl GpuAMD {
     /// dynamically, so it may be absent; that case is reported distinctly via
     /// `DrmProbe::LibUnavailable` so the caller can warn the user to install it.
     async fn get_drm_info(base_path: &Path) -> DrmProbe {
-        let Ok(drm_amdgpu) = LibDrmAmdgpu::new() else {
-            return DrmProbe::LibUnavailable;
-        };
-        let info = Self::query_drm_gpu_info(&drm_amdgpu, base_path)
+        let render_path = devices::get_pci_slot_name(base_path)
             .await
-            .unwrap_or_default();
-        DrmProbe::Info(info)
+            .map(|slot_name| format!("/dev/dri/by-path/pci-{slot_name}-render"));
+        // libdrm performs synchronous DRM ioctls, so probe off the runtime thread
+        // (the offload-blocking-FFI rule), bounded by a timeout so a wedged driver
+        // cannot stall init. The handle lives entirely inside the closure, never
+        // crossing threads.
+        let probe = move || -> DrmProbe {
+            let Ok(drm_amdgpu) = LibDrmAmdgpu::new() else {
+                return DrmProbe::LibUnavailable;
+            };
+            let info = render_path
+                .and_then(|path| Self::query_drm_gpu_info(&drm_amdgpu, &path))
+                .unwrap_or_default();
+            DrmProbe::Info(info)
+        };
+        match crate::rt::timeout(DRM_NAME_LOOKUP_TIMEOUT, crate::rt::spawn_blocking(probe)).await {
+            Ok(Ok(probe)) => probe,
+            _ => DrmProbe::Info(DrmGpuInfo::default()),
+        }
     }
 
     /// Opens the GPU's DRM render node and reads its device info. Returns `None`
-    /// if the node or any query fails (e.g. no PCI slot, permissions).
-    async fn query_drm_gpu_info(drm_amdgpu: &LibDrmAmdgpu, base_path: &Path) -> Option<DrmGpuInfo> {
-        let slot_name = devices::get_pci_slot_name(base_path).await?;
-        let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
+    /// if the node or any query fails (e.g. permissions). Called on the blocking
+    /// pool via `get_drm_info`; performs synchronous libdrm ioctls inline.
+    fn query_drm_gpu_info(drm_amdgpu: &LibDrmAmdgpu, render_path: &str) -> Option<DrmGpuInfo> {
         let drm_file = cc_fs::open_options()
             .read(true)
             .write(true)
-            .open(&path)
+            .open(render_path)
             .ok()?;
         let (handle, _, _) = drm_amdgpu.init_device_handle_with_fd(drm_file).ok()?;
         let device_info = handle.device_info().ok()?;

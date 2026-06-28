@@ -18,14 +18,14 @@
 
 use std::io::Cursor;
 use std::str::FromStr;
+use std::thread::JoinHandle;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use image::codecs::gif::GifDecoder;
 use image::imageops::FilterType;
 use image::AnimationDecoder;
 use imgref::ImgVec;
 use mime::Mime;
-use tokio::task::JoinHandle;
 
 /// Returns the supported image MIME types for LCD screen uploads.
 // MIME string literals are valid by construction; unwrap cannot fail.
@@ -46,29 +46,33 @@ pub fn supported_image_types() -> [Mime; 5] {
 /// Takes uploaded image data and processes it for the LCD/Screen.
 /// Ensures images are properly sized, cropped, and standardized.
 ///
+/// CPU-bound and blocking (GIFs use worker threads internally), and runtime-agnostic. Callers on an
+/// async runtime should run it on a blocking thread so it does not stall the executor.
+///
 /// # Errors
 ///
 /// Returns an error if decoding, resizing, or re-encoding fails.
-pub async fn process_image(
-    content_type: Mime,
+pub fn process_image(
+    content_type: &Mime,
     file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    if content_type == mime::IMAGE_GIF {
-        process_gif(file_data, screen_width, screen_height).await
+    if *content_type == mime::IMAGE_GIF {
+        process_gif(file_data, screen_width, screen_height)
     } else {
-        process_static_image(file_data, screen_width, screen_height).await
+        process_static_image(&file_data, screen_width, screen_height)
     }
 }
 
 /// Our customized GIF processing implementation
-async fn process_gif(
+fn process_gif(
     file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    // The collector and writer must be on separate threads:
+    // The collector and writer must run on separate threads: gifski streams frames from the
+    // collector to the writer through an internal channel, so both must make progress at once.
     let (collector, writer) = gifski::new(gifski::Settings {
         width: None,
         height: None,
@@ -76,9 +80,7 @@ async fn process_gif(
         fast: false,
         repeat: gifski::Repeat::Infinite,
     })?;
-    // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
-    //  and these processing functions are rarely executed.
-    let collector_handle: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
+    let collector_handle: JoinHandle<Result<()>> = std::thread::spawn(move || {
         let decoder = GifDecoder::new(Cursor::new(file_data))?;
         let frames = decoder.into_frames().collect_frames()?;
         let mut presentation_timestamp = 0.;
@@ -106,33 +108,32 @@ async fn process_gif(
         }
         Ok(())
     });
-    let writer_handle: JoinHandle<Result<Vec<u8>>> = tokio::task::spawn_blocking(move || {
+    let writer_handle: JoinHandle<Result<Vec<u8>>> = std::thread::spawn(move || {
         let mut gif_image_output = Cursor::new(Vec::new());
         writer.write(&mut gif_image_output, &mut gifski::progress::NoProgress {})?;
         Ok(gif_image_output.into_inner())
     });
-    let data = writer_handle.await??;
-    collector_handle.await??;
+    let data = writer_handle
+        .join()
+        .map_err(|_| anyhow!("gif writer thread panicked"))??;
+    collector_handle
+        .join()
+        .map_err(|_| anyhow!("gif collector thread panicked"))??;
     Ok((mime::IMAGE_GIF, data))
 }
 
-async fn process_static_image(
-    file_data: Vec<u8>,
+fn process_static_image(
+    file_data: &[u8],
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
-    //  and these processing functions are rarely executed.
-    let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
-        let mut image_output = Cursor::new(Vec::new());
-        let rgba = image::load_from_memory(&file_data)?
-            .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)
-            .to_rgba8();
-        let rgb = flatten_alpha_to_black(&rgba);
-        image::DynamicImage::ImageRgb8(rgb).write_to(&mut image_output, image::ImageFormat::Png)?;
-        Ok(image_output)
-    });
-    Ok((mime::IMAGE_PNG, join_handle.await??.into_inner()))
+    let mut image_output = Cursor::new(Vec::new());
+    let rgba = image::load_from_memory(file_data)?
+        .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)
+        .to_rgba8();
+    let rgb = flatten_alpha_to_black(&rgba);
+    image::DynamicImage::ImageRgb8(rgb).write_to(&mut image_output, image::ImageFormat::Png)?;
+    Ok((mime::IMAGE_PNG, image_output.into_inner()))
 }
 
 /// Composites an RGBA image onto a black background, producing an RGB image.
@@ -150,4 +151,54 @@ fn flatten_alpha_to_black(rgba: &image::RgbaImage) -> image::RgbImage {
         rgb.put_pixel(x, y, image::Rgb([out_r, out_g, out_b]));
     }
     rgb
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::Not;
+
+    /// Goal: a static image is decoded, resized to the target dimensions, and re-encoded as PNG,
+    /// synchronously and without any async runtime.
+    #[test]
+    fn process_static_image_resizes_and_encodes_png() {
+        let mut src = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            8,
+            8,
+            image::Rgba([10, 20, 30, 255]),
+        ))
+        .write_to(&mut src, image::ImageFormat::Png)
+        .unwrap();
+
+        let (mime_out, data) = process_image(&mime::IMAGE_PNG, src.into_inner(), 32, 24).unwrap();
+
+        assert_eq!(mime_out, mime::IMAGE_PNG);
+        let decoded = image::load_from_memory(&data).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (32, 24));
+    }
+
+    /// Goal: GIF processing runs the gifski collector and writer on their own threads (the path that
+    /// previously required a Tokio runtime) and returns a decodable GIF.
+    #[test]
+    fn process_gif_runs_worker_threads_and_encodes_gif() {
+        let mut src = Cursor::new(Vec::new());
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut src);
+            encoder
+                .encode_frame(image::Frame::new(image::RgbaImage::from_pixel(
+                    8,
+                    8,
+                    image::Rgba([200, 100, 50, 255]),
+                )))
+                .unwrap();
+        }
+
+        let (mime_out, data) = process_image(&mime::IMAGE_GIF, src.into_inner(), 16, 16).unwrap();
+
+        assert_eq!(mime_out, mime::IMAGE_GIF);
+        assert!(data.is_empty().not());
+        // Output must be a valid GIF.
+        GifDecoder::new(Cursor::new(data)).unwrap();
+    }
 }

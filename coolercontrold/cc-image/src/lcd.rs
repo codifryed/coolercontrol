@@ -20,11 +20,11 @@ use anyhow::{anyhow, Context, Result};
 use log::trace;
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use std::io::Cursor;
+use std::time::Instant;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point,
     PremultipliedColorU8, Rect, SpreadMode, Transform,
 };
-use tokio::time::Instant;
 
 const IMAGE_WIDTH: u32 = 320;
 const IMAGE_HEIGHT: u32 = 320;

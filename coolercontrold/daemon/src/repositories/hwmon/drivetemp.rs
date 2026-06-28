@@ -146,7 +146,7 @@ enum BlockingTimeoutError {
     TimedOut(Duration),
     /// The Tokio blocking task itself failed to join (typically a
     /// panic inside the closure).
-    Join(tokio::task::JoinError),
+    Join(crate::rt::JoinError),
     /// The closure ran to completion but returned `Err`, e.g. the
     /// device file could not be opened or both ATA power-state
     /// commands returned non-zero.
@@ -256,7 +256,6 @@ fn get_block_device_path(path: &Path) -> Result<PathBuf> {
     Ok(block_device_path)
 }
 
-#[cfg(not(feature = "io_uring"))]
 async fn drive_power_state(
     dev_path: &Path,
     timeout: Duration,
@@ -276,7 +275,6 @@ async fn drive_power_state(
 /// duplicate the select/match boilerplate. Returns the typed
 /// `BlockingTimeoutError` so callers can discriminate timeouts (an
 /// expected event during HDD spin-up) from genuine errors.
-#[cfg(not(feature = "io_uring"))]
 async fn run_blocking_with_timeout<F, T>(
     timeout: Duration,
     blocking_fn: F,
@@ -286,8 +284,7 @@ where
     T: Send + 'static,
 {
     debug_assert!(timeout > Duration::ZERO);
-    let handle = tokio::task::spawn_blocking(blocking_fn);
-    match tokio::time::timeout(timeout, handle).await {
+    match crate::rt::timeout(timeout, crate::rt::spawn_blocking(blocking_fn)).await {
         Ok(Ok(Ok(value))) => Ok(value),
         Ok(Ok(Err(inner))) => Err(BlockingTimeoutError::Inner(inner)),
         Ok(Err(join_err)) => Err(BlockingTimeoutError::Join(join_err)),
@@ -298,7 +295,6 @@ where
 /// Synchronous body of `drive_power_state`. Opens the block device and
 /// issues the `HDIO_DRIVE_CMD` ioctl to read the ATA power state. Runs
 /// on the Tokio blocking pool via `drive_power_state`.
-#[cfg(not(feature = "io_uring"))]
 fn drive_power_state_blocking(dev_path: &Path) -> Result<PowerState> {
     use std::os::unix::fs::OpenOptionsExt;
     let block_dev_file = std::fs::OpenOptions::new()
@@ -331,14 +327,6 @@ fn drive_power_state_blocking(dev_path: &Path) -> Result<PowerState> {
         0xFF => PowerState::ActiveIdle,
         _ => PowerState::Unknown,
     })
-}
-
-#[cfg(feature = "io_uring")]
-async fn drive_power_state(
-    _path: impl AsRef<Path>,
-    _timeout: Duration,
-) -> std::result::Result<PowerState, BlockingTimeoutError> {
-    Err(BlockingTimeoutError::Inner(anyhow!("Not yet implemented")))
 }
 
 /// Tests

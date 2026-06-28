@@ -20,7 +20,6 @@ use crate::admin;
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use anyhow::Result;
-use moro_local::Scope;
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -167,13 +166,12 @@ pub struct AuthHandle {
 }
 
 impl AuthHandle {
-    pub fn new<'s>(
-        cancel_token: CancellationToken,
-        main_scope: &'s Scope<'s, 's, Result<()>>,
-    ) -> Self {
+    pub fn new(cancel_token: CancellationToken) -> Self {
         let (sender, receiver) = mpsc::channel(1);
         let actor = AuthActor::new(receiver);
-        main_scope.spawn(run_api_actor(actor, cancel_token));
+        // The auth actor does password file IO via `sidecar_fs` (always Tokio), so it must run on
+        // the sidecar Tokio runtime, not the main thread.
+        crate::sidecar::handle().spawn(move || run_api_actor(actor, cancel_token));
         Self { sender }
     }
     pub async fn save_passwd(&self, passwd: String) -> Result<()> {

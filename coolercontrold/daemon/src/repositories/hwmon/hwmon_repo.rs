@@ -84,6 +84,9 @@ use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt;
+#[cfg(test)]
+use crate::rt::sleep;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -98,9 +101,9 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use std::time::Instant;
 use strum::{Display, EnumString};
 use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
-use tokio::time::{sleep, timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
 /// Init-time slow-device detection threshold as a fraction of
@@ -560,7 +563,7 @@ impl HwmonRepo {
             // threshold flips this device onto the duty-cache path.
             let extract_start = Instant::now();
             let Ok((mut channel_statuses, _)) =
-                timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
+                rt::timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial fan statuses \
@@ -571,7 +574,7 @@ impl HwmonRepo {
                 continue;
             };
             let Ok((power_statuses, _)) =
-                timeout(extract_timeout, power::extract_power_status(&driver)).await
+                rt::timeout(extract_timeout, power::extract_power_status(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial power statuses \
@@ -582,7 +585,7 @@ impl HwmonRepo {
             };
             channel_statuses.extend(power_statuses);
             let Ok((temp_statuses, _)) =
-                timeout(extract_timeout, temps::extract_temp_statuses(&driver)).await
+                rt::timeout(extract_timeout, temps::extract_temp_statuses(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial temp statuses \
@@ -715,7 +718,7 @@ impl HwmonRepo {
         );
         let permit_acquire = tokio::select! {
             () = self.shutdown_token.cancelled() => return,
-            () = sleep(self.device_read_permit_timeout) => None,
+            () = rt::sleep(self.device_read_permit_timeout) => None,
             permit = semaphore.acquire() => permit.ok(),
         };
         let Some(permit) = permit_acquire else {
@@ -982,7 +985,7 @@ impl HwmonRepo {
         channel_name: &str,
     ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
-            () = sleep(self.device_write_permit_timeout) => Err(anyhow!(
+            () = rt::sleep(self.device_write_permit_timeout) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
                 fan speed. There will be significant issues handling this device due to extreme lag."
             )),
@@ -1066,7 +1069,7 @@ impl HwmonRepo {
             return;
         };
         let permit = Rc::clone(permit);
-        tokio::task::spawn_local(async move {
+        rt::spawn(async move {
             let Ok(_held) = permit.acquire().await else {
                 // Semaphore closed; daemon is shutting down.
                 return;
@@ -1098,7 +1101,7 @@ impl HwmonRepo {
                 write_permit_timeout,
                 delay_millis: self.device_delay(device_uid),
             };
-            tokio::task::spawn_local(run_writer_task(task));
+            rt::spawn(run_writer_task(task));
         }
     }
 
@@ -1281,7 +1284,7 @@ async fn run_one_pending_write(
         () = task.shutdown.cancelled() => Err(format!(
             "HWMon write cancelled for {driver_name}:{channel_name}: daemon shutting down"
         )),
-        () = sleep(task.write_permit_timeout) => Err(format!(
+        () = rt::sleep(task.write_permit_timeout) => Err(format!(
             "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
              fan speed. There will be significant issues handling this device due to extreme lag."
         )),
@@ -1951,7 +1954,7 @@ impl Repository for HwmonRepo {
                     &hwmon_driver.path,
                     channel_info,
                 );
-                match timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
+                match rt::timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
                     Ok(Ok(())) => {}
                     Ok(Err(err)) => {
                         warn!(
@@ -2497,13 +2500,13 @@ mod preload_tests {
             let observed_free_during_clone = Rc::clone(&observed_free_during);
             let stop = Rc::new(Cell::new(false));
             let stop_clone = Rc::clone(&stop);
-            let observer = tokio::task::spawn_local(async move {
+            let observer = crate::rt::spawn_task(async move {
                 while stop_clone.get().not() {
                     if sem.try_acquire().is_ok() {
                         observed_free_during_clone.set(true);
                         return;
                     }
-                    tokio::task::yield_now().await;
+                    crate::rt::yield_now().await;
                 }
             });
             repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
@@ -3129,7 +3132,7 @@ mod coalescer_tests {
             write_permit_timeout: repo.device_write_permit_timeout,
             delay_millis,
         };
-        tokio::task::spawn_local(run_writer_task(task));
+        crate::rt::spawn(run_writer_task(task));
         uid
     }
 
@@ -3142,13 +3145,13 @@ mod coalescer_tests {
         uid: &UID,
         channel: &str,
         duty: u8,
-    ) -> tokio::task::JoinHandle<Result<()>> {
+    ) -> crate::rt::SpawnTask<Result<()>> {
         let repo = Rc::clone(repo);
         let uid = uid.clone();
         let channel = channel.to_string();
-        tokio::task::spawn_local(async move {
-            repo.apply_setting_speed_fixed(&uid, &channel, duty).await
-        })
+        crate::rt::spawn_task(
+            async move { repo.apply_setting_speed_fixed(&uid, &channel, duty).await },
+        )
     }
 
     #[test]
@@ -3949,7 +3952,7 @@ mod slow_device_tests {
             write_permit_timeout: repo.device_write_permit_timeout,
             delay_millis: 0,
         };
-        tokio::task::spawn_local(run_writer_task(task));
+        crate::rt::spawn(run_writer_task(task));
         uid
     }
 
@@ -3958,13 +3961,13 @@ mod slow_device_tests {
         uid: &UID,
         channel: &str,
         duty: u8,
-    ) -> tokio::task::JoinHandle<Result<()>> {
+    ) -> crate::rt::SpawnTask<Result<()>> {
         let repo = Rc::clone(repo);
         let uid = uid.clone();
         let channel = channel.to_string();
-        tokio::task::spawn_local(async move {
-            repo.apply_setting_speed_fixed(&uid, &channel, duty).await
-        })
+        crate::rt::spawn_task(
+            async move { repo.apply_setting_speed_fixed(&uid, &channel, duty).await },
+        )
     }
 
     fn seed_failsafe(repo: &HwmonRepo, type_index: TypeIndex, channel_statuses: &[ChannelStatus]) {
@@ -4793,7 +4796,7 @@ mod prepare_for_sleep_tests {
             // open(), and the test runtime drop would hang forever
             // waiting for it.
             let fifo_for_reader = fifo_path.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let _ = crate::rt::spawn_blocking(move || {
                 let _ = std::fs::OpenOptions::new()
                     .read(true)
                     .open(&fifo_for_reader);
@@ -5215,7 +5218,7 @@ mod init_timeout_tests {
             // complete. Without this the runtime drop may wait on
             // the leaked read-open syscall.
             let fifo_for_writer = fifo_path.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let _ = crate::rt::spawn_blocking(move || {
                 let _ = std::fs::OpenOptions::new()
                     .write(true)
                     .open(&fifo_for_writer);

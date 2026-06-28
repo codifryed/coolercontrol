@@ -53,6 +53,11 @@ const RPM_START_THRESHOLD_ABSOLUTE: RPM = 50;
 const RPM_START_THRESHOLD_FRACTION_PERCENT: u32 = 5;
 const RPM_JITTER_ABSOLUTE: RPM = 50;
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
+/// Consecutive rising gaps that mark a sustained ramp in `classify_curve`
+/// (a 5+ sample climb). Distinguishes a hardware floor plus ramp (one
+/// long unbroken run) from a multi-plateau staircase (isolated single-gap
+/// risers).
+const RAMP_MIN_RISING_GAPS: u32 = 4;
 
 /// Cold-start kick targets at least this fraction of the floor-to-max
 /// RPM range above `rpm_floor`. Sized to give a momentum-threshold fan
@@ -458,13 +463,20 @@ fn duty_for_rpm(curve: &[DutySample], rpm: RPM) -> Duty {
     lo.duty + u8::try_from(frac).unwrap_or(span)
 }
 
-/// `Stepped` when fewer than half the inter-sample gaps in the
-/// responsive region (samples at/above `min_sustain_duty`) show RPM
-/// growth above the jitter tolerance. Skipping the leading flat band
-/// avoids mis-classifying hardware-floor devices (pumps) whose lower
-/// duty samples idle at a constant baseline RPM. Jitter scales with
-/// step size so dense (2%) gaps are not unfairly penalized vs. sparse
-/// (5%) gaps.
+/// Classifies the up-curve as `Smooth` (mapping applies) or `Stepped`
+/// (passthrough). Either of two independent signals marks it Smooth,
+/// over the responsive region (samples at/above `min_sustain_duty`):
+///
+/// 1. Growth dominates: at least half the inter-sample gaps show RPM
+///    growth above the jitter tolerance.
+/// 2. A sustained ramp: a run of `RAMP_MIN_RISING_GAPS`+ consecutive
+///    rising gaps. This rescues hardware-floor devices (pumps): their
+///    long flat floor band drags signal 1 below half, but the climb above
+///    the floor is a long unbroken run that a genuine multi-plateau
+///    staircase (isolated single-gap risers) never produces.
+///
+/// Jitter scales with step size so dense (2%) gaps are not unfairly
+/// penalized vs. sparse (5%) gaps.
 pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM, min_sustain_duty: Duty) -> CurveKind {
     assert!(rpm_max > 0);
     let responsive = curve_above(up_curve, min_sustain_duty);
@@ -474,6 +486,8 @@ pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM, min_sustain_duty: D
 
     let sparse_jitter = jitter_threshold(rpm_max);
     let mut transitions: u32 = 0;
+    let mut longest_run: u32 = 0;
+    let mut current_run: u32 = 0;
     for pair in responsive.windows(2) {
         let step = u32::from(pair[1].duty.saturating_sub(pair[0].duty)).max(1);
         let threshold =
@@ -481,13 +495,19 @@ pub fn classify_curve(up_curve: &[DutySample], rpm_max: RPM, min_sustain_duty: D
                 .unwrap_or(sparse_jitter);
         if pair[1].rpm > pair[0].rpm.saturating_add(threshold) {
             transitions += 1;
+            current_run += 1;
+            longest_run = longest_run.max(current_run);
+        } else {
+            current_run = 0;
         }
     }
     let total_gaps = u32::try_from(responsive.len() - 1).unwrap_or(u32::MAX);
-    if transitions * 2 < total_gaps {
-        CurveKind::Stepped
-    } else {
+    let growth_dominates = transitions * 2 >= total_gaps;
+    let sustained_ramp = longest_run >= RAMP_MIN_RISING_GAPS;
+    if growth_dominates || sustained_ramp {
         CurveKind::Smooth
+    } else {
+        CurveKind::Stepped
     }
 }
 
@@ -879,16 +899,70 @@ mod tests {
     }
 
     #[test]
-    fn classify_hardware_floor_pump_is_stepped_without_responsive_start() {
-        // Goal: documents why `min_sustain_duty` is the right input.
-        // The same pump curve classified across the entire range
-        // (responsive_start = 0) drops to Stepped because the flat
-        // leading band drags transitions per gap below 50%. The
-        // production caller passes `scalars.min_sustain_duty`; this
-        // test pins that contract.
+    fn classify_hardware_floor_pump_smooth_at_real_min_sustain() {
+        // Goal: regression for the user-reported pump that classified as
+        // Stepped. Its real `min_sustain_duty` is 2% (the pump sustains at
+        // its floor almost immediately), so the flat floor band 2-30% stays
+        // in the responsive region and drags the growth ratio just below
+        // half (26 of 28 gaps). The sustained-ramp signal (the unbroken
+        // climb above the floor) rescues it, so the mapping stays active.
         let up = pump_hardware_floor_up_curve();
-        let kind = classify_curve(&up, 2843, 0);
-        assert_eq!(kind, CurveKind::Stepped);
+        let kind = classify_curve(&up, 2843, 2);
+        assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    fn pump_high_floor_up_curve() -> Vec<DutySample> {
+        // A pump whose hardware floor sits at ~50% duty: idles near 1500
+        // RPM through 0-50% (dense 2% sampling in the kick zone, sparse 5%
+        // after), then climbs to ~2825 at 100%. Confirms the fix is not
+        // tied to the ~30% floor of the first reported pump.
+        const SAMPLES: &[(Duty, RPM)] = &[
+            (0, 1470),
+            (2, 1485),
+            (4, 1495),
+            (6, 1500),
+            (8, 1490),
+            (10, 1505),
+            (12, 1495),
+            (14, 1500),
+            (16, 1510),
+            (18, 1490),
+            (20, 1500),
+            (22, 1505),
+            (24, 1495),
+            (26, 1500),
+            (28, 1488),
+            (30, 1500),
+            (35, 1505),
+            (40, 1495),
+            (45, 1500),
+            (50, 1502),
+            (55, 1650),
+            (60, 1790),
+            (65, 1910),
+            (70, 2060),
+            (75, 2190),
+            (80, 2320),
+            (85, 2455),
+            (90, 2585),
+            (95, 2705),
+            (100, 2825),
+        ];
+        SAMPLES
+            .iter()
+            .map(|&(duty, rpm)| DutySample { duty, rpm })
+            .collect()
+    }
+
+    #[test]
+    fn classify_high_floor_pump_is_smooth() {
+        // Goal: a pump whose hardware floor sits near 50% duty (longer flat
+        // band, shorter ramp) still classifies Smooth. The growth ratio
+        // fails (most gaps sit on the floor), but the ramp above 50% is a
+        // long unbroken run, so the sustained-ramp signal keeps the mapping.
+        let up = pump_high_floor_up_curve();
+        let kind = classify_curve(&up, 2825, 2);
+        assert_eq!(kind, CurveKind::Smooth);
     }
 
     #[test]

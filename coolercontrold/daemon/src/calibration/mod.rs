@@ -25,6 +25,7 @@
 //! RPM back to true-duty for status display.
 
 mod augmenter;
+mod batch;
 mod curve;
 mod diagnoser;
 mod dispatch;
@@ -33,6 +34,7 @@ mod state;
 mod store;
 
 pub use augmenter::{install_augmenter_on_all_devices, CalibrationStatusAugmenter};
+pub use batch::{BatchBeginError, BatchEntry, BatchEntryPhase, CalibrationBatchState};
 #[cfg_attr(not(test), allow(unused_imports))]
 pub use curve::DutySample;
 pub use curve::{effective_speed_options, Calibration, CalibrationWarning, CurveKind};

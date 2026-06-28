@@ -17,6 +17,7 @@
  */
 
 mod client;
+mod client_proxy;
 pub mod plugin_controller;
 pub mod service_management;
 pub mod service_manifest;

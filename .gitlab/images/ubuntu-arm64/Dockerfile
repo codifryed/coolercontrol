@@ -20,7 +20,7 @@ ENV CI=true
 #ENV RUSTUP_HOME=/usr/local/rustup \
 #    CARGO_HOME=/usr/local/cargo \
 #    PATH=/usr/local/cargo/bin:$PATH \
-#    RUST_VERSION=1.90.0
+#    RUST_VERSION=1.88.0
 ENV PATH=/root/.cargo/bin:$PATH
 
 ENV NODE_MAJOR=22
@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         #desktop-file-utils appstream-util \
         # rust
         protobuf-compiler \
-        cargo-1.85 \
+        cargo-1.91 \
         #jq \
         # python
         #python3-pip \
@@ -68,8 +68,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
 #    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 # needed for cargo-* versions
-RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.85 10 && \
-    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.85 10
+RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.91 10 && \
+    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.91 10
 
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \

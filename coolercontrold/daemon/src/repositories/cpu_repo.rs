@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use regex::Regex;
-use tokio::time::Instant;
+use std::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 pub const CPU_POWER_NAME: &str = "CPU Power";

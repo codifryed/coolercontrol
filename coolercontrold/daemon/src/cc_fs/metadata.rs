@@ -51,5 +51,15 @@ pub fn exists(path: impl AsRef<Path>) -> bool {
 /// This function will return an error if the path does not exist or if there
 /// is an error resolving the path.
 pub async fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> Result<()> {
-    Ok(tokio::fs::set_permissions(path, perm).await?)
+    #[cfg(not(feature = "compio-rt"))]
+    {
+        Ok(tokio::fs::set_permissions(path, perm).await?)
+    }
+    #[cfg(feature = "compio-rt")]
+    {
+        // compio has its own distinct `Permissions` type, so rebuild it from the mode bits.
+        use std::os::unix::fs::PermissionsExt;
+        let compio_perm = compio::fs::Permissions::from_mode(perm.mode());
+        Ok(compio::fs::set_permissions(path.as_ref(), compio_perm).await?)
+    }
 }

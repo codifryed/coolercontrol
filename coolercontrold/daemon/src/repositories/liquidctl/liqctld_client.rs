@@ -18,9 +18,11 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::ops::Not;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use crate::rt::{sleep, timeout};
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
@@ -29,7 +31,6 @@ use hyper::body::Incoming;
 use hyper::client::conn::http1::SendRequest;
 use hyper::Response;
 use hyper::{Request, Version};
-use hyper_util::rt::TokioIo;
 use log::error;
 use log::trace;
 use log::warn;
@@ -37,11 +38,50 @@ use log::{debug, info};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::net::UnixStream;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout};
 
-const LIQCTLD_MAX_POOL_SIZE: usize = 15;
+/// The connection-driver task handle. On Tokio it is abortable; under compio it cancels when
+/// dropped (compio's spawn cancels on handle drop). `SocketConnection::abort` unifies the two.
+#[cfg(not(feature = "compio-rt"))]
+type ConnDriver = tokio::task::JoinHandle<()>;
+#[cfg(feature = "compio-rt")]
+type ConnDriver = compio::runtime::JoinHandle<()>;
+
+/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive. Tokio uses `TokioIo`;
+/// compio uses `cyper_core::HyperStream` over a compio `UnixStream`.
+#[cfg(not(feature = "compio-rt"))]
+async fn connect_liqctld_io(
+) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
+    let unix_stream = tokio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
+    Ok(hyper_util::rt::TokioIo::new(unix_stream))
+}
+#[cfg(feature = "compio-rt")]
+async fn connect_liqctld_io(
+) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
+    let unix_stream = compio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
+    Ok(cyper_core::HyperStream::new(unix_stream))
+}
+
+/// Spawns the hyper connection-driver future on the active runtime and returns its handle. The
+/// handle is held (not detached) so the connection can be aborted/cancelled later.
+#[cfg(not(feature = "compio-rt"))]
+fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
+    tokio::task::spawn_local(fut)
+}
+#[cfg(feature = "compio-rt")]
+fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
+    compio::runtime::spawn(fut)
+}
+
+/// Ceiling on idle connections kept warm for reuse. NOT a cap on concurrent connections: the client
+/// creates one whenever the pool is empty (`get_socket_connection`), so peak concurrency is bounded
+/// only by the caller's own fan-out. This just bounds retention. Generous so many-device setups
+/// reuse rather than re-handshake under sustained load; `reap_idle_connections` shrinks the pool
+/// back to the working set once a burst subsides, so the headroom does not become a permanent cost.
+const LIQCTLD_MAX_POOL_SIZE: usize = 32;
+/// How long a pooled connection may sit unused before it is closed. Each open connection holds a
+/// thread in liqctld's thread-per-connection server, so surplus connections left over from a burst
+/// are reaped instead of held for the daemon's lifetime.
+const LIQCTLD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_RESPONSE_TIMEOUT_SECONDS: u64 = 15;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
@@ -68,7 +108,7 @@ pub type LCStatus = Vec<(String, String, String)>;
 
 /// `LiqctldClient` represents a client for interacting with a connection pool of socket connections.
 pub struct LiqctldClient {
-    connection_pool: RefCell<VecDeque<SocketConnection>>,
+    connection_pool: RefCell<VecDeque<PooledConnection>>,
 }
 
 impl LiqctldClient {
@@ -81,7 +121,7 @@ impl LiqctldClient {
     pub async fn new(connection_tries: usize) -> Result<Self> {
         let mut connection_pool = VecDeque::with_capacity(LIQCTLD_MAX_POOL_SIZE);
         let connection = Self::create_connection(connection_tries).await?;
-        connection_pool.push_back(connection);
+        connection_pool.push_back(PooledConnection::new(connection));
         Ok(Self {
             connection_pool: RefCell::new(connection_pool),
         })
@@ -104,8 +144,8 @@ impl LiqctldClient {
         // from communicating until that's complete. We need to retry to handle that, and since
         // the embedding of this service, it should be the only time we need to retry at startup.
         while retry_count < connection_tries {
-            let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
-                Ok(stream) => stream,
+            let io_stream = match connect_liqctld_io().await {
+                Ok(io_stream) => io_stream,
                 Err(err) => {
                     debug!(
                         "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",
@@ -115,14 +155,6 @@ impl LiqctldClient {
                     continue;
                 }
             };
-            let io_stream = TokioIo::new(unix_stream);
-            // hyper can now be replaced with reqwest for UDS connections, removing much of our custom low-level code.
-            // That would ease maintenance should we need to adjust this client in the future and
-            //  do things like auto-handle connection retries, timeouts and pooling for us.
-            // The downside to this, besides refactoring and testing effort, is that reqwest
-            //  will introduce more dependencies that we don't really need for our use case,
-            //  and from experience it may be slightly less performant because of this.
-            //reqwest = { version = "0.12.23", default-features = false, features = ["json"]}
             let (sender, connection) = match hyper::client::conn::http1::handshake(io_stream).await
             {
                 Ok((sender, connection)) => (sender, connection),
@@ -135,10 +167,9 @@ impl LiqctldClient {
                     continue;
                 }
             };
-            // keeps the connection open and drives http requests
-            // Tokio::task::spawn here is preferred as we can abort() individual futures
-            // and since it's only for the hyper Connection, is fine to use here.
-            let connection_handle = tokio::task::spawn_local(async {
+            // Keeps the connection open and drives http requests. We hold the handle so individual
+            // connections can be aborted (Tokio) or cancelled on drop (compio).
+            let connection_handle = spawn_conn_driver(async {
                 if let Err(err) = connection.await {
                     error!("Unexpected Error: Connection to socket failed: {err:?}");
                 }
@@ -174,11 +205,34 @@ impl LiqctldClient {
     /// creating a new connection if necessary,
     /// and returning the `ConnectionUID` of the free connection.
     async fn get_socket_connection(&self) -> Result<SocketConnection> {
-        if let Some(socket_connection) = self.connection_pool.borrow_mut().pop_front() {
+        self.reap_idle_connections();
+        // LIFO: hand out the most-recently-returned connection so surplus connections from a burst
+        // sink to the front of the pool and age out there. Round-robin (pop_front) reuse would keep
+        // every connection warm and defeat idle reaping.
+        if let Some(pooled) = self.connection_pool.borrow_mut().pop_back() {
             trace!("Found a free socket connection");
-            return Ok(socket_connection);
+            return Ok(pooled.connection);
         }
         Self::create_connection(LIQCTLD_CONNECTION_TRIES).await
+    }
+
+    /// Closes connections idle past `LIQCTLD_IDLE_TIMEOUT`, releasing the thread each holds in
+    /// liqctld's thread-per-connection server. The LIFO pool keeps idle connections at the front, so
+    /// reap that stale prefix and stop at the first still-fresh one.
+    fn reap_idle_connections(&self) {
+        let now = Instant::now();
+        let mut pool = self.connection_pool.borrow_mut();
+        let stale = stale_prefix_len(
+            pool.iter().map(|pooled| pooled.idle_since),
+            now,
+            LIQCTLD_IDLE_TIMEOUT,
+        );
+        for _ in 0..stale {
+            if let Some(pooled) = pool.pop_front() {
+                trace!("Reaping idle liqctld connection");
+                pooled.connection.abort();
+            }
+        }
     }
 
     /// Sends a request to a socket connection, handles errors, and returns the deserialized response.
@@ -213,8 +267,7 @@ impl LiqctldClient {
                             debug!(
                                 "Socket Connection no longer valid or closed. Aborting. {err:?}"
                             );
-                            socket_connection.connection_handle.abort();
-                            drop(socket_connection);
+                            socket_connection.abort();
                             continue; // retry with a different connection
                         }
                     }
@@ -223,8 +276,7 @@ impl LiqctldClient {
                     warn!(
                         "Response timed out after {LIQCTLD_RESPONSE_TIMEOUT_SECONDS} seconds: {err:?}"
                     );
-                    socket_connection.connection_handle.abort();
-                    drop(socket_connection);
+                    socket_connection.abort();
                     return Err(anyhow!(
                         "Response timed out, not retrying to avoid overloading service"
                     ));
@@ -234,9 +286,10 @@ impl LiqctldClient {
             if self.connection_pool.borrow().len() < LIQCTLD_MAX_POOL_SIZE {
                 self.connection_pool
                     .borrow_mut()
-                    .push_back(socket_connection);
+                    .push_back(PooledConnection::new(socket_connection));
             } else {
-                warn!("Socket connection pool size limit reached, discarding connection.");
+                debug!("liqctld connection pool full; closing the surplus connection.");
+                socket_connection.abort();
             }
             return Ok(serde_json::from_str(&lc_response.body)?);
         }
@@ -614,8 +667,8 @@ impl LiqctldClient {
 
     /// Shuts down all connections in a connection pool and clears the pool.
     pub fn shutdown(&self) {
-        for socket_connect in self.connection_pool.borrow_mut().drain(..) {
-            socket_connect.connection_handle.abort();
+        for pooled in self.connection_pool.borrow_mut().drain(..) {
+            pooled.connection.abort();
         }
     }
 
@@ -630,9 +683,57 @@ impl LiqctldClient {
     }
 }
 
+/// A pooled connection and the instant it last became idle (was returned to the pool). The pool is
+/// a LIFO stack: `get_socket_connection` takes from the back, so surplus connections sink to the
+/// front and age there until `reap_idle_connections` closes them.
+struct PooledConnection {
+    connection: SocketConnection,
+    idle_since: Instant,
+}
+
+impl PooledConnection {
+    fn new(connection: SocketConnection) -> Self {
+        Self {
+            connection,
+            idle_since: Instant::now(),
+        }
+    }
+}
+
+/// Count of leading entries idle longer than `timeout`, assuming oldest-idle-first ordering. Stops
+/// at the first fresh entry, which the LIFO pool guarantees means the rest are fresh too.
+fn stale_prefix_len(
+    idle_since: impl Iterator<Item = Instant>,
+    now: Instant,
+    timeout: Duration,
+) -> usize {
+    let mut count = 0;
+    for idle_at in idle_since {
+        if now.duration_since(idle_at) > timeout {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    count
+}
+
 struct SocketConnection {
     sender: SendRequest<String>,
-    connection_handle: JoinHandle<()>,
+    connection_handle: ConnDriver,
+}
+
+impl SocketConnection {
+    /// Tears down the connection's driver task. On Tokio it aborts the join handle; under compio
+    /// dropping `self` (and its handle) cancels the task, so this just consumes `self`.
+    #[allow(clippy::needless_pass_by_value)] // consumes self so the compio handle drops (cancels)
+    fn abort(self) {
+        #[cfg(not(feature = "compio-rt"))]
+        self.connection_handle.abort();
+        // Dropping a compio JoinHandle cancels its task; do so explicitly.
+        #[cfg(feature = "compio-rt")]
+        drop(self.connection_handle);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -715,4 +816,40 @@ struct ScreenRequest {
     channel: String,
     mode: String,
     value: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_prefix_len_counts_only_the_leading_expired_run() {
+        // Goal: reaping closes the run of oldest-idle connections that have exceeded the timeout and
+        // stops at the first still-fresh one. Since the pool is LIFO (fresh connections kept at the
+        // back), a fresh entry means every later entry is fresh too, so the scan can stop early.
+        // Method: build instants relative to a fixed `now` and assert the counted prefix.
+        let now = Instant::now();
+        let old = now - Duration::from_secs(120);
+        let fresh = now - Duration::from_secs(1);
+        let timeout = Duration::from_secs(30);
+        assert_eq!(
+            stale_prefix_len([old, old, fresh, fresh].into_iter(), now, timeout),
+            2
+        );
+        assert_eq!(
+            stale_prefix_len([fresh, fresh].into_iter(), now, timeout),
+            0
+        );
+        assert_eq!(
+            stale_prefix_len([old, old, old].into_iter(), now, timeout),
+            3
+        );
+        assert_eq!(stale_prefix_len(std::iter::empty(), now, timeout), 0);
+        // A fresh entry halts the scan even if an older one follows; the straggler is reaped on a
+        // later pass once the fresh ones ahead of it are consumed.
+        assert_eq!(
+            stale_prefix_len([old, fresh, old].into_iter(), now, timeout),
+            1
+        );
+    }
 }

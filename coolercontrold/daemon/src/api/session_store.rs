@@ -27,7 +27,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use crate::{admin, cc_fs};
+use crate::admin;
+use crate::cc_fs::sidecar_fs;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use time::OffsetDateTime;
@@ -152,10 +153,10 @@ impl FileSessionStore {
 #[async_trait]
 impl SessionStore for FileSessionStore {
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-        cc_fs::create_dir_all(&self.folder)
+        sidecar_fs::create_dir_all(&self.folder)
             .await
             .map_err(from_anyhow_to_backend)?;
-        cc_fs::set_permissions(
+        sidecar_fs::set_permissions(
             &self.folder,
             Permissions::from_mode(SESSION_DIR_PERMISSIONS),
         )
@@ -163,10 +164,10 @@ impl SessionStore for FileSessionStore {
         .map_err(from_anyhow_to_backend)?;
         let data = serde_json::to_vec(&record).map_err(from_serde_to_backend)?;
         let file_path = self.folder.join(record.id.to_string());
-        cc_fs::write(&file_path, data)
+        sidecar_fs::write(&file_path, data)
             .await
             .map_err(from_anyhow_to_backend)?;
-        cc_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
+        sidecar_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
             .await
             .map_err(from_anyhow_to_backend)?;
         Ok(())
@@ -175,10 +176,10 @@ impl SessionStore for FileSessionStore {
     async fn save(&self, record: &Record) -> session_store::Result<()> {
         let data = serde_json::to_vec(record).map_err(from_serde_to_backend)?;
         let file_path = self.folder.join(record.id.to_string());
-        cc_fs::write(&file_path, data)
+        sidecar_fs::write(&file_path, data)
             .await
             .map_err(from_anyhow_to_backend)?;
-        cc_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
+        sidecar_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
             .await
             .map_err(from_anyhow_to_backend)?;
         Ok(())
@@ -186,7 +187,7 @@ impl SessionStore for FileSessionStore {
 
     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let path = self.folder.join(session_id.to_string());
-        match cc_fs::read_txt(&path).await {
+        match sidecar_fs::read_txt(&path).await {
             Ok(data) => {
                 let record = serde_json::from_str(&data).map_err(from_serde_to_backend)?;
                 Ok(record)
@@ -228,7 +229,7 @@ impl ExpiredDeletion for FileSessionStore {
                 continue;
             };
             if OffsetDateTime::now_utc() > record.expiry_date {
-                let _ = cc_fs::remove_file(entry.path()).await;
+                let _ = sidecar_fs::remove_file(entry.path()).await;
             }
         }
         Ok(())

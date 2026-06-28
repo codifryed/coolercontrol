@@ -73,6 +73,11 @@ from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 SOCKET_ADDRESS: str = "/run/coolercontrold-liqctld.sock"
 DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
+# A worker still on the same job past this is treated as wedged: a hung USB/HID call we cannot
+# interrupt from this thread. New requests for that device then fail fast (instead of piling up
+# behind it) until the call returns or the device is reconnected. Kept above the 9.5s job timeout so
+# a legitimately slow command is never mistaken for a wedge.
+WEDGE_THRESHOLD_SECS: float = DEVICE_TIMEOUT_SECS * 2
 MAX_CONNECT_LIQUIDCTL_RETRIES: int = 5
 
 #####################################################################
@@ -478,10 +483,18 @@ def _queue_worker(executor: "DeviceExecutor", device_id: int) -> None:
                     # supersession before we got here, or the marker
                     # raced shutdown. Either way, nothing to run.
                     continue
-                job.run()
-                del job
+                to_run = job
             else:
-                marker.run()
+                to_run = marker
+            # Mark the device busy so submit() can spot a worker wedged on a hung USB call: a truly
+            # wedged run() never returns, so _job_running_since stays set (the finally never fires)
+            # until the device recovers.
+            executor._job_running_since[device_id] = time.monotonic()
+            try:
+                to_run.run()
+            finally:
+                executor._job_running_since[device_id] = None
+            del to_run
             del marker
     except BaseException as exc:
         sys.stderr.write(f"Exception in worker: {exc}\n")
@@ -515,6 +528,14 @@ class DeviceExecutor:
         # Guards _pending_writes only. Held briefly; never across run().
         self._lock: threading.Lock = threading.Lock()
         self._thread_pool: ThreadPoolExecutor = None
+        # device_id -> monotonic start time of the job its worker is currently running, or None when
+        # idle. Written only by that worker; read locklessly by submit() (a single dict-slot access
+        # is atomic under the GIL). A wedged run() never returns, so this stays set, which is the
+        # signal submit() uses to fail fast.
+        self._job_running_since: Dict[int, Optional[float]] = {}
+        # device_id -> the _job_running_since value last logged as wedged, so each wedge episode is
+        # reported at most once.
+        self._wedge_logged_for: Dict[int, Optional[float]] = {}
 
     def set_number_of_devices(self, number_of_devices: int) -> None:
         if number_of_devices < 1:
@@ -523,13 +544,43 @@ class DeviceExecutor:
         for dev_id in range(1, number_of_devices + 1):
             self._device_queues[dev_id] = queue.SimpleQueue()
             self._pending_writes[dev_id] = {}
+            self._job_running_since[dev_id] = None
+            self._wedge_logged_for[dev_id] = None
             self._thread_pool.submit(_queue_worker, self, dev_id)
 
     def submit(self, device_id: int, fn: Callable, **kwargs) -> Future:
         future = Future()
+        if self._reject_if_wedged(device_id, future):
+            return future
         device_job = _DeviceJob(future, fn, **kwargs)
         self._device_queues[device_id].put(device_job)
         return future
+
+    def _reject_if_wedged(self, device_id: int, future: Future) -> bool:
+        """Fail ``future`` immediately (and return True) when device ``device_id``'s worker is still
+        stuck on a job past ``WEDGE_THRESHOLD_SECS``. A hung USB/HID call cannot be interrupted from
+        another thread, so rather than letting requests pile up behind it (and making each wait the
+        full timeout), we reject them fast until the worker recovers. Each wedge episode logs once.
+        """
+        since = self._job_running_since.get(device_id)
+        if since is None:
+            return False
+        stuck_for = time.monotonic() - since
+        if stuck_for <= WEDGE_THRESHOLD_SECS:
+            return False
+        if self._wedge_logged_for.get(device_id) != since:
+            self._wedge_logged_for[device_id] = since
+            log.warning(
+                f"Device #{device_id} appears wedged: its worker has been blocked on one command "
+                f"for {stuck_for:.0f}s (likely an unresponsive USB device). Failing new requests "
+                f"for it until it recovers."
+            )
+        future.set_exception(
+            concurrent.futures.TimeoutError(
+                f"device #{device_id} unresponsive (worker wedged {stuck_for:.0f}s)"
+            )
+        )
+        return True
 
     def submit_write(
         self,
@@ -544,6 +595,8 @@ class DeviceExecutor:
         the latest target replaces it before any device I/O.
         """
         future = Future()
+        if self._reject_if_wedged(device_id, future):
+            return future
         new_job = _DeviceJob(future, fn, dedup_key=dedup_key, **kwargs)
         superseded: Optional[_DeviceJob] = None
         enqueue_marker = False

@@ -24,7 +24,7 @@ use crate::device::{
 use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::repositories::service_plugin::client::DeviceServiceClient;
+use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
     secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
 };
@@ -36,6 +36,7 @@ use crate::repositories::service_plugin::service_management::{
 };
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::repositories::utils::apply_device_command_delay;
+use crate::rt::sleep;
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
@@ -45,8 +46,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
-use std::time::Duration;
-use tokio::time::{sleep, Instant};
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use toml_edit::DocumentMut;
 
@@ -63,7 +63,7 @@ const TIMEOUT_API_UP_SECONDS: u64 = 60; // We have a 30-second max startup delay
 struct DeviceServiceConnection {
     id: ServiceId,
     version: String,
-    client: DeviceServiceClient,
+    client: DeviceServiceClientHandle,
 }
 
 pub struct ServicePluginRepo {
@@ -346,8 +346,8 @@ impl ServicePluginRepo {
         }
         let mut connect_wait_secs = 0;
         'connection: loop {
-            match DeviceServiceClient::connect(&service_manifest, poll_rate).await {
-                Ok(mut client) => {
+            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate).await {
+                Ok(client) => {
                     let mut version = String::new();
                     let mut retries = 0;
                     'health: while retries < TIMEOUT_SERVICE_START_SECONDS {
@@ -465,7 +465,7 @@ impl ServicePluginRepo {
     ) {
         let service_id = service_id.clone();
         let service_manager = service_manager.clone();
-        tokio::task::spawn_local(async move {
+        crate::rt::spawn(async move {
             tokio::select! {
                 // The api_up_token will be canceld once the daemon's API is up, making sure
                 // that integration services connect at the proper time.

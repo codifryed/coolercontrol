@@ -114,29 +114,31 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    #[tokio::test]
-    async fn test_generate_certificates() {
-        let temp_dir = tempdir().unwrap();
-        let cert_path = temp_dir.path().join("test.crt");
-        let key_path = temp_dir.path().join("test.key");
+    #[test]
+    fn test_generate_certificates() {
+        crate::rt::test_runtime(async {
+            let temp_dir = tempdir().unwrap();
+            let cert_path = temp_dir.path().join("test.crt");
+            let key_path = temp_dir.path().join("test.key");
 
-        let (result_cert, result_key) = ensure_certificates(
-            Some(cert_path.to_str().unwrap().to_string()),
-            Some(key_path.to_str().unwrap().to_string()),
-        )
-        .await
-        .unwrap();
+            let (result_cert, result_key) = ensure_certificates(
+                Some(cert_path.to_str().unwrap().to_string()),
+                Some(key_path.to_str().unwrap().to_string()),
+            )
+            .await
+            .unwrap();
 
-        assert!(result_cert.exists());
-        assert!(&result_key.exists());
+            assert!(result_cert.exists());
+            assert!(&result_key.exists());
 
-        let cert_content = std::fs::read_to_string(&result_cert).unwrap();
-        let key_content = std::fs::read_to_string(&result_key).unwrap();
+            let cert_content = std::fs::read_to_string(&result_cert).unwrap();
+            let key_content = std::fs::read_to_string(&result_key).unwrap();
 
-        assert!(cert_content.contains("BEGIN CERTIFICATE"));
-        assert!(key_content.contains("BEGIN PRIVATE KEY"));
+            assert!(cert_content.contains("BEGIN CERTIFICATE"));
+            assert!(key_content.contains("BEGIN PRIVATE KEY"));
 
-        let key_permissions = std::fs::metadata(&result_key).unwrap().permissions();
-        assert_eq!(key_permissions.mode() & 0o777, DEFAULT_PERMISSIONS);
+            let key_permissions = std::fs::metadata(&result_key).unwrap().permissions();
+            assert_eq!(key_permissions.mode() & 0o777, DEFAULT_PERMISSIONS);
+        });
     }
 }

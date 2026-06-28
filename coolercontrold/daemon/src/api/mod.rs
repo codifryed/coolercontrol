@@ -29,6 +29,7 @@ mod functions;
 mod metrics;
 pub mod modes;
 mod plugins;
+mod profile_generation;
 mod profiles;
 mod router;
 mod session_store;
@@ -87,8 +88,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::net::{TcpListener, ToSocketAddrs};
-use tokio::task::LocalSet;
+use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::CompressionLayer;
@@ -143,10 +143,8 @@ pub async fn start_server<'s>(
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
     let ipv4 = determine_ipv4_address(&config, rest_port)
-        .await
         .inspect_err(|err| warn!("IPv4 bind error: {err}"));
     let ipv6 = determine_ipv6_address(&config, rest_port)
-        .await
         .inspect_err(|err| warn!("IPv6 bind error: {err}"));
     if ipv4.is_err() && ipv6.is_err() {
         return Err(anyhow!(
@@ -177,7 +175,11 @@ pub async fn start_server<'s>(
     )
     .await;
     let tls_config = tls_config(&settings).await;
-    let session_key = admin::load_or_generate_session_key().await?;
+    // admin uses `sidecar_fs` (always Tokio); this runs during main-thread API init, so dispatch
+    // it to the sidecar (no Tokio reactor on the compio main thread).
+    let session_key = crate::sidecar::handle()
+        .run(admin::load_or_generate_session_key)
+        .await??;
     let sessions_dir = paths::sessions_dir().to_path_buf();
     let file_store = FileSessionStore::new(sessions_dir);
     let memory_store = MemorySessionStore::new(10);
@@ -217,10 +219,8 @@ pub async fn start_server<'s>(
                 .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
         });
     let grpc_ipv4 = determine_ipv4_address(&config, grpc_port)
-        .await
         .inspect_err(|err| warn!("IPv4 GRPC bind error: {err}"));
     let grpc_ipv6 = determine_ipv6_address(&config, grpc_port)
-        .await
         .inspect_err(|err| warn!("IPv6 GRPC bind error: {err}"));
     if grpc_ipv4.is_err() && grpc_ipv6.is_err() {
         return Err(anyhow!(
@@ -233,19 +233,10 @@ pub async fn start_server<'s>(
     let allow_unencrypted = settings.allow_unencrypted;
     let protocol_header = settings.protocol_header.clone();
 
-    // Spawn all API servers on a dedicated thread
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_io()
-            .enable_time()
-            .max_blocking_threads(1) // rarely needed for the API servers
-            .thread_keep_alive(Duration::from_secs(60))
-            .thread_name("cc-api")
-            .event_interval(200)
-            .global_queue_interval(200)
-            .build()
-            .expect("Failed to create API server runtime");
-        rt.block_on(LocalSet::new().run_until(run_all_api_servers(
+    // Run all API servers on the shared sidecar thread. The builder closure captures only `Send`
+    // data and is invoked on the sidecar to construct the `!Send` server future.
+    crate::sidecar::handle().spawn(move || {
+        run_all_api_servers(
             ipv4.ok(),
             ipv6.ok(),
             grpc_ipv4.ok(),
@@ -259,7 +250,7 @@ pub async fn start_server<'s>(
             cors_origins,
             allow_unencrypted,
             protocol_header,
-        )));
+        )
     });
     Ok(())
 }
@@ -369,7 +360,7 @@ async fn watch_passwd_file(
         tokio::select! {
             biased;
             () = cancel_token.cancelled() => break,
-            () = tokio::time::sleep(interval) => {
+            () = crate::rt::sleep(interval) => {
                 let current_mtime = passwd_file_mtime(&passwd_file);
                 if current_mtime == last_mtime {
                     continue;
@@ -670,7 +661,7 @@ async fn create_app_state<'s>(
         cancel_token.clone(),
         main_scope,
     );
-    let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
+    let auth_handle = AuthHandle::new(cancel_token.clone());
     let token_handle = TokenHandle::new(cancel_token.clone()).await;
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
@@ -708,7 +699,7 @@ async fn create_app_state<'s>(
     let calibration_handle =
         CalibrationHandle::new(engine.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
-    let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope).await;
+    let stress_test_handle = StressTestHandle::new(cancel_token.clone()).await;
     AppState {
         health,
         detect_handle,
@@ -831,10 +822,20 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             warn!("Failed to ensure TLS certificates: {err}");
         })
         .ok()?;
-    match RustlsConfig::from_pem_file(&cert_path, &key_path).await {
-        Ok(tls_config) => Some(tls_config),
-        Err(err) => {
+    // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
+    // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
+    // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
+    match crate::sidecar::handle()
+        .run(move || RustlsConfig::from_pem_file(cert_path, key_path))
+        .await
+    {
+        Ok(Ok(tls_config)) => Some(tls_config),
+        Ok(Err(err)) => {
             warn!("Failed to load TLS certificates: {err}");
+            None
+        }
+        Err(err) => {
+            warn!("Sidecar dispatch for TLS load failed: {err}");
             None
         }
     }
@@ -886,16 +887,19 @@ pub fn validate_name_string(name: &str) -> Result<(), CCError> {
     }
 }
 
-async fn can_bind_tcp<A: ToSocketAddrs>(addrs: A) -> bool {
-    TcpListener::bind(addrs).await.is_ok()
+/// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
+/// on the main thread (which may be compio) during API init, before the server moves to the sidecar.
+/// The actual server listener is bound on the sidecar (see `create_api_server`).
+fn can_bind_tcp<A: std::net::ToSocketAddrs>(addrs: A) -> bool {
+    std::net::TcpListener::bind(addrs).is_ok()
 }
 
-async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
+fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
     if let Some(addr) = address {
         match addr.parse::<Ipv4Addr>() {
             Ok(ipv4_addr) => {
                 let ipv4 = SocketAddrV4::new(ipv4_addr, port);
-                if can_bind_tcp(ipv4).await {
+                if can_bind_tcp(ipv4) {
                     Ok(ipv4)
                 } else {
                     Err(anyhow!(
@@ -908,7 +912,7 @@ async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAdd
     } else {
         // try standard loopback address
         let ipv4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
-        if can_bind_tcp(ipv4).await {
+        if can_bind_tcp(ipv4) {
             Ok(ipv4)
         } else {
             Err(anyhow!(
@@ -918,12 +922,12 @@ async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
+fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
     if let Some(addr) = address {
         match addr.parse::<Ipv6Addr>() {
             Ok(ipv6_addr) => {
                 let ipv6 = SocketAddrV6::new(ipv6_addr, port, 0, 0);
-                if can_bind_tcp(ipv6).await {
+                if can_bind_tcp(ipv6) {
                     Ok(ipv6)
                 } else {
                     Err(anyhow!(
@@ -936,7 +940,7 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     } else {
         // try standard loopback address
         let ipv6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0);
-        if can_bind_tcp(ipv6).await {
+        if can_bind_tcp(ipv6) {
             Ok(ipv6)
         } else {
             Err(anyhow!(
@@ -946,13 +950,13 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
+fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
     match env::var(ENV_HOST_IP4) {
         Ok(env_ipv4) => {
             if env_ipv4.trim().is_empty() {
                 return Err(anyhow!("IPv4 address disabled"));
             }
-            is_free_tcp_ipv4(Some(&env_ipv4), port).await
+            is_free_tcp_ipv4(Some(&env_ipv4), port)
         }
         Err(_) => {
             // get from config
@@ -961,22 +965,22 @@ async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<Socket
                     if ipv4_str.is_empty() {
                         Err(anyhow!("IPv4 address disabled"))
                     } else {
-                        is_free_tcp_ipv4(Some(&ipv4_str), port).await
+                        is_free_tcp_ipv4(Some(&ipv4_str), port)
                     }
                 }
-                None => is_free_tcp_ipv4(None, port).await, // Defaults to loopback
+                None => is_free_tcp_ipv4(None, port), // Defaults to loopback
             }
         }
     }
 }
 
-async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
+fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
     match env::var(ENV_HOST_IP6) {
         Ok(env_ipv6) => {
             if env_ipv6.trim().is_empty() {
                 return Err(anyhow!("IPv6 address disabled"));
             }
-            is_free_tcp_ipv6(Some(&env_ipv6), port).await
+            is_free_tcp_ipv6(Some(&env_ipv6), port)
         }
         Err(_) => {
             // get from config
@@ -985,10 +989,10 @@ async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<Socket
                     if ipv6_str.is_empty() {
                         Err(anyhow!("IPv6 address disabled"))
                     } else {
-                        is_free_tcp_ipv6(Some(&ipv6_str), port).await
+                        is_free_tcp_ipv6(Some(&ipv6_str), port)
                     }
                 }
-                None => is_free_tcp_ipv6(None, port).await, // Defaults to loopback
+                None => is_free_tcp_ipv6(None, port), // Defaults to loopback
             }
         }
     }
@@ -1538,72 +1542,76 @@ mod tests {
         assert!(validate_name_string("émojis 🎉").is_ok());
     }
 
-    #[tokio::test]
-    async fn test_watch_passwd_file_clears_cache_on_mtime_change() {
+    #[test]
+    fn test_watch_passwd_file_clears_cache_on_mtime_change() {
         // Goal: verify that the watcher clears the in-memory session
         // cache when the password file's mtime changes (simulating a
-        // CLI `--reset-password` against a running daemon).
+        // CLI `--reset-password` against a running daemon). Runs on the
+        // active runtime (Tokio or compio) since the watcher uses the rt facade.
         use std::collections::HashMap;
         use time::OffsetDateTime;
         use tower_sessions::session::Record;
 
-        let dir = tempfile::tempdir().unwrap();
-        let passwd_file = dir.path().join("passwd");
-        std::fs::write(&passwd_file, b"original-hash").unwrap();
-        // Initial mtime needs to be old enough that a rewrite below
-        // produces a strictly different mtime even on filesystems with
-        // 1s mtime resolution.
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_file = dir.path().join("passwd");
+            std::fs::write(&passwd_file, b"original-hash").unwrap();
+            // Initial mtime needs to be old enough that a rewrite below
+            // produces a strictly different mtime even on filesystems with
+            // 1s mtime resolution.
+            crate::rt::sleep(Duration::from_millis(1100)).await;
 
-        let store = MemorySessionStore::new(10);
-        let mut record = Record {
-            id: Id::default(),
-            data: HashMap::default(),
-            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
-        };
-        store.create(&mut record).await.unwrap();
-        let stored_id = record.id;
-        assert!(
-            store.load(&stored_id).await.unwrap().is_some(),
-            "Session should exist before reset."
-        );
+            let store = MemorySessionStore::new(10);
+            let mut record = Record {
+                id: Id::default(),
+                data: HashMap::default(),
+                expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+            };
+            store.create(&mut record).await.unwrap();
+            let stored_id = record.id;
+            assert!(
+                store.load(&stored_id).await.unwrap().is_some(),
+                "Session should exist before reset."
+            );
 
-        let cancel_token = CancellationToken::new();
-        let watcher_handle = tokio::spawn(watch_passwd_file(
-            passwd_file.clone(),
-            store.clone(),
-            cancel_token.clone(),
-            Duration::from_millis(50),
-        ));
-        // Let the watcher run its initial mtime read before we mutate
-        // the file. Without this, the watcher's first read sees the
-        // post-mutation mtime as its baseline and never detects a
-        // change.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+            let cancel_token = CancellationToken::new();
+            // rt::spawn is detached; the poll loop below plus the cancel token
+            // synchronize the test without a join handle.
+            crate::rt::spawn(watch_passwd_file(
+                passwd_file.clone(),
+                store.clone(),
+                cancel_token.clone(),
+                Duration::from_millis(50),
+            ));
+            // Let the watcher run its initial mtime read before we mutate
+            // the file. Without this, the watcher's first read sees the
+            // post-mutation mtime as its baseline and never detects a
+            // change.
+            crate::rt::sleep(Duration::from_millis(100)).await;
 
-        // Simulate `coolercontrold --reset-password`: rewrite the file.
-        std::fs::write(&passwd_file, b"default-hash").unwrap();
+            // Simulate `coolercontrold --reset-password`: rewrite the file.
+            std::fs::write(&passwd_file, b"default-hash").unwrap();
 
-        // Poll until the watcher catches the change. Bound the wait so
-        // a regression cannot hang the test runner.
-        let mut cleared = false;
-        for _ in 0..50 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            if store.load(&stored_id).await.unwrap().is_none() {
-                cleared = true;
-                break;
+            // Poll until the watcher catches the change. Bound the wait so
+            // a regression cannot hang the test runner.
+            let mut cleared = false;
+            for _ in 0..50 {
+                crate::rt::sleep(Duration::from_millis(50)).await;
+                if store.load(&stored_id).await.unwrap().is_none() {
+                    cleared = true;
+                    break;
+                }
             }
-        }
-        cancel_token.cancel();
-        let _ = watcher_handle.await;
-        assert!(
-            cleared,
-            "Session cache should be cleared after password file mtime changes."
-        );
+            cancel_token.cancel();
+            assert!(
+                cleared,
+                "Session cache should be cleared after password file mtime changes."
+            );
+        });
     }
 
-    #[tokio::test]
-    async fn test_watch_passwd_file_no_clear_when_unchanged() {
+    #[test]
+    fn test_watch_passwd_file_no_clear_when_unchanged() {
         // Goal: verify that the watcher leaves the cache alone when
         // the password file is untouched, so we do not invalidate
         // sessions on every poll.
@@ -1611,35 +1619,36 @@ mod tests {
         use time::OffsetDateTime;
         use tower_sessions::session::Record;
 
-        let dir = tempfile::tempdir().unwrap();
-        let passwd_file = dir.path().join("passwd");
-        std::fs::write(&passwd_file, b"hash").unwrap();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let passwd_file = dir.path().join("passwd");
+            std::fs::write(&passwd_file, b"hash").unwrap();
 
-        let store = MemorySessionStore::new(10);
-        let mut record = Record {
-            id: Id::default(),
-            data: HashMap::default(),
-            expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
-        };
-        store.create(&mut record).await.unwrap();
-        let stored_id = record.id;
+            let store = MemorySessionStore::new(10);
+            let mut record = Record {
+                id: Id::default(),
+                data: HashMap::default(),
+                expiry_date: OffsetDateTime::now_utc() + time::Duration::hours(1),
+            };
+            store.create(&mut record).await.unwrap();
+            let stored_id = record.id;
 
-        let cancel_token = CancellationToken::new();
-        let watcher_handle = tokio::spawn(watch_passwd_file(
-            passwd_file,
-            store.clone(),
-            cancel_token.clone(),
-            Duration::from_millis(20),
-        ));
+            let cancel_token = CancellationToken::new();
+            crate::rt::spawn(watch_passwd_file(
+                passwd_file,
+                store.clone(),
+                cancel_token.clone(),
+                Duration::from_millis(20),
+            ));
 
-        // Let several poll cycles run without modifying the file.
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        cancel_token.cancel();
-        let _ = watcher_handle.await;
+            // Let several poll cycles run without modifying the file.
+            crate::rt::sleep(Duration::from_millis(150)).await;
+            cancel_token.cancel();
 
-        assert!(
-            store.load(&stored_id).await.unwrap().is_some(),
-            "Session should still be present when password file is unchanged."
-        );
+            assert!(
+                store.load(&stored_id).await.unwrap().is_some(),
+                "Session should still be present when password file is unchanged."
+            );
+        });
     }
 }

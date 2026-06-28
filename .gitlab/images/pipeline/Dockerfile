@@ -13,11 +13,12 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100
 
-# Using 22.04 LTS rust version, currently 1.85
+# Default build needs Rust 1.88 (compio-rt feature). The 1.85 path is the `--no-default-features`
+# build only. If jammy apt lacks cargo-1.88, switch to the rustup block below (RUST_VERSION=1.88.0).
 #ENV RUSTUP_HOME=/usr/local/rustup \
 #    CARGO_HOME=/usr/local/cargo \
 #    PATH=/usr/local/cargo/bin:$PATH \
-#    RUST_VERSION=1.90.0
+#    RUST_VERSION=1.91.0
 ENV PATH=/root/.cargo/bin:$PATH
 
 ENV NODE_MAJOR=22
@@ -29,8 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # for standard appstream checks:
         desktop-file-utils appstream-util \
         # rust
-        cargo-1.85 \
-        rust-1.85-clippy \
+        cargo-1.91 \
+        rust-1.91-clippy \
         jq \
         protobuf-compiler \
         # python
@@ -64,8 +65,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
 #    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 # needed for cargo-* versions
-RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.85 10 && \
-    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.85 10
+RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.91 10 && \
+    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.91 10
 
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \

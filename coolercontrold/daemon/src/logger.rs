@@ -17,6 +17,7 @@
  */
 
 use crate::repositories::liquidctl::liqctld_service;
+use crate::rt;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
@@ -29,12 +30,14 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::runtime::Handle;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 const LOG_BUFFER_LINE_SIZE: usize = 500;
 const NEW_LOG_CHANNEL_CAP: usize = 2;
+// Bounded buffer between the synchronous `Write` impl (called from arbitrary threads) and the
+// log-buffer actor. Sized so bursts rarely overflow; on overflow a UI-buffer line is dropped.
+const LOG_MSG_CHANNEL_CAP: usize = 64;
 
 pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
     let log_level = if cmd_args.debug {
@@ -103,7 +106,10 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         Err(err) => debug!("Failed to get XDG desktop info: {err}"),
     }
     if cmd_args.system_info {
-        let _ = liqctld_service::verify_env().await;
+        // verify_env spawns a Python process via `tokio::process`; run it on the sidecar.
+        let _ = crate::sidecar::handle()
+            .run(liqctld_service::verify_env)
+            .await;
         exit_successfully();
     }
     Ok(log_buf_handle)
@@ -366,20 +372,18 @@ pub struct LogBufHandle {
     msg_sender: mpsc::Sender<CCLogBufferMessage>,
     new_log_sender: broadcast::Sender<String>,
     cancel_token: CancellationToken,
-    runtime_handle: Handle,
 }
 
 impl LogBufHandle {
     pub fn new(cancel_token: CancellationToken) -> Self {
-        let (msg_sender, receiver) = mpsc::channel(10);
+        let (msg_sender, receiver) = mpsc::channel(LOG_MSG_CHANNEL_CAP);
         let (new_log_sender, _new_log_rx) = broadcast::channel(NEW_LOG_CHANNEL_CAP);
         let log_buf_actor = LogBufferActor::new(new_log_sender.clone(), receiver);
-        tokio::task::spawn_local(run_log_buf_actor(log_buf_actor, cancel_token.clone()));
+        rt::spawn(run_log_buf_actor(log_buf_actor, cancel_token.clone()));
         Self {
             msg_sender,
             new_log_sender,
             cancel_token,
-            runtime_handle: Handle::current(),
         }
     }
 
@@ -438,21 +442,48 @@ async fn run_log_buf_actor(mut log_buf_actor: LogBufferActor, cancel_token: Canc
 impl std::io::Write for LogBufHandle {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let log_string = unsafe { from_utf8_unchecked(buf).to_owned() };
-        // trick to enter the runtime context inside a non-async trait impl
-        // guard required in particular for python logging in separate threads
-        let _guard = self.runtime_handle.enter();
-        let sender = self.msg_sender.clone();
-        self.runtime_handle.spawn(async move {
-            let _ = sender
-                .send(CCLogBufferMessage::Log { log: log_string })
-                .await;
-        });
+        let log = unsafe { from_utf8_unchecked(buf).to_owned() };
+        // Called synchronously from arbitrary threads (e.g. library logging on their own threads),
+        // so we cannot await and cannot assume a runtime is entered. `try_send` is non-blocking and
+        // thread-safe. On a full channel the line is dropped: this only feeds the UI log ring, while
+        // the journal/stderr sink still records every line.
+        let _ = self.msg_sender.try_send(CCLogBufferMessage::Log { log });
         Ok(buf.len())
     }
 
     #[inline]
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // Goal: the synchronous `Write` impl delivers a line to the buffer actor via `try_send` (no
+    // runtime handle), and `get_logs` returns it. The actor drains the bounded channel FIFO, so the
+    // logged line is processed before the later `GetLogs` request resolves.
+    #[test]
+    fn write_delivers_line_to_buffer_actor() {
+        crate::rt::test_runtime(async {
+            let mut handle = LogBufHandle::new(CancellationToken::new());
+            handle.write_all(b"hello buffer\n").unwrap();
+            let logs = handle.get_logs().await;
+            assert!(logs.contains("hello buffer"), "logs were: {logs:?}");
+        });
+    }
+
+    // Goal: writes past the channel capacity must not panic or block (they drop), since `write` is
+    // called synchronously from threads with no runtime. We never drain here, so the channel fills.
+    #[test]
+    fn write_does_not_block_or_panic_when_channel_full() {
+        crate::rt::test_runtime(async {
+            let mut handle = LogBufHandle::new(CancellationToken::new());
+            for _ in 0..(LOG_MSG_CHANNEL_CAP * 4) {
+                handle.write_all(b"overflow\n").unwrap();
+            }
+        });
     }
 }

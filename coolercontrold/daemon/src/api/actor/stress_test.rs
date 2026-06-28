@@ -23,7 +23,6 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use log::{debug, info, warn};
-use moro_local::Scope;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
@@ -1014,17 +1013,19 @@ pub struct StressTestHandle {
 }
 
 impl StressTestHandle {
-    pub async fn new<'s>(
-        cancel_token: CancellationToken,
-        main_scope: &'s Scope<'s, 's, Result<()>>,
-    ) -> Self {
-        let stress_ng = detect_stress_ng().await;
+    pub async fn new(cancel_token: CancellationToken) -> Self {
+        // Probe stress-ng and run the actor on the sidecar: both manage child processes via
+        // tokio::process, which needs a Tokio reactor (the main thread may be on compio).
+        let stress_ng = crate::sidecar::handle()
+            .run(detect_stress_ng)
+            .await
+            .unwrap_or(StressNgCaps { path: None });
         // Depth 2: callers await the oneshot response (at most one user
         // message in flight per caller), but a watchdog may self-message
         // independently. Both are processed serially by the actor.
         let (sender, receiver) = mpsc::channel(2);
         let actor = StressTestActor::new(receiver, sender.clone(), stress_ng);
-        main_scope.spawn(run_api_actor(actor, cancel_token));
+        crate::sidecar::handle().spawn(move || run_api_actor(actor, cancel_token));
         Self { sender }
     }
 

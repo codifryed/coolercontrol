@@ -42,9 +42,6 @@ use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
-use tokio::signal;
-use tokio::signal::unix::SignalKind;
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 mod admin;
@@ -64,7 +61,9 @@ mod modes;
 mod notifier;
 mod paths;
 mod repositories;
+mod rt;
 mod setting;
+mod sidecar;
 mod sleep_listener;
 mod token;
 
@@ -268,29 +267,39 @@ struct Args {
     command: Option<SubCommands>,
 }
 
-/// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
-/// It uses a structured concurrency model for consistent and efficient performance while
-/// concurrently handling varying device latencies.
+/// `coolercontrold` uses a single-threaded asynchronous runtime. It uses a structured concurrency
+/// model for consistent and efficient performance while concurrently handling varying device
+/// latencies.
 #[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
-    cc_fs::runtime(async {
+    rt::runtime(async {
         let run_token = setup_termination_signals();
+        // The Tokio sidecar hosts everything that needs a Tokio reactor (REST/gRPC servers, the dbus
+        // sleep listener, the service-plugin tonic transport). Started early so it exists before
+        // device-repo init. Its own token is cancelled only after `shutdown(repos)` (not on
+        // `run_token`), so transports the repos round-trip during shutdown stay alive long enough.
+        let sidecar_token = CancellationToken::new();
+        let sidecar = sidecar::Sidecar::start(sidecar_token.clone());
+        // Publish the sidecar handle process-wide so reactor-bound work (process spawning, the
+        // auth/token/liqctld/service-plugin transports) can reach it without threading a handle.
+        sidecar::install_global(sidecar.handle());
         handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
-        #[cfg(feature = "io_uring")]
-        cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability()?;
         config.log_deprecated_function_warnings();
         paths::ensure_data_dir().await?;
-        admin::load_passwd().await?;
+        // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
+        // reactor, so run it on the sidecar. Harmless on the Tokio backend too.
+        sidecar::handle().run(admin::load_passwd).await??;
 
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
+        rt::log_active_backend();
 
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
@@ -379,7 +388,7 @@ fn main() -> Result<()> {
                 }
 
                 // give concurrent services a moment to finish initializing:
-                sleep(Duration::from_millis(10)).await;
+                rt::sleep(Duration::from_millis(10)).await;
                 set_cpu_affinity()?;
                 info!("Initialization Complete");
                 main_loop::run(
@@ -403,7 +412,12 @@ fn main() -> Result<()> {
             error!("Main scope failed to start: {err}");
         });
         // all tasks from the main scope must have completed by this point.
-        shutdown(repos, config).await
+        let shutdown_result = shutdown(repos, config).await;
+        // Repos have finished their shutdown (incl. any sidecar round-trips like the service-plugin
+        // gRPC shutdown), so the sidecar can now be torn down and joined (bounded, force-exit).
+        sidecar_token.cancel();
+        sidecar.join();
+        shutdown_result
     })
 }
 
@@ -426,37 +440,9 @@ fn verify_is_root() -> Result<()> {
 /// the signal handlers.
 fn setup_termination_signals() -> CancellationToken {
     let run_token = CancellationToken::new();
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-    let sigterm = async {
-        signal::unix::signal(SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-    let sigint = async {
-        signal::unix::signal(SignalKind::interrupt())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-    let sigquit = async {
-        signal::unix::signal(SignalKind::quit())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
     let sig_run_token = run_token.clone();
-    tokio::task::spawn_local(async move {
-        tokio::select! {
-            () = ctrl_c => {},
-            () = sigterm => {},
-            () = sigint => {},
-            () = sigquit => {},
-        }
+    rt::spawn(async move {
+        rt::shutdown_signal().await;
         sig_run_token.cancel();
     });
     run_token
@@ -464,23 +450,6 @@ fn setup_termination_signals() -> CancellationToken {
 
 #[derive(Debug, clap::Subcommand)]
 enum SubCommands {
-    #[command(hide = true)]
-    Notify {
-        #[arg(required = true)]
-        title: String,
-
-        #[arg(required = true)]
-        message: String,
-
-        #[arg()]
-        icon: Option<u8>,
-
-        #[arg()]
-        audio: Option<bool>,
-
-        #[arg()]
-        urgency: Option<String>,
-    },
     /// Run hardware detection and print results
     Detect {
         /// Also load detected kernel modules
@@ -518,25 +487,6 @@ enum SubCommands {
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
-    if let Some(SubCommands::Notify {
-        title,
-        message,
-        icon,
-        audio,
-        urgency,
-    }) = &args.command
-    {
-        notifier::notify(
-            title,
-            message,
-            icon.unwrap_or(0),
-            audio.is_some_and(|a| a),
-            urgency.as_ref().map_or("1", |u| u.as_str()),
-            args.debug,
-        )
-        .await?;
-        exit_successfully();
-    }
     if let Some(SubCommands::StressCpu { threads, timeout }) = &args.command {
         cc_stress::run_cpu_stress(*threads, *timeout)?;
         exit_successfully();
@@ -582,7 +532,13 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
         }
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
-        match admin::reset_passwd().await {
+        // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
+        // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
+        match crate::sidecar::handle()
+            .run(admin::reset_passwd)
+            .await
+            .unwrap_or_else(Err)
+        {
             Ok(()) => exit_successfully(),
             Err(err) => exit_with_error(&err),
         }
@@ -651,7 +607,7 @@ async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
             startup_delay.as_secs()
         );
     }
-    sleep(startup_delay).await;
+    rt::sleep(startup_delay).await;
     Ok(())
 }
 
@@ -820,12 +776,15 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     Rc::new(all_devices)
 }
 
-/// This will make sure that our main tokio task thread stays on the same CPU, reducing
-/// any unnecessary context switching.
+/// Pin our main runtime thread to the CPU it is currently running on, reducing unnecessary
+/// context switching.
 ///
-/// The downside is that the blocking IO thread pool is generally a bit larger, but still
-/// less than the standard multithreaded setup of one thread per core. Due to this, it should
-/// not be called until the main initialization work has been completed.
+/// Deferred until after runtime startup and initialization complete, never at build time.
+/// Linux threads inherit the creating thread's affinity mask, so pinning before the blocking
+/// IO pool has warmed up would trap every later-spawned blocking thread on this one CPU.
+/// Running it now lets those threads spawn while affinity is still all-CPUs and stay spread
+/// across cores. This is also why compio's build-time `RuntimeBuilder::thread_affinity` is
+/// not used: it pins inside `build()`, before any blocking worker exists.
 fn set_cpu_affinity() -> Result<()> {
     let current_cpu = sched_getcpu()?;
     let mut cpu_set = CpuSet::new();

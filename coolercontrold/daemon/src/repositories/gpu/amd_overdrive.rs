@@ -22,6 +22,7 @@ use std::time::Duration;
 use crate::cc_fs;
 use crate::notifier::{notify_all_sessions, NotificationHandle, NotificationIcon};
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
+use crate::rt;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, info, warn};
 
@@ -187,7 +188,7 @@ pub async fn amd_gpu_overdrive_enable(notification_handle: NotificationHandle) -
                 // Spawn in background so the API responds immediately.
                 // The config file is already written, and a reboot is
                 // required regardless.
-                tokio::task::spawn_local(async move {
+                rt::spawn(async move {
                     let result = regenerate_initramfs(initramfs).await;
                     if result.is_ok() {
                         warn!(

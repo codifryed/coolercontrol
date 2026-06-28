@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
 use std::sync::Arc;
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::api::CCError;
 use crate::config::Config;

@@ -19,6 +19,7 @@
 use std::path::Path;
 
 use crate::cc_fs;
+use crate::cc_fs::sidecar_fs;
 use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
@@ -53,15 +54,16 @@ pub async fn match_passwd(passwd: &str) -> bool {
                 }
                 is_match
             } else {
-                match PasswordHash::new(&stored_hash) {
-                    Ok(parsed) => Argon2::default()
-                        .verify_password(passwd.as_bytes(), &parsed)
-                        .is_ok(),
-                    Err(err) => {
-                        error!("Failed to parse stored password hash: {err}");
+                // Argon2 verify is CPU-bound (~8 ms). Run it on the sidecar's blocking pool so it
+                // does not stall the sidecar's single async reactor, and so a burst of login
+                // attempts cannot monopolize it. All callers already run on the sidecar runtime.
+                let passwd = passwd.to_owned();
+                tokio::task::spawn_blocking(move || verify_password_argon2(&passwd, &stored_hash))
+                    .await
+                    .unwrap_or_else(|err| {
+                        error!("Argon2 verify task failed to join: {err}");
                         false
-                    }
-                }
+                    })
             }
         }
         Err(err) => {
@@ -74,31 +76,31 @@ pub async fn match_passwd(passwd: &str) -> bool {
 pub async fn load_passwd() -> Result<String> {
     let passwd_path = paths::passwd_file();
     if passwd_path.exists() {
-        if let Ok(contents) = cc_fs::read_txt(passwd_path).await {
-            cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
+        if let Ok(contents) = sidecar_fs::read_txt(passwd_path).await {
+            sidecar_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
                 .await?;
             return Ok(contents.trim().to_owned());
         }
     }
-    let passwd = hash_password_argon2(DEFAULT_PASS)?;
+    let passwd = hash_password(DEFAULT_PASS).await?;
     Ok(passwd)
 }
 
 pub async fn save_passwd(password: &str) -> Result<()> {
     let passwd_path = paths::passwd_file();
-    let passwd = hash_password_argon2(password)?;
-    let _ = cc_fs::remove_file(passwd_path).await;
-    cc_fs::write_string(passwd_path, passwd).await?;
-    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let passwd = hash_password(password).await?;
+    let _ = sidecar_fs::remove_file(passwd_path).await;
+    sidecar_fs::write_string(passwd_path, passwd).await?;
+    sidecar_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
     Ok(())
 }
 
 pub async fn reset_passwd() -> Result<()> {
     let passwd_path = paths::passwd_file();
-    let passwd = hash_password_argon2(DEFAULT_PASS)?;
-    let _ = cc_fs::remove_file(passwd_path).await;
-    cc_fs::write_string(passwd_path, passwd).await?;
-    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let passwd = hash_password(DEFAULT_PASS).await?;
+    let _ = sidecar_fs::remove_file(passwd_path).await;
+    sidecar_fs::write_string(passwd_path, passwd).await?;
+    sidecar_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
     clear_sessions().await;
     Ok(())
 }
@@ -112,7 +114,7 @@ async fn clear_sessions() {
 pub async fn clear_session_files(sessions_dir: &Path) {
     if let Ok(entries) = cc_fs::read_dir(sessions_dir) {
         for entry in entries.flatten() {
-            let _ = cc_fs::remove_file(entry.path()).await;
+            let _ = sidecar_fs::remove_file(entry.path()).await;
         }
     }
     debug!("Cleared all persisted sessions");
@@ -127,26 +129,51 @@ pub async fn clear_session_files(sessions_dir: &Path) {
 pub async fn load_or_generate_session_key() -> Result<Key> {
     let key_path = paths::session_key_file();
     if key_path.exists() {
-        let encoded = cc_fs::read_txt(key_path).await?;
+        let encoded = sidecar_fs::read_txt(key_path).await?;
         let bytes = BASE64.decode(encoded.trim())?;
         debug!("Session key loaded.");
         Ok(Key::from(&bytes))
     } else {
         let key = Key::generate();
         let encoded = BASE64.encode(key.master());
-        cc_fs::write_string(key_path, encoded).await?;
-        cc_fs::set_permissions(key_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+        sidecar_fs::write_string(key_path, encoded).await?;
+        sidecar_fs::set_permissions(key_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
         debug!("Session key generated and saved.");
         Ok(key)
     }
 }
 
+/// Hashes `passwd` with Argon2id off the async reactor, on the sidecar's blocking pool. Argon2 is
+/// intentionally CPU-bound (~8 ms) and the sidecar runs a single async thread, so hashing inline
+/// would stall the REST API/SSE. Must be awaited on the sidecar Tokio runtime (every caller is).
+async fn hash_password(passwd: &str) -> Result<String> {
+    let passwd = passwd.to_owned();
+    tokio::task::spawn_blocking(move || hash_password_argon2(&passwd))
+        .await
+        .map_err(|err| anyhow!("Argon2 hash task failed to join: {err}"))?
+}
+
+/// Sync Argon2id hash. CPU-bound; prefer `hash_password` in async contexts. Used directly by tests.
 fn hash_password_argon2(passwd: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
         .hash_password(passwd.as_bytes(), &salt)
         .map_err(|e| anyhow!("Failed to hash password: {e}"))?;
     Ok(hash.to_string())
+}
+
+/// Sync Argon2id verify; a malformed stored hash is logged and treated as a non-match. CPU-bound,
+/// so `match_passwd` runs it via `spawn_blocking`.
+fn verify_password_argon2(passwd: &str, stored_hash: &str) -> bool {
+    match PasswordHash::new(stored_hash) {
+        Ok(parsed) => Argon2::default()
+            .verify_password(passwd.as_bytes(), &parsed)
+            .is_ok(),
+        Err(err) => {
+            error!("Failed to parse stored password hash: {err}");
+            false
+        }
+    }
 }
 
 fn is_legacy_hash(stored: &str) -> bool {
@@ -182,6 +209,20 @@ mod tests {
         assert!(Argon2::default()
             .verify_password(b"password", &parsed)
             .is_ok());
+    }
+
+    #[test]
+    fn verify_password_argon2_matches_rejects_and_survives_garbage() {
+        // Goal: the extracted sync verify accepts the right password, rejects a wrong one, and
+        // treats a malformed stored hash as a non-match (not a panic), since `match_passwd` feeds it
+        // whatever is on disk.
+        let hash = hash_password_argon2("password").unwrap();
+        assert!(verify_password_argon2("password", &hash));
+        assert!(!verify_password_argon2("wrong", &hash));
+        assert!(!verify_password_argon2(
+            "password",
+            "not-a-valid-argon2-hash"
+        ));
     }
 
     #[test]
@@ -284,7 +325,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_clear_session_files_removes_all() {
-        cc_fs::test_runtime(async {
+        sidecar_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let sessions_dir = dir.path().join("sessions");
             std::fs::create_dir_all(&sessions_dir).unwrap();
@@ -303,7 +344,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_clear_session_files_handles_missing_dir() {
-        cc_fs::test_runtime(async {
+        sidecar_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let sessions_dir = dir.path().join("nonexistent");
             // Should not panic when directory doesn't exist
@@ -314,16 +355,16 @@ mod tests {
     #[test]
     #[serial]
     fn test_load_or_generate_session_key_creates_file() {
-        cc_fs::test_runtime(async {
+        sidecar_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let key_path = dir.path().join(".session_key");
 
             // Simulate by writing a key manually, then reading
             let key = Key::generate();
             let encoded = BASE64.encode(key.master());
-            cc_fs::write_string(&key_path, encoded).await.unwrap();
+            sidecar_fs::write_string(&key_path, encoded).await.unwrap();
 
-            let loaded_encoded = cc_fs::read_txt(&key_path).await.unwrap();
+            let loaded_encoded = sidecar_fs::read_txt(&key_path).await.unwrap();
             let bytes = BASE64.decode(loaded_encoded.trim()).unwrap();
             let loaded_key = Key::from(&bytes);
             assert_eq!(key.master(), loaded_key.master());

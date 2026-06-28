@@ -66,7 +66,7 @@ impl ApiActor<DetectMessage> for DetectActor {
                 // are blocking operations. Offload to the blocking thread pool so the
                 // async runtime is not stalled.
                 let override_path = self.override_path.clone();
-                let result = tokio::task::spawn_blocking(move || {
+                let result = crate::rt::spawn_blocking(move || {
                     cc_detect::run_detection(load_modules, Some(&override_path))
                 })
                 .await

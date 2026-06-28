@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::repositories::utils::find_xauthority_path;
+use crate::rt;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
@@ -33,8 +34,8 @@ use nvml_wrapper::sys_exports::field_id;
 use nvml_wrapper::Nvml;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use tokio::sync::OnceCell;
-use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
@@ -1001,7 +1002,7 @@ impl GpuNVidia {
     async fn search_for_xauthority_path() -> Option<String> {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
-            sleep(Duration::from_millis(500)).await;
+            rt::sleep(Duration::from_millis(500)).await;
             if let Some(path) = find_xauthority_path() {
                 return Some(path);
             }

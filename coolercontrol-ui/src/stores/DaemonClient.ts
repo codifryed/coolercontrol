@@ -32,6 +32,7 @@ import {
     DeviceSettingWritePWMModeDTO,
 } from '@/models/DaemonSettings'
 import { Function, FunctionsDTO, Profile, ProfilesDTO } from '@/models/Profile'
+import { GenerateProfilesRequest, GenerateProfilesResponse } from '@/models/ProfileGeneration'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import {
     CoolerControlAllDeviceSettingsDTO,
@@ -49,7 +50,12 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
-import type { Calibration, CalibrationEntry, CalibrationStatus } from '@/models/Calibration.ts'
+import type {
+    Calibration,
+    CalibrationBatchStatus,
+    CalibrationEntry,
+    CalibrationStatus,
+} from '@/models/Calibration.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto, { HasUiDto, PluginStatusDto } from '@/models/Plugins.ts'
@@ -941,6 +947,28 @@ export default class DaemonClient {
     }
 
     /**
+     * Asks the daemon to generate a proposed set of profiles, functions, and custom sensors for
+     * the given fan assignments and presets. Nothing is persisted: the proposal is previewed and
+     * the user confirms before the normal save endpoints persist it. Returns undefined on error.
+     * @param request
+     */
+    async generateProfiles(
+        request: GenerateProfilesRequest,
+    ): Promise<GenerateProfilesResponse | undefined> {
+        try {
+            const response = await this.getClient().post(
+                '/profiles/generate',
+                instanceToPlain(request),
+            )
+            this.logDaemonResponse(response, 'Generate Profiles')
+            return plainToInstance(GenerateProfilesResponse, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    /**
      * Deletes the Profile from the daemon with the associated UID.
      * It also updates any settings that are affected.
      * @param profileUID
@@ -1726,6 +1754,74 @@ export default class DaemonClient {
                 `/calibrations/${deviceUID}/channels/${channelName}/cancel`,
             )
             this.logDaemonResponse(response, 'Cancel Calibration')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Begin a calibration batch. Returns `true` on 202, an
+     * ErrorResponse on 409 (a batch is already active) or other failure.
+     * The daemon drives the queue; poll `getCalibrationBatchStatus`.
+     */
+    async startCalibrationBatch(
+        channels: Array<{ device_uid: UID; channel_name: string }>,
+        concurrency: number,
+    ): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/calibrations/batch/start`, {
+                channels,
+                concurrency,
+            })
+            this.logDaemonResponse(response, 'Start Calibration Batch')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Fetch the active or most recent calibration batch. Returns `null`
+     * when no batch has run this session (or the daemon predates this
+     * endpoint), `undefined` on transport failure (so the caller keeps
+     * the last-known value). This is polled on every app load, so a 404
+     * is treated as "no batch" silently rather than logged as an error.
+     */
+    async getCalibrationBatchStatus(): Promise<CalibrationBatchStatus | null | undefined> {
+        try {
+            const response = await this.getClient().get(`/calibrations/batch`)
+            this.logDaemonResponse(response, 'Get Calibration Batch Status')
+            return (response.data as CalibrationBatchStatus | null) ?? null
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                return null
+            }
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    /**
+     * Cancel the active calibration batch. Returns `true` on success,
+     * `ErrorResponse` when none was active (404).
+     */
+    async cancelCalibrationBatch(): Promise<boolean | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/calibrations/batch/cancel`)
+            this.logDaemonResponse(response, 'Cancel Calibration Batch')
             return true
         } catch (err: any) {
             this.logError(err)

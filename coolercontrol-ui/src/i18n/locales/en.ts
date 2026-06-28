@@ -556,6 +556,12 @@ export default {
             gettingStartedStep2:
                 "Assign it on the {controls} (or the fan's own page). Profiles are not auto-applied.",
             gettingStartedStep3: 'Reuse the same Profile on as many fans as you want.',
+            gettingStartedAutoCreate:
+                '{wizard} can be used to set up basic profiles for all your fans at once.',
+            gettingStartedAutoCreateLink: 'Auto-Create Profiles',
+            calibrateFans:
+                'For consistent control, {wizard} so a given % means a similar speed for every fan.',
+            calibrateFansLink: 'calibrate your fans',
             hardwareSupport: 'Hardware Support',
             hardwareSupportDesc: 'Supported devices and driver installation',
             gitRepository: 'Git Repository',
@@ -1090,6 +1096,35 @@ export default {
             deleteTag: 'Delete tag',
         },
         wizards: {
+            calibration: {
+                title: 'Calibrate Fans',
+                tooltip: 'Calibrate multiple fans for consistent speed control',
+                pickIntro:
+                    'Select the fans to calibrate. Already-calibrated fans are unchecked by default.',
+                noFans: 'No controllable fans were detected.',
+                selectAll: 'Select all',
+                calibratedBadge: 'calibrated',
+                idleNote:
+                    'Calibration ramps each fan across its range. Best run at idle: it is noisy and takes a few minutes per fan.',
+                concurrencyLabel: 'Fans at a time',
+                concurrencyNote:
+                    "Running more at once is faster, but adjacent fans can skew each other's readings (cross-wind, push-pull). One at a time is most accurate.",
+                start: 'Start',
+                close: 'Close',
+                running: 'Calibrating {current} of {total}...',
+                queued: 'Queued',
+                done: 'Done',
+                failed: 'Failed',
+                skipped: 'Skipped',
+                startFailed: 'Could not start',
+                summary: '{done} calibrated, {failed} failed, {skipped} skipped.',
+                reloadBatch:
+                    'Calibrated {count} fans. Reload to apply the new RPM-normalized control?',
+                stagePreflight: 'Preflight',
+                stageUpSweep: 'Up sweep',
+                stageDownSweep: 'Down sweep',
+                stageFinalizing: 'Finalizing',
+            },
             fanControl: {
                 fanControlWizard: 'Fan Control Wizard',
                 editCurrentProfile: 'Edit Profile',
@@ -1142,6 +1177,50 @@ export default {
             },
             customSensor: {
                 new: 'New Custom Sensor',
+            },
+            generate: {
+                title: 'Auto-Create Profiles',
+                tooltip: 'Auto-create profiles for your fans from a few choices',
+                stepFans: 'Assign Fans',
+                stepTemps: 'Key Temps',
+                stepPreset: 'Performance',
+                assignIntro: 'Assign each fan a role. Leave a fan unset to skip it.',
+                calibrateFirst: 'Calibrate fans first for best consistency (a few minutes)',
+                skip: 'Skip',
+                noFans: 'No controllable fans were detected.',
+                tempsIntro:
+                    'Confirm your key temperatures. These are pre-filled as a best guess: please verify them.',
+                cpuTemp: 'CPU temp',
+                gpuTemp: 'GPU temp',
+                liquidTemp: 'Liquid temp',
+                ambientTemp: 'Ambient temp (optional)',
+                tempNone: 'None',
+                presetIntro: 'Choose how aggressively the fans should ramp.',
+                perKindOverrides: 'Per-role overrides (advanced)',
+                cfmCaveat:
+                    'Positive-pressure bias is duty-based, not airflow-aware: with lopsided fan counts it cannot guarantee positive pressure.',
+                generate: 'Generate',
+                preview: 'Preview',
+                previewIntro:
+                    'Review what will be created and applied. Nothing is saved until you confirm.',
+                previewAssignments: 'Fan assignments',
+                willCreateHeader: 'Will be created',
+                startingPointNote:
+                    "An easy starting point instead of building from scratch. These won't be perfect for every system, so verify, test, and tweak them after creating.",
+                replaces: 'replaces {name}',
+                createApply: 'Create & Apply',
+                generated: 'Generated {count} profiles.',
+                generateError: 'Could not generate profiles.',
+                applyError: 'Could not create the profiles.',
+                kind: {
+                    CpuCooler: 'CPU air cooler',
+                    GpuFan: 'GPU fan',
+                    AioRadiator: 'AIO radiator',
+                    AioPump: 'AIO pump',
+                    CaseIntake: 'Case intake',
+                    CaseExhaust: 'Case exhaust',
+                    LaptopFan: 'Laptop fan',
+                },
             },
         },
         channelExtensionSettings: {

@@ -38,13 +38,13 @@
  */
 
 import { defineStore } from 'pinia'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { ErrorResponse } from '@/models/ErrorResponse'
-import type { Calibration, CalibrationStatus } from '@/models/Calibration'
+import type { Calibration, CalibrationBatchStatus, CalibrationStatus } from '@/models/Calibration'
 import type { UID } from '@/models/Device'
 import type { SpeedOptions } from '@/models/SpeedOptions'
 
@@ -107,6 +107,14 @@ export const useCalibrationStore = defineStore('calibration', () => {
      * a row gets a single prompt once every diagnosis has settled.
      */
     const pendingPrompts = new Map<ChannelKey, PendingPromptEntry>()
+
+    /**
+     * The active or most recent calibration batch, polled from
+     * `GET /calibrations/batch`. The daemon owns the queue, so this is
+     * how the UI observes a multi-fan run and re-attaches after a reload.
+     */
+    const batchStatus = ref<CalibrationBatchStatus | null>(null)
+    let batchPoller: ReturnType<typeof setInterval> | null = null
 
     function getChannelDisplayName(uid: UID, channelName: string): string {
         return (
@@ -415,7 +423,102 @@ export const useCalibrationStore = defineStore('calibration', () => {
         }
     }
 
+    /**
+     * Begin a calibration batch on the daemon, then start polling its
+     * status. The daemon drives the queue, so the batch (and this
+     * poller) survive the wizard closing; a reload re-attaches via
+     * `ensureBatchPolling`.
+     */
+    async function startBatch(
+        channels: Array<{ device_uid: UID; channel_name: string }>,
+        concurrency: number,
+    ): Promise<boolean | ErrorResponse> {
+        const result = await deviceStore.daemonClient.startCalibrationBatch(channels, concurrency)
+        if (result === true) {
+            await refreshBatchStatus()
+            startBatchPolling()
+        }
+        return result
+    }
+
+    /** Cancel the active batch. The poller observes the terminal state. */
+    async function cancelBatch(): Promise<boolean | ErrorResponse> {
+        return deviceStore.daemonClient.cancelCalibrationBatch()
+    }
+
+    /**
+     * Poll the batch status once. On the active->inactive transition,
+     * stop polling, refresh the calibrated badges, and offer a reload so
+     * the UI picks up the new effective options (mirrors the per-channel
+     * completion prompt, driven off the batch).
+     */
+    async function refreshBatchStatus(): Promise<void> {
+        const status = await deviceStore.daemonClient.getCalibrationBatchStatus()
+        if (status === undefined) return // transport error: keep the last-known value
+        const wasActive = batchStatus.value?.active === true
+        batchStatus.value = status
+        if (status !== null && !status.active && wasActive) {
+            stopBatchPolling()
+            await refreshAllStatuses()
+            promptBatchReloadIfNeeded(status)
+        }
+    }
+
+    function startBatchPolling(): void {
+        if (batchPoller !== null) return
+        refreshBatchStatus().catch(() => {})
+        batchPoller = setInterval(async () => {
+            await refreshBatchStatus()
+            if (batchStatus.value === null || !batchStatus.value.active) {
+                stopBatchPolling()
+            }
+        }, POLL_INTERVAL_MS)
+    }
+
+    function stopBatchPolling(): void {
+        if (batchPoller !== null) {
+            clearInterval(batchPoller)
+            batchPoller = null
+        }
+    }
+
+    /**
+     * On app load, re-attach to a batch the daemon is still driving after
+     * a reload. Returns `true` when a batch is active so the caller can
+     * surface it (reopen the wizard).
+     */
+    async function ensureBatchPolling(): Promise<boolean> {
+        await refreshBatchStatus()
+        if (batchStatus.value?.active === true) {
+            startBatchPolling()
+            return true
+        }
+        return false
+    }
+
+    /** Offer a reload when a batch finished with at least one calibration. */
+    function promptBatchReloadIfNeeded(status: CalibrationBatchStatus): void {
+        const calibrated = status.entries.filter((entry) => entry.phase === 'done').length
+        if (calibrated === 0) return
+        confirm.require({
+            header: t('components.channelExtensionSettings.calibration.reloadHeader'),
+            message: t('components.wizards.calibration.reloadBatch', { count: calibrated }),
+            icon: 'pi pi-refresh',
+            defaultFocus: 'reject',
+            acceptLabel: t('components.channelExtensionSettings.calibration.reloadAccept'),
+            rejectLabel: t('components.channelExtensionSettings.calibration.reloadReject'),
+            accept: () => {
+                deviceStore.reloadUI(true)
+            },
+        })
+    }
+
     return {
+        batchStatus,
+        startBatch,
+        cancelBatch,
+        refreshBatchStatus,
+        ensureBatchPolling,
         statusFor,
         isPolling,
         refreshStatus,

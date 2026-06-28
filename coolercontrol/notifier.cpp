@@ -49,8 +49,16 @@ static QString iconResourcePath(int icon) {
   }
 }
 
-// Builds the image-data hint struct (iiibiiay) from a PNG resource.
-// Matches the Rust image_data() function in notifier.rs.
+// Builds the "image-data" hint value: a D-Bus struct (signature iiibiiay) that carries the icon
+// pixels inline, per the Freedesktop Notifications spec. Fields, in order:
+//   i  width            pixel width
+//   i  height           pixel height
+//   i  rowstride        bytes per row (width * channels)
+//   b  has_alpha        true (we always emit RGBA)
+//   i  bits_per_sample  8
+//   i  channels         4 (RGBA)
+//   ay pixel_data       row-major RGBA8888 bytes
+// Sending pixels inline means the notification server needs no icon theme or file path lookup.
 static QVariant buildImageData(int icon) {
   const QImage img(iconResourcePath(icon));
   if (img.isNull()) {
@@ -78,6 +86,26 @@ static bool isGnome() {
   return desktop.contains(QLatin1String("gnome"));
 }
 
+// Fires a desktop notification by calling org.freedesktop.Notifications.Notify on the session bus
+// (Freedesktop Notifications spec: https://specifications.freedesktop.org/notification/latest).
+// Method signature is (susssasa{sv}i) -> u; arguments, in order:
+//   s      app_name        "CoolerControl"
+//   u      replaces_id     0, always a new notification (we never replace one)
+//   s      app_icon        APP_ID; GNOME shows this as the application icon
+//   s      summary         title text
+//   s      body            body text
+//   as     actions         empty (we offer no actions)
+//   a{sv}  hints           see below
+//   i      expire_timeout  -1, let the server decide when it disappears
+// Hints we set:
+//   "desktop-entry" (s)         APP_ID, set only when NOT on GNOME: GNOME misbehaves when it is
+//                               set, while KDE uses it to persist the notification.
+//   "resident"      (b)         true, keep the notification resident.
+//   "image-data"    (iiibiiay)  inline icon pixels for known icons 1..5 (see buildImageData).
+//   "image-path"    (s)         APP_ID, fallback icon when no specific icon applies.
+//   "sound-name"    (s)         "alarm-clock-elapsed", only when audio is requested.
+//   "urgency"       (y)         single byte: 0 low, 1 normal, 2 critical.
+// The returned notification id is ignored; we send non-blocking (QDBus::NoBlock).
 void Notifier::send(const QString& summary, const QString& body, int icon, bool audio,
                     int urgency) {
   QDBusMessage msg = QDBusMessage::createMethodCall(DBUS_SERVICE, DBUS_PATH, DBUS_INTERFACE,

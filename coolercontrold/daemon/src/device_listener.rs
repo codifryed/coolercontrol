@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::rt;
 use crate::setting::CCDeviceSettings;
 use crate::{cc_fs, AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
@@ -32,15 +33,23 @@ use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ops::Not;
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use std::time::Instant;
+// Tokio's AsyncFd gives event-driven netlink readiness on the Tokio backend. compio has no
+// fd-readiness primitive, so under `compio-rt` we poll the (queued) socket on a coarse timer.
+#[cfg(not(feature = "compio-rt"))]
 use tokio::io::unix::{AsyncFd, AsyncFdReadyGuard};
-use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
+/// Poll interval for the netlink socket under compio (no fd-readiness primitive). uevents queue in
+/// the socket buffer, so a coarse poll loses no events; it only adds at most this much latency to
+/// detecting a device change (already debounced), keeping idle wakeups low.
+#[cfg(feature = "compio-rt")]
+const NETLINK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;
 /// Maximum uevent messages to drain per readable notification. Prevents
@@ -84,13 +93,18 @@ impl<'s> DeviceListener {
                 return Ok(Self::deaf());
             }
         };
-        let async_fd = match AsyncFd::new(fd) {
+        // Tokio: register the fd with the reactor for event-driven readiness. compio: hold the raw
+        // fd and poll it (no fd-readiness primitive). Both feed the same `run_event_loop`.
+        #[cfg(not(feature = "compio-rt"))]
+        let event_source = match AsyncFd::new(fd) {
             Ok(afd) => afd,
             Err(err) => {
                 info!("Could not register netlink socket with tokio: {err}");
                 return Ok(Self::deaf());
             }
         };
+        #[cfg(feature = "compio-rt")]
+        let event_source = fd;
         let hwmon_baseline = build_hwmon_baseline().await;
         let lc_baseline = build_liquidctl_baseline(&all_devices);
         // Disabled-device state requires a daemon restart to take effect, so a
@@ -109,7 +123,7 @@ impl<'s> DeviceListener {
         let device_changed = Rc::clone(&listener.device_changed);
         scope.spawn(async move {
             run_event_loop(
-                async_fd,
+                event_source,
                 hwmon_baseline,
                 lc_baseline,
                 disabled_names,
@@ -230,7 +244,8 @@ fn extract_disabled_device_names(
 /// together, so a device that triggers both hwmon and usb subsystem events
 /// results in one combined scan rather than two separate ones.
 async fn run_event_loop(
-    async_fd: AsyncFd<OwnedFd>,
+    #[cfg(not(feature = "compio-rt"))] async_fd: AsyncFd<OwnedFd>,
+    #[cfg(feature = "compio-rt")] netlink_fd: OwnedFd,
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
     disabled_names: HashSet<String>,
@@ -245,6 +260,9 @@ async fn run_event_loop(
     let lc_available = liquidctl_repo.is_some();
 
     loop {
+        // `tokio::select!` does not accept `#[cfg]` on its branches, so the readiness branch differs
+        // by whole block: Tokio waits on the reactor; compio polls the netlink socket on a timer.
+        #[cfg(not(feature = "compio-rt"))]
         let scan_now = tokio::select! {
             () = run_token.cancelled() => break,
             () = sleep_until_deadline(debounce_deadline) => {
@@ -255,6 +273,25 @@ async fn run_event_loop(
                 handle_readable_event(
                     result,
                     &async_fd,
+                    &mut buf,
+                    &mut debounce_deadline,
+                    &mut pending,
+                    lc_available,
+                );
+                continue;
+            },
+        };
+        #[cfg(feature = "compio-rt")]
+        let scan_now = tokio::select! {
+            () = run_token.cancelled() => break,
+            () = sleep_until_deadline(debounce_deadline) => {
+                debounce_deadline = None;
+                true
+            },
+            // Poll the netlink socket; queued uevents are drained on each wake.
+            () = crate::rt::sleep(NETLINK_POLL_INTERVAL) => {
+                drain_uevents(
+                    netlink_fd.as_raw_fd(),
                     &mut buf,
                     &mut debounce_deadline,
                     &mut pending,
@@ -290,7 +327,7 @@ async fn run_event_loop(
 /// Sleeps until the debounce deadline, or waits forever if no deadline set.
 async fn sleep_until_deadline(deadline: Option<Instant>) {
     match deadline {
-        Some(dl) => tokio::time::sleep_until(dl).await,
+        Some(dl) => rt::sleep_until(dl).await,
         None => std::future::pending::<()>().await,
     }
 }
@@ -299,6 +336,38 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
 /// which device categories were affected, and sets or extends the debounce
 /// deadline. Liquidctl events are ignored when `lc_available` is false
 /// (the liqctld service is not running).
+fn drain_uevents(
+    raw_fd: RawFd,
+    buf: &mut [u8],
+    debounce_deadline: &mut Option<Instant>,
+    pending: &mut PendingScans,
+    lc_available: bool,
+) {
+    debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
+    let mut any_relevant = false;
+    for _ in 0..MAX_DRAIN_PER_WAKE {
+        match recv(raw_fd, buf, MsgFlags::MSG_DONTWAIT) {
+            Ok(n) if n > 0 => match classify_uevent(&buf[..n]) {
+                UeventKind::Hwmon => {
+                    pending.hwmon = true;
+                    any_relevant = true;
+                }
+                UeventKind::Liquidctl if lc_available => {
+                    pending.liquidctl = true;
+                    any_relevant = true;
+                }
+                UeventKind::Liquidctl | UeventKind::Irrelevant => {}
+            },
+            _ => break,
+        }
+    }
+    if any_relevant {
+        *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
+    }
+}
+
+/// Tokio readiness handler: on a ready guard, drain the socket and re-arm readiness.
+#[cfg(not(feature = "compio-rt"))]
 fn handle_readable_event(
     result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
     async_fd: &AsyncFd<OwnedFd>,
@@ -307,30 +376,15 @@ fn handle_readable_event(
     pending: &mut PendingScans,
     lc_available: bool,
 ) {
-    debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
-    let mut any_relevant = false;
     if let Ok(mut guard) = result {
-        let raw_fd = async_fd.as_raw_fd();
-        for _ in 0..MAX_DRAIN_PER_WAKE {
-            match recv(raw_fd, buf, MsgFlags::MSG_DONTWAIT) {
-                Ok(n) if n > 0 => match classify_uevent(&buf[..n]) {
-                    UeventKind::Hwmon => {
-                        pending.hwmon = true;
-                        any_relevant = true;
-                    }
-                    UeventKind::Liquidctl if lc_available => {
-                        pending.liquidctl = true;
-                        any_relevant = true;
-                    }
-                    UeventKind::Liquidctl | UeventKind::Irrelevant => {}
-                },
-                _ => break,
-            }
-        }
+        drain_uevents(
+            async_fd.as_raw_fd(),
+            buf,
+            debounce_deadline,
+            pending,
+            lc_available,
+        );
         guard.clear_ready();
-    }
-    if any_relevant {
-        *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
     }
 }
 

@@ -156,6 +156,29 @@ fn stage_name(phase: DiagnosisPhase) -> &'static str {
     }
 }
 
+/// Status of the single active calibration batch. The batch driver owns
+/// each entry's `phase`, so the UI renders progress straight from this
+/// without disambiguating a fan's sticky prior calibration. The running
+/// entry carries live `percent`/`stage` lifted from its per-channel
+/// status; a failed entry carries the `message`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CalibrationBatchStatus {
+    pub active: bool,
+    pub started_at: DateTime<Local>,
+    pub entries: Vec<CalibrationBatchEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CalibrationBatchEntry {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
+    /// One of: queued, running, done, failed, cancelled.
+    pub phase: String,
+    pub percent: Option<u8>,
+    pub stage: Option<String>,
+    pub message: Option<String>,
+}
+
 struct CalibrationActor {
     receiver: mpsc::Receiver<CalibrationMessage>,
     engine: Rc<Engine>,
@@ -203,11 +226,52 @@ pub enum CalibrationMessage {
         channel_name: ChannelName,
         respond_to: oneshot::Sender<CalibrationStatus>,
     },
+    StartBatch {
+        channels: Vec<ChannelKey>,
+        concurrency: usize,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    CancelBatch {
+        respond_to: oneshot::Sender<bool>,
+    },
+    BatchStatus {
+        respond_to: oneshot::Sender<Option<CalibrationBatchStatus>>,
+    },
 }
 
 impl CalibrationActor {
     fn new(receiver: mpsc::Receiver<CalibrationMessage>, engine: Rc<Engine>) -> Self {
         Self { receiver, engine }
+    }
+
+    /// Reject a duplicate sweep, else spawn the per-channel diagnosis off
+    /// the mailbox so a minutes-long sweep does not block it.
+    fn spawn_diagnosis(&self, device_uid: DeviceUID, channel_name: ChannelName) -> Result<()> {
+        let key: ChannelKey = (device_uid.clone(), channel_name.clone());
+        if self.engine.is_calibration_in_progress(&key) {
+            return Err(anyhow::anyhow!(
+                "calibration already in progress for {device_uid}:{channel_name}"
+            ));
+        }
+        let engine = Rc::clone(&self.engine);
+        crate::rt::spawn(async move {
+            let _ = engine
+                .start_calibration_diagnosis(device_uid, channel_name)
+                .await;
+        });
+        Ok(())
+    }
+
+    /// Install the batch synchronously so the caller gets an immediate
+    /// conflict, then spawn the long-running driver off the mailbox so
+    /// `handle_message` is not blocked for the minutes a sweep takes.
+    fn begin_and_spawn_batch(&self, channels: Vec<ChannelKey>, concurrency: usize) -> Result<()> {
+        self.engine.begin_calibration_batch(channels, concurrency)?;
+        let engine = Rc::clone(&self.engine);
+        crate::rt::spawn(async move {
+            engine.drive_calibration_batch().await;
+        });
+        Ok(())
     }
 }
 
@@ -227,20 +291,7 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
                 channel_name,
                 respond_to,
             } => {
-                let key: ChannelKey = (device_uid.clone(), channel_name.clone());
-                if self.engine.is_calibration_in_progress(&key) {
-                    let _ = respond_to.send(Err(anyhow::anyhow!(
-                        "calibration already in progress for {device_uid}:{channel_name}"
-                    )));
-                    return;
-                }
-                let engine = Rc::clone(&self.engine);
-                tokio::task::spawn_local(async move {
-                    let _ = engine
-                        .start_calibration_diagnosis(device_uid, channel_name)
-                        .await;
-                });
-                let _ = respond_to.send(Ok(()));
+                let _ = respond_to.send(self.spawn_diagnosis(device_uid, channel_name));
             }
             CalibrationMessage::Cancel {
                 device_uid,
@@ -308,6 +359,19 @@ impl ApiActor<CalibrationMessage> for CalibrationActor {
             } => {
                 let key: ChannelKey = (device_uid, channel_name);
                 let _ = respond_to.send(self.engine.calibration_status(&key));
+            }
+            CalibrationMessage::StartBatch {
+                channels,
+                concurrency,
+                respond_to,
+            } => {
+                let _ = respond_to.send(self.begin_and_spawn_batch(channels, concurrency));
+            }
+            CalibrationMessage::CancelBatch { respond_to } => {
+                let _ = respond_to.send(self.engine.cancel_calibration_batch());
+            }
+            CalibrationMessage::BatchStatus { respond_to } => {
+                let _ = respond_to.send(self.engine.calibration_batch_status());
             }
         }
     }
@@ -470,5 +534,43 @@ impl CalibrationHandle {
             })
             .await;
         rx.await.ok()
+    }
+
+    /// Begin a calibration batch, `concurrency` sweeps at a time (1 =
+    /// sequential). `Err` when one is already active or the request is
+    /// invalid (the handler maps it to 409).
+    pub async fn start_batch(&self, channels: Vec<ChannelKey>, concurrency: usize) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::StartBatch {
+                channels,
+                concurrency,
+                respond_to: tx,
+            })
+            .await;
+        rx.await?
+    }
+
+    /// Cancel the active batch. `false` when none is active (or the
+    /// actor task is gone): both render as "nothing to cancel".
+    pub async fn cancel_batch(&self) -> bool {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::CancelBatch { respond_to: tx })
+            .await;
+        rx.await.unwrap_or(false)
+    }
+
+    /// Snapshot the active or most recent batch. `None` when no batch
+    /// has run this session, or on a transport failure.
+    pub async fn batch_status(&self) -> Option<CalibrationBatchStatus> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self
+            .sender
+            .send(CalibrationMessage::BatchStatus { respond_to: tx })
+            .await;
+        rx.await.ok().flatten()
     }
 }
