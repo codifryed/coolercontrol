@@ -1767,7 +1767,7 @@ export default class DaemonClient {
     }
 
     /**
-     * Begin a sequential calibration batch. Returns `true` on 202, an
+     * Begin a calibration batch. Returns `true` on 202, an
      * ErrorResponse on 409 (a batch is already active) or other failure.
      * The daemon drives the queue; poll `getCalibrationBatchStatus`.
      */

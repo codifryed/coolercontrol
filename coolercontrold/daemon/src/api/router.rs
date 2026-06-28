@@ -1105,7 +1105,7 @@ fn calibration_batch_routes() -> ApiRouter<AppState> {
             post_with(calibration::batch_start, |o| {
                 o.summary("Start a calibration batch")
                     .description(
-                        "Queues sequential calibration of the given channels and returns 202. \
+                        "Queues calibration of the given channels and returns 202. \
                          Returns 409 when a batch is already active or the request is invalid.",
                     )
                     .tag("calibration")
