@@ -86,68 +86,6 @@ pub struct GpuNVidia {
     nvapi: Option<super::nvapi::NvApi>,
 }
 
-/// Outcome of attempting to initialize NVML during GPU detection.
-pub enum NvmlInitResult {
-    /// NVML is active and managing this many NVIDIA GPUs.
-    Active(u8),
-    /// NVML is available but every NVIDIA GPU is disabled, so NVML was shut down to
-    /// release the GPU. No nvidia-smi fallback should run.
-    AllDevicesDisabled,
-    /// NVML is unavailable; the caller should fall back to the nvidia-smi CLI.
-    Unavailable,
-}
-
-/// Returns true only when at least one NVML device was enumerated and every one is
-/// disabled in config. NVML init/shutdown is process-global, so the GPU can only be
-/// released when no NVIDIA GPU is managed. The `type_index` in each UID must match
-/// `retrieve_nvml_devices` (`gpu_index` + `starting_nvidia_index`) or the disabled
-/// lookup silently misses and NVML stays attached.
-fn all_nvml_devices_disabled(
-    device_names: &[(GpuIndex, String)],
-    starting_nvidia_index: GpuIndex,
-    is_device_disabled: impl Fn(&UID) -> bool,
-) -> bool {
-    debug_assert!(
-        u8::try_from(device_names.len()).is_ok(),
-        "NVML device indices are u8; cannot exceed 255 GPUs"
-    );
-    if device_names.is_empty() {
-        return false;
-    }
-    device_names.iter().all(|(gpu_index, name)| {
-        let type_index = gpu_index + starting_nvidia_index;
-        let device_uid = Device::create_uid_from(name, DeviceType::GPU, type_index, None);
-        is_device_disabled(&device_uid)
-    })
-}
-
-/// Reads each NVML device's name from the owned handle, mirroring the UID inputs used by
-/// `retrieve_nvml_devices` so the disabled check keys match. Done before NVML is committed
-/// to the process-lifetime static so the handle can still be dropped to release the GPU.
-#[allow(clippy::cast_possible_truncation)]
-fn collect_nvml_device_names(
-    nvml: &Nvml,
-    device_count: u32,
-    starting_nvidia_index: GpuIndex,
-) -> Vec<(GpuIndex, String)> {
-    let mut device_names = Vec::with_capacity(device_count as usize);
-    for device_index in 0..device_count {
-        let Ok(device) = nvml
-            .device_by_index(device_index)
-            .inspect_err(|err| error!("Error getting NVML device by index: {err}"))
-        else {
-            continue;
-        };
-        let gpu_index = device_index as GpuIndex;
-        let type_index = gpu_index + starting_nvidia_index;
-        let name = device
-            .name()
-            .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
-        device_names.push((gpu_index, name));
-    }
-    device_names
-}
-
 impl GpuNVidia {
     pub fn new(config: Rc<Config>) -> Self {
         Self {
@@ -272,15 +210,8 @@ impl GpuNVidia {
         // process-lifetime static. If CoolerControl manages no NVIDIA GPU (every device
         // disabled), drop the handle so the driver detaches the GPU instead of holding it
         // active for the daemon's lifetime. NVML is process-global, hence all-or-nothing.
-        let device_names = collect_nvml_device_names(&nvml, device_count, starting_nvidia_index);
-        let all_disabled = device_names.len() == device_count as usize
-            && all_nvml_devices_disabled(&device_names, starting_nvidia_index, |uid| {
-                matches!(
-                    self.config.get_cc_settings_for_device(uid),
-                    Ok(Some(setting)) if setting.disable
-                )
-            });
-        if all_disabled {
+        let device_uids = collect_nvml_device_uids(&nvml, device_count, starting_nvidia_index);
+        if self.should_release_nvml(&device_uids, device_count) {
             info!(
                 "All NVIDIA GPUs are disabled in CoolerControl; shutting down NVML so the \
                  driver releases the GPU instead of holding it active."
@@ -320,6 +251,27 @@ impl GpuNVidia {
         }
     }
 
+    /// True when the device with this UID is disabled in config. Errs toward NOT disabled
+    /// (keeps the GPU managed) so a config read error never silently releases a device.
+    fn is_nvml_device_disabled(&self, device_uid: &UID) -> bool {
+        matches!(
+            self.config.get_cc_settings_for_device(device_uid),
+            Ok(Some(setting)) if setting.disable
+        )
+    }
+
+    /// True only when every NVML device was enumerated (a partial enumeration keeps NVML)
+    /// and all of them are disabled in config. NVML init/shutdown is process-global, so the
+    /// GPU can only be released when no NVIDIA GPU is managed.
+    fn should_release_nvml(&self, device_uids: &[UID], device_count: u32) -> bool {
+        if device_count == 0 || device_uids.len() != device_count as usize {
+            return false;
+        }
+        device_uids
+            .iter()
+            .all(|device_uid| self.is_nvml_device_disabled(device_uid))
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn retrieve_nvml_devices(
         &mut self,
@@ -330,10 +282,7 @@ impl GpuNVidia {
         for (gpu_index, device) in &self.nvidia_nvml_devices {
             let device_lock = device.borrow();
             let type_index = gpu_index + starting_nvidia_index;
-            let name = device_lock
-                .name()
-                .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
-            let device_uid = Device::create_uid_from(&name, DeviceType::GPU, type_index, None);
+            let (name, device_uid) = nvml_name_and_uid(device_lock.name().ok(), type_index);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
             if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
                 info!("Skipping disabled device: {name} with UID: {device_uid}");
@@ -1438,74 +1387,131 @@ impl Default for NvidiaFanRange {
     }
 }
 
+/// Outcome of attempting to initialize NVML during GPU detection.
+pub enum NvmlInitResult {
+    /// NVML is active and managing this many NVIDIA GPUs.
+    Active(u8),
+    /// NVML is available but every NVIDIA GPU is disabled, so NVML was shut down to
+    /// release the GPU. No nvidia-smi fallback should run.
+    AllDevicesDisabled,
+    /// NVML is unavailable; the caller should fall back to the nvidia-smi CLI.
+    Unavailable,
+}
+
+/// Resolves an NVML GPU's display name (with the standard `Nvidia GPU #{index}` fallback)
+/// and the UID config keys it under. Shared by the release check and device registration
+/// so the two always key the same UID for a given GPU.
+fn nvml_name_and_uid(name: Option<String>, type_index: TypeIndex) -> (String, UID) {
+    let name = name.unwrap_or_else(|| format!("Nvidia GPU #{type_index}"));
+    let device_uid = Device::create_uid_from(&name, DeviceType::GPU, type_index, None);
+    (name, device_uid)
+}
+
+/// Enumerates the owned NVML handle and returns each accessible device's config UID, before
+/// NVML is committed to the process-lifetime static so the handle can still be dropped to
+/// release the GPU. A device that fails to enumerate is skipped, leaving fewer UIDs than
+/// `device_count`, which `should_release_nvml` treats as "do not release".
+#[allow(clippy::cast_possible_truncation)]
+fn collect_nvml_device_uids(
+    nvml: &Nvml,
+    device_count: u32,
+    starting_nvidia_index: GpuIndex,
+) -> Vec<UID> {
+    let mut device_uids = Vec::with_capacity(device_count as usize);
+    for device_index in 0..device_count {
+        let Ok(device) = nvml.device_by_index(device_index) else {
+            continue;
+        };
+        let type_index = device_index as TypeIndex + starting_nvidia_index;
+        let (_name, device_uid) = nvml_name_and_uid(device.name().ok(), type_index);
+        device_uids.push(device_uid);
+    }
+    device_uids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use crate::setting::CCDeviceSettings;
 
-    // Builds the disabled-UID set the same way the production predicate keys it, so the
-    // tests prove all_nvml_devices_disabled derives matching UIDs (name + type_index).
-    fn disabled_uids(
-        entries: &[(GpuIndex, &str)],
-        starting_nvidia_index: GpuIndex,
-    ) -> HashSet<UID> {
-        entries
-            .iter()
-            .map(|(gpu_index, name)| {
-                Device::create_uid_from(
-                    name,
-                    DeviceType::GPU,
-                    gpu_index + starting_nvidia_index,
-                    None,
-                )
-            })
-            .collect()
+    // Builds a GpuNVidia backed by a default config in which each given UID is marked
+    // disabled, so the tests exercise the real get_cc_settings_for_device predicate (not a
+    // stub) through should_release_nvml / is_nvml_device_disabled.
+    fn repo_with_disabled(disabled_uids: &[UID]) -> GpuNVidia {
+        let config = Config::init_default_config().expect("default config parses");
+        for device_uid in disabled_uids {
+            config.set_cc_settings_for_device(
+                device_uid,
+                &CCDeviceSettings {
+                    name: "test gpu".to_string(),
+                    disable: true,
+                    ..Default::default()
+                },
+            );
+        }
+        GpuNVidia::new(Rc::new(config))
     }
 
     #[test]
-    fn no_enumerated_devices_is_not_all_disabled() {
-        // An empty enumeration must not count as "all disabled"; that is the separate
-        // "NVML found nothing, fall back to CLI" path and must keep NVML available.
-        let names: Vec<(GpuIndex, String)> = Vec::new();
-        let disabled: HashSet<UID> = HashSet::new();
-        assert!(all_nvml_devices_disabled(&names, 1, |uid| disabled.contains(uid)).not());
-    }
+    fn nvml_name_and_uid_matches_create_uid_from() {
+        // The shared helper must derive the exact UID retrieve_nvml_devices keys on, and
+        // apply the documented "Nvidia GPU #{type_index}" fallback when the name is absent.
+        let (name, uid) = nvml_name_and_uid(Some("GPU A".to_string()), 2);
+        assert_eq!(name, "GPU A");
+        assert_eq!(
+            uid,
+            Device::create_uid_from("GPU A", DeviceType::GPU, 2, None)
+        );
 
-    #[test]
-    fn every_device_disabled_releases_nvml() {
-        // With a non-empty enumeration where every device's UID is disabled, NVML can be
-        // released since CoolerControl manages no NVIDIA GPU.
-        let starting_nvidia_index = 2;
-        let names = vec![(0u8, "GPU A".to_string()), (1u8, "GPU B".to_string())];
-        let disabled = disabled_uids(&[(0, "GPU A"), (1, "GPU B")], starting_nvidia_index);
-        assert!(all_nvml_devices_disabled(
-            &names,
-            starting_nvidia_index,
-            |uid| disabled.contains(uid)
-        ));
-    }
-
-    #[test]
-    fn one_enabled_device_keeps_nvml() {
-        // A single still-enabled GPU must keep NVML attached; init/shutdown is process
-        // global, so a disabled sibling cannot be released independently.
-        let starting_nvidia_index = 1;
-        let names = vec![(0u8, "GPU A".to_string()), (1u8, "GPU B".to_string())];
-        let disabled = disabled_uids(&[(0, "GPU A")], starting_nvidia_index); // GPU B enabled
-        assert!(
-            all_nvml_devices_disabled(&names, starting_nvidia_index, |uid| disabled.contains(uid))
-                .not()
+        let (fallback_name, fallback_uid) = nvml_name_and_uid(None, 5);
+        assert_eq!(fallback_name, "Nvidia GPU #5");
+        assert_eq!(
+            fallback_uid,
+            Device::create_uid_from("Nvidia GPU #5", DeviceType::GPU, 5, None)
         );
     }
 
     #[test]
-    fn type_index_offset_is_applied_to_uid() {
-        // The disabled lookup must use type_index = gpu_index + starting_nvidia_index. A set
-        // built with the wrong offset must not match, proving the offset reaches the UID.
-        let names = vec![(0u8, "GPU A".to_string())];
-        let disabled_wrong_offset = disabled_uids(&[(0, "GPU A")], 0); // built with offset 0, not 3
-        assert!(
-            all_nvml_devices_disabled(&names, 3, |uid| disabled_wrong_offset.contains(uid)).not()
-        );
+    fn release_when_every_device_disabled() {
+        // Every enumerated GPU disabled in config plus full enumeration -> release NVML.
+        let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
+        let uid_b = nvml_name_and_uid(Some("GPU B".to_string()), 3).1;
+        let repo = repo_with_disabled(&[uid_a.clone(), uid_b.clone()]);
+        assert!(repo.should_release_nvml(&[uid_a, uid_b], 2));
+    }
+
+    #[test]
+    fn keep_when_one_device_enabled() {
+        // A single still-enabled GPU keeps NVML attached; init/shutdown is process-global,
+        // so a disabled sibling cannot be released independently.
+        let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
+        let uid_b = nvml_name_and_uid(Some("GPU B".to_string()), 3).1;
+        let repo = repo_with_disabled(&[uid_a.clone()]); // GPU B left enabled
+        assert!(repo.should_release_nvml(&[uid_a, uid_b], 2).not());
+    }
+
+    #[test]
+    fn keep_on_partial_enumeration() {
+        // The len == device_count guard: a device failed to enumerate (one UID for a count
+        // of two), so NVML must stay attached even though the collected device is disabled.
+        let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
+        let repo = repo_with_disabled(&[uid_a.clone()]);
+        assert!(repo.should_release_nvml(&[uid_a], 2).not());
+    }
+
+    #[test]
+    fn keep_when_no_devices() {
+        // device_count == 0 is the "NVML found nothing" path; never treated as releasable.
+        let repo = repo_with_disabled(&[]);
+        assert!(repo.should_release_nvml(&[], 0).not());
+    }
+
+    #[test]
+    fn unknown_uid_reads_as_enabled() {
+        // A UID absent from config (Ok(None)) must read as enabled so a missing entry never
+        // causes a release. Fail-safe direction.
+        let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
+        let repo = repo_with_disabled(&[]);
+        assert!(repo.is_nvml_device_disabled(&uid_a).not());
     }
 }
