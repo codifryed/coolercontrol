@@ -402,3 +402,270 @@ async fn handle_request(client: Rc<DeviceServiceClient>, request: DeviceServiceR
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // These cover the main-side handle: request routing, argument fidelity, reply plumbing, the
+    // dispatcher-gone error, and the !Send `list_devices` mapping. The sidecar halves
+    // (`run_dispatcher`/`handle_request`) own a real tonic client and need a live server, so they
+    // are left to integration coverage; a test stands in as the dispatcher instead.
+    use super::*;
+    use crate::grpc_api::device_service::v1::{HealthResponse, ListDevicesResponse};
+    use crate::setting::{LcdModeKind, LcdSettings, LightingSettings, TempSource};
+
+    /// A handle plus the receiver end, so a test can play the role of the sidecar dispatcher. The
+    /// address and poll rate are only consulted by the `list_devices` mapping.
+    fn test_handle() -> (
+        DeviceServiceClientHandle,
+        mpsc::Receiver<DeviceServiceRequest>,
+    ) {
+        let (request_tx, request_rx) = mpsc::channel(REQUEST_CHANNEL_CAP);
+        let handle = DeviceServiceClientHandle {
+            request_tx,
+            client_address: "127.0.0.1:11987".to_owned(),
+            poll_rate: 1.0,
+        };
+        (handle, request_rx)
+    }
+
+    fn temp_source() -> TempSource {
+        TempSource {
+            temp_name: "temp1".to_owned(),
+            device_uid: "dev-temp".to_owned(),
+        }
+    }
+
+    fn lighting() -> LightingSettings {
+        LightingSettings {
+            mode: "static".to_owned(),
+            speed: None,
+            backward: None,
+            colors: Vec::new(),
+        }
+    }
+
+    fn lcd() -> LcdSettings {
+        LcdSettings {
+            brightness: None,
+            orientation: None,
+            mode: LcdModeKind::None,
+        }
+    }
+
+    /// Stands in for the sidecar dispatcher: answers every request variant with a canned success
+    /// and records the variant name. Returns once the handle is dropped and the channel closes.
+    async fn stub_dispatch(
+        request_rx: &mut mpsc::Receiver<DeviceServiceRequest>,
+        seen: &mut Vec<&'static str>,
+    ) {
+        while let Some(request) = request_rx.recv().await {
+            match request {
+                DeviceServiceRequest::Health { respond_to } => {
+                    seen.push("health");
+                    let _ = respond_to.send(Ok(HealthResponse::default()));
+                }
+                DeviceServiceRequest::ListDevices { respond_to } => {
+                    seen.push("list_devices");
+                    let _ = respond_to.send(Ok(ListDevicesResponse::default()));
+                }
+                DeviceServiceRequest::WithDeviceIds { respond_to, .. } => {
+                    seen.push("with_device_ids");
+                    let _ = respond_to.send(());
+                }
+                DeviceServiceRequest::InitializeDevice { respond_to, .. } => {
+                    seen.push("initialize_device");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::Shutdown { respond_to } => {
+                    seen.push("shutdown");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::Status { respond_to, .. } => {
+                    seen.push("status");
+                    let _ = respond_to.send(Ok((Vec::new(), Vec::new())));
+                }
+                DeviceServiceRequest::ResetChannel { respond_to, .. } => {
+                    seen.push("reset_channel");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::EnableManualFanControl { respond_to, .. } => {
+                    seen.push("enable_manual_fan_control");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::FixedDuty { respond_to, .. } => {
+                    seen.push("fixed_duty");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::SpeedProfile { respond_to, .. } => {
+                    seen.push("speed_profile");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::Lighting { respond_to, .. } => {
+                    seen.push("lighting");
+                    let _ = respond_to.send(Ok(()));
+                }
+                DeviceServiceRequest::Lcd { respond_to, .. } => {
+                    seen.push("lcd");
+                    let _ = respond_to.send(Ok(()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn handle_routes_every_method_to_its_request() {
+        crate::rt::test_runtime(async {
+            // Goal: each public method must build its matching request variant and surface the
+            // dispatcher's reply. Method: drive every method against a canned-success stub and
+            // assert all variants were routed, in call order.
+            let (handle, mut request_rx) = test_handle();
+            let mut seen: Vec<&'static str> = Vec::new();
+            let uid: DeviceUID = "dev-1".to_owned();
+            let calls = async {
+                assert!(handle.health().await.is_ok());
+                assert!(handle.list_devices().await.is_ok());
+                handle
+                    .with_device_ids(vec![(uid.clone(), "svc-1".to_owned())])
+                    .await;
+                assert!(handle.initialize_device(&uid).await.is_ok());
+                assert!(handle.status(&uid).await.is_ok());
+                assert!(handle.reset_channel(&uid, "fan1").await.is_ok());
+                assert!(handle.enable_manual_fan_control(&uid, "fan1").await.is_ok());
+                assert!(handle.fixed_duty(&uid, "fan1", 50).await.is_ok());
+                let profile = vec![(30.0_f64, 40_u8), (60.0, 80)];
+                assert!(handle
+                    .speed_profile(&uid, "fan1", &temp_source(), &profile)
+                    .await
+                    .is_ok());
+                assert!(handle.lighting(&uid, "led1", &lighting()).await.is_ok());
+                assert!(handle.lcd(&uid, "lcd1", &lcd()).await.is_ok());
+                assert!(handle.shutdown().await.is_ok());
+                // Drop the only sender so the stub dispatcher's recv loop ends.
+                drop(handle);
+            };
+            tokio::join!(calls, stub_dispatch(&mut request_rx, &mut seen));
+            assert_eq!(
+                seen,
+                vec![
+                    "health",
+                    "list_devices",
+                    "with_device_ids",
+                    "initialize_device",
+                    "status",
+                    "reset_channel",
+                    "enable_manual_fan_control",
+                    "fixed_duty",
+                    "speed_profile",
+                    "lighting",
+                    "lcd",
+                    "shutdown",
+                ]
+            );
+        });
+    }
+
+    #[test]
+    fn requests_carry_their_arguments_intact() {
+        crate::rt::test_runtime(async {
+            // Goal: arguments must reach the dispatcher unaltered (no field swap or loss). Method:
+            // capture FixedDuty then SpeedProfile on the stub side and assert their fields equal
+            // the values passed in.
+            let (handle, mut request_rx) = test_handle();
+            let uid: DeviceUID = "dev-9".to_owned();
+            let profile = vec![(30.0_f64, 40_u8), (60.0, 80)];
+            let call = async {
+                handle.fixed_duty(&uid, "pump", 73).await.unwrap();
+                handle
+                    .speed_profile(&uid, "fan2", &temp_source(), &profile)
+                    .await
+                    .unwrap();
+                drop(handle);
+            };
+            let capture = async {
+                match request_rx.recv().await.expect("fixed_duty request") {
+                    DeviceServiceRequest::FixedDuty {
+                        device_uid,
+                        channel_name,
+                        duty,
+                        respond_to,
+                    } => {
+                        assert_eq!(device_uid, "dev-9");
+                        assert_eq!(channel_name, "pump");
+                        assert_eq!(duty, 73);
+                        let _ = respond_to.send(Ok(()));
+                    }
+                    _ => panic!("expected FixedDuty request"),
+                }
+                match request_rx.recv().await.expect("speed_profile request") {
+                    DeviceServiceRequest::SpeedProfile {
+                        device_uid,
+                        channel_name,
+                        temp_source: source,
+                        speed_profile,
+                        respond_to,
+                    } => {
+                        assert_eq!(device_uid, "dev-9");
+                        assert_eq!(channel_name, "fan2");
+                        assert_eq!(source.temp_name, "temp1");
+                        assert_eq!(speed_profile, vec![(30.0, 40), (60.0, 80)]);
+                        let _ = respond_to.send(Ok(()));
+                    }
+                    _ => panic!("expected SpeedProfile request"),
+                }
+            };
+            tokio::join!(call, capture);
+        });
+    }
+
+    #[test]
+    fn methods_error_when_dispatcher_is_gone() {
+        crate::rt::test_runtime(async {
+            // Goal: if the sidecar dispatcher has exited (receiver dropped), fallible methods must
+            // surface the "dispatcher is gone" error instead of hanging; with_device_ids, which is
+            // infallible by contract, must still return. Method: drop the receiver, then call each.
+            let (handle, request_rx) = test_handle();
+            drop(request_rx);
+            let uid: DeviceUID = "dev-x".to_owned();
+            let err = handle.health().await.unwrap_err();
+            assert!(err.to_string().contains("dispatcher"));
+            assert!(handle.list_devices().await.is_err());
+            assert!(handle.initialize_device(&uid).await.is_err());
+            assert!(handle.status(&uid).await.is_err());
+            assert!(handle.reset_channel(&uid, "fan1").await.is_err());
+            assert!(handle
+                .enable_manual_fan_control(&uid, "fan1")
+                .await
+                .is_err());
+            assert!(handle.fixed_duty(&uid, "fan1", 10).await.is_err());
+            assert!(handle
+                .speed_profile(&uid, "fan1", &temp_source(), &[(30.0, 40)])
+                .await
+                .is_err());
+            assert!(handle.lighting(&uid, "led1", &lighting()).await.is_err());
+            assert!(handle.lcd(&uid, "lcd1", &lcd()).await.is_err());
+            assert!(handle.shutdown().await.is_err());
+            handle.with_device_ids(vec![(uid, "svc".to_owned())]).await;
+        });
+    }
+
+    #[test]
+    fn list_devices_maps_empty_response_to_no_devices() {
+        crate::rt::test_runtime(async {
+            // Goal: list_devices runs the !Send response mapping on the main thread; an empty
+            // response must yield no devices. Method: answer with an empty ListDevicesResponse and
+            // assert the mapped Vec is empty.
+            let (handle, mut request_rx) = test_handle();
+            let call = async { handle.list_devices().await.unwrap() };
+            let serve = async {
+                match request_rx.recv().await.expect("list_devices request") {
+                    DeviceServiceRequest::ListDevices { respond_to } => {
+                        let _ = respond_to.send(Ok(ListDevicesResponse::default()));
+                    }
+                    _ => panic!("expected ListDevices request"),
+                }
+            };
+            let (devices, ()) = tokio::join!(call, serve);
+            assert!(devices.is_empty());
+        });
+    }
+}
