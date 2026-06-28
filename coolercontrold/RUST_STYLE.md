@@ -15,6 +15,23 @@ or `coolercontrol/` (Qt C++).
 - Use plain `pub` visibility. Do not use `pub(crate)` or other restricted visibility modifiers.
 - Comments are short and concise.
 
+### Gated Tests
+
+Some tests are unreliable outside a controlled environment: they assert wall-clock latency, depend
+on machine performance, or otherwise vary with the build host. These are excluded from the normal
+suite so a busy or slow machine never produces a false failure, and run only in CI where the build
+machines are consistent.
+
+- Gate such a test with `#[cfg(feature = "gated-tests")]` (the `gated-tests` feature in
+  `daemon/Cargo.toml`, off by default). Keep `#[test]` / `#[serial]` as usual.
+- `cargo test`, local `make test`, and distro/OBS builds skip them. CI runs them via
+  `--features gated-tests`, wired into the `ci-test` target.
+- Reserve this for tests that _can_ pass in CI but flake elsewhere. A test that needs root or real
+  hardware and cannot run in CI at all stays `#[ignore]`d instead.
+- Prefer a robust assertion over gating where possible. A lower-bound timing check
+  (`elapsed >= delay`) does not flake on slow hosts, so it can stay in the normal suite; only an
+  upper-bound latency assertion needs gating.
+
 ## Safety
 
 ### Control Flow
