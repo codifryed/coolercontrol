@@ -45,7 +45,7 @@ pub use compio_rt::*;
 pub struct JoinError(String);
 
 impl JoinError {
-    pub(crate) fn new(message: String) -> Self {
+    pub fn new(message: String) -> Self {
         Self(message)
     }
 }
