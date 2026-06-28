@@ -236,10 +236,16 @@ impl GpuNVidia {
 
     #[allow(clippy::cast_possible_truncation)]
     fn populate_nvml_device_handles(&mut self, device_count: u32) {
+        debug_assert!(
+            NVML.get().is_some(),
+            "NVML must be set before populating device handles"
+        );
+        let Some(nvml) = NVML.get() else {
+            error!("NVML was not set before populating device handles");
+            return;
+        };
         for device_index in 0..device_count {
-            let Ok(accessible_device) = NVML
-                .get()
-                .expect("NVML is set before populating device handles")
+            let Ok(accessible_device) = nvml
                 .device_by_index(device_index)
                 // unexpected/not allowed:
                 .inspect_err(|err| error!("Error getting NVML device by index: {err}"))
@@ -251,19 +257,28 @@ impl GpuNVidia {
         }
     }
 
-    /// True when the device with this UID is disabled in config. Errs toward NOT disabled
-    /// (keeps the GPU managed) so a config read error never silently releases a device.
+    /// True when the device with this UID is disabled in config. A config read error is
+    /// logged and treated as NOT disabled (keeps the GPU managed) so a transient read
+    /// failure never silently releases a device. Unlike `retrieve_nvml_devices`, which is
+    /// authoritative and propagates the error, this release pre-check is best-effort.
     fn is_nvml_device_disabled(&self, device_uid: &UID) -> bool {
-        matches!(
-            self.config.get_cc_settings_for_device(device_uid),
-            Ok(Some(setting)) if setting.disable
-        )
+        match self.config.get_cc_settings_for_device(device_uid) {
+            Ok(setting) => setting.is_some_and(|cc_setting| cc_setting.disable),
+            Err(err) => {
+                warn!("Error reading settings for {device_uid}, treating as enabled: {err}");
+                false
+            }
+        }
     }
 
     /// True only when every NVML device was enumerated (a partial enumeration keeps NVML)
     /// and all of them are disabled in config. NVML init/shutdown is process-global, so the
     /// GPU can only be released when no NVIDIA GPU is managed.
     fn should_release_nvml(&self, device_uids: &[UID], device_count: u32) -> bool {
+        debug_assert!(
+            device_uids.len() <= device_count as usize,
+            "collected more device UIDs than NVML reported devices"
+        );
         if device_count == 0 || device_uids.len() != device_count as usize {
             return false;
         }
@@ -1404,6 +1419,10 @@ pub enum NvmlInitResult {
 fn nvml_name_and_uid(name: Option<String>, type_index: TypeIndex) -> (String, UID) {
     let name = name.unwrap_or_else(|| format!("Nvidia GPU #{type_index}"));
     let device_uid = Device::create_uid_from(&name, DeviceType::GPU, type_index, None);
+    debug_assert!(
+        device_uid.is_empty().not(),
+        "device UID hash must be non-empty"
+    );
     (name, device_uid)
 }
 
@@ -1426,6 +1445,10 @@ fn collect_nvml_device_uids(
         let (_name, device_uid) = nvml_name_and_uid(device.name().ok(), type_index);
         device_uids.push(device_uid);
     }
+    debug_assert!(
+        device_uids.len() <= device_count as usize,
+        "enumerated more devices than NVML reported"
+    );
     device_uids
 }
 
