@@ -79,6 +79,10 @@ const axisXTempMax: number = currentAxisTempMax
 const dutyMin: number = 0
 const dutyMax: number = 100
 
+// Clamp the live temp indicator to the visible axis range so the line and its
+// label stay pinned to the nearest edge instead of disappearing off-chart.
+const clampTemp = (temp: number): number => Math.min(Math.max(temp, axisXTempMin), axisXTempMax)
+
 interface LineData {
     value: number[]
 }
@@ -326,7 +330,7 @@ const option = {
                 },
                 data: [
                     {
-                        coord: [getTemp(), 95],
+                        coord: [clampTemp(getTemp()), 95],
                         value: getTemp(),
                     },
                 ],
@@ -377,8 +381,9 @@ const setGraphData = () => {
     deviceDutyLineData[0].value = [axisXTempMin, duty]
     deviceDutyLineData[1].value = [axisXTempMax, duty]
     const temp = getTemp()
-    tempLineData[0].value = [temp, dutyMin]
-    tempLineData[1].value = [temp, dutyMax]
+    const clampedTemp = clampTemp(temp)
+    tempLineData[0].value = [clampedTemp, dutyMin]
+    tempLineData[1].value = [clampedTemp, dutyMax]
     graphLineData.length = 0
     if (props.profile.speed_profile.length > 1) {
         const firstPoint = props.profile.speed_profile[0]
@@ -413,8 +418,9 @@ watch(rawStore.currentDeviceStatus, () => {
     deviceDutyLineData[0].value = [axisXTempMin, duty]
     deviceDutyLineData[1].value = [axisXTempMax, duty]
     const temp = getTemp()
-    tempLineData[0].value = [temp, dutyMin]
-    tempLineData[1].value = [temp, dutyMax]
+    const clampedTemp = clampTemp(temp)
+    tempLineData[0].value = [clampedTemp, dutyMin]
+    tempLineData[1].value = [clampedTemp, dutyMax]
     controlGraph.value?.setOption({
         series: [
             {
@@ -428,7 +434,7 @@ watch(rawStore.currentDeviceStatus, () => {
             {
                 id: 'tempLine',
                 data: tempLineData,
-                markPoint: { data: [{ coord: [temp, 95], value: temp }] },
+                markPoint: { data: [{ coord: [clampedTemp, 95], value: temp }] },
             },
         ],
     })
