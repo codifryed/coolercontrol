@@ -40,6 +40,8 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     // all inherit the mask and compio's signalfd listener is the sole consumer. See
     // `block_termination_signals` for why this is required on the compio backend.
     block_termination_signals();
+    // A failed build means the OS denied the io_uring/epoll reactor at startup; the daemon cannot
+    // run without it, so failing fast is correct.
     Runtime::new()
         .expect("compio runtime builds")
         .block_on(future)
@@ -182,6 +184,8 @@ pub async fn shutdown_signal() {
         let mut ctrl_c = pin!(compio::signal::ctrl_c());
         let mut sigterm = pin!(compio::signal::unix::signal(nix::libc::SIGTERM));
         let mut sigquit = pin!(compio::signal::unix::signal(nix::libc::SIGQUIT));
+        // A signalfd registration error (fd/memory exhaustion) leaves the daemon unable to observe a
+        // shutdown request; panicking is better than silently never shutting down.
         poll_fn(|cx| {
             if let Poll::Ready(res) = ctrl_c.as_mut().poll(cx) {
                 res.expect("failed to install Ctrl+C handler");

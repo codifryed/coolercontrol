@@ -140,6 +140,8 @@ impl Sidecar {
         let (task_tx, task_rx) = mpsc::unbounded_channel();
         let thread = std::thread::Builder::new()
             .name("cc-sidecar".to_owned())
+            // Spawn fails only on OS thread-resource exhaustion at startup; the daemon cannot run
+            // without its sidecar, so failing fast is correct.
             .spawn(move || run(task_rx, cancel_token))
             .expect("sidecar thread spawns");
         Self {
@@ -183,6 +185,8 @@ fn run(mut task_rx: mpsc::UnboundedReceiver<TaskBuilder>, cancel_token: Cancella
         .thread_name("cc-sidecar-wrk")
         .event_interval(200)
         .global_queue_interval(200)
+        // A failed build means the OS denied the reactor at startup; the sidecar (and thus the
+        // REST/gRPC API) cannot run without it.
         .build()
         .expect("sidecar runtime builds");
     runtime.block_on(LocalSet::new().run_until(async move {
