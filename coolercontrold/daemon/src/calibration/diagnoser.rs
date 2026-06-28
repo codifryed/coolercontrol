@@ -1164,681 +1164,711 @@ mod tests {
         (dev.to_string(), chan.to_string())
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn happy_path_smooth_fan_produces_smooth_calibration() {
-        // Goal: a synthetic smooth fan completes the sweep, the
-        // diagnoser classifies the curve as Smooth, persists a
-        // Calibration into the store, and restores the snapshot.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn happy_path_smooth_fan_produces_smooth_calibration() {
+        crate::rt::test_runtime(async {
+            // Goal: a synthetic smooth fan completes the sweep, the
+            // diagnoser classifies the curve as Smooth, persists a
+            // Calibration into the store, and restores the snapshot.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("smooth fan diagnoses successfully");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("smooth fan diagnoses successfully");
 
-        assert_eq!(result.curve_kind, CurveKind::Smooth);
-        assert!(result.rpm_max > 0);
-        assert!(store.has(&key("dev-a", "fan1")));
-        assert_eq!(host.snapshots_taken.borrow().len(), 1);
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-        // Manual control must be entered exactly once, before any duty
-        // write (step_counter still 0). Boards left in automatic mode
-        // otherwise reject the sweep's raw writes.
-        assert_eq!(host.manual_control_calls.borrow().len(), 1);
-        assert_eq!(host.step_at_manual_control.get(), Some(0));
+            assert_eq!(result.curve_kind, CurveKind::Smooth);
+            assert!(result.rpm_max > 0);
+            assert!(store.has(&key("dev-a", "fan1")));
+            assert_eq!(host.snapshots_taken.borrow().len(), 1);
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+            // Manual control must be entered exactly once, before any duty
+            // write (step_counter still 0). Boards left in automatic mode
+            // otherwise reject the sweep's raw writes.
+            assert_eq!(host.manual_control_calls.borrow().len(), 1);
+            assert_eq!(host.step_at_manual_control.get(), Some(0));
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn manual_control_failure_aborts_before_sweep_and_restores() {
-        // Goal: when entering manual control fails (a driver rejects
-        // pwm_enable=1), the diagnosis aborts before writing any duty,
-        // restores the snapshot, clears under_diagnosis, and persists
-        // no calibration. The failure surfaces as WriteFailed.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        host.fail_manual_control.set(true);
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn manual_control_failure_aborts_before_sweep_and_restores() {
+        crate::rt::test_runtime(async {
+            // Goal: when entering manual control fails (a driver rejects
+            // pwm_enable=1), the diagnosis aborts before writing any duty,
+            // restores the snapshot, clears under_diagnosis, and persists
+            // no calibration. The failure surfaces as WriteFailed.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            host.fail_manual_control.set(true);
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("manual-control failure aborts diagnosis");
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("manual-control failure aborts diagnosis");
 
-        assert!(matches!(err, DiagnosisFailure::WriteFailed(_)));
-        assert!(
-            host.duty_writes.borrow().is_empty(),
-            "no duty may be written when manual control could not be entered"
-        );
-        assert!(store.has(&key("dev-a", "fan1")).not());
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn stepped_fan_produces_stepped_calibration() {
-        // Goal: a synthetic stepped fan (sparse RPM plateaus) is
-        // classified Stepped and persisted; the dispatch layer then
-        // leaves the channel in passthrough mode (covered by curve
-        // and dispatch tests).
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_stepped_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("stepped fan diagnoses successfully");
-
-        assert_eq!(result.curve_kind, CurveKind::Stepped);
-        assert!(store.has(&key("dev-a", "fan1")));
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn preflight_temp_too_high_short_circuits() {
-        // Goal: when ambient temp already exceeds the pre-flight
-        // gate, the diagnoser refuses to start. No writes, no
-        // snapshot, no calibration persisted.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        host.temp.set(80.0);
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("preflight rejects hot system");
-
-        assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
-        assert!(host.duty_writes.borrow().is_empty());
-        assert!(host.snapshots_taken.borrow().is_empty());
-        assert!(store.has(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn bios_controlled_fan_persists_with_not_controllable_warning() {
-        // Goal: a fan stuck at a constant non-zero RPM regardless of
-        // duty (BIOS / firmware override) must produce a saved
-        // calibration with NotControllable in warnings and curve_kind
-        // forced to Stepped.
-        use crate::calibration::CalibrationWarning;
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new();
-        // Every duty maps to a constant 1200 RPM, simulating a fan
-        // that spins but does not respond to PWM changes.
-        for duty in 0u8..=100 {
-            host.rpm_for_duty.borrow_mut().insert(duty, 1200);
-        }
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let calibration = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("BIOS-stuck fan persists with warning, not error");
-
-        assert!(
-            calibration
-                .warnings
-                .contains(&CalibrationWarning::NotControllable),
-            "expected NotControllable, got {:?}",
-            calibration.warnings
-        );
-        assert_eq!(
-            calibration.curve_kind,
-            CurveKind::Stepped,
-            "NotControllable must force passthrough"
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn dead_fan_persists_no_tachometer_warning() {
-        // Goal: a fan whose RPM never crosses the start floor must
-        // persist a passthrough calibration carrying NoTachometer so
-        // the popover shows the warning on reopen and the user can
-        // re-calibrate or clear from there.
-        use crate::calibration::CalibrationWarning;
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_dead_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let calibration = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("dead fan persists with warning, not error");
-
-        assert!(
-            calibration
-                .warnings
-                .contains(&CalibrationWarning::NoTachometer),
-            "expected NoTachometer warning, got {:?}",
-            calibration.warnings
-        );
-        assert_eq!(calibration.curve_kind, CurveKind::Stepped);
-        assert!(store.has(&key("dev-a", "fan1")));
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn dead_fan_aborts_at_unresponsive_threshold_and_skips_down_sweep() {
-        // Goal: a fan with no RPM response must abort the up-sweep at
-        // UNRESPONSIVE_ABORT_DUTY (50%) and skip the down-sweep
-        // entirely. The persisted Calibration is still the passthrough
-        // NoTachometer record (same end-state as a full dead-fan sweep)
-        // but produced in ~half the up-sweep steps and zero down-sweep
-        // steps. Asserts the step-count bound to lock the speed gain
-        // against regression.
-        use crate::calibration::curve::UNRESPONSIVE_ABORT_DUTY;
-        use crate::calibration::CalibrationWarning;
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_dead_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let calibration = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("dead fan still persists passthrough on early abort");
-
-        // Up-sweep stopped at UNRESPONSIVE_ABORT_DUTY (no higher duty
-        // was written by the diagnoser).
-        let max_up_duty = calibration
-            .up_curve
-            .iter()
-            .map(|s| s.duty)
-            .max()
-            .expect("up-curve has at least one sample");
-        assert_eq!(max_up_duty, UNRESPONSIVE_ABORT_DUTY);
-
-        // Down-sweep was skipped entirely.
-        assert!(calibration.down_curve.is_empty());
-
-        // End-state matches the existing dead-fan passthrough.
-        assert!(
-            calibration
-                .warnings
-                .contains(&CalibrationWarning::NoTachometer),
-            "expected NoTachometer warning, got {:?}",
-            calibration.warnings
-        );
-        assert_eq!(calibration.curve_kind, CurveKind::Stepped);
-        assert_eq!(calibration.rpm_max, 0);
-
-        // The total duty writes are bounded: 26 up-sweep steps (0, 2,
-        // ..., 50) plus the restore. Pre-change behaviour was ~51 up
-        // + ~51 down = ~102 writes. Bound at 32 to detect regression
-        // while leaving room for restore-path writes.
-        assert!(
-            host.step_counter.get() <= 32,
-            "early abort should bound step_counter, got {}",
-            host.step_counter.get()
-        );
-
-        assert!(store.has(&key("dev-a", "fan1")));
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn temp_abort_mid_sweep_zeros_channel_and_restores_snapshot() {
-        // Goal: a temperature climb past the abort gate during the
-        // sweep terminates the run, writes 0 to the channel for
-        // safety, restores the snapshot, and clears under_diagnosis.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        host.temp_after_step.set(Some((5, 90.0)));
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("abort surfaces on hot temp");
-
-        assert!(matches!(err, DiagnosisFailure::TempAbortedAt { .. }));
-        let writes = host.duty_writes.borrow();
-        let last_write = *writes.last().expect("at least one write");
-        assert_eq!(last_write, 0, "safety write of 0% must be last");
-        assert!(store.has(&key("dev-a", "fan1")).not());
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn cancellation_short_circuits_and_restores_snapshot() {
-        // Goal: a pre-triggered cancellation makes the sweep bail
-        // before the first write completes. The snapshot is still
-        // restored.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-        cancellation.cancel();
-
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("cancellation propagates");
-
-        assert_eq!(err, DiagnosisFailure::Cancelled);
-        assert_eq!(host.restores_applied.borrow().len(), 1);
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn write_failure_during_sweep_surfaces_as_write_failed() {
-        // Goal: a hardware write error mid-sweep terminates with
-        // WriteFailed carrying the inner error message; snapshot is
-        // restored and no calibration is persisted.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        host.fail_write_at_step.set(Some(3));
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("write failure surfaces");
-
-        assert!(matches!(err, DiagnosisFailure::WriteFailed(_)));
-        assert!(store.has(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn restore_failure_surfaces_after_persistence() {
-        // Goal: even when the snapshot restore fails, the
-        // calibration produced by a successful sweep is persisted to
-        // the store. The error surfaces as RestoreFailed so the
-        // caller (and UI) can warn the user; calibration data is not
-        // lost.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        host.restore_should_fail.set(true);
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("restore failure surfaces");
-
-        assert!(matches!(err, DiagnosisFailure::RestoreFailed(_)));
-        assert!(
-            store.has(&key("dev-a", "fan1")),
-            "calibration persisted even when restore fails"
-        );
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn under_diagnosis_flag_set_during_sweep() {
-        // Goal: the under_diagnosis flag must be set for the
-        // duration of the sweep so the engine's dispatch becomes a
-        // no-op on that channel. We observe this from inside a
-        // probe trait method (`write_raw_duty`) by reading the
-        // state map mid-sweep through a shared Rc.
-        struct ProbingHost {
-            inner: MockHost,
-            state_seen_during_writes: RefCell<Vec<bool>>,
-            state: Rc<FanStateMap>,
-            channel_key: ChannelKey,
-        }
-
-        #[async_trait(?Send)]
-        impl DiagnosisHost for ProbingHost {
-            async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
-                self.inner.current_rpm(d, c).await
-            }
-            async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
-                self.inner.latest_status_timestamp_ms(d).await
-            }
-            fn step_settle_cap_ms(&self, d: &UID) -> u32 {
-                self.inner.step_settle_cap_ms(d)
-            }
-            async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
-                self.inner.enter_manual_control(d, c).await
-            }
-            async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
-                self.state_seen_during_writes
-                    .borrow_mut()
-                    .push(self.state.is_under_diagnosis(&self.channel_key));
-                self.inner.write_raw_duty(d, c, duty).await
-            }
-            async fn max_temp_celsius(&self) -> f64 {
-                self.inner.max_temp_celsius().await
-            }
-            fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
-                self.inner.snapshot_setting(d, c)
-            }
-            async fn restore_setting(&self, s: &SettingsSnapshot) -> Result<()> {
-                self.inner.restore_setting(s).await
-            }
-            async fn sleep_millis(&self, m: u32) {
-                self.inner.sleep_millis(m).await;
-            }
-        }
-
-        let state = Rc::new(FanStateMap::new());
-        let store = CalibrationStore::empty();
-        let probing_host = ProbingHost {
-            inner: MockHost::new().with_smooth_fan(),
-            state_seen_during_writes: RefCell::new(Vec::new()),
-            state: Rc::clone(&state),
-            channel_key: key("dev-a", "fan1"),
-        };
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        run_diagnosis(
-            &state,
-            &store,
-            &probing_host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("happy path");
-
-        assert!(
-            probing_host
-                .state_seen_during_writes
-                .borrow()
-                .iter()
-                .all(|seen| *seen),
-            "under_diagnosis flag must be true on every write"
-        );
-        assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn progress_events_cover_preflight_sweep_and_finalize() {
-        // Goal: a successful diagnosis emits at least one preflight
-        // event, one or more per-sweep events with monotonically
-        // non-decreasing percent for the up-sweep half, and a final
-        // finalizing event at 100%. This is what SSE clients consume
-        // to render the progress bar.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("happy path");
-
-        let events = host.progress_events.borrow();
-        assert!(events.len() >= 3, "at least preflight + sweep + finalize");
-        assert_eq!(
-            events.first().expect("preflight").phase,
-            DiagnosisPhase::Preflight
-        );
-        assert_eq!(
-            events.last().expect("finalize").phase,
-            DiagnosisPhase::Finalizing
-        );
-        assert_eq!(events.last().expect("finalize").percent, 100);
-        let up_event_count = events
-            .iter()
-            .filter(|e| e.phase == DiagnosisPhase::UpSweep)
-            .count();
-        let down_event_count = events
-            .iter()
-            .filter(|e| e.phase == DiagnosisPhase::DownSweep)
-            .count();
-        // The sweep is variable-resolution now, so we don't pin the
-        // exact count. We just sanity-check that the up- and down-
-        // sweeps each emit at least a dozen samples (dense + sparse
-        // combined gives ~25-30 per direction) and that they are
-        // similar in magnitude (within 2x).
-        assert!(
-            up_event_count >= 12,
-            "expected at least 12 up-sweep events, got {up_event_count}"
-        );
-        assert!(
-            down_event_count >= 12,
-            "expected at least 12 down-sweep events, got {down_event_count}"
-        );
-
-        // The progress bar must rise monotonically across the entire
-        // sweep, including the down-sweep half. Earlier the down-sweep
-        // used `idx + 1` for its step counter and so counted DOWN from
-        // 100% to ~52% (because the down-sweep iterates in reverse).
-        // This walks every event in order and asserts non-decreasing
-        // percent, which catches that class of regression.
-        let mut last_percent: u8 = 0;
-        for event in events.iter() {
+            assert!(matches!(err, DiagnosisFailure::WriteFailed(_)));
             assert!(
-                event.percent >= last_percent,
-                "progress percent must not decrease: {} then {} (phase {:?})",
-                last_percent,
-                event.percent,
-                event.phase
+                host.duty_writes.borrow().is_empty(),
+                "no duty may be written when manual control could not be entered"
             );
-            last_percent = event.percent;
-        }
-        // The up-sweep half tops out at ~50%; the down-sweep then must
-        // climb the remaining half. Pin the boundary so the bar always
-        // reaches the second half during the down-sweep.
-        let first_down = events
-            .iter()
-            .find(|e| e.phase == DiagnosisPhase::DownSweep)
-            .expect("at least one down-sweep event");
-        let last_down = events
-            .iter()
-            .rev()
-            .find(|e| e.phase == DiagnosisPhase::DownSweep)
-            .expect("at least one down-sweep event");
-        assert!(
-            first_down.percent >= 50,
-            "down-sweep should start at or above 50%, got {}",
-            first_down.percent
-        );
-        assert_eq!(
-            last_down.percent, 100,
-            "last down-sweep step should reach 100%"
-        );
+            assert!(store.has(&key("dev-a", "fan1")).not());
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn pre_diagnosis_kicking_state_is_cleared_at_sweep_start() {
-        // Goal: when a re-calibration starts on a channel that was
-        // mid-kick from a prior dispatch, the sweep must reset
-        // FanState to Off. Otherwise a deferred complete_kick task
-        // spawned by the prior dispatch would observe Kicking and
-        // write the old sustain duty over the diagnoser's raw write
-        // mid-sweep.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        state.replace(
-            key("dev-a", "fan1"),
-            crate::calibration::state::ChannelEntry {
-                state: FanState::Kicking { sustain_target: 60 },
-                under_diagnosis: false,
-                commanded_true_duty: None,
-            },
-        );
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn stepped_fan_produces_stepped_calibration() {
+        crate::rt::test_runtime(async {
+            // Goal: a synthetic stepped fan (sparse RPM plateaus) is
+            // classified Stepped and persisted; the dispatch layer then
+            // leaves the channel in passthrough mode (covered by curve
+            // and dispatch tests).
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_stepped_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("happy path");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("stepped fan diagnoses successfully");
 
-        // After the sweep, FanState must be Off (the sweep ended at 0%)
-        // and under_diagnosis must be cleared.
-        let entry = state.entry(&key("dev-a", "fan1"));
-        assert_eq!(entry.state, FanState::Off);
-        assert!(entry.under_diagnosis.not());
+            assert_eq!(result.curve_kind, CurveKind::Stepped);
+            assert!(store.has(&key("dev-a", "fan1")));
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn stale_cache_does_not_lock_in_pre_write_value() {
-        // Goal: when the cache returns the pre-write RPM for several
-        // status updates after a duty write (e.g. main-loop read
-        // failed or was coalesced away), the diagnoser must wait for
-        // the value to actually change before treating samples as
-        // valid. Otherwise the sweep would record the stale RPM as
-        // the post-write reading, biasing the calibration curve.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan().with_stale_reads(5, 800);
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn preflight_temp_too_high_short_circuits() {
+        crate::rt::test_runtime(async {
+            // Goal: when ambient temp already exceeds the pre-flight
+            // gate, the diagnoser refuses to start. No writes, no
+            // snapshot, no calibration persisted.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            host.temp.set(80.0);
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("smooth fan diagnoses successfully even with stale reads");
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("preflight rejects hot system");
 
-        // The synthetic smooth fan returns rpm = 20 * duty. With
-        // with_stale_reads(5, 800) the first 5 current_rpm calls
-        // return 800. The early samples (low duty, real rpm < 200)
-        // must therefore NOT contain a stale 800; settle must have
-        // waited for the cache to refresh to the post-write value.
-        let first = result
-            .up_curve
-            .iter()
-            .find(|s| s.duty == 0)
-            .expect("first sample at duty 0");
-        assert_eq!(
+            assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
+            assert!(host.duty_writes.borrow().is_empty());
+            assert!(host.snapshots_taken.borrow().is_empty());
+            assert!(store.has(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn bios_controlled_fan_persists_with_not_controllable_warning() {
+        crate::rt::test_runtime(async {
+            // Goal: a fan stuck at a constant non-zero RPM regardless of
+            // duty (BIOS / firmware override) must produce a saved
+            // calibration with NotControllable in warnings and curve_kind
+            // forced to Stepped.
+            use crate::calibration::CalibrationWarning;
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new();
+            // Every duty maps to a constant 1200 RPM, simulating a fan
+            // that spins but does not respond to PWM changes.
+            for duty in 0u8..=100 {
+                host.rpm_for_duty.borrow_mut().insert(duty, 1200);
+            }
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let calibration = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("BIOS-stuck fan persists with warning, not error");
+
+            assert!(
+                calibration
+                    .warnings
+                    .contains(&CalibrationWarning::NotControllable),
+                "expected NotControllable, got {:?}",
+                calibration.warnings
+            );
+            assert_eq!(
+                calibration.curve_kind,
+                CurveKind::Stepped,
+                "NotControllable must force passthrough"
+            );
+        });
+    }
+
+    #[test]
+    fn dead_fan_persists_no_tachometer_warning() {
+        crate::rt::test_runtime(async {
+            // Goal: a fan whose RPM never crosses the start floor must
+            // persist a passthrough calibration carrying NoTachometer so
+            // the popover shows the warning on reopen and the user can
+            // re-calibrate or clear from there.
+            use crate::calibration::CalibrationWarning;
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_dead_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let calibration = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("dead fan persists with warning, not error");
+
+            assert!(
+                calibration
+                    .warnings
+                    .contains(&CalibrationWarning::NoTachometer),
+                "expected NoTachometer warning, got {:?}",
+                calibration.warnings
+            );
+            assert_eq!(calibration.curve_kind, CurveKind::Stepped);
+            assert!(store.has(&key("dev-a", "fan1")));
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn dead_fan_aborts_at_unresponsive_threshold_and_skips_down_sweep() {
+        crate::rt::test_runtime(async {
+            // Goal: a fan with no RPM response must abort the up-sweep at
+            // UNRESPONSIVE_ABORT_DUTY (50%) and skip the down-sweep
+            // entirely. The persisted Calibration is still the passthrough
+            // NoTachometer record (same end-state as a full dead-fan sweep)
+            // but produced in ~half the up-sweep steps and zero down-sweep
+            // steps. Asserts the step-count bound to lock the speed gain
+            // against regression.
+            use crate::calibration::curve::UNRESPONSIVE_ABORT_DUTY;
+            use crate::calibration::CalibrationWarning;
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_dead_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let calibration = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("dead fan still persists passthrough on early abort");
+
+            // Up-sweep stopped at UNRESPONSIVE_ABORT_DUTY (no higher duty
+            // was written by the diagnoser).
+            let max_up_duty = calibration
+                .up_curve
+                .iter()
+                .map(|s| s.duty)
+                .max()
+                .expect("up-curve has at least one sample");
+            assert_eq!(max_up_duty, UNRESPONSIVE_ABORT_DUTY);
+
+            // Down-sweep was skipped entirely.
+            assert!(calibration.down_curve.is_empty());
+
+            // End-state matches the existing dead-fan passthrough.
+            assert!(
+                calibration
+                    .warnings
+                    .contains(&CalibrationWarning::NoTachometer),
+                "expected NoTachometer warning, got {:?}",
+                calibration.warnings
+            );
+            assert_eq!(calibration.curve_kind, CurveKind::Stepped);
+            assert_eq!(calibration.rpm_max, 0);
+
+            // The total duty writes are bounded: 26 up-sweep steps (0, 2,
+            // ..., 50) plus the restore. Pre-change behaviour was ~51 up
+            // + ~51 down = ~102 writes. Bound at 32 to detect regression
+            // while leaving room for restore-path writes.
+            assert!(
+                host.step_counter.get() <= 32,
+                "early abort should bound step_counter, got {}",
+                host.step_counter.get()
+            );
+
+            assert!(store.has(&key("dev-a", "fan1")));
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn temp_abort_mid_sweep_zeros_channel_and_restores_snapshot() {
+        crate::rt::test_runtime(async {
+            // Goal: a temperature climb past the abort gate during the
+            // sweep terminates the run, writes 0 to the channel for
+            // safety, restores the snapshot, and clears under_diagnosis.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            host.temp_after_step.set(Some((5, 90.0)));
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("abort surfaces on hot temp");
+
+            assert!(matches!(err, DiagnosisFailure::TempAbortedAt { .. }));
+            let writes = host.duty_writes.borrow();
+            let last_write = *writes.last().expect("at least one write");
+            assert_eq!(last_write, 0, "safety write of 0% must be last");
+            assert!(store.has(&key("dev-a", "fan1")).not());
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn cancellation_short_circuits_and_restores_snapshot() {
+        crate::rt::test_runtime(async {
+            // Goal: a pre-triggered cancellation makes the sweep bail
+            // before the first write completes. The snapshot is still
+            // restored.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+            cancellation.cancel();
+
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("cancellation propagates");
+
+            assert_eq!(err, DiagnosisFailure::Cancelled);
+            assert_eq!(host.restores_applied.borrow().len(), 1);
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn write_failure_during_sweep_surfaces_as_write_failed() {
+        crate::rt::test_runtime(async {
+            // Goal: a hardware write error mid-sweep terminates with
+            // WriteFailed carrying the inner error message; snapshot is
+            // restored and no calibration is persisted.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            host.fail_write_at_step.set(Some(3));
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("write failure surfaces");
+
+            assert!(matches!(err, DiagnosisFailure::WriteFailed(_)));
+            assert!(store.has(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn restore_failure_surfaces_after_persistence() {
+        crate::rt::test_runtime(async {
+            // Goal: even when the snapshot restore fails, the
+            // calibration produced by a successful sweep is persisted to
+            // the store. The error surfaces as RestoreFailed so the
+            // caller (and UI) can warn the user; calibration data is not
+            // lost.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            host.restore_should_fail.set(true);
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("restore failure surfaces");
+
+            assert!(matches!(err, DiagnosisFailure::RestoreFailed(_)));
+            assert!(
+                store.has(&key("dev-a", "fan1")),
+                "calibration persisted even when restore fails"
+            );
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn under_diagnosis_flag_set_during_sweep() {
+        crate::rt::test_runtime(async {
+            // Goal: the under_diagnosis flag must be set for the
+            // duration of the sweep so the engine's dispatch becomes a
+            // no-op on that channel. We observe this from inside a
+            // probe trait method (`write_raw_duty`) by reading the
+            // state map mid-sweep through a shared Rc.
+            struct ProbingHost {
+                inner: MockHost,
+                state_seen_during_writes: RefCell<Vec<bool>>,
+                state: Rc<FanStateMap>,
+                channel_key: ChannelKey,
+            }
+
+            #[async_trait(?Send)]
+            impl DiagnosisHost for ProbingHost {
+                async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
+                    self.inner.current_rpm(d, c).await
+                }
+                async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
+                    self.inner.latest_status_timestamp_ms(d).await
+                }
+                fn step_settle_cap_ms(&self, d: &UID) -> u32 {
+                    self.inner.step_settle_cap_ms(d)
+                }
+                async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
+                    self.inner.enter_manual_control(d, c).await
+                }
+                async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
+                    self.state_seen_during_writes
+                        .borrow_mut()
+                        .push(self.state.is_under_diagnosis(&self.channel_key));
+                    self.inner.write_raw_duty(d, c, duty).await
+                }
+                async fn max_temp_celsius(&self) -> f64 {
+                    self.inner.max_temp_celsius().await
+                }
+                fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
+                    self.inner.snapshot_setting(d, c)
+                }
+                async fn restore_setting(&self, s: &SettingsSnapshot) -> Result<()> {
+                    self.inner.restore_setting(s).await
+                }
+                async fn sleep_millis(&self, m: u32) {
+                    self.inner.sleep_millis(m).await;
+                }
+            }
+
+            let state = Rc::new(FanStateMap::new());
+            let store = CalibrationStore::empty();
+            let probing_host = ProbingHost {
+                inner: MockHost::new().with_smooth_fan(),
+                state_seen_during_writes: RefCell::new(Vec::new()),
+                state: Rc::clone(&state),
+                channel_key: key("dev-a", "fan1"),
+            };
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            run_diagnosis(
+                &state,
+                &store,
+                &probing_host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("happy path");
+
+            assert!(
+                probing_host
+                    .state_seen_during_writes
+                    .borrow()
+                    .iter()
+                    .all(|seen| *seen),
+                "under_diagnosis flag must be true on every write"
+            );
+            assert!(state.is_under_diagnosis(&key("dev-a", "fan1")).not());
+        });
+    }
+
+    #[test]
+    fn progress_events_cover_preflight_sweep_and_finalize() {
+        crate::rt::test_runtime(async {
+            // Goal: a successful diagnosis emits at least one preflight
+            // event, one or more per-sweep events with monotonically
+            // non-decreasing percent for the up-sweep half, and a final
+            // finalizing event at 100%. This is what SSE clients consume
+            // to render the progress bar.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("happy path");
+
+            let events = host.progress_events.borrow();
+            assert!(events.len() >= 3, "at least preflight + sweep + finalize");
+            assert_eq!(
+                events.first().expect("preflight").phase,
+                DiagnosisPhase::Preflight
+            );
+            assert_eq!(
+                events.last().expect("finalize").phase,
+                DiagnosisPhase::Finalizing
+            );
+            assert_eq!(events.last().expect("finalize").percent, 100);
+            let up_event_count = events
+                .iter()
+                .filter(|e| e.phase == DiagnosisPhase::UpSweep)
+                .count();
+            let down_event_count = events
+                .iter()
+                .filter(|e| e.phase == DiagnosisPhase::DownSweep)
+                .count();
+            // The sweep is variable-resolution now, so we don't pin the
+            // exact count. We just sanity-check that the up- and down-
+            // sweeps each emit at least a dozen samples (dense + sparse
+            // combined gives ~25-30 per direction) and that they are
+            // similar in magnitude (within 2x).
+            assert!(
+                up_event_count >= 12,
+                "expected at least 12 up-sweep events, got {up_event_count}"
+            );
+            assert!(
+                down_event_count >= 12,
+                "expected at least 12 down-sweep events, got {down_event_count}"
+            );
+
+            // The progress bar must rise monotonically across the entire
+            // sweep, including the down-sweep half. Earlier the down-sweep
+            // used `idx + 1` for its step counter and so counted DOWN from
+            // 100% to ~52% (because the down-sweep iterates in reverse).
+            // This walks every event in order and asserts non-decreasing
+            // percent, which catches that class of regression.
+            let mut last_percent: u8 = 0;
+            for event in events.iter() {
+                assert!(
+                    event.percent >= last_percent,
+                    "progress percent must not decrease: {} then {} (phase {:?})",
+                    last_percent,
+                    event.percent,
+                    event.phase
+                );
+                last_percent = event.percent;
+            }
+            // The up-sweep half tops out at ~50%; the down-sweep then must
+            // climb the remaining half. Pin the boundary so the bar always
+            // reaches the second half during the down-sweep.
+            let first_down = events
+                .iter()
+                .find(|e| e.phase == DiagnosisPhase::DownSweep)
+                .expect("at least one down-sweep event");
+            let last_down = events
+                .iter()
+                .rev()
+                .find(|e| e.phase == DiagnosisPhase::DownSweep)
+                .expect("at least one down-sweep event");
+            assert!(
+                first_down.percent >= 50,
+                "down-sweep should start at or above 50%, got {}",
+                first_down.percent
+            );
+            assert_eq!(
+                last_down.percent, 100,
+                "last down-sweep step should reach 100%"
+            );
+        });
+    }
+
+    #[test]
+    fn pre_diagnosis_kicking_state_is_cleared_at_sweep_start() {
+        crate::rt::test_runtime(async {
+            // Goal: when a re-calibration starts on a channel that was
+            // mid-kick from a prior dispatch, the sweep must reset
+            // FanState to Off. Otherwise a deferred complete_kick task
+            // spawned by the prior dispatch would observe Kicking and
+            // write the old sustain duty over the diagnoser's raw write
+            // mid-sweep.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            state.replace(
+                key("dev-a", "fan1"),
+                crate::calibration::state::ChannelEntry {
+                    state: FanState::Kicking { sustain_target: 60 },
+                    under_diagnosis: false,
+                    commanded_true_duty: None,
+                },
+            );
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("happy path");
+
+            // After the sweep, FanState must be Off (the sweep ended at 0%)
+            // and under_diagnosis must be cleared.
+            let entry = state.entry(&key("dev-a", "fan1"));
+            assert_eq!(entry.state, FanState::Off);
+            assert!(entry.under_diagnosis.not());
+        });
+    }
+
+    #[test]
+    fn stale_cache_does_not_lock_in_pre_write_value() {
+        crate::rt::test_runtime(async {
+            // Goal: when the cache returns the pre-write RPM for several
+            // status updates after a duty write (e.g. main-loop read
+            // failed or was coalesced away), the diagnoser must wait for
+            // the value to actually change before treating samples as
+            // valid. Otherwise the sweep would record the stale RPM as
+            // the post-write reading, biasing the calibration curve.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan().with_stale_reads(5, 800);
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("smooth fan diagnoses successfully even with stale reads");
+
+            // The synthetic smooth fan returns rpm = 20 * duty. With
+            // with_stale_reads(5, 800) the first 5 current_rpm calls
+            // return 800. The early samples (low duty, real rpm < 200)
+            // must therefore NOT contain a stale 800; settle must have
+            // waited for the cache to refresh to the post-write value.
+            let first = result
+                .up_curve
+                .iter()
+                .find(|s| s.duty == 0)
+                .expect("first sample at duty 0");
+            assert_eq!(
             first.rpm, 0,
             "stale 800 must not be recorded at duty 0; settle should wait for the post-write change to 0"
         );
-        let max_early_rpm = result
-            .up_curve
-            .iter()
-            .filter(|s| s.duty <= 10)
-            .map(|s| s.rpm)
-            .max()
-            .expect("at least one low-duty sample");
-        assert!(
+            let max_early_rpm = result
+                .up_curve
+                .iter()
+                .filter(|s| s.duty <= 10)
+                .map(|s| s.rpm)
+                .max()
+                .expect("at least one low-duty sample");
+            assert!(
             max_early_rpm < 300,
             "no low-duty sample should carry the stale 800 RPM; max in duty<=10 was {max_early_rpm}"
         );
+        });
     }
 
     #[test]
@@ -1868,222 +1898,232 @@ mod tests {
         assert!(is_stable(&window, 15, 3).not());
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn up_sweep_uses_dense_steps_before_kick_in() {
-        // Goal: the up-sweep walks 2% steps below UP_SWEEP_DENSE_RANGE_END_DUTY
-        // (30%) and 5% above, regardless of where the fan kicks in.
-        // 2%-aligned duties must appear below 30%, 5%-aligned beyond.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn up_sweep_uses_dense_steps_before_kick_in() {
+        crate::rt::test_runtime(async {
+            // Goal: the up-sweep walks 2% steps below UP_SWEEP_DENSE_RANGE_END_DUTY
+            // (30%) and 5% above, regardless of where the fan kicks in.
+            // 2%-aligned duties must appear below 30%, 5%-aligned beyond.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("smooth fan diagnoses");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("smooth fan diagnoses");
 
-        let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
-        // Every 2%-aligned duty 0..=28 must be present (dense range).
-        for expected in (0u8..=28).step_by(2) {
-            assert!(
-                duties.contains(&expected),
-                "dense duty {expected} missing: {duties:?}"
-            );
-        }
-        // Above the dense range, the walker steps by 5.
-        let post_dense: Vec<Duty> = duties.iter().copied().filter(|&d| d >= 30).collect();
-        let consecutive_5_gap = post_dense.windows(2).any(|w| w[1] - w[0] == 5);
-        assert!(
-            consecutive_5_gap,
-            "post-dense samples must include a 5% step: {post_dense:?}"
-        );
-        assert_eq!(
-            result.up_curve[result.up_curve.len() - 1].duty,
-            100,
-            "up_curve must end at duty 100"
-        );
-        // A non-2%-aligned, non-5%-aligned mid-range duty must NOT appear.
-        assert!(
-            duties.contains(&47).not(),
-            "duty 47 should not be sampled: {duties:?}"
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn up_sweep_stays_dense_through_firmware_kick_artifact() {
-        // Goal: a firmware-kick fan that briefly spikes RPM at the first
-        // non-zero duty (e.g. 850 RPM at 2% then settles to 300 RPM at
-        // 4-28%) must still get dense sampling through the entire 0-30%
-        // range. Old code would see the 850 RPM "kick-in", flip to sparse,
-        // and miss the floor. New code is dense-by-duty so the firmware
-        // kick decay is captured cleanly.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new();
-        {
-            let mut map = host.rpm_for_duty.borrow_mut();
-            for duty in 0u8..=100 {
-                let rpm = match duty {
-                    0 => 0,
-                    2 => 850,
-                    d if d <= 30 => 300,
-                    d => 300 + u32::from(d - 30) * 1700 / 70,
-                };
-                map.insert(duty, rpm);
+            let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
+            // Every 2%-aligned duty 0..=28 must be present (dense range).
+            for expected in (0u8..=28).step_by(2) {
+                assert!(
+                    duties.contains(&expected),
+                    "dense duty {expected} missing: {duties:?}"
+                );
             }
-        }
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
-
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("firmware-kick fan diagnoses");
-
-        let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
-        // Every dense duty from 0 to 28 must be captured.
-        for expected in (0u8..=28).step_by(2) {
+            // Above the dense range, the walker steps by 5.
+            let post_dense: Vec<Duty> = duties.iter().copied().filter(|&d| d >= 30).collect();
+            let consecutive_5_gap = post_dense.windows(2).any(|w| w[1] - w[0] == 5);
             assert!(
-                duties.contains(&expected),
-                "firmware-kick fan missed dense duty {expected}: {duties:?}"
+                consecutive_5_gap,
+                "post-dense samples must include a 5% step: {post_dense:?}"
             );
-        }
-        // The 850 RPM spike at duty 2 is preserved verbatim.
-        let sample_at_2 = result
-            .up_curve
-            .iter()
-            .find(|s| s.duty == 2)
-            .expect("duty 2 sample present");
-        assert_eq!(
-            sample_at_2.rpm, 850,
-            "spike at duty 2 must be preserved as-is"
-        );
+            assert_eq!(
+                result.up_curve[result.up_curve.len() - 1].duty,
+                100,
+                "up_curve must end at duty 100"
+            );
+            // A non-2%-aligned, non-5%-aligned mid-range duty must NOT appear.
+            assert!(
+                duties.contains(&47).not(),
+                "duty 47 should not be sampled: {duties:?}"
+            );
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn kick_duration_is_measured_and_bounded() {
-        // The saved kick_duration_ms must be the result of the live
-        // measurement, not just the default. Asserts the value is
-        // within [poll_period, cap_ms], is a multiple of the poll
-        // period (bucketing eliminates cache-alignment jitter so
-        // identical-model fans land on the same calibrated value),
-        // and is at least one poll period (always one period of
-        // safety on top of the measured time-to-stable).
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn up_sweep_stays_dense_through_firmware_kick_artifact() {
+        crate::rt::test_runtime(async {
+            // Goal: a firmware-kick fan that briefly spikes RPM at the first
+            // non-zero duty (e.g. 850 RPM at 2% then settles to 300 RPM at
+            // 4-28%) must still get dense sampling through the entire 0-30%
+            // range. Old code would see the 850 RPM "kick-in", flip to sparse,
+            // and miss the floor. New code is dense-by-duty so the firmware
+            // kick decay is captured cleanly.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new();
+            {
+                let mut map = host.rpm_for_duty.borrow_mut();
+                for duty in 0u8..=100 {
+                    let rpm = match duty {
+                        0 => 0,
+                        2 => 850,
+                        d if d <= 30 => 300,
+                        d => 300 + u32::from(d - 30) * 1700 / 70,
+                    };
+                    map.insert(duty, rpm);
+                }
+            }
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("smooth fan diagnoses");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("firmware-kick fan diagnoses");
 
-        let cap_ms = host.step_cap_ms.get();
-        let poll_period = host.poll_period_ms(&"dev-a".to_string());
-        assert!(
+            let duties: Vec<Duty> = result.up_curve.iter().map(|s| s.duty).collect();
+            // Every dense duty from 0 to 28 must be captured.
+            for expected in (0u8..=28).step_by(2) {
+                assert!(
+                    duties.contains(&expected),
+                    "firmware-kick fan missed dense duty {expected}: {duties:?}"
+                );
+            }
+            // The 850 RPM spike at duty 2 is preserved verbatim.
+            let sample_at_2 = result
+                .up_curve
+                .iter()
+                .find(|s| s.duty == 2)
+                .expect("duty 2 sample present");
+            assert_eq!(
+                sample_at_2.rpm, 850,
+                "spike at duty 2 must be preserved as-is"
+            );
+        });
+    }
+
+    #[test]
+    fn kick_duration_is_measured_and_bounded() {
+        crate::rt::test_runtime(async {
+            // The saved kick_duration_ms must be the result of the live
+            // measurement, not just the default. Asserts the value is
+            // within [poll_period, cap_ms], is a multiple of the poll
+            // period (bucketing eliminates cache-alignment jitter so
+            // identical-model fans land on the same calibrated value),
+            // and is at least one poll period (always one period of
+            // safety on top of the measured time-to-stable).
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
+
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("smooth fan diagnoses");
+
+            let cap_ms = host.step_cap_ms.get();
+            let poll_period = host.poll_period_ms(&"dev-a".to_string());
+            assert!(
             result.kick_duration_ms >= poll_period,
             "kick_duration must be at least one poll period, got {} (poll_period={poll_period})",
             result.kick_duration_ms
         );
-        assert_eq!(
+            assert_eq!(
             result.kick_duration_ms % poll_period,
             0,
             "kick_duration must be a multiple of the poll period for cross-fan consistency, got {} (poll_period={poll_period})",
             result.kick_duration_ms
         );
-        assert!(
-            result.kick_duration_ms <= cap_ms,
-            "kick_duration must not exceed cap_ms ({cap_ms}), got {}",
-            result.kick_duration_ms
-        );
+            assert!(
+                result.kick_duration_ms <= cap_ms,
+                "kick_duration must not exceed cap_ms ({cap_ms}), got {}",
+                result.kick_duration_ms
+            );
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn kick_duration_falls_back_to_default_on_dead_fan() {
-        // Dead fan has no derivable min_start_duty, so kick_duration
-        // skips measurement and uses the configured default.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_dead_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn kick_duration_falls_back_to_default_on_dead_fan() {
+        crate::rt::test_runtime(async {
+            // Dead fan has no derivable min_start_duty, so kick_duration
+            // skips measurement and uses the configured default.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_dead_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("dead fan persists passthrough");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("dead fan persists passthrough");
 
-        assert_eq!(result.kick_duration_ms, settings.kick_duration_default_ms);
+            assert_eq!(result.kick_duration_ms, settings.kick_duration_default_ms);
+        });
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn down_sweep_uses_dense_steps_in_kick_in_zone() {
-        // Goal: the down-sweep walks duty 100 -> 0. 5%-steps above the
-        // kick-in zone (kick_in_duty + KICK_ZONE_BUFFER_PERCENT), 2%-
-        // steps inside the zone and continuing to 0. With kick-in at
-        // duty 4 on the up-sweep (smooth synthetic), zone_top = 14;
-        // duties below 14 must appear at 2%-step spacing and duties
-        // above at 5%-step spacing.
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let host = MockHost::new().with_smooth_fan();
-        let settings = DiagnosisSettings::default();
-        let cancellation = CancellationToken::new();
+    #[test]
+    fn down_sweep_uses_dense_steps_in_kick_in_zone() {
+        crate::rt::test_runtime(async {
+            // Goal: the down-sweep walks duty 100 -> 0. 5%-steps above the
+            // kick-in zone (kick_in_duty + KICK_ZONE_BUFFER_PERCENT), 2%-
+            // steps inside the zone and continuing to 0. With kick-in at
+            // duty 4 on the up-sweep (smooth synthetic), zone_top = 14;
+            // duties below 14 must appear at 2%-step spacing and duties
+            // above at 5%-step spacing.
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new().with_smooth_fan();
+            let settings = DiagnosisSettings::default();
+            let cancellation = CancellationToken::new();
 
-        let result = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect("smooth fan diagnoses");
+            let result = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect("smooth fan diagnoses");
 
-        let duties: Vec<Duty> = result.down_curve.iter().map(|s| s.duty).collect();
-        assert!(duties.contains(&0), "down_curve must include 0");
-        assert!(duties.contains(&100), "down_curve must include 100");
-        // Inside the dense zone: a 2%-step duty must appear.
-        assert!(duties.contains(&8), "down_curve missing duty 8: {duties:?}");
-        // Outside the dense zone (above zone_top): a 5%-step duty must appear.
-        assert!(
-            duties.contains(&50),
-            "down_curve missing duty 50: {duties:?}"
-        );
+            let duties: Vec<Duty> = result.down_curve.iter().map(|s| s.duty).collect();
+            assert!(duties.contains(&0), "down_curve must include 0");
+            assert!(duties.contains(&100), "down_curve must include 100");
+            // Inside the dense zone: a 2%-step duty must appear.
+            assert!(duties.contains(&8), "down_curve missing duty 8: {duties:?}");
+            // Outside the dense zone (above zone_top): a 5%-step duty must appear.
+            assert!(
+                duties.contains(&50),
+                "down_curve missing duty 50: {duties:?}"
+            );
+        });
     }
 
     #[test]
@@ -2122,82 +2162,84 @@ mod tests {
         assert_eq!(median_of(&window), 1200);
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn cancellation_during_settle_short_circuits_step() {
-        // Goal: cancellation triggered mid-step is observed inside the
-        // settle loop, not just at step boundaries. This keeps the
-        // diagnoser responsive on slow devices where a single step
-        // can otherwise wait up to step_settle_cap_ms.
-        struct CancellingHost {
-            inner: MockHost,
-            cancel_on_status_check: Rc<RefCell<Option<CancellationToken>>>,
-        }
-        #[async_trait(?Send)]
-        impl DiagnosisHost for CancellingHost {
-            async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
-                self.inner.current_rpm(d, c).await
+    #[test]
+    fn cancellation_during_settle_short_circuits_step() {
+        crate::rt::test_runtime(async {
+            // Goal: cancellation triggered mid-step is observed inside the
+            // settle loop, not just at step boundaries. This keeps the
+            // diagnoser responsive on slow devices where a single step
+            // can otherwise wait up to step_settle_cap_ms.
+            struct CancellingHost {
+                inner: MockHost,
+                cancel_on_status_check: Rc<RefCell<Option<CancellationToken>>>,
             }
-            async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
-                // Trip the cancel on the very first status check inside
-                // settle_and_sample so the loop bails before sampling.
-                if let Some(token) = self.cancel_on_status_check.borrow_mut().take() {
-                    token.cancel();
+            #[async_trait(?Send)]
+            impl DiagnosisHost for CancellingHost {
+                async fn current_rpm(&self, d: &UID, c: &str) -> Option<RPM> {
+                    self.inner.current_rpm(d, c).await
                 }
-                self.inner.latest_status_timestamp_ms(d).await
+                async fn latest_status_timestamp_ms(&self, d: &UID) -> Option<i64> {
+                    // Trip the cancel on the very first status check inside
+                    // settle_and_sample so the loop bails before sampling.
+                    if let Some(token) = self.cancel_on_status_check.borrow_mut().take() {
+                        token.cancel();
+                    }
+                    self.inner.latest_status_timestamp_ms(d).await
+                }
+                fn step_settle_cap_ms(&self, d: &UID) -> u32 {
+                    self.inner.step_settle_cap_ms(d)
+                }
+                async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
+                    self.inner.enter_manual_control(d, c).await
+                }
+                async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
+                    self.inner.write_raw_duty(d, c, duty).await
+                }
+                async fn max_temp_celsius(&self) -> f64 {
+                    self.inner.max_temp_celsius().await
+                }
+                fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
+                    self.inner.snapshot_setting(d, c)
+                }
+                async fn restore_setting(&self, s: &SettingsSnapshot) -> Result<()> {
+                    self.inner.restore_setting(s).await
+                }
+                async fn sleep_millis(&self, m: u32) {
+                    self.inner.sleep_millis(m).await;
+                }
             }
-            fn step_settle_cap_ms(&self, d: &UID) -> u32 {
-                self.inner.step_settle_cap_ms(d)
-            }
-            async fn enter_manual_control(&self, d: &UID, c: &str) -> Result<()> {
-                self.inner.enter_manual_control(d, c).await
-            }
-            async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
-                self.inner.write_raw_duty(d, c, duty).await
-            }
-            async fn max_temp_celsius(&self) -> f64 {
-                self.inner.max_temp_celsius().await
-            }
-            fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
-                self.inner.snapshot_setting(d, c)
-            }
-            async fn restore_setting(&self, s: &SettingsSnapshot) -> Result<()> {
-                self.inner.restore_setting(s).await
-            }
-            async fn sleep_millis(&self, m: u32) {
-                self.inner.sleep_millis(m).await;
-            }
-        }
 
-        let state = FanStateMap::new();
-        let store = CalibrationStore::empty();
-        let cancellation = CancellationToken::new();
-        let cancel_on_status_check = Rc::new(RefCell::new(Some(cancellation.clone())));
-        // Force the timestamp NOT to advance, so the inner status loop
-        // keeps spinning until cancellation is observed. Use a tiny cap
-        // to ensure the test would take forever without the cancel hook.
-        let inner = MockHost::new().with_smooth_fan();
-        // freeze timestamps: override sleep to NOT advance ts. We do
-        // this by giving cap that is much larger than the single
-        // cancellation check we expect.
-        inner.step_cap_ms.set(60_000);
-        let host = CancellingHost {
-            inner,
-            cancel_on_status_check,
-        };
-        let settings = DiagnosisSettings::default();
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let cancellation = CancellationToken::new();
+            let cancel_on_status_check = Rc::new(RefCell::new(Some(cancellation.clone())));
+            // Force the timestamp NOT to advance, so the inner status loop
+            // keeps spinning until cancellation is observed. Use a tiny cap
+            // to ensure the test would take forever without the cancel hook.
+            let inner = MockHost::new().with_smooth_fan();
+            // freeze timestamps: override sleep to NOT advance ts. We do
+            // this by giving cap that is much larger than the single
+            // cancellation check we expect.
+            inner.step_cap_ms.set(60_000);
+            let host = CancellingHost {
+                inner,
+                cancel_on_status_check,
+            };
+            let settings = DiagnosisSettings::default();
 
-        let err = run_diagnosis(
-            &state,
-            &store,
-            &host,
-            &settings,
-            "dev-a".to_string(),
-            "fan1".to_string(),
-            cancellation,
-        )
-        .await
-        .expect_err("cancellation surfaces");
-        assert_eq!(err, DiagnosisFailure::Cancelled);
+            let err = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                cancellation,
+            )
+            .await
+            .expect_err("cancellation surfaces");
+            assert_eq!(err, DiagnosisFailure::Cancelled);
+        });
     }
 
     use std::rc::Rc;
