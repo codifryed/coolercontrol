@@ -20,7 +20,7 @@
 //!
 //! Specific to `CoolerControl`'s use cases and intended only for ordinary files. Async reads and
 //! writes go through the active runtime: Tokio's file utilities (a blocking-thread pool) by
-//! default, or compio (completion-based, with `read_sysfs` using the runtime buffer pool) under the
+//! default, or compio (completion-based) under the
 //! `compio-rt` feature. Directory and metadata helpers fall back to `std` where appropriate and
 //! should be used sparingly.
 

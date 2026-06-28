@@ -148,15 +148,15 @@ mod tests {
         });
     }
 
-    /// Goal: concurrent `read_sysfs` calls sharing the thread-local buffer pool (as the hwmon hot
-    /// path does each tick) must each return their own file's bytes. Method: fan many simultaneous
-    /// reads of distinct, varied-length files through a moro scope and assert exact content, which
-    /// catches buffer-ring cross-contamination or stale-length reuse.
+    /// Goal: concurrent `read_sysfs` calls (as the hwmon hot path does each tick) must each return
+    /// their own file's bytes. Method: fan many simultaneous reads of distinct, varied-length files
+    /// through a moro scope and assert exact content, which catches cross-contamination between
+    /// in-flight completion-based reads.
     #[test]
     fn read_sysfs_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            const N: usize = 256; // exceed the 64-buffer pool to stress ring reuse
+            const N: usize = 256; // high concurrency to stress io_uring ring reuse
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {
                 let contents = format!("{}\n", "9".repeat((i % 17) + 1));
