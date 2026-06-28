@@ -173,6 +173,12 @@ impl GpuRepo {
         }
     }
 
+    /// The type-index offset for NVIDIA GPUs: they are numbered after the AMD GPUs, so this
+    /// must only be read after the AMD count has been stored in `gpu_type_count`.
+    fn starting_nvidia_index(&self) -> u8 {
+        self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     async fn detect_gpu_types(&mut self) {
         // Count AMD GPUs first so the NVIDIA type-index offset is known: init_nvml_devices
@@ -180,7 +186,7 @@ impl GpuRepo {
         // flag, and a wrong offset would silently miss it and keep NVML attached.
         let amd_count = self.gpus_amd.init_devices().await.len() as u8;
         self.gpu_type_count.insert(GpuType::AMD, amd_count);
-        let starting_nvidia_index = amd_count + 1;
+        let starting_nvidia_index = self.starting_nvidia_index();
         let nvml_enabled = env::var(ENV_NVML)
             .ok()
             .and_then(|env_nvml| {
@@ -312,7 +318,7 @@ impl Repository for GpuRepo {
         self.devices.extend(amd_devices);
         let has_nvidia_devices = self.gpu_type_count.get(&GpuType::Nvidia).unwrap_or(&0) > &0;
         if has_nvidia_devices {
-            let starting_nvidia_index = self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1;
+            let starting_nvidia_index = self.starting_nvidia_index();
             let nvidia_devices = self
                 .gpus_nvidia
                 .initialize_nvidia_devices(starting_nvidia_index)
