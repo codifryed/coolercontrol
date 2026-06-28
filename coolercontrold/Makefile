@@ -29,7 +29,7 @@ test:
 ci-test:
 	@$(CARGO) build --locked $(release)
 	@./target/debug/$(executable) --version
-	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast $(release) -- -Z unstable-options --format json | gitlab-report -p test > report.xml
+	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json | gitlab-report -p test > report.xml
 	@$(CARGO) clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
 	@#$(CARGO) audit
 	@#$(CARGO) audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json

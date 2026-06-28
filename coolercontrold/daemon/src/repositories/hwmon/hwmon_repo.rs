@@ -2969,6 +2969,7 @@ mod command_delay_handoff_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn delay_holder_call_returns_immediately() {
         // The caller of spawn_command_delay_holder must not stall
         // on the delay. Verify by measuring wall clock around the
@@ -3471,6 +3472,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn coalescer_per_device_isolation() {
         // Goal: a wedged writer on device A must not block writes
         // to device B, since each device owns its own permit, mailbox
@@ -3783,6 +3785,7 @@ mod coalescer_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn fast_device_no_added_latency() {
         // Goal: with no contention the writer-task path stays fast
         // enough that the existing tick budget is not regressed.
@@ -5171,6 +5174,7 @@ mod init_timeout_tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn map_into_model_skips_device_on_hanging_temp_read() {
         // A wedged sysfs file at init must not stall startup. FIFO at
         // the temp path blocks open(2) until a writer connects, so
