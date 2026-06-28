@@ -533,6 +533,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn run_blocking_with_timeout_times_out_on_slow_closure() {
         // Verifies the failure path: a closure that sleeps longer
         // than the timeout produces the typed `TimedOut` variant

@@ -21,6 +21,10 @@ default = ["compio-rt"]
 # compio main runtime (default, requires Rust 1.88). When off (`--no-default-features`, builds on
 # Rust 1.85).
 compio-rt = ["dep:compio", "dep:cyper-core", "dep:compio-buf"]
+# Gates tests excluded from the normal suite: ones unreliable outside a controlled environment
+# (wall-clock latency assertions, performance-sensitive, real hardware). Off by default; CI enables
+# them with `--features gated-tests`. See RUST_STYLE.md "Gated Tests".
+gated-tests = []
 
 [dependencies]
 cc-detect = { path = "../cc-detect" }
