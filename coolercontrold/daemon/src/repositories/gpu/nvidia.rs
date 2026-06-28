@@ -207,19 +207,26 @@ impl GpuNVidia {
         };
         debug!("Found {device_count} NVML devices");
         // Inspect device identities on the owned handle before committing NVML to the
-        // process-lifetime static. If CoolerControl manages no NVIDIA GPU (every device
-        // disabled), drop the handle so the driver detaches the GPU instead of holding it
-        // active for the daemon's lifetime. NVML is process-global, hence all-or-nothing.
+        // process-lifetime static. If CoolerControl manages no NVIDIA GPU (none detected, or
+        // every one disabled), drop the handle so the driver detaches instead of holding the
+        // GPU active for the daemon's lifetime. NVML is process-global, hence all-or-nothing.
         let device_uids = collect_nvml_device_uids(&nvml, device_count, starting_nvidia_index);
         if self.should_release_nvml(&device_uids, device_count) {
-            info!(
-                "All NVIDIA GPUs are disabled in CoolerControl; shutting down NVML so the \
-                 driver releases the GPU instead of holding it active."
-            );
-            if let Err(err) = nvml.shutdown() {
-                error!("Error shutting down NVML after releasing disabled NVIDIA GPUs: {err}");
+            if device_count == 0 {
+                info!(
+                    "No NVIDIA GPUs detected; shutting down NVML so the driver can detach \
+                     instead of staying attached for the daemon's lifetime."
+                );
+            } else {
+                info!(
+                    "All NVIDIA GPUs are disabled in CoolerControl; shutting down NVML so the \
+                     driver releases the GPU instead of holding it active."
+                );
             }
-            return NvmlInitResult::AllDevicesDisabled;
+            if let Err(err) = nvml.shutdown() {
+                error!("Error shutting down NVML while releasing unmanaged NVIDIA GPUs: {err}");
+            }
+            return NvmlInitResult::Released;
         }
         if let Err(err) = NVML.set(nvml) {
             error!("Error setting NVML lib: {err}");
@@ -271,15 +278,19 @@ impl GpuNVidia {
         }
     }
 
-    /// True only when every NVML device was enumerated (a partial enumeration keeps NVML)
-    /// and all of them are disabled in config. NVML init/shutdown is process-global, so the
-    /// GPU can only be released when no NVIDIA GPU is managed.
+    /// True when no NVIDIA GPU will be managed through NVML, so NVML can be shut down to let
+    /// the driver detach: either no device was detected, or every enumerated device is
+    /// disabled in config. A partial enumeration (a device failed to read) keeps NVML, since
+    /// we cannot be sure it is unmanaged. NVML init/shutdown is process-global.
     fn should_release_nvml(&self, device_uids: &[UID], device_count: u32) -> bool {
         debug_assert!(
             device_uids.len() <= device_count as usize,
             "collected more device UIDs than NVML reported devices"
         );
-        if device_count == 0 || device_uids.len() != device_count as usize {
+        if device_count == 0 {
+            return true;
+        }
+        if device_uids.len() != device_count as usize {
             return false;
         }
         device_uids
@@ -1406,9 +1417,10 @@ impl Default for NvidiaFanRange {
 pub enum NvmlInitResult {
     /// NVML is active and managing this many NVIDIA GPUs.
     Active(u8),
-    /// NVML is available but every NVIDIA GPU is disabled, so NVML was shut down to
-    /// release the GPU. No nvidia-smi fallback should run.
-    AllDevicesDisabled,
+    /// NVML was available but no NVIDIA GPU is managed (none detected, or every one
+    /// disabled), so NVML was shut down to let the driver detach. No nvidia-smi fallback
+    /// should run: it shares the same driver and would just re-attach it.
+    Released,
     /// NVML is unavailable; the caller should fall back to the nvidia-smi CLI.
     Unavailable,
 }
@@ -1523,10 +1535,11 @@ mod tests {
     }
 
     #[test]
-    fn keep_when_no_devices() {
-        // device_count == 0 is the "NVML found nothing" path; never treated as releasable.
+    fn release_when_no_devices() {
+        // Zero detected GPUs means CoolerControl manages no NVIDIA GPU, so NVML is released.
+        // This is the drivers-present-but-no-GPU case from the original report.
         let repo = repo_with_disabled(&[]);
-        assert!(repo.should_release_nvml(&[], 0).not());
+        assert!(repo.should_release_nvml(&[], 0));
     }
 
     #[test]

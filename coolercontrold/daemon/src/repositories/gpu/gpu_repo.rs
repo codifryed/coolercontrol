@@ -208,7 +208,7 @@ impl GpuRepo {
                     self.nvml_active = true;
                     num_nvml_devices
                 }
-                NvmlInitResult::AllDevicesDisabled => 0,
+                NvmlInitResult::Released => 0,
                 NvmlInitResult::Unavailable => self
                     .gpus_nvidia
                     .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
