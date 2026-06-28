@@ -487,12 +487,10 @@ fn add_aio_pump(
                 })?;
             let source = resolve_smoothed_source(proposal, context, base, Preset::Silent);
             let function_uid = proposal.intern_function(build_preset_function(Preset::Silent));
-            build_graph_profile(
-                &format!("AIO Pump ({preset})"),
-                source,
-                function_uid,
-                pump_silent_curve(),
-            )
+            let min_duty = context.min_duty(&assignment.device_uid, &assignment.channel_name);
+            let curve = clamp_curve_floor(pump_silent_curve(), min_duty);
+            assert_valid_curve(&curve);
+            build_graph_profile(&format!("AIO Pump ({preset})"), source, function_uid, curve)
         }
         Preset::Balanced | Preset::Performance => {
             build_fixed_profile(&format!("AIO Pump ({preset})"), 100)
@@ -529,7 +527,8 @@ fn add_aio_radiator(
 ) -> Result<(), CCError> {
     let (source, band) = resolve_radiator_source(proposal, context, key_temps)?;
     let function_uid = proposal.intern_function(build_preset_function(preset));
-    let curve = radiator_curve(preset, band);
+    let min_duty = context.min_duty(&assignment.device_uid, &assignment.channel_name);
+    let curve = clamp_curve_floor(radiator_curve(preset, band), min_duty);
     assert_valid_curve(&curve);
     let profile = build_graph_profile(
         &format!("AIO Radiator ({preset})"),
@@ -643,15 +642,16 @@ fn add_laptop_fan(
     let strategy = assignment
         .laptop_temp_strategy
         .unwrap_or(LaptopTempStrategy::EmaCpu);
+    let min_duty = context.min_duty(&assignment.device_uid, &assignment.channel_name);
     let profile_uid = match strategy {
         LaptopTempStrategy::MixCpuGpu if key_temps.gpu.is_some() => {
-            build_laptop_mix(proposal, context, key_temps, preset)?
+            build_laptop_mix(proposal, context, key_temps, preset, min_duty)?
         }
         LaptopTempStrategy::ThinkpadSensor => {
-            build_laptop_graph(proposal, context, key_temps, preset, false)?
+            build_laptop_graph(proposal, context, key_temps, preset, false, min_duty)?
         }
         // EmaCpu, or MixCpuGpu with no GPU temp (degrade to the EMA-CPU default).
-        _ => build_laptop_graph(proposal, context, key_temps, preset, true)?,
+        _ => build_laptop_graph(proposal, context, key_temps, preset, true, min_duty)?,
     };
     proposal.assign(assignment, profile_uid);
     Ok(())
@@ -664,6 +664,7 @@ fn build_laptop_graph(
     key_temps: &KeyTemps,
     preset: Preset,
     smooth: bool,
+    min_duty: Duty,
 ) -> Result<ProfileUID, CCError> {
     let cpu = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
         msg: "A laptop fan was assigned but no CPU temp was selected".to_string(),
@@ -674,7 +675,7 @@ fn build_laptop_graph(
         cpu.clone()
     };
     let function_uid = proposal.intern_function(build_laptop_function(preset));
-    let curve = laptop_curve(preset);
+    let curve = clamp_curve_floor(laptop_curve(preset), min_duty);
     assert_valid_curve(&curve);
     let profile = build_graph_profile(
         &format!("Laptop Fan ({preset})"),
@@ -692,6 +693,7 @@ fn build_laptop_mix(
     context: &DeviceContext,
     key_temps: &KeyTemps,
     preset: Preset,
+    min_duty: Duty,
 ) -> Result<ProfileUID, CCError> {
     let cpu = key_temps.cpu.as_ref().ok_or_else(|| CCError::UserError {
         msg: "A laptop fan was assigned but no CPU temp was selected".to_string(),
@@ -699,8 +701,8 @@ fn build_laptop_mix(
     let gpu = key_temps.gpu.as_ref().ok_or_else(|| CCError::UserError {
         msg: "A laptop Mix source needs a GPU temp".to_string(),
     })?;
-    let cpu_member = build_laptop_member(proposal, context, cpu, preset);
-    let gpu_member = build_laptop_member(proposal, context, gpu, preset);
+    let cpu_member = build_laptop_member(proposal, context, cpu, preset, min_duty);
+    let gpu_member = build_laptop_member(proposal, context, gpu, preset, min_duty);
     let mix = build_mix_profile(
         &format!("Laptop Mix ({preset})"),
         vec![cpu_member, gpu_member],
@@ -715,10 +717,12 @@ fn build_laptop_member(
     context: &DeviceContext,
     temp: &TempSource,
     preset: Preset,
+    min_duty: Duty,
 ) -> ProfileUID {
     let source = laptop_ema_source(proposal, context, temp, preset);
     let function_uid = proposal.intern_function(build_laptop_function(preset));
-    let curve = laptop_curve(preset);
+    let curve = clamp_curve_floor(laptop_curve(preset), min_duty);
+    assert_valid_curve(&curve);
     let profile = build_graph_profile(
         &format!("Laptop {} ({preset})", temp.temp_name),
         source,
@@ -1397,6 +1401,86 @@ mod tests {
             .expect("generates");
         let curve = response.profiles[0].speed_profile().expect("has curve");
         assert!(curve.iter().all(|(_, duty)| *duty >= 40));
+    }
+
+    /// Goal: a channel minimum duty raises the Silent AIO pump curve floor so a high-min_duty pump
+    /// cannot stall. Method: generate Silent with min_duty 70 and assert every duty is at least 70.
+    #[test]
+    fn aio_pump_silent_floor_clamped_to_min_duty() {
+        let context = context_with_min_duty("dev-aio-1", "fan1", 70);
+        let response = generate_proposal(
+            &aio_request(FanKind::AioPump, Preset::Silent, cpu_only()),
+            &context,
+        )
+        .expect("generates");
+        let curve = response.profiles[0].speed_profile().expect("has curve");
+        assert!(curve.iter().all(|(_, duty)| *duty >= 70));
+    }
+
+    /// Goal: a channel minimum duty raises the AIO radiator curve floor so a high-min_duty fan
+    /// cannot stall. Method: generate Silent off a liquid temp with min_duty 50 and assert every
+    /// duty is at least 50.
+    #[test]
+    fn aio_radiator_floor_clamped_to_min_duty() {
+        let key_temps = KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: None,
+            liquid: Some(liquid_temp()),
+            ambient: None,
+        };
+        let context = context_with_min_duty("dev-aio-1", "fan1", 50);
+        let response = generate_proposal(
+            &aio_request(FanKind::AioRadiator, Preset::Silent, key_temps),
+            &context,
+        )
+        .expect("generates");
+        let curve = response.profiles[0].speed_profile().expect("has curve");
+        assert!(curve.iter().all(|(_, duty)| *duty >= 50));
+    }
+
+    /// Goal: a channel minimum duty raises the laptop fan curve floor so a high-min_duty fan cannot
+    /// stall. Method: generate the default Silent laptop with min_duty 50 and assert every duty is
+    /// at least 50.
+    #[test]
+    fn laptop_floor_clamped_to_min_duty() {
+        let context = context_with_min_duty("dev-laptop-1", "fan1", 50);
+        let response =
+            generate_proposal(&laptop_request(Preset::Silent, None, cpu_only()), &context)
+                .expect("generates");
+        let curve = response.profiles[0].speed_profile().expect("has curve");
+        assert!(curve.iter().all(|(_, duty)| *duty >= 50));
+    }
+
+    /// Goal: each member of a laptop Mix gets its curve floor raised to the channel minimum, so the
+    /// Max output cannot stall. Method: generate the Mix strategy with a GPU temp and min_duty 50,
+    /// then assert every member graph's duties are at least 50.
+    #[test]
+    fn laptop_mix_members_floor_clamped_to_min_duty() {
+        let key_temps = KeyTemps {
+            cpu: Some(cpu_temp()),
+            gpu: Some(gpu_temp()),
+            liquid: None,
+            ambient: None,
+        };
+        let context = context_with_min_duty("dev-laptop-1", "fan1", 50);
+        let response = generate_proposal(
+            &laptop_request(
+                Preset::Balanced,
+                Some(LaptopTempStrategy::MixCpuGpu),
+                key_temps,
+            ),
+            &context,
+        )
+        .expect("generates");
+        let member_curves: Vec<_> = response
+            .profiles
+            .iter()
+            .filter_map(|p| p.speed_profile())
+            .collect();
+        assert_eq!(member_curves.len(), 2, "two mix members");
+        for curve in member_curves {
+            assert!(curve.iter().all(|(_, duty)| *duty >= 50));
+        }
     }
 
     /// Goal: GPU fans keep a 0% idle even when the channel reports a non-zero minimum duty, to
