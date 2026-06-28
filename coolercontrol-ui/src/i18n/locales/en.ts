@@ -1185,6 +1185,7 @@ export default {
                 stepTemps: 'Key Temps',
                 stepPreset: 'Performance',
                 assignIntro: 'Assign each fan a role. Leave a fan unset to skip it.',
+                calibrateFirst: 'Calibrate fans first for best consistency (a few minutes)',
                 skip: 'Skip',
                 noFans: 'No controllable fans were detected.',
                 tempsIntro:

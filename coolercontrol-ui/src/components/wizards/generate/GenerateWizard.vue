@@ -28,7 +28,8 @@ import {
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
-import { inject, ref, watch, type Ref } from 'vue'
+import { inject, nextTick, ref, watch, type Ref } from 'vue'
+import { Emitter, EventType } from 'mitt'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
@@ -53,6 +54,7 @@ const { t } = useI18n()
 const toast = useToast()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const step: Ref<number> = ref(1)
 
@@ -97,6 +99,17 @@ const kindOptions = [
 ].map((kind) => ({ value: kind, label: t(`components.wizards.generate.kind.${kind}`) }))
 
 const assignedCount = (): number => fanRows.value.filter((row) => row.kind != null).length
+
+// Optional hand-off to the Calibration Wizard: calibrating first makes the generated curves more
+// consistent. Pre-selects the fans already given a role; if none yet, the wizard uses its default.
+const calibrateFansFirst = async (): Promise<void> => {
+    const preselect = fanRows.value
+        .filter((row) => row.kind != null)
+        .map((row) => ({ deviceUID: row.deviceUID, channelName: row.channelName }))
+    closeDialog()
+    await nextTick()
+    emitter.emit('calibrate-fans', { preselect: preselect.length > 0 ? preselect : undefined })
+}
 
 // The shared Select preset positions the clear (X) icon at right-12, which leaves it stranded
 // mid-field here because this preset puts the dropdown chevron on the left. Move the X flush to
@@ -371,6 +384,13 @@ const createAndApply = async (): Promise<void> => {
             <small class="ml-1 font-light text-sm">
                 {{ t('components.wizards.generate.assignIntro') }}
             </small>
+            <button
+                type="button"
+                class="ml-1 self-start text-sm text-text-color-secondary hover:underline"
+                @click="calibrateFansFirst"
+            >
+                {{ t('components.wizards.generate.calibrateFirst') }}
+            </button>
             <div v-if="fanRows.length === 0" class="ml-1 text-text-color-secondary">
                 {{ t('components.wizards.generate.noFans') }}
             </div>

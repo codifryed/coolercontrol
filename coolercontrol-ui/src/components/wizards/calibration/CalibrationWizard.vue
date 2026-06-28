@@ -68,6 +68,16 @@ interface FanRow {
     alreadyCalibrated: boolean
 }
 const fanRows: Ref<Array<FanRow>> = ref([])
+// When launched from Auto-Create, the dialog passes the fans being assigned so they are pre-selected
+// instead of the default (all uncalibrated).
+const preselectKeys = ((): Set<string> | null => {
+    const preselect = dialogRef.value.data?.preselect as
+        | Array<{ deviceUID: string; channelName: string }>
+        | undefined
+    return preselect == null
+        ? null
+        : new Set(preselect.map((fan) => `${fan.deviceUID}||${fan.channelName}`))
+})()
 const fillFans = (): void => {
     fanRows.value.length = 0
     for (const device of deviceStore.allDevices()) {
@@ -84,7 +94,9 @@ const fillFans = (): void => {
                 channelName,
                 label: sc?.name ?? channelName,
                 color: sc?.color ?? '#888888',
-                selected: !calibrated,
+                selected: preselectKeys
+                    ? preselectKeys.has(`${device.uid}||${channelName}`)
+                    : !calibrated,
                 alreadyCalibrated: calibrated,
             })
         }

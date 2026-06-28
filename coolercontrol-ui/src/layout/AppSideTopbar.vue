@@ -390,7 +390,9 @@ const restartItems = computed(() => {
 })
 
 // Launchable from the Quick-Add menu (direct) and the Info & Tools page (via `calibrate-fans`).
-const openCalibrationWizard = (): void => {
+const openCalibrationWizard = (payload?: {
+    preselect?: Array<{ deviceUID: string; channelName: string }>
+}): void => {
     dialog.open(calibrationWizard, {
         props: {
             header: t('components.wizards.calibration.title'),
@@ -398,7 +400,7 @@ const openCalibrationWizard = (): void => {
             modal: true,
             dismissableMask: true,
         },
-        data: {},
+        data: { preselect: payload?.preselect },
     })
 }
 emitter.on('calibrate-fans', openCalibrationWizard)
