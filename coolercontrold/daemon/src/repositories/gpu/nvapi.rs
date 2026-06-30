@@ -94,6 +94,10 @@ struct GpuEntry {
 pub struct NvApi {
     _lib: libloading::Library,
     query_interface: QueryInterfaceFn,
+    // Resolved once at init: the GetThermals entry point never changes for the
+    // library's lifetime, so the per-tick hotspot read reuses it instead of
+    // re-querying nvapi on every poll.
+    thermals_fn: ThermalsFn,
     gpu_entries: HashMap<u32, GpuEntry>,
 }
 
@@ -104,11 +108,12 @@ impl NvApi {
         let lib = load_library()?;
         let query_interface = load_query_interface(&lib)?;
         initialize_api(query_interface)?;
-        let gpu_entries = enumerate_gpu_entries(query_interface)?;
+        let (thermals_fn, gpu_entries) = enumerate_gpu_entries(query_interface)?;
         info!("nvapi initialized with {} GPU(s)", gpu_entries.len());
         Some(Self {
             _lib: lib,
             query_interface,
+            thermals_fn,
             gpu_entries,
         })
     }
@@ -116,12 +121,11 @@ impl NvApi {
     /// Returns the hotspot/junction temperature for the GPU at the given PCI bus ID.
     pub fn get_hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
         let entry = self.gpu_entries.get(&pci_bus)?;
-        let thermals_fn =
-            query_fn::<ThermalsFn>(self.query_interface, query_ids::GET_THERMALS, "GetThermals")?;
         let mut thermals = NvApiThermals::new(entry.thermals_mask);
-        // SAFETY: thermals_fn is a validated nvapi function pointer. The NvApiThermals
-        // struct is #[repr(C)] with correct version encoding, matching the nvapi ABI.
-        let status = unsafe { thermals_fn(entry.handle, &raw mut thermals) };
+        // SAFETY: thermals_fn was resolved once at init and is a validated nvapi
+        // function pointer. The NvApiThermals struct is #[repr(C)] with correct
+        // version encoding, matching the nvapi ABI.
+        let status = unsafe { (self.thermals_fn)(entry.handle, &raw mut thermals) };
         if status != 0 {
             debug!(
                 "nvapi GetThermals failed: {}",
@@ -189,9 +193,11 @@ fn initialize_api(query_interface: QueryInterfaceFn) -> Option<()> {
     Some(())
 }
 
-/// Enumerates GPUs and builds the bus ID to GPU entry map.
+/// Resolves the GetThermals entry point and builds the bus ID to GPU entry map.
 /// Returns None if no GPUs support thermal queries.
-fn enumerate_gpu_entries(query_interface: QueryInterfaceFn) -> Option<HashMap<u32, GpuEntry>> {
+fn enumerate_gpu_entries(
+    query_interface: QueryInterfaceFn,
+) -> Option<(ThermalsFn, HashMap<u32, GpuEntry>)> {
     let enum_fn =
         query_fn::<unsafe extern "C" fn(*mut [NvHandle; MAX_PHYSICAL_GPUS], *mut u32) -> NvStatus>(
             query_interface,
@@ -253,7 +259,7 @@ fn enumerate_gpu_entries(query_interface: QueryInterfaceFn) -> Option<HashMap<u3
         info!("nvapi: no GPUs support hotspot temperature monitoring");
         return None;
     }
-    Some(gpu_entries)
+    Some((thermals_fn, gpu_entries))
 }
 
 /// Calculates the valid thermals mask for a GPU by probing bit positions.

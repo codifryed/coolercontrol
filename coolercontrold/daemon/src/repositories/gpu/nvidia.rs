@@ -582,6 +582,7 @@ impl GpuNVidia {
                     freqs: nvidia_freq_infos,
                     power: nvidia_power_supported,
                     fan_ranges,
+                    pci_bus: device_lock.pci_info().ok().map(|info| info.bus),
                 }),
             );
             devices.insert(uid, device);
@@ -726,10 +727,10 @@ impl GpuNVidia {
                     }
                 }
                 GPU_TEMP_HOTSPOT_NAME => {
-                    if let Some(temp) = nvapi.and_then(|api| {
-                        let bus = nvml_device.pci_info().ok()?.bus;
-                        api.get_hotspot_temp(bus)
-                    }) {
+                    if let Some(temp) = nv_info
+                        .pci_bus
+                        .and_then(|bus| nvapi.and_then(|api| api.get_hotspot_temp(bus)))
+                    {
                         temp_status.push(TempStatus {
                             name: GPU_TEMP_HOTSPOT_NAME.to_string(),
                             temp,
@@ -1052,6 +1053,7 @@ impl GpuNVidia {
                             freqs: Vec::new(),
                             power: false,
                             fan_ranges,
+                            pci_bus: None,
                         }),
                     );
                     devices.insert(uid, device);
@@ -1339,6 +1341,9 @@ pub struct NvidiaDeviceInfo {
     pub freqs: Vec<Clock>,
     /// Whether power is supported
     pub power: bool,
+    /// Cached PCI bus, read once at init, for the per-tick nvapi hotspot lookup
+    /// so it does not call `pci_info()` on every poll.
+    pub pci_bus: Option<u32>,
 }
 
 impl NvidiaDeviceInfo {
