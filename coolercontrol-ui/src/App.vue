@@ -250,6 +250,7 @@ onMounted(async () => {
             ar: 'ar', // Arabic
             pt: 'pt', // Portuguese
             'pt-br': 'pt', // Brazilian Portuguese
+            ko: 'ko', // Korean
             hi: 'hi', // Hindi
         }
 
