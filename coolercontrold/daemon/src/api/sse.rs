@@ -18,6 +18,7 @@
 
 use crate::api::status::StatusResponse;
 use crate::api::AppState;
+use crate::device_health::HealthEvent;
 use aide::NoApi;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive};
@@ -43,12 +44,15 @@ pub async fn logs(
 }
 
 pub async fn status(
-    State(AppState { status_handle, .. }): State<AppState>,
+    State(AppState {
+        status_handle,
+        device_health_handle,
+        ..
+    }): State<AppState>,
 ) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
     let cancel_token = status_handle.cancel_token();
-    let status_stream = BroadcastStream::new(status_handle.broadcaster().subscribe())
-        .take_until(async move { cancel_token.cancelled().await })
-        .map(|status| {
+    let status_stream =
+        BroadcastStream::new(status_handle.broadcaster().subscribe()).map(|status| {
             Ok(Event::default()
                 .event("status")
                 .json_data(StatusResponse {
@@ -56,7 +60,23 @@ pub async fn status(
                 })
                 .unwrap())
         });
-    NoApi(Sse::new(status_stream))
+    // Device-health transitions ride the status connection as named events so we
+    // do not open another SSE connection (browsers cap at 6 per origin).
+    let health_stream = BroadcastStream::new(device_health_handle.broadcaster().subscribe())
+        .filter_map(|event| async { event.ok().map(health_event_to_sse) });
+    let combined = futures_util::stream::select(status_stream, health_stream)
+        .take_until(async move { cancel_token.cancelled().await });
+    NoApi(Sse::new(combined))
+}
+
+/// Maps a device-health transition to its named SSE event (`missing`, and
+/// `failsafe` in a later phase).
+fn health_event_to_sse(event: HealthEvent) -> Result<Event, Infallible> {
+    match event {
+        HealthEvent::Missing(delta) => {
+            Ok(Event::default().event("missing").json_data(delta).unwrap())
+        }
+    }
 }
 
 pub async fn modes(

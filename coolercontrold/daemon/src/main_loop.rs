@@ -61,6 +61,7 @@
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
+use crate::device_health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::rt;
@@ -96,6 +97,7 @@ pub async fn run(
     engine: Rc<Engine>,
     mode_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
+    device_health_controller: Rc<DeviceHealthController>,
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
@@ -129,6 +131,7 @@ pub async fn run(
                 }
                 fire_snapshots_and_processes(&repos, &engine, &mut lcd_update_trigger, &status_handle, scope).await;
                 alert_controller.process_alerts();
+                device_health_controller.process().await;
             } else if sleep_listener.is_resuming() {
                 sleep_prepared = false;
                 wake_from_sleep(

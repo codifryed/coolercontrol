@@ -23,6 +23,7 @@ mod base;
 mod calibration;
 mod custom_sensors;
 mod detect;
+mod device_health;
 pub mod devices;
 mod dual_protocol;
 mod functions;
@@ -44,12 +45,13 @@ mod tokens;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CalibrationHandle, CustomSensorHandle, DetectHandle, DeviceHandle,
-    FunctionHandle, HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle,
-    StatsHandle, StatusHandle, StressTestHandle, TokenHandle,
+    DeviceHealthHandle, FunctionHandle, HealthHandle, ModeHandle, PluginHandle, ProfileHandle,
+    SettingHandle, StatsHandle, StatusHandle, StressTestHandle, TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
+use crate::device_health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
@@ -125,6 +127,7 @@ pub async fn start_server<'s>(
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
+    device_health_controller: Rc<DeviceHealthController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
@@ -166,6 +169,7 @@ pub async fn start_server<'s>(
         &custom_sensors_repo,
         &modes_controller,
         &alert_controller,
+        &device_health_controller,
         plugin_controller,
         log_buf_handle,
         status_handle,
@@ -648,6 +652,7 @@ async fn create_app_state<'s>(
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
+    device_health_controller: &Rc<DeviceHealthController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
@@ -696,6 +701,11 @@ async fn create_app_state<'s>(
     let stats_handle = StatsHandle::new(all_devices.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
+    let device_health_handle = DeviceHealthHandle::new(
+        device_health_controller.clone(),
+        cancel_token.clone(),
+        main_scope,
+    );
     let calibration_handle =
         CalibrationHandle::new(engine.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
@@ -714,6 +724,7 @@ async fn create_app_state<'s>(
         mode_handle,
         setting_handle,
         alert_handle,
+        device_health_handle,
         calibration_handle,
         plugin_handle,
         stress_test_handle,
@@ -1202,6 +1213,7 @@ pub struct AppState {
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
     pub alert_handle: AlertHandle,
+    pub device_health_handle: DeviceHealthHandle,
     pub calibration_handle: CalibrationHandle,
     pub plugin_handle: PluginHandle,
     pub stress_test_handle: StressTestHandle,
