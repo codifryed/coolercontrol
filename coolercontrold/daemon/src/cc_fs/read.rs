@@ -90,6 +90,7 @@ pub fn read_link(path: impl AsRef<Path>) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     /// Goal: `read_sysfs` must return EXACTLY the file's bytes, no stale/garbage tail. A wrong
     /// length leaves trailing bytes that break numeric parsing ("invalid digit found in string").
@@ -198,7 +199,16 @@ mod tests {
                 let name = name.to_string_lossy();
                 let is_input = (name.starts_with("fan") || name.starts_with("temp"))
                     && name.ends_with("_input");
-                if is_input && std::fs::File::open(file.path()).is_ok() {
+                if is_input.not() {
+                    continue;
+                }
+                // Many inputs open but return ENODATA on read (idle fan tach, disabled
+                // sensor). Require a clean numeric stdlib read so the test targets a
+                // genuinely readable input, not merely an openable one.
+                let Ok(contents) = std::fs::read_to_string(file.path()) else {
+                    continue;
+                };
+                if contents.len() < 64 && contents.trim().parse::<i64>().is_ok() {
                     return Some(file.path());
                 }
             }
