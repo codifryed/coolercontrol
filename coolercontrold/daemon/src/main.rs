@@ -345,6 +345,7 @@ fn main() -> Result<()> {
                 let device_health_controller = Rc::new(device_health::DeviceHealthController::new(
                     Rc::clone(&all_devices),
                     Rc::clone(&config),
+                    Rc::clone(&repos),
                 ));
                 AlertController::watch_for_shutdown(
                     &alert_controller,

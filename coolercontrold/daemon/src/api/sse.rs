@@ -76,6 +76,9 @@ fn health_event_to_sse(event: HealthEvent) -> Result<Event, Infallible> {
         HealthEvent::Missing(delta) => {
             Ok(Event::default().event("missing").json_data(delta).unwrap())
         }
+        HealthEvent::Failsafe(delta) => {
+            Ok(Event::default().event("failsafe").json_data(delta).unwrap())
+        }
     }
 }
 

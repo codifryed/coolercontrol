@@ -30,7 +30,7 @@ use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
 use crate::device::{DeviceUID, TempName, UID};
 use crate::setting::{CustomSensor, Profile, SettingKind, TempSource};
-use crate::AllDevices;
+use crate::{AllDevices, Repos};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -63,14 +63,12 @@ pub struct MissingRef {
     pub missing: TempSource,
 }
 
-/// The metric kind of a failsafing channel.
+/// Whether a failsafing node is a temp or a control channel. One entry per node
+/// (a fan is a single `Channel`, not separate rpm/duty entries).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum FailsafeKind {
     Temp,
-    Rpm,
-    Duty,
-    Freq,
-    Watts,
+    Channel,
 }
 
 /// A present channel/temp currently serving failsafe values. Produced by a later
@@ -97,12 +95,21 @@ pub struct MissingDelta {
     pub state: HealthState,
 }
 
+/// SSE delta broadcast when a channel/temp enters or leaves failsafe.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FailsafeDelta {
+    #[serde(flatten)]
+    pub reference: FailsafeRef,
+    pub state: HealthState,
+}
+
 /// A device-health transition, folded into the existing status SSE stream as a
 /// named event so it does not open another connection. Gains a `Failsafe`
 /// variant in the failsafe phase.
 #[derive(Debug, Clone)]
 pub enum HealthEvent {
     Missing(MissingDelta),
+    Failsafe(FailsafeDelta),
 }
 
 /// Full current health snapshot returned by `GET /devices/health`.
@@ -126,17 +133,21 @@ struct LcdRef {
 pub struct DeviceHealthController {
     all_devices: AllDevices,
     config: Rc<Config>,
+    repos: Repos,
     handle: RefCell<Option<DeviceHealthHandle>>,
     missing: RefCell<Vec<MissingRef>>,
+    failsafe: RefCell<Vec<FailsafeRef>>,
 }
 
 impl DeviceHealthController {
-    pub fn new(all_devices: AllDevices, config: Rc<Config>) -> Self {
+    pub fn new(all_devices: AllDevices, config: Rc<Config>, repos: Repos) -> Self {
         Self {
             all_devices,
             config,
+            repos,
             handle: RefCell::new(None),
             missing: RefCell::new(Vec::new()),
+            failsafe: RefCell::new(Vec::new()),
         }
     }
 
@@ -148,16 +159,27 @@ impl DeviceHealthController {
     /// Current health snapshot for the REST endpoint.
     pub fn get_all(&self) -> DeviceHealthDto {
         DeviceHealthDto {
-            failsafe: Vec::new(),
+            failsafe: self.failsafe.borrow().clone(),
             missing: self.missing.borrow().clone(),
         }
     }
 
-    /// Recomputes the missing-reference set and broadcasts any transitions.
-    /// Called once per main-loop tick after snapshots are taken.
+    /// Recomputes the missing-reference and failsafe sets and broadcasts any
+    /// transitions. Called once per main-loop tick after snapshots are taken.
     pub async fn process(&self) {
-        let current = self.scan_missing().await;
-        self.diff_and_broadcast_missing(current);
+        let current_missing = self.scan_missing().await;
+        self.diff_and_broadcast_missing(current_missing);
+        let current_failsafe = self.scan_failsafe();
+        self.diff_and_broadcast_failsafe(current_failsafe);
+    }
+
+    /// Collects the channels/temps every repository is currently failsafing.
+    fn scan_failsafe(&self) -> Vec<FailsafeRef> {
+        let mut out = Vec::new();
+        for repo in self.repos.iter() {
+            out.extend(repo.failsafing());
+        }
+        out
     }
 
     /// Gathers every temp-source reference and keeps only the unresolved ones.
@@ -292,30 +314,66 @@ impl DeviceHealthController {
             .is_none_or(|temps| temps.contains(&source.temp_name).not())
     }
 
-    /// Replaces the stored set with `current` and broadcasts one delta per
-    /// appeared / resolved reference.
+    /// Replaces the stored missing set with `current` and broadcasts one delta
+    /// per appeared / resolved reference.
     fn diff_and_broadcast_missing(&self, current: Vec<MissingRef>) {
         let previous = self.missing.replace(current.clone());
+        let (added, removed) = Self::diff_added_removed(&previous, &current);
         let handle_ref = self.handle.borrow();
         let Some(handle) = handle_ref.as_ref() else {
             return;
         };
-        for reference in &current {
-            if previous.contains(reference).not() {
-                handle.broadcast(HealthEvent::Missing(MissingDelta {
-                    reference: reference.clone(),
-                    state: HealthState::Detected,
-                }));
-            }
+        for reference in added {
+            handle.broadcast(HealthEvent::Missing(MissingDelta {
+                reference,
+                state: HealthState::Detected,
+            }));
         }
-        for reference in &previous {
-            if current.contains(reference).not() {
-                handle.broadcast(HealthEvent::Missing(MissingDelta {
-                    reference: reference.clone(),
-                    state: HealthState::Resolved,
-                }));
-            }
+        for reference in removed {
+            handle.broadcast(HealthEvent::Missing(MissingDelta {
+                reference,
+                state: HealthState::Resolved,
+            }));
         }
+    }
+
+    /// Replaces the stored failsafe set with `current` and broadcasts one delta
+    /// per channel/temp that entered or left failsafe.
+    fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
+        let previous = self.failsafe.replace(current.clone());
+        let (added, removed) = Self::diff_added_removed(&previous, &current);
+        let handle_ref = self.handle.borrow();
+        let Some(handle) = handle_ref.as_ref() else {
+            return;
+        };
+        for reference in added {
+            handle.broadcast(HealthEvent::Failsafe(FailsafeDelta {
+                reference,
+                state: HealthState::Detected,
+            }));
+        }
+        for reference in removed {
+            handle.broadcast(HealthEvent::Failsafe(FailsafeDelta {
+                reference,
+                state: HealthState::Resolved,
+            }));
+        }
+    }
+
+    /// Returns `(added, removed)`: items in `current` absent from `previous`,
+    /// and items in `previous` absent from `current`. Pure leaf.
+    fn diff_added_removed<T: Clone + PartialEq>(previous: &[T], current: &[T]) -> (Vec<T>, Vec<T>) {
+        let added = current
+            .iter()
+            .filter(|item| previous.contains(item).not())
+            .cloned()
+            .collect();
+        let removed = previous
+            .iter()
+            .filter(|item| current.contains(item).not())
+            .cloned()
+            .collect();
+        (added, removed)
     }
 }
 
@@ -450,5 +508,25 @@ mod tests {
         let mut candidates = Vec::new();
         DeviceHealthController::profile_candidates(&profiles, &mut candidates);
         assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn diff_added_removed_reports_new_and_gone() {
+        // Goal: items only in current are "added", items only in previous are
+        // "removed", and shared items appear in neither.
+        let previous = vec![1, 2, 3];
+        let current = vec![2, 3, 4];
+        let (added, removed) = DeviceHealthController::diff_added_removed(&previous, &current);
+        assert_eq!(added, vec![4]);
+        assert_eq!(removed, vec![1]);
+    }
+
+    #[test]
+    fn diff_added_removed_empty_when_unchanged() {
+        // Goal: identical sets produce no transitions.
+        let set = vec!["a".to_string(), "b".to_string()];
+        let (added, removed) = DeviceHealthController::diff_added_removed(&set, &set);
+        assert!(added.is_empty());
+        assert!(removed.is_empty());
     }
 }

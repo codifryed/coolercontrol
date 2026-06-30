@@ -35,6 +35,7 @@ use crate::device::{
     Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, Temp, TempInfo, TempName,
     TempStatus, UID,
 };
+use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::repositories::failsafe::MISSING_TEMP_FAILSAFE;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
@@ -1032,6 +1033,22 @@ impl CustomSensorsRepo {
 impl Repository for CustomSensorsRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::CustomSensors
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        let failsafing = self.failsafing_sensors.borrow();
+        if failsafing.is_empty() {
+            return Vec::new();
+        }
+        let device_uid = self.get_device_uid();
+        failsafing
+            .iter()
+            .map(|sensor_id| FailsafeRef {
+                device_uid: device_uid.clone(),
+                name: sensor_id.clone(),
+                kind: FailsafeKind::Temp,
+            })
+            .collect()
     }
 
     #[allow(clippy::cast_possible_truncation)]

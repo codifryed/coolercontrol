@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::device::{DeviceType, UID};
+use crate::device_health::FailsafeRef;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::Result;
@@ -112,6 +113,13 @@ pub trait Repository {
 
     /// This is helpful/necessary after waking from sleep.
     async fn reinitialize_devices(&self);
+
+    /// Returns the channels/temps this repository is currently serving failsafe
+    /// values for. Default empty: only repositories with a failsafe layer
+    /// override this.
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        Vec::new()
+    }
 }
 
 #[derive(Default)]
