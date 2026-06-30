@@ -90,6 +90,7 @@ pub fn read_link(path: impl AsRef<Path>) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gated-tests")]
     use std::ops::Not;
 
     /// Goal: `read_sysfs` must return EXACTLY the file's bytes, no stale/garbage tail. A wrong
@@ -126,8 +127,10 @@ mod tests {
     /// Goal: reading a real sysfs file (kernfs, reports size 4096, generated per read) must return
     /// only its actual bytes. This reproduces the live-daemon corruption that regular tempfiles do
     /// not. Method: find a readable numeric hwmon input and assert the value parses cleanly and is
-    /// short. Skips when /sys has no readable hwmon input (e.g. a CI sandbox).
+    /// short. Skips when /sys has no readable hwmon input (e.g. a CI sandbox). Gated because its
+    /// coverage varies with the build host's hwmon; CI runs it via `--features gated-tests`.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn read_sysfs_real_file_has_no_stale_tail() {
         crate::rt::test_runtime(async {
             let Some(path) = first_readable_hwmon_input() else {
@@ -188,6 +191,7 @@ mod tests {
         });
     }
 
+    #[cfg(feature = "gated-tests")]
     fn first_readable_hwmon_input() -> Option<std::path::PathBuf> {
         let hwmons = std::fs::read_dir("/sys/class/hwmon").ok()?;
         for hwmon in hwmons.flatten() {
