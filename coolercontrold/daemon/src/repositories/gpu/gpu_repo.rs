@@ -36,7 +36,7 @@ use crate::config::Config;
 use crate::device::{DeviceType, UID};
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
-use crate::repositories::gpu::nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
+use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -173,8 +173,20 @@ impl GpuRepo {
         }
     }
 
+    /// The type-index offset for NVIDIA GPUs: they are numbered after the AMD GPUs, so this
+    /// must only be read after the AMD count has been stored in `gpu_type_count`.
+    fn starting_nvidia_index(&self) -> u8 {
+        self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     async fn detect_gpu_types(&mut self) {
+        // Count AMD GPUs first so the NVIDIA type-index offset is known: init_nvml_devices
+        // derives each device UID from gpu_index plus this offset to check the disabled
+        // flag, and a wrong offset would silently miss it and keep NVML attached.
+        let amd_count = self.gpus_amd.init_devices().await.len() as u8;
+        self.gpu_type_count.insert(GpuType::AMD, amd_count);
+        let starting_nvidia_index = self.starting_nvidia_index();
         let nvml_enabled = env::var(ENV_NVML)
             .ok()
             .and_then(|env_nvml| {
@@ -190,19 +202,22 @@ impl GpuRepo {
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
                 .await
                 .len() as u8
-        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices() {
-            self.nvml_active = true;
-            num_nvml_devices
         } else {
-            self.gpus_nvidia
-                .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                .await
-                .len() as u8
+            match self.gpus_nvidia.init_nvml_devices(starting_nvidia_index) {
+                NvmlInitResult::Active(num_nvml_devices) => {
+                    self.nvml_active = true;
+                    num_nvml_devices
+                }
+                NvmlInitResult::Released => 0,
+                NvmlInitResult::Unavailable => self
+                    .gpus_nvidia
+                    .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+                    .await
+                    .len() as u8,
+            }
         };
         self.gpu_type_count
             .insert(GpuType::Nvidia, nvidia_dev_count);
-        self.gpu_type_count
-            .insert(GpuType::AMD, self.gpus_amd.init_devices().await.len() as u8);
     }
 
     pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
@@ -303,7 +318,7 @@ impl Repository for GpuRepo {
         self.devices.extend(amd_devices);
         let has_nvidia_devices = self.gpu_type_count.get(&GpuType::Nvidia).unwrap_or(&0) > &0;
         if has_nvidia_devices {
-            let starting_nvidia_index = self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1;
+            let starting_nvidia_index = self.starting_nvidia_index();
             let nvidia_devices = self
                 .gpus_nvidia
                 .initialize_nvidia_devices(starting_nvidia_index)
