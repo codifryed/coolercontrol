@@ -391,7 +391,10 @@ impl DeviceHealthController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{FunctionUID, ProfileKind};
+    use crate::setting::{
+        CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, FunctionUID,
+        ProfileKind,
+    };
 
     fn present_with(device_uid: &str, temps: &[&str]) -> HashMap<DeviceUID, HashSet<TempName>> {
         let set = temps.iter().map(|t| (*t).to_string()).collect();
@@ -542,6 +545,70 @@ mod tests {
     }
 
     #[test]
+    fn custom_sensor_candidates_yield_one_per_source() {
+        // Goal: every temp source of a Mix sensor becomes one candidate carrying
+        // the sensor's id as both uid and display name; File sensors have no
+        // sources and contribute nothing.
+        let sensors = vec![
+            CustomSensor {
+                id: "sensor1".to_string(),
+                kind: CustomSensorKind::Mix {
+                    mix_function: CustomSensorMixFunctionType::Avg,
+                    sources: vec![
+                        CustomTempSourceData {
+                            temp_source: source("dev1", "temp1"),
+                            weight: 1,
+                        },
+                        CustomTempSourceData {
+                            temp_source: source("dev2", "temp2"),
+                            weight: 1,
+                        },
+                    ],
+                },
+                children: Vec::new(),
+                parents: Vec::new(),
+            },
+            CustomSensor {
+                id: "file1".to_string(),
+                kind: CustomSensorKind::File {
+                    file_path: "/tmp/x".into(),
+                },
+                children: Vec::new(),
+                parents: Vec::new(),
+            },
+        ];
+        let mut candidates = Vec::new();
+        DeviceHealthController::custom_sensor_candidates(&sensors, &mut candidates);
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].entity_type, HealthEntityType::CustomSensor);
+        assert_eq!(candidates[0].entity_uid, "sensor1");
+        assert_eq!(candidates[0].entity_name, "sensor1");
+        assert_eq!(candidates[0].channel_name, None);
+        assert_eq!(candidates[0].missing, source("dev1", "temp1"));
+        assert_eq!(candidates[1].missing, source("dev2", "temp2"));
+    }
+
+    #[test]
+    fn lcd_candidates_carry_device_and_channel_identity() {
+        // Goal: an LCD reference maps to a candidate keyed by the owning device
+        // with its channel name set, so the UI can deep-link to the LCD editor.
+        let refs = vec![LcdRef {
+            device_uid: "dev1".to_string(),
+            device_name: "Kraken".to_string(),
+            channel_name: "lcd".to_string(),
+            source: source("dev2", "temp1"),
+        }];
+        let mut candidates = Vec::new();
+        DeviceHealthController::lcd_candidates(&refs, &mut candidates);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].entity_type, HealthEntityType::Lcd);
+        assert_eq!(candidates[0].entity_uid, "dev1");
+        assert_eq!(candidates[0].entity_name, "Kraken");
+        assert_eq!(candidates[0].channel_name, Some("lcd".to_string()));
+        assert_eq!(candidates[0].missing, source("dev2", "temp1"));
+    }
+
+    #[test]
     fn delta_batch_marks_added_detected_and_removed_resolved() {
         // Goal: one batch carries every transition of the tick: added items become
         // Detected deltas, removed items Resolved deltas, in that order.
@@ -580,6 +647,56 @@ mod tests {
                 "reason": "stale readings",
                 "state": "Detected",
             }])
+        );
+    }
+
+    #[test]
+    fn missing_deltas_serialize_flat_for_sse() {
+        // Goal: guard the SSE wire shape the UI parses: a JSON array with the
+        // entity fields flattened, the temp source nested, `channel_name`
+        // absent when None, and the state alongside.
+        let deltas = vec![MissingDelta {
+            reference: missing_ref("dev1", "tempGone"),
+            state: HealthState::Resolved,
+        }];
+        let json = serde_json::to_value(&deltas).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!([{
+                "entity_type": "Profile",
+                "entity_uid": "p1",
+                "entity_name": "Profile 1",
+                "missing": { "device_uid": "dev1", "temp_name": "tempGone" },
+                "state": "Resolved",
+            }])
+        );
+    }
+
+    #[test]
+    fn device_health_dto_serializes_snapshot_shape() {
+        // Goal: guard the GET /devices/health shape: top-level failsafe and
+        // missing arrays, empty lists serialized as [] rather than omitted.
+        let dto = DeviceHealthDto {
+            failsafe: vec![FailsafeRef {
+                device_uid: "dev1".to_string(),
+                name: "temp1".to_string(),
+                kind: FailsafeKind::Temp,
+                reason: "stale readings".to_string(),
+            }],
+            missing: Vec::new(),
+        };
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "failsafe": [{
+                    "device_uid": "dev1",
+                    "name": "temp1",
+                    "kind": "Temp",
+                    "reason": "stale readings",
+                }],
+                "missing": [],
+            })
         );
     }
 }
