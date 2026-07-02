@@ -78,6 +78,10 @@ pub struct FailsafeRef {
     pub device_uid: DeviceUID,
     pub name: String,
     pub kind: FailsafeKind,
+    /// Why the node entered failsafe, matching the transition log line (for
+    /// example "stale readings" or "file unreadable"). Fixed at entry, so a
+    /// latched node never produces reason-only transitions.
+    pub reason: String,
 }
 
 /// Whether a tracked condition just appeared or just resolved.

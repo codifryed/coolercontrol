@@ -1044,6 +1044,7 @@ impl Repository for LiquidctlRepo {
                     device_uid: device_uid.clone(),
                     name: name.clone(),
                     kind: FailsafeKind::Temp,
+                    reason: failsafe::STALE_FAILSAFE_REASON.to_string(),
                 });
             }
             for name in fsd.channel_failsafes.keys() {
@@ -1051,6 +1052,7 @@ impl Repository for LiquidctlRepo {
                     device_uid: device_uid.clone(),
                     name: name.clone(),
                     kind: FailsafeKind::Channel,
+                    reason: failsafe::STALE_FAILSAFE_REASON.to_string(),
                 });
             }
         }

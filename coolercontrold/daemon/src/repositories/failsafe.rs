@@ -39,6 +39,8 @@ pub const MISSING_RPM_FAILSAFE: RPM = 0;
 pub const MISSING_WATTS_FAILSAFE: Watts = 0.;
 /// Frequency reported when sensor data is missing.
 pub const MISSING_FREQ_FAILSAFE: Mhz = 0;
+/// Failsafe reason reported by the staleness-driven repositories.
+pub const STALE_FAILSAFE_REASON: &str = "stale readings";
 
 // Static assertions documenting constant relationships.
 const _: () = assert!(MISSING_STATUS_THRESHOLD > 0);
