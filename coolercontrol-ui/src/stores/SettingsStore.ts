@@ -57,6 +57,7 @@ import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
 import { Alert, AlertLog, AlertState } from '@/models/Alert.ts'
 import {
+    DeviceHealthDTO,
     FailsafeDelta,
     failsafeKey,
     FailsafeRef,
@@ -822,7 +823,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
     async function loadDeviceHealth(): Promise<void> {
         console.debug('Loading Device Health')
-        const health = await deviceStore.daemonClient.loadDeviceHealth()
+        applyDeviceHealthSnapshot(await deviceStore.daemonClient.loadDeviceHealth())
+    }
+
+    function applyDeviceHealthSnapshot(health: DeviceHealthDTO): void {
         healthFailsafe.value = health.failsafe
         healthMissing.value = health.missing
     }
@@ -1416,6 +1420,7 @@ export const useSettingsStore = defineStore('settings', () => {
         healthFailsafe,
         healthMissing,
         loadDeviceHealth,
+        applyDeviceHealthSnapshot,
         applyFailsafeDelta,
         applyMissingDelta,
         applyThemeMode,

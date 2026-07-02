@@ -34,7 +34,7 @@ import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
-import { FailsafeDelta, MissingDelta } from '@/models/DeviceHealth.ts'
+import { DeviceHealthDTO, FailsafeDelta, MissingDelta } from '@/models/DeviceHealth.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
@@ -902,16 +902,31 @@ export const useDeviceStore = defineStore('device', () => {
                     throw new Error(`SSE status error: ${response.status}`)
                 },
                 async onmessage(event) {
-                    // Device-health transitions ride the status connection as named events.
+                    // Device-health transitions ride the status connection as named
+                    // events, one batch of deltas per subject per tick.
                     if (event.event === 'missing') {
-                        settingsStore.applyMissingDelta(
-                            plainToInstance(MissingDelta, JSON.parse(event.data) as object),
-                        )
+                        for (const delta of plainToInstance(
+                            MissingDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyMissingDelta(delta)
+                        }
                         return
                     }
                     if (event.event === 'failsafe') {
-                        settingsStore.applyFailsafeDelta(
-                            plainToInstance(FailsafeDelta, JSON.parse(event.data) as object),
+                        for (const delta of plainToInstance(
+                            FailsafeDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyFailsafeDelta(delta)
+                        }
+                        return
+                    }
+                    // Full-state resync the daemon sends when this client lagged the
+                    // health broadcast and missed transition batches.
+                    if (event.event === 'health') {
+                        settingsStore.applyDeviceHealthSnapshot(
+                            plainToInstance(DeviceHealthDTO, JSON.parse(event.data) as object),
                         )
                         return
                     }
