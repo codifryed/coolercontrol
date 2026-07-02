@@ -461,6 +461,8 @@ export default {
             logsAndDiagnostics: '日志和诊断',
             downloadCurrentLog: '下载当前日志',
             deviceHealth: '设备健康',
+            deviceHealthTooltip:
+                '缺少的温度源可以通过重新编辑并保存受影响的<br>自定义传感器、配置文件或 LCD 设置来替换。',
             deviceHealthOk: '所有传感器和通道均正常。',
             failsafeActive: '正在使用故障保护值',
             missingTempSource: '缺少温度源',

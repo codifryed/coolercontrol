@@ -571,6 +571,8 @@ export default {
             logsAndDiagnostics: 'السجلات والتشخيص',
             downloadCurrentLog: 'تنزيل السجل الحالي',
             deviceHealth: 'سلامة الأجهزة',
+            deviceHealthTooltip:
+                'يمكن استبدال مصادر درجة الحرارة المفقودة عن طريق تحرير<br>المستشعر المخصص أو الملف الشخصي أو إعداد LCD المتأثر وحفظه مرة أخرى.',
             deviceHealthOk: 'جميع المستشعرات والقنوات تعمل بشكل سليم.',
             failsafeActive: 'قيم الأمان قيد الاستخدام',
             missingTempSource: 'مصدر درجة الحرارة مفقود',

@@ -570,6 +570,8 @@ export default {
             logsAndDiagnostics: '로그 및 진단',
             downloadCurrentLog: '현재 로그 다운로드',
             deviceHealth: '장치 상태',
+            deviceHealthTooltip:
+                '누락된 온도 소스는 해당 커스텀 센서, 프로파일 또는 LCD 설정을<br>다시 편집하고 저장하여 교체할 수 있습니다.',
             deviceHealthOk: '모든 센서와 채널이 정상입니다.',
             failsafeActive: '페일세이프 값 사용 중',
             missingTempSource: '온도 소스 누락',

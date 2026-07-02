@@ -462,6 +462,8 @@ export default {
             logsAndDiagnostics: '日誌和診斷',
             downloadCurrentLog: '下載當前日誌',
             deviceHealth: '裝置健康',
+            deviceHealthTooltip:
+                '缺少的溫度來源可以透過重新編輯並保存受影響的<br>自定義傳感器、設定檔或 LCD 設定來替換。',
             deviceHealthOk: '所有感測器與通道均正常。',
             failsafeActive: '正在使用故障保護值',
             missingTempSource: '缺少溫度來源',

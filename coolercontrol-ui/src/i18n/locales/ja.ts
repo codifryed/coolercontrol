@@ -622,6 +622,8 @@ export default {
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
             deviceHealth: 'デバイスの状態',
+            deviceHealthTooltip:
+                '見つからない温度ソースは、対象のカスタムセンサー、プロファイル、<br>またはLCD設定を再度編集して保存すると置き換えられます。',
             deviceHealthOk: 'すべてのセンサーとチャンネルは正常です。',
             failsafeActive: 'フェイルセーフ値を使用中',
             missingTempSource: '温度ソースが見つかりません',

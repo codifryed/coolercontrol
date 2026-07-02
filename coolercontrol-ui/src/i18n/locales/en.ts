@@ -576,6 +576,8 @@ export default {
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
             deviceHealth: 'Device Health',
+            deviceHealthTooltip:
+                'Missing temp sources can be replaced by editing and<br>saving the affected Custom Sensor, Profile, or LCD setting.',
             deviceHealthOk: 'All sensors and channels are healthy.',
             failsafeActive: 'Failsafe values in use',
             missingTempSource: 'Missing temp source',

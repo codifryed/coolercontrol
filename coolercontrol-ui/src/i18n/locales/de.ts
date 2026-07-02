@@ -585,6 +585,8 @@ export default {
             logsAndDiagnostics: 'Logs und Diagnose',
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             deviceHealth: 'Gerätezustand',
+            deviceHealthTooltip:
+                'Fehlende Temperaturquellen lassen sich ersetzen, indem der betroffene<br>Benutzerdefinierte Sensor, das Profil oder die LCD-Einstellung<br>erneut bearbeitet und gespeichert wird.',
             deviceHealthOk: 'Alle Sensoren und Kanäle sind fehlerfrei.',
             failsafeActive: 'Failsafe-Werte in Verwendung',
             missingTempSource: 'Fehlende Temperaturquelle',

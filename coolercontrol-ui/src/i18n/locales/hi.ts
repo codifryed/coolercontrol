@@ -498,6 +498,8 @@ export default {
             logsAndDiagnostics: 'लॉग और डायग्नोस्टिक्स',
             downloadCurrentLog: 'वर्तमान लॉग डाउनलोड करें',
             deviceHealth: 'डिवाइस स्वास्थ्य',
+            deviceHealthTooltip:
+                'गायब तापमान स्रोतों को बदलने के लिए प्रभावित कस्टम सेंसर,<br>प्रोफाइल या LCD सेटिंग को फिर से संपादित करके सहेजें।',
             deviceHealthOk: 'सभी सेंसर और चैनल सही स्थिति में हैं।',
             failsafeActive: 'फेलसेफ मान उपयोग में हैं',
             missingTempSource: 'तापमान स्रोत गायब है',

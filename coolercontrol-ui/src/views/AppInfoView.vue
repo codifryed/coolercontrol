@@ -756,9 +756,21 @@ onBeforeUnmount(() => {
                     <div
                         class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                     >
-                        <span class="mb-4 font-semibold text-xl text-text-color">{{
-                            t('views.appInfo.deviceHealth')
-                        }}</span>
+                        <div class="mb-4 flex flex-row items-center gap-2">
+                            <span class="font-semibold text-xl text-text-color">{{
+                                t('views.appInfo.deviceHealth')
+                            }}</span>
+                            <svg-icon
+                                v-tooltip.top="{
+                                    escape: false,
+                                    value: t('views.appInfo.deviceHealthTooltip'),
+                                }"
+                                type="mdi"
+                                class="text-warning cursor-help"
+                                :path="mdiHelpCircleOutline"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                        </div>
                         <div
                             v-if="healthRows.length === 0"
                             class="flex flex-row items-center gap-2"

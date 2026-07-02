@@ -495,6 +495,8 @@ export default {
             logsAndDiagnostics: 'Logs e Diagnósticos',
             downloadCurrentLog: 'Baixar Log Atual',
             deviceHealth: 'Estado dos Dispositivos',
+            deviceHealthTooltip:
+                'Fontes de temperatura ausentes podem ser substituídas editando e<br>salvando novamente o Sensor Personalizado, Perfil ou ajuste LCD afetado.',
             deviceHealthOk: 'Todos os sensores e canais estão funcionando corretamente.',
             failsafeActive: 'Valores de segurança em uso',
             missingTempSource: 'Fonte de temperatura ausente',

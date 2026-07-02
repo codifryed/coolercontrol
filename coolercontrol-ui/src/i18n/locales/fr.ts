@@ -594,6 +594,8 @@ export default {
             logsAndDiagnostics: 'Journaux et Diagnostics',
             downloadCurrentLog: 'Télécharger le Journal Actuel',
             deviceHealth: 'État des Périphériques',
+            deviceHealthTooltip:
+                'Les sources de température manquantes peuvent être remplacées en modifiant<br>et en enregistrant à nouveau le Capteur personnalisé, le Profil ou le réglage LCD concerné.',
             deviceHealthOk: 'Tous les capteurs et canaux fonctionnent correctement.',
             failsafeActive: 'Valeurs de secours utilisées',
             missingTempSource: 'Source de température manquante',
