@@ -34,6 +34,7 @@ import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
+import { FailsafeDelta, MissingDelta } from '@/models/DeviceHealth.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
@@ -888,6 +889,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateStatusFromSSE(): Promise<void> {
         const thisStore = useDeviceStore()
         const daemonState = useDaemonState()
+        const settingsStore = useSettingsStore()
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
             await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
@@ -900,6 +902,19 @@ export const useDeviceStore = defineStore('device', () => {
                     throw new Error(`SSE status error: ${response.status}`)
                 },
                 async onmessage(event) {
+                    // Device-health transitions ride the status connection as named events.
+                    if (event.event === 'missing') {
+                        settingsStore.applyMissingDelta(
+                            plainToInstance(MissingDelta, JSON.parse(event.data) as object),
+                        )
+                        return
+                    }
+                    if (event.event === 'failsafe') {
+                        settingsStore.applyFailsafeDelta(
+                            plainToInstance(FailsafeDelta, JSON.parse(event.data) as object),
+                        )
+                        return
+                    }
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
                     await daemonState.setConnected(true)
