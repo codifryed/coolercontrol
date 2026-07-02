@@ -460,6 +460,10 @@ export default {
             whatsNewDesc: '查看最新版本說明',
             logsAndDiagnostics: '日誌和診斷',
             downloadCurrentLog: '下載當前日誌',
+            deviceHealth: '裝置健康',
+            deviceHealthOk: '所有感測器與通道均正常。',
+            failsafeActive: '正在使用故障保護值',
+            missingTempSource: '缺少溫度來源',
             stressTest: '熱壓力測試',
             stressTestTooltip:
                 '生成持續熱負載以驗證<br>風扇曲線和冷卻配置文件。<br>結果可能因硬體而異。<br>安裝 stress-ng 以獲得額外的後端。',

@@ -618,6 +618,10 @@ export default {
             whatsNewDesc: '最新のリリースノートを見る',
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
+            deviceHealth: 'デバイスの状態',
+            deviceHealthOk: 'すべてのセンサーとチャンネルは正常です。',
+            failsafeActive: 'フェイルセーフ値を使用中',
+            missingTempSource: '温度ソースが見つかりません',
             stressTest: '熱ストレステスト',
             stressTestTooltip:
                 '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>stress-ngをインストールすると追加のバックエンドが利用できます。',

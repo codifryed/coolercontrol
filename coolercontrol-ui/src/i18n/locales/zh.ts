@@ -459,6 +459,10 @@ export default {
             whatsNewDesc: '查看最新版本说明',
             logsAndDiagnostics: '日志和诊断',
             downloadCurrentLog: '下载当前日志',
+            deviceHealth: '设备健康',
+            deviceHealthOk: '所有传感器和通道均正常。',
+            failsafeActive: '正在使用故障保护值',
+            missingTempSource: '缺少温度源',
             stressTest: '热压力测试',
             stressTestTooltip:
                 '生成持续热负载以验证<br>风扇曲线和冷却配置文件。<br>结果可能因硬件而异。<br>安装 stress-ng 以获得额外的后端。',

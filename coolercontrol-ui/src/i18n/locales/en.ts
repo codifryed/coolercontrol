@@ -572,6 +572,10 @@ export default {
             whatsNewDesc: 'See the latest release notes',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
+            deviceHealth: 'Device Health',
+            deviceHealthOk: 'All sensors and channels are healthy.',
+            failsafeActive: 'Failsafe values in use',
+            missingTempSource: 'Missing temp source',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
                 'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>Install stress-ng for additional backends.',

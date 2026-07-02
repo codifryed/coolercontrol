@@ -566,6 +566,10 @@ export default {
             whatsNewDesc: '최신 릴리스 노트 보기',
             logsAndDiagnostics: '로그 및 진단',
             downloadCurrentLog: '현재 로그 다운로드',
+            deviceHealth: '장치 상태',
+            deviceHealthOk: '모든 센서와 채널이 정상입니다.',
+            failsafeActive: '페일세이프 값 사용 중',
+            missingTempSource: '온도 소스 누락',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
                 '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>추가 백엔드를 위해 stress-ng를 설치하세요.',

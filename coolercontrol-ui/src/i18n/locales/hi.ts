@@ -496,6 +496,10 @@ export default {
             whatsNewDesc: 'नवीनतम रिलीज़ नोट्स देखें',
             logsAndDiagnostics: 'लॉग और डायग्नोस्टिक्स',
             downloadCurrentLog: 'वर्तमान लॉग डाउनलोड करें',
+            deviceHealth: 'डिवाइस स्वास्थ्य',
+            deviceHealthOk: 'सभी सेंसर और चैनल सही स्थिति में हैं।',
+            failsafeActive: 'फेलसेफ मान उपयोग में हैं',
+            missingTempSource: 'तापमान स्रोत गायब है',
             stressTest: 'थर्मल स्ट्रेस टेस्ट',
             stressTestTooltip:
                 'फैन कर्व और कूलिंग प्रोफाइल को सत्यापित करने के लिए<br>निरंतर थर्मल लोड उत्पन्न करता है।<br>परिणाम हार्डवेयर के अनुसार भिन्न हो सकते हैं।<br>अतिरिक्त बैकएंड के लिए stress-ng इंस्टॉल करें।',

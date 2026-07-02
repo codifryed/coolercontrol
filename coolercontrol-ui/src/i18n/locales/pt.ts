@@ -492,6 +492,10 @@ export default {
             whatsNewDesc: 'Veja as últimas notas de versão',
             logsAndDiagnostics: 'Logs e Diagnósticos',
             downloadCurrentLog: 'Baixar Log Atual',
+            deviceHealth: 'Estado dos Dispositivos',
+            deviceHealthOk: 'Todos os sensores e canais estão funcionando corretamente.',
+            failsafeActive: 'Valores de segurança em uso',
+            missingTempSource: 'Fonte de temperatura ausente',
             stressTest: 'Testes de estresse térmico',
             stressTestTooltip:
                 'Gera carga térmica sustentada para validar<br>curvas de ventilador e perfis de resfriamento.<br>Os resultados podem variar dependendo do hardware.<br>Instale stress-ng para backends adicionais.',

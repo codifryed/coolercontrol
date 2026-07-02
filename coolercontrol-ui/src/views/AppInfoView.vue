@@ -20,8 +20,10 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
+    mdiAlertCircle,
     mdiArrowCollapseVertical,
     mdiArrowExpandVertical,
+    mdiCheckCircle,
     mdiCircle,
     mdiCogOutline,
     mdiCompassOutline,
@@ -44,6 +46,15 @@ import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { DeviceType } from '@/models/Device.ts'
+import {
+    FailsafeRef,
+    failsafeKey,
+    HealthEntityType,
+    MissingRef,
+    missingKey,
+} from '@/models/DeviceHealth.ts'
+import type { RouteLocationRaw } from 'vue-router'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
@@ -89,6 +100,117 @@ const getDaemonStatusTranslationKey = (daemonStatus: DaemonStatus) =>
             return 'hasErrors'
         },
     })
+
+interface HealthRow {
+    key: string
+    label: string
+    detail: string
+    to: RouteLocationRaw
+}
+
+const failsafeRoute = (ref: FailsafeRef): RouteLocationRaw => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== ref.device_uid) continue
+        if (device.type === DeviceType.CUSTOM_SENSORS) {
+            return { name: 'custom-sensors', params: { customSensorID: ref.name } }
+        }
+        if (device.info?.channels.get(ref.name)?.speed_options != null) {
+            return {
+                name: 'device-speed',
+                params: { deviceUID: ref.device_uid, channelName: ref.name },
+            }
+        }
+        break
+    }
+    return {
+        name: 'single-dashboard',
+        params: { deviceUID: ref.device_uid, channelName: ref.name },
+    }
+}
+
+const missingRoute = (ref: MissingRef): RouteLocationRaw => {
+    switch (ref.entity_type) {
+        case HealthEntityType.CustomSensor:
+            return { name: 'custom-sensors', params: { customSensorID: ref.entity_uid } }
+        case HealthEntityType.Profile:
+            return { name: 'profiles', params: { profileUID: ref.entity_uid } }
+        case HealthEntityType.Lcd:
+            return {
+                name: 'device-lcd',
+                params: { deviceId: ref.entity_uid, channelName: ref.channel_name },
+            }
+    }
+}
+
+const entityTypeLabel = (type: HealthEntityType): string => {
+    switch (type) {
+        case HealthEntityType.CustomSensor:
+            return t('layout.add.customSensor')
+        case HealthEntityType.Profile:
+            return t('layout.add.profile')
+        case HealthEntityType.Lcd:
+            return t('models.channelType.lcd')
+    }
+}
+
+const customSensorLabel = (sensorId: string): string => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.type !== DeviceType.CUSTOM_SENSORS) continue
+        return (
+            settingsStore.allUIDeviceSettings.get(device.uid)?.sensorsAndChannels.get(sensorId)
+                ?.name ?? sensorId
+        )
+    }
+    return sensorId
+}
+
+const missingEntityLabel = (ref: MissingRef): string => {
+    switch (ref.entity_type) {
+        case HealthEntityType.CustomSensor:
+            return customSensorLabel(ref.entity_uid)
+        case HealthEntityType.Lcd: {
+            const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.entity_uid)
+            const channelName =
+                deviceSettings?.sensorsAndChannels.get(ref.channel_name ?? '')?.name ??
+                ref.channel_name
+            return `${deviceSettings?.name ?? ref.entity_name}: ${channelName}`
+        }
+        default:
+            return ref.entity_name
+    }
+}
+
+const healthRows = computed((): Array<HealthRow> => {
+    const rows: Array<HealthRow> = []
+    for (const ref of settingsStore.healthFailsafe) {
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
+        const channelName = deviceSettings?.sensorsAndChannels.get(ref.name)?.name ?? ref.name
+        rows.push({
+            key: `failsafe/${failsafeKey(ref)}`,
+            label: `${deviceSettings?.name ?? ref.device_uid}: ${channelName}`,
+            detail: t('views.appInfo.failsafeActive'),
+            to: failsafeRoute(ref),
+        })
+    }
+    for (const ref of settingsStore.healthMissing) {
+        // The referenced device is usually gone, so its settings rarely resolve.
+        const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.missing.device_uid)
+        const sourceName =
+            sourceSettings != null
+                ? `${sourceSettings.name}: ${
+                      sourceSettings.sensorsAndChannels.get(ref.missing.temp_name)?.name ??
+                      ref.missing.temp_name
+                  }`
+                : ref.missing.temp_name
+        rows.push({
+            key: `missing/${missingKey(ref)}`,
+            label: `${entityTypeLabel(ref.entity_type)}: ${missingEntityLabel(ref)}`,
+            detail: `${t('views.appInfo.missingTempSource')}: ${sourceName}`,
+            to: missingRoute(ref),
+        })
+    }
+    return rows
+})
 
 const expandLogs = ref(false)
 const onExpandClick = async () => {
@@ -1006,6 +1128,41 @@ onBeforeUnmount(() => {
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-8">
+                <div
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] 2xl:w-[70vw]"
+                >
+                    <span class="mb-4 font-semibold text-xl text-text-color">{{
+                        t('views.appInfo.deviceHealth')
+                    }}</span>
+                    <div v-if="healthRows.length === 0" class="flex flex-row items-center gap-2">
+                        <svg-icon
+                            type="mdi"
+                            class="text-success"
+                            :path="mdiCheckCircle"
+                            :size="deviceStore.getREMSize(1.25)"
+                        />
+                        <span>{{ t('views.appInfo.deviceHealthOk') }}</span>
+                    </div>
+                    <div v-else class="flex flex-col gap-2">
+                        <router-link
+                            v-for="row in healthRows"
+                            :key="row.key"
+                            :to="row.to"
+                            class="flex flex-row items-center gap-2 outline-none hover:underline"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                class="text-warning min-w-6"
+                                :path="mdiAlertCircle"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                            <span>{{ row.label }}</span>
+                            <span class="text-text-color-secondary">{{ row.detail }}</span>
+                        </router-link>
                     </div>
                 </div>
             </div>

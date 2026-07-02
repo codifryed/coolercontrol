@@ -567,6 +567,10 @@ export default {
             whatsNewDesc: 'اطلع على أحدث ملاحظات الإصدار',
             logsAndDiagnostics: 'السجلات والتشخيص',
             downloadCurrentLog: 'تنزيل السجل الحالي',
+            deviceHealth: 'سلامة الأجهزة',
+            deviceHealthOk: 'جميع المستشعرات والقنوات تعمل بشكل سليم.',
+            failsafeActive: 'قيم الأمان قيد الاستخدام',
+            missingTempSource: 'مصدر درجة الحرارة مفقود',
             stressTest: 'اختبارات الإجهاد الحراري',
             stressTestTooltip:
                 'يولد حملًا حراريًا مستدامًا للتحقق من<br>منحنيات المروحة وملفات التبريد.<br>قد تختلف النتائج حسب العتاد.<br>قم بتثبيت stress-ng للحصول على واجهات خلفية إضافية.',
