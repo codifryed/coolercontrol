@@ -31,7 +31,7 @@ use crate::setting::{CustomSensor, Profile, SettingKind, TempSource};
 use crate::{AllDevices, Repos};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
@@ -139,6 +139,10 @@ pub struct DeviceHealthController {
     handle: RefCell<Option<DeviceHealthHandle>>,
     missing: RefCell<Vec<MissingRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
+    /// Temp-source references extracted from config. Re-extracted only when the
+    /// config generation moves, so unchanged ticks parse no config at all.
+    candidates: RefCell<Vec<MissingRef>>,
+    config_generation_seen: Cell<Option<u64>>,
 }
 
 impl DeviceHealthController {
@@ -150,6 +154,8 @@ impl DeviceHealthController {
             handle: RefCell::new(None),
             missing: RefCell::new(Vec::new()),
             failsafe: RefCell::new(Vec::new()),
+            candidates: RefCell::new(Vec::new()),
+            config_generation_seen: Cell::new(None),
         }
     }
 
@@ -169,10 +175,28 @@ impl DeviceHealthController {
     /// Recomputes the missing-reference and failsafe sets and broadcasts any
     /// transitions. Called once per main-loop tick after snapshots are taken.
     pub async fn process(&self) {
-        let current_missing = self.scan_missing().await;
+        self.refresh_candidates_on_config_change().await;
+        let current_missing = self.scan_missing();
         self.diff_and_broadcast_missing(current_missing);
         let current_failsafe = self.scan_failsafe();
         self.diff_and_broadcast_failsafe(current_failsafe);
+    }
+
+    /// Re-extracts the config temp-source references, but only when the config
+    /// generation has moved. The reference set changes exclusively through
+    /// config mutations (hardware loss is the failsafe subject's concern), so
+    /// unchanged ticks skip all config parsing.
+    async fn refresh_candidates_on_config_change(&self) {
+        let generation = self.config.generation();
+        if self.config_generation_seen.get() == Some(generation) {
+            return;
+        }
+        let mut candidates = Vec::new();
+        self.collect_custom_sensor_candidates(&mut candidates);
+        self.collect_profile_candidates(&mut candidates).await;
+        self.collect_lcd_candidates(&mut candidates);
+        self.candidates.replace(candidates);
+        self.config_generation_seen.set(Some(generation));
     }
 
     /// Collects the channels/temps every repository is currently failsafing.
@@ -184,14 +208,10 @@ impl DeviceHealthController {
         out
     }
 
-    /// Gathers every temp-source reference and keeps only the unresolved ones.
-    async fn scan_missing(&self) -> Vec<MissingRef> {
+    /// Keeps only the cached references that are unresolved right now.
+    fn scan_missing(&self) -> Vec<MissingRef> {
         let present = self.build_present_temps();
-        let mut candidates = Vec::new();
-        self.collect_custom_sensor_candidates(&mut candidates);
-        self.collect_profile_candidates(&mut candidates).await;
-        self.collect_lcd_candidates(&mut candidates);
-        Self::filter_missing(&present, candidates)
+        Self::filter_missing(&present, &self.candidates.borrow())
     }
 
     /// Builds the set of currently-present temps, keyed by device uid. A device
@@ -300,11 +320,12 @@ impl DeviceHealthController {
     /// Keeps only candidates whose temp source is not present. Pure leaf.
     fn filter_missing(
         present: &HashMap<DeviceUID, HashSet<TempName>>,
-        candidates: Vec<MissingRef>,
+        candidates: &[MissingRef],
     ) -> Vec<MissingRef> {
         candidates
-            .into_iter()
+            .iter()
             .filter(|candidate| Self::is_missing(present, &candidate.missing))
+            .cloned()
             .collect()
     }
 
@@ -319,8 +340,8 @@ impl DeviceHealthController {
     /// Replaces the stored missing set with `current` and broadcasts the tick's
     /// appeared / resolved references as one batched event.
     fn diff_and_broadcast_missing(&self, current: Vec<MissingRef>) {
-        let previous = self.missing.replace(current.clone());
-        let (added, removed) = Self::diff_added_removed(&previous, &current);
+        let (added, removed) = Self::diff_added_removed(&self.missing.borrow(), &current);
+        self.missing.replace(current);
         let handle_ref = self.handle.borrow();
         let Some(handle) = handle_ref.as_ref() else {
             return;
@@ -338,8 +359,8 @@ impl DeviceHealthController {
     /// Replaces the stored failsafe set with `current` and broadcasts the tick's
     /// entered / left channels and temps as one batched event.
     fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
-        let previous = self.failsafe.replace(current.clone());
-        let (added, removed) = Self::diff_added_removed(&previous, &current);
+        let (added, removed) = Self::diff_added_removed(&self.failsafe.borrow(), &current);
+        self.failsafe.replace(current);
         let handle_ref = self.handle.borrow();
         let Some(handle) = handle_ref.as_ref() else {
             return;
@@ -465,7 +486,7 @@ mod tests {
             missing_ref("dev1", "tempGone"), // missing -> kept
             missing_ref("devX", "temp1"),    // device gone -> kept
         ];
-        let result = DeviceHealthController::filter_missing(&present, candidates);
+        let result = DeviceHealthController::filter_missing(&present, &candidates);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].missing, source("dev1", "tempGone"));
         assert_eq!(result[1].missing, source("devX", "temp1"));
@@ -476,7 +497,7 @@ mod tests {
         // Goal: when every candidate resolves, the result is empty.
         let present = present_with("dev1", &["temp1", "temp2"]);
         let candidates = vec![missing_ref("dev1", "temp1"), missing_ref("dev1", "temp2")];
-        assert!(DeviceHealthController::filter_missing(&present, candidates).is_empty());
+        assert!(DeviceHealthController::filter_missing(&present, &candidates).is_empty());
     }
 
     fn graph_profile(uid: &str, name: &str, temp_source: Option<TempSource>) -> Profile {
