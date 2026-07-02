@@ -22,9 +22,7 @@
 //! - `missing`: a config temp-source reference whose target temp is absent from
 //!   the current device set (a Custom Sensor source, Graph Profile temp source,
 //!   or LCD temp source pointing at a removed device or deleted sensor).
-//! - `failsafe`: a present channel/temp currently serving failsafe values. Added
-//!   in a later phase; the snapshot already carries an (empty) list so the wire
-//!   contract is stable.
+//! - `failsafe`: a present channel/temp currently serving failsafe values.
 
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
@@ -71,8 +69,7 @@ pub enum FailsafeKind {
     Channel,
 }
 
-/// A present channel/temp currently serving failsafe values. Produced by a later
-/// phase; defined now so the snapshot DTO and SSE event shapes stay stable.
+/// A present channel/temp currently serving failsafe values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct FailsafeRef {
     pub device_uid: DeviceUID,
@@ -133,8 +130,8 @@ struct LcdRef {
 }
 
 /// Tracks which device references and channels are currently unhealthy, diffs
-/// the set each tick, and broadcasts transitions. Mirrors `AlertController`:
-/// runtime-derived state only, never persisted.
+/// the set each tick, and broadcasts transitions. Runtime-derived state only,
+/// never persisted.
 pub struct DeviceHealthController {
     all_devices: AllDevices,
     config: Rc<Config>,
