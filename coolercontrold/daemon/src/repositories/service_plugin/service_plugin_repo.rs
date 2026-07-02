@@ -21,6 +21,7 @@ use crate::device::{
     ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Status, TempStatus,
     UID,
 };
+use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -785,6 +786,14 @@ impl ServicePluginRepo {
 impl Repository for ServicePluginRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::ServicePlugin
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        let mut out = Vec::new();
+        for (device_uid, fsd) in self.failsafe_statuses.borrow().iter() {
+            out.extend(fsd.device_failsafe_refs(device_uid));
+        }
+        out
     }
 
     #[allow(clippy::too_many_lines)]
