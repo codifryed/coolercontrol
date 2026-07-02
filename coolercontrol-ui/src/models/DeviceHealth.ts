@@ -61,6 +61,8 @@ export class FailsafeRef {
     device_uid: UID = ''
     name: string = ''
     kind: FailsafeKind = FailsafeKind.Temp
+    /** Why the node entered failsafe, as logged by the daemon (not localized). */
+    reason: string = ''
 }
 
 // The daemon flattens the reference into its SSE delta, so a delta IS a ref plus state.

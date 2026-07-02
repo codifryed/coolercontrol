@@ -180,6 +180,11 @@ const missingEntityLabel = (ref: MissingRef): string => {
     }
 }
 
+const failsafeDetail = (ref: FailsafeRef): string =>
+    ref.reason
+        ? `${t('views.appInfo.failsafeActive')}: ${ref.reason}`
+        : t('views.appInfo.failsafeActive')
+
 const healthRows = computed((): Array<HealthRow> => {
     const rows: Array<HealthRow> = []
     for (const ref of settingsStore.healthFailsafe) {
@@ -188,7 +193,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `failsafe/${failsafeKey(ref)}`,
             label: `${deviceSettings?.name ?? ref.device_uid}: ${channelName}`,
-            detail: t('views.appInfo.failsafeActive'),
+            detail: failsafeDetail(ref),
             to: failsafeRoute(ref),
         })
     }

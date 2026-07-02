@@ -262,12 +262,15 @@ const nodeHealthReasons = (item: any): Array<string> => {
         return []
     }
     const reasons: Array<string> = []
-    if (
-        settingsStore.healthFailsafe.some(
-            (ref) => ref.device_uid === item.deviceUID && ref.name === item.name,
+    const failsafeRef = settingsStore.healthFailsafe.find(
+        (ref) => ref.device_uid === item.deviceUID && ref.name === item.name,
+    )
+    if (failsafeRef != null) {
+        reasons.push(
+            failsafeRef.reason
+                ? `${t('views.appInfo.failsafeActive')}: ${failsafeRef.reason}`
+                : t('views.appInfo.failsafeActive'),
         )
-    ) {
-        reasons.push(t('views.appInfo.failsafeActive'))
     }
     const missing =
         (item.to?.name === 'custom-sensors' &&
