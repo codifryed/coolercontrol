@@ -107,13 +107,14 @@ pub struct FailsafeDelta {
     pub state: HealthState,
 }
 
-/// A device-health transition, folded into the existing status SSE stream as a
-/// named event so it does not open another connection. Gains a `Failsafe`
-/// variant in the failsafe phase.
+/// One tick's device-health transitions, folded into the existing status SSE
+/// stream as a named event so it does not open another connection. Batched per
+/// subject per tick so a burst (a whole device disconnecting) is one broadcast
+/// and cannot overflow the broadcast buffer.
 #[derive(Debug, Clone)]
 pub enum HealthEvent {
-    Missing(MissingDelta),
-    Failsafe(FailsafeDelta),
+    Missing(Vec<MissingDelta>),
+    Failsafe(Vec<FailsafeDelta>),
 }
 
 /// Full current health snapshot returned by `GET /devices/health`.
@@ -318,8 +319,8 @@ impl DeviceHealthController {
             .is_none_or(|temps| temps.contains(&source.temp_name).not())
     }
 
-    /// Replaces the stored missing set with `current` and broadcasts one delta
-    /// per appeared / resolved reference.
+    /// Replaces the stored missing set with `current` and broadcasts the tick's
+    /// appeared / resolved references as one batched event.
     fn diff_and_broadcast_missing(&self, current: Vec<MissingRef>) {
         let previous = self.missing.replace(current.clone());
         let (added, removed) = Self::diff_added_removed(&previous, &current);
@@ -327,22 +328,18 @@ impl DeviceHealthController {
         let Some(handle) = handle_ref.as_ref() else {
             return;
         };
-        for reference in added {
-            handle.broadcast(HealthEvent::Missing(MissingDelta {
-                reference,
-                state: HealthState::Detected,
-            }));
+        let deltas = Self::delta_batch(added, removed, |reference, state| MissingDelta {
+            reference,
+            state,
+        });
+        if deltas.is_empty() {
+            return;
         }
-        for reference in removed {
-            handle.broadcast(HealthEvent::Missing(MissingDelta {
-                reference,
-                state: HealthState::Resolved,
-            }));
-        }
+        handle.broadcast(HealthEvent::Missing(deltas));
     }
 
-    /// Replaces the stored failsafe set with `current` and broadcasts one delta
-    /// per channel/temp that entered or left failsafe.
+    /// Replaces the stored failsafe set with `current` and broadcasts the tick's
+    /// entered / left channels and temps as one batched event.
     fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
         let previous = self.failsafe.replace(current.clone());
         let (added, removed) = Self::diff_added_removed(&previous, &current);
@@ -350,18 +347,31 @@ impl DeviceHealthController {
         let Some(handle) = handle_ref.as_ref() else {
             return;
         };
+        let deltas = Self::delta_batch(added, removed, |reference, state| FailsafeDelta {
+            reference,
+            state,
+        });
+        if deltas.is_empty() {
+            return;
+        }
+        handle.broadcast(HealthEvent::Failsafe(deltas));
+    }
+
+    /// Builds one tick's delta batch: every added item as `Detected`, every
+    /// removed item as `Resolved`. Pure leaf.
+    fn delta_batch<T, D>(
+        added: Vec<T>,
+        removed: Vec<T>,
+        make: impl Fn(T, HealthState) -> D,
+    ) -> Vec<D> {
+        let mut deltas = Vec::with_capacity(added.len() + removed.len());
         for reference in added {
-            handle.broadcast(HealthEvent::Failsafe(FailsafeDelta {
-                reference,
-                state: HealthState::Detected,
-            }));
+            deltas.push(make(reference, HealthState::Detected));
         }
         for reference in removed {
-            handle.broadcast(HealthEvent::Failsafe(FailsafeDelta {
-                reference,
-                state: HealthState::Resolved,
-            }));
+            deltas.push(make(reference, HealthState::Resolved));
         }
+        deltas
     }
 
     /// Returns `(added, removed)`: items in `current` absent from `previous`,
@@ -532,5 +542,47 @@ mod tests {
         let (added, removed) = DeviceHealthController::diff_added_removed(&set, &set);
         assert!(added.is_empty());
         assert!(removed.is_empty());
+    }
+
+    #[test]
+    fn delta_batch_marks_added_detected_and_removed_resolved() {
+        // Goal: one batch carries every transition of the tick: added items become
+        // Detected deltas, removed items Resolved deltas, in that order.
+        let deltas = DeviceHealthController::delta_batch(
+            vec![missing_ref("dev1", "tempNew")],
+            vec![missing_ref("dev1", "tempGone")],
+            |reference, state| MissingDelta { reference, state },
+        );
+        assert_eq!(deltas.len(), 2);
+        assert_eq!(deltas[0].reference.missing, source("dev1", "tempNew"));
+        assert_eq!(deltas[0].state, HealthState::Detected);
+        assert_eq!(deltas[1].reference.missing, source("dev1", "tempGone"));
+        assert_eq!(deltas[1].state, HealthState::Resolved);
+    }
+
+    #[test]
+    fn failsafe_delta_batch_serializes_flat_for_sse() {
+        // Goal: guard the SSE wire shape the UI parses: a JSON array of refs with
+        // the state flattened alongside the reference fields.
+        let deltas = vec![FailsafeDelta {
+            reference: FailsafeRef {
+                device_uid: "dev1".to_string(),
+                name: "fan1".to_string(),
+                kind: FailsafeKind::Channel,
+                reason: "stale readings".to_string(),
+            },
+            state: HealthState::Detected,
+        }];
+        let json = serde_json::to_value(&deltas).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!([{
+                "device_uid": "dev1",
+                "name": "fan1",
+                "kind": "Channel",
+                "reason": "stale readings",
+                "state": "Detected",
+            }])
+        );
     }
 }

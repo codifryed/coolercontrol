@@ -24,8 +24,9 @@ use std::rc::Rc;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-/// Broadcast capacity. Transitions are rare; a small buffer is plenty and a
-/// lagging consumer simply refetches the snapshot via REST.
+/// Broadcast capacity. Each tick broadcasts at most one batched event per
+/// subject (`missing`, `failsafe`), so this holds two full ticks; a consumer
+/// that still lags is resynced with a full snapshot by the SSE stream.
 const BROADCAST_CAPACITY: usize = 4;
 
 struct DeviceHealthActor {
