@@ -57,7 +57,6 @@ pub struct MissingRef {
     /// The channel the setting is on. Only set for LCD references.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
-    /// The referenced temp source that cannot be resolved.
     pub missing: TempSource,
 }
 
@@ -81,7 +80,6 @@ pub struct FailsafeRef {
     pub reason: String,
 }
 
-/// Whether a tracked condition just appeared or just resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum HealthState {
     Detected,
@@ -121,7 +119,6 @@ pub struct DeviceHealthDto {
     pub missing: Vec<MissingRef>,
 }
 
-/// One LCD temp-source reference, extracted from a device's settings.
 struct LcdRef {
     device_uid: DeviceUID,
     device_name: String,
@@ -159,12 +156,10 @@ impl DeviceHealthController {
         }
     }
 
-    /// Sets the handle used to broadcast transitions over SSE.
     pub fn set_handle(&self, handle: DeviceHealthHandle) {
         self.handle.replace(Some(handle));
     }
 
-    /// Current health snapshot for the REST endpoint.
     pub fn get_all(&self) -> DeviceHealthDto {
         DeviceHealthDto {
             failsafe: self.failsafe.borrow().clone(),
@@ -199,7 +194,6 @@ impl DeviceHealthController {
         self.config_generation_seen.set(Some(generation));
     }
 
-    /// Collects the channels/temps every repository is currently failsafing.
     fn scan_failsafe(&self) -> Vec<FailsafeRef> {
         let mut out = Vec::new();
         for repo in self.repos.iter() {
@@ -208,15 +202,13 @@ impl DeviceHealthController {
         out
     }
 
-    /// Keeps only the cached references that are unresolved right now.
     fn scan_missing(&self) -> Vec<MissingRef> {
         let present = self.build_present_temps();
         Self::filter_missing(&present, &self.candidates.borrow())
     }
 
-    /// Builds the set of currently-present temps, keyed by device uid. A device
-    /// with no current status contributes nothing, so its references read as
-    /// missing.
+    /// A device with no current status contributes nothing, so its references
+    /// read as missing.
     fn build_present_temps(&self) -> HashMap<DeviceUID, HashSet<TempName>> {
         let mut present = HashMap::with_capacity(self.all_devices.len());
         for (device_uid, device_lock) in self.all_devices.iter() {
@@ -251,7 +243,6 @@ impl DeviceHealthController {
         Self::lcd_candidates(&refs, candidates);
     }
 
-    /// Extracts the LCD temp-source references from every device's settings.
     fn lcd_refs(&self) -> Vec<LcdRef> {
         let mut refs = Vec::new();
         for (device_uid, device_lock) in self.all_devices.iter() {
@@ -317,7 +308,6 @@ impl DeviceHealthController {
         }
     }
 
-    /// Keeps only candidates whose temp source is not present. Pure leaf.
     fn filter_missing(
         present: &HashMap<DeviceUID, HashSet<TempName>>,
         candidates: &[MissingRef],
@@ -329,16 +319,12 @@ impl DeviceHealthController {
             .collect()
     }
 
-    /// A source is missing when its device is absent, or present but no longer
-    /// reporting that temp. Pure leaf.
     fn is_missing(present: &HashMap<DeviceUID, HashSet<TempName>>, source: &TempSource) -> bool {
         present
             .get(&source.device_uid)
             .is_none_or(|temps| temps.contains(&source.temp_name).not())
     }
 
-    /// Replaces the stored missing set with `current` and broadcasts the tick's
-    /// appeared / resolved references as one batched event.
     fn diff_and_broadcast_missing(&self, current: Vec<MissingRef>) {
         let (added, removed) = Self::diff_added_removed(&self.missing.borrow(), &current);
         self.missing.replace(current);
@@ -356,8 +342,6 @@ impl DeviceHealthController {
         handle.broadcast(HealthEvent::Missing(deltas));
     }
 
-    /// Replaces the stored failsafe set with `current` and broadcasts the tick's
-    /// entered / left channels and temps as one batched event.
     fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
         let (added, removed) = Self::diff_added_removed(&self.failsafe.borrow(), &current);
         self.failsafe.replace(current);
@@ -375,8 +359,6 @@ impl DeviceHealthController {
         handle.broadcast(HealthEvent::Failsafe(deltas));
     }
 
-    /// Builds one tick's delta batch: every added item as `Detected`, every
-    /// removed item as `Resolved`. Pure leaf.
     fn delta_batch<T, D>(
         added: Vec<T>,
         removed: Vec<T>,
@@ -392,8 +374,6 @@ impl DeviceHealthController {
         deltas
     }
 
-    /// Returns `(added, removed)`: items in `current` absent from `previous`,
-    /// and items in `previous` absent from `current`. Pure leaf.
     fn diff_added_removed<T: Clone + PartialEq>(previous: &[T], current: &[T]) -> (Vec<T>, Vec<T>) {
         let added = current
             .iter()
