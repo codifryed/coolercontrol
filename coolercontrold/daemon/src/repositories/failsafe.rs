@@ -21,7 +21,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Not;
 
-use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
+use crate::device::{
+    ChannelName, ChannelStatus, DeviceUID, Mhz, Status, Temp, TempStatus, Watts, RPM,
+};
+use crate::device_health::{FailsafeKind, FailsafeRef};
 
 /// Consecutive missing status readings before failsafe values activate.
 /// Also the multiplier applied to `poll_rate` by the per-device wait
@@ -351,6 +354,49 @@ impl FailsafeStatusData {
                 temps.push(failsafe.clone());
             }
             state.is_failsafed = true;
+        }
+    }
+
+    /// Refs for every channel/temp this device is currently per-channel
+    /// failsafing (the hwmon staleness path).
+    pub fn per_channel_failsafe_refs(&self, device_uid: &DeviceUID) -> Vec<FailsafeRef> {
+        let mut refs = Vec::with_capacity(self.temp_state.len() + self.channel_state.len());
+        for (name, state) in &self.temp_state {
+            if state.is_failsafed {
+                refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Temp));
+            }
+        }
+        for (name, state) in &self.channel_state {
+            if state.is_failsafed {
+                refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Channel));
+            }
+        }
+        refs
+    }
+
+    /// Refs once the device-wide failure counter has tripped (the liquidctl /
+    /// service-plugin path). The counter is device-wide, so every seeded
+    /// channel/temp is reported.
+    pub fn device_failsafe_refs(&self, device_uid: &DeviceUID) -> Vec<FailsafeRef> {
+        if self.threshold_exceeded().not() {
+            return Vec::new();
+        }
+        let mut refs = Vec::with_capacity(self.temp_failsafes.len() + self.channel_failsafes.len());
+        for name in self.temp_failsafes.keys() {
+            refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Temp));
+        }
+        for name in self.channel_failsafes.keys() {
+            refs.push(Self::stale_ref(device_uid, name, FailsafeKind::Channel));
+        }
+        refs
+    }
+
+    fn stale_ref(device_uid: &DeviceUID, name: &ChannelName, kind: FailsafeKind) -> FailsafeRef {
+        FailsafeRef {
+            device_uid: device_uid.clone(),
+            name: name.clone(),
+            kind,
+            reason: STALE_FAILSAFE_REASON.to_string(),
         }
     }
 
@@ -1234,5 +1280,74 @@ mod tests {
         assert_eq!(fsd.temp_state["temp1"].stale_ticks, 0);
         assert!(fsd.channel_state.contains_key("ghost_channel").not());
         assert!(fsd.temp_state.contains_key("ghost_temp").not());
+    }
+
+    // --- failsafe refs reported to the device-health registry ---
+
+    #[test]
+    fn per_channel_refs_report_only_failsafed_nodes() {
+        // Drive fan2 and temp1 into failsafe while fan1 stays fresh; only the
+        // failsafed nodes are reported, with the stale reason and right kinds.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        for _ in 0..=MISSING_STATUS_THRESHOLD {
+            tick_with_one_fresh_channel(&mut fsd, &mut channels, &mut temps, "fan1");
+        }
+        let refs = fsd.per_channel_failsafe_refs(&"dev1".to_string());
+        assert_eq!(refs.len(), 2);
+        assert!(refs.iter().all(|r| r.device_uid == "dev1"));
+        assert!(refs.iter().all(|r| r.reason == STALE_FAILSAFE_REASON));
+        let temp_ref = refs.iter().find(|r| r.kind == FailsafeKind::Temp).unwrap();
+        assert_eq!(temp_ref.name, "temp1");
+        let channel_ref = refs
+            .iter()
+            .find(|r| r.kind == FailsafeKind::Channel)
+            .unwrap();
+        assert_eq!(channel_ref.name, "fan2");
+    }
+
+    #[test]
+    fn per_channel_refs_empty_when_all_fresh() {
+        // A device whose channels all report fresh must contribute no refs.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        tick_with_all_fresh(&mut fsd, &mut channels, &mut temps);
+        assert!(fsd
+            .per_channel_failsafe_refs(&"dev1".to_string())
+            .is_empty());
+    }
+
+    #[test]
+    fn device_refs_empty_below_threshold() {
+        // At exactly the threshold the device has not tripped failsafe, so no
+        // refs may be reported yet.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..MISSING_STATUS_THRESHOLD {
+            fsd.record_failure();
+        }
+        assert!(fsd.device_failsafe_refs(&"dev1".to_string()).is_empty());
+    }
+
+    #[test]
+    fn device_refs_report_every_node_once_tripped() {
+        // One failure past the threshold reports every seeded channel and temp,
+        // since the device-wide counter failsafes the whole device.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..=MISSING_STATUS_THRESHOLD {
+            fsd.record_failure();
+        }
+        let refs = fsd.device_failsafe_refs(&"dev1".to_string());
+        assert_eq!(refs.len(), 3);
+        assert!(refs.iter().all(|r| r.device_uid == "dev1"));
+        assert!(refs.iter().all(|r| r.reason == STALE_FAILSAFE_REASON));
+        let temp_count = refs.iter().filter(|r| r.kind == FailsafeKind::Temp).count();
+        let channel_count = refs
+            .iter()
+            .filter(|r| r.kind == FailsafeKind::Channel)
+            .count();
+        assert_eq!(temp_count, 1);
+        assert_eq!(channel_count, 2);
     }
 }

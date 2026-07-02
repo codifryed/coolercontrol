@@ -29,7 +29,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
-use crate::device_health::{FailsafeKind, FailsafeRef};
+use crate::device_health::FailsafeRef;
 use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
@@ -1036,25 +1036,7 @@ impl Repository for LiquidctlRepo {
             let Some(fsd) = fsd_map.get(&type_index) else {
                 continue;
             };
-            if fsd.threshold_exceeded().not() {
-                continue;
-            }
-            for name in fsd.temp_failsafes.keys() {
-                out.push(FailsafeRef {
-                    device_uid: device_uid.clone(),
-                    name: name.clone(),
-                    kind: FailsafeKind::Temp,
-                    reason: failsafe::STALE_FAILSAFE_REASON.to_string(),
-                });
-            }
-            for name in fsd.channel_failsafes.keys() {
-                out.push(FailsafeRef {
-                    device_uid: device_uid.clone(),
-                    name: name.clone(),
-                    kind: FailsafeKind::Channel,
-                    reason: failsafe::STALE_FAILSAFE_REASON.to_string(),
-                });
-            }
+            out.extend(fsd.device_failsafe_refs(device_uid));
         }
         out
     }
