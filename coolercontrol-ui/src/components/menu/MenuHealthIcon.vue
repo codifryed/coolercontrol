@@ -42,7 +42,7 @@ const props = defineProps<Props>()
     <overlay-badge
         v-tooltip.top="props.tooltip"
         value="!"
-        severity="danger"
+        severity="error"
         class="[&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
         :class="{ '[&>[data-pc-name=pcbadge]]:!hidden': !props.unhealthy }"
     >
