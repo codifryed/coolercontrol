@@ -358,7 +358,7 @@ export default {
                 chooseColor: '色を選択',
                 deviceSettings: '高度なデバイス設定',
                 options: 'その他のオプション',
-                seeDeviceHealth: '情報とツールのデバイスの状態を確認してください',
+                seeDeviceHealth: '概要は情報とツールのデバイスの状態を確認してください',
                 moveTop: '上に移動',
                 moveBottom: '下に移動',
                 disable: '無効化',

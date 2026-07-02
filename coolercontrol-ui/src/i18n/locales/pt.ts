@@ -250,7 +250,8 @@ export default {
                 chooseColor: 'Escolher Cor',
                 deviceSettings: 'Configurações Avançadas do Dispositivo',
                 options: 'Mais Opções',
-                seeDeviceHealth: 'Veja Estado dos Dispositivos em Info e Ferramentas',
+                seeDeviceHealth:
+                    'Para uma visão geral, veja Estado dos Dispositivos em Info e Ferramentas',
                 moveTop: 'Mover para o Topo',
                 moveBottom: 'Mover para Baixo',
                 disable: 'Desabilitar',

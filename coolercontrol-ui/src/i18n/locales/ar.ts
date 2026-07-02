@@ -340,7 +340,7 @@ export default {
                 chooseColor: 'اختيار اللون',
                 deviceSettings: 'إعدادات الجهاز المتقدمة',
                 options: 'خيارات إضافية',
-                seeDeviceHealth: 'راجع سلامة الأجهزة في معلومات وأدوات',
+                seeDeviceHealth: 'للحصول على نظرة عامة راجع سلامة الأجهزة في معلومات وأدوات',
                 moveTop: 'نقل إلى الأعلى',
                 moveBottom: 'نقل إلى الأسفل',
                 disable: 'تعطيل',

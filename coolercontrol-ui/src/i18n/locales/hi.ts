@@ -268,7 +268,7 @@ export default {
                 chooseColor: 'रंग चुनें',
                 deviceSettings: 'उन्नत डिवाइस सेटिंग्स',
                 options: 'अधिक विकल्प',
-                seeDeviceHealth: 'जानकारी और उपकरण में डिवाइस स्वास्थ्य देखें',
+                seeDeviceHealth: 'अवलोकन के लिए जानकारी और उपकरण में डिवाइस स्वास्थ्य देखें',
                 moveTop: 'शीर्ष पर ले जाएं',
                 moveBottom: 'नीचे ले जाएं',
                 disable: 'अक्षम करें',
