@@ -746,6 +746,45 @@ onBeforeUnmount(() => {
                         >&nbsp;- {{ t('views.appInfo.discordDesc') }}
                     </p>
                 </div>
+                <!-- Device Health -->
+                <div class="xl:col-span-2">
+                    <div
+                        class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                    >
+                        <span class="mb-4 font-semibold text-xl text-text-color">{{
+                            t('views.appInfo.deviceHealth')
+                        }}</span>
+                        <div
+                            v-if="healthRows.length === 0"
+                            class="flex flex-row items-center gap-2"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                class="text-success"
+                                :path="mdiCheckCircle"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                            <span>{{ t('views.appInfo.deviceHealthOk') }}</span>
+                        </div>
+                        <div v-else class="flex flex-col gap-2">
+                            <router-link
+                                v-for="row in healthRows"
+                                :key="row.key"
+                                :to="row.to"
+                                class="flex flex-row items-center gap-2 outline-none hover:underline"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    class="text-warning min-w-6"
+                                    :path="mdiAlertCircle"
+                                    :size="deviceStore.getREMSize(1.25)"
+                                />
+                                <span>{{ row.label }}</span>
+                                <span class="text-text-color-secondary">{{ row.detail }}</span>
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
                 <!-- Stress Test -->
                 <div class="xl:col-span-2">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
@@ -1128,41 +1167,6 @@ onBeforeUnmount(() => {
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-8">
-                <div
-                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] 2xl:w-[70vw]"
-                >
-                    <span class="mb-4 font-semibold text-xl text-text-color">{{
-                        t('views.appInfo.deviceHealth')
-                    }}</span>
-                    <div v-if="healthRows.length === 0" class="flex flex-row items-center gap-2">
-                        <svg-icon
-                            type="mdi"
-                            class="text-success"
-                            :path="mdiCheckCircle"
-                            :size="deviceStore.getREMSize(1.25)"
-                        />
-                        <span>{{ t('views.appInfo.deviceHealthOk') }}</span>
-                    </div>
-                    <div v-else class="flex flex-col gap-2">
-                        <router-link
-                            v-for="row in healthRows"
-                            :key="row.key"
-                            :to="row.to"
-                            class="flex flex-row items-center gap-2 outline-none hover:underline"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                class="text-warning min-w-6"
-                                :path="mdiAlertCircle"
-                                :size="deviceStore.getREMSize(1.25)"
-                            />
-                            <span>{{ row.label }}</span>
-                            <span class="text-text-color-secondary">{{ row.detail }}</span>
-                        </router-link>
                     </div>
                 </div>
             </div>
