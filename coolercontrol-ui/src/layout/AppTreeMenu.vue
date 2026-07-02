@@ -250,43 +250,63 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
 
 // Health badges are evaluated in-template from the reactive health lists, since the
 // tree itself is event-driven and only rebuilt on structural changes.
-const nodeIsUnhealthy = (item: any): boolean => {
+const nodeHealthReasons = (item: any): Array<string> => {
     if (item.deviceUID === 'Profiles') {
         return settingsStore.healthMissing.some(
             (ref) => ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
         )
+            ? [t('views.appInfo.missingTempSource')]
+            : []
     }
     if (item.name == null || item.deviceUID == null) {
-        return false
+        return []
     }
+    const reasons: Array<string> = []
     if (
         settingsStore.healthFailsafe.some(
             (ref) => ref.device_uid === item.deviceUID && ref.name === item.name,
         )
     ) {
-        return true
+        reasons.push(t('views.appInfo.failsafeActive'))
     }
-    if (item.to?.name === 'custom-sensors') {
-        return settingsStore.healthMissing.some(
-            (ref) =>
-                ref.entity_type === HealthEntityType.CustomSensor && ref.entity_uid === item.name,
-        )
+    const missing =
+        (item.to?.name === 'custom-sensors' &&
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.CustomSensor &&
+                    ref.entity_uid === item.name,
+            )) ||
+        (item.to?.name === 'device-lcd' &&
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Lcd &&
+                    ref.entity_uid === item.deviceUID &&
+                    ref.channel_name === item.name,
+            ))
+    if (missing) {
+        reasons.push(t('views.appInfo.missingTempSource'))
     }
-    if (item.to?.name === 'device-lcd') {
-        return settingsStore.healthMissing.some(
-            (ref) =>
-                ref.entity_type === HealthEntityType.Lcd &&
-                ref.entity_uid === item.deviceUID &&
-                ref.channel_name === item.name,
-        )
-    }
-    return false
+    return reasons
 }
+
+const nodeIsUnhealthy = (item: any): boolean => nodeHealthReasons(item).length > 0
+
+const healthTooltip = (reasons: Array<string>): string =>
+    reasons.length === 0
+        ? ''
+        : [...new Set(reasons), t('layout.menu.tooltips.seeDeviceHealth')].join('. ')
+
+const nodeHealthTooltip = (item: any): string => healthTooltip(nodeHealthReasons(item))
 
 // The badge bubbles up to the parent row only while it is collapsed.
 const collapsedParentIsUnhealthy = (item: any): boolean =>
     !(settingsStore.expandedMenuIds ?? []).includes(item.id) &&
     (item.children ?? []).some(nodeIsUnhealthy)
+
+const collapsedParentHealthTooltip = (item: any): string =>
+    collapsedParentIsUnhealthy(item)
+        ? healthTooltip((item.children ?? []).flatMap(nodeHealthReasons))
+        : ''
 
 const data: Ref<Array<Tree>> = ref([])
 const pinnedItems: Ref<Array<Tree>> = ref([])
@@ -1401,6 +1421,7 @@ onUnmounted(() => {
                             />
                             <overlay-badge
                                 v-if="childItem.icon"
+                                v-tooltip.top="nodeHealthTooltip(childItem)"
                                 value="!"
                                 severity="warn"
                                 class="mr-1.5 min-w-6 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
@@ -1878,6 +1899,7 @@ onUnmounted(() => {
                         <div class="flex flex-row items-center min-w-0">
                             <overlay-badge
                                 v-if="item.icon"
+                                v-tooltip.top="collapsedParentHealthTooltip(item)"
                                 value="!"
                                 severity="warn"
                                 class="mr-1.5 min-w-7 w-7 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
@@ -2119,6 +2141,7 @@ onUnmounted(() => {
                                 />
                                 <overlay-badge
                                     v-if="childItem.icon"
+                                    v-tooltip.top="nodeHealthTooltip(childItem)"
                                     value="!"
                                     severity="warn"
                                     class="mr-1.5 min-w-6 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"

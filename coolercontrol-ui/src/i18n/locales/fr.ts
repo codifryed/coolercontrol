@@ -354,6 +354,7 @@ export default {
                 chooseColor: 'Choisir une couleur',
                 deviceSettings: 'Paramètres Avancés du Périphérique',
                 options: "Plus d'Options",
+                seeDeviceHealth: 'Voir État des Périphériques dans Info & Outils',
                 moveTop: 'Déplacer en Haut',
                 moveBottom: 'Déplacer en Bas',
                 disable: 'Désactiver',

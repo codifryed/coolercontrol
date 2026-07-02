@@ -332,6 +332,7 @@ export default {
                 chooseColor: '选择颜色',
                 deviceSettings: '高级设备设置',
                 options: '更多选项',
+                seeDeviceHealth: '请在信息与工具中查看设备健康',
                 moveTop: '移至顶部',
                 moveBottom: '移至底部',
                 disable: '禁用',

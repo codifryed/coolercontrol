@@ -343,6 +343,7 @@ export default {
                 chooseColor: 'Choose Color',
                 deviceSettings: 'Advanced Device Settings',
                 options: 'More Options',
+                seeDeviceHealth: 'See Device Health in Info & Tools',
                 moveTop: 'Move to Top',
                 moveBottom: 'Move to Bottom',
                 disable: 'Disable',

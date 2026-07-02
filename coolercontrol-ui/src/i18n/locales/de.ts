@@ -348,6 +348,7 @@ export default {
                 chooseColor: 'Farbe wählen',
                 deviceSettings: 'Erweiterte Geräteeinstellungen',
                 options: 'Weitere Optionen',
+                seeDeviceHealth: 'Siehe Gerätezustand unter Info & Werkzeuge',
                 moveTop: 'An die Spitze verschieben',
                 moveBottom: 'An das Ende verschieben',
                 disable: 'Deaktivieren',

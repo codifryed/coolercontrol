@@ -339,6 +339,7 @@ export default {
                 chooseColor: '색상 선택',
                 deviceSettings: '고급 장치 설정',
                 options: '더 많은 옵션',
+                seeDeviceHealth: '정보 및 도구에서 장치 상태를 확인하세요',
                 moveTop: '위로 이동',
                 moveBottom: '아래로 이동',
                 disable: '비활성',
