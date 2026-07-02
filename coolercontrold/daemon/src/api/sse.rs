@@ -59,7 +59,7 @@ pub async fn status(
                 .json_data(StatusResponse {
                     devices: status.unwrap_or_default(),
                 })
-                .unwrap())
+                .expect("derived DTO serialization cannot fail"))
         });
     // Device-health transitions ride the status connection as named events so we
     // do not open another SSE connection (browsers cap at 6 per origin).
@@ -86,13 +86,14 @@ pub async fn status(
 /// (`missing` or `failsafe`).
 fn health_event_to_sse(event: HealthEvent) -> Result<Event, Infallible> {
     match event {
-        HealthEvent::Missing(deltas) => {
-            Ok(Event::default().event("missing").json_data(deltas).unwrap())
-        }
+        HealthEvent::Missing(deltas) => Ok(Event::default()
+            .event("missing")
+            .json_data(deltas)
+            .expect("derived DTO serialization cannot fail")),
         HealthEvent::Failsafe(deltas) => Ok(Event::default()
             .event("failsafe")
             .json_data(deltas)
-            .unwrap()),
+            .expect("derived DTO serialization cannot fail")),
     }
 }
 
@@ -102,7 +103,7 @@ fn health_snapshot_to_sse(snapshot: DeviceHealthDto) -> Result<Event, Infallible
     Ok(Event::default()
         .event("health")
         .json_data(snapshot)
-        .unwrap())
+        .expect("derived DTO serialization cannot fail"))
 }
 
 pub async fn modes(
@@ -115,7 +116,7 @@ pub async fn modes(
             Ok(Event::default()
                 .event("mode")
                 .json_data(mode_activated.unwrap_or_default())
-                .unwrap())
+                .expect("derived DTO serialization cannot fail"))
         });
     NoApi(Sse::new(modes_stream).keep_alive(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
@@ -132,7 +133,7 @@ pub async fn alerts(
             Ok(Event::default()
                 .event("alert")
                 .json_data(alert_state.unwrap_or_default())
-                .unwrap())
+                .expect("derived DTO serialization cannot fail"))
         });
     NoApi(Sse::new(alert_stream).keep_alive(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
@@ -153,7 +154,7 @@ pub async fn notifications(
             Ok(Event::default()
                 .event("notification")
                 .json_data(notification)
-                .unwrap())
+                .expect("derived DTO serialization cannot fail"))
         });
     NoApi(Sse::new(notification_stream).keep_alive(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
