@@ -583,6 +583,7 @@ export default {
             curveLimitedByFirmware: '曲线被设备固件风扇曲线限制为 {n} 点。',
         },
         customSensors: {
+            missingSourcesNotice: '以下温度源已不存在，保存时将被移除: {sources}',
             newSensor: '新传感器',
             sensorType: '传感器类型',
             type: '类型',

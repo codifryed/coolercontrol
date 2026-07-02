@@ -584,6 +584,7 @@ export default {
             curveLimitedByFirmware: '曲線被裝置韌體風扇曲線限制為 {n} 點。',
         },
         customSensors: {
+            missingSourcesNotice: '以下溫度來源已不存在，儲存時將被移除: {sources}',
             newSensor: '新傳感器',
             sensorType: '傳感器類型',
             type: '類型',

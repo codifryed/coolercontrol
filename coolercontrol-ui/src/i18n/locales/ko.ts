@@ -451,6 +451,8 @@ export default {
                 '"관리 안 됨"을 선택하면 CoolerControl이 이 팬의 제어를 중지하고<br/>제어 권한을 장치 드라이버에 다시 넘깁니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 마지막으로 설정된 속도로 유지됩니다.',
         },
         customSensors: {
+            missingSourcesNotice:
+                '다음 온도 소스는 더 이상 존재하지 않으며 저장 시 제거됩니다: {sources}',
             newSensor: '새 센서',
             sensorType: '센서 유형',
             type: '유형',

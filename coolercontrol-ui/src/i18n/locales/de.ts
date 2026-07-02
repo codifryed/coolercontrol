@@ -462,6 +462,8 @@ export default {
                 'Die Auswahl von "Ungesteuert" weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die Kontrolle an den Gerätetreiber zurückzugeben.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'Die folgenden Temperaturquellen sind nicht mehr vorhanden und werden beim Speichern entfernt: {sources}',
             newSensor: 'Neuer Sensor',
             sensorType: 'Sensortyp',
             type: 'Typ',

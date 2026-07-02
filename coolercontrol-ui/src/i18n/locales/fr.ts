@@ -469,6 +469,8 @@ export default {
                 "Sélectionner « Non géré » indique à CoolerControl d'arrêter de contrôler<br/>ce ventilateur et de rendre le contrôle au pilote du périphérique.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie.",
         },
         customSensors: {
+            missingSourcesNotice:
+                'Les sources de température suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
             newSensor: 'Nouveau Capteur',
             sensorType: 'Type de Capteur',
             type: 'Type',

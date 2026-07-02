@@ -461,6 +461,8 @@ export default {
                 'Seleccionar "Sin gestión" indica a CoolerControl que deje de controlar<br/>este ventilador y devuelva el control al controlador del dispositivo.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'Las siguientes fuentes de temperatura ya no están presentes y se eliminarán al guardar: {sources}',
             newSensor: 'Nuevo Sensor',
             sensorType: 'Tipo de Sensor',
             type: 'Tipo',

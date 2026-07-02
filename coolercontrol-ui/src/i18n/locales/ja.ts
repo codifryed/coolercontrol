@@ -502,6 +502,8 @@ export default {
                 '「未管理」を選択すると、CoolerControlはこのファンの制御を停止し、<br/>制御をデバイスのドライバーに戻します。<br/><br/><b>警告：</b>多くのドライバーには自動ファン制御機能が<i>ありません</i>。<br/>そのようなデバイスでは、ファンは最後に設定された速度のまま動作し続けます。',
         },
         customSensors: {
+            missingSourcesNotice:
+                '次の温度ソースは存在しなくなったため、保存時に削除されます: {sources}',
             newSensor: '新しいセンサー',
             sensorType: 'センサータイプ',
             type: 'タイプ',

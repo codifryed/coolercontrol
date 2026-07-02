@@ -796,6 +796,8 @@ export default {
                 'Selecionar "Não gerenciado" instrui o CoolerControl a parar de controlar<br/>este ventilador e devolver o controle ao driver do dispositivo.<br/><br/><b>Aviso:</b> Muitos drivers <i>não</i> possuem controle automático de ventilador.<br/>Nesses dispositivos, o ventilador permanecerá em sua última velocidade definida.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'As seguintes fontes de temperatura não estão mais presentes e serão removidas ao salvar: {sources}',
             newSensor: 'Novo Sensor',
             sensorType: 'Tipo de Sensor',
             type: 'Tipo',

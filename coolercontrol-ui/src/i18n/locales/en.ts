@@ -456,6 +456,8 @@ export default {
                 "Selecting Unmanaged tells CoolerControl to stop controlling this fan<br/>and hand it back to the device's driver.<br/><br/><b>Warning:</b> Many drivers do <i>not</i> have automatic fan control.<br/>On those devices, the fan will stay at its last set speed.",
         },
         customSensors: {
+            missingSourcesNotice:
+                'The following temp sources are no longer present and will be removed when saving: {sources}',
             newSensor: 'New Sensor',
             sensorType: 'Sensor Type',
             type: 'Type',
