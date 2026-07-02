@@ -49,7 +49,9 @@ import { inject, onMounted, onUnmounted, ref, Ref, toRaw, watch } from 'vue'
 import { ElCollapse, ElCollapseItem } from 'element-plus'
 import 'element-plus/es/components/collapse/style/css'
 import Popover from 'primevue/popover'
+import OverlayBadge from 'primevue/overlaybadge'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
+import { HealthEntityType } from '@/models/DeviceHealth.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
@@ -245,6 +247,46 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
         return 1.5
     }
 }
+
+// Health badges are evaluated in-template from the reactive health lists, since the
+// tree itself is event-driven and only rebuilt on structural changes.
+const nodeIsUnhealthy = (item: any): boolean => {
+    if (item.deviceUID === 'Profiles') {
+        return settingsStore.healthMissing.some(
+            (ref) => ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
+        )
+    }
+    if (item.name == null || item.deviceUID == null) {
+        return false
+    }
+    if (
+        settingsStore.healthFailsafe.some(
+            (ref) => ref.device_uid === item.deviceUID && ref.name === item.name,
+        )
+    ) {
+        return true
+    }
+    if (item.to?.name === 'custom-sensors') {
+        return settingsStore.healthMissing.some(
+            (ref) =>
+                ref.entity_type === HealthEntityType.CustomSensor && ref.entity_uid === item.name,
+        )
+    }
+    if (item.to?.name === 'device-lcd') {
+        return settingsStore.healthMissing.some(
+            (ref) =>
+                ref.entity_type === HealthEntityType.Lcd &&
+                ref.entity_uid === item.deviceUID &&
+                ref.channel_name === item.name,
+        )
+    }
+    return false
+}
+
+// The badge bubbles up to the parent row only while it is collapsed.
+const collapsedParentIsUnhealthy = (item: any): boolean =>
+    !(settingsStore.expandedMenuIds ?? []).includes(item.id) &&
+    (item.children ?? []).some(nodeIsUnhealthy)
 
 const data: Ref<Array<Tree>> = ref([])
 const pinnedItems: Ref<Array<Tree>> = ref([])
@@ -1357,41 +1399,55 @@ onUnmounted(() => {
                                 class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
                                 :class="{ 'h-12': childItem.isControllable || childItem.hasMode }"
                             />
-                            <svg-icon
+                            <overlay-badge
                                 v-if="childItem.icon"
-                                class="mr-1.5 min-w-6"
+                                value="!"
+                                severity="warn"
+                                class="mr-1.5 min-w-6 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
                                 :class="{
-                                    'text-accent': childItem.isActive,
-                                    'text-error': childItem.alertIsActive,
-                                    'animate-spin-slow':
-                                        settingsStore.eyeCandy &&
-                                        childItem.icon === mdiFan &&
-                                        (childItem.rpm != null
-                                            ? Number(
-                                                  deviceChannelValues(
-                                                      childItem.deviceUID,
-                                                      childItem.name,
-                                                  )?.rpm ?? 0,
-                                              ) > 0
-                                            : Number(
-                                                  deviceChannelValues(
-                                                      childItem.deviceUID,
-                                                      childItem.name,
-                                                  )?.duty ?? 0,
-                                              ) > 0),
+                                    '[&>[data-pc-name=pcbadge]]:!hidden':
+                                        !nodeIsUnhealthy(childItem),
                                 }"
-                                type="mdi"
-                                :path="childItem.icon ?? ''"
-                                :style="{
-                                    color: deviceChannelColor(childItem.deviceUID, childItem.name)
-                                        .value,
-                                }"
-                                :size="
-                                    deviceStore.getREMSize(
-                                        deviceChannelIconSize(childItem.deviceUID, childItem.name),
-                                    )
-                                "
-                            />
+                            >
+                                <svg-icon
+                                    :class="{
+                                        'text-accent': childItem.isActive,
+                                        'text-error': childItem.alertIsActive,
+                                        'animate-spin-slow':
+                                            settingsStore.eyeCandy &&
+                                            childItem.icon === mdiFan &&
+                                            (childItem.rpm != null
+                                                ? Number(
+                                                      deviceChannelValues(
+                                                          childItem.deviceUID,
+                                                          childItem.name,
+                                                      )?.rpm ?? 0,
+                                                  ) > 0
+                                                : Number(
+                                                      deviceChannelValues(
+                                                          childItem.deviceUID,
+                                                          childItem.name,
+                                                      )?.duty ?? 0,
+                                                  ) > 0),
+                                    }"
+                                    type="mdi"
+                                    :path="childItem.icon ?? ''"
+                                    :style="{
+                                        color: deviceChannelColor(
+                                            childItem.deviceUID,
+                                            childItem.name,
+                                        ).value,
+                                    }"
+                                    :size="
+                                        deviceStore.getREMSize(
+                                            deviceChannelIconSize(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            ),
+                                        )
+                                    "
+                                />
+                            </overlay-badge>
                             <div class="flex flex-col overflow-hidden">
                                 <div
                                     class="tree-text leading-tight"
@@ -1820,18 +1876,27 @@ onUnmounted(() => {
                         class="flex group h-full w-full items-center justify-between outline-none"
                     >
                         <div class="flex flex-row items-center min-w-0">
-                            <svg-icon
+                            <overlay-badge
                                 v-if="item.icon"
-                                class="mr-1.5 min-w-7 w-7"
-                                type="mdi"
-                                :path="item.icon"
-                                :style="{ color: getIconColor(item) }"
-                                :size="
-                                    deviceStore.getREMSize(
-                                        deviceChannelIconSize(item.deviceUID, item.name),
-                                    )
-                                "
-                            />
+                                value="!"
+                                severity="warn"
+                                class="mr-1.5 min-w-7 w-7 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
+                                :class="{
+                                    '[&>[data-pc-name=pcbadge]]:!hidden':
+                                        !collapsedParentIsUnhealthy(item),
+                                }"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    :path="item.icon"
+                                    :style="{ color: getIconColor(item) }"
+                                    :size="
+                                        deviceStore.getREMSize(
+                                            deviceChannelIconSize(item.deviceUID, item.name),
+                                        )
+                                    "
+                                />
+                            </overlay-badge>
                             <div class="flex flex-col overflow-hidden">
                                 <div
                                     class="tree-text leading-tight"
@@ -2052,46 +2117,55 @@ onUnmounted(() => {
                                     }"
                                     :style="{ 'border-color': getSideBorderColor(item) }"
                                 />
-                                <svg-icon
+                                <overlay-badge
                                     v-if="childItem.icon"
-                                    class="mr-1.5 min-w-6"
+                                    value="!"
+                                    severity="warn"
+                                    class="mr-1.5 min-w-6 [&>[data-pc-name=pcbadge]]:!h-4 [&>[data-pc-name=pcbadge]]:!min-w-4 [&>[data-pc-name=pcbadge]]:!text-xs [&>[data-pc-name=pcbadge]]:!leading-4"
                                     :class="{
-                                        'text-accent': childItem.isActive,
-                                        'text-error': childItem.alertIsActive,
-                                        'animate-spin-slow':
-                                            settingsStore.eyeCandy &&
-                                            childItem.icon === mdiFan &&
-                                            (childItem.rpm != null
-                                                ? Number(
-                                                      deviceChannelValues(
-                                                          childItem.deviceUID,
-                                                          childItem.name,
-                                                      )?.rpm ?? 0,
-                                                  ) > 0
-                                                : Number(
-                                                      deviceChannelValues(
-                                                          childItem.deviceUID,
-                                                          childItem.name,
-                                                      )?.duty ?? 0,
-                                                  ) > 0),
+                                        '[&>[data-pc-name=pcbadge]]:!hidden':
+                                            !nodeIsUnhealthy(childItem),
                                     }"
-                                    type="mdi"
-                                    :path="childItem.icon ?? ''"
-                                    :style="{
-                                        color: deviceChannelColor(
-                                            childItem.deviceUID,
-                                            childItem.name,
-                                        ).value,
-                                    }"
-                                    :size="
-                                        deviceStore.getREMSize(
-                                            deviceChannelIconSize(
+                                >
+                                    <svg-icon
+                                        :class="{
+                                            'text-accent': childItem.isActive,
+                                            'text-error': childItem.alertIsActive,
+                                            'animate-spin-slow':
+                                                settingsStore.eyeCandy &&
+                                                childItem.icon === mdiFan &&
+                                                (childItem.rpm != null
+                                                    ? Number(
+                                                          deviceChannelValues(
+                                                              childItem.deviceUID,
+                                                              childItem.name,
+                                                          )?.rpm ?? 0,
+                                                      ) > 0
+                                                    : Number(
+                                                          deviceChannelValues(
+                                                              childItem.deviceUID,
+                                                              childItem.name,
+                                                          )?.duty ?? 0,
+                                                      ) > 0),
+                                        }"
+                                        type="mdi"
+                                        :path="childItem.icon ?? ''"
+                                        :style="{
+                                            color: deviceChannelColor(
                                                 childItem.deviceUID,
                                                 childItem.name,
-                                            ),
-                                        )
-                                    "
-                                />
+                                            ).value,
+                                        }"
+                                        :size="
+                                            deviceStore.getREMSize(
+                                                deviceChannelIconSize(
+                                                    childItem.deviceUID,
+                                                    childItem.name,
+                                                ),
+                                            )
+                                        "
+                                    />
+                                </overlay-badge>
                                 <div class="flex flex-col overflow-hidden">
                                     <div
                                         class="tree-text leading-tight"
