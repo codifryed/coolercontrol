@@ -73,6 +73,7 @@ import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     deviceUID: UID
@@ -740,6 +741,12 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+    <health-warning
+        kind="channel"
+        :device-uid="props.deviceUID"
+        :channel-name="props.channelName"
+        class="mx-4 mt-4"
+    />
     <div class="flex flex-col">
         <div v-if="chosenViewType === ChannelViewType.Control && controlMode === 'manual'">
             <SpeedFixedChart

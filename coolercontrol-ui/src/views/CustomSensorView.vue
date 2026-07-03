@@ -64,6 +64,7 @@ import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     customSensorID?: string
@@ -722,6 +723,7 @@ onMounted(async () => {
         style="--scrollbar-size: 10px"
     >
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <health-warning kind="custom-sensor" :entity-uid="props.customSensorID" class="mb-4" />
             <div
                 v-if="droppedSources.length > 0"
                 class="mb-4 flex flex-row items-center gap-2 rounded-lg border border-warning bg-warning/10 p-3"

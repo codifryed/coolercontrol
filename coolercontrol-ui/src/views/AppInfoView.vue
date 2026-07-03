@@ -55,6 +55,7 @@ import {
     HealthEntityType,
     SourceRef,
     sourceKey,
+    sourceTempDisplayName,
 } from '@/models/DeviceHealth.ts'
 import type { RouteLocationRaw } from 'vue-router'
 
@@ -187,15 +188,8 @@ const sourceEntityLabel = (ref: SourceRef): string => {
     }
 }
 
-// The referenced device may be gone: prefer any user-set UI name, then the
-// daemon-resolved name from the config device list, which keeps gone devices.
-const sourceTempLabel = (ref: SourceRef): string => {
-    const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.source.device_uid)
-    const tempLabel =
-        sourceSettings?.sensorsAndChannels.get(ref.source.temp_name)?.name || ref.source.temp_name
-    const sourceDeviceName = sourceSettings?.name || ref.source_device_name
-    return sourceDeviceName ? `${sourceDeviceName}: ${tempLabel}` : tempLabel
-}
+const sourceTempLabel = (ref: SourceRef): string =>
+    sourceTempDisplayName(ref, settingsStore.allUIDeviceSettings)
 
 const failsafeDetail = (ref: FailsafeRef): string =>
     ref.reason

@@ -76,6 +76,7 @@ import OverlayProfileEditorChart from '@/components/OverlayProfileEditorChart.vu
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
 import { useProfileLimitInfo, type LimitInfo } from '@/composables/useProfileLimitInfo.ts'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 echarts.use([
     GridComponent,
@@ -2204,6 +2205,7 @@ function onKnobMouseup(e: MouseEvent) {
             </div>
         </div>
     </div>
+    <health-warning kind="profile" :entity-uid="props.profileUID" class="mx-4 mt-4" />
     <!-- The UI Display: -->
     <div v-if="showGraph" class="flex flex-col w-full">
         <div class="flex flex-row justify-between mt-4 w-full">

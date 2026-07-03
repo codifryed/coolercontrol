@@ -42,6 +42,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     deviceUID: UID
@@ -255,6 +256,12 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+    <health-warning
+        kind="channel"
+        :device-uid="props.deviceUID"
+        :channel-name="props.channelName"
+        class="mx-4 mt-4"
+    />
     <TimeChart
         v-if="singleDashboard.chartType == ChartType.TIME_CHART"
         :dashboard="singleDashboard"

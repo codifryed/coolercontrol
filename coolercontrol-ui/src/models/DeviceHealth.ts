@@ -17,6 +17,7 @@
  */
 
 import { UID } from '@/models/Device.ts'
+import { AllDeviceSettings } from '@/models/UISettings.ts'
 import { Type } from 'class-transformer'
 
 export enum HealthEntityType {
@@ -84,6 +85,18 @@ export class DeviceHealthDTO {
     missing: Array<SourceRef> = []
     @Type(() => SourceRef)
     stale_source: Array<SourceRef> = []
+}
+
+/**
+ * Display name for a referenced temp: user-set UI names first, then the
+ * daemon-resolved device name, which covers devices that are gone.
+ */
+export function sourceTempDisplayName(ref: SourceRef, allSettings: AllDeviceSettings): string {
+    const sourceSettings = allSettings.get(ref.source.device_uid)
+    const tempLabel =
+        sourceSettings?.sensorsAndChannels.get(ref.source.temp_name)?.name || ref.source.temp_name
+    const deviceName = sourceSettings?.name || ref.source_device_name
+    return deviceName ? `${deviceName}: ${tempLabel}` : tempLabel
 }
 
 export function sourceKey(ref: SourceRef): string {
