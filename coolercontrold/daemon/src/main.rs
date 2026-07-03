@@ -652,7 +652,7 @@ async fn initialize_device_repos(
     let mut lc_locations = Vec::new();
     let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
-    match init_liquidctl_repo(config.clone(), run_token).await {
+    match init_liquidctl_repo(config.clone(), run_token, Rc::clone(&overrides)).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
             lc_repo_typed = Some(Rc::clone(&repo));
@@ -681,7 +681,7 @@ async fn initialize_device_repos(
             }
         });
         init_scope.spawn(async {
-            match init_hwmon_repo(config.clone(), lc_locations).await {
+            match init_hwmon_repo(config.clone(), lc_locations, Rc::clone(&overrides)).await {
                 Ok(repo) => repos.hwmon = Some(Rc::new(repo)),
                 Err(err) => error!("Error initializing HWMON Repo: {err}"),
             }
@@ -691,6 +691,7 @@ async fn initialize_device_repos(
                 config.clone(),
                 api_up_token.clone(),
                 cmd_args.reset_plugin_user,
+                Rc::clone(&overrides),
             )
             .await
             {
@@ -728,8 +729,9 @@ async fn initialize_device_repos(
 async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
-    let mut lc_repo = LiquidctlRepo::new(config, run_token).await?;
+    let mut lc_repo = LiquidctlRepo::new(config, run_token, overrides).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();
@@ -753,8 +755,12 @@ async fn init_gpu_repo(config: Rc<Config>, nvidia_cli: bool) -> Result<GpuRepo> 
     Ok(gpu_repo)
 }
 
-async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
-    let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
+async fn init_hwmon_repo(
+    config: Rc<Config>,
+    lc_locations: Vec<String>,
+    overrides: Rc<overrides::OverridesController>,
+) -> Result<HwmonRepo> {
+    let mut hwmon_repo = HwmonRepo::new(config, lc_locations, overrides);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }
@@ -763,8 +769,10 @@ async fn init_service_plugin_repo(
     config: Rc<Config>,
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<ServicePluginRepo> {
-    let mut external_repo = ServicePluginRepo::new(config, api_up_token, reset_plugin_user)?;
+    let mut external_repo =
+        ServicePluginRepo::new(config, api_up_token, reset_plugin_user, overrides)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)
 }
