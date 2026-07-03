@@ -985,6 +985,7 @@ impl LiquidctlRepo {
                 let lcd_settings = LcdSettings {
                     brightness: None,
                     orientation: None,
+                    colors: Vec::new(),
                     mode: LcdModeKind::Liquid,
                 };
                 if let Ok(cached_device_data) = self.cache_device_data(&device_uid) {

@@ -352,6 +352,7 @@ impl LcdCommander {
         let lcd_settings = LcdSettings {
             brightness,
             orientation,
+            colors: Vec::new(),
             mode: LcdModeKind::Image {
                 image_file_processed: Some(image_path_str),
             },
@@ -444,6 +445,7 @@ impl LcdCommander {
                 let lcd_settings = LcdSettings {
                     brightness,
                     orientation,
+                    colors: Vec::new(),
                     mode: LcdModeKind::Image {
                         image_file_processed: Some(image_path),
                     },
