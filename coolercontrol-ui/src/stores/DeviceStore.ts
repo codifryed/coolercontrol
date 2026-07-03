@@ -34,6 +34,7 @@ import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
+import { DeviceHealthDTO, FailsafeDelta, SourceDelta } from '@/models/DeviceHealth.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
@@ -888,6 +889,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateStatusFromSSE(): Promise<void> {
         const thisStore = useDeviceStore()
         const daemonState = useDaemonState()
+        const settingsStore = useSettingsStore()
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
             await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
@@ -900,6 +902,43 @@ export const useDeviceStore = defineStore('device', () => {
                     throw new Error(`SSE status error: ${response.status}`)
                 },
                 async onmessage(event) {
+                    // Device-health transitions ride the status connection as named
+                    // events, one batch of deltas per subject per tick.
+                    if (event.event === 'missing') {
+                        for (const delta of plainToInstance(
+                            SourceDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyMissingDelta(delta)
+                        }
+                        return
+                    }
+                    if (event.event === 'stale-source') {
+                        for (const delta of plainToInstance(
+                            SourceDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyStaleSourceDelta(delta)
+                        }
+                        return
+                    }
+                    if (event.event === 'failsafe') {
+                        for (const delta of plainToInstance(
+                            FailsafeDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyFailsafeDelta(delta)
+                        }
+                        return
+                    }
+                    // Full-state resync the daemon sends when this client lagged the
+                    // health broadcast and missed transition batches.
+                    if (event.event === 'health') {
+                        settingsStore.applyDeviceHealthSnapshot(
+                            plainToInstance(DeviceHealthDTO, JSON.parse(event.data) as object),
+                        )
+                        return
+                    }
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
                     await daemonState.setConnected(true)

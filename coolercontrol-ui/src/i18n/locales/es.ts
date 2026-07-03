@@ -347,6 +347,8 @@ export default {
                 chooseColor: 'Elegir color',
                 deviceSettings: 'Configuración Avanzada del Dispositivo',
                 options: 'Más Opciones',
+                seeDeviceHealth:
+                    'Para una vista general, ver Estado de los Dispositivos en Info y Herramientas',
                 moveTop: 'Mover al Inicio',
                 moveBottom: 'Mover al Final',
                 disable: 'Deshabilitar',
@@ -461,6 +463,8 @@ export default {
                 'Seleccionar "Sin gestión" indica a CoolerControl que deje de controlar<br/>este ventilador y devuelva el control al controlador del dispositivo.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'Las siguientes fuentes de temperatura ya no están presentes y se eliminarán al guardar: {sources}',
             newSensor: 'Nuevo Sensor',
             sensorType: 'Tipo de Sensor',
             type: 'Tipo',
@@ -578,6 +582,13 @@ export default {
             whatsNewDesc: 'Ver las últimas notas de la versión',
             logsAndDiagnostics: 'Registros y Diagnósticos',
             downloadCurrentLog: 'Descargar Registro Actual',
+            deviceHealth: 'Estado de los Dispositivos',
+            deviceHealthTooltip:
+                'Las fuentes de temperatura faltantes se pueden reemplazar editando y<br>guardando de nuevo el Sensor personalizado, Perfil o ajuste LCD afectado.',
+            deviceHealthOk: 'Todos los sensores y canales funcionan correctamente.',
+            failsafeActive: 'Valores de seguridad en uso',
+            missingTempSource: 'Fuente de temperatura faltante',
+            staleTempSource: 'La fuente de temperatura usa valores de seguridad',
             stressTest: 'Pruebas de estrés térmico',
             stressTestTooltip:
                 'Genera carga térmica sostenida para validar<br>curvas de ventilador y perfiles de enfriamiento.<br>Los resultados pueden variar según el hardware.<br>Instale stress-ng para backends adicionales.',

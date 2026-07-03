@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -35,6 +35,7 @@ use crate::device::{
     Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, Temp, TempInfo, TempName,
     TempStatus, UID,
 };
+use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::repositories::failsafe::MISSING_TEMP_FAILSAFE;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
@@ -62,11 +63,12 @@ pub struct CustomSensorsRepo {
     /// samples from `time_window_seconds / poll_rate`, avoiding any wall-clock comparisons.
     /// `poll_rate` is fixed at runtime, so a plain `f64` is enough.
     poll_rate: f64,
-    /// Set of sensor IDs currently emitting `MISSING_TEMP_FAILSAFE` because their source is
+    /// Sensor IDs currently emitting `MISSING_TEMP_FAILSAFE` because their source is
     /// structurally absent (device removed, temp renamed, history empty, child not yet
-    /// processed). Membership drives once-per-occurrence entry / recovery logging so a flaky
-    /// or misconfigured source does not flood the log every poll.
-    failsafing_sensors: RefCell<HashSet<String>>,
+    /// processed), mapped to the reason they entered failsafe. Membership drives
+    /// once-per-occurrence entry / recovery logging so a flaky or misconfigured source
+    /// does not flood the log every poll; the reason is surfaced via `failsafing()`.
+    failsafing_sensors: RefCell<HashMap<String, String>>,
 }
 
 impl CustomSensorsRepo {
@@ -85,7 +87,7 @@ impl CustomSensorsRepo {
             sensors: RefCell::new(Vec::new()),
             relationships: RefCell::new(HashMap::new()),
             poll_rate,
-            failsafing_sensors: RefCell::new(HashSet::new()),
+            failsafing_sensors: RefCell::new(HashMap::new()),
         })
     }
 
@@ -408,10 +410,14 @@ impl CustomSensorsRepo {
         for custom_temp_source_data in sources {
             let temp_source = &custom_temp_source_data.temp_source;
             let Ok(Some(temp)) = self.get_temp_source_temp(temp_source, custom_temps) else {
-                let reason = format!(
-                    "source missing: {}:{}",
-                    temp_source.device_uid, temp_source.temp_name
-                );
+                // Device-first with the log convention's pipe separator, matching
+                // how the UI composes device and channel names.
+                let reason = match self.source_device_name(temp_source) {
+                    Some(device_name) => {
+                        format!("source missing: {device_name} | {}", temp_source.temp_name)
+                    }
+                    None => format!("source missing: {}", temp_source.temp_name),
+                };
                 return self.emit_failsafe(id, &reason);
             };
             temp_data.push(TempData {
@@ -984,26 +990,42 @@ impl CustomSensorsRepo {
         }
     }
 
-    /// Inserts `sensor_id` into the failsafing-sensors set. Returns `true` if this is the
-    /// first time this sensor entered failsafe (caller should emit a `warn!` line); `false`
-    /// if it was already failsafing on a previous tick.
-    fn note_failsafing_sensor(&self, sensor_id: &str) -> bool {
-        self.failsafing_sensors
-            .borrow_mut()
-            .insert(sensor_id.to_string())
+    /// Records `sensor_id` as failsafing with its entry reason. Returns `true` if this is
+    /// the first time this sensor entered failsafe (caller should emit a `warn!` line);
+    /// `false` if it was already failsafing on a previous tick. The reason is fixed at
+    /// entry so the reported reason always matches the logged transition.
+    fn note_failsafing_sensor(&self, sensor_id: &str, reason: &str) -> bool {
+        let mut failsafing = self.failsafing_sensors.borrow_mut();
+        if failsafing.contains_key(sensor_id) {
+            return false;
+        }
+        failsafing.insert(sensor_id.to_string(), reason.to_string());
+        true
     }
 
-    /// Removes `sensor_id` from the failsafing-sensors set. Returns `true` if it was present
+    /// Removes `sensor_id` from the failsafing-sensors map. Returns `true` if it was present
     /// (caller should emit a recovery `info!` line); `false` if it was not failsafing.
     fn clear_failsafing_sensor(&self, sensor_id: &str) -> bool {
-        self.failsafing_sensors.borrow_mut().remove(sensor_id)
+        self.failsafing_sensors
+            .borrow_mut()
+            .remove(sensor_id)
+            .is_some()
+    }
+
+    /// Resolves a source device's display name for failsafe reasons: live devices first,
+    /// then the config `devices` list, which retains devices no longer detected.
+    fn source_device_name(&self, temp_source: &TempSource) -> Option<String> {
+        if let Some(device) = self.all_devices.get(&temp_source.device_uid) {
+            return Some(device.borrow().name.clone());
+        }
+        self.config.device_name(&temp_source.device_uid)
     }
 
     /// Builds the failsafe `TempStatus` and emits the entry log line on the first occurrence.
     /// `reason` is included in the log so a future operator can tell the cs_type-specific
     /// cause apart (for example "all sources missing" vs "file unreadable").
     fn emit_failsafe(&self, sensor_id: &str, reason: &str) -> TempStatus {
-        if self.note_failsafing_sensor(sensor_id) {
+        if self.note_failsafing_sensor(sensor_id, reason) {
             warn!(
                 "Custom Sensor {sensor_id} entering failsafe ({MISSING_TEMP_FAILSAFE}°C): {reason}"
             );
@@ -1032,6 +1054,23 @@ impl CustomSensorsRepo {
 impl Repository for CustomSensorsRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::CustomSensors
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        let failsafing = self.failsafing_sensors.borrow();
+        if failsafing.is_empty() {
+            return Vec::new();
+        }
+        let device_uid = self.get_device_uid();
+        failsafing
+            .iter()
+            .map(|(sensor_id, reason)| FailsafeRef {
+                device_uid: device_uid.clone(),
+                name: sensor_id.clone(),
+                kind: FailsafeKind::Temp,
+                reason: reason.clone(),
+            })
+            .collect()
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -1702,7 +1741,10 @@ mod tests {
             // then:
             assert_eq!(temp.name, cs_name);
             assert!((temp.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains(&cs_name));
+            assert_eq!(
+                repo.failsafing_sensors.borrow()[cs_name.as_str()],
+                "file unreadable"
+            );
         });
     }
 
@@ -2526,19 +2568,23 @@ mod tests {
     // ==================== failsafe state tracking helpers ====================
 
     // note_failsafing_sensor returns true only on the first insert per sensor id.
-    // Mirrors HashSet::insert semantics: subsequent inserts of an existing key return
-    // false. The bool is what gates the once-per-occurrence warn log so the caller
-    // can distinguish "newly entered failsafe" from "already failsafing".
+    // Subsequent inserts of an existing key return false and must NOT overwrite the
+    // stored reason: the reported reason stays the one from the logged transition.
+    // The bool is what gates the once-per-occurrence warn log so the caller can
+    // distinguish "newly entered failsafe" from "already failsafing".
     #[test]
     #[serial]
     fn note_failsafing_returns_true_only_first_time() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
-            assert!(repo.note_failsafing_sensor("sensor1"));
-            assert!(repo.note_failsafing_sensor("sensor1").not());
-            assert!(repo.note_failsafing_sensor("sensor1").not());
-            assert!(repo.note_failsafing_sensor("sensor2"));
+            assert!(repo.note_failsafing_sensor("sensor1", "file unreadable"));
+            assert!(repo.note_failsafing_sensor("sensor1", "other reason").not());
+            assert!(repo.note_failsafing_sensor("sensor1", "other reason").not());
+            assert!(repo.note_failsafing_sensor("sensor2", "file unreadable"));
+            let failsafing = repo.failsafing_sensors.borrow();
+            assert_eq!(failsafing["sensor1"], "file unreadable");
+            assert_eq!(failsafing["sensor2"], "file unreadable");
         });
     }
 
@@ -2553,7 +2599,7 @@ mod tests {
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
             assert!(repo.clear_failsafing_sensor("sensor1").not());
-            repo.note_failsafing_sensor("sensor1");
+            repo.note_failsafing_sensor("sensor1", "file unreadable");
             assert!(repo.clear_failsafing_sensor("sensor1"));
             assert!(repo.clear_failsafing_sensor("sensor1").not());
         });
@@ -2666,7 +2712,7 @@ mod tests {
             repo.update_statuses().await.unwrap();
 
             assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("mix1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("mix1"));
         });
     }
 
@@ -2702,7 +2748,7 @@ mod tests {
 
             // Max(70, 60) = 70
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("mix1").not());
+            assert!(repo.failsafing_sensors.borrow().contains_key("mix1").not());
         });
     }
 
@@ -2741,7 +2787,7 @@ mod tests {
             assert!(
                 (current_temp_for(&repo, "delta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
-            assert!(repo.failsafing_sensors.borrow().contains("delta1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("delta1"));
         });
     }
 
@@ -2771,7 +2817,7 @@ mod tests {
             // -25 offset on the failsafe would have been 75 under arithmetic substitution;
             // short-circuit must produce exactly MISSING_TEMP_FAILSAFE.
             assert!((current_temp_for(&repo, "off1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("off1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("off1"));
         });
     }
 
@@ -2802,7 +2848,7 @@ mod tests {
             repo.update_statuses().await.unwrap();
 
             assert!((current_temp_for(&repo, "ta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("ta1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("ta1"));
         });
     }
 
@@ -2835,7 +2881,7 @@ mod tests {
             repo.update_statuses().await.unwrap();
 
             assert!((current_temp_for(&repo, "ema1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("ema1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("ema1"));
         });
     }
 
@@ -2869,7 +2915,7 @@ mod tests {
             assert!(
                 (current_temp_for(&repo, "ema_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
-            assert!(repo.failsafing_sensors.borrow().contains("ema_bad"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("ema_bad"));
         });
     }
 
@@ -2911,7 +2957,11 @@ mod tests {
                 (0.0..=70.0).contains(&temp),
                 "EMA must be bounded by input range, got {temp}"
             );
-            assert!(repo.failsafing_sensors.borrow().contains("ema_ok").not());
+            assert!(repo
+                .failsafing_sensors
+                .borrow()
+                .contains_key("ema_ok")
+                .not());
         });
     }
 
@@ -2948,7 +2998,7 @@ mod tests {
             assert!(
                 (current_temp_for(&repo, "ta_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
-            assert!(repo.failsafing_sensors.borrow().contains("ta_bad"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("ta_bad"));
         });
     }
 
@@ -2971,21 +3021,26 @@ mod tests {
             // Tick 1: file readable, real value
             repo.update_statuses().await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("file1").not());
+            assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
 
-            // Remove the file: next tick should failsafe.
+            // Remove the file: next tick should failsafe, and the repository must report
+            // the ref with the reason from the entry transition.
             cc_fs::remove_file(&test_file).await.ok();
             repo.update_statuses().await.unwrap();
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
-            assert!(repo.failsafing_sensors.borrow().contains("file1"));
+            assert!(repo.failsafing_sensors.borrow().contains_key("file1"));
+            let refs = repo.failsafing();
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].name, "file1");
+            assert_eq!(refs[0].reason, "file unreadable");
 
             // Restore the file with a new value: next tick recovers.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
             repo.update_statuses().await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
-            assert!(repo.failsafing_sensors.borrow().contains("file1").not());
+            assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
     }
 
@@ -3004,12 +3059,16 @@ mod tests {
             repo.set_custom_sensor(sensor).await.unwrap();
             // Plant a failsafing-state entry directly to simulate the sensor having entered
             // failsafe at some prior point.
-            repo.note_failsafing_sensor("to_delete");
-            assert!(repo.failsafing_sensors.borrow().contains("to_delete"));
+            repo.note_failsafing_sensor("to_delete", "file unreadable");
+            assert!(repo.failsafing_sensors.borrow().contains_key("to_delete"));
 
             repo.delete_custom_sensor("to_delete").unwrap();
 
-            assert!(repo.failsafing_sensors.borrow().contains("to_delete").not());
+            assert!(repo
+                .failsafing_sensors
+                .borrow()
+                .contains_key("to_delete")
+                .not());
         });
     }
 
@@ -3027,13 +3086,17 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = file_sensor("to_update", test_file.clone());
             repo.set_custom_sensor(sensor.clone()).await.unwrap();
-            repo.note_failsafing_sensor("to_update");
-            assert!(repo.failsafing_sensors.borrow().contains("to_update"));
+            repo.note_failsafing_sensor("to_update", "file unreadable");
+            assert!(repo.failsafing_sensors.borrow().contains_key("to_update"));
 
             // Update with the same content; the cleanup hook must drop the failsafing entry.
             repo.update_custom_sensor(sensor).await.unwrap();
 
-            assert!(repo.failsafing_sensors.borrow().contains("to_update").not());
+            assert!(repo
+                .failsafing_sensors
+                .borrow()
+                .contains_key("to_update")
+                .not());
         });
     }
 
@@ -3074,7 +3137,11 @@ mod tests {
                     entry.temp
                 );
             }
-            assert!(repo.failsafing_sensors.borrow().contains("mix_bf").not());
+            assert!(repo
+                .failsafing_sensors
+                .borrow()
+                .contains_key("mix_bf")
+                .not());
         });
     }
 }

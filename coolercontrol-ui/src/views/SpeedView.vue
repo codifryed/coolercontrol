@@ -73,6 +73,7 @@ import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     deviceUID: UID
@@ -470,7 +471,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
+    <div
+        id="control-panel"
+        class="flex flex-wrap border-b-4 border-border-one items-center justify-between"
+    >
         <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0 flex gap-x-1">
@@ -739,6 +743,13 @@ onUnmounted(() => {
                 </Button>
             </div>
         </div>
+        <!-- Inside #control-panel so the chart-height observer accounts for it. -->
+        <health-warning
+            kind="channel"
+            :device-uid="props.deviceUID"
+            :channel-name="props.channelName"
+            class="w-full mx-2 mb-2"
+        />
     </div>
     <div class="flex flex-col">
         <div v-if="chosenViewType === ChannelViewType.Control && controlMode === 'manual'">

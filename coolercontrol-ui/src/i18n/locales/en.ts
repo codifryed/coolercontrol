@@ -343,6 +343,7 @@ export default {
                 chooseColor: 'Choose Color',
                 deviceSettings: 'Advanced Device Settings',
                 options: 'More Options',
+                seeDeviceHealth: 'For an overview see Device Health in Info & Tools',
                 moveTop: 'Move to Top',
                 moveBottom: 'Move to Bottom',
                 disable: 'Disable',
@@ -456,6 +457,8 @@ export default {
                 "Selecting Unmanaged tells CoolerControl to stop controlling this fan<br/>and hand it back to the device's driver.<br/><br/><b>Warning:</b> Many drivers do <i>not</i> have automatic fan control.<br/>On those devices, the fan will stay at its last set speed.",
         },
         customSensors: {
+            missingSourcesNotice:
+                'The following temp sources are no longer present and will be removed when saving: {sources}',
             newSensor: 'New Sensor',
             sensorType: 'Sensor Type',
             type: 'Type',
@@ -572,6 +575,13 @@ export default {
             whatsNewDesc: 'See the latest release notes',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
+            deviceHealth: 'Device Health',
+            deviceHealthTooltip:
+                'Missing temp sources can be replaced by editing and<br>saving the affected Custom Sensor, Profile, or LCD setting.',
+            deviceHealthOk: 'All sensors and channels are healthy.',
+            failsafeActive: 'Failsafe values in use',
+            missingTempSource: 'Missing temp source',
+            staleTempSource: 'Temp source using failsafe values',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
                 'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>Install stress-ng for additional backends.',

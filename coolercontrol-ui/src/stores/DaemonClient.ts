@@ -50,6 +50,7 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
+import { DeviceHealthDTO } from '@/models/DeviceHealth.ts'
 import type {
     Calibration,
     CalibrationBatchStatus,
@@ -1222,6 +1223,17 @@ export default class DaemonClient {
             } else {
                 return new ErrorResponse('Unknown Cause')
             }
+        }
+    }
+
+    async loadDeviceHealth(): Promise<DeviceHealthDTO> {
+        try {
+            const response = await this.getClient().get('/devices/health')
+            this.logDaemonResponse(response, 'Load Device Health')
+            return plainToInstance(DeviceHealthDTO, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return new DeviceHealthDTO()
         }
     }
 

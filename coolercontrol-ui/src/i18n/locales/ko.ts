@@ -339,6 +339,7 @@ export default {
                 chooseColor: '색상 선택',
                 deviceSettings: '고급 장치 설정',
                 options: '더 많은 옵션',
+                seeDeviceHealth: '전체 개요는 정보 및 도구에서 장치 상태를 확인하세요',
                 moveTop: '위로 이동',
                 moveBottom: '아래로 이동',
                 disable: '비활성',
@@ -451,6 +452,8 @@ export default {
                 '"관리 안 됨"을 선택하면 CoolerControl이 이 팬의 제어를 중지하고<br/>제어 권한을 장치 드라이버에 다시 넘깁니다.<br/><br/><b>경고:</b> 많은 드라이버에는 자동 팬 제어 기능이 <i>없습니다</i>.<br/>해당 장치에서는 팬이 마지막으로 설정된 속도로 유지됩니다.',
         },
         customSensors: {
+            missingSourcesNotice:
+                '다음 온도 소스는 더 이상 존재하지 않으며 저장 시 제거됩니다: {sources}',
             newSensor: '새 센서',
             sensorType: '센서 유형',
             type: '유형',
@@ -566,6 +569,13 @@ export default {
             whatsNewDesc: '최신 릴리스 노트 보기',
             logsAndDiagnostics: '로그 및 진단',
             downloadCurrentLog: '현재 로그 다운로드',
+            deviceHealth: '장치 상태',
+            deviceHealthTooltip:
+                '누락된 온도 소스는 해당 커스텀 센서, 프로파일 또는 LCD 설정을<br>다시 편집하고 저장하여 교체할 수 있습니다.',
+            deviceHealthOk: '모든 센서와 채널이 정상입니다.',
+            failsafeActive: '페일세이프 값 사용 중',
+            missingTempSource: '온도 소스 누락',
+            staleTempSource: '온도 소스가 페일세이프 값 사용 중',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
                 '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>추가 백엔드를 위해 stress-ng를 설치하세요.',

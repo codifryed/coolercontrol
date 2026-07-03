@@ -250,6 +250,8 @@ export default {
                 chooseColor: 'Escolher Cor',
                 deviceSettings: 'Configurações Avançadas do Dispositivo',
                 options: 'Mais Opções',
+                seeDeviceHealth:
+                    'Para uma visão geral, veja Estado dos Dispositivos em Info e Ferramentas',
                 moveTop: 'Mover para o Topo',
                 moveBottom: 'Mover para Baixo',
                 disable: 'Desabilitar',
@@ -492,6 +494,13 @@ export default {
             whatsNewDesc: 'Veja as últimas notas de versão',
             logsAndDiagnostics: 'Logs e Diagnósticos',
             downloadCurrentLog: 'Baixar Log Atual',
+            deviceHealth: 'Estado dos Dispositivos',
+            deviceHealthTooltip:
+                'Fontes de temperatura ausentes podem ser substituídas editando e<br>salvando novamente o Sensor Personalizado, Perfil ou ajuste LCD afetado.',
+            deviceHealthOk: 'Todos os sensores e canais estão funcionando corretamente.',
+            failsafeActive: 'Valores de segurança em uso',
+            missingTempSource: 'Fonte de temperatura ausente',
+            staleTempSource: 'A fonte de temperatura usa valores de segurança',
             stressTest: 'Testes de estresse térmico',
             stressTestTooltip:
                 'Gera carga térmica sustentada para validar<br>curvas de ventilador e perfis de resfriamento.<br>Os resultados podem variar dependendo do hardware.<br>Instale stress-ng para backends adicionais.',
@@ -792,6 +801,8 @@ export default {
                 'Selecionar "Não gerenciado" instrui o CoolerControl a parar de controlar<br/>este ventilador e devolver o controle ao driver do dispositivo.<br/><br/><b>Aviso:</b> Muitos drivers <i>não</i> possuem controle automático de ventilador.<br/>Nesses dispositivos, o ventilador permanecerá em sua última velocidade definida.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'As seguintes fontes de temperatura não estão mais presentes e serão removidas ao salvar: {sources}',
             newSensor: 'Novo Sensor',
             sensorType: 'Tipo de Sensor',
             type: 'Tipo',

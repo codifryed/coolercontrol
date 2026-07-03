@@ -29,6 +29,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
+use crate::device_health::FailsafeRef;
 use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
@@ -1025,6 +1026,19 @@ impl LiquidctlRepo {
 impl Repository for LiquidctlRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Liquidctl
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        let mut out = Vec::new();
+        let fsd_map = self.failsafe_statuses.borrow();
+        for (device_uid, device_lock) in &self.devices {
+            let type_index = device_lock.borrow().type_index;
+            let Some(fsd) = fsd_map.get(&type_index) else {
+                continue;
+            };
+            out.extend(fsd.device_failsafe_refs(device_uid));
+        }
+        out
     }
 
     async fn initialize_devices(&mut self) -> Result<()> {

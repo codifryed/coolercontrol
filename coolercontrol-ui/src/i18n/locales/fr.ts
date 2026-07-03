@@ -354,6 +354,8 @@ export default {
                 chooseColor: 'Choisir une couleur',
                 deviceSettings: 'Paramètres Avancés du Périphérique',
                 options: "Plus d'Options",
+                seeDeviceHealth:
+                    "Pour une vue d'ensemble, voir État des Périphériques dans Info & Outils",
                 moveTop: 'Déplacer en Haut',
                 moveBottom: 'Déplacer en Bas',
                 disable: 'Désactiver',
@@ -469,6 +471,8 @@ export default {
                 "Sélectionner « Non géré » indique à CoolerControl d'arrêter de contrôler<br/>ce ventilateur et de rendre le contrôle au pilote du périphérique.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie.",
         },
         customSensors: {
+            missingSourcesNotice:
+                'Les sources de température suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
             newSensor: 'Nouveau Capteur',
             sensorType: 'Type de Capteur',
             type: 'Type',
@@ -589,6 +593,13 @@ export default {
             whatsNewDesc: 'Voir les dernières notes de version',
             logsAndDiagnostics: 'Journaux et Diagnostics',
             downloadCurrentLog: 'Télécharger le Journal Actuel',
+            deviceHealth: 'État des Périphériques',
+            deviceHealthTooltip:
+                'Les sources de température manquantes peuvent être remplacées en modifiant<br>et en enregistrant à nouveau le Capteur personnalisé, le Profil ou le réglage LCD concerné.',
+            deviceHealthOk: 'Tous les capteurs et canaux fonctionnent correctement.',
+            failsafeActive: 'Valeurs de secours utilisées',
+            missingTempSource: 'Source de température manquante',
+            staleTempSource: 'La source de température utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',
             stressTestTooltip:
                 'Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Les résultats peuvent varier selon le matériel.<br>Installez stress-ng pour des backends supplémentaires.',

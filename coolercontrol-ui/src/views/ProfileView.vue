@@ -76,6 +76,7 @@ import OverlayProfileEditorChart from '@/components/OverlayProfileEditorChart.vu
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
 import { useProfileLimitInfo, type LimitInfo } from '@/composables/useProfileLimitInfo.ts'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 echarts.use([
     GridComponent,
@@ -1996,7 +1997,10 @@ function onKnobMouseup(e: MouseEvent) {
 </script>
 
 <template>
-    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
+    <div
+        id="control-panel"
+        class="flex flex-wrap border-b-4 border-border-one items-center justify-between"
+    >
         <entity-title-rename
             :current-name="currentProfile.name"
             :save-name-function="saveNameFunction"
@@ -2203,6 +2207,8 @@ function onKnobMouseup(e: MouseEvent) {
                 </Button>
             </div>
         </div>
+        <!-- Inside #control-panel so the chart-height observer accounts for it. -->
+        <health-warning kind="profile" :entity-uid="props.profileUID" class="w-full mx-2 mb-2" />
     </div>
     <!-- The UI Display: -->
     <div v-if="showGraph" class="flex flex-col w-full">

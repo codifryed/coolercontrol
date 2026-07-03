@@ -358,6 +358,7 @@ export default {
                 chooseColor: '色を選択',
                 deviceSettings: '高度なデバイス設定',
                 options: 'その他のオプション',
+                seeDeviceHealth: '概要は情報とツールのデバイスの状態を確認してください',
                 moveTop: '上に移動',
                 moveBottom: '下に移動',
                 disable: '無効化',
@@ -502,6 +503,8 @@ export default {
                 '「未管理」を選択すると、CoolerControlはこのファンの制御を停止し、<br/>制御をデバイスのドライバーに戻します。<br/><br/><b>警告：</b>多くのドライバーには自動ファン制御機能が<i>ありません</i>。<br/>そのようなデバイスでは、ファンは最後に設定された速度のまま動作し続けます。',
         },
         customSensors: {
+            missingSourcesNotice:
+                '次の温度ソースは存在しなくなったため、保存時に削除されます: {sources}',
             newSensor: '新しいセンサー',
             sensorType: 'センサータイプ',
             type: 'タイプ',
@@ -618,6 +621,13 @@ export default {
             whatsNewDesc: '最新のリリースノートを見る',
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
+            deviceHealth: 'デバイスの状態',
+            deviceHealthTooltip:
+                '見つからない温度ソースは、対象のカスタムセンサー、プロファイル、<br>またはLCD設定を再度編集して保存すると置き換えられます。',
+            deviceHealthOk: 'すべてのセンサーとチャンネルは正常です。',
+            failsafeActive: 'フェイルセーフ値を使用中',
+            missingTempSource: '温度ソースが見つかりません',
+            staleTempSource: '温度ソースはフェイルセーフ値を使用中',
             stressTest: '熱ストレステスト',
             stressTestTooltip:
                 '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>stress-ngをインストールすると追加のバックエンドが利用できます。',

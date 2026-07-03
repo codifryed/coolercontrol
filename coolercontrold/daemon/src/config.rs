@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -48,6 +48,10 @@ pub struct Config {
     path: PathBuf,
     path_ui: PathBuf,
     document: RefCell<DocumentMut>,
+    /// Bumped on every save. Every runtime mutation ends in `save_config_file`,
+    /// so consumers can cache config-derived views and re-read only when this
+    /// moves.
+    generation: Cell<u64>,
 }
 
 impl Config {
@@ -97,6 +101,7 @@ impl Config {
             path,
             path_ui,
             document: RefCell::new(document),
+            generation: Cell::new(0),
         };
         // test parsing of config data to make sure everything is readable
         let _ = config.legacy690_ids()?;
@@ -150,7 +155,12 @@ impl Config {
             path,
             path_ui,
             document: RefCell::new(document),
+            generation: Cell::new(0),
         })
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation.get()
     }
 
     pub fn verify_writeability(&self) -> Result<()> {
@@ -177,6 +187,9 @@ impl Config {
     }
     /// saves any changes to the configuration file - preserving formatting and comments
     pub async fn save_config_file(&self) -> Result<()> {
+        // The in-memory document was already mutated by the caller, so bump the
+        // generation even if the disk write below fails.
+        self.generation.set(self.generation.get().wrapping_add(1));
         let document_content = self.document.borrow().to_string();
         if document_content.trim().is_empty() {
             error!("Config Document is empty. Something has gone wrong, saving aborted.");
@@ -251,6 +264,18 @@ impl Config {
             self.document.borrow_mut()["devices"][uid.as_str()] =
                 Item::Value(Value::String(Formatted::new(device.borrow().name.clone())));
         }
+    }
+
+    /// The persisted name from the `devices` list, which is never pruned, so
+    /// devices that are no longer detected still resolve.
+    pub fn device_name(&self, device_uid: &str) -> Option<String> {
+        self.document
+            .borrow()
+            .get("devices")
+            .and_then(Item::as_table)
+            .and_then(|devices| devices.get(device_uid))
+            .and_then(Item::as_str)
+            .map(str::to_owned)
     }
 
     pub fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
@@ -2585,9 +2610,40 @@ mod tests {
     use crate::cc_fs;
     use crate::config::Config;
     use serial_test::serial;
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::path::Path;
     use toml_edit::{DocumentMut, Item};
+
+    #[test]
+    #[serial]
+    fn save_config_file_bumps_generation() {
+        // Goal: consumers cache config-derived views keyed on the generation,
+        // so every save must move it.
+        cc_fs::test_runtime(async {
+            let config = Config::init_default_config().unwrap();
+            let before = config.generation();
+            config.save_config_file().await.unwrap();
+            assert_eq!(config.generation(), before + 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn device_name_resolves_only_listed_devices() {
+        // Goal: the `devices` list is the name source for devices no longer
+        // detected, so a listed UID resolves and an unknown UID stays None.
+        let document = "[devices]\nuid1 = \"NZXT Kraken\"\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+        let config = Config {
+            path: Path::new("/tmp/config.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/config-ui.json").to_path_buf(),
+            document: RefCell::new(document),
+            generation: Cell::new(0),
+        };
+        assert_eq!(config.device_name("uid1"), Some("NZXT Kraken".to_string()));
+        assert_eq!(config.device_name("unknown"), None);
+    }
 
     #[test]
     #[serial]
@@ -2601,6 +2657,7 @@ mod tests {
                 path: path.clone(),
                 path_ui: path_ui.clone(),
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             // test parsing of default config data to make sure everything is readable:
@@ -2659,6 +2716,7 @@ mod tests {
             path: Path::new("/tmp/cs-roundtrip.toml").to_path_buf(),
             path_ui: Path::new("/tmp/cs-roundtrip-ui.json").to_path_buf(),
             document: RefCell::new(DocumentMut::new()),
+            generation: Cell::new(0),
         };
         config
             .set_custom_sensor(make(
@@ -2748,6 +2806,7 @@ offset = 5
             path: Path::new("/tmp/cs-legacy.toml").to_path_buf(),
             path_ui: Path::new("/tmp/cs-legacy-ui.json").to_path_buf(),
             document: RefCell::new(legacy.parse::<DocumentMut>().unwrap()),
+            generation: Cell::new(0),
         };
         let sensors = config.get_custom_sensors().unwrap();
         assert_eq!(sensors.len(), 1);
@@ -2768,6 +2827,7 @@ offset = 5
             path: Path::new("/tmp/cs-change.toml").to_path_buf(),
             path_ui: Path::new("/tmp/cs-change-ui.json").to_path_buf(),
             document: RefCell::new(DocumentMut::new()),
+            generation: Cell::new(0),
         };
         config
             .set_custom_sensor(CustomSensor {
@@ -2829,6 +2889,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             let device_uid = "test-device-uid";
@@ -2888,6 +2949,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             let result = config.get_disabled_plugins();
@@ -2912,6 +2974,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             let ids = vec!["plugin-a".to_string(), "plugin-b".to_string()];
@@ -2939,6 +3002,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             // Force the legacy name onto the shipped default profile.
@@ -2976,6 +3040,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             // Profile::default() now produces name = "Unmanaged"; the shipped
@@ -3010,6 +3075,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             let custom = Profile {
@@ -3041,6 +3107,7 @@ offset = 5
                 path: path.clone(),
                 path_ui,
                 document: RefCell::new(document),
+                generation: Cell::new(0),
             };
 
             // Set then clear
@@ -3084,6 +3151,7 @@ offset = 5
             path: Path::new("/tmp/fn-roundtrip.toml").to_path_buf(),
             path_ui: Path::new("/tmp/fn-roundtrip-ui.json").to_path_buf(),
             document: RefCell::new(DocumentMut::new()),
+            generation: Cell::new(0),
         };
         config
             .set_function(make("identity", FunctionKind::Identity))
@@ -3137,6 +3205,7 @@ offset = 5
             path: Path::new("/tmp/fn-scrub.toml").to_path_buf(),
             path_ui: Path::new("/tmp/fn-scrub-ui.json").to_path_buf(),
             document: RefCell::new(DocumentMut::new()),
+            generation: Cell::new(0),
         };
         config
             .set_function(Function {
@@ -3183,6 +3252,7 @@ offset = 5
             path: path.clone(),
             path_ui,
             document: RefCell::new(document),
+            generation: Cell::new(0),
         };
         (config, path)
     }

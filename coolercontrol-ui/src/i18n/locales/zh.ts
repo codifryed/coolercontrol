@@ -332,6 +332,7 @@ export default {
                 chooseColor: '选择颜色',
                 deviceSettings: '高级设备设置',
                 options: '更多选项',
+                seeDeviceHealth: '如需概览请在信息与工具中查看设备健康',
                 moveTop: '移至顶部',
                 moveBottom: '移至底部',
                 disable: '禁用',
@@ -459,6 +460,13 @@ export default {
             whatsNewDesc: '查看最新版本说明',
             logsAndDiagnostics: '日志和诊断',
             downloadCurrentLog: '下载当前日志',
+            deviceHealth: '设备健康',
+            deviceHealthTooltip:
+                '缺少的温度源可以通过重新编辑并保存受影响的<br>自定义传感器、配置文件或 LCD 设置来替换。',
+            deviceHealthOk: '所有传感器和通道均正常。',
+            failsafeActive: '正在使用故障保护值',
+            missingTempSource: '缺少温度源',
+            staleTempSource: '温度源正在使用故障保护值',
             stressTest: '热压力测试',
             stressTestTooltip:
                 '生成持续热负载以验证<br>风扇曲线和冷却配置文件。<br>结果可能因硬件而异。<br>安装 stress-ng 以获得额外的后端。',
@@ -579,6 +587,7 @@ export default {
             curveLimitedByFirmware: '曲线被设备固件风扇曲线限制为 {n} 点。',
         },
         customSensors: {
+            missingSourcesNotice: '以下温度源已不存在，保存时将被移除: {sources}',
             newSensor: '新传感器',
             sensorType: '传感器类型',
             type: '类型',

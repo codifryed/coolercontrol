@@ -348,6 +348,7 @@ export default {
                 chooseColor: 'Farbe wählen',
                 deviceSettings: 'Erweiterte Geräteeinstellungen',
                 options: 'Weitere Optionen',
+                seeDeviceHealth: 'Für eine Übersicht siehe Gerätezustand unter Info & Werkzeuge',
                 moveTop: 'An die Spitze verschieben',
                 moveBottom: 'An das Ende verschieben',
                 disable: 'Deaktivieren',
@@ -462,6 +463,8 @@ export default {
                 'Die Auswahl von "Ungesteuert" weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die Kontrolle an den Gerätetreiber zurückzugeben.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit.',
         },
         customSensors: {
+            missingSourcesNotice:
+                'Die folgenden Temperaturquellen sind nicht mehr vorhanden und werden beim Speichern entfernt: {sources}',
             newSensor: 'Neuer Sensor',
             sensorType: 'Sensortyp',
             type: 'Typ',
@@ -581,6 +584,13 @@ export default {
             whatsNewDesc: 'Neueste Versionshinweise anzeigen',
             logsAndDiagnostics: 'Logs und Diagnose',
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
+            deviceHealth: 'Gerätezustand',
+            deviceHealthTooltip:
+                'Fehlende Temperaturquellen lassen sich ersetzen, indem der betroffene<br>Benutzerdefinierte Sensor, das Profil oder die LCD-Einstellung<br>erneut bearbeitet und gespeichert wird.',
+            deviceHealthOk: 'Alle Sensoren und Kanäle sind fehlerfrei.',
+            failsafeActive: 'Failsafe-Werte in Verwendung',
+            missingTempSource: 'Fehlende Temperaturquelle',
+            staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
                 'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Installieren Sie stress-ng für zusätzliche Backends.',

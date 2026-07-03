@@ -19,7 +19,13 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiContentSaveOutline, mdiFolderSearchOutline, mdiMemory, mdiRestart } from '@mdi/js'
+import {
+    mdiAlertCircle,
+    mdiContentSaveOutline,
+    mdiFolderSearchOutline,
+    mdiMemory,
+    mdiRestart,
+} from '@mdi/js'
 import {
     CustomSensor,
     CustomSensorMixFunctionType,
@@ -58,6 +64,7 @@ import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     customSensorID?: string
@@ -258,6 +265,19 @@ const fillChosenTempSources = () => {
     }
 }
 fillChosenTempSources()
+
+// Sources in the saved config whose target temp is gone. They are invisible in the
+// pickers below and will be dropped on save.
+const droppedSources: Array<string> = customSensor.sources
+    .filter(
+        (sourceData) =>
+            !tempSources.value.some(
+                (device) =>
+                    device.deviceUID === sourceData.temp_source.device_uid &&
+                    device.temps.some((temp) => temp.tempName === sourceData.temp_source.temp_name),
+            ),
+    )
+    .map((sourceData) => sourceData.temp_source.temp_name)
 
 const fillChosenOffsetTempSource = () => {
     chosenOffsetTempSource.value = undefined
@@ -703,6 +723,25 @@ onMounted(async () => {
         style="--scrollbar-size: 10px"
     >
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <health-warning kind="custom-sensor" :entity-uid="props.customSensorID" class="mb-4" />
+            <div
+                v-if="droppedSources.length > 0"
+                class="mb-4 flex flex-row items-center gap-2 rounded-lg border border-warning bg-warning/10 p-3"
+            >
+                <svg-icon
+                    type="mdi"
+                    class="text-warning min-w-6"
+                    :path="mdiAlertCircle"
+                    :size="deviceStore.getREMSize(1.25)"
+                />
+                <span>
+                    {{
+                        t('views.customSensors.missingSourcesNotice', {
+                            sources: droppedSources.join(', '),
+                        })
+                    }}
+                </span>
+            </div>
             <div class="w-full flex flex-col lg:flex-row">
                 <div class="mt-0 mr-4 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">

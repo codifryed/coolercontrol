@@ -49,7 +49,9 @@ import { inject, onMounted, onUnmounted, ref, Ref, toRaw, watch } from 'vue'
 import { ElCollapse, ElCollapseItem } from 'element-plus'
 import 'element-plus/es/components/collapse/style/css'
 import Popover from 'primevue/popover'
+import MenuHealthIcon from '@/components/menu/MenuHealthIcon.vue'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
+import { HealthEntityType } from '@/models/DeviceHealth.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
@@ -244,6 +246,112 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
         // channels, etc.
         return 1.5
     }
+}
+
+// Health badges are evaluated in-template from the reactive health lists, since the
+// tree itself is event-driven and only rebuilt on structural changes.
+const nodeHealthReasons = (item: any): Array<string> => {
+    if (item.deviceUID === 'Profiles') {
+        const reasons: Array<string> = []
+        if (
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
+            )
+        ) {
+            reasons.push(t('views.appInfo.missingTempSource'))
+        }
+        if (
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
+            )
+        ) {
+            reasons.push(t('views.appInfo.staleTempSource'))
+        }
+        return reasons
+    }
+    if (item.name == null || item.deviceUID == null) {
+        return []
+    }
+    const reasons: Array<string> = []
+    const failsafeRef = settingsStore.healthFailsafe.find(
+        (ref) => ref.device_uid === item.deviceUID && ref.name === item.name,
+    )
+    if (failsafeRef != null) {
+        reasons.push(
+            failsafeRef.reason
+                ? `${t('views.appInfo.failsafeActive')}: ${failsafeRef.reason}`
+                : t('views.appInfo.failsafeActive'),
+        )
+    }
+    // A failsafed custom sensor already carries "source missing" in its reason,
+    // so only report a missing source separately when it is not failsafed.
+    const missing =
+        (item.to?.name === 'custom-sensors' &&
+            failsafeRef == null &&
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.CustomSensor &&
+                    ref.entity_uid === item.name,
+            )) ||
+        (item.to?.name === 'device-lcd' &&
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Lcd &&
+                    ref.entity_uid === item.deviceUID &&
+                    ref.channel_name === item.name,
+            ))
+    if (missing) {
+        reasons.push(t('views.appInfo.missingTempSource'))
+    }
+    const stale =
+        (item.to?.name === 'custom-sensors' &&
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.CustomSensor &&
+                    ref.entity_uid === item.name,
+            )) ||
+        (item.to?.name === 'device-lcd' &&
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Lcd &&
+                    ref.entity_uid === item.deviceUID &&
+                    ref.channel_name === item.name,
+            ))
+    if (stale) {
+        reasons.push(t('views.appInfo.staleTempSource'))
+    }
+    return reasons
+}
+
+const nodeIsUnhealthy = (item: any): boolean => nodeHealthReasons(item).length > 0
+
+// The newline renders via the tooltip preset's whitespace-pre-line, keeping
+// the reasons visually separate from the general Device Health hint.
+const healthTooltip = (reasons: Array<string>): string =>
+    reasons.length === 0
+        ? ''
+        : `${[...new Set(reasons)].join('. ')}.\n${t('layout.menu.tooltips.seeDeviceHealth')}`
+
+const nodeHealthTooltip = (item: any): string => healthTooltip(nodeHealthReasons(item))
+
+// The badge bubbles up to the parent row only while it is collapsed.
+const collapsedParentIsUnhealthy = (item: any): boolean =>
+    !(settingsStore.expandedMenuIds ?? []).includes(item.id) &&
+    (item.children ?? []).some(nodeIsUnhealthy)
+
+const collapsedParentHealthTooltip = (item: any): string =>
+    collapsedParentIsUnhealthy(item)
+        ? healthTooltip((item.children ?? []).flatMap(nodeHealthReasons))
+        : ''
+
+const channelIconSpins = (item: any): boolean => {
+    if (!settingsStore.eyeCandy || item.icon !== mdiFan) {
+        return false
+    }
+    const values = deviceChannelValues(item.deviceUID, item.name)
+    return item.rpm != null ? Number(values?.rpm ?? 0) > 0 : Number(values?.duty ?? 0) > 0
 }
 
 const data: Ref<Array<Tree>> = ref([])
@@ -1357,40 +1465,23 @@ onUnmounted(() => {
                                 class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
                                 :class="{ 'h-12': childItem.isControllable || childItem.hasMode }"
                             />
-                            <svg-icon
+                            <menu-health-icon
                                 v-if="childItem.icon"
                                 class="mr-1.5 min-w-6"
-                                :class="{
-                                    'text-accent': childItem.isActive,
-                                    'text-error': childItem.alertIsActive,
-                                    'animate-spin-slow':
-                                        settingsStore.eyeCandy &&
-                                        childItem.icon === mdiFan &&
-                                        (childItem.rpm != null
-                                            ? Number(
-                                                  deviceChannelValues(
-                                                      childItem.deviceUID,
-                                                      childItem.name,
-                                                  )?.rpm ?? 0,
-                                              ) > 0
-                                            : Number(
-                                                  deviceChannelValues(
-                                                      childItem.deviceUID,
-                                                      childItem.name,
-                                                  )?.duty ?? 0,
-                                              ) > 0),
-                                }"
-                                type="mdi"
-                                :path="childItem.icon ?? ''"
-                                :style="{
-                                    color: deviceChannelColor(childItem.deviceUID, childItem.name)
-                                        .value,
-                                }"
+                                :icon-path="childItem.icon ?? ''"
                                 :size="
                                     deviceStore.getREMSize(
                                         deviceChannelIconSize(childItem.deviceUID, childItem.name),
                                     )
                                 "
+                                :tooltip="nodeHealthTooltip(childItem)"
+                                :unhealthy="nodeIsUnhealthy(childItem)"
+                                :color="
+                                    deviceChannelColor(childItem.deviceUID, childItem.name).value
+                                "
+                                :active="childItem.isActive"
+                                :alert-active="childItem.alertIsActive"
+                                :spins="channelIconSpins(childItem)"
                             />
                             <div class="flex flex-col overflow-hidden">
                                 <div
@@ -1820,17 +1911,18 @@ onUnmounted(() => {
                         class="flex group h-full w-full items-center justify-between outline-none"
                     >
                         <div class="flex flex-row items-center min-w-0">
-                            <svg-icon
+                            <menu-health-icon
                                 v-if="item.icon"
                                 class="mr-1.5 min-w-7 w-7"
-                                type="mdi"
-                                :path="item.icon"
-                                :style="{ color: getIconColor(item) }"
+                                :icon-path="item.icon"
                                 :size="
                                     deviceStore.getREMSize(
                                         deviceChannelIconSize(item.deviceUID, item.name),
                                     )
                                 "
+                                :tooltip="collapsedParentHealthTooltip(item)"
+                                :unhealthy="collapsedParentIsUnhealthy(item)"
+                                :color="getIconColor(item)"
                             />
                             <div class="flex flex-col overflow-hidden">
                                 <div
@@ -2052,37 +2144,10 @@ onUnmounted(() => {
                                     }"
                                     :style="{ 'border-color': getSideBorderColor(item) }"
                                 />
-                                <svg-icon
+                                <menu-health-icon
                                     v-if="childItem.icon"
                                     class="mr-1.5 min-w-6"
-                                    :class="{
-                                        'text-accent': childItem.isActive,
-                                        'text-error': childItem.alertIsActive,
-                                        'animate-spin-slow':
-                                            settingsStore.eyeCandy &&
-                                            childItem.icon === mdiFan &&
-                                            (childItem.rpm != null
-                                                ? Number(
-                                                      deviceChannelValues(
-                                                          childItem.deviceUID,
-                                                          childItem.name,
-                                                      )?.rpm ?? 0,
-                                                  ) > 0
-                                                : Number(
-                                                      deviceChannelValues(
-                                                          childItem.deviceUID,
-                                                          childItem.name,
-                                                      )?.duty ?? 0,
-                                                  ) > 0),
-                                    }"
-                                    type="mdi"
-                                    :path="childItem.icon ?? ''"
-                                    :style="{
-                                        color: deviceChannelColor(
-                                            childItem.deviceUID,
-                                            childItem.name,
-                                        ).value,
-                                    }"
+                                    :icon-path="childItem.icon ?? ''"
                                     :size="
                                         deviceStore.getREMSize(
                                             deviceChannelIconSize(
@@ -2091,6 +2156,15 @@ onUnmounted(() => {
                                             ),
                                         )
                                     "
+                                    :tooltip="nodeHealthTooltip(childItem)"
+                                    :unhealthy="nodeIsUnhealthy(childItem)"
+                                    :color="
+                                        deviceChannelColor(childItem.deviceUID, childItem.name)
+                                            .value
+                                    "
+                                    :active="childItem.isActive"
+                                    :alert-active="childItem.alertIsActive"
+                                    :spins="channelIconSpins(childItem)"
                                 />
                                 <div class="flex flex-col overflow-hidden">
                                     <div

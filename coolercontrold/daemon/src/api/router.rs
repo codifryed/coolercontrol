@@ -17,8 +17,9 @@
  */
 
 use crate::api::{
-    alerts, auth, base, calibration, custom_sensors, detect, functions, metrics, modes, plugins,
-    profile_generation, profiles, settings, sse, stats, status, stress_test, tokens,
+    alerts, auth, base, calibration, custom_sensors, detect, device_health, functions, metrics,
+    modes, plugins, profile_generation, profiles, settings, sse, stats, status, stress_test,
+    tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -35,6 +36,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(auth_routes())
         .merge(token_routes())
         .merge(device_routes())
+        .merge(device_health_routes())
         .merge(status_routes())
         .merge(stats_routes())
         .merge(profile_routes())
@@ -1030,6 +1032,23 @@ fn plugins_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
+}
+
+fn device_health_routes() -> ApiRouter<AppState> {
+    ApiRouter::new().api_route(
+        "/devices/health",
+        get_with(device_health::get_all, |o| {
+            o.summary("Retrieve Device Health")
+                .description(
+                    "Returns the failsafe channels and missing temp-source references \
+                     currently tracked by the daemon.",
+                )
+                .tag("device")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .layer(axum::middleware::from_fn(auth::auth_middleware)),
+    )
 }
 
 fn alert_routes() -> ApiRouter<AppState> {

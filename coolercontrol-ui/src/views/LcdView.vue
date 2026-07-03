@@ -63,6 +63,7 @@ import { svgLoader, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import { Emitter, EventType } from 'mitt'
+import HealthWarning from '@/components/HealthWarning.vue'
 
 interface Props {
     deviceId: UID
@@ -504,6 +505,12 @@ onUnmounted(() => {
     </div>
     <ScrollAreaRoot id="lcd-control-pane" style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <health-warning
+                kind="lcd"
+                :device-uid="props.deviceId"
+                :channel-name="props.channelName"
+                class="mb-4"
+            />
             <div class="w-full flex flex-col lg:flex-row">
                 <div id="left-side">
                     <div class="mt-0 mr-4 w-96">

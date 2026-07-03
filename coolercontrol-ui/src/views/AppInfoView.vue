@@ -20,8 +20,10 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
+    mdiAlertCircle,
     mdiArrowCollapseVertical,
     mdiArrowExpandVertical,
+    mdiCheckCircle,
     mdiCircle,
     mdiCogOutline,
     mdiCompassOutline,
@@ -38,12 +40,24 @@ import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import SelectButton from 'primevue/selectbutton'
 import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { DeviceType } from '@/models/Device.ts'
+import HelpTooltipIcon from '@/components/info/HelpTooltipIcon.vue'
+import StressTestLabel from '@/components/info/StressTestLabel.vue'
+import StressBackendSelect from '@/components/info/StressBackendSelect.vue'
+import {
+    FailsafeRef,
+    failsafeKey,
+    HealthEntityType,
+    SourceRef,
+    sourceKey,
+    sourceTempDisplayName,
+} from '@/models/DeviceHealth.ts'
+import type { RouteLocationRaw } from 'vue-router'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
@@ -89,6 +103,141 @@ const getDaemonStatusTranslationKey = (daemonStatus: DaemonStatus) =>
             return 'hasErrors'
         },
     })
+
+interface HealthRow {
+    key: string
+    label: string
+    detail: string
+    to: RouteLocationRaw
+}
+
+const failsafeRoute = (ref: FailsafeRef): RouteLocationRaw => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== ref.device_uid) continue
+        if (device.type === DeviceType.CUSTOM_SENSORS) {
+            return { name: 'custom-sensors', params: { customSensorID: ref.name } }
+        }
+        if (device.info?.channels.get(ref.name)?.speed_options != null) {
+            return {
+                name: 'device-speed',
+                params: { deviceUID: ref.device_uid, channelName: ref.name },
+            }
+        }
+        break
+    }
+    return {
+        name: 'single-dashboard',
+        params: { deviceUID: ref.device_uid, channelName: ref.name },
+    }
+}
+
+const sourceRoute = (ref: SourceRef): RouteLocationRaw => {
+    switch (ref.entity_type) {
+        case HealthEntityType.CustomSensor:
+            return { name: 'custom-sensors', params: { customSensorID: ref.entity_uid } }
+        case HealthEntityType.Profile:
+            return { name: 'profiles', params: { profileUID: ref.entity_uid } }
+        case HealthEntityType.Lcd:
+            return {
+                name: 'device-lcd',
+                params: { deviceId: ref.entity_uid, channelName: ref.channel_name },
+            }
+    }
+}
+
+const entityTypeLabel = (type: HealthEntityType): string => {
+    switch (type) {
+        case HealthEntityType.CustomSensor:
+            return t('layout.add.customSensor')
+        case HealthEntityType.Profile:
+            return t('layout.add.profile')
+        case HealthEntityType.Lcd:
+            return t('models.channelType.lcd')
+    }
+}
+
+const customSensorsDeviceUID = computed((): string | undefined => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid
+    }
+    return undefined
+})
+
+const customSensorLabel = (sensorId: string): string => {
+    if (customSensorsDeviceUID.value == null) return sensorId
+    return (
+        settingsStore.allUIDeviceSettings
+            .get(customSensorsDeviceUID.value)
+            ?.sensorsAndChannels.get(sensorId)?.name ?? sensorId
+    )
+}
+
+const sourceEntityLabel = (ref: SourceRef): string => {
+    switch (ref.entity_type) {
+        case HealthEntityType.CustomSensor:
+            return customSensorLabel(ref.entity_uid)
+        case HealthEntityType.Lcd: {
+            const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.entity_uid)
+            const channelName =
+                deviceSettings?.sensorsAndChannels.get(ref.channel_name ?? '')?.name ??
+                ref.channel_name
+            return `${deviceSettings?.name ?? ref.entity_name} | ${channelName}`
+        }
+        default:
+            return ref.entity_name
+    }
+}
+
+const sourceTempLabel = (ref: SourceRef): string =>
+    sourceTempDisplayName(ref, settingsStore.allUIDeviceSettings)
+
+const failsafeDetail = (ref: FailsafeRef): string =>
+    ref.reason
+        ? `${t('views.appInfo.failsafeActive')}: ${ref.reason}`
+        : t('views.appInfo.failsafeActive')
+
+const healthRows = computed((): Array<HealthRow> => {
+    const rows: Array<HealthRow> = []
+    const failsafedCustomSensors = new Set<string>()
+    for (const ref of settingsStore.healthFailsafe) {
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
+        const channelName = deviceSettings?.sensorsAndChannels.get(ref.name)?.name ?? ref.name
+        if (customSensorsDeviceUID.value === ref.device_uid) {
+            failsafedCustomSensors.add(ref.name)
+        }
+        rows.push({
+            key: `failsafe/${failsafeKey(ref)}`,
+            label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
+            detail: failsafeDetail(ref),
+            to: failsafeRoute(ref),
+        })
+    }
+    for (const ref of settingsStore.healthMissing) {
+        // A custom sensor with a missing source is also failsafed with that source in
+        // its reason, and both rows link to the same editor, so skip the duplicate.
+        if (
+            ref.entity_type === HealthEntityType.CustomSensor &&
+            failsafedCustomSensors.has(ref.entity_uid)
+        ) {
+            continue
+        }
+        rows.push({
+            key: `missing/${sourceKey(ref)}`,
+            label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
+            detail: `${t('views.appInfo.missingTempSource')}: ${sourceTempLabel(ref)}`,
+            to: sourceRoute(ref),
+        })
+    }
+    for (const ref of settingsStore.healthStaleSource) {
+        rows.push({
+            key: `stale-source/${sourceKey(ref)}`,
+            label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
+            detail: `${t('views.appInfo.staleTempSource')}: ${sourceTempLabel(ref)}`,
+            to: sourceRoute(ref),
+        })
+    }
+    return rows
+})
 
 const expandLogs = ref(false)
 const onExpandClick = async () => {
@@ -167,11 +316,6 @@ const driveLoading = ref(false)
 const availableDrives = ref<Array<{ device_path: string; model?: string; size_bytes: number }>>([])
 const selectedDrive = ref<string | null>(null)
 let statusPollInterval: ReturnType<typeof setInterval> | null = null
-
-const backendOptions = computed(() => [
-    { label: t('views.appInfo.stressNgBackend'), value: 'stress_ng' },
-    { label: t('views.appInfo.builtInBackend'), value: 'built_in' },
-])
 
 const pollStatus = async () => {
     const status = await deviceStore.daemonClient.stressTestStatus()
@@ -624,6 +768,48 @@ onBeforeUnmount(() => {
                         >&nbsp;- {{ t('views.appInfo.discordDesc') }}
                     </p>
                 </div>
+                <!-- Device Health -->
+                <div class="xl:col-span-2">
+                    <div
+                        class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                    >
+                        <div class="mb-4 flex flex-row items-center gap-2">
+                            <span class="font-semibold text-xl text-text-color">{{
+                                t('views.appInfo.deviceHealth')
+                            }}</span>
+                            <help-tooltip-icon :tooltip="t('views.appInfo.deviceHealthTooltip')" />
+                        </div>
+                        <div
+                            v-if="healthRows.length === 0"
+                            class="flex flex-row items-center gap-2"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                class="text-success"
+                                :path="mdiCheckCircle"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                            <span>{{ t('views.appInfo.deviceHealthOk') }}</span>
+                        </div>
+                        <div v-else class="flex flex-col gap-2">
+                            <router-link
+                                v-for="row in healthRows"
+                                :key="row.key"
+                                :to="row.to"
+                                class="flex flex-row items-center gap-2 outline-none hover:underline"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    class="text-warning min-w-6"
+                                    :path="mdiAlertCircle"
+                                    :size="deviceStore.getREMSize(1.25)"
+                                />
+                                <span>{{ row.label }}</span>
+                                <span class="text-text-color-secondary">{{ row.detail }}</span>
+                            </router-link>
+                        </div>
+                    </div>
+                </div>
                 <!-- Stress Test -->
                 <div class="xl:col-span-2">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
@@ -632,15 +818,8 @@ onBeforeUnmount(() => {
                                 <span class="font-semibold text-xl text-text-color">{{
                                     t('views.appInfo.stressTest')
                                 }}</span>
-                                <svg-icon
-                                    v-tooltip.top="{
-                                        escape: false,
-                                        value: t('views.appInfo.stressTestTooltip'),
-                                    }"
-                                    type="mdi"
-                                    class="text-warning cursor-help"
-                                    :path="mdiHelpCircleOutline"
-                                    :size="deviceStore.getREMSize(1.25)"
+                                <help-tooltip-icon
+                                    :tooltip="t('views.appInfo.stressTestTooltip')"
                                 />
                             </div>
                             <Button
@@ -713,17 +892,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !cpuActive"
                                                 v-model="settingsStore.cpuStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -737,14 +908,10 @@ onBeforeUnmount(() => {
                                 <!-- GPU Stress -->
                                 <tr>
                                     <td class="pr-4">
-                                        <span
-                                            v-tooltip.top="{
-                                                escape: false,
-                                                value: t('views.appInfo.gpuStressTooltip'),
-                                            }"
-                                            class="font-bold text-lg cursor-help"
-                                            >{{ t('views.appInfo.gpuStress') }}</span
-                                        >
+                                        <stress-test-label
+                                            :label="t('views.appInfo.gpuStress')"
+                                            :tooltip="t('views.appInfo.gpuStressTooltip')"
+                                        />
                                     </td>
                                     <td class="pr-4">
                                         <InputNumber
@@ -799,17 +966,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !gpuActive"
                                                 v-model="settingsStore.gpuStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -881,17 +1040,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !ramActive"
                                                 v-model="settingsStore.ramStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -905,14 +1056,10 @@ onBeforeUnmount(() => {
                                 <!-- Drive Stress -->
                                 <tr>
                                     <td class="pr-4">
-                                        <span
-                                            v-tooltip.top="{
-                                                escape: false,
-                                                value: t('views.appInfo.driveStressTooltip'),
-                                            }"
-                                            class="font-bold text-lg cursor-help"
-                                            >{{ t('views.appInfo.driveStress') }}</span
-                                        >
+                                        <stress-test-label
+                                            :label="t('views.appInfo.driveStress')"
+                                            :tooltip="t('views.appInfo.driveStressTooltip')"
+                                        />
                                     </td>
                                     <td class="pr-4">
                                         <div class="flex items-center gap-2">
@@ -983,17 +1130,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !driveActive"
                                                 v-model="settingsStore.driveStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span

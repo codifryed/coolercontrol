@@ -77,6 +77,7 @@ use crate::device::{
     DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp,
     TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
+use crate::device_health::FailsafeRef;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
@@ -1426,6 +1427,19 @@ async fn apply_pwm_duty_write(
 impl Repository for HwmonRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Hwmon
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        let mut out = Vec::new();
+        let fsd_map = self.failsafe_statuses.borrow();
+        for (device_uid, (device_lock, _)) in &self.devices {
+            let type_index = device_lock.borrow().type_index;
+            let Some(fsd) = fsd_map.get(&type_index) else {
+                continue;
+            };
+            out.extend(fsd.per_channel_failsafe_refs(device_uid));
+        }
+        out
     }
 
     #[allow(clippy::too_many_lines)]

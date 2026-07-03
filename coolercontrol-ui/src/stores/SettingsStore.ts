@@ -56,6 +56,16 @@ import { Dashboard } from '@/models/Dashboard.ts'
 import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
 import { Alert, AlertLog, AlertState } from '@/models/Alert.ts'
+import {
+    DeviceHealthDTO,
+    FailsafeDelta,
+    failsafeKey,
+    FailsafeRef,
+    HealthState,
+    SourceDelta,
+    sourceKey,
+    SourceRef,
+} from '@/models/DeviceHealth.ts'
 import { useI18n } from 'vue-i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -89,6 +99,10 @@ export const useSettingsStore = defineStore('settings', () => {
     const alerts: Ref<Array<Alert>> = ref([])
     const alertLogs: Ref<Array<AlertLog>> = ref([])
     const alertsActive: Ref<Array<UID>> = ref([])
+
+    const healthFailsafe: Ref<Array<FailsafeRef>> = ref([])
+    const healthMissing: Ref<Array<SourceRef>> = ref([])
+    const healthStaleSource: Ref<Array<SourceRef>> = ref([])
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -294,6 +308,7 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadCCAllDeviceSettings()
 
         await loadAlertsAndLogs()
+        await loadDeviceHealth()
         await loadFunctions()
         await loadProfiles()
         await loadModes()
@@ -805,6 +820,48 @@ export const useSettingsStore = defineStore('settings', () => {
         alerts.value = alertsDTO.alerts
         alertLogs.value.length = 0
         alertLogs.value = alertsDTO.logs
+    }
+
+    async function loadDeviceHealth(): Promise<void> {
+        console.debug('Loading Device Health')
+        applyDeviceHealthSnapshot(await deviceStore.daemonClient.loadDeviceHealth())
+    }
+
+    function applyDeviceHealthSnapshot(health: DeviceHealthDTO): void {
+        healthFailsafe.value = health.failsafe
+        healthMissing.value = health.missing
+        healthStaleSource.value = health.stale_source
+    }
+
+    function applyFailsafeDelta(delta: FailsafeDelta): void {
+        const index = healthFailsafe.value.findIndex(
+            (ref) => failsafeKey(ref) === failsafeKey(delta),
+        )
+        if (delta.state === HealthState.Detected && index === -1) {
+            healthFailsafe.value.push(delta)
+        } else if (delta.state === HealthState.Resolved && index > -1) {
+            healthFailsafe.value.splice(index, 1)
+        }
+    }
+
+    function applyMissingDelta(delta: SourceDelta): void {
+        const index = healthMissing.value.findIndex((ref) => sourceKey(ref) === sourceKey(delta))
+        if (delta.state === HealthState.Detected && index === -1) {
+            healthMissing.value.push(delta)
+        } else if (delta.state === HealthState.Resolved && index > -1) {
+            healthMissing.value.splice(index, 1)
+        }
+    }
+
+    function applyStaleSourceDelta(delta: SourceDelta): void {
+        const index = healthStaleSource.value.findIndex(
+            (ref) => sourceKey(ref) === sourceKey(delta),
+        )
+        if (delta.state === HealthState.Detected && index === -1) {
+            healthStaleSource.value.push(delta)
+        } else if (delta.state === HealthState.Resolved && index > -1) {
+            healthStaleSource.value.splice(index, 1)
+        }
     }
 
     async function createAlert(alert: Alert): Promise<boolean> {
@@ -1373,6 +1430,14 @@ export const useSettingsStore = defineStore('settings', () => {
         createAlert,
         updateAlert,
         deleteAlert,
+        healthFailsafe,
+        healthMissing,
+        healthStaleSource,
+        loadDeviceHealth,
+        applyDeviceHealthSnapshot,
+        applyFailsafeDelta,
+        applyMissingDelta,
+        applyStaleSourceDelta,
         applyThemeMode,
         tags,
         createTag,

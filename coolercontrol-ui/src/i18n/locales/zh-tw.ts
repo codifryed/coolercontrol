@@ -332,6 +332,7 @@ export default {
                 chooseColor: '選擇顏色',
                 deviceSettings: '進階裝置設定',
                 options: '更多選項',
+                seeDeviceHealth: '如需總覽請在資訊與工具中查看裝置健康',
                 moveTop: '移至頂部',
                 moveBottom: '移至底部',
                 disable: '停用',
@@ -460,6 +461,13 @@ export default {
             whatsNewDesc: '查看最新版本說明',
             logsAndDiagnostics: '日誌和診斷',
             downloadCurrentLog: '下載當前日誌',
+            deviceHealth: '裝置健康',
+            deviceHealthTooltip:
+                '缺少的溫度來源可以透過重新編輯並保存受影響的<br>自定義傳感器、設定檔或 LCD 設定來替換。',
+            deviceHealthOk: '所有感測器與通道均正常。',
+            failsafeActive: '正在使用故障保護值',
+            missingTempSource: '缺少溫度來源',
+            staleTempSource: '溫度來源正在使用故障保護值',
             stressTest: '熱壓力測試',
             stressTestTooltip:
                 '生成持續熱負載以驗證<br>風扇曲線和冷卻配置文件。<br>結果可能因硬體而異。<br>安裝 stress-ng 以獲得額外的後端。',
@@ -580,6 +588,7 @@ export default {
             curveLimitedByFirmware: '曲線被裝置韌體風扇曲線限制為 {n} 點。',
         },
         customSensors: {
+            missingSourcesNotice: '以下溫度來源已不存在，儲存時將被移除: {sources}',
             newSensor: '新傳感器',
             sensorType: '傳感器類型',
             type: '類型',

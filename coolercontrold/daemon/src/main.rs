@@ -51,6 +51,7 @@ mod calibration;
 mod cc_fs;
 mod config;
 mod device;
+mod device_health;
 mod device_listener;
 mod engine;
 mod grpc_api;
@@ -341,6 +342,11 @@ fn main() -> Result<()> {
                 );
                 let alert_controller =
                     Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                let device_health_controller = Rc::new(device_health::DeviceHealthController::new(
+                    Rc::clone(&all_devices),
+                    Rc::clone(&config),
+                    Rc::clone(&repos),
+                ));
                 AlertController::watch_for_shutdown(
                     &alert_controller,
                     run_token.clone(),
@@ -374,6 +380,7 @@ fn main() -> Result<()> {
                     custom_sensors_repo,
                     Rc::clone(&mode_controller),
                     Rc::clone(&alert_controller),
+                    Rc::clone(&device_health_controller),
                     plugin_controller,
                     log_buf_handle,
                     status_handle.clone(),
@@ -397,6 +404,7 @@ fn main() -> Result<()> {
                     engine,
                     mode_controller,
                     alert_controller,
+                    device_health_controller,
                     status_handle,
                     run_token.clone(),
                 )
