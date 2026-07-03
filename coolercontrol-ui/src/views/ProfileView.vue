@@ -1997,7 +1997,10 @@ function onKnobMouseup(e: MouseEvent) {
 </script>
 
 <template>
-    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
+    <div
+        id="control-panel"
+        class="flex flex-wrap border-b-4 border-border-one items-center justify-between"
+    >
         <entity-title-rename
             :current-name="currentProfile.name"
             :save-name-function="saveNameFunction"
@@ -2204,8 +2207,9 @@ function onKnobMouseup(e: MouseEvent) {
                 </Button>
             </div>
         </div>
+        <!-- Inside #control-panel so the chart-height observer accounts for it. -->
+        <health-warning kind="profile" :entity-uid="props.profileUID" class="w-full mx-2 mb-2" />
     </div>
-    <health-warning kind="profile" :entity-uid="props.profileUID" class="mx-4 mt-4" />
     <!-- The UI Display: -->
     <div v-if="showGraph" class="flex flex-col w-full">
         <div class="flex flex-row justify-between mt-4 w-full">

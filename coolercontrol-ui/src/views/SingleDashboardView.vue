@@ -183,7 +183,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
+    <div
+        id="control-panel"
+        class="flex flex-wrap border-b-4 border-border-one items-center justify-between"
+    >
         <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
@@ -255,13 +258,14 @@ onUnmounted(() => {
                 />
             </div>
         </div>
+        <!-- Inside #control-panel so the chart-height observer accounts for it. -->
+        <health-warning
+            kind="channel"
+            :device-uid="props.deviceUID"
+            :channel-name="props.channelName"
+            class="w-full mx-2 mb-2"
+        />
     </div>
-    <health-warning
-        kind="channel"
-        :device-uid="props.deviceUID"
-        :channel-name="props.channelName"
-        class="mx-4 mt-4"
-    />
     <TimeChart
         v-if="singleDashboard.chartType == ChartType.TIME_CHART"
         :dashboard="singleDashboard"
