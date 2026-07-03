@@ -175,7 +175,7 @@ impl Engine {
 
     /// Log form of a device and channel pair with user overrides applied:
     /// `Device (raw) | Channel (raw)`, plain raw parts when no override.
-    fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
+    pub fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
         let raw_device_name = self
             .all_devices
             .get(device_uid)

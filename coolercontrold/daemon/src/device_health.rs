@@ -511,6 +511,63 @@ mod tests {
         ProfileKind,
     };
 
+    #[test]
+    fn source_device_name_prefers_override_then_live() {
+        // Goal: the health display name walks the layers override > live
+        // device name > config list, and yields None for unknown devices.
+        crate::rt::test_runtime(async {
+            use crate::device::{Device, DeviceInfo};
+            use crate::repositories::repository::Repositories;
+            use std::cell::RefCell;
+            use std::rc::Rc;
+
+            let device = Rc::new(RefCell::new(Device::new(
+                "nct6798".to_string(),
+                DeviceType::Hwmon,
+                0,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            )));
+            let device_uid = device.borrow().uid.clone();
+            let mut devices = HashMap::new();
+            devices.insert(device_uid.clone(), device);
+            let all_devices = Rc::new(devices);
+            let config = Rc::new(crate::config::Config::init_default_config().unwrap());
+            config.create_device_list(&all_devices);
+
+            let tmp = tempfile::tempdir().unwrap();
+            let overrides = Rc::new(
+                crate::overrides::OverridesController::init_from(tmp.path().join("overrides.toml"))
+                    .await,
+            );
+            let controller = DeviceHealthController::new(
+                Rc::clone(&all_devices),
+                config,
+                Rc::new(Repositories::default()),
+                Rc::clone(&overrides),
+            );
+
+            // Live layer without an override.
+            assert_eq!(
+                controller.source_device_name(&device_uid),
+                Some("nct6798".to_string())
+            );
+            // Override layer wins over live.
+            overrides
+                .set_device_name(&device_uid, "hint", Some("Motherboard"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.source_device_name(&device_uid),
+                Some("Motherboard".to_string())
+            );
+            // Unknown everywhere yields None.
+            assert_eq!(controller.source_device_name(&"unknown".to_string()), None);
+        });
+    }
+
     fn present_with(device_uid: &str, temps: &[&str]) -> HashMap<DeviceUID, HashSet<TempName>> {
         let set = temps.iter().map(|t| (*t).to_string()).collect();
         HashMap::from([(device_uid.to_string(), set)])
