@@ -51,8 +51,8 @@ import {
     FailsafeRef,
     failsafeKey,
     HealthEntityType,
-    MissingRef,
-    missingKey,
+    SourceRef,
+    sourceKey,
 } from '@/models/DeviceHealth.ts'
 import type { RouteLocationRaw } from 'vue-router'
 
@@ -128,7 +128,7 @@ const failsafeRoute = (ref: FailsafeRef): RouteLocationRaw => {
     }
 }
 
-const missingRoute = (ref: MissingRef): RouteLocationRaw => {
+const missingRoute = (ref: SourceRef): RouteLocationRaw => {
     switch (ref.entity_type) {
         case HealthEntityType.CustomSensor:
             return { name: 'custom-sensors', params: { customSensorID: ref.entity_uid } }
@@ -169,7 +169,7 @@ const customSensorLabel = (sensorId: string): string => {
     )
 }
 
-const missingEntityLabel = (ref: MissingRef): string => {
+const missingEntityLabel = (ref: SourceRef): string => {
     switch (ref.entity_type) {
         case HealthEntityType.CustomSensor:
             return customSensorLabel(ref.entity_uid)
@@ -217,14 +217,14 @@ const healthRows = computed((): Array<HealthRow> => {
         }
         // The referenced device is usually gone: prefer any user-set UI name, then the
         // daemon-resolved name from the config device list, which keeps gone devices.
-        const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.missing.device_uid)
+        const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.source.device_uid)
         const tempLabel =
-            sourceSettings?.sensorsAndChannels.get(ref.missing.temp_name)?.name ||
-            ref.missing.temp_name
-        const sourceDeviceName = sourceSettings?.name || ref.missing_device_name
+            sourceSettings?.sensorsAndChannels.get(ref.source.temp_name)?.name ||
+            ref.source.temp_name
+        const sourceDeviceName = sourceSettings?.name || ref.source_device_name
         const sourceName = sourceDeviceName ? `${sourceDeviceName}: ${tempLabel}` : tempLabel
         rows.push({
-            key: `missing/${missingKey(ref)}`,
+            key: `missing/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${missingEntityLabel(ref)}`,
             detail: `${t('views.appInfo.missingTempSource')}: ${sourceName}`,
             to: missingRoute(ref),

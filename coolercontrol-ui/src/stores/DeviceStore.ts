@@ -34,7 +34,7 @@ import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
-import { DeviceHealthDTO, FailsafeDelta, MissingDelta } from '@/models/DeviceHealth.ts'
+import { DeviceHealthDTO, FailsafeDelta, SourceDelta } from '@/models/DeviceHealth.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
@@ -906,7 +906,7 @@ export const useDeviceStore = defineStore('device', () => {
                     // events, one batch of deltas per subject per tick.
                     if (event.event === 'missing') {
                         for (const delta of plainToInstance(
-                            MissingDelta,
+                            SourceDelta,
                             JSON.parse(event.data) as Array<object>,
                         )) {
                             settingsStore.applyMissingDelta(delta)

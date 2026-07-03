@@ -46,9 +46,9 @@ pub enum HealthEntityType {
 
 /// A config reference whose temp-source target is absent from the current device
 /// set. The `entity_*` fields let a client badge and deep-link to the owning
-/// editor; `missing` is the unresolved {device_uid, temp_name}.
+/// editor; `source` is the referenced {device_uid, temp_name}.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct MissingRef {
+pub struct SourceRef {
     pub entity_type: HealthEntityType,
     /// Profile uid, Custom Sensor id, or the owning device uid for an LCD setting.
     pub entity_uid: UID,
@@ -57,11 +57,11 @@ pub struct MissingRef {
     /// The channel the setting is on. Only set for LCD references.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
-    pub missing: TempSource,
+    pub source: TempSource,
     /// Name of the device owning the missing temp, resolved from the live
     /// device set or the config `devices` list (gone devices stay listed).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub missing_device_name: Option<String>,
+    pub source_device_name: Option<String>,
 }
 
 /// Whether a failsafing node is a temp or a control channel. One entry per node
@@ -92,9 +92,9 @@ pub enum HealthState {
 
 /// SSE delta broadcast when a missing reference appears or resolves.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MissingDelta {
+pub struct SourceDelta {
     #[serde(flatten)]
-    pub reference: MissingRef,
+    pub reference: SourceRef,
     pub state: HealthState,
 }
 
@@ -112,7 +112,7 @@ pub struct FailsafeDelta {
 /// and cannot overflow the broadcast buffer.
 #[derive(Debug, Clone)]
 pub enum HealthEvent {
-    Missing(Vec<MissingDelta>),
+    Missing(Vec<SourceDelta>),
     Failsafe(Vec<FailsafeDelta>),
 }
 
@@ -120,7 +120,7 @@ pub enum HealthEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceHealthDto {
     pub failsafe: Vec<FailsafeRef>,
-    pub missing: Vec<MissingRef>,
+    pub missing: Vec<SourceRef>,
 }
 
 struct LcdRef {
@@ -138,11 +138,11 @@ pub struct DeviceHealthController {
     config: Rc<Config>,
     repos: Repos,
     handle: RefCell<Option<DeviceHealthHandle>>,
-    missing: RefCell<Vec<MissingRef>>,
+    missing: RefCell<Vec<SourceRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
     /// Temp-source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
-    candidates: RefCell<Vec<MissingRef>>,
+    candidates: RefCell<Vec<SourceRef>>,
     config_generation_seen: Cell<Option<u64>>,
 }
 
@@ -195,7 +195,7 @@ impl DeviceHealthController {
         self.collect_profile_candidates(&mut candidates).await;
         self.collect_lcd_candidates(&mut candidates);
         for candidate in &mut candidates {
-            candidate.missing_device_name = self.source_device_name(&candidate.missing.device_uid);
+            candidate.source_device_name = self.source_device_name(&candidate.source.device_uid);
         }
         self.candidates.replace(candidates);
         self.config_generation_seen.set(Some(generation));
@@ -218,7 +218,7 @@ impl DeviceHealthController {
         out
     }
 
-    fn scan_missing(&self) -> Vec<MissingRef> {
+    fn scan_missing(&self) -> Vec<SourceRef> {
         let present = self.build_present_temps();
         Self::filter_missing(&present, &self.candidates.borrow())
     }
@@ -240,21 +240,21 @@ impl DeviceHealthController {
         present
     }
 
-    fn collect_custom_sensor_candidates(&self, candidates: &mut Vec<MissingRef>) {
+    fn collect_custom_sensor_candidates(&self, candidates: &mut Vec<SourceRef>) {
         let Ok(sensors) = self.config.get_custom_sensors() else {
             return;
         };
         Self::custom_sensor_candidates(&sensors, candidates);
     }
 
-    async fn collect_profile_candidates(&self, candidates: &mut Vec<MissingRef>) {
+    async fn collect_profile_candidates(&self, candidates: &mut Vec<SourceRef>) {
         let Ok(profiles) = self.config.get_profiles().await else {
             return;
         };
         Self::profile_candidates(&profiles, candidates);
     }
 
-    fn collect_lcd_candidates(&self, candidates: &mut Vec<MissingRef>) {
+    fn collect_lcd_candidates(&self, candidates: &mut Vec<SourceRef>) {
         let refs = self.lcd_refs();
         Self::lcd_candidates(&refs, candidates);
     }
@@ -283,57 +283,57 @@ impl DeviceHealthController {
         refs
     }
 
-    fn custom_sensor_candidates(sensors: &[CustomSensor], candidates: &mut Vec<MissingRef>) {
+    fn custom_sensor_candidates(sensors: &[CustomSensor], candidates: &mut Vec<SourceRef>) {
         for sensor in sensors {
             for source_data in sensor.sources() {
-                candidates.push(MissingRef {
+                candidates.push(SourceRef {
                     entity_type: HealthEntityType::CustomSensor,
                     entity_uid: sensor.id.clone(),
                     entity_name: sensor.id.clone(),
                     channel_name: None,
-                    missing: source_data.temp_source.clone(),
-                    missing_device_name: None,
+                    source: source_data.temp_source.clone(),
+                    source_device_name: None,
                 });
             }
         }
     }
 
-    fn profile_candidates(profiles: &[Profile], candidates: &mut Vec<MissingRef>) {
+    fn profile_candidates(profiles: &[Profile], candidates: &mut Vec<SourceRef>) {
         for profile in profiles {
             let Some(source) = profile.temp_source() else {
                 continue;
             };
-            candidates.push(MissingRef {
+            candidates.push(SourceRef {
                 entity_type: HealthEntityType::Profile,
                 entity_uid: profile.uid.clone(),
                 entity_name: profile.name.clone(),
                 channel_name: None,
-                missing: source.clone(),
-                missing_device_name: None,
+                source: source.clone(),
+                source_device_name: None,
             });
         }
     }
 
-    fn lcd_candidates(refs: &[LcdRef], candidates: &mut Vec<MissingRef>) {
+    fn lcd_candidates(refs: &[LcdRef], candidates: &mut Vec<SourceRef>) {
         for lcd in refs {
-            candidates.push(MissingRef {
+            candidates.push(SourceRef {
                 entity_type: HealthEntityType::Lcd,
                 entity_uid: lcd.device_uid.clone(),
                 entity_name: lcd.device_name.clone(),
                 channel_name: Some(lcd.channel_name.clone()),
-                missing: lcd.source.clone(),
-                missing_device_name: None,
+                source: lcd.source.clone(),
+                source_device_name: None,
             });
         }
     }
 
     fn filter_missing(
         present: &HashMap<DeviceUID, HashSet<TempName>>,
-        candidates: &[MissingRef],
-    ) -> Vec<MissingRef> {
+        candidates: &[SourceRef],
+    ) -> Vec<SourceRef> {
         candidates
             .iter()
-            .filter(|candidate| Self::is_missing(present, &candidate.missing))
+            .filter(|candidate| Self::is_missing(present, &candidate.source))
             .cloned()
             .collect()
     }
@@ -344,14 +344,14 @@ impl DeviceHealthController {
             .is_none_or(|temps| temps.contains(&source.temp_name).not())
     }
 
-    fn diff_and_broadcast_missing(&self, current: Vec<MissingRef>) {
+    fn diff_and_broadcast_missing(&self, current: Vec<SourceRef>) {
         let (added, removed) = Self::diff_added_removed(&self.missing.borrow(), &current);
         self.missing.replace(current);
         let handle_ref = self.handle.borrow();
         let Some(handle) = handle_ref.as_ref() else {
             return;
         };
-        let deltas = Self::delta_batch(added, removed, |reference, state| MissingDelta {
+        let deltas = Self::delta_batch(added, removed, |reference, state| SourceDelta {
             reference,
             state,
         });
@@ -428,14 +428,14 @@ mod tests {
         }
     }
 
-    fn missing_ref(device_uid: &str, temp_name: &str) -> MissingRef {
-        MissingRef {
+    fn missing_ref(device_uid: &str, temp_name: &str) -> SourceRef {
+        SourceRef {
             entity_type: HealthEntityType::Profile,
             entity_uid: "p1".to_string(),
             entity_name: "Profile 1".to_string(),
             channel_name: None,
-            missing: source(device_uid, temp_name),
-            missing_device_name: None,
+            source: source(device_uid, temp_name),
+            source_device_name: None,
         }
     }
 
@@ -488,8 +488,8 @@ mod tests {
         ];
         let result = DeviceHealthController::filter_missing(&present, &candidates);
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].missing, source("dev1", "tempGone"));
-        assert_eq!(result[1].missing, source("devX", "temp1"));
+        assert_eq!(result[0].source, source("dev1", "tempGone"));
+        assert_eq!(result[1].source, source("devX", "temp1"));
     }
 
     #[test]
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(candidates[0].entity_type, HealthEntityType::Profile);
         assert_eq!(candidates[0].entity_uid, "p1");
         assert_eq!(candidates[0].entity_name, "CPU Fan");
-        assert_eq!(candidates[0].missing, source("dev1", "temp1"));
+        assert_eq!(candidates[0].source, source("dev1", "temp1"));
     }
 
     #[test]
@@ -605,8 +605,8 @@ mod tests {
         assert_eq!(candidates[0].entity_uid, "sensor1");
         assert_eq!(candidates[0].entity_name, "sensor1");
         assert_eq!(candidates[0].channel_name, None);
-        assert_eq!(candidates[0].missing, source("dev1", "temp1"));
-        assert_eq!(candidates[1].missing, source("dev2", "temp2"));
+        assert_eq!(candidates[0].source, source("dev1", "temp1"));
+        assert_eq!(candidates[1].source, source("dev2", "temp2"));
     }
 
     #[test]
@@ -626,7 +626,7 @@ mod tests {
         assert_eq!(candidates[0].entity_uid, "dev1");
         assert_eq!(candidates[0].entity_name, "Kraken");
         assert_eq!(candidates[0].channel_name, Some("lcd".to_string()));
-        assert_eq!(candidates[0].missing, source("dev2", "temp1"));
+        assert_eq!(candidates[0].source, source("dev2", "temp1"));
     }
 
     #[test]
@@ -636,12 +636,12 @@ mod tests {
         let deltas = DeviceHealthController::delta_batch(
             vec![missing_ref("dev1", "tempNew")],
             vec![missing_ref("dev1", "tempGone")],
-            |reference, state| MissingDelta { reference, state },
+            |reference, state| SourceDelta { reference, state },
         );
         assert_eq!(deltas.len(), 2);
-        assert_eq!(deltas[0].reference.missing, source("dev1", "tempNew"));
+        assert_eq!(deltas[0].reference.source, source("dev1", "tempNew"));
         assert_eq!(deltas[0].state, HealthState::Detected);
-        assert_eq!(deltas[1].reference.missing, source("dev1", "tempGone"));
+        assert_eq!(deltas[1].reference.source, source("dev1", "tempGone"));
         assert_eq!(deltas[1].state, HealthState::Resolved);
     }
 
@@ -676,7 +676,7 @@ mod tests {
         // Goal: guard the SSE wire shape the UI parses: a JSON array with the
         // entity fields flattened, the temp source nested, `channel_name`
         // absent when None, and the state alongside.
-        let deltas = vec![MissingDelta {
+        let deltas = vec![SourceDelta {
             reference: missing_ref("dev1", "tempGone"),
             state: HealthState::Resolved,
         }];
@@ -687,7 +687,7 @@ mod tests {
                 "entity_type": "Profile",
                 "entity_uid": "p1",
                 "entity_name": "Profile 1",
-                "missing": { "device_uid": "dev1", "temp_name": "tempGone" },
+                "source": { "device_uid": "dev1", "temp_name": "tempGone" },
                 "state": "Resolved",
             }])
         );

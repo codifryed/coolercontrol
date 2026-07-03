@@ -62,9 +62,9 @@ import {
     failsafeKey,
     FailsafeRef,
     HealthState,
-    MissingDelta,
-    missingKey,
-    MissingRef,
+    SourceDelta,
+    sourceKey,
+    SourceRef,
 } from '@/models/DeviceHealth.ts'
 import { useI18n } from 'vue-i18n'
 
@@ -101,7 +101,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const alertsActive: Ref<Array<UID>> = ref([])
 
     const healthFailsafe: Ref<Array<FailsafeRef>> = ref([])
-    const healthMissing: Ref<Array<MissingRef>> = ref([])
+    const healthMissing: Ref<Array<SourceRef>> = ref([])
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -842,8 +842,8 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
-    function applyMissingDelta(delta: MissingDelta): void {
-        const index = healthMissing.value.findIndex((ref) => missingKey(ref) === missingKey(delta))
+    function applyMissingDelta(delta: SourceDelta): void {
+        const index = healthMissing.value.findIndex((ref) => sourceKey(ref) === sourceKey(delta))
         if (delta.state === HealthState.Detected && index === -1) {
             healthMissing.value.push(delta)
         } else if (delta.state === HealthState.Resolved && index > -1) {

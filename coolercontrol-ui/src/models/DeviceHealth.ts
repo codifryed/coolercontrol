@@ -41,9 +41,9 @@ export class TempSource {
 }
 
 /**
- * A config temp-source reference whose target is absent from the current device set.
+ * A config entity's temp-source reference, as tracked by the health registries.
  */
-export class MissingRef {
+export class SourceRef {
     entity_type: HealthEntityType = HealthEntityType.CustomSensor
     /** Profile uid, Custom Sensor id, or the owning device uid for an LCD setting. */
     entity_uid: UID = ''
@@ -51,9 +51,9 @@ export class MissingRef {
     /** Only set for LCD references. */
     channel_name?: string
     @Type(() => TempSource)
-    missing: TempSource = new TempSource()
-    /** Daemon-resolved name of the device owning the missing temp, when known. */
-    missing_device_name?: string
+    source: TempSource = new TempSource()
+    /** Daemon-resolved name of the device owning the referenced temp, when known. */
+    source_device_name?: string
 }
 
 /**
@@ -68,7 +68,7 @@ export class FailsafeRef {
 }
 
 // The daemon flattens the reference into its SSE delta, so a delta IS a ref plus state.
-export class MissingDelta extends MissingRef {
+export class SourceDelta extends SourceRef {
     state: HealthState = HealthState.Detected
 }
 
@@ -80,12 +80,12 @@ export class FailsafeDelta extends FailsafeRef {
 export class DeviceHealthDTO {
     @Type(() => FailsafeRef)
     failsafe: Array<FailsafeRef> = []
-    @Type(() => MissingRef)
-    missing: Array<MissingRef> = []
+    @Type(() => SourceRef)
+    missing: Array<SourceRef> = []
 }
 
-export function missingKey(ref: MissingRef): string {
-    return `${ref.entity_type}/${ref.entity_uid}/${ref.channel_name ?? ''}/${ref.missing.device_uid}/${ref.missing.temp_name}`
+export function sourceKey(ref: SourceRef): string {
+    return `${ref.entity_type}/${ref.entity_uid}/${ref.channel_name ?? ''}/${ref.source.device_uid}/${ref.source.temp_name}`
 }
 
 export function failsafeKey(ref: FailsafeRef): string {
