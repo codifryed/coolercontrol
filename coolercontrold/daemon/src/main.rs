@@ -60,6 +60,7 @@ mod logger;
 mod main_loop;
 mod modes;
 mod notifier;
+mod overrides;
 mod paths;
 mod repositories;
 mod rt;

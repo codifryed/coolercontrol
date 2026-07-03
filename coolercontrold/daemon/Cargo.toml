@@ -173,7 +173,7 @@ libloading = "=0.8"
 sha2 = "0.11.0"
 argon2 = "0.5"
 subtle = "2.6"
-toml_edit = "0.23.9"
+toml_edit = { version = "0.23.9", features = ["serde"] }
 nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "signal",
