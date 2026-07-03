@@ -880,34 +880,41 @@ fn handle_error(err: anyhow::Error) -> CCError {
     err.into()
 }
 
+/// Validates a user-supplied name. Names are logged, persisted, and
+/// displayed by multiple clients, so every character that enables log,
+/// terminal, or display injection is rejected outright rather than
+/// escaped downstream.
 pub fn validate_name_string(name: &str) -> Result<(), CCError> {
-    let mut invalid_msg: Option<String> = None;
     if name.is_empty() {
-        invalid_msg = Some("name cannot be empty".to_string());
-    } else if name.len() > 50 {
-        invalid_msg = Some("name cannot be longer than 50 characters".to_string());
-    } else if name.contains('\t') {
-        invalid_msg = Some("name cannot contain tabs".to_string());
-    } else if name.contains('\n') {
-        invalid_msg = Some("name cannot contain newlines".to_string());
-    } else if name.contains('\r') {
-        invalid_msg = Some("name cannot contain carriage returns".to_string());
-    } else if name.contains('\0') {
-        invalid_msg = Some("name cannot contain null characters".to_string());
-    } else if name.contains('\x0B') {
-        invalid_msg = Some("name cannot contain vertical tabs".to_string());
-    } else if name.contains('\x0C') {
-        invalid_msg = Some("name cannot contain form feeds".to_string());
-    } else if name.contains('\x1B') {
-        invalid_msg = Some("name cannot contain escape characters".to_string());
-    } else if name.contains('\x7F') {
-        invalid_msg = Some("name cannot contain delete characters".to_string());
+        return Err(CCError::UserError {
+            msg: "name cannot be empty".to_string(),
+        });
     }
-    if let Some(msg) = invalid_msg {
-        Err(CCError::UserError { msg })
-    } else {
-        Ok(())
+    if name.len() > 50 {
+        return Err(CCError::UserError {
+            msg: "name cannot be longer than 50 characters".to_string(),
+        });
     }
+    if let Some(c) = name.chars().find(|c| is_forbidden_name_char(*c)) {
+        return Err(CCError::UserError {
+            msg: format!("name cannot contain the control or formatting character {c:?}"),
+        });
+    }
+    Ok(())
+}
+
+/// Control characters (C0, DEL, C1) enable log and terminal injection.
+/// The Unicode line and paragraph separators break line-oriented and JS
+/// string contexts. The bidirectional control characters enable visual
+/// spoofing of displayed and logged names.
+fn is_forbidden_name_char(c: char) -> bool {
+    if c.is_control() {
+        return true;
+    }
+    if c == '\u{2028}' || c == '\u{2029}' {
+        return true;
+    }
+    ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c)
 }
 
 /// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
@@ -1461,6 +1468,46 @@ mod tests {
     #[test]
     fn test_validate_name_rejects_delete() {
         assert!(validate_name_string("name\x7Fwith\x7Fdel").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_remaining_c0_controls() {
+        // Backspace spoofs log lines by erasing previous output; the old
+        // blacklist missed it and the other unlisted C0 characters.
+        assert!(validate_name_string("name\x08spoof").is_err());
+        assert!(validate_name_string("name\x01ctrl").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_c1_controls() {
+        // C1 controls (U+0080..U+009F) include CSI, which some terminals
+        // honor like ESC sequences.
+        assert!(validate_name_string("name\u{9B}csi").is_err());
+        assert!(validate_name_string("name\u{85}nel").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_unicode_line_separators() {
+        // U+2028/U+2029 terminate lines in JS string contexts and split
+        // log lines without being caught by the \n check.
+        assert!(validate_name_string("name\u{2028}break").is_err());
+        assert!(validate_name_string("name\u{2029}break").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_bidi_controls() {
+        // Bidirectional overrides visually reverse displayed text, spoofing
+        // names in logs and UIs (the classic RLO trick).
+        assert!(validate_name_string("name\u{202E}gnp.exe").is_err());
+        assert!(validate_name_string("name\u{2066}iso").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_allows_plain_unicode_and_html_specials() {
+        // Non-ASCII text is legitimate; HTML/markup specials are allowed
+        // here because every consumer escapes at its own boundary.
+        assert!(validate_name_string("Wasserkühlung Vorne").is_ok());
+        assert!(validate_name_string("Fan <Front> & \"Rear\"").is_ok());
     }
 
     #[tokio::test]
