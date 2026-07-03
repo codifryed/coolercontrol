@@ -907,7 +907,7 @@ pub fn validate_name_string(name: &str) -> Result<(), CCError> {
 /// The Unicode line and paragraph separators break line-oriented and JS
 /// string contexts. The bidirectional control characters enable visual
 /// spoofing of displayed and logged names.
-fn is_forbidden_name_char(c: char) -> bool {
+pub fn is_forbidden_name_char(c: char) -> bool {
     if c.is_control() {
         return true;
     }

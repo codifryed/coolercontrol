@@ -35,7 +35,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use toml_edit::{DocumentMut, Item, Value};
 
-use crate::api::validate_name_string;
+use crate::api::{is_forbidden_name_char, validate_name_string};
 use crate::cc_fs;
 use crate::device::{ChannelName, DeviceName, DeviceUID};
 use crate::paths;
@@ -53,9 +53,38 @@ pub struct OverridesController {
 }
 
 impl OverridesController {
-    /// Loads the overrides file from the standard config location.
+    /// Loads the overrides file from the standard config location, running
+    /// the one-time `config-ui.json` name migration when the file is absent.
     pub async fn init() -> Self {
-        Self::init_from(paths::overrides_file().to_path_buf()).await
+        Self::init_with_migration(
+            paths::overrides_file().to_path_buf(),
+            paths::ui_config_file(),
+        )
+        .await
+    }
+
+    /// Runs the one-time migration gate, then loads: when the overrides file
+    /// is absent, user-defined names are imported from the UI settings blob
+    /// and written out, closing the gate for subsequent boots. Migration is
+    /// tolerant: any failure degrades to an empty store, never blocks
+    /// startup, and never overwrites an existing overrides file.
+    pub async fn init_with_migration(path: PathBuf, ui_config_path: &Path) -> Self {
+        if path.exists().not() {
+            if let Some(document) = migrate_from_ui_settings(ui_config_path).await {
+                info!(
+                    "Migrated name overrides for {} device(s) from UI settings",
+                    document.devices.len()
+                );
+                if let Err(err) = save(&path, &document).await {
+                    warn!("Failed to write migrated overrides file: {err:#}");
+                }
+                return Self {
+                    path,
+                    document: RefCell::new(document),
+                };
+            }
+        }
+        Self::init_from(path).await
     }
 
     /// Loads the overrides file at `path`. An absent file is an empty store;
@@ -208,17 +237,9 @@ impl OverridesController {
         let mut document = load(&self.path).await?;
         apply(&mut document);
         prune(&mut document);
-        self.save(&document).await?;
+        save(&self.path, &document).await?;
         self.document.replace(document);
         Ok(())
-    }
-
-    async fn save(&self, document: &OverridesDocument) -> Result<()> {
-        let contents = render(document)?;
-        assert!(contents.starts_with(BANNER));
-        cc_fs::write_string(&self.path, contents)
-            .await
-            .with_context(|| format!("Writing overrides file {}", self.path.display()))
     }
 }
 
@@ -248,6 +269,14 @@ pub struct ChannelOverrides {
     pub label: Option<String>,
 }
 
+async fn save(path: &Path, document: &OverridesDocument) -> Result<()> {
+    let contents = render(document)?;
+    assert!(contents.starts_with(BANNER));
+    cc_fs::write_string(path, contents)
+        .await
+        .with_context(|| format!("Writing overrides file {}", path.display()))
+}
+
 /// Reads and parses the file on disk. An absent file is an empty document.
 async fn load(path: &Path) -> Result<OverridesDocument> {
     if path.exists().not() {
@@ -269,6 +298,97 @@ fn validate_name(name: &str) -> Result<String> {
     debug_assert!(trimmed.is_empty().not());
     debug_assert_eq!(trimmed, trimmed.trim());
     Ok(trimmed.to_owned())
+}
+
+/// One-time import of user-defined names from the UI settings blob
+/// (`config-ui.json`). Returns `None` when there is nothing to import or
+/// the blob is unreadable; the caller then starts with an empty store and
+/// the gate (overrides file absence) stays open for the next boot.
+async fn migrate_from_ui_settings(ui_config_path: &Path) -> Option<OverridesDocument> {
+    if ui_config_path.exists().not() {
+        return None;
+    }
+    let contents = match cc_fs::read_txt(ui_config_path).await {
+        Ok(contents) => contents,
+        Err(err) => {
+            warn!("Skipping name migration, could not read UI settings: {err:#}");
+            return None;
+        }
+    };
+    let mirror = match serde_json::from_str::<UiSettingsMirror>(&contents) {
+        Ok(mirror) => mirror,
+        Err(err) => {
+            warn!("Skipping name migration, could not parse UI settings: {err}");
+            return None;
+        }
+    };
+    let mut document = OverridesDocument::default();
+    for (device_uid, settings) in mirror.devices.iter().zip(mirror.device_settings.iter()) {
+        let mut device = DeviceOverrides {
+            name: migrated_name(settings.user_name.as_deref()),
+            ..Default::default()
+        };
+        let channels = settings
+            .names
+            .iter()
+            .zip(settings.sensor_and_channel_settings.iter());
+        for (channel_name, channel) in channels {
+            if let Some(label) = migrated_name(channel.user_name.as_deref()) {
+                device.channels.insert(
+                    channel_name.clone(),
+                    ChannelOverrides { label: Some(label) },
+                );
+            }
+        }
+        document.devices.insert(device_uid.clone(), device);
+    }
+    prune(&mut document);
+    if document.devices.is_empty() {
+        return None;
+    }
+    Some(document)
+}
+
+/// Prepares a migrated name: trims, drops empties, and rejects
+/// injection-capable characters (debug-escaped in the log). Unlike API
+/// intake there is no length cap: pre-existing user data is preserved.
+fn migrated_name(name: Option<&str>) -> Option<DeviceName> {
+    let trimmed = name?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.chars().any(is_forbidden_name_char) {
+        warn!("Skipping migration of unsafe name {trimmed:?}");
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
+
+/// Minimal tolerant mirror of the UI settings blob: only the name fields.
+/// The blob stores maps as parallel arrays (`devices[i]` pairs with
+/// `device_settings[i]`, `names[j]` with `sensor_and_channel_settings[j]`).
+#[derive(Deserialize)]
+struct UiSettingsMirror {
+    #[serde(default)]
+    devices: Vec<DeviceUID>,
+    #[serde(default, rename = "deviceSettings")]
+    device_settings: Vec<UiDeviceSettingsMirror>,
+}
+
+#[derive(Deserialize)]
+struct UiDeviceSettingsMirror {
+    #[serde(default, rename = "userName")]
+    user_name: Option<String>,
+    #[serde(default)]
+    names: Vec<ChannelName>,
+    #[serde(default, rename = "sensorAndChannelSettings")]
+    sensor_and_channel_settings: Vec<UiChannelSettingsMirror>,
+}
+
+#[derive(Deserialize)]
+struct UiChannelSettingsMirror {
+    #[serde(default, rename = "userName")]
+    user_name: Option<String>,
 }
 
 /// Drops entries that no longer carry user data (a hint alone is not data).
@@ -608,6 +728,168 @@ mod tests {
             let result = controller.set_device_name(&uid, HINT, Some("Board")).await;
             assert!(result.is_err());
             assert_eq!(std::fs::read_to_string(&path).unwrap(), malformed);
+        });
+    }
+
+    /// A realistic config-ui.json excerpt: two devices (one is the custom
+    /// sensors device), parallel arrays, unrelated fields present.
+    fn ui_settings_fixture() -> &'static str {
+        r##"{
+            "devices": ["uid-a", "uid-custom"],
+            "deviceSettings": [
+                {
+                    "userName": "Motherboard",
+                    "userColor": "#ff0000",
+                    "names": ["fan1", "temp1"],
+                    "sensorAndChannelSettings": [
+                        { "userName": "Front Intake", "viewType": "Control" },
+                        { "viewType": "Control" }
+                    ]
+                },
+                {
+                    "names": ["sensor1"],
+                    "sensorAndChannelSettings": [ { "userName": "Avg Coolant" } ]
+                }
+            ],
+            "themeMode": "system",
+            "dashboards": []
+        }"##
+    }
+
+    #[test]
+    fn migration_imports_user_names_and_writes_the_file() {
+        // Goal: with no overrides file, userNames from config-ui.json are
+        // imported for devices, channels, and custom sensors, and the file
+        // is written so the gate closes for subsequent boots.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let ui_path = tmp.path().join("config-ui.json");
+            std::fs::write(&ui_path, ui_settings_fixture()).unwrap();
+
+            let controller = OverridesController::init_with_migration(path.clone(), &ui_path).await;
+
+            let uid_a = "uid-a".to_string();
+            let uid_custom = "uid-custom".to_string();
+            assert_eq!(
+                controller.device_name_override(&uid_a),
+                Some("Motherboard".to_string())
+            );
+            assert_eq!(
+                controller.channel_label_override(&uid_a, &"fan1".to_string()),
+                Some("Front Intake".to_string())
+            );
+            // temp1 had no userName and must not gain an entry.
+            assert_eq!(
+                controller.channel_label_override(&uid_a, &"temp1".to_string()),
+                None
+            );
+            assert_eq!(
+                controller.channel_label_override(&uid_custom, &"sensor1".to_string()),
+                Some("Avg Coolant".to_string())
+            );
+            let contents = std::fs::read_to_string(&path).unwrap();
+            assert!(contents.starts_with(BANNER));
+            assert!(contents.contains("Motherboard"));
+
+            // Second boot: the file exists, migration must not run again.
+            std::fs::write(&ui_path, "garbage now").unwrap();
+            let reloaded = OverridesController::init_with_migration(path, &ui_path).await;
+            assert_eq!(
+                reloaded.device_name_override(&uid_a),
+                Some("Motherboard".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn migration_gate_respects_existing_overrides_file() {
+        // Goal: an existing overrides file, even an empty one, blocks the
+        // migration entirely; user data is never overwritten.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let ui_path = tmp.path().join("config-ui.json");
+            std::fs::write(&path, "").unwrap();
+            std::fs::write(&ui_path, ui_settings_fixture()).unwrap();
+
+            let controller = OverridesController::init_with_migration(path, &ui_path).await;
+
+            assert_eq!(controller.device_name_override(&"uid-a".to_string()), None);
+        });
+    }
+
+    #[test]
+    fn migration_tolerates_garbage_and_absence() {
+        // Goal: an unparseable or absent blob degrades to an empty store
+        // and creates no file, leaving the gate open for the next boot.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let ui_path = tmp.path().join("config-ui.json");
+
+            let controller = OverridesController::init_with_migration(path.clone(), &ui_path).await;
+            assert_eq!(controller.device_name_override(&"uid-a".to_string()), None);
+            assert!(path.exists().not());
+
+            std::fs::write(&ui_path, "{ not json").unwrap();
+            let controller = OverridesController::init_with_migration(path.clone(), &ui_path).await;
+            assert_eq!(controller.device_name_override(&"uid-a".to_string()), None);
+            assert!(path.exists().not());
+        });
+    }
+
+    #[test]
+    fn migration_without_user_names_creates_no_file() {
+        // Goal: a blob whose entries carry no userNames yields nothing; no
+        // file is written so a later rename still starts from a clean gate.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let ui_path = tmp.path().join("config-ui.json");
+            let blob = r#"{ "devices": ["uid-a"], "deviceSettings": [
+                { "names": ["fan1"], "sensorAndChannelSettings": [ {} ] } ] }"#;
+            std::fs::write(&ui_path, blob).unwrap();
+
+            let _controller =
+                OverridesController::init_with_migration(path.clone(), &ui_path).await;
+
+            assert!(path.exists().not());
+        });
+    }
+
+    #[test]
+    fn migration_skips_unsafe_names_and_trims() {
+        // Goal: injection-capable names are dropped, whitespace is trimmed,
+        // and over-cap lengths are preserved (existing user data).
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let ui_path = tmp.path().join("config-ui.json");
+            let long_name = "x".repeat(60);
+            let blob = format!(
+                r#"{{ "devices": ["uid-a"], "deviceSettings": [
+                    {{ "userName": "  {long_name}  ",
+                       "names": ["fan1", "fan2"],
+                       "sensorAndChannelSettings": [
+                           {{ "userName": "bad\u202ename" }},
+                           {{ "userName": "  Rear Exhaust  " }}
+                       ] }} ] }}"#
+            );
+            std::fs::write(&ui_path, blob).unwrap();
+
+            let controller = OverridesController::init_with_migration(path, &ui_path).await;
+
+            let uid = "uid-a".to_string();
+            assert_eq!(controller.device_name_override(&uid), Some(long_name));
+            assert_eq!(
+                controller.channel_label_override(&uid, &"fan1".to_string()),
+                None
+            );
+            assert_eq!(
+                controller.channel_label_override(&uid, &"fan2".to_string()),
+                Some("Rear Exhaust".to_string())
+            );
         });
     }
 
