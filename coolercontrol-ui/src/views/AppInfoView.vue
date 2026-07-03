@@ -181,7 +181,7 @@ const sourceEntityLabel = (ref: SourceRef): string => {
             const channelName =
                 deviceSettings?.sensorsAndChannels.get(ref.channel_name ?? '')?.name ??
                 ref.channel_name
-            return `${deviceSettings?.name ?? ref.entity_name}: ${channelName}`
+            return `${deviceSettings?.name ?? ref.entity_name} | ${channelName}`
         }
         default:
             return ref.entity_name
@@ -207,7 +207,7 @@ const healthRows = computed((): Array<HealthRow> => {
         }
         rows.push({
             key: `failsafe/${failsafeKey(ref)}`,
-            label: `${deviceSettings?.name ?? ref.device_uid}: ${channelName}`,
+            label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
             detail: failsafeDetail(ref),
             to: failsafeRoute(ref),
         })

@@ -410,9 +410,11 @@ impl CustomSensorsRepo {
         for custom_temp_source_data in sources {
             let temp_source = &custom_temp_source_data.temp_source;
             let Ok(Some(temp)) = self.get_temp_source_temp(temp_source, custom_temps) else {
+                // Device-first with the log convention's pipe separator, matching
+                // how the UI composes device and channel names.
                 let reason = match self.source_device_name(temp_source) {
                     Some(device_name) => {
-                        format!("source missing: {} ({device_name})", temp_source.temp_name)
+                        format!("source missing: {device_name} | {}", temp_source.temp_name)
                     }
                     None => format!("source missing: {}", temp_source.temp_name),
                 };

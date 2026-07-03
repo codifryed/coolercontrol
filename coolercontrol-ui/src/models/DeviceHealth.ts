@@ -96,7 +96,7 @@ export function sourceTempDisplayName(ref: SourceRef, allSettings: AllDeviceSett
     const tempLabel =
         sourceSettings?.sensorsAndChannels.get(ref.source.temp_name)?.name || ref.source.temp_name
     const deviceName = sourceSettings?.name || ref.source_device_name
-    return deviceName ? `${deviceName}: ${tempLabel}` : tempLabel
+    return deviceName ? `${deviceName} | ${tempLabel}` : tempLabel
 }
 
 export function sourceKey(ref: SourceRef): string {
