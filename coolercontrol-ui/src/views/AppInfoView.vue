@@ -40,13 +40,15 @@ import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import SelectButton from 'primevue/selectbutton'
 import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType } from '@/models/Device.ts'
+import HelpTooltipIcon from '@/components/info/HelpTooltipIcon.vue'
+import StressTestLabel from '@/components/info/StressTestLabel.vue'
+import StressBackendSelect from '@/components/info/StressBackendSelect.vue'
 import {
     FailsafeRef,
     failsafeKey,
@@ -320,11 +322,6 @@ const driveLoading = ref(false)
 const availableDrives = ref<Array<{ device_path: string; model?: string; size_bytes: number }>>([])
 const selectedDrive = ref<string | null>(null)
 let statusPollInterval: ReturnType<typeof setInterval> | null = null
-
-const backendOptions = computed(() => [
-    { label: t('views.appInfo.stressNgBackend'), value: 'stress_ng' },
-    { label: t('views.appInfo.builtInBackend'), value: 'built_in' },
-])
 
 const pollStatus = async () => {
     const status = await deviceStore.daemonClient.stressTestStatus()
@@ -786,16 +783,7 @@ onBeforeUnmount(() => {
                             <span class="font-semibold text-xl text-text-color">{{
                                 t('views.appInfo.deviceHealth')
                             }}</span>
-                            <svg-icon
-                                v-tooltip.top="{
-                                    escape: false,
-                                    value: t('views.appInfo.deviceHealthTooltip'),
-                                }"
-                                type="mdi"
-                                class="text-warning cursor-help"
-                                :path="mdiHelpCircleOutline"
-                                :size="deviceStore.getREMSize(1.25)"
-                            />
+                            <help-tooltip-icon :tooltip="t('views.appInfo.deviceHealthTooltip')" />
                         </div>
                         <div
                             v-if="healthRows.length === 0"
@@ -836,15 +824,8 @@ onBeforeUnmount(() => {
                                 <span class="font-semibold text-xl text-text-color">{{
                                     t('views.appInfo.stressTest')
                                 }}</span>
-                                <svg-icon
-                                    v-tooltip.top="{
-                                        escape: false,
-                                        value: t('views.appInfo.stressTestTooltip'),
-                                    }"
-                                    type="mdi"
-                                    class="text-warning cursor-help"
-                                    :path="mdiHelpCircleOutline"
-                                    :size="deviceStore.getREMSize(1.25)"
+                                <help-tooltip-icon
+                                    :tooltip="t('views.appInfo.stressTestTooltip')"
                                 />
                             </div>
                             <Button
@@ -917,17 +898,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !cpuActive"
                                                 v-model="settingsStore.cpuStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -941,14 +914,10 @@ onBeforeUnmount(() => {
                                 <!-- GPU Stress -->
                                 <tr>
                                     <td class="pr-4">
-                                        <span
-                                            v-tooltip.top="{
-                                                escape: false,
-                                                value: t('views.appInfo.gpuStressTooltip'),
-                                            }"
-                                            class="font-bold text-lg cursor-help"
-                                            >{{ t('views.appInfo.gpuStress') }}</span
-                                        >
+                                        <stress-test-label
+                                            :label="t('views.appInfo.gpuStress')"
+                                            :tooltip="t('views.appInfo.gpuStressTooltip')"
+                                        />
                                     </td>
                                     <td class="pr-4">
                                         <InputNumber
@@ -1003,17 +972,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !gpuActive"
                                                 v-model="settingsStore.gpuStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -1085,17 +1046,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !ramActive"
                                                 v-model="settingsStore.ramStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
@@ -1109,14 +1062,10 @@ onBeforeUnmount(() => {
                                 <!-- Drive Stress -->
                                 <tr>
                                     <td class="pr-4">
-                                        <span
-                                            v-tooltip.top="{
-                                                escape: false,
-                                                value: t('views.appInfo.driveStressTooltip'),
-                                            }"
-                                            class="font-bold text-lg cursor-help"
-                                            >{{ t('views.appInfo.driveStress') }}</span
-                                        >
+                                        <stress-test-label
+                                            :label="t('views.appInfo.driveStress')"
+                                            :tooltip="t('views.appInfo.driveStressTooltip')"
+                                        />
                                     </td>
                                     <td class="pr-4">
                                         <div class="flex items-center gap-2">
@@ -1187,17 +1136,9 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
-                                            <SelectButton
+                                            <stress-backend-select
                                                 v-if="stressNgAvailable && !driveActive"
                                                 v-model="settingsStore.driveStressBackend"
-                                                :options="backendOptions"
-                                                option-label="label"
-                                                option-value="value"
-                                                :allow-empty="false"
-                                                v-tooltip.top="{
-                                                    escape: false,
-                                                    value: t('views.appInfo.backendTooltip'),
-                                                }"
                                                 class="ml-1 stress-backend-select"
                                             />
                                             <span
