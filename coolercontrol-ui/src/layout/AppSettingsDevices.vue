@@ -270,12 +270,8 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                 }
                 const ccSetting: CoolerControlDeviceSettingsDTO =
                     settingsStore.ccDeviceSettings.get(deviceUID)!
-                const deviceSettings = settingsStore.allUIDeviceSettings.get(deviceUID)
-                // persist user-defined name if it exists (Helpful when blacklisting)
-                ccSetting.name =
-                    deviceSettings?.name != null && deviceSettings.name
-                        ? deviceSettings.name
-                        : ccSetting.name
+                // The daemon stamps device and channel detection memos itself;
+                // client-supplied names are ignored (write-deprecated).
                 ccSetting.disable = !deviceIsEnabled
                 if (deviceIsEnabled) {
                     // No deviceChannels means previously blacklisted, now enabled, leave channels alone
@@ -298,9 +294,6 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                                 }
                             }
                             channelSettings.disabled = !channelNode.isChecked
-                            channelSettings.label =
-                                deviceSettings?.sensorsAndChannels.get(channelNode.name)?.name ??
-                                channelSettings.label
                         }
                     }
                 }

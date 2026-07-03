@@ -38,6 +38,7 @@ import { Device } from '@/models/Device'
 import setDefaultSensorAndChannelColors from '@/stores/DeviceColorCreator'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import type { AllDaemonDeviceSettings } from '@/models/DaemonSettings'
+import type { NameOverrides } from '@/models/NameOverrides'
 import {
     DaemonDeviceSettings,
     DeviceSettingReadDTO,
@@ -70,6 +71,11 @@ import { useI18n } from 'vue-i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
+
+    // The daemon's sparse name overrides document, the source of truth for
+    // user-defined display names. Loaded once at startup; updated locally
+    // on rename so dialogs can pre-fill without a re-fetch.
+    const nameOverrides: Ref<NameOverrides> = ref({ devices: {} })
     const { t } = useI18n()
 
     const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
@@ -303,6 +309,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
 
         setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
+        nameOverrides.value = await deviceStore.daemonClient.loadNameOverrides()
         setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
         await loadCCAllDeviceSettings()
@@ -327,11 +334,13 @@ export const useSettingsStore = defineStore('settings', () => {
     ): void {
         for (const device of devices) {
             const settings = deviceSettings.get(device.uid)!
+            const overrides = nameOverrides.value.devices[device.uid]
             // Default display name takes the model name if it's available, before the driver name (HWMon especially):
-            settings.displayName =
+            const detectedName =
                 device.info?.model != null && device.info.model.length > 0
                     ? device.info.model
                     : device.nameShort
+            settings.displayName = overrides?.name ?? detectedName
             if (device.status_history.length) {
                 for (const channelStatus of device.status.channels) {
                     if (channelStatus.name.toLowerCase().includes('load')) {
@@ -367,7 +376,85 @@ export const useSettingsStore = defineStore('settings', () => {
                     }
                 }
             }
+            // User-defined labels win over every detected label:
+            for (const [channelName, channelSettings] of settings.sensorsAndChannels) {
+                const label = overrides?.channels?.[channelName]?.label
+                if (label != null) {
+                    channelSettings.channelLabel = label
+                }
+            }
         }
+    }
+
+    /**
+     * Persists the user-defined device display name as a daemon name
+     * override and updates local display state. An empty name removes the
+     * override; the UI then reloads so detected names are re-resolved.
+     */
+    async function saveDeviceName(deviceUID: UID, newName: string): Promise<boolean> {
+        const name = newName.length > 0 ? newName : null
+        const result = await deviceStore.daemonClient.saveDeviceNameOverride(deviceUID, name)
+        if (result !== true) {
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: result.error,
+                life: 4000,
+            })
+            return false
+        }
+        if (name == null) {
+            await deviceStore.waitAndReload(0)
+            return true
+        }
+        const deviceOverrides = (nameOverrides.value.devices[deviceUID] ??= {})
+        deviceOverrides.name = name
+        const deviceSettings = allUIDeviceSettings.value.get(deviceUID)
+        if (deviceSettings != null) {
+            deviceSettings.displayName = name
+        }
+        return true
+    }
+
+    /**
+     * Persists the user-defined channel display label as a daemon name
+     * override and updates local display state. An empty name removes the
+     * override; the UI then reloads so detected labels are re-resolved.
+     */
+    async function saveChannelName(
+        deviceUID: UID,
+        channelName: string,
+        newName: string,
+    ): Promise<boolean> {
+        const label = newName.length > 0 ? newName : null
+        const result = await deviceStore.daemonClient.saveChannelLabelOverride(
+            deviceUID,
+            channelName,
+            label,
+        )
+        if (result !== true) {
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: result.error,
+                life: 4000,
+            })
+            return false
+        }
+        if (label == null) {
+            await deviceStore.waitAndReload(0)
+            return true
+        }
+        const deviceOverrides = (nameOverrides.value.devices[deviceUID] ??= {})
+        const channels = (deviceOverrides.channels ??= {})
+        channels[channelName] = { label: label }
+        const channelSettings = allUIDeviceSettings.value
+            .get(deviceUID)
+            ?.sensorsAndChannels.get(channelName)
+        if (channelSettings != null) {
+            channelSettings.channelLabel = label
+        }
+        return true
     }
 
     async function loadDaemonDeviceSettings(
@@ -1356,6 +1443,9 @@ export const useSettingsStore = defineStore('settings', () => {
     return {
         initializeSettings,
         loadDaemonDeviceSettings,
+        nameOverrides,
+        saveDeviceName,
+        saveChannelName,
         predefinedColorOptions,
         profiles,
         functions,

@@ -122,30 +122,18 @@ const chartKey: Ref<string> = ref(uuidV4())
 const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 let panelResizeObserver: ResizeObserver | null = null
 const saveNameFunction = async (newName: string): Promise<boolean> => {
-    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    // User names are persisted as daemon name overrides. An empty name
+    // removes the override and reloads the UI.
+    const success = await settingsStore.saveChannelName(props.deviceUID, props.channelName, newName)
+    if (!success) {
+        return false
+    }
     if (newName.length > 0) {
-        settingsStore.allUIDeviceSettings
-            .get(props.deviceUID)!
-            .sensorsAndChannels.get(props.channelName)!.userName = newName
         channelLabel.value = newName
         emitter.emit('device-sensor-name-update', {
             deviceUID: props.deviceUID,
             sensorId: props.channelName,
             name: newName,
-        })
-    } else {
-        // reset name
-        settingsStore.allUIDeviceSettings
-            .get(props.deviceUID)!
-            .sensorsAndChannels.get(props.channelName)!.userName = undefined
-        channelLabel.value =
-            settingsStore.allUIDeviceSettings
-                .get(props.deviceUID)
-                ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
-        emitter.emit('device-sensor-name-update', {
-            deviceUID: props.deviceUID,
-            sensorId: props.channelName,
-            name: channelLabel.value,
         })
     }
     return true

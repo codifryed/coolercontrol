@@ -22,6 +22,7 @@ import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { defaultStatsResponse, type StatsResponseDTO } from '@/models/Stats'
 import { UISettingsDTO } from '@/models/UISettings'
+import type { NameOverrides } from '@/models/NameOverrides'
 import type { UID } from '@/models/Device'
 import {
     DeviceSettingsReadDTO,
@@ -447,6 +448,71 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return new UISettingsDTO()
+        }
+    }
+
+    /**
+     * Retrieves the sparse user-defined name overrides document.
+     */
+    async loadNameOverrides(): Promise<NameOverrides> {
+        try {
+            const response = await this.getClient().get('/settings/overrides')
+            this.logDaemonResponse(response, 'Load Name Overrides')
+            return response.data as NameOverrides
+        } catch (err) {
+            this.logError(err)
+            return { devices: {} }
+        }
+    }
+
+    /**
+     * Sets or removes (null) the user-defined display name for a device.
+     */
+    async saveDeviceNameOverride(
+        deviceUID: UID,
+        name: string | null,
+    ): Promise<true | ErrorResponse> {
+        try {
+            const response = await this.getClient().put(
+                `/settings/devices/${deviceUID}/overrides`,
+                { name: name },
+            )
+            this.logDaemonResponse(response, 'Save Device Name Override')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
+        }
+    }
+
+    /**
+     * Sets or removes (null) the user-defined display label for a channel.
+     */
+    async saveChannelLabelOverride(
+        deviceUID: UID,
+        channelName: string,
+        label: string | null,
+    ): Promise<true | ErrorResponse> {
+        try {
+            const response = await this.getClient().put(
+                `/settings/devices/${deviceUID}/channels/${channelName}/overrides`,
+                { label: label },
+            )
+            this.logDaemonResponse(response, 'Save Channel Label Override')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response?.data) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
         }
     }
 

@@ -49,52 +49,40 @@ const saveButton = ref()
 const deviceSettings = useSettingsStore().allUIDeviceSettings.get(props.deviceUID)!
 const sensorName: string | null = props.channelName
 const isDeviceName: boolean = sensorName == null
-const currentName: string = isDeviceName
-    ? deviceSettings.name
-    : deviceSettings.sensorsAndChannels.get(sensorName!)!.name
-const isUserName: boolean = isDeviceName
-    ? deviceSettings.userName != null
-    : deviceSettings.sensorsAndChannels.get(sensorName!)!.userName != null
-const nameInput: Ref<string> = ref(isUserName ? currentName : '')
+const deviceOverrides = settingsStore.nameOverrides.devices[props.deviceUID]
+const currentOverride: string | undefined = isDeviceName
+    ? deviceOverrides?.name
+    : deviceOverrides?.channels?.[sensorName!]?.label
+const nameInput: Ref<string> = ref(currentOverride ?? '')
+// What a reset returns to. With an override active the detected channel
+// label is unknown locally, so the raw channel name is shown instead.
 const systemDisplayName = isDeviceName
-    ? deviceSettings.displayName
-    : deviceSettings.sensorsAndChannels.get(sensorName!)!.channelLabel
+    ? [...deviceStore.allDevices()].find((device) => device.uid === props.deviceUID)?.nameShort
+    : currentOverride != null
+      ? sensorName
+      : deviceSettings.sensorsAndChannels.get(sensorName!)!.channelLabel
 
 const clickSaveButton = (): void => saveButton.value.$el.click()
-const closeAndSave = (): void => {
-    if (!nameInvalid.value) {
-        // dialogRef.value.close({newName: nameInput.value})
-        // console.log("here")
-        const isDeviceName = props.channelName == null
-        if (nameInput.value) {
-            nameInput.value = deviceStore.sanitizeString(nameInput.value)
-            if (isDeviceName) {
-                settingsStore.allUIDeviceSettings.get(props.deviceUID)!.userName = nameInput.value
-            } else {
-                settingsStore.allUIDeviceSettings
-                    .get(props.deviceUID)!
-                    .sensorsAndChannels.get(props.channelName)!.userName = nameInput.value
-            }
-        } else {
-            // empty name means reset to default
-            if (isDeviceName) {
-                settingsStore.allUIDeviceSettings.get(props.deviceUID)!.userName = undefined
-            } else {
-                settingsStore.allUIDeviceSettings
-                    .get(props.deviceUID)!
-                    .sensorsAndChannels.get(props.channelName)!.userName = undefined
-            }
-        }
-        emit(
-            'nameChange',
-            isDeviceName
-                ? settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
-                : settingsStore.allUIDeviceSettings
-                      .get(props.deviceUID)!
-                      .sensorsAndChannels.get(props.channelName)!.name,
-        )
-        popRef.value.hide()
+const closeAndSave = async (): Promise<void> => {
+    if (nameInvalid.value) {
+        return
     }
+    if (nameInput.value) {
+        nameInput.value = deviceStore.sanitizeString(nameInput.value)
+    }
+    const success = isDeviceName
+        ? await settingsStore.saveDeviceName(props.deviceUID, nameInput.value)
+        : await settingsStore.saveChannelName(props.deviceUID, props.channelName!, nameInput.value)
+    if (!success) {
+        return
+    }
+    emit(
+        'nameChange',
+        isDeviceName
+            ? deviceSettings.name
+            : deviceSettings.sensorsAndChannels.get(props.channelName!)!.name,
+    )
+    popRef.value.hide()
 }
 const nameInvalid = computed(() => {
     return nameInput.value.length > DEFAULT_NAME_STRING_LENGTH
