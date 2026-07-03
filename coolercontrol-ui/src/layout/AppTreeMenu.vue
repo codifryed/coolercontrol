@@ -272,8 +272,11 @@ const nodeHealthReasons = (item: any): Array<string> => {
                 : t('views.appInfo.failsafeActive'),
         )
     }
+    // A failsafed custom sensor already carries "source missing" in its reason,
+    // so only report a missing source separately when it is not failsafed.
     const missing =
         (item.to?.name === 'custom-sensors' &&
+            failsafeRef == null &&
             settingsStore.healthMissing.some(
                 (ref) =>
                     ref.entity_type === HealthEntityType.CustomSensor &&

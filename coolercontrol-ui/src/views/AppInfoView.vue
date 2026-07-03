@@ -153,15 +153,20 @@ const entityTypeLabel = (type: HealthEntityType): string => {
     }
 }
 
-const customSensorLabel = (sensorId: string): string => {
+const customSensorsDeviceUID = computed((): string | undefined => {
     for (const device of deviceStore.allDevices()) {
-        if (device.type !== DeviceType.CUSTOM_SENSORS) continue
-        return (
-            settingsStore.allUIDeviceSettings.get(device.uid)?.sensorsAndChannels.get(sensorId)
-                ?.name ?? sensorId
-        )
+        if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid
     }
-    return sensorId
+    return undefined
+})
+
+const customSensorLabel = (sensorId: string): string => {
+    if (customSensorsDeviceUID.value == null) return sensorId
+    return (
+        settingsStore.allUIDeviceSettings
+            .get(customSensorsDeviceUID.value)
+            ?.sensorsAndChannels.get(sensorId)?.name ?? sensorId
+    )
 }
 
 const missingEntityLabel = (ref: MissingRef): string => {
@@ -187,9 +192,13 @@ const failsafeDetail = (ref: FailsafeRef): string =>
 
 const healthRows = computed((): Array<HealthRow> => {
     const rows: Array<HealthRow> = []
+    const failsafedCustomSensors = new Set<string>()
     for (const ref of settingsStore.healthFailsafe) {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
         const channelName = deviceSettings?.sensorsAndChannels.get(ref.name)?.name ?? ref.name
+        if (customSensorsDeviceUID.value === ref.device_uid) {
+            failsafedCustomSensors.add(ref.name)
+        }
         rows.push({
             key: `failsafe/${failsafeKey(ref)}`,
             label: `${deviceSettings?.name ?? ref.device_uid}: ${channelName}`,
@@ -198,15 +207,20 @@ const healthRows = computed((): Array<HealthRow> => {
         })
     }
     for (const ref of settingsStore.healthMissing) {
-        // The referenced device is usually gone, so its settings rarely resolve.
+        // A custom sensor with a missing source is also failsafed with that source in
+        // its reason, and both rows link to the same editor, so skip the duplicate.
+        if (
+            ref.entity_type === HealthEntityType.CustomSensor &&
+            failsafedCustomSensors.has(ref.entity_uid)
+        ) {
+            continue
+        }
+        // The referenced device is usually gone, so its settings (and names) rarely resolve.
         const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.missing.device_uid)
-        const sourceName =
-            sourceSettings != null
-                ? `${sourceSettings.name}: ${
-                      sourceSettings.sensorsAndChannels.get(ref.missing.temp_name)?.name ??
-                      ref.missing.temp_name
-                  }`
-                : ref.missing.temp_name
+        const tempLabel =
+            sourceSettings?.sensorsAndChannels.get(ref.missing.temp_name)?.name ||
+            ref.missing.temp_name
+        const sourceName = sourceSettings?.name ? `${sourceSettings.name}: ${tempLabel}` : tempLabel
         rows.push({
             key: `missing/${missingKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${missingEntityLabel(ref)}`,
