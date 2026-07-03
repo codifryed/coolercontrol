@@ -30,7 +30,7 @@ use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
-use crate::repositories::failsafe::{self, FailsafeStatusData};
+use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -1127,18 +1127,28 @@ impl Repository for LiquidctlRepo {
                             }
                         }
                         Err(err) => {
-                            error!("Error getting status from device #{device_id}: {err}");
                             let mut fsd_map = self.failsafe_statuses.borrow_mut();
-                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
-                                if fsd.record_failure() {
-                                    if fsd.log_once() {
-                                        error!(
-                                            "Significant issue retrieving status for \
-                                             liquidctl device #{device_id}. \
-                                             Setting failsafe values."
-                                        );
-                                    }
+                            let Some(fsd) = fsd_map.get_mut(&device_id) else {
+                                // No failsafe data means no latch to gate on.
+                                error!("Error getting status from device #{device_id}: {err}");
+                                return;
+                            };
+                            match fsd.record_failure_log_action() {
+                                FailureLogAction::PerPollError => {
+                                    error!(
+                                        "Error getting status from device \
+                                         #{device_id}: {err}"
+                                    );
                                 }
+                                FailureLogAction::FailsafeLatch => {
+                                    error!(
+                                        "Significant issue retrieving status for \
+                                         liquidctl device #{device_id}. \
+                                         Setting failsafe values. Suppressing further \
+                                         status errors until recovery."
+                                    );
+                                }
+                                FailureLogAction::Silent => {}
                             }
                         }
                     }
