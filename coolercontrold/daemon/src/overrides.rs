@@ -50,6 +50,10 @@ const BANNER: &str = "\
 pub struct OverridesController {
     path: PathBuf,
     document: RefCell<OverridesDocument>,
+    /// Serializes read-modify-write cycles. Multiple actors write (settings
+    /// renames, the custom sensor delete cascade) and a cycle spans await
+    /// points, so unserialized writes could interleave and lose one.
+    write_lock: tokio::sync::Mutex<()>,
 }
 
 impl OverridesController {
@@ -81,6 +85,7 @@ impl OverridesController {
                 return Self {
                     path,
                     document: RefCell::new(document),
+                    write_lock: tokio::sync::Mutex::new(()),
                 };
             }
         }
@@ -108,6 +113,7 @@ impl OverridesController {
         Self {
             path,
             document: RefCell::new(document),
+            write_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -118,6 +124,7 @@ impl OverridesController {
         Self {
             path: PathBuf::new(),
             document: RefCell::new(OverridesDocument::default()),
+            write_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -193,13 +200,15 @@ impl OverridesController {
         .await
     }
 
-    /// Sets or removes (`None`) the channel label override.
-    /// `device_name_hint` refreshes the hand-editor hint line.
+    /// Sets or removes (`None`) the channel label override. The two hints
+    /// refresh the hand-editor hint fields; a `None` hint keeps whatever
+    /// hint is already stored.
     pub async fn set_channel_label(
         &self,
         device_uid: &DeviceUID,
         device_name_hint: &str,
         channel_name: &ChannelName,
+        channel_label_hint: Option<&str>,
         label: Option<&str>,
     ) -> Result<()> {
         let label = label.map(validate_name).transpose()?;
@@ -209,6 +218,9 @@ impl OverridesController {
             match label {
                 Some(label) => {
                     let channel = device.channels.entry(channel_name.clone()).or_default();
+                    if let Some(hint) = channel_label_hint {
+                        channel.channel_label = Some(hint.to_owned());
+                    }
                     channel.label = Some(label);
                 }
                 None => {
@@ -243,10 +255,13 @@ impl OverridesController {
     where
         F: FnOnce(&mut OverridesDocument),
     {
+        let _write_guard = self.write_lock.lock().await;
         let mut document = load(&self.path).await?;
         apply(&mut document);
         prune(&mut document);
+        debug_assert!(is_pruned(&document));
         save(&self.path, &document).await?;
+        debug_assert!(self.document.try_borrow_mut().is_ok());
         self.document.replace(document);
         Ok(())
     }
@@ -274,6 +289,10 @@ pub struct DeviceOverrides {
 /// A table per channel so color/ignore/compute can slot in later.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelOverrides {
+    /// Daemon-written detected-label hint for hand-editors and rename
+    /// dialogs, ignored on read (never a resolution layer).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
@@ -353,7 +372,10 @@ async fn migrate_from_ui_settings(ui_config_path: &Path) -> Option<OverridesDocu
             if let Some(label) = migrated_name(channel.user_name.as_deref()) {
                 device.channels.insert(
                     channel_name.clone(),
-                    ChannelOverrides { label: Some(label) },
+                    ChannelOverrides {
+                        channel_label: None,
+                        label: Some(label),
+                    },
                 );
             }
         }
@@ -363,6 +385,8 @@ async fn migrate_from_ui_settings(ui_config_path: &Path) -> Option<OverridesDocu
     if document.devices.is_empty() {
         return None;
     }
+    debug_assert!(is_pruned(&document));
+    debug_assert!(document.devices.len() <= mirror.devices.len());
     Some(document)
 }
 
@@ -406,6 +430,14 @@ struct UiDeviceSettingsMirror {
 struct UiChannelSettingsMirror {
     #[serde(default, rename = "userName")]
     user_name: Option<String>,
+}
+
+/// True when every entry carries user data (the `prune` postcondition).
+fn is_pruned(document: &OverridesDocument) -> bool {
+    document
+        .devices
+        .values()
+        .all(|device| device.name.is_some() || device.channels.is_empty().not())
 }
 
 /// Drops entries that no longer carry user data (a hint alone is not data).
@@ -561,7 +593,7 @@ mod tests {
                 .await
                 .unwrap();
             controller
-                .set_channel_label(&uid, HINT, &"fan1".to_string(), Some("Front Intake"))
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
                 .await
                 .unwrap();
             assert_eq!(
@@ -575,7 +607,7 @@ mod tests {
 
             // An override equal to the raw name renders plain, not doubled.
             controller
-                .set_channel_label(&uid, HINT, &"fan2".to_string(), Some("fan2"))
+                .set_channel_label(&uid, HINT, &"fan2".to_string(), None, Some("fan2"))
                 .await
                 .unwrap();
             assert_eq!(controller.log_channel_name(&uid, "fan2"), "fan2");
@@ -593,7 +625,7 @@ mod tests {
 
             let controller = OverridesController::init_from(path.clone()).await;
             controller
-                .set_channel_label(&uid, HINT, &"fan1".to_string(), Some("Front Intake"))
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
                 .await
                 .unwrap();
 
@@ -601,6 +633,25 @@ mod tests {
             assert!(contents.contains(&format!("device_name = \"{HINT}\"")));
             // No device name override was set, so the hint must not leak in.
             assert_eq!(controller.resolve_device_name(&uid, None, "raw"), "raw");
+
+            // The channel hint is stamped alongside the label when provided,
+            // and is not a resolution layer either.
+            controller
+                .set_channel_label(
+                    &uid,
+                    HINT,
+                    &"fan2".to_string(),
+                    Some("Fan 2 Detected"),
+                    Some("Side Intake"),
+                )
+                .await
+                .unwrap();
+            let contents = std::fs::read_to_string(&path).unwrap();
+            assert!(contents.contains("channel_label = \"Fan 2 Detected\""));
+            assert_eq!(
+                controller.channel_label_override(&uid, "fan2"),
+                Some("Side Intake".to_string())
+            );
         });
     }
 
@@ -615,11 +666,11 @@ mod tests {
 
             let controller = OverridesController::init_from(path.clone()).await;
             controller
-                .set_channel_label(&uid, HINT, &"fan1".to_string(), Some("Front Intake"))
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
                 .await
                 .unwrap();
             controller
-                .set_channel_label(&uid, HINT, &"temp1".to_string(), Some("Coolant"))
+                .set_channel_label(&uid, HINT, &"temp1".to_string(), None, Some("Coolant"))
                 .await
                 .unwrap();
 
@@ -706,11 +757,11 @@ mod tests {
 
             let controller = OverridesController::init_from(path.clone()).await;
             controller
-                .set_channel_label(&uid, HINT, &sensor1, Some("Avg Coolant"))
+                .set_channel_label(&uid, HINT, &sensor1, None, Some("Avg Coolant"))
                 .await
                 .unwrap();
             controller
-                .set_channel_label(&uid, HINT, &sensor2, Some("Case Ambient"))
+                .set_channel_label(&uid, HINT, &sensor2, None, Some("Case Ambient"))
                 .await
                 .unwrap();
             controller.remove_channel(&uid, &sensor1).await.unwrap();

@@ -801,6 +801,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         )
 }
 
+// Declarative route registration; splitting hurts readability.
 #[allow(clippy::too_many_lines)]
 fn settings_routes() -> ApiRouter<AppState> {
     ApiRouter::new()

@@ -800,7 +800,7 @@ mod tests {
                 .await
                 .unwrap();
             overrides
-                .set_channel_label(&uid, "hint", &"temp1".to_string(), Some("Coolant"))
+                .set_channel_label(&uid, "hint", &"temp1".to_string(), None, Some("Coolant"))
                 .await
                 .unwrap();
 

@@ -109,7 +109,8 @@ impl SettingActor {
         Some(lock.info.model.clone().unwrap_or_else(|| lock.name.clone()))
     }
 
-    /// The device must be known live or via saved settings; the returned
+    /// The device must be known live, via saved settings, or via the config
+    /// devices list (which retains devices no longer detected); the returned
     /// detected name refreshes the hand-editor hint in `overrides.toml`.
     fn device_name_hint(&self, device_uid: &DeviceUID) -> Result<DeviceName> {
         if let Some(name) = self.live_device_name(device_uid) {
@@ -118,10 +119,71 @@ impl SettingActor {
         if let Some(settings) = self.config.get_cc_settings_for_device(device_uid)? {
             return Ok(settings.name);
         }
+        if let Some(name) = self.config.device_name(device_uid) {
+            return Ok(name);
+        }
         Err(CCError::NotFound {
             msg: "Device not found".to_string(),
         }
         .into())
+    }
+
+    /// Sets or removes the user-defined device name override.
+    async fn set_device_name_override(
+        &self,
+        device_uid: DeviceUID,
+        name: Option<String>,
+    ) -> Result<()> {
+        let hint = self.device_name_hint(&device_uid)?;
+        self.overrides
+            .set_device_name(&device_uid, &hint, name.as_deref())
+            .await
+    }
+
+    /// Sets or removes the user-defined channel label override.
+    async fn set_channel_label_override(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        label: Option<String>,
+    ) -> Result<()> {
+        let device_name_hint = self.device_name_hint(&device_uid)?;
+        let channel_label_hint = self.detected_channel_label_hint(&device_uid, &channel_name);
+        self.overrides
+            .set_channel_label(
+                &device_uid,
+                &device_name_hint,
+                &channel_name,
+                channel_label_hint.as_deref(),
+                label.as_deref(),
+            )
+            .await
+    }
+
+    /// The detected channel label for the hand-editor hint: live device
+    /// info first (domain labels are never override-mutated), then the
+    /// saved detection memo.
+    fn detected_channel_label_hint(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+    ) -> Option<String> {
+        if let Some(device_lock) = self.all_devices.get(device_uid) {
+            let lock = device_lock.borrow();
+            if let Some(label) = detected_channel_label(&lock.info, channel_name) {
+                return Some(label);
+            }
+        }
+        self.config
+            .get_cc_settings_for_device(device_uid)
+            .ok()
+            .flatten()
+            .and_then(|settings| {
+                settings
+                    .channel_settings
+                    .get(channel_name)
+                    .and_then(|channel| channel.label.clone())
+            })
     }
 
     /// Applies boundary resolution to a CC device settings DTO: the name and
@@ -363,13 +425,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                 name,
                 respond_to,
             } => {
-                let result = async {
-                    let hint = self.device_name_hint(&device_uid)?;
-                    self.overrides
-                        .set_device_name(&device_uid, &hint, name.as_deref())
-                        .await
-                }
-                .await;
+                let result = self.set_device_name_override(device_uid, name).await;
                 let _ = respond_to.send(result);
             }
             SettingMessage::SetChannelLabelOverride {
@@ -378,13 +434,9 @@ impl ApiActor<SettingMessage> for SettingActor {
                 label,
                 respond_to,
             } => {
-                let result = async {
-                    let hint = self.device_name_hint(&device_uid)?;
-                    self.overrides
-                        .set_channel_label(&device_uid, &hint, &channel_name, label.as_deref())
-                        .await
-                }
-                .await;
+                let result = self
+                    .set_channel_label_override(device_uid, channel_name, label)
+                    .await;
                 let _ = respond_to.send(result);
             }
         }
@@ -586,6 +638,10 @@ fn stamp_detection_memos(
             settings.label = Some(stamped);
         }
     }
+    if let Some((detected_name, _)) = live {
+        debug_assert_eq!(update.name, detected_name);
+    }
+    debug_assert!(update.name.is_empty().not() || current.name.is_empty());
 }
 
 /// Build a `temp_name` -> human label map for the device being acted upon.
@@ -1226,7 +1282,13 @@ mod tests {
                 settings(&[("temp1", false), ("fan1", false)], false).channel_settings;
             channel_settings.get_mut("fan1").unwrap().label = Some("Memo Label".to_string());
             overrides
-                .set_channel_label(&uid, "hint", &"temp1".to_string(), Some("Override Label"))
+                .set_channel_label(
+                    &uid,
+                    "hint",
+                    &"temp1".to_string(),
+                    None,
+                    Some("Override Label"),
+                )
                 .await
                 .unwrap();
 
