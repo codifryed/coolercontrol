@@ -58,6 +58,10 @@ pub struct MissingRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
     pub missing: TempSource,
+    /// Name of the device owning the missing temp, resolved from the live
+    /// device set or the config `devices` list (gone devices stay listed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub missing_device_name: Option<String>,
 }
 
 /// Whether a failsafing node is a temp or a control channel. One entry per node
@@ -190,8 +194,20 @@ impl DeviceHealthController {
         self.collect_custom_sensor_candidates(&mut candidates);
         self.collect_profile_candidates(&mut candidates).await;
         self.collect_lcd_candidates(&mut candidates);
+        for candidate in &mut candidates {
+            candidate.missing_device_name = self.source_device_name(&candidate.missing.device_uid);
+        }
         self.candidates.replace(candidates);
         self.config_generation_seen.set(Some(generation));
+    }
+
+    /// Resolves the source device's display name: live devices first, then the
+    /// config `devices` list, which retains devices no longer detected.
+    fn source_device_name(&self, device_uid: &DeviceUID) -> Option<String> {
+        if let Some(device) = self.all_devices.get(device_uid) {
+            return Some(device.borrow().name.clone());
+        }
+        self.config.device_name(device_uid)
     }
 
     fn scan_failsafe(&self) -> Vec<FailsafeRef> {
@@ -276,6 +292,7 @@ impl DeviceHealthController {
                     entity_name: sensor.id.clone(),
                     channel_name: None,
                     missing: source_data.temp_source.clone(),
+                    missing_device_name: None,
                 });
             }
         }
@@ -292,6 +309,7 @@ impl DeviceHealthController {
                 entity_name: profile.name.clone(),
                 channel_name: None,
                 missing: source.clone(),
+                missing_device_name: None,
             });
         }
     }
@@ -304,6 +322,7 @@ impl DeviceHealthController {
                 entity_name: lcd.device_name.clone(),
                 channel_name: Some(lcd.channel_name.clone()),
                 missing: lcd.source.clone(),
+                missing_device_name: None,
             });
         }
     }
@@ -416,6 +435,7 @@ mod tests {
             entity_name: "Profile 1".to_string(),
             channel_name: None,
             missing: source(device_uid, temp_name),
+            missing_device_name: None,
         }
     }
 

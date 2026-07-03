@@ -410,7 +410,12 @@ impl CustomSensorsRepo {
         for custom_temp_source_data in sources {
             let temp_source = &custom_temp_source_data.temp_source;
             let Ok(Some(temp)) = self.get_temp_source_temp(temp_source, custom_temps) else {
-                let reason = format!("source missing: {}", temp_source.temp_name);
+                let reason = match self.source_device_name(temp_source) {
+                    Some(device_name) => {
+                        format!("source missing: {} ({device_name})", temp_source.temp_name)
+                    }
+                    None => format!("source missing: {}", temp_source.temp_name),
+                };
                 return self.emit_failsafe(id, &reason);
             };
             temp_data.push(TempData {
@@ -1003,6 +1008,15 @@ impl CustomSensorsRepo {
             .borrow_mut()
             .remove(sensor_id)
             .is_some()
+    }
+
+    /// Resolves a source device's display name for failsafe reasons: live devices first,
+    /// then the config `devices` list, which retains devices no longer detected.
+    fn source_device_name(&self, temp_source: &TempSource) -> Option<String> {
+        if let Some(device) = self.all_devices.get(&temp_source.device_uid) {
+            return Some(device.borrow().name.clone());
+        }
+        self.config.device_name(&temp_source.device_uid)
     }
 
     /// Builds the failsafe `TempStatus` and emits the entry log line on the first occurrence.

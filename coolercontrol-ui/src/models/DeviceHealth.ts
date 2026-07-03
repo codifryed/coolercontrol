@@ -52,6 +52,8 @@ export class MissingRef {
     channel_name?: string
     @Type(() => TempSource)
     missing: TempSource = new TempSource()
+    /** Daemon-resolved name of the device owning the missing temp, when known. */
+    missing_device_name?: string
 }
 
 /**

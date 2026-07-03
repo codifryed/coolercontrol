@@ -266,6 +266,18 @@ impl Config {
         }
     }
 
+    /// The persisted name from the `devices` list, which is never pruned, so
+    /// devices that are no longer detected still resolve.
+    pub fn device_name(&self, device_uid: &str) -> Option<String> {
+        self.document
+            .borrow()
+            .get("devices")
+            .and_then(Item::as_table)
+            .and_then(|devices| devices.get(device_uid))
+            .and_then(Item::as_str)
+            .map(str::to_owned)
+    }
+
     pub fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
         let mut legacy690_ids = HashMap::new();
         if let Some(table) = self.document.borrow()["legacy690"].as_table() {
@@ -2613,6 +2625,24 @@ mod tests {
             config.save_config_file().await.unwrap();
             assert_eq!(config.generation(), before + 1);
         });
+    }
+
+    #[test]
+    #[serial]
+    fn device_name_resolves_only_listed_devices() {
+        // Goal: the `devices` list is the name source for devices no longer
+        // detected, so a listed UID resolves and an unknown UID stays None.
+        let document = "[devices]\nuid1 = \"NZXT Kraken\"\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+        let config = Config {
+            path: Path::new("/tmp/config.toml").to_path_buf(),
+            path_ui: Path::new("/tmp/config-ui.json").to_path_buf(),
+            document: RefCell::new(document),
+            generation: Cell::new(0),
+        };
+        assert_eq!(config.device_name("uid1"), Some("NZXT Kraken".to_string()));
+        assert_eq!(config.device_name("unknown"), None);
     }
 
     #[test]

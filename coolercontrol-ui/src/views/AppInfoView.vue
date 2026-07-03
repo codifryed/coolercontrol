@@ -215,12 +215,14 @@ const healthRows = computed((): Array<HealthRow> => {
         ) {
             continue
         }
-        // The referenced device is usually gone, so its settings (and names) rarely resolve.
+        // The referenced device is usually gone: prefer any user-set UI name, then the
+        // daemon-resolved name from the config device list, which keeps gone devices.
         const sourceSettings = settingsStore.allUIDeviceSettings.get(ref.missing.device_uid)
         const tempLabel =
             sourceSettings?.sensorsAndChannels.get(ref.missing.temp_name)?.name ||
             ref.missing.temp_name
-        const sourceName = sourceSettings?.name ? `${sourceSettings.name}: ${tempLabel}` : tempLabel
+        const sourceDeviceName = sourceSettings?.name || ref.missing_device_name
+        const sourceName = sourceDeviceName ? `${sourceDeviceName}: ${tempLabel}` : tempLabel
         rows.push({
             key: `missing/${missingKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${missingEntityLabel(ref)}`,
