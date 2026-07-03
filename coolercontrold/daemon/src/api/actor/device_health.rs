@@ -25,9 +25,9 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 /// Broadcast capacity. Each tick broadcasts at most one batched event per
-/// subject (`missing`, `failsafe`), so this holds two full ticks; a consumer
-/// that still lags is resynced with a full snapshot by the SSE stream.
-const BROADCAST_CAPACITY: usize = 4;
+/// subject (`missing`, `stale-source`, `failsafe`), so this holds two full ticks; a
+/// consumer that still lags is resynced with a full snapshot by the SSE stream.
+const BROADCAST_CAPACITY: usize = 6;
 
 struct DeviceHealthActor {
     receiver: mpsc::Receiver<DeviceHealthMessage>,
@@ -101,11 +101,13 @@ impl DeviceHealthHandle {
             return DeviceHealthDto {
                 failsafe: Vec::with_capacity(0),
                 missing: Vec::with_capacity(0),
+                stale_source: Vec::with_capacity(0),
             };
         }
         rx.await.unwrap_or(DeviceHealthDto {
             failsafe: Vec::with_capacity(0),
             missing: Vec::with_capacity(0),
+            stale_source: Vec::with_capacity(0),
         })
     }
 

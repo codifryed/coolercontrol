@@ -83,11 +83,15 @@ pub async fn status(
 }
 
 /// Maps one tick's device-health transition batch to its named SSE event
-/// (`missing` or `failsafe`).
+/// (`missing`, `stale-source`, or `failsafe`).
 fn health_event_to_sse(event: HealthEvent) -> Result<Event, Infallible> {
     match event {
         HealthEvent::Missing(deltas) => Ok(Event::default()
             .event("missing")
+            .json_data(deltas)
+            .expect("derived DTO serialization cannot fail")),
+        HealthEvent::StaleSource(deltas) => Ok(Event::default()
+            .event("stale-source")
             .json_data(deltas)
             .expect("derived DTO serialization cannot fail")),
         HealthEvent::Failsafe(deltas) => Ok(Event::default()

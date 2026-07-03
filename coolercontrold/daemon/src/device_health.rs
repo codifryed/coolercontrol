@@ -22,6 +22,9 @@
 //! - `missing`: a config temp-source reference whose target temp is absent from
 //!   the current device set (a Custom Sensor source, Graph Profile temp source,
 //!   or LCD temp source pointing at a removed device or deleted sensor).
+//! - `stale_source`: a config temp-source reference whose target is present but
+//!   currently failsafed, so the consuming Profile/LCD/Custom Sensor acts on
+//!   failsafe values rather than real readings.
 //! - `failsafe`: a present channel/temp currently serving failsafe values.
 
 use crate::api::actor::DeviceHealthHandle;
@@ -113,6 +116,7 @@ pub struct FailsafeDelta {
 #[derive(Debug, Clone)]
 pub enum HealthEvent {
     Missing(Vec<SourceDelta>),
+    StaleSource(Vec<SourceDelta>),
     Failsafe(Vec<FailsafeDelta>),
 }
 
@@ -121,6 +125,7 @@ pub enum HealthEvent {
 pub struct DeviceHealthDto {
     pub failsafe: Vec<FailsafeRef>,
     pub missing: Vec<SourceRef>,
+    pub stale_source: Vec<SourceRef>,
 }
 
 struct LcdRef {
@@ -139,6 +144,7 @@ pub struct DeviceHealthController {
     repos: Repos,
     handle: RefCell<Option<DeviceHealthHandle>>,
     missing: RefCell<Vec<SourceRef>>,
+    stale_source: RefCell<Vec<SourceRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
     /// Temp-source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
@@ -154,6 +160,7 @@ impl DeviceHealthController {
             repos,
             handle: RefCell::new(None),
             missing: RefCell::new(Vec::new()),
+            stale_source: RefCell::new(Vec::new()),
             failsafe: RefCell::new(Vec::new()),
             candidates: RefCell::new(Vec::new()),
             config_generation_seen: Cell::new(None),
@@ -168,6 +175,7 @@ impl DeviceHealthController {
         DeviceHealthDto {
             failsafe: self.failsafe.borrow().clone(),
             missing: self.missing.borrow().clone(),
+            stale_source: self.stale_source.borrow().clone(),
         }
     }
 
@@ -178,7 +186,9 @@ impl DeviceHealthController {
         let current_missing = self.scan_missing();
         self.diff_and_broadcast_missing(current_missing);
         let current_failsafe = self.scan_failsafe();
+        let current_stale = self.scan_stale_sources(&current_failsafe);
         self.diff_and_broadcast_failsafe(current_failsafe);
+        self.diff_and_broadcast_stale_sources(current_stale);
     }
 
     /// Re-extracts the config temp-source references, but only when the config
@@ -221,6 +231,13 @@ impl DeviceHealthController {
     fn scan_missing(&self) -> Vec<SourceRef> {
         let present = self.build_present_temps();
         Self::filter_missing(&present, &self.candidates.borrow())
+    }
+
+    /// References whose target temp is currently failsafed. Disjoint from
+    /// `missing` by construction: failsafed temps keep reporting (failsafe)
+    /// values, so they are present.
+    fn scan_stale_sources(&self, failsafe: &[FailsafeRef]) -> Vec<SourceRef> {
+        Self::filter_stale_sources(failsafe, &self.candidates.borrow())
     }
 
     /// A device with no current status contributes nothing, so its references
@@ -344,6 +361,27 @@ impl DeviceHealthController {
             .is_none_or(|temps| temps.contains(&source.temp_name).not())
     }
 
+    fn filter_stale_sources(failsafe: &[FailsafeRef], candidates: &[SourceRef]) -> Vec<SourceRef> {
+        if failsafe.is_empty() {
+            return Vec::new();
+        }
+        let failsafed_temps: HashSet<(&str, &str)> = failsafe
+            .iter()
+            .filter(|reference| reference.kind == FailsafeKind::Temp)
+            .map(|reference| (reference.device_uid.as_str(), reference.name.as_str()))
+            .collect();
+        candidates
+            .iter()
+            .filter(|candidate| {
+                failsafed_temps.contains(&(
+                    candidate.source.device_uid.as_str(),
+                    candidate.source.temp_name.as_str(),
+                ))
+            })
+            .cloned()
+            .collect()
+    }
+
     fn diff_and_broadcast_missing(&self, current: Vec<SourceRef>) {
         let (added, removed) = Self::diff_added_removed(&self.missing.borrow(), &current);
         self.missing.replace(current);
@@ -359,6 +397,23 @@ impl DeviceHealthController {
             return;
         }
         handle.broadcast(HealthEvent::Missing(deltas));
+    }
+
+    fn diff_and_broadcast_stale_sources(&self, current: Vec<SourceRef>) {
+        let (added, removed) = Self::diff_added_removed(&self.stale_source.borrow(), &current);
+        self.stale_source.replace(current);
+        let handle_ref = self.handle.borrow();
+        let Some(handle) = handle_ref.as_ref() else {
+            return;
+        };
+        let deltas = Self::delta_batch(added, removed, |reference, state| SourceDelta {
+            reference,
+            state,
+        });
+        if deltas.is_empty() {
+            return;
+        }
+        handle.broadcast(HealthEvent::StaleSource(deltas));
     }
 
     fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
@@ -428,7 +483,7 @@ mod tests {
         }
     }
 
-    fn missing_ref(device_uid: &str, temp_name: &str) -> SourceRef {
+    fn source_ref(device_uid: &str, temp_name: &str) -> SourceRef {
         SourceRef {
             entity_type: HealthEntityType::Profile,
             entity_uid: "p1".to_string(),
@@ -437,6 +492,42 @@ mod tests {
             source: source(device_uid, temp_name),
             source_device_name: None,
         }
+    }
+
+    fn failsafe_ref(device_uid: &str, name: &str, kind: FailsafeKind) -> FailsafeRef {
+        FailsafeRef {
+            device_uid: device_uid.to_string(),
+            name: name.to_string(),
+            kind,
+            reason: "stale readings".to_string(),
+        }
+    }
+
+    #[test]
+    fn filter_stale_sources_keeps_refs_targeting_failsafed_temps() {
+        // Goal: a reference whose source temp is in the failsafe set is stale;
+        // references to healthy temps are not.
+        let failsafe = vec![failsafe_ref("dev1", "temp1", FailsafeKind::Temp)];
+        let candidates = vec![source_ref("dev1", "temp1"), source_ref("dev1", "temp2")];
+        let stale = DeviceHealthController::filter_stale_sources(&failsafe, &candidates);
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].source, source("dev1", "temp1"));
+    }
+
+    #[test]
+    fn filter_stale_sources_ignores_failsafed_control_channels() {
+        // Goal: only temp-kind failsafe entries make a source stale; a control
+        // channel sharing the temp's name must not match.
+        let failsafe = vec![failsafe_ref("dev1", "temp1", FailsafeKind::Channel)];
+        let candidates = vec![source_ref("dev1", "temp1")];
+        assert!(DeviceHealthController::filter_stale_sources(&failsafe, &candidates).is_empty());
+    }
+
+    #[test]
+    fn filter_stale_sources_empty_when_no_failsafe() {
+        // Goal: the common healthy tick short-circuits to an empty set.
+        let candidates = vec![source_ref("dev1", "temp1")];
+        assert!(DeviceHealthController::filter_stale_sources(&[], &candidates).is_empty());
     }
 
     #[test]
@@ -482,9 +573,9 @@ mod tests {
         // preserving the others' identity.
         let present = present_with("dev1", &["temp1"]);
         let candidates = vec![
-            missing_ref("dev1", "temp1"),    // present -> dropped
-            missing_ref("dev1", "tempGone"), // missing -> kept
-            missing_ref("devX", "temp1"),    // device gone -> kept
+            source_ref("dev1", "temp1"),    // present -> dropped
+            source_ref("dev1", "tempGone"), // missing -> kept
+            source_ref("devX", "temp1"),    // device gone -> kept
         ];
         let result = DeviceHealthController::filter_missing(&present, &candidates);
         assert_eq!(result.len(), 2);
@@ -496,7 +587,7 @@ mod tests {
     fn filter_missing_empty_when_all_present() {
         // Goal: when every candidate resolves, the result is empty.
         let present = present_with("dev1", &["temp1", "temp2"]);
-        let candidates = vec![missing_ref("dev1", "temp1"), missing_ref("dev1", "temp2")];
+        let candidates = vec![source_ref("dev1", "temp1"), source_ref("dev1", "temp2")];
         assert!(DeviceHealthController::filter_missing(&present, &candidates).is_empty());
     }
 
@@ -634,8 +725,8 @@ mod tests {
         // Goal: one batch carries every transition of the tick: added items become
         // Detected deltas, removed items Resolved deltas, in that order.
         let deltas = DeviceHealthController::delta_batch(
-            vec![missing_ref("dev1", "tempNew")],
-            vec![missing_ref("dev1", "tempGone")],
+            vec![source_ref("dev1", "tempNew")],
+            vec![source_ref("dev1", "tempGone")],
             |reference, state| SourceDelta { reference, state },
         );
         assert_eq!(deltas.len(), 2);
@@ -677,7 +768,7 @@ mod tests {
         // entity fields flattened, the temp source nested, `channel_name`
         // absent when None, and the state alongside.
         let deltas = vec![SourceDelta {
-            reference: missing_ref("dev1", "tempGone"),
+            reference: source_ref("dev1", "tempGone"),
             state: HealthState::Resolved,
         }];
         let json = serde_json::to_value(&deltas).unwrap();
@@ -695,8 +786,8 @@ mod tests {
 
     #[test]
     fn device_health_dto_serializes_snapshot_shape() {
-        // Goal: guard the GET /devices/health shape: top-level failsafe and
-        // missing arrays, empty lists serialized as [] rather than omitted.
+        // Goal: guard the GET /devices/health shape: top-level failsafe,
+        // missing, and stale arrays, empty lists serialized as [] not omitted.
         let dto = DeviceHealthDto {
             failsafe: vec![FailsafeRef {
                 device_uid: "dev1".to_string(),
@@ -705,6 +796,7 @@ mod tests {
                 reason: "stale readings".to_string(),
             }],
             missing: Vec::new(),
+            stale_source: Vec::new(),
         };
         let json = serde_json::to_value(&dto).unwrap();
         assert_eq!(
@@ -717,6 +809,7 @@ mod tests {
                     "reason": "stale readings",
                 }],
                 "missing": [],
+                "stale_source": [],
             })
         );
     }
