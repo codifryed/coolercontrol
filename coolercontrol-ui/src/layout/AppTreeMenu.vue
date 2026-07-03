@@ -252,11 +252,24 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
 // tree itself is event-driven and only rebuilt on structural changes.
 const nodeHealthReasons = (item: any): Array<string> => {
     if (item.deviceUID === 'Profiles') {
-        return settingsStore.healthMissing.some(
-            (ref) => ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
-        )
-            ? [t('views.appInfo.missingTempSource')]
-            : []
+        const reasons: Array<string> = []
+        if (
+            settingsStore.healthMissing.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
+            )
+        ) {
+            reasons.push(t('views.appInfo.missingTempSource'))
+        }
+        if (
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Profile && ref.entity_uid === item.uid,
+            )
+        ) {
+            reasons.push(t('views.appInfo.staleTempSource'))
+        }
+        return reasons
     }
     if (item.name == null || item.deviceUID == null) {
         return []
@@ -291,6 +304,23 @@ const nodeHealthReasons = (item: any): Array<string> => {
             ))
     if (missing) {
         reasons.push(t('views.appInfo.missingTempSource'))
+    }
+    const stale =
+        (item.to?.name === 'custom-sensors' &&
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.CustomSensor &&
+                    ref.entity_uid === item.name,
+            )) ||
+        (item.to?.name === 'device-lcd' &&
+            settingsStore.healthStaleSource.some(
+                (ref) =>
+                    ref.entity_type === HealthEntityType.Lcd &&
+                    ref.entity_uid === item.deviceUID &&
+                    ref.channel_name === item.name,
+            ))
+    if (stale) {
+        reasons.push(t('views.appInfo.staleTempSource'))
     }
     return reasons
 }

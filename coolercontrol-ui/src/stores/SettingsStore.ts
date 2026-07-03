@@ -102,6 +102,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const healthFailsafe: Ref<Array<FailsafeRef>> = ref([])
     const healthMissing: Ref<Array<SourceRef>> = ref([])
+    const healthStaleSource: Ref<Array<SourceRef>> = ref([])
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -829,6 +830,7 @@ export const useSettingsStore = defineStore('settings', () => {
     function applyDeviceHealthSnapshot(health: DeviceHealthDTO): void {
         healthFailsafe.value = health.failsafe
         healthMissing.value = health.missing
+        healthStaleSource.value = health.stale_source
     }
 
     function applyFailsafeDelta(delta: FailsafeDelta): void {
@@ -848,6 +850,17 @@ export const useSettingsStore = defineStore('settings', () => {
             healthMissing.value.push(delta)
         } else if (delta.state === HealthState.Resolved && index > -1) {
             healthMissing.value.splice(index, 1)
+        }
+    }
+
+    function applyStaleSourceDelta(delta: SourceDelta): void {
+        const index = healthStaleSource.value.findIndex(
+            (ref) => sourceKey(ref) === sourceKey(delta),
+        )
+        if (delta.state === HealthState.Detected && index === -1) {
+            healthStaleSource.value.push(delta)
+        } else if (delta.state === HealthState.Resolved && index > -1) {
+            healthStaleSource.value.splice(index, 1)
         }
     }
 
@@ -1419,10 +1432,12 @@ export const useSettingsStore = defineStore('settings', () => {
         deleteAlert,
         healthFailsafe,
         healthMissing,
+        healthStaleSource,
         loadDeviceHealth,
         applyDeviceHealthSnapshot,
         applyFailsafeDelta,
         applyMissingDelta,
+        applyStaleSourceDelta,
         applyThemeMode,
         tags,
         createTag,

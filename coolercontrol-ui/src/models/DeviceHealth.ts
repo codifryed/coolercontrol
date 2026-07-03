@@ -82,6 +82,8 @@ export class DeviceHealthDTO {
     failsafe: Array<FailsafeRef> = []
     @Type(() => SourceRef)
     missing: Array<SourceRef> = []
+    @Type(() => SourceRef)
+    stale_source: Array<SourceRef> = []
 }
 
 export function sourceKey(ref: SourceRef): string {

@@ -466,6 +466,7 @@ export default {
             deviceHealthOk: '所有传感器和通道均正常。',
             failsafeActive: '正在使用故障保护值',
             missingTempSource: '缺少温度源',
+            staleTempSource: '温度源正在使用故障保护值',
             stressTest: '热压力测试',
             stressTestTooltip:
                 '生成持续热负载以验证<br>风扇曲线和冷却配置文件。<br>结果可能因硬件而异。<br>安装 stress-ng 以获得额外的后端。',

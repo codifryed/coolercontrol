@@ -575,6 +575,7 @@ export default {
             deviceHealthOk: '모든 센서와 채널이 정상입니다.',
             failsafeActive: '페일세이프 값 사용 중',
             missingTempSource: '온도 소스 누락',
+            staleTempSource: '온도 소스가 페일세이프 값 사용 중',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
                 '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>추가 백엔드를 위해 stress-ng를 설치하세요.',

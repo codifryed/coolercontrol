@@ -590,6 +590,7 @@ export default {
             deviceHealthOk: 'Alle Sensoren und Kanäle sind fehlerfrei.',
             failsafeActive: 'Failsafe-Werte in Verwendung',
             missingTempSource: 'Fehlende Temperaturquelle',
+            staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
                 'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Installieren Sie stress-ng für zusätzliche Backends.',

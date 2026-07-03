@@ -627,6 +627,7 @@ export default {
             deviceHealthOk: 'すべてのセンサーとチャンネルは正常です。',
             failsafeActive: 'フェイルセーフ値を使用中',
             missingTempSource: '温度ソースが見つかりません',
+            staleTempSource: '温度ソースはフェイルセーフ値を使用中',
             stressTest: '熱ストレステスト',
             stressTestTooltip:
                 '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>stress-ngをインストールすると追加のバックエンドが利用できます。',

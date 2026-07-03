@@ -913,6 +913,15 @@ export const useDeviceStore = defineStore('device', () => {
                         }
                         return
                     }
+                    if (event.event === 'stale-source') {
+                        for (const delta of plainToInstance(
+                            SourceDelta,
+                            JSON.parse(event.data) as Array<object>,
+                        )) {
+                            settingsStore.applyStaleSourceDelta(delta)
+                        }
+                        return
+                    }
                     if (event.event === 'failsafe') {
                         for (const delta of plainToInstance(
                             FailsafeDelta,

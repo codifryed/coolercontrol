@@ -599,6 +599,7 @@ export default {
             deviceHealthOk: 'Tous les capteurs et canaux fonctionnent correctement.',
             failsafeActive: 'Valeurs de secours utilisées',
             missingTempSource: 'Source de température manquante',
+            staleTempSource: 'La source de température utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',
             stressTestTooltip:
                 'Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Les résultats peuvent varier selon le matériel.<br>Installez stress-ng pour des backends supplémentaires.',

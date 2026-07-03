@@ -581,6 +581,7 @@ export default {
             deviceHealthOk: 'All sensors and channels are healthy.',
             failsafeActive: 'Failsafe values in use',
             missingTempSource: 'Missing temp source',
+            staleTempSource: 'Temp source using failsafe values',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
                 'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>Install stress-ng for additional backends.',
