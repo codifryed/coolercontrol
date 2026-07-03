@@ -327,10 +327,12 @@ const nodeHealthReasons = (item: any): Array<string> => {
 
 const nodeIsUnhealthy = (item: any): boolean => nodeHealthReasons(item).length > 0
 
+// The newline renders via the tooltip preset's whitespace-pre-line, keeping
+// the reasons visually separate from the general Device Health hint.
 const healthTooltip = (reasons: Array<string>): string =>
     reasons.length === 0
         ? ''
-        : [...new Set(reasons), t('layout.menu.tooltips.seeDeviceHealth')].join('. ')
+        : `${[...new Set(reasons)].join('. ')}.\n${t('layout.menu.tooltips.seeDeviceHealth')}`
 
 const nodeHealthTooltip = (item: any): string => healthTooltip(nodeHealthReasons(item))
 
