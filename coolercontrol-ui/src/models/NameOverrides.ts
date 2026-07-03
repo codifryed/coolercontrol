@@ -35,6 +35,8 @@ export interface DeviceNameOverrides {
 }
 
 export interface ChannelNameOverrides {
+    /** Daemon-written detected-label hint (what a reset returns to). */
+    channel_label?: string
     /** The user-defined channel display label. */
     label?: string
 }

@@ -447,10 +447,17 @@ export const useSettingsStore = defineStore('settings', () => {
         }
         const deviceOverrides = (nameOverrides.value.devices[deviceUID] ??= {})
         const channels = (deviceOverrides.channels ??= {})
-        channels[channelName] = { label: label }
+        const channel = (channels[channelName] ??= {})
         const channelSettings = allUIDeviceSettings.value
             .get(deviceUID)
             ?.sensorsAndChannels.get(channelName)
+        if (channel.label == null && channelSettings != null) {
+            // First override for this channel: the current display label is
+            // the detected one; keep it locally as the reset hint, mirroring
+            // the daemon-stamped channel_label.
+            channel.channel_label ??= channelSettings.channelLabel
+        }
+        channel.label = label
         if (channelSettings != null) {
             channelSettings.channelLabel = label
         }
