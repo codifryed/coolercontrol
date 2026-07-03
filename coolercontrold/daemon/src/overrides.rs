@@ -111,6 +111,16 @@ impl OverridesController {
         }
     }
 
+    /// An empty store not backed by a file, for tests of components that
+    /// hold the controller but do not exercise name persistence.
+    #[cfg(test)]
+    pub fn empty() -> Self {
+        Self {
+            path: PathBuf::new(),
+            document: RefCell::new(OverridesDocument::default()),
+        }
+    }
+
     /// A copy of the raw, sparse overrides document.
     pub fn document(&self) -> OverridesDocument {
         self.document.borrow().clone()
@@ -129,7 +139,7 @@ impl OverridesController {
     pub fn channel_label_override(
         &self,
         device_uid: &DeviceUID,
-        channel_name: &ChannelName,
+        channel_name: &str,
     ) -> Option<String> {
         self.document
             .borrow()
@@ -151,20 +161,19 @@ impl OverridesController {
             .unwrap_or_else(|| raw_name.to_owned())
     }
 
-    /// Resolves a channel display label. Layer order: override > detected > raw.
-    // Consumed by the log call sites (next phase); the DTO paths use the
-    // layer getters directly.
-    #[allow(dead_code)]
-    pub fn resolve_channel_label(
-        &self,
-        device_uid: &DeviceUID,
-        channel_name: &ChannelName,
-        detected: Option<&str>,
-        raw_name: &str,
-    ) -> String {
-        self.channel_label_override(device_uid, channel_name)
-            .or_else(|| detected.map(str::to_owned))
-            .unwrap_or_else(|| raw_name.to_owned())
+    /// Log display form of a device name: `Override (raw)` when a user
+    /// override exists and differs, plain raw otherwise.
+    pub fn log_device_name(&self, device_uid: &DeviceUID, raw_name: &str) -> String {
+        format_log_name(self.device_name_override(device_uid), raw_name)
+    }
+
+    /// Log display form of a channel name: `Override (raw)` when a user
+    /// override exists and differs, plain raw otherwise.
+    pub fn log_channel_name(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
+        format_log_name(
+            self.channel_label_override(device_uid, channel_name),
+            channel_name,
+        )
     }
 
     /// Sets or removes (`None`) the device name override.
@@ -288,6 +297,14 @@ async fn load(path: &Path) -> Result<OverridesDocument> {
     let document = toml_edit::de::from_str::<OverridesDocument>(&contents)
         .with_context(|| format!("Parsing overrides file {}", path.display()))?;
     Ok(document)
+}
+
+/// One place owns the log format so it cannot drift per call site.
+fn format_log_name(override_name: Option<String>, raw_name: &str) -> String {
+    match override_name {
+        Some(name) if name != raw_name => format!("{name} ({raw_name})"),
+        _ => raw_name.to_string(),
+    }
 }
 
 /// Trims a user-supplied name and validates it with the daemon's
@@ -502,12 +519,11 @@ mod tests {
 
     #[test]
     fn resolution_layers_apply_in_order() {
-        // Goal: verify the layer order override > detected > raw for both
-        // devices and channels, including the negative space (no override).
+        // Goal: verify the layer order override > detected > raw for the
+        // device resolver, including the negative space (no override).
         crate::rt::test_runtime(async {
             let tmp = tempfile::tempdir().unwrap();
             let uid = DEVICE_UID.to_string();
-            let channel = "fan1".to_string();
 
             let controller = OverridesController::init_from(overrides_path(&tmp)).await;
             assert_eq!(
@@ -515,31 +531,54 @@ mod tests {
                 "detected"
             );
             assert_eq!(controller.resolve_device_name(&uid, None, "raw"), "raw");
-            assert_eq!(
-                controller.resolve_channel_label(&uid, &channel, Some("CPU Fan"), "fan1"),
-                "CPU Fan"
-            );
-            assert_eq!(
-                controller.resolve_channel_label(&uid, &channel, None, "fan1"),
-                "fan1"
-            );
 
             controller
                 .set_device_name(&uid, HINT, Some("Motherboard"))
-                .await
-                .unwrap();
-            controller
-                .set_channel_label(&uid, HINT, &channel, Some("Front Intake"))
                 .await
                 .unwrap();
             assert_eq!(
                 controller.resolve_device_name(&uid, Some("detected"), "raw"),
                 "Motherboard"
             );
+        });
+    }
+
+    #[test]
+    fn log_names_show_override_with_raw_in_parens() {
+        // Goal: the single log helper renders `Override (raw)` when an
+        // override differs, and plain raw otherwise, for devices and
+        // channels alike.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+
+            assert_eq!(controller.log_device_name(&uid, "nct6798"), "nct6798");
+            assert_eq!(controller.log_channel_name(&uid, "fan1"), "fan1");
+
+            controller
+                .set_device_name(&uid, HINT, Some("Motherboard"))
+                .await
+                .unwrap();
+            controller
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), Some("Front Intake"))
+                .await
+                .unwrap();
             assert_eq!(
-                controller.resolve_channel_label(&uid, &channel, Some("CPU Fan"), "fan1"),
-                "Front Intake"
+                controller.log_device_name(&uid, "nct6798"),
+                "Motherboard (nct6798)"
             );
+            assert_eq!(
+                controller.log_channel_name(&uid, "fan1"),
+                "Front Intake (fan1)"
+            );
+
+            // An override equal to the raw name renders plain, not doubled.
+            controller
+                .set_channel_label(&uid, HINT, &"fan2".to_string(), Some("fan2"))
+                .await
+                .unwrap();
+            assert_eq!(controller.log_channel_name(&uid, "fan2"), "fan2");
         });
     }
 

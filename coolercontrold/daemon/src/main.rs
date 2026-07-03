@@ -303,8 +303,15 @@ fn main() -> Result<()> {
         run_sensors_detection(&config);
         rt::log_active_backend();
 
+        let overrides_controller = Rc::new(overrides::OverridesController::init().await);
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
-            initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
+            initialize_device_repos(
+                &config,
+                &cmd_args,
+                run_token.clone(),
+                Rc::clone(&overrides_controller),
+            )
+            .await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
         let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
@@ -315,6 +322,7 @@ fn main() -> Result<()> {
             Rc::clone(&config),
             calibration_store,
             fan_state_map,
+            Rc::clone(&overrides_controller),
         ));
         let mode_controller = Rc::new(
             ModeController::init(
@@ -324,7 +332,6 @@ fn main() -> Result<()> {
             )
             .await?,
         );
-        let overrides_controller = Rc::new(overrides::OverridesController::init().await);
 
         let _ = moro_local::async_scope!(|main_scope| -> Result<()> {
             async {
@@ -342,12 +349,18 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let alert_controller =
-                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                let alert_controller = Rc::new(
+                    AlertController::init(
+                        Rc::clone(&all_devices),
+                        Rc::clone(&overrides_controller),
+                    )
+                    .await?,
+                );
                 let device_health_controller = Rc::new(device_health::DeviceHealthController::new(
                     Rc::clone(&all_devices),
                     Rc::clone(&config),
                     Rc::clone(&repos),
+                    Rc::clone(&overrides_controller),
                 ));
                 AlertController::watch_for_shutdown(
                     &alert_controller,
@@ -626,6 +639,7 @@ async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
     run_token: CancellationToken,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -697,8 +711,9 @@ async fn initialize_device_repos(
     .await;
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&repos).await;
-    let custom_sensors_repo =
-        Rc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
+    let custom_sensors_repo = Rc::new(
+        init_custom_sensors_repo(config.clone(), devices_for_custom_sensors, overrides).await?,
+    );
     repos.custom_sensors = Some(custom_sensors_repo.clone());
     Ok((
         Rc::new(repos),
@@ -757,8 +772,10 @@ async fn init_service_plugin_repo(
 async fn init_custom_sensors_repo(
     config: Rc<Config>,
     devices_for_custom_sensors: DeviceList,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<CustomSensorsRepo> {
-    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors)?;
+    let mut custom_sensors_repo =
+        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?;
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }

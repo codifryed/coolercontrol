@@ -20,6 +20,7 @@ use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::device::UID;
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::overrides::OverridesController;
 use crate::paths;
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
@@ -209,6 +210,7 @@ impl Default for AlertLog {
 
 pub struct AlertController {
     all_devices: AllDevices,
+    overrides: Rc<OverridesController>,
     alerts: RefCell<IndexMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
     notification_handle: RefCell<Option<NotificationHandle>>,
@@ -219,9 +221,10 @@ pub struct AlertController {
 
 impl AlertController {
     /// A controller for managing and handling Alerts.
-    pub async fn init(all_devices: AllDevices) -> Result<Self> {
+    pub async fn init(all_devices: AllDevices, overrides: Rc<OverridesController>) -> Result<Self> {
         let alert_controller = Self {
             all_devices,
+            overrides,
             alerts: RefCell::new(IndexMap::new()),
             alert_handle: RefCell::new(None),
             notification_handle: RefCell::new(None),
@@ -579,7 +582,10 @@ impl AlertController {
                 continue;
             }
 
-            let channel_name = alert.channel_source.channel_name.clone();
+            let channel_name = self.overrides.log_channel_name(
+                &alert.channel_source.device_uid,
+                &alert.channel_source.channel_name,
+            );
             let min = alert.min;
             let max = alert.max;
 

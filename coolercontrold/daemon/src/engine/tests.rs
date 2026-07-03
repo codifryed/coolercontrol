@@ -187,6 +187,7 @@ mod engine_tests {
             Rc::clone(&config),
             calibration_store,
             fan_state_map,
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
 
         (device, engine, config, set_speeds, should_fail)
@@ -1402,6 +1403,7 @@ mod engine_tests {
             Rc::clone(&config),
             Rc::clone(&calibration_store),
             fan_state_map,
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
 
         (device, engine, calibration_store)
@@ -1444,6 +1446,7 @@ mod engine_tests {
             Rc::clone(&config),
             Rc::new(crate::calibration::CalibrationStore::empty()),
             Rc::new(crate::calibration::FanStateMap::new()),
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
         (engine, config, device_uid, set_speeds)
     }
