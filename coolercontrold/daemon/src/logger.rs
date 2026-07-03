@@ -27,6 +27,7 @@ use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
+use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
@@ -34,10 +35,20 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 const LOG_BUFFER_LINE_SIZE: usize = 500;
-const NEW_LOG_CHANNEL_CAP: usize = 2;
+// Bounds for the UI-facing ring buffer; the journal/stderr sink always keeps full lines.
+// liqctld can relay huge single lines (Python tracebacks), so entries are truncated and the
+// buffer is bounded in total bytes as well as entries.
+const LOG_ENTRY_MAX_BYTES: usize = 8 * 1024;
+const LOG_BUFFER_MAX_BYTES: usize = 1024 * 1024;
+const LOG_TRUNCATION_MARKER: &str = " ...[truncated]\n";
+// Broadcast slots for SSE subscribers. Bursts coalesce into single events, so this rarely
+// fills; a lagged subscriber skips missed lines (recent history stays at GET /logs).
+const NEW_LOG_CHANNEL_CAP: usize = 16;
 // Bounded buffer between the synchronous `Write` impl (called from arbitrary threads) and the
 // log-buffer actor. Sized so bursts rarely overflow; on overflow a UI-buffer line is dropped.
 const LOG_MSG_CHANNEL_CAP: usize = 64;
+const _: () = assert!(LOG_TRUNCATION_MARKER.len() < LOG_ENTRY_MAX_BYTES);
+const _: () = assert!(LOG_ENTRY_MAX_BYTES <= LOG_BUFFER_MAX_BYTES);
 
 pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
     let log_level = if cmd_args.debug {
@@ -283,6 +294,7 @@ pub struct CCLog {
 
 struct LogBufferActor {
     buf: VecDeque<CCLog>,
+    buf_bytes: usize,
     acknowledge_issues_timestamp: DateTime<Local>,
     new_log_broadcaster: broadcast::Sender<String>,
     msg_receiver: mpsc::Receiver<CCLogBufferMessage>,
@@ -310,6 +322,7 @@ impl LogBufferActor {
     ) -> Self {
         Self {
             buf: VecDeque::with_capacity(LOG_BUFFER_LINE_SIZE),
+            buf_bytes: 0,
             acknowledge_issues_timestamp: Local::now(),
             new_log_broadcaster,
             msg_receiver,
@@ -320,25 +333,36 @@ impl LogBufferActor {
         &mut self.msg_receiver
     }
 
-    fn handle_msg(&mut self, msg: CCLogBufferMessage) {
+    /// Handles one received message, then drains everything already queued so a burst of
+    /// lines broadcasts as ONE coalesced event instead of one event per line. Bounded by
+    /// the channel capacity so cancellation stays responsive under sustained spam.
+    fn handle_burst(&mut self, first_msg: CCLogBufferMessage) {
+        let mut pending_broadcast = String::new();
+        self.handle_msg(first_msg, &mut pending_broadcast);
+        for _ in 0..LOG_MSG_CHANNEL_CAP {
+            match self.msg_receiver.try_recv() {
+                Ok(msg) => self.handle_msg(msg, &mut pending_broadcast),
+                Err(_) => break,
+            }
+        }
+        if pending_broadcast.is_empty().not() {
+            let _ = self.new_log_broadcaster.send(pending_broadcast);
+        }
+    }
+
+    fn handle_msg(&mut self, msg: CCLogBufferMessage, pending_broadcast: &mut String) {
         match msg {
             CCLogBufferMessage::GetLogs { respond_to } => {
-                let all_logs = self.buf.iter().fold(String::new(), |mut acc, cc_log| {
-                    acc.push_str(cc_log.message.as_str());
-                    acc
-                });
+                let mut all_logs = String::with_capacity(self.buf_bytes);
+                for cc_log in &self.buf {
+                    all_logs.push_str(cc_log.message.as_str());
+                }
                 let _ = respond_to.send(all_logs);
             }
             CCLogBufferMessage::Log { log } => {
-                if self.buf.len() >= LOG_BUFFER_LINE_SIZE {
-                    self.buf.pop_front();
-                }
-
-                self.buf.push_back(CCLog {
-                    timestamp: Local::now(),
-                    message: log.clone(),
-                });
-                let _ = self.new_log_broadcaster.send(log);
+                let log = truncate_entry(log);
+                pending_broadcast.push_str(&log);
+                self.push_entry(log);
             }
             CCLogBufferMessage::WarningsErrors { respond_to } => {
                 let warnings = self
@@ -365,6 +389,41 @@ impl LogBufferActor {
             }
         }
     }
+
+    fn push_entry(&mut self, message: String) {
+        debug_assert!(message.len() <= LOG_ENTRY_MAX_BYTES);
+        self.buf_bytes += message.len();
+        self.buf.push_back(CCLog {
+            timestamp: Local::now(),
+            message,
+        });
+        // Evict oldest entries until back under both bounds. Terminates: each iteration
+        // pops one entry, and an empty buffer is trivially under budget.
+        while self.buf.len() > LOG_BUFFER_LINE_SIZE || self.buf_bytes > LOG_BUFFER_MAX_BYTES {
+            let Some(evicted) = self.buf.pop_front() else {
+                break;
+            };
+            assert!(self.buf_bytes >= evicted.message.len());
+            self.buf_bytes -= evicted.message.len();
+        }
+        debug_assert!(self.buf.len() <= LOG_BUFFER_LINE_SIZE);
+        debug_assert!(self.buf_bytes <= LOG_BUFFER_MAX_BYTES);
+    }
+}
+
+/// Truncates one formatted log line to the entry cap on a char boundary, marking the cut.
+fn truncate_entry(mut log: String) -> String {
+    if log.len() <= LOG_ENTRY_MAX_BYTES {
+        return log;
+    }
+    let mut cut_index = LOG_ENTRY_MAX_BYTES - LOG_TRUNCATION_MARKER.len();
+    while log.is_char_boundary(cut_index).not() {
+        cut_index -= 1;
+    }
+    log.truncate(cut_index);
+    log.push_str(LOG_TRUNCATION_MARKER);
+    debug_assert!(log.len() <= LOG_ENTRY_MAX_BYTES);
+    log
 }
 
 #[derive(Clone)]
@@ -428,10 +487,11 @@ async fn run_log_buf_actor(mut log_buf_actor: LogBufferActor, cancel_token: Canc
         // guarantees that this task is shut down.
         () = cancel_token.cancelled() => {
             log_buf_actor.buf.clear();
+            log_buf_actor.buf_bytes = 0;
             break;
         }
         Some(msg) = log_buf_actor.msg_receiver().recv() => {
-            log_buf_actor.handle_msg(msg);
+            log_buf_actor.handle_burst(msg);
         }
         else => break,
         }
@@ -484,6 +544,87 @@ mod tests {
             for _ in 0..(LOG_MSG_CHANNEL_CAP * 4) {
                 handle.write_all(b"overflow\n").unwrap();
             }
+        });
+    }
+
+    // Goal: an oversized line is truncated on a char boundary to the entry cap with a marker,
+    // while short lines pass through untouched. A multi-byte char spanning the cut position
+    // must not split (String::truncate would panic).
+    #[test]
+    fn oversized_entry_is_truncated_with_marker() {
+        let short = truncate_entry("short line\n".to_owned());
+        assert_eq!(short, "short line\n");
+
+        let long = truncate_entry("x".repeat(LOG_ENTRY_MAX_BYTES * 2));
+        assert!(long.len() <= LOG_ENTRY_MAX_BYTES);
+        assert!(long.ends_with(LOG_TRUNCATION_MARKER));
+
+        let cut_index = LOG_ENTRY_MAX_BYTES - LOG_TRUNCATION_MARKER.len();
+        let mut multibyte = "y".repeat(cut_index - 1);
+        multibyte.push_str(&"ä".repeat(LOG_ENTRY_MAX_BYTES));
+        let truncated = truncate_entry(multibyte);
+        assert!(truncated.len() <= LOG_ENTRY_MAX_BYTES);
+        assert!(truncated.ends_with(LOG_TRUNCATION_MARKER));
+    }
+
+    // Goal: the buffer evicts oldest entries once total bytes exceed the budget, so GET /logs
+    // can never return more than LOG_BUFFER_MAX_BYTES. Methodology: push ~7 KB entries until
+    // well past the budget, then verify total size and that only the oldest lines are gone.
+    #[test]
+    fn buffer_evicts_oldest_past_byte_budget() {
+        crate::rt::test_runtime(async {
+            let handle = LogBufHandle::new(CancellationToken::new());
+            let entry_count = 200; // ~7 KB * 200 = ~1.4 MB, past the 1 MB budget
+            for i in 0..entry_count {
+                let line = format!("{i:04} {}\n", "z".repeat(7 * 1024));
+                handle.log(line).await;
+            }
+            let logs = handle.get_logs().await;
+            assert!(logs.len() <= LOG_BUFFER_MAX_BYTES);
+            assert!(logs.contains("0000 ").not(), "oldest entry must be evicted");
+            assert!(logs.contains(&format!("{:04} ", entry_count - 1)));
+        });
+    }
+
+    // Goal: the entry-count cap holds independently of bytes: pushing more than the cap
+    // drops the oldest lines and keeps exactly the newest LOG_BUFFER_LINE_SIZE.
+    #[test]
+    fn buffer_evicts_oldest_past_entry_cap() {
+        crate::rt::test_runtime(async {
+            let handle = LogBufHandle::new(CancellationToken::new());
+            let entry_count = LOG_BUFFER_LINE_SIZE + 100;
+            for i in 0..entry_count {
+                handle.log(format!("entry {i}\n")).await;
+            }
+            let logs = handle.get_logs().await;
+            assert_eq!(logs.lines().count(), LOG_BUFFER_LINE_SIZE);
+            assert!(logs.starts_with("entry 100\n"));
+            assert!(logs.ends_with(&format!("entry {}\n", entry_count - 1)));
+        });
+    }
+
+    // Goal: a burst of writes queued before the actor runs must broadcast as ONE coalesced
+    // event containing every line, not one event per line. Methodology: on the single-threaded
+    // test runtime, synchronous try_send writes queue up while the actor task has not yet been
+    // polled; the first recv() then observes the actor's single drained broadcast.
+    #[test]
+    fn burst_broadcasts_as_single_coalesced_event() {
+        crate::rt::test_runtime(async {
+            let mut handle = LogBufHandle::new(CancellationToken::new());
+            let mut rx = handle.broadcaster().subscribe();
+            let line_count = 10;
+            for i in 0..line_count {
+                handle.write_all(format!("burst {i}\n").as_bytes()).unwrap();
+            }
+            let event = rx.recv().await.unwrap();
+            assert_eq!(event.lines().count(), line_count);
+            for i in 0..line_count {
+                assert!(event.contains(&format!("burst {i}\n")));
+            }
+            assert!(matches!(
+                rx.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ));
         });
     }
 }
