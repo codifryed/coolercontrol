@@ -19,9 +19,11 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::config::Config;
 use crate::engine::main::Engine;
+use crate::overrides::OverridesController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::setting::CustomSensor;
 use anyhow::Result;
+use log::warn;
 use moro_local::Scope;
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
@@ -32,6 +34,7 @@ struct CustomSensorActor {
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     engine: Rc<Engine>,
     config: Rc<Config>,
+    overrides: Rc<OverridesController>,
 }
 
 enum CustomSensorMessage {
@@ -66,12 +69,14 @@ impl CustomSensorActor {
         custom_sensors_repo: Rc<CustomSensorsRepo>,
         engine: Rc<Engine>,
         config: Rc<Config>,
+        overrides: Rc<OverridesController>,
     ) -> Self {
         Self {
             receiver,
             custom_sensors_repo,
             engine,
             config,
+            overrides,
         }
     }
 }
@@ -145,7 +150,20 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                         .await?;
                     self.custom_sensors_repo
                         .delete_custom_sensor(&custom_sensor_id)?;
-                    self.config.save_config_file().await
+                    self.config.save_config_file().await?;
+                    // Cascade: sensor IDs are recycled, a future sensor with
+                    // this ID must not inherit the deleted sensor's name.
+                    if let Err(err) = self
+                        .overrides
+                        .remove_channel(&cs_device_uid, &custom_sensor_id)
+                        .await
+                    {
+                        warn!(
+                            "Failed to remove name override for deleted sensor \
+                            {custom_sensor_id}: {err}"
+                        );
+                    }
+                    Ok(())
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -164,11 +182,13 @@ impl CustomSensorHandle {
         custom_sensors_repo: Rc<CustomSensorsRepo>,
         engine: Rc<Engine>,
         config: Rc<Config>,
+        overrides: Rc<OverridesController>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = CustomSensorActor::new(receiver, custom_sensors_repo, engine, config);
+        let actor =
+            CustomSensorActor::new(receiver, custom_sensors_repo, engine, config, overrides);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

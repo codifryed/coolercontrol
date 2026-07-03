@@ -298,7 +298,11 @@ pub struct CoolerControlSettings {
 /// Device Specific settings that generally apply to how the application deals with the device.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CCDeviceSettings {
-    /// The device name for this setting. Helpful after blacklisting(disabling) devices.
+    /// The last-detected device name, stamped by the daemon. Names disabled
+    /// (blacklisted) devices and keeps the config file hand-navigable.
+    /// Deprecated as a writable field: client-supplied values are ignored.
+    /// User-defined names belong in the name overrides (overrides.toml).
+    /// On read it carries the resolved display name.
     pub name: DeviceName,
 
     /// All communication with this device will be avoided if disabled
@@ -313,6 +317,10 @@ pub struct CCDeviceSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CCChannelSettings {
+    /// The last-detected channel label, stamped by the daemon. Names disabled
+    /// channels. Deprecated as a writable field: client-supplied values are
+    /// ignored. User-defined labels belong in the name overrides
+    /// (overrides.toml). On read it carries the resolved display label.
     pub label: Option<String>,
 
     pub disabled: bool,

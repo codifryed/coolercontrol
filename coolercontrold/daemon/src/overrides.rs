@@ -24,9 +24,6 @@
 //! are never pruned because hardware is absent, only when the described
 //! entity is deliberately deleted.
 
-// Not yet wired into the API; remove once the endpoints land.
-#![allow(dead_code)]
-
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Not;
@@ -34,16 +31,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use log::{info, warn};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use toml_edit::{DocumentMut, Item, Value};
 
-use crate::api::CCError;
+use crate::api::validate_name_string;
 use crate::cc_fs;
 use crate::device::{ChannelName, DeviceName, DeviceUID};
 use crate::paths;
-
-/// Matches the UI rename input limit (`DEFAULT_NAME_STRING_LENGTH`).
-pub const NAME_LENGTH_MAX: usize = 40;
 
 const BANNER: &str = "\
 # CoolerControl display-name overrides.
@@ -87,6 +82,11 @@ impl OverridesController {
         }
     }
 
+    /// A copy of the raw, sparse overrides document.
+    pub fn document(&self) -> OverridesDocument {
+        self.document.borrow().clone()
+    }
+
     /// The user-set device name override, if any.
     pub fn device_name_override(&self, device_uid: &DeviceUID) -> Option<DeviceName> {
         self.document
@@ -123,6 +123,9 @@ impl OverridesController {
     }
 
     /// Resolves a channel display label. Layer order: override > detected > raw.
+    // Consumed by the log call sites (next phase); the DTO paths use the
+    // layer getters directly.
+    #[allow(dead_code)]
     pub fn resolve_channel_label(
         &self,
         device_uid: &DeviceUID,
@@ -219,30 +222,30 @@ impl OverridesController {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
-struct OverridesDocument {
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct OverridesDocument {
     #[serde(default)]
-    devices: BTreeMap<DeviceUID, DeviceOverrides>,
+    pub devices: BTreeMap<DeviceUID, DeviceOverrides>,
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
-struct DeviceOverrides {
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceOverrides {
     /// Daemon-written hint for hand-editors, ignored on read.
     #[serde(skip_serializing_if = "Option::is_none")]
-    device_name: Option<DeviceName>,
+    pub device_name: Option<DeviceName>,
     /// User override for the device display name.
     #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<DeviceName>,
+    pub name: Option<DeviceName>,
     /// Temps and channels share one namespace, keyed by raw channel name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    channels: BTreeMap<ChannelName, ChannelOverrides>,
+    pub channels: BTreeMap<ChannelName, ChannelOverrides>,
 }
 
 /// A table per channel so color/ignore/compute can slot in later.
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
-struct ChannelOverrides {
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
-    label: Option<String>,
+    pub label: Option<String>,
 }
 
 /// Reads and parses the file on disk. An absent file is an empty document.
@@ -258,21 +261,11 @@ async fn load(path: &Path) -> Result<OverridesDocument> {
     Ok(document)
 }
 
-/// Trims and validates a user-supplied name.
+/// Trims a user-supplied name and validates it with the daemon's
+/// canonical name rules (non-empty, length cap, no control characters).
 fn validate_name(name: &str) -> Result<String> {
     let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err(CCError::UserError {
-            msg: "Name must not be empty".to_string(),
-        }
-        .into());
-    }
-    if trimmed.chars().count() > NAME_LENGTH_MAX {
-        return Err(CCError::UserError {
-            msg: format!("Name must be at most {NAME_LENGTH_MAX} characters"),
-        }
-        .into());
-    }
+    validate_name_string(trimmed)?;
     debug_assert!(trimmed.is_empty().not());
     debug_assert_eq!(trimmed, trimmed.trim());
     Ok(trimmed.to_owned())
@@ -502,12 +495,16 @@ mod tests {
                 .set_device_name(&uid, HINT, Some("   "))
                 .await
                 .is_err());
-            let too_long = "x".repeat(NAME_LENGTH_MAX + 1);
+            assert!(controller
+                .set_device_name(&uid, HINT, Some("Tab\there"))
+                .await
+                .is_err());
+            let too_long = "x".repeat(51);
             assert!(controller
                 .set_device_name(&uid, HINT, Some(&too_long))
                 .await
                 .is_err());
-            let max_len = "x".repeat(NAME_LENGTH_MAX);
+            let max_len = "x".repeat(50);
             assert!(controller
                 .set_device_name(&uid, HINT, Some(&max_len))
                 .await

@@ -56,6 +56,7 @@ use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
+use crate::overrides::OverridesController;
 use crate::paths;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
@@ -128,6 +129,7 @@ pub async fn start_server<'s>(
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
     device_health_controller: Rc<DeviceHealthController>,
+    overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
@@ -170,6 +172,7 @@ pub async fn start_server<'s>(
         &modes_controller,
         &alert_controller,
         &device_health_controller,
+        overrides_controller,
         plugin_controller,
         log_buf_handle,
         status_handle,
@@ -653,6 +656,7 @@ async fn create_app_state<'s>(
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
     device_health_controller: &Rc<DeviceHealthController>,
+    overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
@@ -673,6 +677,7 @@ async fn create_app_state<'s>(
         engine.clone(),
         modes_controller.clone(),
         config.clone(),
+        overrides_controller.clone(),
         cancel_token.clone(),
         main_scope,
     );
@@ -694,12 +699,19 @@ async fn create_app_state<'s>(
         custom_sensors_repo.clone(),
         engine.clone(),
         config.clone(),
+        overrides_controller.clone(),
         cancel_token.clone(),
         main_scope,
     );
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
     let stats_handle = StatsHandle::new(all_devices.clone(), cancel_token.clone(), main_scope);
-    let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
+    let setting_handle = SettingHandle::new(
+        all_devices,
+        config,
+        overrides_controller,
+        cancel_token.clone(),
+        main_scope,
+    );
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
     let device_health_handle = DeviceHealthHandle::new(
         device_health_controller.clone(),

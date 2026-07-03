@@ -801,6 +801,7 @@ fn mode_routes() -> ApiRouter<AppState> {
         )
 }
 
+#[allow(clippy::too_many_lines)]
 fn settings_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
@@ -852,6 +853,51 @@ fn settings_routes() -> ApiRouter<AppState> {
             put_with(settings::update_cc_device, |o| {
                 o.summary("Update CoolerControl Device Settings")
                     .description("Updates the CoolerControl device settings for the given device UID.")
+                    .tag("setting")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/settings/overrides",
+            // Read-only clients may read user-defined names with a Bearer
+            // access token, like /settings/ui.
+            get_with(settings::get_overrides, |o| {
+                o.summary("Name Overrides")
+                    .description(
+                        "Returns the raw, sparse user-defined name overrides document \
+                        (overrides.toml). Devices and channels without an override are absent.",
+                    )
+                    .tag("setting")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/settings/devices/{device_uid}/overrides",
+            put_with(settings::update_device_overrides, |o| {
+                o.summary("Update Device Name Override")
+                    .description(
+                        "Sets the user-defined display name for the device. \
+                        A null or absent name removes the override.",
+                    )
+                    .tag("setting")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+        .api_route(
+            "/settings/devices/{device_uid}/channels/{channel_name}/overrides",
+            put_with(settings::update_channel_overrides, |o| {
+                o.summary("Update Channel Label Override")
+                    .description(
+                        "Sets the user-defined display label for the channel. \
+                        A null or absent label removes the override. The channel does not \
+                        have to be present; only the device must be known.",
+                    )
                     .tag("setting")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")

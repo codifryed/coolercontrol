@@ -324,6 +324,7 @@ fn main() -> Result<()> {
             )
             .await?,
         );
+        let overrides_controller = Rc::new(overrides::OverridesController::init().await);
 
         let _ = moro_local::async_scope!(|main_scope| -> Result<()> {
             async {
@@ -382,6 +383,7 @@ fn main() -> Result<()> {
                     Rc::clone(&mode_controller),
                     Rc::clone(&alert_controller),
                     Rc::clone(&device_health_controller),
+                    Rc::clone(&overrides_controller),
                     plugin_controller,
                     log_buf_handle,
                     status_handle.clone(),
