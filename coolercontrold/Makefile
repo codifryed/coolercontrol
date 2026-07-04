@@ -30,10 +30,14 @@ clippy: release += --release
 clippy:
 	@$(CARGO) clippy --locked $(release) $(FEATURES) -- -D clippy::pedantic
 
+# test execution is split from compilation so the timeout only bounds the run phase:
+# a hung test binary (wedged FIFO pairing class) otherwise burns the whole CI job budget.
+# JSON goes through a file so the junit report survives a kill and the exit status is kept.
 ci-test:
 	@$(CARGO) build --locked $(release)
 	@./target/debug/$(executable) --version
-	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json | gitlab-report -p test > report.xml
+	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
+	@RUSTC_BOOTSTRAP=1 timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
 	@$(CARGO) clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
 	@#$(CARGO) audit
 	@#$(CARGO) audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
