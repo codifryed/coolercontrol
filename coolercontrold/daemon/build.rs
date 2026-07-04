@@ -19,6 +19,24 @@
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Guard: the web UI is embedded into the binary from resources/app via
+    // include_dir! (see api/base.rs). Building the daemon without first building
+    // the UI embeds an empty directory, yielding a binary that serves a blank
+    // web UI with no other error. Fail packaging (release) builds early here;
+    // warn for debug builds so daemon-only iteration still works.
+    let app_index =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?).join("resources/app/index.html");
+    if !app_index.exists() {
+        let msg = "UI assets missing: resources/app/index.html not found. The daemon embeds \
+            the coolercontrol-ui build at compile time, so the UI must be built first. From \
+            the repo root run `make` (builds everything in the correct order), or `make \
+            build-ui` to build just the UI.";
+        if std::env::var("PROFILE").as_deref() == Ok("release") {
+            panic!("{msg}");
+        }
+        println!("cargo:warning={msg}");
+    }
+
     // Query pkg-config for hwdata's pkgdatadir at build time (e.g., NixOS).
     if let Ok(output) = std::process::Command::new("pkg-config")
         .args(["hwdata", "--variable", "pkgdatadir"])
