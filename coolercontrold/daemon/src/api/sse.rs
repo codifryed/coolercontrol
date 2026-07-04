@@ -67,14 +67,15 @@ pub async fn status(
     let health_stream = BroadcastStream::new(health_subscription).then(move |event| {
         let health_handle = device_health_handle.clone();
         async move {
-            match event {
+            let event = match event {
                 Ok(event) => health_event_to_sse(event),
                 // This consumer missed transitions; resync it with the full
                 // current snapshot instead of leaving it permanently stale.
                 Err(BroadcastStreamRecvError::Lagged(_)) => {
                     health_snapshot_to_sse(health_handle.get_all().await)
                 }
-            }
+            };
+            Ok(event)
         }
     });
     let combined = futures_util::stream::select(status_stream, health_stream)
@@ -84,30 +85,30 @@ pub async fn status(
 
 /// Maps one tick's device-health transition batch to its named SSE event
 /// (`missing`, `stale-source`, or `failsafe`).
-fn health_event_to_sse(event: HealthEvent) -> Result<Event, Infallible> {
+fn health_event_to_sse(event: HealthEvent) -> Event {
     match event {
-        HealthEvent::Missing(deltas) => Ok(Event::default()
+        HealthEvent::Missing(deltas) => Event::default()
             .event("missing")
             .json_data(deltas)
-            .expect("derived DTO serialization cannot fail")),
-        HealthEvent::StaleSource(deltas) => Ok(Event::default()
+            .expect("derived DTO serialization cannot fail"),
+        HealthEvent::StaleSource(deltas) => Event::default()
             .event("stale-source")
             .json_data(deltas)
-            .expect("derived DTO serialization cannot fail")),
-        HealthEvent::Failsafe(deltas) => Ok(Event::default()
+            .expect("derived DTO serialization cannot fail"),
+        HealthEvent::Failsafe(deltas) => Event::default()
             .event("failsafe")
             .json_data(deltas)
-            .expect("derived DTO serialization cannot fail")),
+            .expect("derived DTO serialization cannot fail"),
     }
 }
 
 /// Full-state `health` event sent to a consumer that lagged the broadcast
 /// buffer, so it converges on the current state.
-fn health_snapshot_to_sse(snapshot: DeviceHealthDto) -> Result<Event, Infallible> {
-    Ok(Event::default()
+fn health_snapshot_to_sse(snapshot: DeviceHealthDto) -> Event {
+    Event::default()
         .event("health")
         .json_data(snapshot)
-        .expect("derived DTO serialization cannot fail"))
+        .expect("derived DTO serialization cannot fail")
 }
 
 pub async fn modes(

@@ -156,7 +156,7 @@ pub async fn sleep_until(deadline: Instant) {
 ///
 /// Spawned child processes inherit this mask too. That is fine here: liqctld is stopped via its
 /// `/quit` request and then SIGKILL (unblockable), and shell helpers exit on their own or are
-/// SIGKILLed on drop, so no child is ever stopped by a signal it could have masked.
+/// `SIGKILLed` on drop, so no child is ever stopped by a signal it could have masked.
 fn block_termination_signals() {
     let mut set = SigSet::empty();
     set.add(Signal::SIGINT);

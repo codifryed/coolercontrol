@@ -4811,12 +4811,22 @@ mod prepare_for_sleep_tests {
             // Pair the FIFO BEFORE the assertions: a panic here
             // would leave the leaked blocking write thread stuck in
             // open(), and the test runtime drop would hang forever
-            // waiting for it.
+            // waiting for it. A blocking read-open would itself hang
+            // if the timed-out write never reached open(2), so open
+            // O_NONBLOCK (never blocks): a parked write-open pairs
+            // the instant this fd opens. The release is not readable
+            // from this side (a cancelled compio op closes its fd
+            // without writing), so hold the fd for a grace period to
+            // also catch a late write-open, then close.
             let fifo_for_reader = fifo_path.clone();
             let _ = crate::rt::spawn_blocking(move || {
-                let _ = std::fs::OpenOptions::new()
+                use std::os::unix::fs::OpenOptionsExt;
+                let _reader = std::fs::OpenOptions::new()
                     .read(true)
-                    .open(&fifo_for_reader);
+                    .custom_flags(nix::libc::O_NONBLOCK)
+                    .open(&fifo_for_reader)
+                    .expect("nonblocking fifo read-open must not fail");
+                std::thread::sleep(Duration::from_secs(2));
             })
             .await;
 
@@ -5235,11 +5245,26 @@ mod init_timeout_tests {
             // Pair the FIFO so the blocking reader thread can
             // complete. Without this the runtime drop may wait on
             // the leaked read-open syscall.
+            // A blocking write-open would itself hang if the timed-out
+            // read task never reached open(2). O_NONBLOCK write-open
+            // pairs (succeeds) only once a reader is parked and fails
+            // with ENXIO otherwise; retry until the deadline (read
+            // task cancelled before open, nothing leaked). Dropping
+            // the paired fd sends EOF and the leaked read completes.
             let fifo_for_writer = fifo_path.clone();
             let _ = crate::rt::spawn_blocking(move || {
-                let _ = std::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&fifo_for_writer);
+                use std::os::unix::fs::OpenOptionsExt;
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < deadline {
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .custom_flags(nix::libc::O_NONBLOCK)
+                        .open(&fifo_for_writer)
+                    {
+                        Ok(_paired) => break,
+                        Err(_) => std::thread::sleep(Duration::from_millis(10)),
+                    }
+                }
             })
             .await;
 
