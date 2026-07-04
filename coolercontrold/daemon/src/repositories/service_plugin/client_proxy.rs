@@ -448,6 +448,7 @@ mod tests {
         LcdSettings {
             brightness: None,
             orientation: None,
+            colors: Vec::new(),
             mode: LcdModeKind::None,
         }
     }

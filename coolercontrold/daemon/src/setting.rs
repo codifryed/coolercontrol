@@ -134,6 +134,13 @@ pub struct LcdSettings {
     /// The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.
     pub orientation: Option<u16>,
 
+    /// Unused; kept for downgrade compatibility.
+    // Written as an empty no-op because 4.3.x hard-requires this field when parsing
+    // config.toml and modes.json, so removing it breaks a daemon downgrade.
+    // DOWNGRADE-COMPAT(added 4.4.0, remove 4.6.0): see DEPRECATIONS.md.
+    #[serde(default)]
+    pub colors: Vec<(R, G, B)>,
+
     /// The mode and its mode-specific fields. Flattened so `mode` and the payload stay flat
     /// siblings of the shared fields on the wire (the legacy shape).
     #[serde(flatten)]
@@ -873,6 +880,7 @@ mod tests {
                 lcd: LcdSettings {
                     brightness: Some(80),
                     orientation: None,
+                    colors: Vec::new(),
                     mode: LcdModeKind::Liquid,
                 },
             },
@@ -886,6 +894,7 @@ mod tests {
         LcdSettings {
             brightness: Some(80),
             orientation: None,
+            colors: Vec::new(),
             mode,
         }
     }
@@ -974,6 +983,22 @@ mod tests {
         });
         let parsed: LcdSettings = serde_json::from_value(legacy).unwrap();
         assert!(matches!(parsed.mode, LcdModeKind::Image { .. }));
+    }
+
+    // The no-op colors field always serializes (4.3.x requires it after a downgrade) and its
+    // absence still deserializes (files written by the brief colors-less dev builds).
+    #[test]
+    fn lcd_colors_downgrade_compat() {
+        let serialized = serde_json::to_value(lcd(LcdModeKind::Liquid)).unwrap();
+        assert_eq!(serialized["colors"], json!([]));
+
+        let stripped = json!({
+            "mode": "liquid",
+            "brightness": 80,
+            "orientation": null
+        });
+        let parsed: LcdSettings = serde_json::from_value(stripped).unwrap();
+        assert!(parsed.colors.is_empty());
     }
 
     fn profile(kind: ProfileKind) -> Profile {

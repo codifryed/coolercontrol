@@ -450,6 +450,10 @@ impl Config {
                     Item::Value(Value::String(Formatted::new(images_path.clone())));
             }
         }
+        // Always written even though unused: 4.3.x hard-requires lcd.colors on load, so
+        // omitting it breaks a daemon downgrade.
+        // DOWNGRADE-COMPAT(added 4.4.0, remove 4.6.0): see DEPRECATIONS.md.
+        channel_setting["lcd"]["colors"] = Item::Value(Value::Array(toml_edit::Array::new()));
         if let Some(temp_source) = lcd.temp_source() {
             channel_setting["lcd"]["temp_source"]["temp_name"] =
                 Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
@@ -930,6 +934,7 @@ impl Config {
             Some(LcdSettings {
                 brightness,
                 orientation,
+                colors: Vec::new(),
                 mode: LcdModeKind::from_name(mode, image_file_processed, temp_source, carousel),
             })
         } else {
@@ -2897,6 +2902,7 @@ offset = 5
             let lcd = LcdSettings {
                 brightness: Some(50),
                 orientation: Some(90),
+                colors: Vec::new(),
                 mode: LcdModeKind::Image {
                     image_file_processed: Some(
                         "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
@@ -2910,6 +2916,17 @@ offset = 5
 
             // Set the shutdown setting
             config.set_lcd_shutdown_setting(device_uid, channel_name, &lcd);
+
+            // 4.3.x hard-requires lcd.colors on load, so the no-op write must keep it present.
+            // DOWNGRADE-COMPAT(added 4.4.0, remove 4.6.0): remove with the colors field.
+            {
+                let doc = config.document.borrow();
+                let colors = doc["lcd-shutdown-settings"][device_uid][channel_name]["lcd"]
+                    ["colors"]
+                    .as_array()
+                    .expect("colors key present");
+                assert!(colors.is_empty());
+            }
 
             // Get all settings and verify roundtrip
             let all = config.get_all_lcd_shutdown_settings().unwrap();
@@ -3354,6 +3371,7 @@ offset = 5
                     lcd: LcdSettings {
                         brightness: Some(80),
                         orientation: Some(180),
+                        colors: Vec::new(),
                         mode: LcdModeKind::Image {
                             image_file_processed: Some("/tmp/img.png".to_string()),
                         },
