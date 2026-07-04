@@ -1,7 +1,7 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
 
-.PHONY: build test check clean install uninstall
+.PHONY: build dist dev dev-run offline test check ci-test clean install uninstall
 
 dist:
 	@npm ci --prefer-offline

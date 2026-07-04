@@ -1,21 +1,49 @@
 # CoolerControl Makefile
+#
+# Core build/test/dev targets. Run `make help` for the common ones.
+# Maintainer plumbing is split into make/*.mk (included at the bottom).
 .DEFAULT_GOAL := build
-docker_image_tag := v3
 ap_id := 'org.coolercontrol.CoolerControl'
 liqctld_dir := 'coolercontrol-liqctld'
 daemon_dir := 'coolercontrold'
 ui_dir := 'coolercontrol-ui'
 qt_dir := 'coolercontrol'
-appimage_daemon_dir := 'appimage-build-daemon'
-appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
-appimage_ui_dir := 'appimage-build-ui'
-appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
-# Detect cargo or fallback
-CARGO := $(shell command -v cargo || command -v cargo-1.85 || command -v cargo-1.88 || command -v cargo-1.91)
+# Detect cargo or fallback (prefer newer; mirrors coolercontrold/Makefile ordering)
+CARGO := $(shell command -v cargo || command -v cargo-1.88 || command -v cargo-1.85 || command -v cargo-1.91)
 
-.PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
-		appimages bump release push-release validate-metadata pr-check
+.PHONY: help \
+	build build-ui build-daemon build-qt dev-build \
+	build-offline build-daemon-offline build-ui-offline \
+	test test-ui test-daemon test-qt dev-test \
+	ci-install ci-test ci-test-ui ci-test-daemon ci-test-qt \
+	ci-check ci-fmt pr-check validate-metadata \
+	clean clean-ui install install-source uninstall dev-run dev-install
+
+# Run `make help` for the common developer targets.
+help:
+	@printf '\nCoolerControl - common make targets\n\n'
+	@printf '  \033[1mBuild\033[0m\n'
+	@printf '    make build            Build everything (UI + daemon + Qt), release\n'
+	@printf '    make build-ui         Build just the Vue UI (embedded in the daemon)\n'
+	@printf '    make build-daemon     Build the Rust daemon (builds UI first)\n'
+	@printf '    make build-qt         Build the Qt desktop app\n'
+	@printf '    make dev-build        Clean UI, then full release build\n\n'
+	@printf '  \033[1mTest & check\033[0m\n'
+	@printf '    make test             Run all tests (UI + daemon + Qt)\n'
+	@printf '    make test-daemon      Run daemon (Rust) tests\n'
+	@printf '    make test-ui          Run UI (Vitest) tests\n'
+	@printf '    make pr-check         Pre-PR gate: lint diff, tests, clippy, Qt build\n\n'
+	@printf '  \033[1mFormat & lint\033[0m\n'
+	@printf '    make ci-fmt           Auto-format all files (trunk)\n'
+	@printf '    make ci-check         Run formatting/lint checks (trunk)\n\n'
+	@printf '  \033[1mRun & install\033[0m\n'
+	@printf '    make dev-run          Incremental build + run daemon locally (sudo)\n'
+	@printf '    make install          Install daemon + Qt binaries (DESTDIR aware)\n'
+	@printf '    make dev-install      Install release binaries + restart the service\n'
+	@printf '    make clean            Remove all build artifacts\n\n'
+	@printf '  Maintainer targets (appimages, docker-*, bump, release, vendor, assets)\n'
+	@printf '  live in make/*.mk.\n\n'
 
 # Release goals
 # can be run in parallel with make -j2
@@ -29,8 +57,6 @@ build-qt:
 
 build-ui:
 	@$(MAKE) -C $(ui_dir) build
-
-build-source: build
 
 build-offline: build-daemon-offline build-qt
 
@@ -69,9 +95,6 @@ ci-test-ui:
 ci-test-qt:
 	@$(MAKE) -C $(qt_dir) ci-test
 
-ci-check-all:
-	@./trunk check --ci --all
-
 ci-check:
 	@./trunk install --ci
 	@./trunk check --ci
@@ -91,7 +114,7 @@ install:
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(qt_dir) $@ 
 
-install-source: build-source install
+install-source: build install
 	@install -Dm644 packaging/metadata/$(ap_id).desktop -t $(DESTDIR)/usr/local/share/applications/
 	@install -Dm644 packaging/metadata/$(ap_id).metainfo.xml -t $(DESTDIR)/usr/share/metainfo/
 	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/icons/hicolor/256x256/apps/
@@ -149,137 +172,7 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
-ubuntu-source-package:
-	@sed -i 's/UNRELEASED/jammy/g' debian/changelog
-	@debuild -S -sa --force-sign
-	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
-
-# should be executed after the build targets
-assets: assets-daemon assets-ui assets-qt
-
-assets-daemon:
-	@mkdir -p assets-built
-	@cp $(daemon_dir)/target/release/coolercontrold ./assets-built/
-
-assets-ui:
-	@mkdir -p assets-built
-	@cd $(ui_dir) && tar -czf ../assets-built/coolercontrol-ui-vendor.tar.gz node_modules
-
-assets-qt: build-qt
-	@mkdir -p assets-built
-	@cp $(qt_dir)/build/coolercontrol ./assets-built/
-
-# Create Cargo vendored crates
-vendor:
-	@$(MAKE) -C $(daemon_dir) vendor
-	@cd $(daemon_dir) && tar -czf ../coolercontrold-vendor.tar.gz vendor .cargo
-
-# AppImages:
-############################################################################################################################################
-
-build-appimages: build-daemon
-
-appimages: appimage-daemon
-
-#https://python-appimage.readthedocs.io/en/latest/
-appimage-daemon:
-	@$(RM) -f $(appimage_daemon_name)
-	@$(RM) -rf $(appimage_daemon_dir)
-	@git clone --depth=1 https://gitlab.com/coolercontrol/appimage-resources.git /tmp/resources
-	@/tmp/resources/python3.*-manylinux2014_x86_64.AppImage --appimage-extract
-	@squashfs-root/AppRun -s -m pip install --upgrade --no-warn-script-location liquidctl
-	@$(RM) -f squashfs-root/AppRun
-	@$(RM) -f squashfs-root/.DirIcon
-	@$(RM) -f squashfs-root/python.png
-	@$(RM) -f squashfs-root/python3.*.desktop
-	@mv squashfs-root $(appimage_daemon_dir)
-	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)/usr/bin/
-	@mkdir -p $(appimage_daemon_dir)/usr/share/applications
-	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
-	@ln -s usr/share/applications/org.coolercontrol.CoolerControlD.desktop $(appimage_daemon_dir)/coolercontrold.desktop
-	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrold.svg
-	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrold.png
-	@ln -s usr/share/icons/hicolor/256x256/apps/coolercontrold.png $(appimage_daemon_dir)/coolercontrold.png
-	@mkdir -p $(appimage_daemon_dir)/usr/share/metainfo
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_daemon_dir)/usr/share/metainfo
-	@ln -s coolercontrold.png $(appimage_daemon_dir)/.DirIcon
-	@ln -s usr/bin/coolercontrold $(appimage_daemon_dir)/AppRun
-	@/tmp/resources/appimagetool-x86_64.AppImage -n --sign $(appimage_daemon_dir) $(appimage_daemon_name)
-
-
-# Release
-############################################################################################################################################
-# Valid version arguments are:
-# a valid bump rule: patch, minor, major
-# examples:
-#  make bump v=minor
-v = "patch"
-bump:
-	@./packaging/version_bump.sh $(v)
-
-# version from bump above applies to release as well:
-release:
-	@./packaging/release.sh
-
-push-release:
-	@git push --follow-tags
-
-
-# CI DOCKER Image commands:
-############################################################################################################################################
-docker-build-images:
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/images/pipeline/Dockerfile ./
-	#@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) -f .gitlab/images/appimage/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/images/cloudsmith-cli/Dockerfile ./
-
-docker-login:
-	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
-	@docker login registry.gitlab.com
-
-docker-arm64:
-	# This is a special build from arm64 where your system needs to be setup to be able to build aarch64 images
-	@docker buildx build --platform linux/arm64 -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:$(docker_image_tag) -f .gitlab/images/ubuntu-arm64/Dockerfile --push ./
-	@docker buildx build --platform linux/arm64,linux/amd64 -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile --push ./
-
-docker-push:
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	#@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
-
-docker-ci-run:
-	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
-
-docker-ci-run-deb-bookworm:
-	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
-
-# arm64 variant runs the same multi-arch deb-bookworm image; --platform selects the arm64 manifest (needs qemu emulation on amd64)
-docker-ci-run-deb-bookworm-arm64:
-	@docker run --name coolercontrol-ci-deb-arm64 --rm --platform linux/arm64 -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
-
-docker-ci-run-ubuntu:
-	@docker run --name coolercontrol-ci-ubuntu --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) bash
-
-# arm64 variant runs the dedicated ubuntu-arm64 image (needs qemu emulation on amd64)
-docker-ci-run-ubuntu-arm64:
-	@docker run --name coolercontrol-ci-ubuntu-arm64 --rm --platform linux/arm64 -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:$(docker_image_tag) bash
-
-docker-ci-run-appimage:
-	@docker run --name coolercontrol-ci-appimage --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) bash
-
-docker-ci-run-cloudsmith-cli:
-	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
-
-# General:
-docker-clean:
-	@docker rm coolercontrol-ci || true
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
+# Maintainer / release-engineering targets live in these includes:
+include make/docker.mk
+include make/release.mk
+include make/appimage.mk

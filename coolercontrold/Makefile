@@ -15,7 +15,7 @@ CARGO_VER := $(if $(CARGO),$(shell $(CARGO) --version | awk '{print $$2}'))
 # order. Any 1.88+ release (1.88.1, 1.96.0, ...) selects compio; 1.85.x/1.87.x select tokio.
 FEATURES := $(shell printf '1.88\n%s\n' "$(CARGO_VER)" | sort -V -C || echo --no-default-features)
 
-.PHONY: build test clippy clean install uninstall
+.PHONY: build test clippy ci-test dev-run vendor clean clean-app install uninstall
 
 build: release += --release
 build:
