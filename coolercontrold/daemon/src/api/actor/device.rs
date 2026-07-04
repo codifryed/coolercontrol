@@ -34,7 +34,7 @@ use anyhow::Result;
 use log::{error, info};
 use mime::Mime;
 use moro_local::Scope;
-use std::ops::Deref;
+use std::ops::{Deref, Not};
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -770,7 +770,9 @@ impl DeviceHandle {
 /// names remain available via the UID and the raw channel keys.
 fn apply_name_overrides(overrides: &OverridesController, devices: &mut [DeviceDto]) {
     for device in devices {
+        debug_assert!(device.name.is_empty().not());
         device.name = overrides.resolve_device_name(&device.uid, None, &device.name);
+        debug_assert!(device.name.is_empty().not());
         for (temp_name, temp_info) in &mut device.info.temps {
             if let Some(label) = overrides.channel_label_override(&device.uid, temp_name) {
                 temp_info.label = label;

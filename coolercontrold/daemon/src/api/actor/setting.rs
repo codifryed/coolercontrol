@@ -604,6 +604,7 @@ fn resolve_channel_setting_labels(
     live_info: Option<&DeviceInfo>,
     channel_settings: &mut HashMap<ChannelName, CCChannelSettings>,
 ) {
+    assert!(device_uid.is_empty().not());
     for (channel_name, settings) in channel_settings.iter_mut() {
         let memo = settings.label.take().filter(|label| label.is_empty().not());
         let live = live_info.and_then(|info| detected_channel_label(info, channel_name));
@@ -612,6 +613,11 @@ fn resolve_channel_setting_labels(
             .or(memo)
             .or(live);
     }
+    debug_assert!(channel_settings
+        .iter()
+        .all(|(channel_name, settings)| overrides
+            .channel_label_override(device_uid, channel_name)
+            .is_none_or(|over| settings.label.as_deref() == Some(over.as_str()))));
 }
 
 /// Stamps `CCDeviceSettings.name` and channel labels as last-detected-name
