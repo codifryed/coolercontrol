@@ -417,10 +417,11 @@ const saveSensor = async (): Promise<void> => {
     if (shouldCreateSensor) {
         const successful = await settingsStore.saveCustomSensor(customSensor)
         if (successful) {
-            // The name is a daemon override on the new sensor's channel.
+            // The name is a daemon override on the new sensor's channel;
+            // saveChannelName surfaces a rejected name as a toast.
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                await deviceStore.daemonClient.saveChannelLabelOverride(
+                await settingsStore.saveChannelName(
                     customSensorsDeviceUID,
                     customSensor.id,
                     sensorName.value,
@@ -435,10 +436,10 @@ const saveSensor = async (): Promise<void> => {
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
             }
-            await deviceStore.daemonClient.saveChannelLabelOverride(
+            await settingsStore.saveChannelName(
                 customSensorsDeviceUID,
                 customSensor.id,
-                sensorName.value ? sensorName.value : null,
+                sensorName.value,
             )
             await deviceStore.waitAndReload(1)
         }

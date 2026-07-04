@@ -56,9 +56,10 @@ if (!customSensorsDeviceUID) {
 const saveCustomSensor = async (): Promise<void> => {
     const successful = await settingsStore.saveCustomSensor(props.customSensor)
     if (successful) {
-        // The name is a daemon override on the new sensor's channel.
+        // The name is a daemon override on the new sensor's channel;
+        // saveChannelName surfaces a rejected name as a toast.
         if (props.name) {
-            await deviceStore.daemonClient.saveChannelLabelOverride(
+            await settingsStore.saveChannelName(
                 customSensorsDeviceUID,
                 props.customSensor.id,
                 deviceStore.sanitizeString(props.name),
