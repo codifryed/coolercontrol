@@ -1,7 +1,7 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
 
-.PHONY: build test clean install uninstall
+.PHONY: build test ci-test clean install uninstall
 
 build:
 	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ 
