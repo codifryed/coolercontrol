@@ -18,18 +18,17 @@
 
 //! User-defined display-name overrides, stored in `overrides.toml`.
 //!
-//! Single source of truth for custom device and channel names. Resolution
-//! is layered: override > detected label > raw name. The file is
-//! hand-editable; hand edits are picked up at daemon startup only. Entries
-//! are never pruned because hardware is absent, only when the described
-//! entity is deliberately deleted.
+//! Resolution is layered (override > detected label > raw name). The file is
+//! hand-editable; edits are read only at startup. Entries are pruned only on
+//! deliberate entity deletion, never on hardware absence.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::{info, warn};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -45,6 +44,10 @@ const BANNER: &str = "\
 # Managed by coolercontrold: comments are not preserved on rewrite.
 # Hand edits are applied at the next daemon startup.
 ";
+
+/// Upper bound on channel overrides stored per device. Real hardware has far
+/// fewer channels, so this only caps accidental or abusive growth of the file.
+const MAX_CHANNEL_OVERRIDES_PER_DEVICE: usize = 512;
 
 /// Owns the overrides document and resolves display names against it.
 pub struct OverridesController {
@@ -196,6 +199,7 @@ impl OverridesController {
             let device = document.devices.entry(device_uid.clone()).or_default();
             device.device_name = Some(device_name_hint.to_owned());
             device.name = name;
+            Ok(())
         })
         .await
     }
@@ -211,12 +215,22 @@ impl OverridesController {
         channel_label_hint: Option<&str>,
         label: Option<&str>,
     ) -> Result<()> {
+        // The channel name is a TOML key not bounded by a liveness check, so
+        // hold it to the same character and length policy as a name value.
+        validate_name_string(channel_name)?;
         let label = label.map(validate_name).transpose()?;
         self.read_modify_write(|document| {
             let device = document.devices.entry(device_uid.clone()).or_default();
             device.device_name = Some(device_name_hint.to_owned());
             match label {
                 Some(label) => {
+                    let is_new = device.channels.contains_key(channel_name).not();
+                    if is_new && device.channels.len() >= MAX_CHANNEL_OVERRIDES_PER_DEVICE {
+                        return Err(anyhow!(
+                            "device {device_uid} has reached the maximum of \
+                             {MAX_CHANNEL_OVERRIDES_PER_DEVICE} channel overrides"
+                        ));
+                    }
                     let channel = device.channels.entry(channel_name.clone()).or_default();
                     if let Some(hint) = channel_label_hint {
                         channel.channel_label = Some(hint.to_owned());
@@ -229,6 +243,7 @@ impl OverridesController {
                     }
                 }
             }
+            Ok(())
         })
         .await
     }
@@ -245,19 +260,21 @@ impl OverridesController {
             if let Some(device) = document.devices.get_mut(device_uid) {
                 device.channels.remove(channel_name);
             }
+            Ok(())
         })
         .await
     }
 
     /// Read-modify-write against the file on disk. Re-reading narrows the
-    /// window where a daemon write clobbers a concurrent hand-edit.
+    /// window where a daemon write clobbers a concurrent hand-edit. An `apply`
+    /// that returns an error aborts before any write, leaving the file intact.
     async fn read_modify_write<F>(&self, apply: F) -> Result<()>
     where
-        F: FnOnce(&mut OverridesDocument),
+        F: FnOnce(&mut OverridesDocument) -> Result<()>,
     {
         let _write_guard = self.write_lock.lock().await;
         let mut document = load(&self.path).await?;
-        apply(&mut document);
+        apply(&mut document)?;
         prune(&mut document);
         debug_assert!(is_pruned(&document));
         save(&self.path, &document).await?;
@@ -300,9 +317,18 @@ pub struct ChannelOverrides {
 async fn save(path: &Path, document: &OverridesDocument) -> Result<()> {
     let contents = render(document)?;
     assert!(contents.starts_with(BANNER));
-    cc_fs::write_string(path, contents)
+    // Write to a sibling temp file then rename over the target: a crash
+    // mid-write cannot leave a partial file that would then permanently fail
+    // every read-modify-write (which refuses to clobber an unparseable file).
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp_path = PathBuf::from(tmp);
+    cc_fs::write_string(&tmp_path, contents)
         .await
-        .with_context(|| format!("Writing overrides file {}", path.display()))
+        .with_context(|| format!("Writing overrides temp file {}", tmp_path.display()))?;
+    cc_fs::rename(&tmp_path, path)
+        .await
+        .with_context(|| format!("Publishing overrides file {}", path.display()))
 }
 
 /// Reads and parses the file on disk. An absent file is an empty document.
@@ -318,11 +344,27 @@ async fn load(path: &Path) -> Result<OverridesDocument> {
     Ok(document)
 }
 
-/// One place owns the log format so it cannot drift per call site.
+/// One place owns the log format so it cannot drift per call site. Names are
+/// sanitized here because hand-edited overrides bypass intake validation, so
+/// the log boundary re-applies the injection-character policy.
 fn format_log_name(override_name: Option<String>, raw_name: &str) -> String {
+    let raw = sanitize_for_log(raw_name);
     match override_name {
-        Some(name) if name != raw_name => format!("{name} ({raw_name})"),
-        _ => raw_name.to_string(),
+        Some(name) if name != raw_name => format!("{} ({raw})", sanitize_for_log(&name)),
+        _ => raw.into_owned(),
+    }
+}
+
+/// Drops injection-capable characters from a name destined for a log line.
+fn sanitize_for_log(name: &str) -> Cow<'_, str> {
+    if name.chars().any(is_forbidden_name_char) {
+        Cow::Owned(
+            name.chars()
+                .filter(|c| is_forbidden_name_char(*c).not())
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(name)
     }
 }
 
@@ -1007,6 +1049,99 @@ mod tests {
                 controller.channel_label_override(&uid, &"fan1".to_string()),
                 Some("Front Intake".to_string())
             );
+        });
+    }
+
+    #[test]
+    fn format_log_name_strips_control_characters() {
+        // Goal: hand-edited override names reach the log helper unvalidated,
+        // so the helper drops injection-capable characters (ESC here) itself.
+        let tainted = "Pump\u{1b}[31m".to_string();
+        let formatted = format_log_name(Some(tainted), "hwmon2");
+        assert!(formatted.chars().any(is_forbidden_name_char).not());
+        assert_eq!(formatted, "Pump[31m (hwmon2)");
+        assert_eq!(
+            format_log_name(Some("Pump".to_string()), "hwmon2"),
+            "Pump (hwmon2)"
+        );
+    }
+
+    #[test]
+    fn save_publishes_atomically_without_leaving_a_temp_file() {
+        // Goal: writes go through a temp file + rename, so a crash cannot
+        // leave a partial file and no temp sibling remains afterwards.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let uid = DEVICE_UID.to_string();
+
+            let controller = OverridesController::init_from(path.clone()).await;
+            controller
+                .set_device_name(&uid, HINT, Some("Motherboard"))
+                .await
+                .unwrap();
+
+            let mut temp_sibling = path.as_os_str().to_owned();
+            temp_sibling.push(".tmp");
+            assert!(PathBuf::from(temp_sibling).exists().not());
+            let reloaded = OverridesController::init_from(path).await;
+            assert_eq!(
+                reloaded.device_name_override(&uid),
+                Some("Motherboard".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn channel_overrides_are_capped_per_device() {
+        // Goal: bound file growth. A device accepts up to the cap of distinct
+        // channel overrides; a further new channel is rejected, while updating
+        // an already-stored channel still succeeds.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+
+            for i in 0..MAX_CHANNEL_OVERRIDES_PER_DEVICE {
+                let channel = format!("chan{i}");
+                controller
+                    .set_channel_label(&uid, HINT, &channel, None, Some("Label"))
+                    .await
+                    .unwrap();
+            }
+            let overflow = format!("chan{MAX_CHANNEL_OVERRIDES_PER_DEVICE}");
+            assert!(controller
+                .set_channel_label(&uid, HINT, &overflow, None, Some("Label"))
+                .await
+                .is_err());
+            controller
+                .set_channel_label(&uid, HINT, &"chan0".to_string(), None, Some("Renamed"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.channel_label_override(&uid, &"chan0".to_string()),
+                Some("Renamed".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn channel_label_rejects_forbidden_key() {
+        // Goal: the channel name becomes a TOML key with no liveness check, so
+        // an injection-capable key is rejected before anything is written.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = overrides_path(&tmp);
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(path.clone()).await;
+
+            let bad_key = "fan1\ninjected".to_string();
+            assert!(controller
+                .set_channel_label(&uid, HINT, &bad_key, None, Some("Label"))
+                .await
+                .is_err());
+            assert!(path.exists().not());
+            assert_eq!(controller.channel_label_override(&uid, &bad_key), None);
         });
     }
 }
