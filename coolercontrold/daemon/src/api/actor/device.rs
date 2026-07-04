@@ -238,6 +238,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     let lcd_settings = LcdSettings {
                         brightness,
                         orientation,
+                        colors: Vec::new(),
                         mode: LcdModeKind::from_name(mode, Some(image_path), None, None),
                     };
                     self.engine
@@ -446,6 +447,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     let lcd_settings = LcdSettings {
                         brightness,
                         orientation,
+                        colors: Vec::new(),
                         mode: LcdModeKind::from_name(mode, Some(image_path), None, None),
                     };
                     self.config

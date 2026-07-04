@@ -882,6 +882,7 @@ impl Engine {
         let lcd_settings = LcdSettings {
             brightness: None,
             orientation: None,
+            colors: Vec::new(),
             mode: LcdModeKind::Image {
                 image_file_processed: Some(image_path),
             },
@@ -2137,6 +2138,7 @@ mod tests {
         LcdSettings {
             brightness: None,
             orientation: None,
+            colors: Vec::new(),
             mode: LcdModeKind::Image {
                 image_file_processed: image_path,
             },

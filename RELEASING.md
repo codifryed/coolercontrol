@@ -39,7 +39,9 @@ automatically. They are included here for reference:
 4. Create Release Tag and Commit and Build Release Artifacts
    1. Verify Milestone exists for the to-be-released version in GitLab
    2. All commits and tags are to be signed. Make sure your PGP keys are setup.
-   3. In CoolerControl Repo root directory
+   3. Check `DEPRECATIONS.md`: remove any shim whose Remove version is at or below the version being
+      released, along with its registry row.
+   4. In CoolerControl Repo root directory
       1. IF version needs to be increase again (from post-release) run `make bump`
       2. without argument for a quick patch update 1.0.0 -> 1.0.1
       3. with 'v' argument to specify a version
@@ -52,10 +54,10 @@ automatically. They are included here for reference:
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
-   4. Cloudsmith: Verify amd and arm package uploads are all present and add any missing ones.
-   5. DockerHub: Adjust Image links on main page
-   6. Copr: Adjust git tag version for each package and trigger new builds.
-   7. Merge any website changes to be made.
+   5. Cloudsmith: Verify amd and arm package uploads are all present and add any missing ones.
+   6. DockerHub: Adjust Image links on main page
+   7. Copr: Adjust git tag version for each package and trigger new builds.
+   8. Merge any website changes to be made.
 
 5. Update OpenAPI specification
    1. Build and start a locally running daemon in debug mode with:

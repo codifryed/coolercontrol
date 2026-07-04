@@ -19,6 +19,7 @@
 use crate::api::status::StatusResponse;
 use crate::api::AppState;
 use crate::device_health::{DeviceHealthDto, HealthEvent};
+use crate::logger::LogBufHandle;
 use aide::NoApi;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive};
@@ -35,13 +36,21 @@ const DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS: u64 = 30;
 pub async fn logs(
     State(AppState { log_buf_handle, .. }): State<AppState>,
 ) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
-    let cancel_token = log_buf_handle.cancel_token();
-    let log_stream = BroadcastStream::new(log_buf_handle.broadcaster().subscribe())
-        .take_until(async move { cancel_token.cancelled().await })
-        .map(|log| Ok(Event::default().event("log").data(log.unwrap_or_default())));
+    let log_stream =
+        log_lines(&log_buf_handle).map(|log| Ok(Event::default().event("log").data(log)));
     NoApi(Sse::new(log_stream).keep_alive(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
     ))
+}
+
+/// Live log lines for one subscriber. Bursts arrive pre-coalesced (multi-line) from the
+/// log-buffer actor. A lagged subscriber skips missed lines instead of receiving empty
+/// events; recent history remains available via GET /logs.
+fn log_lines(log_buf_handle: &LogBufHandle) -> impl Stream<Item = String> + use<> {
+    let cancel_token = log_buf_handle.cancel_token();
+    BroadcastStream::new(log_buf_handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await })
+        .filter_map(|result| async { result.ok() })
 }
 
 pub async fn status(
@@ -164,4 +173,44 @@ pub async fn notifications(
     NoApi(Sse::new(notification_stream).keep_alive(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio_util::sync::CancellationToken;
+
+    // Goal: a subscriber that lags the broadcast channel must silently skip missed lines,
+    // never yielding empty items (the old behavior mapped Lagged to empty SSE events).
+    // Methodology: subscribe first, overflow the channel far past capacity, then drain until
+    // the newest line arrives and check everything yielded is a real line with a gap skipped.
+    #[test]
+    fn lagged_subscriber_skips_missed_lines() {
+        crate::rt::test_runtime(async {
+            let handle = LogBufHandle::new(CancellationToken::new());
+            let mut lines = std::pin::pin!(log_lines(&handle));
+            let sent_count = 40;
+            for i in 0..sent_count {
+                handle
+                    .broadcaster()
+                    .send(format!("line {i}\n"))
+                    .expect("subscriber exists");
+            }
+            let last_line = format!("line {}\n", sent_count - 1);
+            let mut received = Vec::new();
+            for _ in 0..sent_count {
+                let Some(line) = lines.next().await else {
+                    break;
+                };
+                let is_last = line == last_line;
+                received.push(line);
+                if is_last {
+                    break;
+                }
+            }
+            assert!(received.len() < sent_count, "lag must have skipped lines");
+            assert!(received.iter().all(|line| line.starts_with("line ")));
+            assert_eq!(received.last(), Some(&last_line));
+        });
+    }
 }

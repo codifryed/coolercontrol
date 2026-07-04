@@ -15,6 +15,17 @@ or `coolercontrol/` (Qt C++).
 - Use plain `pub` visibility. Do not use `pub(crate)` or other restricted visibility modifiers.
 - Comments are short and concise.
 
+### Downgrade Compatibility
+
+- Persisted state (config.toml, modes.json) written by a new daemon must stay loadable by the
+  previous stable releases. Older daemons hard-require some fields, so a new build that stops
+  writing one breaks a downgrade.
+- Do not delete such a field outright. Keep writing it as a no-op for 2 minor releases.
+- Mark each shim site the compiler cannot flag on removal with
+  `// DOWNGRADE-COMPAT(added X.Y.0, remove X.Y+2.0): why.` and add a row to `DEPRECATIONS.md` at the
+  repo root.
+- Removal happens via the release checklist in `RELEASING.md`.
+
 ### Gated Tests
 
 Some tests are unreliable outside a controlled environment: they assert wall-clock latency, depend
