@@ -15,7 +15,7 @@ appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 CARGO := $(shell command -v cargo || command -v cargo-1.85 || command -v cargo-1.88 || command -v cargo-1.91)
 
 .PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
-		appimages bump release push-release validate-metadata
+		appimages bump release push-release validate-metadata pr-check
 
 # Release goals
 # can be run in parallel with make -j2
@@ -124,6 +124,18 @@ dev-run: build-qt
 dev-build: clean-ui build
 
 dev-test: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
+
+# pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
+# usage: make pr-check [base=<ref>]
+base ?= main
+pr-check: validate-metadata
+	@./trunk install --ci
+	@git merge-base $(base) HEAD > /dev/null
+	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
+	@$(MAKE) -C $(ui_dir) check
+	@$(MAKE) -C $(daemon_dir) clippy
+	@$(MAKE) -C $(daemon_dir) test
+	@$(MAKE) -C $(qt_dir) build
 
 # installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)
 dev-install:

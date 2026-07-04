@@ -50,7 +50,7 @@ pub enum HealthEntityType {
 
 /// A config reference whose temp-source target is absent from the current device
 /// set. The `entity_*` fields let a client badge and deep-link to the owning
-/// editor; `source` is the referenced {device_uid, temp_name}.
+/// editor; `source` is the referenced {`device_uid`, `temp_name`}.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SourceRef {
     pub entity_type: HealthEntityType,
