@@ -150,9 +150,10 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                         .await?;
                     self.custom_sensors_repo
                         .delete_custom_sensor(&custom_sensor_id)?;
-                    self.config.save_config_file().await?;
-                    // Cascade: sensor IDs are recycled, a future sensor with
-                    // this ID must not inherit the deleted sensor's name.
+                    let save_result = self.config.save_config_file().await;
+                    // Cascade regardless of the save outcome: the sensor is
+                    // already gone from the repo and IDs are recycled, so a
+                    // future sensor reusing this ID must not inherit its name.
                     if let Err(err) = self
                         .overrides
                         .remove_channel(&cs_device_uid, &custom_sensor_id)
@@ -163,7 +164,7 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                             {custom_sensor_id}: {err}"
                         );
                     }
-                    Ok(())
+                    save_result
                 }
                 .await;
                 let _ = respond_to.send(result);
