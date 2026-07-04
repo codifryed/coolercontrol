@@ -1,7 +1,7 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
 
-.PHONY: build test clean install uninstall
+.PHONY: build test check clean install uninstall
 
 dist:
 	@npm ci --prefer-offline
@@ -22,6 +22,12 @@ offline:
 
 test: build
 	@npm run test:unit
+
+# one-shot type-check + unit tests, no build, used by the root pr-check gate
+check:
+	@test -d node_modules || npm ci --prefer-offline
+	@npm run type-check
+	@npm run test:unit -- run
 
 ci-test: build
 	@npm run test:unit

@@ -15,7 +15,7 @@ CARGO_VER := $(if $(CARGO),$(shell $(CARGO) --version | awk '{print $$2}'))
 # order. Any 1.88+ release (1.88.1, 1.96.0, ...) selects compio; 1.85.x/1.87.x select tokio.
 FEATURES := $(shell printf '1.88\n%s\n' "$(CARGO_VER)" | sort -V -C || echo --no-default-features)
 
-.PHONY: build test clean install uninstall
+.PHONY: build test clippy clean install uninstall
 
 build: release += --release
 build:
@@ -25,6 +25,10 @@ build:
 test: release += --release
 test:
 	@$(CARGO) test --locked $(release) $(FEATURES)
+
+clippy: release += --release
+clippy:
+	@$(CARGO) clippy --locked $(release) $(FEATURES) -- -D clippy::pedantic
 
 ci-test:
 	@$(CARGO) build --locked $(release)
