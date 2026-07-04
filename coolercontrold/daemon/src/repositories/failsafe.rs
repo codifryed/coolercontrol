@@ -100,6 +100,17 @@ pub struct FailsafeStatusData {
 const MAX_FAILURE_COUNT: usize = MISSING_STATUS_THRESHOLD + 1;
 const _: () = assert!(MAX_FAILURE_COUNT > MISSING_STATUS_THRESHOLD);
 
+/// What the status-poll error path should log for one recorded failure.
+/// Gates a dead device's endless per-poll errors to one episode: each
+/// failure logs until the failsafe latch, the latch itself logs once,
+/// then silence until recovery resets the episode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureLogAction {
+    PerPollError,
+    FailsafeLatch,
+    Silent,
+}
+
 impl FailsafeStatusData {
     /// Returns `None` when both maps are empty, meaning the device
     /// has no status data to protect (e.g. read paths not yet available).
@@ -204,6 +215,27 @@ impl FailsafeStatusData {
         }
         self.logged = true;
         true
+    }
+
+    /// Records one failed status poll and returns what to log for it.
+    /// See `FailureLogAction`. `record_success` resets the episode.
+    pub fn record_failure_log_action(&mut self) -> FailureLogAction {
+        let action = if self.record_failure() {
+            if self.log_once() {
+                FailureLogAction::FailsafeLatch
+            } else {
+                FailureLogAction::Silent
+            }
+        } else {
+            FailureLogAction::PerPollError
+        };
+        match action {
+            FailureLogAction::PerPollError => assert!(self.threshold_exceeded().not()),
+            FailureLogAction::FailsafeLatch | FailureLogAction::Silent => {
+                assert!(self.threshold_exceeded());
+            }
+        }
+        action
     }
 
     /// Overwrites cache entries with failsafe values for every expected
@@ -627,6 +659,69 @@ mod tests {
         assert!(fsd.log_once());
         assert!(fsd.log_once().not());
         assert!(fsd.log_once().not());
+    }
+
+    #[test]
+    fn failure_log_action_gates_episode() {
+        // Failures log per-poll until the latch, the latch logs once, and
+        // everything after is silent so a dead device cannot spam forever.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..MISSING_STATUS_THRESHOLD {
+            assert_eq!(
+                fsd.record_failure_log_action(),
+                FailureLogAction::PerPollError
+            );
+        }
+        assert_eq!(
+            fsd.record_failure_log_action(),
+            FailureLogAction::FailsafeLatch
+        );
+        for _ in 0..(MISSING_STATUS_THRESHOLD * 2) {
+            assert_eq!(fsd.record_failure_log_action(), FailureLogAction::Silent);
+        }
+    }
+
+    #[test]
+    fn failure_log_action_new_episode_logs_again_after_recovery() {
+        // Recovery ends the episode: a second outage must log per-poll
+        // errors and a fresh latch again, not stay silent.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..=MISSING_STATUS_THRESHOLD {
+            fsd.record_failure_log_action();
+        }
+        assert_eq!(fsd.record_failure_log_action(), FailureLogAction::Silent);
+        assert!(fsd.record_success());
+        for _ in 0..MISSING_STATUS_THRESHOLD {
+            assert_eq!(
+                fsd.record_failure_log_action(),
+                FailureLogAction::PerPollError
+            );
+        }
+        assert_eq!(
+            fsd.record_failure_log_action(),
+            FailureLogAction::FailsafeLatch
+        );
+    }
+
+    #[test]
+    fn failure_log_action_transient_blip_keeps_logging() {
+        // A sub-threshold blip (fail, recover) never goes silent: the
+        // next failures still log per-poll.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..3 {
+            assert_eq!(
+                fsd.record_failure_log_action(),
+                FailureLogAction::PerPollError
+            );
+        }
+        assert!(fsd.record_success().not());
+        assert_eq!(
+            fsd.record_failure_log_action(),
+            FailureLogAction::PerPollError
+        );
     }
 
     #[test]
