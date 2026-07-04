@@ -152,7 +152,9 @@ export class SensorAndChannelSettings {
     }
 
     get name(): string {
-        return this.userName != null ? this.userName : this.channelLabel
+        // channelLabel carries the resolved display label (user overrides
+        // included); userName is round-trip-only and slated for removal.
+        return this.channelLabel
     }
 }
 
@@ -186,7 +188,9 @@ export class DeviceUISettings {
     readonly sensorsAndChannels: Map<string, SensorAndChannelSettings> = new Map()
 
     get name(): string {
-        return this.userName == null ? this.displayName : this.userName
+        // displayName carries the resolved display name (user overrides
+        // included); userName is round-trip-only and slated for removal.
+        return this.displayName
     }
 }
 

@@ -60,6 +60,7 @@ mod logger;
 mod main_loop;
 mod modes;
 mod notifier;
+mod overrides;
 mod paths;
 mod repositories;
 mod rt;
@@ -302,8 +303,15 @@ fn main() -> Result<()> {
         run_sensors_detection(&config);
         rt::log_active_backend();
 
+        let overrides_controller = Rc::new(overrides::OverridesController::init().await);
         let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
-            initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
+            initialize_device_repos(
+                &config,
+                &cmd_args,
+                run_token.clone(),
+                Rc::clone(&overrides_controller),
+            )
+            .await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
         let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
@@ -314,6 +322,7 @@ fn main() -> Result<()> {
             Rc::clone(&config),
             calibration_store,
             fan_state_map,
+            Rc::clone(&overrides_controller),
         ));
         let mode_controller = Rc::new(
             ModeController::init(
@@ -340,12 +349,18 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let alert_controller =
-                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                let alert_controller = Rc::new(
+                    AlertController::init(
+                        Rc::clone(&all_devices),
+                        Rc::clone(&overrides_controller),
+                    )
+                    .await?,
+                );
                 let device_health_controller = Rc::new(device_health::DeviceHealthController::new(
                     Rc::clone(&all_devices),
                     Rc::clone(&config),
                     Rc::clone(&repos),
+                    Rc::clone(&overrides_controller),
                 ));
                 AlertController::watch_for_shutdown(
                     &alert_controller,
@@ -381,6 +396,7 @@ fn main() -> Result<()> {
                     Rc::clone(&mode_controller),
                     Rc::clone(&alert_controller),
                     Rc::clone(&device_health_controller),
+                    Rc::clone(&overrides_controller),
                     plugin_controller,
                     log_buf_handle,
                     status_handle.clone(),
@@ -623,6 +639,7 @@ async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
     run_token: CancellationToken,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -635,7 +652,7 @@ async fn initialize_device_repos(
     let mut lc_locations = Vec::new();
     let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
-    match init_liquidctl_repo(config.clone(), run_token).await {
+    match init_liquidctl_repo(config.clone(), run_token, Rc::clone(&overrides)).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
             lc_repo_typed = Some(Rc::clone(&repo));
@@ -664,7 +681,7 @@ async fn initialize_device_repos(
             }
         });
         init_scope.spawn(async {
-            match init_hwmon_repo(config.clone(), lc_locations).await {
+            match init_hwmon_repo(config.clone(), lc_locations, Rc::clone(&overrides)).await {
                 Ok(repo) => repos.hwmon = Some(Rc::new(repo)),
                 Err(err) => error!("Error initializing HWMON Repo: {err}"),
             }
@@ -674,6 +691,7 @@ async fn initialize_device_repos(
                 config.clone(),
                 api_up_token.clone(),
                 cmd_args.reset_plugin_user,
+                Rc::clone(&overrides),
             )
             .await
             {
@@ -694,8 +712,9 @@ async fn initialize_device_repos(
     .await;
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&repos).await;
-    let custom_sensors_repo =
-        Rc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
+    let custom_sensors_repo = Rc::new(
+        init_custom_sensors_repo(config.clone(), devices_for_custom_sensors, overrides).await?,
+    );
     repos.custom_sensors = Some(custom_sensors_repo.clone());
     Ok((
         Rc::new(repos),
@@ -710,8 +729,9 @@ async fn initialize_device_repos(
 async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
-    let mut lc_repo = LiquidctlRepo::new(config, run_token).await?;
+    let mut lc_repo = LiquidctlRepo::new(config, run_token, overrides).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();
@@ -735,8 +755,12 @@ async fn init_gpu_repo(config: Rc<Config>, nvidia_cli: bool) -> Result<GpuRepo> 
     Ok(gpu_repo)
 }
 
-async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
-    let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
+async fn init_hwmon_repo(
+    config: Rc<Config>,
+    lc_locations: Vec<String>,
+    overrides: Rc<overrides::OverridesController>,
+) -> Result<HwmonRepo> {
+    let mut hwmon_repo = HwmonRepo::new(config, lc_locations, overrides);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }
@@ -745,8 +769,10 @@ async fn init_service_plugin_repo(
     config: Rc<Config>,
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<ServicePluginRepo> {
-    let mut external_repo = ServicePluginRepo::new(config, api_up_token, reset_plugin_user)?;
+    let mut external_repo =
+        ServicePluginRepo::new(config, api_up_token, reset_plugin_user, overrides)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)
 }
@@ -754,8 +780,10 @@ async fn init_service_plugin_repo(
 async fn init_custom_sensors_repo(
     config: Rc<Config>,
     devices_for_custom_sensors: DeviceList,
+    overrides: Rc<overrides::OverridesController>,
 ) -> Result<CustomSensorsRepo> {
-    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors)?;
+    let mut custom_sensors_repo =
+        CustomSensorsRepo::new(config, devices_for_custom_sensors, overrides)?;
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }

@@ -16,9 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::devices::DevicePath;
+use crate::api::devices::{DeviceChannelPath, DevicePath};
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
+use crate::overrides::OverridesDocument;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, CoolerControlSettings, DeviceExtensions,
 };
@@ -82,6 +83,42 @@ pub async fn update_cc_device(
 ) -> Result<(), CCError> {
     setting_handle
         .update_cc_device(path.device_uid, cc_device_settings_request)
+        .await
+        .map_err(handle_error)
+}
+
+/// Returns the raw, sparse name-overrides document (`overrides.toml`).
+pub async fn get_overrides(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<OverridesDocument>, CCError> {
+    setting_handle
+        .get_overrides()
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
+/// Sets or removes the user-defined display name for a device.
+pub async fn update_device_overrides(
+    Path(path): Path<DevicePath>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(request): Json<DeviceNameOverrideRequest>,
+) -> Result<(), CCError> {
+    setting_handle
+        .set_device_name_override(path.device_uid, request.name)
+        .await
+        .map_err(handle_error)
+}
+
+/// Sets or removes the user-defined display label for a channel.
+/// The channel does not have to be live; only the device must be known.
+pub async fn update_channel_overrides(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(request): Json<ChannelLabelOverrideRequest>,
+) -> Result<(), CCError> {
+    setting_handle
+        .set_channel_label_override(path.device_uid, path.channel_name, request.label)
         .await
         .map_err(handle_error)
 }
@@ -263,6 +300,18 @@ pub struct CoolerControlDeviceSettingsDto {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlAllDeviceSettingsDto {
     devices: Vec<CoolerControlDeviceSettingsDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceNameOverrideRequest {
+    /// The device display name. A null or absent value removes the override.
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelLabelOverrideRequest {
+    /// The channel display label. A null or absent value removes the override.
+    pub label: Option<String>,
 }
 
 #[cfg(test)]

@@ -187,6 +187,7 @@ mod engine_tests {
             Rc::clone(&config),
             calibration_store,
             fan_state_map,
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
 
         (device, engine, config, set_speeds, should_fail)
@@ -1364,6 +1365,73 @@ mod engine_tests {
     /// Setup variant that returns an `Rc` handle to the engine's
     /// `CalibrationStore` so the test can inject calibration data
     /// after construction and observe the effect on the engine.
+    #[test]
+    fn log_device_channel_resolves_names() {
+        // Goal: the engine's log form applies user overrides to both parts
+        // (`Device (raw) | Channel (raw)`), keeps raw parts without an
+        // override, and falls back to the UID for unknown devices.
+        crate::rt::test_runtime(async {
+            let device = Rc::new(RefCell::new(Device::new(
+                "nct6798".to_string(),
+                DeviceType::Hwmon,
+                0,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            )));
+            let device_uid = device.borrow().uid.clone();
+            let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
+            devices.insert(device_uid.clone(), device);
+            let all_devices = Rc::new(devices);
+            let config = Rc::new(Config::init_default_config().unwrap());
+            config.create_device_list(&all_devices);
+
+            let tmp = tempfile::tempdir().unwrap();
+            let overrides = Rc::new(
+                crate::overrides::OverridesController::init_from(tmp.path().join("overrides.toml"))
+                    .await,
+            );
+            overrides
+                .set_device_name(&device_uid, "hint", Some("Motherboard"))
+                .await
+                .unwrap();
+            overrides
+                .set_channel_label(
+                    &device_uid,
+                    "hint",
+                    &"fan1".to_string(),
+                    None,
+                    Some("Front Intake"),
+                )
+                .await
+                .unwrap();
+
+            let engine = Engine::new(
+                Rc::clone(&all_devices),
+                &Rc::new(Repositories::default()),
+                config,
+                Rc::new(crate::calibration::CalibrationStore::empty()),
+                Rc::new(crate::calibration::FanStateMap::new()),
+                overrides,
+            );
+
+            assert_eq!(
+                engine.log_device_channel(&device_uid, "fan1"),
+                "Motherboard (nct6798) | Front Intake (fan1)"
+            );
+            assert_eq!(
+                engine.log_device_channel(&device_uid, "fan2"),
+                "Motherboard (nct6798) | fan2"
+            );
+            let unknown_uid = "unknown-uid".to_string();
+            assert_eq!(
+                engine.log_device_channel(&unknown_uid, "fan1"),
+                "unknown-uid | fan1"
+            );
+        });
+    }
+
     fn setup_calibrated_device() -> (DeviceLock, Engine, Rc<crate::calibration::CalibrationStore>) {
         let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
         let mut repos = Repositories::default();
@@ -1402,6 +1470,7 @@ mod engine_tests {
             Rc::clone(&config),
             Rc::clone(&calibration_store),
             fan_state_map,
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
 
         (device, engine, calibration_store)
@@ -1444,6 +1513,7 @@ mod engine_tests {
             Rc::clone(&config),
             Rc::new(crate::calibration::CalibrationStore::empty()),
             Rc::new(crate::calibration::FanStateMap::new()),
+            Rc::new(crate::overrides::OverridesController::empty()),
         );
         (engine, config, device_uid, set_speeds)
     }

@@ -78,6 +78,7 @@ use crate::device::{
     TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
+use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
@@ -345,6 +346,7 @@ const _: () = assert!(DUTY_CACHE_VERIFY_INTERVAL.as_secs() > 0);
 
 pub struct HwmonRepo {
     config: Rc<Config>,
+    overrides: Rc<OverridesController>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     /// Per-tick channel + temp snapshot. Shared with the writer task
     /// for the write-skip path.
@@ -398,7 +400,11 @@ pub struct HwmonRepo {
 }
 
 impl HwmonRepo {
-    pub fn new(config: Rc<Config>, lc_locations: Vec<String>) -> Self {
+    pub fn new(
+        config: Rc<Config>,
+        lc_locations: Vec<String>,
+        overrides: Rc<OverridesController>,
+    ) -> Self {
         let poll_rate = config.get_settings().map_or(1.0, |s| s.poll_rate);
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
@@ -406,6 +412,7 @@ impl HwmonRepo {
         let drivetemp_ioctl_timeout = drivetemp_ioctl_timeout_for(poll_rate);
         Self {
             config,
+            overrides,
             devices: HashMap::new(),
             preloaded_statuses: Rc::new(RefCell::new(HashMap::new())),
             failsafe_statuses: RefCell::new(HashMap::new()),
@@ -930,6 +937,7 @@ impl HwmonRepo {
         let Some(fsd) = fsd_map.get_mut(&type_index) else {
             return;
         };
+        let device_name = self.log_device_name(type_index, driver_name);
         let mut preloaded = self.preloaded_statuses.borrow_mut();
         let (channels, temps) = preloaded
             .entry(type_index)
@@ -938,15 +946,29 @@ impl HwmonRepo {
         if newly_failsafing {
             error!(
                 "Significant issue retrieving status for hwmon \
-                 device: {driver_name}. Substituting failsafe \
+                 device: {device_name}. Substituting failsafe \
                  values for stale channels."
             );
         }
         if just_recovered {
             info!(
-                "Recovered from failsafe for hwmon device: {driver_name}. \
+                "Recovered from failsafe for hwmon device: {device_name}. \
                  Resuming normal status reads."
             );
+        }
+    }
+
+    /// Log form of a device name with the user override applied. Failsafe
+    /// call sites address devices by type index; map back to the UID.
+    fn log_device_name(&self, type_index: TypeIndex, driver_name: &str) -> String {
+        let device_uid = self
+            .devices
+            .iter()
+            .find(|(_, (device, _))| device.borrow().type_index == type_index)
+            .map(|(uid, _)| uid.clone());
+        match device_uid {
+            Some(uid) => self.overrides.log_device_name(&uid, driver_name),
+            None => driver_name.to_string(),
         }
     }
 
@@ -2025,7 +2047,11 @@ mod preload_tests {
 
     fn new_test_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        let mut repo = HwmonRepo::new(config, vec![]);
+        let mut repo = HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        );
         // Per-device-map invariant: one entry per registered
         // type_index across device_permits, preload_in_flight, and
         // delay_logged.
@@ -2957,7 +2983,11 @@ mod command_delay_handoff_tests {
 
     fn new_test_repo_with_permit() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        let mut repo = HwmonRepo::new(config, vec![]);
+        let mut repo = HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        );
         repo.device_permits
             .insert(TEST_TYPE_INDEX, Rc::new(Semaphore::new(1)));
         repo
@@ -3081,7 +3111,11 @@ mod coalescer_tests {
 
     fn empty_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        HwmonRepo::new(config, vec![])
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
     }
 
     /// Registers a fake device with permit + writer mailbox in the
@@ -3889,7 +3923,11 @@ mod slow_device_tests {
 
     fn empty_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        HwmonRepo::new(config, vec![])
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
     }
 
     /// Inserts a fake device + permit + writer mailbox + slow-flag
@@ -4735,7 +4773,11 @@ mod prepare_for_sleep_tests {
 
     fn empty_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        HwmonRepo::new(config, vec![])
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
     }
 
     #[test]
@@ -4929,7 +4971,11 @@ mod shutdown_tests {
 
     fn empty_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        HwmonRepo::new(config, vec![])
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
     }
 
     #[test]
@@ -5161,7 +5207,11 @@ mod init_timeout_tests {
 
     fn empty_repo() -> HwmonRepo {
         let config = Rc::new(Config::init_default_config().unwrap());
-        HwmonRepo::new(config, vec![])
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
     }
 
     #[test]

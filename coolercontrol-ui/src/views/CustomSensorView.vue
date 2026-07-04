@@ -45,11 +45,7 @@ import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
-import {
-    ChannelViewType,
-    SensorAndChannelSettings,
-    getChannelViewTypeDisplayName,
-} from '@/models/UISettings.ts'
+import { ChannelViewType, getChannelViewTypeDisplayName } from '@/models/UISettings.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -145,7 +141,8 @@ const currentName: Ref<string> = ref(
     deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value,
 )
 const isUserName: boolean =
-    deviceSettings.sensorsAndChannels.get(customSensor.id)?.userName != undefined
+    settingsStore.nameOverrides.devices[customSensorsDeviceUID]?.channels?.[customSensor.id]
+        ?.label != undefined
 const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
@@ -420,11 +417,15 @@ const saveSensor = async (): Promise<void> => {
     if (shouldCreateSensor) {
         const successful = await settingsStore.saveCustomSensor(customSensor)
         if (successful) {
-            // need to set the sensor name in the UI settings before we restart
-            deviceSettings.sensorsAndChannels.set(customSensor.id, new SensorAndChannelSettings())
+            // The name is a daemon override on the new sensor's channel;
+            // saveChannelName surfaces a rejected name as a toast.
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
+                await settingsStore.saveChannelName(
+                    customSensorsDeviceUID,
+                    customSensor.id,
+                    sensorName.value,
+                )
             }
             await deviceStore.waitAndReload(1)
         }
@@ -434,36 +435,34 @@ const saveSensor = async (): Promise<void> => {
         if (successful) {
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
-            } else {
-                // reset name
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = undefined
             }
+            await settingsStore.saveChannelName(
+                customSensorsDeviceUID,
+                customSensor.id,
+                sensorName.value,
+            )
             await deviceStore.waitAndReload(1)
         }
     }
 }
 const saveNameFunction = async (newName: string): Promise<boolean> => {
-    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    // User names are persisted as daemon name overrides. An empty name
+    // removes the override and reloads the UI.
+    const success = await settingsStore.saveChannelName(
+        customSensorsDeviceUID,
+        customSensor.id,
+        newName,
+    )
+    if (!success) {
+        return false
+    }
     if (newName.length > 0) {
-        deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = newName
         sensorName.value = newName
         currentName.value = newName
         emitter.emit('device-sensor-name-update', {
             deviceUID: customSensorsDeviceUID,
             sensorId: customSensor.id,
             name: newName,
-        })
-    } else {
-        // reset name
-        deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = undefined
-        currentName.value =
-            deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value
-        sensorName.value = ''
-        emitter.emit('device-sensor-name-update', {
-            deviceUID: customSensorsDeviceUID,
-            sensorId: customSensor.id,
-            name: currentName.value,
         })
     }
     return true

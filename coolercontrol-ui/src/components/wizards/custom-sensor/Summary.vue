@@ -25,7 +25,6 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { mdiArrowLeft, mdiContentSaveOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { CustomSensor } from '@/models/CustomSensor.ts'
-import { SensorAndChannelSettings } from '@/models/UISettings.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 
 interface Props {
@@ -54,14 +53,18 @@ if (!customSensorsDeviceUID) {
     console.error("Custom Sensor Device UID NOT FOUND! This shouldn't happen.")
     throw new Error('Illegal State: Could not find Custom Sensor Device')
 }
-const deviceSettings = settingsStore.allUIDeviceSettings.get(customSensorsDeviceUID)!
-
 const saveCustomSensor = async (): Promise<void> => {
     const successful = await settingsStore.saveCustomSensor(props.customSensor)
     if (successful) {
-        // need to set the sensor name in the UI settings before we restart
-        deviceSettings.sensorsAndChannels.set(props.customSensor.id, new SensorAndChannelSettings())
-        deviceSettings.sensorsAndChannels.get(props.customSensor.id)!.userName = props.name
+        // The name is a daemon override on the new sensor's channel;
+        // saveChannelName surfaces a rejected name as a toast.
+        if (props.name) {
+            await settingsStore.saveChannelName(
+                customSensorsDeviceUID,
+                props.customSensor.id,
+                deviceStore.sanitizeString(props.name),
+            )
+        }
         emit('close')
         await deviceStore.waitAndReload(1)
     }

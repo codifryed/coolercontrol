@@ -36,6 +36,7 @@ use crate::device::{
     TempStatus, UID,
 };
 use crate::device_health::{FailsafeKind, FailsafeRef};
+use crate::overrides::OverridesController;
 use crate::repositories::failsafe::MISSING_TEMP_FAILSAFE;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
@@ -63,6 +64,7 @@ pub struct CustomSensorsRepo {
     /// samples from `time_window_seconds / poll_rate`, avoiding any wall-clock comparisons.
     /// `poll_rate` is fixed at runtime, so a plain `f64` is enough.
     poll_rate: f64,
+    overrides: Rc<OverridesController>,
     /// Sensor IDs currently emitting `MISSING_TEMP_FAILSAFE` because their source is
     /// structurally absent (device removed, temp renamed, history empty, child not yet
     /// processed), mapped to the reason they entered failsafe. Membership drives
@@ -72,7 +74,11 @@ pub struct CustomSensorsRepo {
 }
 
 impl CustomSensorsRepo {
-    pub fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Result<Self> {
+    pub fn new(
+        config: Rc<Config>,
+        all_other_devices: DeviceList,
+        overrides: Rc<OverridesController>,
+    ) -> Result<Self> {
         let poll_rate = config.get_settings()?.poll_rate;
         let mut all_devices = HashMap::new();
         for device in all_other_devices {
@@ -87,6 +93,7 @@ impl CustomSensorsRepo {
             sensors: RefCell::new(Vec::new()),
             relationships: RefCell::new(HashMap::new()),
             poll_rate,
+            overrides,
             failsafing_sensors: RefCell::new(HashMap::new()),
         })
     }
@@ -1027,7 +1034,8 @@ impl CustomSensorsRepo {
     fn emit_failsafe(&self, sensor_id: &str, reason: &str) -> TempStatus {
         if self.note_failsafing_sensor(sensor_id, reason) {
             warn!(
-                "Custom Sensor {sensor_id} entering failsafe ({MISSING_TEMP_FAILSAFE}°C): {reason}"
+                "Custom Sensor {} entering failsafe ({MISSING_TEMP_FAILSAFE}°C): {reason}",
+                self.overrides.log_channel_name(&self.device_uid, sensor_id)
             );
         }
         TempStatus {
@@ -1041,7 +1049,10 @@ impl CustomSensorsRepo {
     /// `HashSet::remove` returns `false` when the id is absent.
     fn emit_real_temp(&self, sensor_id: &str, temp: f64) -> TempStatus {
         if self.clear_failsafing_sensor(sensor_id) {
-            info!("Custom Sensor {sensor_id} recovered from failsafe");
+            info!(
+                "Custom Sensor {} recovered from failsafe",
+                self.overrides.log_channel_name(&self.device_uid, sensor_id)
+            );
         }
         TempStatus {
             name: sensor_id.to_string(),
@@ -1318,6 +1329,10 @@ mod tests {
             children: Vec::new(),
             parents: Vec::new(),
         }
+    }
+
+    fn test_overrides() -> Rc<crate::overrides::OverridesController> {
+        Rc::new(crate::overrides::OverridesController::empty())
     }
 
     // Calculates the delta between the minimum and maximum temperature values in the given vector of TempData.
@@ -1707,7 +1722,7 @@ mod tests {
             .unwrap();
             let cs_name = "test_sensor1".to_string();
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
 
             // when:
             let temp = repo
@@ -1731,7 +1746,7 @@ mod tests {
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
             let cs_name = "test_sensor1".to_string();
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
 
             // when:
             let temp = repo
@@ -1982,7 +1997,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2034,7 +2049,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2090,7 +2105,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2139,7 +2154,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2192,7 +2207,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2273,7 +2288,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2316,7 +2331,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2397,7 +2412,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2577,7 +2592,7 @@ mod tests {
     fn note_failsafing_returns_true_only_first_time() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             assert!(repo.note_failsafing_sensor("sensor1", "file unreadable"));
             assert!(repo.note_failsafing_sensor("sensor1", "other reason").not());
             assert!(repo.note_failsafing_sensor("sensor1", "other reason").not());
@@ -2597,7 +2612,7 @@ mod tests {
     fn clear_failsafing_returns_true_only_when_was_failsafing() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             assert!(repo.clear_failsafing_sensor("sensor1").not());
             repo.note_failsafing_sensor("sensor1", "file unreadable");
             assert!(repo.clear_failsafing_sensor("sensor1"));
@@ -2698,7 +2713,7 @@ mod tests {
     fn mix_sensor_with_missing_source_emits_failsafe_on_live_tick() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             // No source device registered; the device_uid here is unknown to the repo.
             let sensor = mix_sensor(
@@ -2733,7 +2748,8 @@ mod tests {
                 },
             ]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = mix_sensor(
                 "mix1",
@@ -2766,7 +2782,8 @@ mod tests {
                 temp: 70.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "delta1".to_string(),
@@ -2799,7 +2816,7 @@ mod tests {
     fn offset_sensor_with_source_missing_emits_failsafe() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "off1".to_string(),
@@ -2832,7 +2849,8 @@ mod tests {
                 temp: 50.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ta1".to_string(),
@@ -2865,7 +2883,8 @@ mod tests {
                 temp: 50.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema1".to_string(),
@@ -2897,7 +2916,8 @@ mod tests {
                 temp: 50.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema_bad".to_string(),
@@ -2933,7 +2953,8 @@ mod tests {
                 temp: 70.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema_ok".to_string(),
@@ -2978,7 +2999,8 @@ mod tests {
                 temp: 50.0,
             }]);
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![source_dev]).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             // Direct injection bypasses validation and backfill; we only exercise the live
             // path here.
@@ -3013,7 +3035,7 @@ mod tests {
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
 
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = file_sensor("file1", test_file.clone());
             repo.set_custom_sensor(sensor).await.unwrap();
@@ -3053,7 +3075,7 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = file_sensor("to_delete", test_file);
             repo.set_custom_sensor(sensor).await.unwrap();
@@ -3082,7 +3104,7 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = file_sensor("to_update", test_file.clone());
             repo.set_custom_sensor(sensor.clone()).await.unwrap();
@@ -3111,7 +3133,7 @@ mod tests {
     fn backfill_with_missing_source_uses_zero_not_failsafe() {
         cc_fs::test_runtime(async {
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![]).unwrap();
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
             repo.initialize_devices().await.unwrap();
             let sensor = mix_sensor(
                 "mix_bf",

@@ -30,6 +30,7 @@ use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
+use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
@@ -64,6 +65,7 @@ const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
+    overrides: Rc<OverridesController>,
     liqctld_client: LiqctldClient,
     /// Set true when the supervisor task is spawned, false when it exits. The sidecar `JoinHandle`
     /// cannot cross back to this thread, so this flag stands in for `JoinHandle::is_finished`.
@@ -87,7 +89,11 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
+    pub async fn new(
+        config: Rc<Config>,
+        run_token: CancellationToken,
+        overrides: Rc<OverridesController>,
+    ) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -137,6 +143,7 @@ impl LiquidctlRepo {
             })?;
         Ok(LiquidctlRepo {
             config,
+            overrides,
             liqctld_client,
             liqctld_service_running: running,
             liqctld_service_done: RefCell::new(Some(done_rx)),
@@ -1108,6 +1115,9 @@ impl Repository for LiquidctlRepo {
         moro_local::async_scope!(|scope| {
             for (uid, device_lock) in &self.devices {
                 let device_id = device_lock.borrow().type_index;
+                let device_name = self
+                    .overrides
+                    .log_device_name(uid, &device_lock.borrow().name);
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
@@ -1121,7 +1131,7 @@ impl Repository for LiquidctlRepo {
                                 if fsd.record_success() {
                                     info!(
                                         "Recovered from failsafe for liquidctl \
-                                         device #{device_id}. Resuming normal \
+                                         device: {device_name}. Resuming normal \
                                          status reads."
                                     );
                                 }
@@ -1144,7 +1154,7 @@ impl Repository for LiquidctlRepo {
                                 FailureLogAction::FailsafeLatch => {
                                     error!(
                                         "Significant issue retrieving status for \
-                                         liquidctl device #{device_id}. \
+                                         liquidctl device: {device_name}. \
                                          Setting failsafe values. Suppressing further \
                                          status errors until recovery."
                                     );

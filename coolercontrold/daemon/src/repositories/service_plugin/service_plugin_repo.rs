@@ -23,6 +23,7 @@ use crate::device::{
 };
 use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
+use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
@@ -69,6 +70,7 @@ struct DeviceServiceConnection {
 
 pub struct ServicePluginRepo {
     config: Rc<Config>,
+    overrides: Rc<OverridesController>,
     service_manager: Manager,
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
@@ -92,10 +94,12 @@ impl ServicePluginRepo {
         config: Rc<Config>,
         api_up_token: CancellationToken,
         reset_plugin_user: bool,
+        overrides: Rc<OverridesController>,
     ) -> Result<Self> {
         let service_manager = Manager::detect()?;
         Ok(Self {
             config,
+            overrides,
             service_manager,
             api_up_token,
             reset_plugin_user,
@@ -120,6 +124,16 @@ impl ServicePluginRepo {
                 self.device_delays.insert(uid.clone(), delay_millis);
             }
         }
+    }
+
+    /// Log form of a device name with the user override applied; the UID
+    /// stands in when the device is not (yet) registered.
+    fn log_device_name(&self, device_uid: &UID) -> String {
+        let raw_name = self.devices.get(device_uid).map_or_else(
+            || device_uid.clone(),
+            |(device, _)| device.borrow().name.clone(),
+        );
+        self.overrides.log_device_name(device_uid, &raw_name)
     }
 
     fn device_delay(&self, device_uid: &UID) -> u16 {
@@ -646,37 +660,48 @@ impl ServicePluginRepo {
             .initialize_status_history_with(status, poll_rate);
     }
 
+    /// Records a failed status read: logs the failsafe transition once and
+    /// substitutes the failsafe values as the preloaded status.
+    fn note_status_failure(
+        &self,
+        device_uid: DeviceUID,
+        device_name: &str,
+        service: &Rc<DeviceServiceConnection>,
+    ) {
+        let mut missing_lock = self.failsafe_statuses.borrow_mut();
+        let Some(msd) = missing_lock.get_mut(&device_uid) else {
+            return;
+        };
+        if msd.record_failure() {
+            if msd.log_once() {
+                error!(
+                    "Significant issue retrieving status for \
+                     device: {device_name}, from service: {}. \
+                     Setting failsafe values.",
+                    service.id
+                );
+            }
+            let preload_data = PreloadData {
+                channels: msd.channel_failsafes.clone(),
+                temps: msd.temp_failsafes.clone(),
+            };
+            self.preloaded_statuses
+                .borrow_mut()
+                .insert(device_uid, preload_data);
+        }
+    }
+
     async fn preload_device_status(
         self: Rc<Self>,
         device_uid: DeviceUID,
         service: &Rc<DeviceServiceConnection>,
     ) {
         let delay = self.device_delay(&device_uid);
+        let device_name = self.log_device_name(&device_uid);
         let Ok((mut channel_statuses, mut temp_statuses)) =
             service.client.status(&device_uid).await
         else {
-            {
-                let mut missing_lock = self.failsafe_statuses.borrow_mut();
-                if let Some(msd) = missing_lock.get_mut(&device_uid) {
-                    if msd.record_failure() {
-                        if msd.log_once() {
-                            error!(
-                                "Significant issue retrieving status for \
-                                 device: {device_uid}, from service: {}. \
-                                 Setting failsafe values.",
-                                service.id
-                            );
-                        }
-                        let preload_data = PreloadData {
-                            channels: msd.channel_failsafes.clone(),
-                            temps: msd.temp_failsafes.clone(),
-                        };
-                        self.preloaded_statuses
-                            .borrow_mut()
-                            .insert(device_uid, preload_data);
-                    }
-                }
-            }
+            self.note_status_failure(device_uid, &device_name, service);
             apply_device_command_delay(delay).await;
             return;
         };
@@ -727,7 +752,7 @@ impl ServicePluginRepo {
                     if recovered {
                         msd.logged = false;
                         info!(
-                            "Recovered from failsafe for device: {device_uid}, \
+                            "Recovered from failsafe for device: {device_name}, \
                              from service: {}. Resuming normal status reads.",
                             service.id
                         );

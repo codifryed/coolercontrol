@@ -24,6 +24,7 @@ use crate::device::{ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::notifier::NotificationHandle;
+use crate::overrides::OverridesController;
 use crate::repositories::gpu::amd_overdrive;
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
@@ -33,7 +34,7 @@ use anyhow::Result;
 use log::{error, info};
 use mime::Mime;
 use moro_local::Scope;
-use std::ops::Deref;
+use std::ops::{Deref, Not};
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -44,6 +45,7 @@ struct DeviceActor {
     engine: Rc<Engine>,
     modes_controller: Rc<ModeController>,
     config: Rc<Config>,
+    overrides: Rc<OverridesController>,
 }
 
 enum DeviceMessage {
@@ -147,6 +149,7 @@ impl DeviceActor {
         engine: Rc<Engine>,
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
+        overrides: Rc<OverridesController>,
     ) -> Self {
         Self {
             receiver,
@@ -154,6 +157,7 @@ impl DeviceActor {
             engine,
             modes_controller,
             config,
+            overrides,
         }
     }
 }
@@ -189,6 +193,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 for device in self.all_devices.values() {
                     all_devices.push(device.borrow().deref().into());
                 }
+                apply_name_overrides(&self.overrides, &mut all_devices);
                 let _ = respond_to.send(Ok(all_devices));
             }
             DeviceMessage::DeviceImageGet {
@@ -490,11 +495,19 @@ impl DeviceHandle {
         engine: Rc<Engine>,
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
+        overrides: Rc<OverridesController>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = DeviceActor::new(receiver, all_devices, engine, modes_controller, config);
+        let actor = DeviceActor::new(
+            receiver,
+            all_devices,
+            engine,
+            modes_controller,
+            config,
+            overrides,
+        );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }
@@ -749,5 +762,86 @@ impl DeviceHandle {
         };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+}
+
+/// Boundary resolution shared by REST and gRPC (both consume these DTOs):
+/// user overrides replace the device name and channel/temp labels. Raw
+/// names remain available via the UID and the raw channel keys.
+fn apply_name_overrides(overrides: &OverridesController, devices: &mut [DeviceDto]) {
+    for device in devices {
+        debug_assert!(device.name.is_empty().not());
+        device.name = overrides.resolve_device_name(&device.uid, None, &device.name);
+        debug_assert!(device.name.is_empty().not());
+        for (temp_name, temp_info) in &mut device.info.temps {
+            if let Some(label) = overrides.channel_label_override(&device.uid, temp_name) {
+                temp_info.label = label;
+            }
+        }
+        for (channel_name, channel_info) in &mut device.info.channels {
+            if let Some(label) = overrides.channel_label_override(&device.uid, channel_name) {
+                channel_info.label = Some(label);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
+
+    #[test]
+    fn overrides_replace_device_name_and_labels_in_dtos() {
+        // Goal: GET /devices (and gRPC list_devices) DTOs carry resolved
+        // names: overridden entries change, everything else stays raw.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let overrides = OverridesController::init_from(tmp.path().join("overrides.toml")).await;
+            let uid = "uid_a".to_string();
+            overrides
+                .set_device_name(&uid, "hint", Some("Motherboard"))
+                .await
+                .unwrap();
+            overrides
+                .set_channel_label(&uid, "hint", &"temp1".to_string(), None, Some("Coolant"))
+                .await
+                .unwrap();
+
+            let mut info = DeviceInfo::default();
+            info.temps.insert(
+                "temp1".to_string(),
+                TempInfo {
+                    label: "Raw Temp".to_string(),
+                    number: 1,
+                },
+            );
+            info.channels.insert(
+                "fan1".to_string(),
+                ChannelInfo {
+                    label: Some("Raw Fan".to_string()),
+                    kind: ChannelKind::default(),
+                },
+            );
+            let mut devices = vec![DeviceDto {
+                name: "raw-device".to_string(),
+                d_type: DeviceType::Hwmon,
+                type_index: 1,
+                uid: uid.clone(),
+                lc_info: None,
+                info,
+            }];
+
+            apply_name_overrides(&overrides, &mut devices);
+
+            let device = &devices[0];
+            assert_eq!(device.name, "Motherboard");
+            assert_eq!(device.info.temps.get("temp1").unwrap().label, "Coolant");
+            // No override for fan1: the raw detected label stays.
+            assert_eq!(
+                device.info.channels.get("fan1").unwrap().label,
+                Some("Raw Fan".to_string())
+            );
+        });
     }
 }

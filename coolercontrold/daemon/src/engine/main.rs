@@ -42,6 +42,7 @@ use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::overrides::OverridesController;
 use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::rt;
@@ -96,6 +97,7 @@ pub struct Engine {
     /// notification system is created. None in tests; the broadcast is
     /// then a no-op.
     notification_handle: RefCell<Option<NotificationHandle>>,
+    overrides: Rc<OverridesController>,
 }
 
 impl Engine {
@@ -105,6 +107,7 @@ impl Engine {
         config: Rc<Config>,
         calibration_store: Rc<CalibrationStore>,
         fan_state_map: Rc<FanStateMap>,
+        overrides: Rc<OverridesController>,
     ) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
@@ -166,7 +169,22 @@ impl Engine {
             calibration_batch: Rc::new(CalibrationBatchState::new()),
             calibration_statuses: RefCell::new(HashMap::new()),
             notification_handle: RefCell::new(None),
+            overrides,
         }
+    }
+
+    /// Log form of a device and channel pair with user overrides applied:
+    /// `Device (raw) | Channel (raw)`, plain raw parts when no override.
+    pub fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
+        let raw_device_name = self
+            .all_devices
+            .get(device_uid)
+            .map_or_else(|| device_uid.clone(), |device| device.borrow().name.clone());
+        format!(
+            "{} | {}",
+            self.overrides.log_device_name(device_uid, &raw_device_name),
+            self.overrides.log_channel_name(device_uid, channel_name)
+        )
     }
 
     /// This is used to set the config Setting model configuration.
@@ -243,8 +261,8 @@ impl Engine {
                 .await
                 .inspect(|()| {
                     info!(
-                        "Successfully applied:: {} | {channel_name} | Fixed Speed: {speed_fixed}",
-                        device_lock.borrow().name
+                        "Successfully applied:: {} | Fixed Speed: {speed_fixed}",
+                        self.log_device_channel(device_uid, channel_name)
                     );
                 })
             }
@@ -293,8 +311,8 @@ impl Engine {
         }
         .inspect(|()| {
             info!(
-                "Successfully applied:: {} | {channel_name} | Profile: {}",
-                self.all_devices.get(device_uid).unwrap().borrow().name,
+                "Successfully applied:: {} | Profile: {}",
+                self.log_device_channel(device_uid, channel_name),
                 profile.name
             );
         })
@@ -336,8 +354,8 @@ impl Engine {
             && hw_curve_enabled
         {
             info!(
-                "Applying | hardware internal profile:: {} | {channel_name}",
-                device_lock.borrow().name
+                "Applying | hardware internal profile:: {}",
+                self.log_device_channel(device_uid, channel_name)
             );
             repo.apply_setting_speed_profile(
                 device_uid,
@@ -444,8 +462,9 @@ impl Engine {
                 .inspect_err(|err| {
                     error!(
                         "Failed to enable manual control for Mix Profile: {}. \
-                        Profile scheduling has been disabled for {channel_name} | {err}",
-                        profile.name
+                        Profile scheduling has been disabled for {} | {err}",
+                        profile.name,
+                        self.overrides.log_channel_name(device_uid, channel_name)
                     );
                 })?;
             self.mix_commander.schedule_setting(
@@ -524,8 +543,9 @@ impl Engine {
                 .inspect_err(|err| {
                     error!(
                         "Failed to enable manual control for Overlay Profile: {}. \
-                        Profile scheduling has been disabled for {channel_name} | {err}",
-                        profile.name
+                        Profile scheduling has been disabled for {} | {err}",
+                        profile.name,
+                        self.overrides.log_channel_name(device_uid, channel_name)
                     );
                 })?;
             self.overlay_commander.schedule_setting(
@@ -592,8 +612,8 @@ impl Engine {
             };
             log!(
                 log_level,
-                "Successfully applied:: {} | {channel_name} | LCD Mode: {}",
-                device_lock.borrow().name,
+                "Successfully applied:: {} | LCD Mode: {}",
+                self.log_device_channel(device_uid, channel_name),
                 lcd_settings.mode
             );
         })
@@ -982,8 +1002,8 @@ impl Engine {
             .await
             .inspect(|()| {
                 info!(
-                    "Successfully applied:: {} | {channel_name} | Lighting Mode: {}",
-                    device_lock.borrow().name,
+                    "Successfully applied:: {} | Lighting Mode: {}",
+                    self.log_device_channel(device_uid, channel_name),
                     lighting_settings.mode
                 );
             })
@@ -1491,9 +1511,8 @@ impl Engine {
         }
         drop(statuses);
         info!(
-            "Calibration overrides set for {}:{} (boost={:?} duration_ms={:?} walk={:?})",
-            key.0,
-            key.1,
+            "Calibration overrides set for {} (boost={:?} duration_ms={:?} walk={:?})",
+            self.log_device_channel(&key.0, &key.1),
             cal.kick_boost_override,
             cal.kick_duration_override_ms,
             cal.walk_after_kick_override
@@ -1522,8 +1541,8 @@ impl Engine {
         self.calibration_statuses.borrow_mut().remove(key);
         self.fan_state_map.forget(key);
         info!(
-            "Calibration cleared for {}:{} (had_data={existed})",
-            key.0, key.1
+            "Calibration cleared for {} (had_data={existed})",
+            self.log_device_channel(&key.0, &key.1)
         );
         // Re-dispatch the saved setting so the fan picks up the
         // uncalibrated duty without waiting for the next user action.
@@ -1617,7 +1636,10 @@ impl Engine {
         let settings = DiagnosisSettings::default();
         let device_uid_for_event = key.0.clone();
         let channel_name_for_event = key.1.clone();
-        info!("Calibration started for {device_uid}:{channel_name}");
+        info!(
+            "Calibration started for {}",
+            self.log_device_channel(&key.0, &key.1)
+        );
         let mut outcome = calibration::run_diagnosis(
             &self.fan_state_map,
             &self.calibration_store,
@@ -1653,9 +1675,8 @@ impl Engine {
         let status = match &outcome {
             Ok(calibration) => {
                 info!(
-                    "Calibration completed for {}:{} (curve_kind={:?}, rpm_max={}, warnings={})",
-                    key.0,
-                    key.1,
+                    "Calibration completed for {} (curve_kind={:?}, rpm_max={}, warnings={})",
+                    self.log_device_channel(&key.0, &key.1),
                     calibration.curve_kind,
                     calibration.rpm_max,
                     calibration.warnings.len()
@@ -1667,7 +1688,10 @@ impl Engine {
                 )
             }
             Err(DiagnosisFailure::Cancelled) => {
-                info!("Calibration cancelled for {}:{}", key.0, key.1);
+                info!(
+                    "Calibration cancelled for {}",
+                    self.log_device_channel(&key.0, &key.1)
+                );
                 CalibrationStatus::from_failure(
                     device_uid_for_event,
                     channel_name_for_event,
@@ -1676,9 +1700,8 @@ impl Engine {
             }
             Err(failure) => {
                 info!(
-                    "Calibration failed for {}:{}: {}",
-                    key.0,
-                    key.1,
+                    "Calibration failed for {}: {}",
+                    self.log_device_channel(&key.0, &key.1),
                     describe_failure(failure)
                 );
                 CalibrationStatus::from_failure(
@@ -1688,7 +1711,7 @@ impl Engine {
                 )
             }
         };
-        self.broadcast_calibration_outcome(&key.1, &outcome);
+        self.broadcast_calibration_outcome(&key, &outcome);
         self.store_calibration_status(key, status);
         outcome
     }
@@ -1698,9 +1721,10 @@ impl Engine {
     /// they already know).
     fn broadcast_calibration_outcome(
         &self,
-        channel_name: &str,
+        key: &ChannelKey,
         outcome: &std::result::Result<Calibration, DiagnosisFailure>,
     ) {
+        let channel_name = self.overrides.log_channel_name(&key.0, &key.1);
         match outcome {
             Ok(calibration) if calibration.warnings.is_empty().not() => {
                 let summary: String = calibration

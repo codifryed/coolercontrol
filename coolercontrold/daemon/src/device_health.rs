@@ -29,7 +29,8 @@
 
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
-use crate::device::{DeviceUID, TempName, UID};
+use crate::device::{DeviceType, DeviceUID, TempName, UID};
+use crate::overrides::OverridesController;
 use crate::setting::{CustomSensor, Profile, SettingKind, TempSource};
 use crate::{AllDevices, Repos};
 use schemars::JsonSchema;
@@ -142,6 +143,7 @@ pub struct DeviceHealthController {
     all_devices: AllDevices,
     config: Rc<Config>,
     repos: Repos,
+    overrides: Rc<OverridesController>,
     handle: RefCell<Option<DeviceHealthHandle>>,
     missing: RefCell<Vec<SourceRef>>,
     stale_source: RefCell<Vec<SourceRef>>,
@@ -153,11 +155,17 @@ pub struct DeviceHealthController {
 }
 
 impl DeviceHealthController {
-    pub fn new(all_devices: AllDevices, config: Rc<Config>, repos: Repos) -> Self {
+    pub fn new(
+        all_devices: AllDevices,
+        config: Rc<Config>,
+        repos: Repos,
+        overrides: Rc<OverridesController>,
+    ) -> Self {
         Self {
             all_devices,
             config,
             repos,
+            overrides,
             handle: RefCell::new(None),
             missing: RefCell::new(Vec::new()),
             stale_source: RefCell::new(Vec::new()),
@@ -211,13 +219,27 @@ impl DeviceHealthController {
         self.config_generation_seen.set(Some(generation));
     }
 
-    /// Resolves the source device's display name: live devices first, then the
-    /// config `devices` list, which retains devices no longer detected.
+    /// Resolves the source device's display name: user override first, then
+    /// live devices, then the config `devices` list, which retains devices
+    /// no longer detected.
     fn source_device_name(&self, device_uid: &DeviceUID) -> Option<String> {
+        if let Some(name) = self.overrides.device_name_override(device_uid) {
+            return Some(name);
+        }
         if let Some(device) = self.all_devices.get(device_uid) {
             return Some(device.borrow().name.clone());
         }
         self.config.device_name(device_uid)
+    }
+
+    /// The custom sensors virtual device UID, when registered.
+    fn custom_sensors_device_uid(&self) -> Option<DeviceUID> {
+        self.all_devices
+            .iter()
+            .find_map(|(device_uid, device_lock)| {
+                (device_lock.borrow().d_type == DeviceType::CustomSensors)
+                    .then(|| device_uid.clone())
+            })
     }
 
     fn scan_failsafe(&self) -> Vec<FailsafeRef> {
@@ -261,7 +283,21 @@ impl DeviceHealthController {
         let Ok(sensors) = self.config.get_custom_sensors() else {
             return;
         };
+        let first_new = candidates.len();
         Self::custom_sensor_candidates(&sensors, candidates);
+        // Display-name resolution only: entity_uid stays the raw sensor id,
+        // which clients use for matching and routing.
+        let Some(cs_device_uid) = self.custom_sensors_device_uid() else {
+            return;
+        };
+        for candidate in &mut candidates[first_new..] {
+            if let Some(label) = self
+                .overrides
+                .channel_label_override(&cs_device_uid, &candidate.entity_uid)
+            {
+                candidate.entity_name = label;
+            }
+        }
     }
 
     async fn collect_profile_candidates(&self, candidates: &mut Vec<SourceRef>) {
@@ -291,7 +327,11 @@ impl DeviceHealthController {
                 };
                 refs.push(LcdRef {
                     device_uid: device_uid.clone(),
-                    device_name: device_lock.borrow().name.clone(),
+                    device_name: self.overrides.resolve_device_name(
+                        device_uid,
+                        None,
+                        &device_lock.borrow().name,
+                    ),
                     channel_name: setting.channel_name.clone(),
                     source: source.clone(),
                 });
@@ -470,6 +510,63 @@ mod tests {
         CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, FunctionUID,
         ProfileKind,
     };
+
+    #[test]
+    fn source_device_name_prefers_override_then_live() {
+        // Goal: the health display name walks the layers override > live
+        // device name > config list, and yields None for unknown devices.
+        crate::rt::test_runtime(async {
+            use crate::device::{Device, DeviceInfo};
+            use crate::repositories::repository::Repositories;
+            use std::cell::RefCell;
+            use std::rc::Rc;
+
+            let device = Rc::new(RefCell::new(Device::new(
+                "nct6798".to_string(),
+                DeviceType::Hwmon,
+                0,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            )));
+            let device_uid = device.borrow().uid.clone();
+            let mut devices = HashMap::new();
+            devices.insert(device_uid.clone(), device);
+            let all_devices = Rc::new(devices);
+            let config = Rc::new(crate::config::Config::init_default_config().unwrap());
+            config.create_device_list(&all_devices);
+
+            let tmp = tempfile::tempdir().unwrap();
+            let overrides = Rc::new(
+                crate::overrides::OverridesController::init_from(tmp.path().join("overrides.toml"))
+                    .await,
+            );
+            let controller = DeviceHealthController::new(
+                Rc::clone(&all_devices),
+                config,
+                Rc::new(Repositories::default()),
+                Rc::clone(&overrides),
+            );
+
+            // Live layer without an override.
+            assert_eq!(
+                controller.source_device_name(&device_uid),
+                Some("nct6798".to_string())
+            );
+            // Override layer wins over live.
+            overrides
+                .set_device_name(&device_uid, "hint", Some("Motherboard"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.source_device_name(&device_uid),
+                Some("Motherboard".to_string())
+            );
+            // Unknown everywhere yields None.
+            assert_eq!(controller.source_device_name(&"unknown".to_string()), None);
+        });
+    }
 
     fn present_with(device_uid: &str, temps: &[&str]) -> HashMap<DeviceUID, HashSet<TempName>> {
         let set = temps.iter().map(|t| (*t).to_string()).collect();

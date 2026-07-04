@@ -47,6 +47,20 @@ pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
     }
 }
 
+/// Atomically renames `from` to `to` on the same filesystem (a metadata-only
+/// operation). Used to publish a fully written temp file over its target so a
+/// crash mid-write cannot leave a partial file at `to`.
+pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
+    #[cfg(not(feature = "compio-rt"))]
+    {
+        Ok(tokio::fs::rename(from, to).await?)
+    }
+    #[cfg(feature = "compio-rt")]
+    {
+        Ok(compio::fs::rename(from.as_ref(), to.as_ref()).await?)
+    }
+}
+
 /// Recursively creates a directory and all of its parent components if they
 /// are missing.
 ///

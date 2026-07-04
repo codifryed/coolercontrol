@@ -137,7 +137,11 @@ void Notifier::send(const QString& summary, const QString& body, int icon, bool 
   hints[QStringLiteral("urgency")] = static_cast<uchar>(qBound(0, urgency, 2));
 
   const int expireTimeout = -1;
-  msg << APP_NAME << replaceId << APP_ID << summary << body << actions << hints << expireTimeout;
+  // Notification servers parse limited HTML markup in the body (fd.o spec).
+  // Escape it so user-defined names cannot inject markup. The summary is
+  // plain text per spec and stays unescaped.
+  msg << APP_NAME << replaceId << APP_ID << summary << body.toHtmlEscaped() << actions << hints
+      << expireTimeout;
 
   const QDBusMessage reply = QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
   if (reply.type() == QDBusMessage::ErrorMessage) {

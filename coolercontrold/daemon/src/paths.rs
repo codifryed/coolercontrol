@@ -62,6 +62,7 @@ static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(
 static CALIBRATION_CONFIG_FILE: LazyLock<PathBuf> =
     LazyLock::new(|| config_dir().join("calibrations.json"));
 static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("detect.toml"));
+static OVERRIDES_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("overrides.toml"));
 
 // -- auth (runtime session state in /var/lib) --
 static SESSION_KEY_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join(".session_key"));
@@ -142,6 +143,10 @@ pub fn legacy_plugins_dir() -> &'static Path {
 
 pub fn detect_override_file() -> &'static Path {
     &DETECT_OVERRIDE_FILE
+}
+
+pub fn overrides_file() -> &'static Path {
+    &OVERRIDES_FILE
 }
 
 /// Ensures the plugins directory exists at its canonical location and
@@ -355,6 +360,7 @@ mod tests {
         assert!(mode_config_file().starts_with(dir));
         assert!(calibration_config_file().starts_with(dir));
         assert!(detect_override_file().starts_with(dir));
+        assert!(overrides_file().starts_with(dir));
     }
 
     #[test]
@@ -394,6 +400,7 @@ mod tests {
         );
         assert_eq!(plugins_dir().file_name().unwrap(), "plugins");
         assert_eq!(detect_override_file().file_name().unwrap(), "detect.toml");
+        assert_eq!(overrides_file().file_name().unwrap(), "overrides.toml");
     }
 
     #[test]
