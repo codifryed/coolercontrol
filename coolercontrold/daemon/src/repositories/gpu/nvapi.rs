@@ -193,7 +193,7 @@ fn initialize_api(query_interface: QueryInterfaceFn) -> Option<()> {
     Some(())
 }
 
-/// Resolves the GetThermals entry point and builds the bus ID to GPU entry map.
+/// Resolves the `GetThermals` entry point and builds the bus ID to GPU entry map.
 /// Returns None if no GPUs support thermal queries.
 fn enumerate_gpu_entries(
     query_interface: QueryInterfaceFn,
