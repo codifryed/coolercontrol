@@ -220,7 +220,7 @@ impl FailsafeStatusData {
     /// Records one failed status poll and returns what to log for it.
     /// See `FailureLogAction`. `record_success` resets the episode.
     pub fn record_failure_log_action(&mut self) -> FailureLogAction {
-        if self.record_failure() {
+        let action = if self.record_failure() {
             if self.log_once() {
                 FailureLogAction::FailsafeLatch
             } else {
@@ -228,7 +228,14 @@ impl FailsafeStatusData {
             }
         } else {
             FailureLogAction::PerPollError
+        };
+        match action {
+            FailureLogAction::PerPollError => assert!(self.threshold_exceeded().not()),
+            FailureLogAction::FailsafeLatch | FailureLogAction::Silent => {
+                assert!(self.threshold_exceeded());
+            }
         }
+        action
     }
 
     /// Overwrites cache entries with failsafe values for every expected

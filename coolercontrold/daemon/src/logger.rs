@@ -31,6 +31,7 @@ use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -337,12 +338,13 @@ impl LogBufferActor {
     /// lines broadcasts as ONE coalesced event instead of one event per line. Bounded by
     /// the channel capacity so cancellation stays responsive under sustained spam.
     fn handle_burst(&mut self, first_msg: CCLogBufferMessage) {
+        // broadcast::send takes ownership, so no buffer to reuse; String::new() defers allocation.
         let mut pending_broadcast = String::new();
         self.handle_msg(first_msg, &mut pending_broadcast);
         for _ in 0..LOG_MSG_CHANNEL_CAP {
             match self.msg_receiver.try_recv() {
                 Ok(msg) => self.handle_msg(msg, &mut pending_broadcast),
-                Err(_) => break,
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
             }
         }
         if pending_broadcast.is_empty().not() {
@@ -391,7 +393,7 @@ impl LogBufferActor {
     }
 
     fn push_entry(&mut self, message: String) {
-        debug_assert!(message.len() <= LOG_ENTRY_MAX_BYTES);
+        assert!(message.len() <= LOG_ENTRY_MAX_BYTES);
         self.buf_bytes += message.len();
         self.buf.push_back(CCLog {
             timestamp: Local::now(),
