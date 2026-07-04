@@ -2923,8 +2923,9 @@ offset = 5
                 let doc = config.document.borrow();
                 let colors = doc["lcd-shutdown-settings"][device_uid][channel_name]["lcd"]
                     ["colors"]
-                    .as_array();
-                assert!(colors.is_some_and(toml_edit::Array::is_empty));
+                    .as_array()
+                    .expect("colors key present");
+                assert!(colors.is_empty());
             }
 
             // Get all settings and verify roundtrip

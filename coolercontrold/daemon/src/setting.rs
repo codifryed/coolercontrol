@@ -134,9 +134,10 @@ pub struct LcdSettings {
     /// The LCD orientation (0, 90, 180, 270). Applies across modes, so it stays shared.
     pub orientation: Option<u16>,
 
-    /// Unused. Written as an empty no-op because 4.3.x hard-requires this field when
-    /// parsing config.toml and modes.json, so removing it breaks a daemon downgrade.
-    /// DOWNGRADE-COMPAT(added 4.4.0, remove 4.6.0): see DEPRECATIONS.md.
+    /// Unused; kept for downgrade compatibility.
+    // Written as an empty no-op because 4.3.x hard-requires this field when parsing
+    // config.toml and modes.json, so removing it breaks a daemon downgrade.
+    // DOWNGRADE-COMPAT(added 4.4.0, remove 4.6.0): see DEPRECATIONS.md.
     #[serde(default)]
     pub colors: Vec<(R, G, B)>,
 
@@ -988,8 +989,8 @@ mod tests {
     // absence still deserializes (files written by the brief colors-less dev builds).
     #[test]
     fn lcd_colors_downgrade_compat() {
-        let v = serde_json::to_value(lcd(LcdModeKind::Liquid)).unwrap();
-        assert_eq!(v["colors"], json!([]));
+        let serialized = serde_json::to_value(lcd(LcdModeKind::Liquid)).unwrap();
+        assert_eq!(serialized["colors"], json!([]));
 
         let stripped = json!({
             "mode": "liquid",
