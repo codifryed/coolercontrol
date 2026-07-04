@@ -55,10 +55,16 @@ const currentOverride: string | undefined = isDeviceName
     : deviceOverrides?.channels?.[sensorName!]?.label
 const nameInput: Ref<string> = ref(currentOverride ?? '')
 // What a reset returns to: the detected hardware/driver label. With an
-// override active the daemon-stamped hint carries it; the raw channel
-// name is the last resort.
+// override active the daemon-stamped hint carries it; otherwise it is the
+// live detected name (model preferred, like the display resolver), and the
+// raw channel name is the last resort.
+const renamedDevice = [...deviceStore.allDevices()].find((device) => device.uid === props.deviceUID)
+const detectedDeviceName =
+    renamedDevice?.info?.model != null && renamedDevice.info.model.length > 0
+        ? renamedDevice.info.model
+        : renamedDevice?.nameShort
 const systemDisplayName = isDeviceName
-    ? [...deviceStore.allDevices()].find((device) => device.uid === props.deviceUID)?.nameShort
+    ? (deviceOverrides?.device_name ?? detectedDeviceName)
     : currentOverride != null
       ? (deviceOverrides?.channels?.[sensorName!]?.channel_label ?? sensorName)
       : deviceSettings.sensorsAndChannels.get(sensorName!)!.channelLabel
