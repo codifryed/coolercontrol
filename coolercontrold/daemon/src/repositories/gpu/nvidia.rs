@@ -929,8 +929,12 @@ impl GpuNVidia {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
                     let type_index = nv_status.index + starting_nvidia_index;
-                    let device_uid =
-                        Device::create_uid_from(&nv_status.name, DeviceType::GPU, type_index, None);
+                    let device_uid = crate::device_uid::create_uid_from(
+                        &nv_status.name,
+                        DeviceType::GPU,
+                        type_index,
+                        None,
+                    );
                     let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
                     if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
                         info!(
@@ -1435,7 +1439,7 @@ pub enum NvmlInitResult {
 /// so the two always key the same UID for a given GPU.
 fn nvml_name_and_uid(name: Option<String>, type_index: TypeIndex) -> (String, UID) {
     let name = name.unwrap_or_else(|| format!("Nvidia GPU #{type_index}"));
-    let device_uid = Device::create_uid_from(&name, DeviceType::GPU, type_index, None);
+    let device_uid = crate::device_uid::create_uid_from(&name, DeviceType::GPU, type_index, None);
     debug_assert!(
         device_uid.is_empty().not(),
         "device UID hash must be non-empty"
@@ -1500,14 +1504,14 @@ mod tests {
         assert_eq!(name, "GPU A");
         assert_eq!(
             uid,
-            Device::create_uid_from("GPU A", DeviceType::GPU, 2, None)
+            crate::device_uid::create_uid_from("GPU A", DeviceType::GPU, 2, None)
         );
 
         let (fallback_name, fallback_uid) = nvml_name_and_uid(None, 5);
         assert_eq!(fallback_name, "Nvidia GPU #5");
         assert_eq!(
             fallback_uid,
-            Device::create_uid_from("Nvidia GPU #5", DeviceType::GPU, 5, None)
+            crate::device_uid::create_uid_from("Nvidia GPU #5", DeviceType::GPU, 5, None)
         );
     }
 

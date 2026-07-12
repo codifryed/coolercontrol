@@ -28,7 +28,6 @@ use std::{
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
@@ -235,7 +234,7 @@ impl Device {
         device_id: Option<String>,
         poll_rate: f64,
     ) -> Self {
-        let uid = Self::create_uid_from(&name, d_type, type_index, device_id.as_ref());
+        let uid = crate::device_uid::create_uid_from(&name, d_type, type_index, device_id.as_ref());
         let status_history = Arc::new(VecDeque::with_capacity(Self::calc_history_stack_size(
             poll_rate,
         )));
@@ -265,29 +264,6 @@ impl Device {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     fn calc_history_stack_size(poll_rate: f64) -> usize {
         (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
-    }
-
-    /// This returns a sha256 hash string of an attempted unique identifier for a device.
-    /// Unique in the sense, that we try to follow the same device even if, for example:
-    ///     - another device has been removed and the order has changed.
-    ///     - the device has been swapped with another device plugged into the system
-    pub fn create_uid_from(
-        name: &str,
-        d_type: DeviceType,
-        type_index: u8,
-        device_id: Option<&String>,
-    ) -> UID {
-        let mut hasher = Sha256::new();
-        hasher.update(d_type.clone().to_string());
-        if let Some(d_id) = device_id {
-            // this should be pretty unique to the device itself, such as a serial number or device path
-            hasher.update(d_id);
-        } else {
-            // non-optimal fallback if needed:
-            hasher.update(name);
-            hasher.update([type_index]);
-        }
-        crate::hashutil::to_lower_hex(&hasher.finalize())
     }
 
     /// Returns the most recent status in the status history, if it exists.

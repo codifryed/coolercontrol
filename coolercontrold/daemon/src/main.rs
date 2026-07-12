@@ -53,6 +53,7 @@ mod config;
 mod device;
 mod device_health;
 mod device_listener;
+mod device_uid;
 mod engine;
 mod grpc_api;
 mod hashutil;
