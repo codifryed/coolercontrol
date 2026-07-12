@@ -47,6 +47,7 @@ use tokio_util::sync::CancellationToken;
 mod admin;
 mod alerts;
 mod api;
+mod backup;
 mod calibration;
 mod cc_fs;
 mod config;
@@ -249,8 +250,8 @@ struct Args {
     #[arg(long)]
     config: bool,
 
-    /// Makes a backup of your current daemon and UI settings
-    #[arg(long, short)]
+    /// Deprecated: use the `backup` subcommand. Runs a backup with defaults.
+    #[arg(long, short, hide = true)]
     backup: bool,
 
     /// Reset the UI password to the default
@@ -290,8 +291,10 @@ fn main() -> Result<()> {
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
+        // Backup/restore run before config load so they work even on a broken config.
+        handle_backup_commands(&cmd_args).await?;
         let config = Rc::new(Config::load_config_file().await?);
-        parse_cmd_args(&cmd_args, &config).await?;
+        parse_cmd_args(&cmd_args).await?;
         config.verify_writeability()?;
         config.log_deprecated_function_warnings();
         paths::ensure_data_dir().await?;
@@ -480,6 +483,12 @@ enum SubCommands {
         #[arg(long)]
         load: bool,
     },
+    /// Back up daemon and UI configuration to a rotated, timestamped directory
+    Backup {
+        /// Number of timestamped backups to keep; older ones are pruned
+        #[arg(long, default_value_t = backup::DEFAULT_KEEP, value_parser = clap::value_parser!(u32).range(1..))]
+        keep: u32,
+    },
     #[command(hide = true)]
     StressCpu {
         #[arg(long)]
@@ -539,21 +548,9 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
+async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
     if cmd_args.config {
         exit_successfully();
-    } else if cmd_args.backup {
-        info!("Backing up current UI configuration to config-ui-bak.toml");
-        if let Ok(ui_settings) = config.load_ui_config_file().await {
-            config.save_backup_ui_config_file(ui_settings).await?;
-        } else {
-            warn!("Unable to load UI configuration file, skipping.");
-        }
-        info!("Backing up current daemon configuration to config-bak.toml");
-        match config.save_backup_config_file().await {
-            Ok(()) => exit_successfully(),
-            Err(err) => exit_with_error(&err),
-        }
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
@@ -575,6 +572,33 @@ fn handle_detect_command(args: &Args) {
         let results = cc_detect::run_detection(*load, Some(paths::detect_override_file()));
         cc_detect::output_results(&results);
         exit_successfully()
+    }
+}
+
+/// Handles the `backup` subcommand and the deprecated `--backup` flag. Both run
+/// a backup with the resolved options and exit; neither returns on success.
+async fn handle_backup_commands(args: &Args) -> Result<()> {
+    if let Some(SubCommands::Backup { keep }) = &args.command {
+        let opts = backup::BackupOptions {
+            keep: *keep,
+            ..Default::default()
+        };
+        finish_backup(backup::run_backup(&opts).await);
+    }
+    if args.backup {
+        warn!("`--backup`/`-b` is deprecated; use `coolercontrold backup`");
+        finish_backup(backup::run_backup(&backup::BackupOptions::default()).await);
+    }
+    Ok(())
+}
+
+fn finish_backup(result: Result<std::path::PathBuf>) -> ! {
+    match result {
+        Ok(dir) => {
+            info!("Backup written to {}", dir.display());
+            exit_successfully();
+        }
+        Err(err) => exit_with_error(&err),
     }
 }
 

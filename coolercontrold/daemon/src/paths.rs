@@ -47,10 +47,9 @@ static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 
 // -- config --
 static CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("config.toml"));
-static CONFIG_BACKUP: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("config-bak.toml"));
 static UI_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("config-ui.json"));
-static UI_CONFIG_BACKUP: LazyLock<PathBuf> =
-    LazyLock::new(|| config_dir().join("config-ui-bak.json"));
+// Rotated, timestamped configuration backups live under this directory.
+static BACKUPS_DIR: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("backups"));
 
 // -- auth (credentials stay in /etc) --
 static PASSWD_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".passwd"));
@@ -87,16 +86,13 @@ pub fn config_file() -> &'static Path {
     &CONFIG_FILE
 }
 
-pub fn config_backup() -> &'static Path {
-    &CONFIG_BACKUP
-}
-
 pub fn ui_config_file() -> &'static Path {
     &UI_CONFIG_FILE
 }
 
-pub fn ui_config_backup() -> &'static Path {
-    &UI_CONFIG_BACKUP
+/// Directory holding rotated, timestamped configuration backups.
+pub fn backups_dir() -> &'static Path {
+    &BACKUPS_DIR
 }
 
 pub fn passwd_file() -> &'static Path {
@@ -351,9 +347,8 @@ mod tests {
     fn all_config_derived_paths_start_with_config_dir() {
         let dir = config_dir();
         assert!(config_file().starts_with(dir));
-        assert!(config_backup().starts_with(dir));
         assert!(ui_config_file().starts_with(dir));
-        assert!(ui_config_backup().starts_with(dir));
+        assert!(backups_dir().starts_with(dir));
         assert!(passwd_file().starts_with(dir));
         assert!(tokens_file().starts_with(dir));
         assert!(alert_config_file().starts_with(dir));
@@ -381,12 +376,8 @@ mod tests {
     #[test]
     fn derived_paths_have_expected_file_names() {
         assert_eq!(config_file().file_name().unwrap(), "config.toml");
-        assert_eq!(config_backup().file_name().unwrap(), "config-bak.toml");
         assert_eq!(ui_config_file().file_name().unwrap(), "config-ui.json");
-        assert_eq!(
-            ui_config_backup().file_name().unwrap(),
-            "config-ui-bak.json"
-        );
+        assert_eq!(backups_dir().file_name().unwrap(), "backups");
         assert_eq!(passwd_file().file_name().unwrap(), ".passwd");
         assert_eq!(session_key_file().file_name().unwrap(), ".session_key");
         assert_eq!(sessions_dir().file_name().unwrap(), "sessions");

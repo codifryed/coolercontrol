@@ -200,36 +200,10 @@ impl Config {
             .with_context(|| format!("Saving configuration file: {}", &self.path.display()))
     }
 
-    /// saves a backup of the daemon config file
-    pub async fn save_backup_config_file(&self) -> Result<()> {
-        let backup_path = crate::paths::config_backup().to_path_buf();
-        let doc_content = self.document.borrow().to_string();
-        cc_fs::write_string(&backup_path, doc_content)
-            .await
-            .with_context(|| {
-                format!(
-                    "Saving backup configuration file: {}",
-                    &backup_path.display()
-                )
-            })
-    }
-
     pub async fn save_ui_config_file(&self, ui_settings: String) -> Result<()> {
         cc_fs::write_string(&self.path_ui, ui_settings)
             .await
             .with_context(|| format!("Saving UI configuration file: {}", &self.path_ui.display()))
-    }
-
-    pub async fn save_backup_ui_config_file(&self, ui_settings: String) -> Result<()> {
-        let backup_path = crate::paths::ui_config_backup().to_path_buf();
-        cc_fs::write_string(&backup_path, ui_settings)
-            .await
-            .with_context(|| {
-                format!(
-                    "Saving backup UI configuration file: {}",
-                    &backup_path.display()
-                )
-            })
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {
