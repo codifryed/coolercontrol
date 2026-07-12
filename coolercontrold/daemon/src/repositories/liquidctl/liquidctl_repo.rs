@@ -231,6 +231,8 @@ impl LiquidctlRepo {
         let devices_response = self.liqctld_client.get_all_devices().await?;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
         let poll_rate = self.config.get_settings()?.poll_rate;
+        // Final guard so no two liquidctl devices share a UID and get dropped from the map.
+        let mut assigned_uids: HashSet<UID> = HashSet::new();
 
         for device_response in devices_response.devices {
             let Some(driver_type) = self.map_driver_type(&device_response) else {
@@ -246,6 +248,23 @@ impl LiquidctlRepo {
             let device_info = self
                 .device_mapper
                 .extract_info(&driver_type, &device_response);
+            // get_unique_identifiers already dedupes co-present devices; this is the final safety
+            // net. A distinct per-device address is used only on a residual collision.
+            let identifier = unique_device_identifiers
+                .remove(&device_response.id)
+                .unwrap_or_default();
+            let distinguisher = device_response
+                .hid_address
+                .clone()
+                .or_else(|| device_response.hwmon_address.clone())
+                .unwrap_or_else(|| device_response.id.to_string());
+            let (identifier, _) = crate::device_uid::assign_unique(
+                &mut assigned_uids,
+                DeviceType::Liquidctl,
+                &device_response.description,
+                &identifier,
+                &distinguisher,
+            );
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -256,7 +275,7 @@ impl LiquidctlRepo {
                     unknown_asetek: false,
                 }),
                 device_info,
-                unique_device_identifiers.remove(&device_response.id),
+                Some(identifier),
                 poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
