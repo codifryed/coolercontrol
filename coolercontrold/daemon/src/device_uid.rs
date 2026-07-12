@@ -19,8 +19,9 @@
 //! Device UID derivation.
 //!
 //! A Device UID is the stable identifier used as the key for all of a device's persisted settings,
-//! so this logic is high-stakes and rarely changed: altering it re-keys existing configs. It lives
-//! here, separate from the `Device` struct, so the reasoning is in one place.
+//! so this logic is high-stakes and rarely changed: altering it re-keys existing configs. The
+//! functions are associated with [`Device`] (call them as `Device::create_uid_from` /
+//! `Device::assign_unique`), but their logic lives in this module so the reasoning is in one place.
 //!
 //! `create_uid_from` produces the UID as a sha256 hex hash of the `DeviceType` combined with a
 //! caller-provided identifier:
@@ -50,74 +51,76 @@ use std::collections::HashSet;
 use log::info;
 use sha2::{Digest, Sha256};
 
-use crate::device::{DeviceType, UID};
+use crate::device::{Device, DeviceType, UID};
 
-/// Returns a sha256 hash string of an attempted unique identifier for a device.
-///
-/// Unique in the sense that we try to follow the same device even if, for example:
-///   - another device has been removed and the order has changed.
-///   - the device has been swapped with another device plugged into the system.
-///
-/// See the module docs for how `device_id` and the `None` fallback are chosen.
-pub fn create_uid_from(
-    name: &str,
-    d_type: DeviceType,
-    type_index: u8,
-    device_id: Option<&String>,
-) -> UID {
-    let mut hasher = Sha256::new();
-    hasher.update(d_type.clone().to_string());
-    if let Some(d_id) = device_id {
-        // this should be pretty unique to the device itself, such as a serial number or device path
-        hasher.update(d_id);
-    } else {
-        // non-optimal fallback if needed:
-        hasher.update(name);
-        hasher.update([type_index]);
-    }
-    crate::hashutil::to_lower_hex(&hasher.finalize())
-}
-
-/// Assigns a device a UID that is unique within a detection batch, so a device is never silently
-/// dropped by colliding with another in a uid-keyed map.
-///
-/// `identifier` is the device's preferred identity (a serial or path; it may be empty or shared).
-/// `distinguisher` is a stable per-device fallback (its sysfs path) used only on collision.
-/// `assigned` accumulates the UIDs handed out so far; pass the same set for every device in a batch.
-///
-/// Returns the identifier to actually store (so a later `create_uid_from` reproduces the same UID)
-/// and that UID. The first device to claim a UID keeps it, so a stable processing order (for
-/// example path-sorted) yields a stable, reboot-independent result.
-pub fn assign_unique(
-    assigned: &mut HashSet<UID>,
-    d_type: DeviceType,
-    name: &str,
-    identifier: &str,
-    distinguisher: &str,
-) -> (String, UID) {
-    let natural = create_uid_from(name, d_type, 0, Some(&identifier.to_owned()));
-    if assigned.insert(natural.clone()) {
-        return (identifier.to_owned(), natural);
-    }
-    // The preferred identifier is empty or shared with an earlier device. Fall back to the stable
-    // per-device distinguisher, salting with an ordinal only if that also collides. The loop is
-    // bounded by the number of already-assigned UIDs, since each salt is a distinct string.
-    let mut ordinal: u16 = 0;
-    loop {
-        let candidate = if ordinal == 0 {
-            distinguisher.to_owned()
+impl Device {
+    /// Returns a sha256 hash string of an attempted unique identifier for a device.
+    ///
+    /// Unique in the sense that we try to follow the same device even if, for example:
+    ///   - another device has been removed and the order has changed.
+    ///   - the device has been swapped with another device plugged into the system.
+    ///
+    /// See the module docs for how `device_id` and the `None` fallback are chosen.
+    pub fn create_uid_from(
+        name: &str,
+        d_type: DeviceType,
+        type_index: u8,
+        device_id: Option<&String>,
+    ) -> UID {
+        let mut hasher = Sha256::new();
+        hasher.update(d_type.clone().to_string());
+        if let Some(d_id) = device_id {
+            // this should be pretty unique to the device itself, such as a serial or device path
+            hasher.update(d_id);
         } else {
-            format!("{distinguisher}#{ordinal}")
-        };
-        let uid = create_uid_from(name, d_type, 0, Some(&candidate));
-        if assigned.insert(uid.clone()) {
-            info!(
-                "Device '{name}' computed a UID already used by another device; \
-                 assigned it a distinct UID from its location instead"
-            );
-            return (candidate, uid);
+            // non-optimal fallback if needed:
+            hasher.update(name);
+            hasher.update([type_index]);
         }
-        ordinal += 1;
+        crate::hashutil::to_lower_hex(&hasher.finalize())
+    }
+
+    /// Assigns a device a UID that is unique within a detection batch, so a device is never silently
+    /// dropped by colliding with another in a uid-keyed map.
+    ///
+    /// `identifier` is the device's preferred identity (a serial or path; may be empty or shared).
+    /// `distinguisher` is a stable per-device fallback (its sysfs path) used only on collision.
+    /// `assigned` accumulates the UIDs handed out so far; pass the same set for a whole batch.
+    ///
+    /// Returns the identifier to actually store (so a later `create_uid_from` reproduces the same
+    /// UID) and that UID. The first device to claim a UID keeps it, so a stable processing order
+    /// (for example path-sorted) yields a stable, reboot-independent result.
+    pub fn assign_unique(
+        assigned: &mut HashSet<UID>,
+        d_type: DeviceType,
+        name: &str,
+        identifier: &str,
+        distinguisher: &str,
+    ) -> (String, UID) {
+        let natural = Self::create_uid_from(name, d_type, 0, Some(&identifier.to_owned()));
+        if assigned.insert(natural.clone()) {
+            return (identifier.to_owned(), natural);
+        }
+        // The preferred identifier is empty or shared with an earlier device. Fall back to the
+        // stable per-device distinguisher, salting with an ordinal only if that also collides. The
+        // loop is bounded by the number of already-assigned UIDs, since each salt is distinct.
+        let mut ordinal: u16 = 0;
+        loop {
+            let candidate = if ordinal == 0 {
+                distinguisher.to_owned()
+            } else {
+                format!("{distinguisher}#{ordinal}")
+            };
+            let uid = Self::create_uid_from(name, d_type, 0, Some(&candidate));
+            if assigned.insert(uid.clone()) {
+                info!(
+                    "Device '{name}' computed a UID already used by another device; \
+                     assigned it a distinct UID from its location instead"
+                );
+                return (candidate, uid);
+            }
+            ordinal += 1;
+        }
     }
 }
 
@@ -131,14 +134,14 @@ mod tests {
     fn create_uid_from_produces_64_char_lower_hex() {
         // Goal: the UID is always a 64-char lowercase sha256 hex string, and derivation is
         // deterministic. Method: hash the same inputs twice and inspect the output shape.
-        let uid = create_uid_from("dev", DeviceType::Hwmon, 1, Some(&"serial".to_owned()));
+        let uid = Device::create_uid_from("dev", DeviceType::Hwmon, 1, Some(&"serial".to_owned()));
         assert_eq!(uid.len(), 64);
         assert!(uid
             .chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
         assert_eq!(
             uid,
-            create_uid_from("dev", DeviceType::Hwmon, 1, Some(&"serial".to_owned()))
+            Device::create_uid_from("dev", DeviceType::Hwmon, 1, Some(&"serial".to_owned()))
         );
     }
 
@@ -146,13 +149,13 @@ mod tests {
     fn create_uid_from_some_ignores_name_and_type_index() {
         // Goal: with a device_id present, the name and type_index do not affect the UID, so a device
         // is followed across renames and reordering. Method: vary name and type_index, keep the id.
-        let a = create_uid_from(
+        let a = Device::create_uid_from(
             "name-one",
             DeviceType::Hwmon,
             0,
             Some(&"same-id".to_owned()),
         );
-        let b = create_uid_from(
+        let b = Device::create_uid_from(
             "name-two",
             DeviceType::Hwmon,
             9,
@@ -165,9 +168,15 @@ mod tests {
     fn create_uid_from_none_varies_with_name_and_type_index() {
         // Goal: the None fallback folds in name and type_index, so it is order-dependent.
         // Method: change name, then type_index, and assert each yields a different UID.
-        let base = create_uid_from("dev", DeviceType::Hwmon, 0, None);
-        assert_ne!(base, create_uid_from("other", DeviceType::Hwmon, 0, None));
-        assert_ne!(base, create_uid_from("dev", DeviceType::Hwmon, 1, None));
+        let base = Device::create_uid_from("dev", DeviceType::Hwmon, 0, None);
+        assert_ne!(
+            base,
+            Device::create_uid_from("other", DeviceType::Hwmon, 0, None)
+        );
+        assert_ne!(
+            base,
+            Device::create_uid_from("dev", DeviceType::Hwmon, 1, None)
+        );
     }
 
     #[test]
@@ -175,8 +184,8 @@ mod tests {
         // Goal: two different devices with an empty identifier hash to the same UID (DeviceType
         // only). This is exactly the collision the dedup guard exists to catch.
         // Method: hash an empty id under two different names/indexes and assert equality.
-        let a = create_uid_from("device-a", DeviceType::Hwmon, 0, Some(&String::new()));
-        let b = create_uid_from("device-b", DeviceType::Hwmon, 3, Some(&String::new()));
+        let a = Device::create_uid_from("device-a", DeviceType::Hwmon, 0, Some(&String::new()));
+        let b = Device::create_uid_from("device-b", DeviceType::Hwmon, 3, Some(&String::new()));
         assert_eq!(a, b);
     }
 
@@ -184,8 +193,8 @@ mod tests {
     fn create_uid_from_device_type_distinguishes() {
         // Goal: the same identifier under a different DeviceType yields a different UID, so the same
         // physical device seen via two subsystems keeps two identities. Method: hash id across types.
-        let hwmon = create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"id".to_owned()));
-        let gpu = create_uid_from("dev", DeviceType::GPU, 0, Some(&"id".to_owned()));
+        let hwmon = Device::create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"id".to_owned()));
+        let gpu = Device::create_uid_from("dev", DeviceType::GPU, 0, Some(&"id".to_owned()));
         assert_ne!(hwmon, gpu);
     }
 
@@ -195,7 +204,7 @@ mod tests {
         // fix stays backward compatible (a lone serial-less hwmon device keeps this UID and its
         // settings). Method: assert the known sha256("Hwmon") value.
         assert_eq!(
-            create_uid_from("poweradjust3", DeviceType::Hwmon, 0, Some(&String::new())),
+            Device::create_uid_from("poweradjust3", DeviceType::Hwmon, 0, Some(&String::new())),
             "94c00dd53c8b0eb972b101a6a22c7d9e0f62270af245638a7b6cfda4be6d2c8e"
         );
     }
@@ -207,7 +216,7 @@ mod tests {
         // Goal: with no collision, the identifier and its natural UID pass through unchanged.
         // Method: assign one device and assert the returned identifier and UID.
         let mut assigned = HashSet::new();
-        let (id, uid) = assign_unique(
+        let (id, uid) = Device::assign_unique(
             &mut assigned,
             DeviceType::Hwmon,
             "dev",
@@ -217,7 +226,7 @@ mod tests {
         assert_eq!(id, "serial-x");
         assert_eq!(
             uid,
-            create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"serial-x".to_owned()))
+            Device::create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"serial-x".to_owned()))
         );
         assert_eq!(assigned.len(), 1);
     }
@@ -228,7 +237,7 @@ mod tests {
         // distinguisher is consulted only on collision. This is the compat guarantee for a lone
         // serial-less device. Method: assign one blank-identifier device with a path present.
         let mut assigned = HashSet::new();
-        let (id, uid) = assign_unique(
+        let (id, uid) = Device::assign_unique(
             &mut assigned,
             DeviceType::Hwmon,
             "psu",
@@ -238,7 +247,7 @@ mod tests {
         assert_eq!(id, "");
         assert_eq!(
             uid,
-            create_uid_from("psu", DeviceType::Hwmon, 0, Some(&String::new()))
+            Device::create_uid_from("psu", DeviceType::Hwmon, 0, Some(&String::new()))
         );
     }
 
@@ -248,16 +257,16 @@ mod tests {
         // Method: assign two distinct serials and assert the identifiers and UIDs pass through.
         let mut assigned = HashSet::new();
         let (id_a, uid_a) =
-            assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "serial-a", "/a");
+            Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "serial-a", "/a");
         let (id_b, uid_b) =
-            assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "serial-b", "/b");
+            Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "serial-b", "/b");
 
         assert_eq!(id_a, "serial-a");
         assert_eq!(id_b, "serial-b");
         assert_ne!(uid_a, uid_b);
         assert_eq!(
             uid_a,
-            create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"serial-a".to_owned()))
+            Device::create_uid_from("dev", DeviceType::Hwmon, 0, Some(&"serial-a".to_owned()))
         );
     }
 
@@ -267,14 +276,14 @@ mod tests {
         // natural UID and its settings; the second is disambiguated by its distinct sysfs path.
         // Method: assign two blank-identifier devices with different paths.
         let mut assigned = HashSet::new();
-        let (id_a, uid_a) = assign_unique(
+        let (id_a, uid_a) = Device::assign_unique(
             &mut assigned,
             DeviceType::Hwmon,
             "poweradjust3",
             "",
             "/sys/hwmon2",
         );
-        let (id_b, uid_b) = assign_unique(
+        let (id_b, uid_b) = Device::assign_unique(
             &mut assigned,
             DeviceType::Hwmon,
             "poweradjust3",
@@ -286,7 +295,7 @@ mod tests {
         assert_eq!(id_a, "");
         assert_eq!(
             uid_a,
-            create_uid_from("poweradjust3", DeviceType::Hwmon, 0, Some(&String::new()))
+            Device::create_uid_from("poweradjust3", DeviceType::Hwmon, 0, Some(&String::new()))
         );
         // the second is given its path as its identity, producing a distinct UID:
         assert_eq!(id_b, "/sys/hwmon3");
@@ -299,18 +308,20 @@ mod tests {
         // create_uid_from by Device::new, which passes the real type_index (ignored for the Some
         // branch). Method: assign a colliding pair and re-derive both UIDs with arbitrary indexes.
         let mut assigned = HashSet::new();
-        let (id_a, uid_a) = assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "shared", "/a");
-        let (id_b, uid_b) = assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "shared", "/b");
+        let (id_a, uid_a) =
+            Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "shared", "/a");
+        let (id_b, uid_b) =
+            Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "shared", "/b");
 
         assert_eq!(id_a, "shared");
         assert_eq!(id_b, "/b");
         assert_eq!(
             uid_a,
-            create_uid_from("dev", DeviceType::Hwmon, 42, Some(&id_a))
+            Device::create_uid_from("dev", DeviceType::Hwmon, 42, Some(&id_a))
         );
         assert_eq!(
             uid_b,
-            create_uid_from("dev", DeviceType::Hwmon, 7, Some(&id_b))
+            Device::create_uid_from("dev", DeviceType::Hwmon, 7, Some(&id_b))
         );
         assert_ne!(uid_a, uid_b);
     }
@@ -321,9 +332,9 @@ mod tests {
         // still get distinct UIDs via an ordinal salt, never a collision.
         // Method: assign three devices all with empty identifier and empty distinguisher.
         let mut assigned = HashSet::new();
-        let (_, uid_a) = assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
-        let (_, uid_b) = assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
-        let (_, uid_c) = assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
+        let (_, uid_a) = Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
+        let (_, uid_b) = Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
+        let (_, uid_c) = Device::assign_unique(&mut assigned, DeviceType::Hwmon, "dev", "", "");
 
         assert_ne!(uid_a, uid_b);
         assert_ne!(uid_b, uid_c);
@@ -337,14 +348,18 @@ mod tests {
         // sort by a stable key (e.g. sysfs path) for a stable result.
         // Method: assign the same two blank devices in both orders and inspect who kept the natural.
         let mut forward = HashSet::new();
-        let kept_forward = assign_unique(&mut forward, DeviceType::Hwmon, "dev", "", "/a").0;
-        let bumped_forward = assign_unique(&mut forward, DeviceType::Hwmon, "dev", "", "/b").0;
+        let kept_forward =
+            Device::assign_unique(&mut forward, DeviceType::Hwmon, "dev", "", "/a").0;
+        let bumped_forward =
+            Device::assign_unique(&mut forward, DeviceType::Hwmon, "dev", "", "/b").0;
         assert_eq!(kept_forward, "");
         assert_eq!(bumped_forward, "/b");
 
         let mut reverse = HashSet::new();
-        let kept_reverse = assign_unique(&mut reverse, DeviceType::Hwmon, "dev", "", "/b").0;
-        let bumped_reverse = assign_unique(&mut reverse, DeviceType::Hwmon, "dev", "", "/a").0;
+        let kept_reverse =
+            Device::assign_unique(&mut reverse, DeviceType::Hwmon, "dev", "", "/b").0;
+        let bumped_reverse =
+            Device::assign_unique(&mut reverse, DeviceType::Hwmon, "dev", "", "/a").0;
         assert_eq!(kept_reverse, "");
         assert_eq!(bumped_reverse, "/a");
     }
@@ -356,7 +371,7 @@ mod tests {
         let mut assigned = HashSet::new();
         let mut uids = Vec::new();
         for i in 0..5 {
-            let (_, uid) = assign_unique(
+            let (_, uid) = Device::assign_unique(
                 &mut assigned,
                 DeviceType::Hwmon,
                 "same-model",
@@ -366,7 +381,7 @@ mod tests {
             uids.push(uid);
         }
         for i in 0..3 {
-            let (_, uid) = assign_unique(
+            let (_, uid) = Device::assign_unique(
                 &mut assigned,
                 DeviceType::Liquidctl,
                 "other-model",

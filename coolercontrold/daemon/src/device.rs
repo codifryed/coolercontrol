@@ -234,7 +234,7 @@ impl Device {
         device_id: Option<String>,
         poll_rate: f64,
     ) -> Self {
-        let uid = crate::device_uid::create_uid_from(&name, d_type, type_index, device_id.as_ref());
+        let uid = Self::create_uid_from(&name, d_type, type_index, device_id.as_ref());
         let status_history = Arc::new(VecDeque::with_capacity(Self::calc_history_stack_size(
             poll_rate,
         )));

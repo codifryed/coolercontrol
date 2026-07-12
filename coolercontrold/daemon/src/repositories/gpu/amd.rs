@@ -98,7 +98,7 @@ impl GpuAMD {
             // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
             let path_id = devices::get_static_device_path_str(&path)
                 .unwrap_or_else(|| path.to_string_lossy().into_owned());
-            let (u_id, device_uid) = crate::device_uid::assign_unique(
+            let (u_id, device_uid) = Device::assign_unique(
                 &mut assigned_uids,
                 DeviceType::GPU,
                 &device_name,

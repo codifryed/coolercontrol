@@ -258,7 +258,7 @@ impl LiquidctlRepo {
                 .clone()
                 .or_else(|| device_response.hwmon_address.clone())
                 .unwrap_or_else(|| device_response.id.to_string());
-            let (identifier, _) = crate::device_uid::assign_unique(
+            let (identifier, _) = Device::assign_unique(
                 &mut assigned_uids,
                 DeviceType::Liquidctl,
                 &device_response.description,
