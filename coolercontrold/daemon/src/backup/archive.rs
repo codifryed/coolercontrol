@@ -22,6 +22,8 @@
 //! archive yields the same `<stamp>/config.toml` layout as an on-disk backup and
 //! restore can treat the two identically.
 
+use std::fs::Permissions;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -31,13 +33,32 @@ use super::manifest::MANIFEST_FILE_NAME;
 /// Writes a gzipped tarball of `backup_dir` and returns the archive path. `name`
 /// is the backup's directory name, used both to nest the entries and to name the
 /// default archive file (so distinct backups never collide on the same output).
+/// `secure` forces owner-only permissions, used when the backup contains
+/// credentials so the portable archive is never world-readable.
 ///
 /// The work is synchronous std file IO on a few small files; the backup CLI is a
 /// one-shot command about to exit, so briefly running it inline is acceptable.
-pub fn write(backup_dir: &Path, name: &str, output: Option<&Path>) -> Result<PathBuf> {
+pub fn write(
+    backup_dir: &Path,
+    name: &str,
+    output: Option<&Path>,
+    secure: bool,
+) -> Result<PathBuf> {
     let dest = resolve_dest(name, output)?;
-    let file = std::fs::File::create(&dest)
+    let mut open_opts = std::fs::OpenOptions::new();
+    open_opts.write(true).create(true).truncate(true);
+    if secure {
+        // Owner-only from creation: no window where a credential archive is world-readable.
+        open_opts.mode(0o600);
+    }
+    let file = open_opts
+        .open(&dest)
         .with_context(|| format!("Creating archive {}", dest.display()))?;
+    if secure {
+        // Enforce 0600 even when the destination already existed at looser perms.
+        file.set_permissions(Permissions::from_mode(0o600))
+            .with_context(|| format!("Securing archive {}", dest.display()))?;
+    }
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut builder = tar::Builder::new(encoder);
     // Nest under the backup name so extraction mirrors an on-disk backup directory.
@@ -139,7 +160,7 @@ mod tests {
 
         let out_dir = tmp.path().join("out");
         std::fs::create_dir_all(&out_dir).unwrap();
-        let archive = write(&backup_dir, "2026-07-12T10-00-00", Some(&out_dir)).unwrap();
+        let archive = write(&backup_dir, "2026-07-12T10-00-00", Some(&out_dir), false).unwrap();
         assert!(archive.exists());
 
         let extract = tmp.path().join("extract");
@@ -148,5 +169,24 @@ mod tests {
 
         let restored = extract.join("2026-07-12T10-00-00").join("config.toml");
         assert_eq!(std::fs::read_to_string(restored).unwrap(), "answer = 42\n");
+    }
+
+    /// Goal: a `secure` archive (one that carries credentials) is owner-only,
+    /// even when it overwrites a pre-existing looser file. Method: pre-create the
+    /// destination at 0644, write a secure archive over it, and assert the mode.
+    #[test]
+    fn secure_archive_is_owner_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let backup_dir = tmp.path().join("2026-07-12T10-00-00");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::write(backup_dir.join(".passwd"), "hash").unwrap();
+
+        let dest = tmp.path().join("s.tar.gz");
+        std::fs::write(&dest, b"stale").unwrap();
+        std::fs::set_permissions(&dest, Permissions::from_mode(0o644)).unwrap();
+
+        let secure = write(&backup_dir, "s", Some(&dest), true).unwrap();
+        let mode = std::fs::metadata(&secure).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }
