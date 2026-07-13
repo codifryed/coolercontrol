@@ -26,6 +26,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use super::manifest::MANIFEST_FILE_NAME;
+
 /// Writes a gzipped tarball of `backup_dir` and returns the archive path. `name`
 /// is the backup's directory name, used both to nest the entries and to name the
 /// default archive file (so distinct backups never collide on the same output).
@@ -48,6 +50,38 @@ pub fn write(backup_dir: &Path, name: &str, output: Option<&Path>) -> Result<Pat
         .finish()
         .context("Finalizing archive compression")?;
     Ok(dest)
+}
+
+/// Extracts a `.tar.gz` backup into `dest` and returns the backup root directory
+/// (the extracted directory that holds the manifest).
+pub fn extract(archive_path: &Path, dest: &Path) -> Result<PathBuf> {
+    let file = std::fs::File::open(archive_path)
+        .with_context(|| format!("Opening archive {}", archive_path.display()))?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    tar::Archive::new(decoder)
+        .unpack(dest)
+        .with_context(|| format!("Extracting archive {}", archive_path.display()))?;
+    find_backup_root(dest).with_context(|| {
+        format!(
+            "Archive {} does not contain a backup",
+            archive_path.display()
+        )
+    })
+}
+
+/// Locates the extracted backup root: `dest` when it holds a manifest, otherwise
+/// its single manifest-bearing subdirectory (backups nest under their name).
+fn find_backup_root(dest: &Path) -> Result<PathBuf> {
+    if dest.join(MANIFEST_FILE_NAME).exists() {
+        return Ok(dest.to_path_buf());
+    }
+    for entry in std::fs::read_dir(dest)?.flatten() {
+        let path = entry.path();
+        if path.join(MANIFEST_FILE_NAME).exists() {
+            return Ok(path);
+        }
+    }
+    anyhow::bail!("no manifest.toml found in archive")
 }
 
 /// Resolves where the archive is written: the current directory by default, a

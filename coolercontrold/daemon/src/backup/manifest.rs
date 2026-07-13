@@ -90,7 +90,7 @@ mod tests {
         assert_eq!(parsed.format_version, FORMAT_VERSION);
         assert_eq!(parsed.daemon_version, crate::VERSION);
         assert_eq!(parsed.created, "2026-07-12T14:30:00+00:00");
-        assert_eq!(parsed.includes_secrets, false);
+        assert!(!parsed.includes_secrets);
         assert_eq!(parsed.files, vec!["config.toml", "alerts.json"]);
     }
 }

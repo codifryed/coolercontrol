@@ -52,6 +52,7 @@ mod backup;
 mod calibration;
 mod cc_fs;
 mod config;
+mod config_validate;
 mod device;
 mod device_health;
 mod device_listener;
@@ -247,10 +248,6 @@ struct Args {
     #[arg(long, short)]
     system_info: bool,
 
-    /// Check config file validity
-    #[arg(long)]
-    config: bool,
-
     /// Deprecated: use the `backup` subcommand. Runs a backup with defaults.
     #[arg(long, short, hide = true)]
     backup: bool,
@@ -292,8 +289,8 @@ fn main() -> Result<()> {
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
-        // Backup/restore run before config load so they work even on a broken config.
-        handle_backup_commands(&cmd_args).await?;
+        // Backup/restore/check/list run before config load so they work even on a broken config.
+        handle_config_commands(&cmd_args).await?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args).await?;
         config.verify_writeability()?;
@@ -499,6 +496,21 @@ enum SubCommands {
         #[arg(long)]
         include_secrets: bool,
     },
+    /// Restore configuration from a backup (stop the daemon first)
+    Restore {
+        /// Backup to restore: a backup directory or .tar.gz. Defaults to the most recent
+        source: Option<PathBuf>,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Restore even if the backup fails validation
+        #[arg(long)]
+        force: bool,
+    },
+    /// List available configuration backups
+    List,
+    /// Validate all configuration files
+    Check,
     #[command(hide = true)]
     StressCpu {
         #[arg(long)]
@@ -559,9 +571,7 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
 }
 
 async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
-    if cmd_args.config {
-        exit_successfully();
-    } else if cmd_args.reset_password {
+    if cmd_args.reset_password {
         info!("Resetting UI password to default");
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
         // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
@@ -587,28 +597,57 @@ fn handle_detect_command(args: &Args) {
 
 /// Handles the `backup` subcommand and the deprecated `--backup` flag. Both run
 /// a backup with the resolved options and exit; neither returns on success.
-async fn handle_backup_commands(args: &Args) -> Result<()> {
-    if let Some(SubCommands::Backup {
-        keep,
-        archive,
-        output,
-        include_secrets,
-    }) = &args.command
-    {
-        let opts = backup::BackupOptions {
-            keep: *keep,
-            include_secrets: *include_secrets,
-            // A named output path is an implicit request for the portable archive.
-            archive: *archive || output.is_some(),
-            output: output.clone(),
-        };
-        finish_backup(backup::run_backup(&opts).await);
+async fn handle_config_commands(args: &Args) -> Result<()> {
+    match &args.command {
+        Some(SubCommands::Backup {
+            keep,
+            archive,
+            output,
+            include_secrets,
+        }) => {
+            let opts = backup::BackupOptions {
+                keep: *keep,
+                include_secrets: *include_secrets,
+                // A named output path is an implicit request for the portable archive.
+                archive: *archive || output.is_some(),
+                output: output.clone(),
+            };
+            finish_backup(backup::run_backup(&opts).await);
+        }
+        Some(SubCommands::Restore { source, yes, force }) => {
+            let opts = backup::RestoreOptions {
+                source: source.clone(),
+                yes: *yes,
+                force: *force,
+            };
+            finish_unit(backup::run_restore(&opts).await);
+        }
+        Some(SubCommands::List) => finish_unit(backup::run_list().await),
+        Some(SubCommands::Check) => finish_check(config_validate::run_check().await),
+        _ => {}
     }
     if args.backup {
         warn!("`--backup`/`-b` is deprecated; use `coolercontrold backup`");
         finish_backup(backup::run_backup(&backup::BackupOptions::default()).await);
     }
     Ok(())
+}
+
+/// Exits after a command that returns only success/failure.
+fn finish_unit(result: Result<()>) -> ! {
+    match result {
+        Ok(()) => exit_successfully(),
+        Err(err) => exit_with_error(&err),
+    }
+}
+
+/// Exits 0 when every config file is valid, 1 otherwise (already reported).
+fn finish_check(all_valid: bool) -> ! {
+    if all_valid {
+        exit_successfully();
+    }
+    error!("One or more configuration files are invalid");
+    std::process::exit(1);
 }
 
 fn finish_backup(result: Result<backup::BackupOutput>) -> ! {

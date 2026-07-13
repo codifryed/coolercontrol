@@ -26,7 +26,12 @@
 //! interrupted backup never leaves a partial directory in the rotation set.
 
 mod archive;
+mod list;
 mod manifest;
+mod restore;
+
+pub use list::run_list;
+pub use restore::{run_restore, RestoreOptions};
 
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;

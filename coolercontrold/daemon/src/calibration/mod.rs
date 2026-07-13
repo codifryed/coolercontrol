@@ -45,7 +45,7 @@ pub use diagnoser::{
 pub use dispatch::{dispatch, DutyWriter, RepoWriter};
 pub use registry::DiagnosisRegistry;
 pub use state::FanStateMap;
-pub use store::{CalibrationEntry, CalibrationStore};
+pub use store::{validate, CalibrationEntry, CalibrationStore};
 
 use crate::device::{ChannelName, DeviceUID};
 
