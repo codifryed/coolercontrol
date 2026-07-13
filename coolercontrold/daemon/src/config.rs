@@ -103,31 +103,42 @@ impl Config {
             document: RefCell::new(document),
             generation: Cell::new(0),
         };
-        // test parsing of config data to make sure everything is readable
-        let _ = config.legacy690_ids()?;
-        let _ = config.get_settings()?;
-        if let Err(err) = config.get_all_devices_settings() {
-            error!("Configuration File contains invalid settings: {err}");
-            return Err(err);
-        }
-        if let Err(err) = config.get_all_cc_devices_settings() {
-            error!("Configuration File contains invalid settings: {err}");
-            return Err(err);
-        }
-        if let Err(err) = config.get_profiles().await {
-            error!("Configuration File contains invalid settings: {err}");
-            return Err(err);
-        }
-        if let Err(err) = config.get_functions().await {
-            error!("Configuration File contains invalid settings: {err}");
-            return Err(err);
-        }
-        if let Err(err) = config.get_custom_sensors() {
-            error!("Configuration File contains invalid settings: {err}");
-            return Err(err);
-        }
+        // Prove every section is readable before handing the config out.
+        config
+            .check_readable()
+            .await
+            .inspect_err(|err| error!("Configuration File contains invalid settings: {err}"))?;
         info!("Configuration file check successful");
         Ok(config)
+    }
+
+    /// Runs every config getter to prove the parsed document is fully readable.
+    /// A `config.toml` is valid exactly when this succeeds.
+    async fn check_readable(&self) -> Result<()> {
+        self.legacy690_ids()?;
+        self.get_settings()?;
+        self.get_all_devices_settings()?;
+        self.get_all_cc_devices_settings()?;
+        self.get_profiles().await?;
+        self.get_functions().await?;
+        self.get_custom_sensors()?;
+        Ok(())
+    }
+
+    /// Validates that `content` parses as a fully readable `config.toml`, without
+    /// touching disk or creating a default file. Used to check backups and the
+    /// live config file.
+    pub async fn validate_str(content: &str) -> Result<()> {
+        let document = content
+            .parse::<DocumentMut>()
+            .with_context(|| "Parsing configuration file")?;
+        let config = Self {
+            path: PathBuf::new(),
+            path_ui: PathBuf::new(),
+            document: RefCell::new(document),
+            generation: Cell::new(0),
+        };
+        config.check_readable().await
     }
 
     async fn create_new_config_file(path: &PathBuf) -> Result<String> {
@@ -200,36 +211,10 @@ impl Config {
             .with_context(|| format!("Saving configuration file: {}", &self.path.display()))
     }
 
-    /// saves a backup of the daemon config file
-    pub async fn save_backup_config_file(&self) -> Result<()> {
-        let backup_path = crate::paths::config_backup().to_path_buf();
-        let doc_content = self.document.borrow().to_string();
-        cc_fs::write_string(&backup_path, doc_content)
-            .await
-            .with_context(|| {
-                format!(
-                    "Saving backup configuration file: {}",
-                    &backup_path.display()
-                )
-            })
-    }
-
     pub async fn save_ui_config_file(&self, ui_settings: String) -> Result<()> {
         cc_fs::write_string(&self.path_ui, ui_settings)
             .await
             .with_context(|| format!("Saving UI configuration file: {}", &self.path_ui.display()))
-    }
-
-    pub async fn save_backup_ui_config_file(&self, ui_settings: String) -> Result<()> {
-        let backup_path = crate::paths::ui_config_backup().to_path_buf();
-        cc_fs::write_string(&backup_path, ui_settings)
-            .await
-            .with_context(|| {
-                format!(
-                    "Saving backup UI configuration file: {}",
-                    &backup_path.display()
-                )
-            })
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {

@@ -666,6 +666,14 @@ struct ModeConfigFile {
     previous_active_mode: Option<UID>,
 }
 
+/// Validates that `contents` parse as a modes config file.
+pub fn validate(contents: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    serde_json::from_str::<ModeConfigFile>(contents)
+        .context("Parsing modes configuration")
+        .map(|_| ())
+}
+
 #[derive(Debug, Clone)]
 struct ActiveModes {
     current: Option<UID>,

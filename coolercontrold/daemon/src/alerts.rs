@@ -759,6 +759,14 @@ struct AlertLogsFile {
     logs: Vec<AlertLog>,
 }
 
+/// Validates that `contents` parse as an alerts config file.
+pub fn validate(contents: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    serde_json::from_str::<AlertConfigFile>(contents)
+        .context("Parsing alerts configuration")
+        .map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

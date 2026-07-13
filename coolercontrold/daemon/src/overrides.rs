@@ -344,6 +344,13 @@ async fn load(path: &Path) -> Result<OverridesDocument> {
     Ok(document)
 }
 
+/// Validates that `contents` parse as an overrides document.
+pub fn validate(contents: &str) -> Result<()> {
+    toml_edit::de::from_str::<OverridesDocument>(contents)
+        .with_context(|| "Parsing overrides configuration")
+        .map(|_| ())
+}
+
 /// One place owns the log format so it cannot drift per call site. Names are
 /// sanitized here because hand-edited overrides bypass intake validation, so
 /// the log boundary re-applies the injection-character policy.

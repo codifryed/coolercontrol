@@ -136,6 +136,11 @@ tokio-rustls = { version = "0.26", default-features = false, features = [
   "tls12",
 ] }
 tempfile = "3.27"
+# Backup archives: tar + gzip. flate2 is already compiled in the tree (tower-http
+# compression); declaring it directly lets the backup module reuse it with no new
+# codegen. tar is pure Rust with no C dependency; xattrs are unused for config backups.
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
 hyper = { version = "1.9.0", default-features = false, features = [
   "http1",
   "client",

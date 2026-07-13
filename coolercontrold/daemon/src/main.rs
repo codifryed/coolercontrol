@@ -18,6 +18,8 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::ops::Not;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -47,9 +49,11 @@ use tokio_util::sync::CancellationToken;
 mod admin;
 mod alerts;
 mod api;
+mod backup;
 mod calibration;
 mod cc_fs;
 mod config;
+mod config_validate;
 mod device;
 mod device_health;
 mod device_listener;
@@ -245,12 +249,8 @@ struct Args {
     #[arg(long, short)]
     system_info: bool,
 
-    /// Check config file validity
-    #[arg(long)]
-    config: bool,
-
-    /// Makes a backup of your current daemon and UI settings
-    #[arg(long, short)]
+    /// Deprecated: use the `backup` subcommand. Runs a backup with defaults.
+    #[arg(long, short, hide = true)]
     backup: bool,
 
     /// Reset the UI password to the default
@@ -267,6 +267,23 @@ struct Args {
 
     #[command(subcommand)]
     command: Option<SubCommands>,
+}
+
+impl Args {
+    /// Whether to log the System Info banner. A real daemon start wants it, as do
+    /// the commands whose purpose is to report system state (`--system-info`,
+    /// `detect`). The config maintenance one-shots (backup/restore/list/check,
+    /// password reset) only add noise, so they skip it.
+    fn wants_system_info_banner(&self) -> bool {
+        if self.system_info {
+            return true;
+        }
+        match &self.command {
+            Some(SubCommands::Detect { .. }) => true,
+            Some(_) => false,
+            None => (self.backup || self.reset_password).not(),
+        }
+    }
 }
 
 /// `coolercontrold` uses a single-threaded asynchronous runtime. It uses a structured concurrency
@@ -290,8 +307,10 @@ fn main() -> Result<()> {
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
+        // Backup/restore/check/list run before config load so they work even on a broken config.
+        handle_config_commands(&cmd_args).await?;
         let config = Rc::new(Config::load_config_file().await?);
-        parse_cmd_args(&cmd_args, &config).await?;
+        parse_cmd_args(&cmd_args).await?;
         config.verify_writeability()?;
         config.log_deprecated_function_warnings();
         paths::ensure_data_dir().await?;
@@ -480,6 +499,36 @@ enum SubCommands {
         #[arg(long)]
         load: bool,
     },
+    /// Back up daemon and UI configuration to a rotated, timestamped directory
+    Backup {
+        /// Number of timestamped backups to keep; older ones are pruned
+        #[arg(long, default_value_t = backup::DEFAULT_KEEP, value_parser = clap::value_parser!(u32).range(1..))]
+        keep: u32,
+        /// Also write a portable .tar.gz archive (to the current directory unless --output)
+        #[arg(long)]
+        archive: bool,
+        /// Write the portable archive to this path (a directory or file); implies --archive
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Include credential files (.passwd and .tokens) in the backup
+        #[arg(long)]
+        include_secrets: bool,
+    },
+    /// Restore configuration from a backup (stop the daemon first)
+    Restore {
+        /// Backup to restore: a backup directory or .tar.gz. Defaults to the most recent
+        source: Option<PathBuf>,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Restore even if the backup fails validation
+        #[arg(long)]
+        force: bool,
+    },
+    /// List available configuration backups
+    List,
+    /// Validate all configuration files
+    Check,
     #[command(hide = true)]
     StressCpu {
         #[arg(long)]
@@ -539,22 +588,8 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
-    if cmd_args.config {
-        exit_successfully();
-    } else if cmd_args.backup {
-        info!("Backing up current UI configuration to config-ui-bak.toml");
-        if let Ok(ui_settings) = config.load_ui_config_file().await {
-            config.save_backup_ui_config_file(ui_settings).await?;
-        } else {
-            warn!("Unable to load UI configuration file, skipping.");
-        }
-        info!("Backing up current daemon configuration to config-bak.toml");
-        match config.save_backup_config_file().await {
-            Ok(()) => exit_successfully(),
-            Err(err) => exit_with_error(&err),
-        }
-    } else if cmd_args.reset_password {
+async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
+    if cmd_args.reset_password {
         info!("Resetting UI password to default");
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
         // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
@@ -575,6 +610,74 @@ fn handle_detect_command(args: &Args) {
         let results = cc_detect::run_detection(*load, Some(paths::detect_override_file()));
         cc_detect::output_results(&results);
         exit_successfully()
+    }
+}
+
+/// Handles the `backup` subcommand and the deprecated `--backup` flag. Both run
+/// a backup with the resolved options and exit; neither returns on success.
+async fn handle_config_commands(args: &Args) -> Result<()> {
+    match &args.command {
+        Some(SubCommands::Backup {
+            keep,
+            archive,
+            output,
+            include_secrets,
+        }) => {
+            let opts = backup::BackupOptions {
+                keep: *keep,
+                include_secrets: *include_secrets,
+                // A named output path is an implicit request for the portable archive.
+                archive: *archive || output.is_some(),
+                output: output.clone(),
+            };
+            finish_backup(backup::run_backup(&opts).await);
+        }
+        Some(SubCommands::Restore { source, yes, force }) => {
+            let opts = backup::RestoreOptions {
+                source: source.clone(),
+                yes: *yes,
+                force: *force,
+            };
+            finish_unit(backup::run_restore(&opts).await);
+        }
+        Some(SubCommands::List) => finish_unit(backup::run_list().await),
+        Some(SubCommands::Check) => finish_check(config_validate::run_check().await),
+        _ => {}
+    }
+    if args.backup {
+        warn!("`--backup`/`-b` is deprecated; use `coolercontrold backup`");
+        finish_backup(backup::run_backup(&backup::BackupOptions::default()).await);
+    }
+    Ok(())
+}
+
+/// Exits after a command that returns only success/failure.
+fn finish_unit(result: Result<()>) -> ! {
+    match result {
+        Ok(()) => exit_successfully(),
+        Err(err) => exit_with_error(&err),
+    }
+}
+
+/// Exits 0 when every config file is valid, 1 otherwise (already reported).
+fn finish_check(all_valid: bool) -> ! {
+    if all_valid {
+        exit_successfully();
+    }
+    error!("One or more configuration files are invalid");
+    std::process::exit(1);
+}
+
+fn finish_backup(result: Result<backup::BackupOutput>) -> ! {
+    match result {
+        Ok(output) => {
+            info!("Backup written to {}", output.dir.display());
+            if let Some(archive) = output.archive {
+                info!("Backup archive written to {}", archive.display());
+            }
+            exit_successfully();
+        }
+        Err(err) => exit_with_error(&err),
     }
 }
 
@@ -840,4 +943,63 @@ async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     }
     info!("Shutdown Complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> Args {
+        Args {
+            debug: false,
+            system_info: false,
+            backup: false,
+            reset_password: false,
+            nvidia_cli: false,
+            reset_plugin_user: false,
+            command: None,
+        }
+    }
+
+    /// Goal: the System Info banner logs for a real daemon start and for the
+    /// system-reporting commands (`--system-info`, `detect`), but not for the
+    /// config maintenance one-shots (backup/restore/list/check, password reset).
+    /// Method: exercise each invocation shape against the predicate.
+    #[test]
+    fn banner_only_for_daemon_and_system_reporting_commands() {
+        assert!(base_args().wants_system_info_banner()); // bare daemon start
+
+        let mut sys_info = base_args();
+        sys_info.system_info = true;
+        assert!(sys_info.wants_system_info_banner());
+
+        let mut detect = base_args();
+        detect.command = Some(SubCommands::Detect { load: false });
+        assert!(detect.wants_system_info_banner());
+
+        let mut deprecated_backup = base_args();
+        deprecated_backup.backup = true;
+        assert!(deprecated_backup.wants_system_info_banner().not());
+
+        let mut reset = base_args();
+        reset.reset_password = true;
+        assert!(reset.wants_system_info_banner().not());
+
+        let mut list = base_args();
+        list.command = Some(SubCommands::List);
+        assert!(list.wants_system_info_banner().not());
+
+        let mut check = base_args();
+        check.command = Some(SubCommands::Check);
+        assert!(check.wants_system_info_banner().not());
+
+        let mut backup = base_args();
+        backup.command = Some(SubCommands::Backup {
+            keep: backup::DEFAULT_KEEP,
+            archive: false,
+            output: None,
+            include_secrets: false,
+        });
+        assert!(backup.wants_system_info_banner().not());
+    }
 }

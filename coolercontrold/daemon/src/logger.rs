@@ -61,6 +61,21 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
+    if cmd_args.wants_system_info_banner() {
+        log_system_info().await;
+    }
+    if cmd_args.system_info {
+        // verify_env spawns a Python process via `tokio::process`; run it on the sidecar.
+        let _ = crate::sidecar::handle()
+            .run(liqctld_service::verify_env)
+            .await;
+        exit_successfully();
+    }
+    Ok(log_buf_handle)
+}
+
+/// Logs the daemon/host banner (version, OS, board, BIOS, desktop) to the journal.
+async fn log_system_info() {
     info!("System Info:");
     info!("  {}", "-".repeat(60));
     info!("  {:<20} {}", "CoolerControlD", VERSION);
@@ -117,14 +132,6 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         }
         Err(err) => debug!("Failed to get XDG desktop info: {err}"),
     }
-    if cmd_args.system_info {
-        // verify_env spawns a Python process via `tokio::process`; run it on the sidecar.
-        let _ = crate::sidecar::handle()
-            .run(liqctld_service::verify_env)
-            .await;
-        exit_successfully();
-    }
-    Ok(log_buf_handle)
 }
 
 async fn get_dmi_system_info(name: &str) -> String {

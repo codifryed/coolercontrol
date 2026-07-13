@@ -129,9 +129,8 @@ pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
 /// Possible reasons include lack of permissions, or if a non-directory file
 /// exists at the specified path.
 ///
-/// Currently only used in tests, hence the allow `dead_code`.
 // `async` for parity with the Tokio backend; the compio branch's body is a sync std call.
-#[allow(dead_code, clippy::unused_async)]
+#[allow(clippy::unused_async)]
 pub async fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
     #[cfg(not(feature = "compio-rt"))]
     {

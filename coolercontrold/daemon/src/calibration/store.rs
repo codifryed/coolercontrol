@@ -47,6 +47,13 @@ pub struct CalibrationEntry {
     pub calibration: Calibration,
 }
 
+/// Validates that `contents` parse as a calibrations config file.
+pub fn validate(contents: &str) -> Result<()> {
+    serde_json::from_str::<CalibrationConfigFile>(contents)
+        .map_err(|err| anyhow!("Parsing calibrations configuration: {err}"))
+        .map(|_| ())
+}
+
 pub struct CalibrationStore {
     calibrations: RefCell<IndexMap<ChannelKey, Calibration>>,
 }
