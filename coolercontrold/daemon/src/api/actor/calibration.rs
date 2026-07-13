@@ -124,13 +124,23 @@ impl CalibrationStatus {
         failure: &DiagnosisFailure,
     ) -> Self {
         let (reason, message) = match failure {
-            DiagnosisFailure::PreflightTempTooHigh { observed, limit } => (
+            DiagnosisFailure::PreflightTempTooHigh {
+                observed,
+                limit,
+                sensor,
+            } => (
                 "preflight_temp_too_high",
-                format!("preflight temp {observed:.1} C exceeded limit {limit:.1} C"),
+                format!("{sensor} at {observed:.1} C exceeded the {limit:.1} C pre-flight limit"),
             ),
-            DiagnosisFailure::TempAbortedAt { observed, limit } => (
+            DiagnosisFailure::TempAbortedAt {
+                observed,
+                limit,
+                sensor,
+            } => (
                 "temp_aborted",
-                format!("temperature {observed:.1} C exceeded abort limit {limit:.1} C mid-sweep"),
+                format!(
+                    "{sensor} reached {observed:.1} C, over the {limit:.1} C abort limit mid-sweep"
+                ),
             ),
             DiagnosisFailure::Cancelled => ("user_cancelled", "diagnosis cancelled".to_string()),
             DiagnosisFailure::WriteFailed(err) => ("write_failed", err.clone()),
@@ -572,5 +582,56 @@ impl CalibrationHandle {
             .send(CalibrationMessage::BatchStatus { respond_to: tx })
             .await;
         rx.await.ok().flatten()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failed_fields(status: &CalibrationStatus) -> (&str, &str) {
+        match status {
+            CalibrationStatus::Failed {
+                reason, message, ..
+            } => (reason.as_str(), message.as_str()),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preflight_temp_failure_message_names_the_offending_sensor() {
+        // Goal: a pre-flight temp block carries the offending sensor's
+        // identity into the UI message, not just the number, so the
+        // user sees which reading (often an unrelated device) blocked
+        // the sweep. The reason code stays stable for the UI to key on.
+        let failure = DiagnosisFailure::PreflightTempTooHigh {
+            observed: 86.0,
+            limit: 75.0,
+            sensor: "CPU | Tctl".to_string(),
+        };
+        let status =
+            CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
+        let (reason, message) = failed_fields(&status);
+        assert_eq!(reason, "preflight_temp_too_high");
+        assert!(message.contains("CPU | Tctl"), "message: {message}");
+        assert!(message.contains("86.0"), "message: {message}");
+        assert!(message.contains("75.0"), "message: {message}");
+    }
+
+    #[test]
+    fn temp_abort_message_names_the_offending_sensor() {
+        // Goal: same guarantee for a mid-sweep abort.
+        let failure = DiagnosisFailure::TempAbortedAt {
+            observed: 90.0,
+            limit: 85.0,
+            sensor: "GPU | edge".to_string(),
+        };
+        let status =
+            CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
+        let (reason, message) = failed_fields(&status);
+        assert_eq!(reason, "temp_aborted");
+        assert!(message.contains("GPU | edge"), "message: {message}");
+        assert!(message.contains("90.0"), "message: {message}");
+        assert!(message.contains("85.0"), "message: {message}");
     }
 }

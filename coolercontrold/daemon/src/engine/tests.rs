@@ -1812,8 +1812,10 @@ mod engine_tests {
     #[test]
     #[serial]
     fn diagnosis_host_max_temp_finds_hottest_value() {
-        // Goal: max_temp_celsius walks every device's latest status
-        // and returns the highest temp.
+        // Goal: hottest_temp walks every device's latest status and
+        // returns the highest temp together with the identity of the
+        // sensor it came from, so a temp gate names the offending
+        // reading rather than just a bare number.
         cc_fs::test_runtime(async {
             use crate::calibration::DiagnosisHost as _;
             let (device, engine, _calibration_store) = setup_calibrated_device();
@@ -1830,10 +1832,21 @@ mod engine_tests {
                 .borrow_mut()
                 .initialize_status_history_with(status, 1.0);
 
-            let observed = engine.max_temp_celsius().await;
+            let hottest = engine.hottest_temp().await;
             assert!(
-                (observed - 72.5).abs() < f64::EPSILON,
-                "expected 72.5, got {observed}"
+                (hottest.celsius - 72.5).abs() < f64::EPSILON,
+                "expected 72.5, got {}",
+                hottest.celsius
+            );
+            assert!(
+                hottest.sensor.contains("t2"),
+                "sensor label must name the hottest reading (t2), got {}",
+                hottest.sensor
+            );
+            assert!(
+                hottest.sensor.contains("t1").not(),
+                "sensor label must not name the cooler reading (t1), got {}",
+                hottest.sensor
             );
         });
     }
