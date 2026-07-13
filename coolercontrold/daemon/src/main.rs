@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -488,6 +489,15 @@ enum SubCommands {
         /// Number of timestamped backups to keep; older ones are pruned
         #[arg(long, default_value_t = backup::DEFAULT_KEEP, value_parser = clap::value_parser!(u32).range(1..))]
         keep: u32,
+        /// Also write a portable .tar.gz archive (to the current directory unless --output)
+        #[arg(long)]
+        archive: bool,
+        /// Write the portable archive to this path (a directory or file); implies --archive
+        #[arg(long, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Include credential files (.passwd and .tokens) in the backup
+        #[arg(long)]
+        include_secrets: bool,
     },
     #[command(hide = true)]
     StressCpu {
@@ -578,10 +588,19 @@ fn handle_detect_command(args: &Args) {
 /// Handles the `backup` subcommand and the deprecated `--backup` flag. Both run
 /// a backup with the resolved options and exit; neither returns on success.
 async fn handle_backup_commands(args: &Args) -> Result<()> {
-    if let Some(SubCommands::Backup { keep }) = &args.command {
+    if let Some(SubCommands::Backup {
+        keep,
+        archive,
+        output,
+        include_secrets,
+    }) = &args.command
+    {
         let opts = backup::BackupOptions {
             keep: *keep,
-            ..Default::default()
+            include_secrets: *include_secrets,
+            // A named output path is an implicit request for the portable archive.
+            archive: *archive || output.is_some(),
+            output: output.clone(),
         };
         finish_backup(backup::run_backup(&opts).await);
     }
@@ -592,10 +611,13 @@ async fn handle_backup_commands(args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn finish_backup(result: Result<std::path::PathBuf>) -> ! {
+fn finish_backup(result: Result<backup::BackupOutput>) -> ! {
     match result {
-        Ok(dir) => {
-            info!("Backup written to {}", dir.display());
+        Ok(output) => {
+            info!("Backup written to {}", output.dir.display());
+            if let Some(archive) = output.archive {
+                info!("Backup archive written to {}", archive.display());
+            }
             exit_successfully();
         }
         Err(err) => exit_with_error(&err),

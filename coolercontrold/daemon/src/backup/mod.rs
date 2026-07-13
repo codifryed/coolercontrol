@@ -25,6 +25,7 @@
 //! backup is built in a staging directory and renamed into place, so an
 //! interrupted backup never leaves a partial directory in the rotation set.
 
+mod archive;
 mod manifest;
 
 use std::fs::Permissions;
@@ -54,8 +55,12 @@ const MAX_SAME_SECOND_BACKUPS: u32 = 99;
 pub struct BackupOptions {
     /// Number of timestamped backups to retain; older ones are pruned.
     pub keep: u32,
-    /// Include `.passwd` / `.tokens` (opt-in; wired to a CLI flag in a later phase).
+    /// Include the `.passwd` / `.tokens` credential files.
     pub include_secrets: bool,
+    /// Also emit a portable `.tar.gz` of the backup.
+    pub archive: bool,
+    /// Destination for the archive; the current directory is used when `None`.
+    pub output: Option<PathBuf>,
 }
 
 impl Default for BackupOptions {
@@ -63,8 +68,18 @@ impl Default for BackupOptions {
         Self {
             keep: DEFAULT_KEEP,
             include_secrets: false,
+            archive: false,
+            output: None,
         }
     }
+}
+
+/// The artifacts produced by a backup.
+pub struct BackupOutput {
+    /// The rotated backup directory under `<config_dir>/backups/`.
+    pub dir: PathBuf,
+    /// The portable archive, when one was requested.
+    pub archive: Option<PathBuf>,
 }
 
 /// A source file to capture and the name it takes inside the backup.
@@ -74,9 +89,10 @@ struct SourceFile {
 }
 
 /// Backs up the live configuration to a new rotated directory under
-/// `<config_dir>/backups/`. Returns the path of the created backup.
-pub async fn run_backup(opts: &BackupOptions) -> Result<PathBuf> {
-    create_backup(paths::backups_dir(), &default_sources(), opts).await
+/// `<config_dir>/backups/`, optionally also emitting a portable archive.
+pub async fn run_backup(opts: &BackupOptions) -> Result<BackupOutput> {
+    let sources = default_sources(opts.include_secrets);
+    create_backup(paths::backups_dir(), &sources, opts).await
 }
 
 /// Core backup logic, parameterized on the backups directory and source list so
@@ -85,7 +101,7 @@ async fn create_backup(
     backups_dir: &Path,
     sources: &[SourceFile],
     opts: &BackupOptions,
-) -> Result<PathBuf> {
+) -> Result<BackupOutput> {
     assert!(opts.keep >= 1, "a backup rotation must retain at least one");
     prepare_backups_dir(backups_dir).await?;
 
@@ -105,13 +121,32 @@ async fn create_backup(
         .await
         .with_context(|| format!("Publishing backup to {}", final_dir.display()))?;
     prune_backups(backups_dir, opts.keep).await;
-    Ok(final_dir)
+
+    let archive = maybe_archive(&final_dir, opts)?;
+    Ok(BackupOutput {
+        dir: final_dir,
+        archive,
+    })
 }
 
-/// The config files a backup captures, in a stable order.
-fn default_sources() -> Vec<SourceFile> {
-    // Secrets (`.passwd` / `.tokens`) are added behind an opt-in flag in a later phase.
-    [
+/// Writes the portable archive when requested, using the backup's unique
+/// directory name so distinct backups never collide on the same destination.
+fn maybe_archive(final_dir: &Path, opts: &BackupOptions) -> Result<Option<PathBuf>> {
+    if !opts.archive {
+        return Ok(None);
+    }
+    let name = final_dir
+        .file_name()
+        .expect("backup dir has a name")
+        .to_string_lossy();
+    let path = archive::write(final_dir, name.as_ref(), opts.output.as_deref())?;
+    Ok(Some(path))
+}
+
+/// The config files a backup captures, in a stable order. Credential files are
+/// appended only when opted in.
+fn default_sources(include_secrets: bool) -> Vec<SourceFile> {
+    let mut sources: Vec<SourceFile> = [
         paths::config_file(),
         paths::ui_config_file(),
         paths::alert_config_file(),
@@ -122,7 +157,12 @@ fn default_sources() -> Vec<SourceFile> {
     ]
     .into_iter()
     .map(source)
-    .collect()
+    .collect();
+    if include_secrets {
+        sources.push(source(paths::passwd_file()));
+        sources.push(source(paths::tokens_file()));
+    }
+    sources
 }
 
 fn source(path: &Path) -> SourceFile {
@@ -267,16 +307,18 @@ mod tests {
             ];
             let backups = tmp.path().join("backups");
 
-            let dir = create_backup(
+            let out = create_backup(
                 &backups,
                 &sources,
                 &BackupOptions {
                     keep: 10,
-                    include_secrets: false,
+                    ..Default::default()
                 },
             )
             .await
             .unwrap();
+            let dir = out.dir;
+            assert!(out.archive.is_none());
 
             assert!(dir.exists());
             assert_eq!(
@@ -348,5 +390,81 @@ mod tests {
 
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0].file_name().unwrap(), "2026-07-12T10-00-00");
+    }
+
+    /// Goal: credential files are captured only when secrets are opted in. Method:
+    /// build the default source list both ways and assert `.passwd`/`.tokens`
+    /// appear only with the flag.
+    #[test]
+    fn default_sources_adds_secrets_only_when_opted_in() {
+        let without: Vec<String> = default_sources(false)
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        assert_eq!(without.len(), 7);
+        assert!(!without.iter().any(|n| n == ".passwd"));
+        assert!(!without.iter().any(|n| n == ".tokens"));
+
+        let with: Vec<String> = default_sources(true)
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        assert_eq!(with.len(), 9);
+        assert!(with.iter().any(|n| n == ".passwd"));
+        assert!(with.iter().any(|n| n == ".tokens"));
+    }
+
+    /// Goal: an opted-in backup captures secrets, records the flag, and its
+    /// archive extracts to the same files (secrets included) nested under the
+    /// backup name. Method: run `create_backup` with secrets + archive, inspect
+    /// the directory and manifest, then unpack the archive.
+    #[test]
+    fn create_backup_with_secrets_and_archive() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let src = tmp.path().join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            write_file(&src, "config.toml", "answer = 42\n");
+            write_file(&src, ".passwd", "hash");
+            let sources = [
+                source_file(&src, "config.toml"),
+                source_file(&src, ".passwd"),
+            ];
+            let backups = tmp.path().join("backups");
+            let out_dir = tmp.path().join("out");
+            std::fs::create_dir_all(&out_dir).unwrap();
+
+            let out = create_backup(
+                &backups,
+                &sources,
+                &BackupOptions {
+                    keep: 10,
+                    include_secrets: true,
+                    archive: true,
+                    output: Some(out_dir.clone()),
+                },
+            )
+            .await
+            .unwrap();
+
+            assert!(out.dir.join(".passwd").exists());
+            let manifest = Manifest::from_toml(
+                &std::fs::read_to_string(out.dir.join(MANIFEST_FILE_NAME)).unwrap(),
+            )
+            .unwrap();
+            assert!(manifest.includes_secrets);
+
+            let archive = out.archive.expect("archive was requested");
+            assert_eq!(archive.parent().unwrap(), out_dir);
+            let name = out.dir.file_name().unwrap().to_string_lossy().into_owned();
+            let extract = tmp.path().join("extract");
+            let decoder = flate2::read::GzDecoder::new(std::fs::File::open(&archive).unwrap());
+            tar::Archive::new(decoder).unpack(&extract).unwrap();
+            assert!(extract.join(&name).join(".passwd").exists());
+            assert_eq!(
+                std::fs::read_to_string(extract.join(&name).join("config.toml")).unwrap(),
+                "answer = 42\n"
+            );
+        });
     }
 }
