@@ -26,10 +26,10 @@ use std::time::Duration as StdDuration;
 use crate::api::actor::{CalibrationBatchEntry, CalibrationBatchStatus, CalibrationStatus};
 use crate::api::CCError;
 use crate::calibration::{
-    self, BatchBeginError, BatchEntry, BatchEntryPhase, Calibration, CalibrationBatchState,
-    CalibrationEntry, CalibrationStore, ChannelKey, DiagnosisFailure, DiagnosisHost,
-    DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap, RepoWriter,
-    SettingsSnapshot, SnapshotKind,
+    self, others_over_limit_note, BatchBeginError, BatchEntry, BatchEntryPhase, Calibration,
+    CalibrationBatchState, CalibrationEntry, CalibrationStore, ChannelKey, DiagnosisFailure,
+    DiagnosisHost, DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings, FanStateMap,
+    HottestTemp, RepoWriter, SettingsSnapshot, SnapshotKind, CALIBRATION_TEMP_HINT,
 };
 use crate::config::Config;
 use crate::device::{
@@ -1953,12 +1953,26 @@ fn describe_warning(warning: &calibration::CalibrationWarning) -> String {
 /// Used by the notification body, so kept compact (no nested types).
 fn describe_failure(failure: &DiagnosisFailure) -> String {
     match failure {
-        DiagnosisFailure::PreflightTempTooHigh { observed, limit } => {
-            format!("pre-flight blocked (system temp {observed:.1} C >= {limit:.1} C limit)")
-        }
-        DiagnosisFailure::TempAbortedAt { observed, limit } => {
-            format!("aborted: temp reached {observed:.1} C (limit {limit:.1} C)")
-        }
+        DiagnosisFailure::PreflightTempTooHigh {
+            observed,
+            limit,
+            sensor,
+            others_over_limit,
+        } => format!(
+            "pre-flight blocked ({sensor} at {observed:.1} C >= {limit:.1} C limit){}. {}",
+            others_over_limit_note(*others_over_limit),
+            CALIBRATION_TEMP_HINT,
+        ),
+        DiagnosisFailure::TempAbortedAt {
+            observed,
+            limit,
+            sensor,
+            others_over_limit,
+        } => format!(
+            "aborted: {sensor} reached {observed:.1} C (limit {limit:.1} C){}. {}",
+            others_over_limit_note(*others_over_limit),
+            CALIBRATION_TEMP_HINT,
+        ),
         DiagnosisFailure::Cancelled => "cancelled".to_string(),
         DiagnosisFailure::WriteFailed(msg) => format!("write failed: {msg}"),
         DiagnosisFailure::RestoreFailed(msg) => format!("restore failed: {msg}"),
@@ -2055,20 +2069,33 @@ impl DiagnosisHost for Engine {
             .await
     }
 
-    async fn max_temp_celsius(&self) -> f64 {
-        let mut max = 0.0_f64;
-        for device_lock in self.all_devices.values() {
+    async fn hottest_temp(&self, limit_celsius: f64) -> HottestTemp {
+        let mut hottest = HottestTemp {
+            celsius: 0.0,
+            sensor: String::new(),
+            over_limit_count: 0,
+        };
+        for (device_uid, device_lock) in self.all_devices.iter() {
             let device = device_lock.borrow();
             let Some(latest) = device.status_history.back() else {
                 continue;
             };
             for status in &latest.temps {
-                if status.temp > max {
-                    max = status.temp;
+                if status.temp >= limit_celsius {
+                    hottest.over_limit_count += 1;
+                }
+                if status.temp > hottest.celsius {
+                    hottest.celsius = status.temp;
+                    // Resolve only on a new max: the sensor label is the
+                    // one whose reading blocked the sweep, so the user
+                    // sees which device to cool. `log_device_channel`
+                    // re-borrows this device's RefCell immutably, which
+                    // coexists with the `device` borrow held here.
+                    hottest.sensor = self.log_device_channel(device_uid, &status.name);
                 }
             }
         }
-        max
+        hottest
     }
 
     fn snapshot_setting(&self, device_uid: &UID, channel_name: &str) -> SettingsSnapshot {
@@ -2196,5 +2223,42 @@ mod tests {
             },
         };
         assert!(Engine::current_setting_is_externally_applied(&setting));
+    }
+
+    #[test]
+    fn describe_failure_temp_gates_name_the_offending_sensor() {
+        // Goal: the desktop notification body (built from
+        // describe_failure) names the hot sensor for both temp gates,
+        // reports how many other sensors are over the limit, and appends
+        // the disable/cool hint, so the user sees which reading to
+        // address rather than a bare number.
+        let preflight = describe_failure(&DiagnosisFailure::PreflightTempTooHigh {
+            observed: 86.0,
+            limit: 75.0,
+            sensor: "CPU | Tctl".to_string(),
+            others_over_limit: 2,
+        });
+        assert!(preflight.contains("CPU | Tctl"), "body: {preflight}");
+        assert!(preflight.contains("86.0"), "body: {preflight}");
+        assert!(
+            preflight.contains("2 other sensors are also over the limit"),
+            "body: {preflight}"
+        );
+        assert!(
+            preflight.contains(CALIBRATION_TEMP_HINT),
+            "body: {preflight}"
+        );
+
+        // A lone hot sensor gets no "other sensors" clause.
+        let abort = describe_failure(&DiagnosisFailure::TempAbortedAt {
+            observed: 90.0,
+            limit: 85.0,
+            sensor: "GPU | edge".to_string(),
+            others_over_limit: 0,
+        });
+        assert!(abort.contains("GPU | edge"), "body: {abort}");
+        assert!(abort.contains("90.0"), "body: {abort}");
+        assert!(abort.contains("other sensor").not(), "body: {abort}");
+        assert!(abort.contains(CALIBRATION_TEMP_HINT), "body: {abort}");
     }
 }

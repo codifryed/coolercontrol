@@ -1812,8 +1812,11 @@ mod engine_tests {
     #[test]
     #[serial]
     fn diagnosis_host_max_temp_finds_hottest_value() {
-        // Goal: max_temp_celsius walks every device's latest status
-        // and returns the highest temp.
+        // Goal: hottest_temp walks every device's latest status and
+        // returns the highest temp with the identity of the sensor it
+        // came from, plus how many sensors are at or above the limit, so
+        // a temp gate names the offending reading and reports breadth
+        // rather than a bare number.
         cc_fs::test_runtime(async {
             use crate::calibration::DiagnosisHost as _;
             let (device, engine, _calibration_store) = setup_calibrated_device();
@@ -1826,15 +1829,32 @@ mod engine_tests {
                 name: "t2".to_string(),
                 temp: 72.5,
             });
+            status.temps.push(TempStatus {
+                name: "t3".to_string(),
+                temp: 80.0,
+            });
             device
                 .borrow_mut()
                 .initialize_status_history_with(status, 1.0);
 
-            let observed = engine.max_temp_celsius().await;
+            let hottest = engine.hottest_temp(70.0).await;
             assert!(
-                (observed - 72.5).abs() < f64::EPSILON,
-                "expected 72.5, got {observed}"
+                (hottest.celsius - 80.0).abs() < f64::EPSILON,
+                "expected 80.0, got {}",
+                hottest.celsius
             );
+            assert!(
+                hottest.sensor.contains("t3"),
+                "sensor label must name the hottest reading (t3), got {}",
+                hottest.sensor
+            );
+            assert!(
+                hottest.sensor.contains("t1").not(),
+                "sensor label must not name the cooler reading (t1), got {}",
+                hottest.sensor
+            );
+            // t2 (72.5) and t3 (80.0) are >= 70.0; t1 (45.0) is not.
+            assert_eq!(hottest.over_limit_count, 2);
         });
     }
 

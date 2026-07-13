@@ -96,15 +96,23 @@ impl Default for DiagnosisSettings {
 /// error codes and `calibration_failed` SSE events.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosisFailure {
-    /// Pre-flight temperature crossed the gate.
+    /// Pre-flight temperature crossed the gate. `sensor` names the
+    /// hottest reading, which may belong to an unrelated device;
+    /// `others_over_limit` counts additional sensors also over the gate.
     PreflightTempTooHigh {
         observed: f64,
         limit: f64,
+        sensor: String,
+        others_over_limit: usize,
     },
-    /// Temp crossed abort mid-sweep. Channel was zeroed and snapshot restored.
+    /// Temp crossed abort mid-sweep. Channel was zeroed and snapshot
+    /// restored. `sensor` names the hottest reading; `others_over_limit`
+    /// counts additional sensors also over the gate.
     TempAbortedAt {
         observed: f64,
         limit: f64,
+        sensor: String,
+        others_over_limit: usize,
     },
     Cancelled,
     /// Hardware write failed; preserves the repo error verbatim.
@@ -152,6 +160,42 @@ pub enum DiagnosisPhase {
     Finalizing,
 }
 
+/// Hottest temperature across all devices, paired with the identity of
+/// the sensor it came from. Drives the pre-flight gate and mid-sweep
+/// abort; `sensor` names the offending reading (often an unrelated CPU
+/// or GPU) so a temp failure tells the user which sensor to cool.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HottestTemp {
+    pub celsius: f64,
+    /// Override-resolved "Device | Sensor" label. Empty only when no
+    /// device reports any temperature, in which case `celsius` is 0.0
+    /// and no gate can trip.
+    pub sensor: String,
+    /// How many sensors are at or above the `limit_celsius` passed to
+    /// `hottest_temp`, including the hottest. Lets a temp failure report
+    /// breadth (a common false-hot board sensor rarely stands alone)
+    /// without listing every reading.
+    pub over_limit_count: usize,
+}
+
+/// Actionable note appended to every temp-gate failure. Covers both a
+/// genuinely warm system and the common case of a faulty board sensor
+/// that reads high and blocks calibration until it is disabled.
+pub const CALIBRATION_TEMP_HINT: &str =
+    "Disable inaccurate sensors or let the system cool, then retry.";
+
+/// Trailing clause naming how many other sensors are over the gate.
+/// Empty when the hottest sensor is the only one over the limit, so the
+/// message stays short in the common single-sensor case.
+#[must_use]
+pub fn others_over_limit_note(others_over_limit: usize) -> String {
+    match others_over_limit {
+        0 => String::new(),
+        1 => "; 1 other sensor is also over the limit".to_string(),
+        n => format!("; {n} other sensors are also over the limit"),
+    }
+}
+
 /// I/O dependencies for the diagnoser. Engine provides the prod impl;
 /// tests provide mocks with synthetic curves and no-op sleeps.
 #[async_trait(?Send)]
@@ -188,8 +232,10 @@ pub trait DiagnosisHost {
     /// Writes raw duty, bypassing dispatch (channel is `under_diagnosis`).
     async fn write_raw_duty(&self, device_uid: &UID, channel_name: &str, duty: Duty) -> Result<()>;
 
-    /// Max device temp in Celsius. Drives pre-flight gate and mid-sweep abort.
-    async fn max_temp_celsius(&self) -> f64;
+    /// Hottest temp across all devices with the offending sensor's
+    /// identity, plus how many sensors are at or above `limit_celsius`.
+    /// Drives the pre-flight gate and mid-sweep abort.
+    async fn hottest_temp(&self, limit_celsius: f64) -> HottestTemp;
 
     fn snapshot_setting(&self, device_uid: &UID, channel_name: &str) -> SettingsSnapshot;
 
@@ -313,11 +359,13 @@ async fn run_preflight<H: DiagnosisHost + ?Sized>(
     channel_name: &ChannelName,
 ) -> Result<(), DiagnosisFailure> {
     emit_phase(host, device_uid, channel_name, DiagnosisPhase::Preflight, 0);
-    let observed = host.max_temp_celsius().await;
-    if observed >= settings.start_temp_max_c {
+    let hottest = host.hottest_temp(settings.start_temp_max_c).await;
+    if hottest.celsius >= settings.start_temp_max_c {
         return Err(DiagnosisFailure::PreflightTempTooHigh {
-            observed,
+            observed: hottest.celsius,
             limit: settings.start_temp_max_c,
+            sensor: hottest.sensor,
+            others_over_limit: hottest.over_limit_count.saturating_sub(1),
         });
     }
     Ok(())
@@ -754,9 +802,9 @@ where
     .await
     {
         Ok(pair) => pair,
-        Err(DiagnosisFailure::TempAbortedAt { observed, limit }) => {
+        Err(failure @ DiagnosisFailure::TempAbortedAt { .. }) => {
             let _ = host.write_raw_duty(device_uid, channel_name, 0).await;
-            return Err(DiagnosisFailure::TempAbortedAt { observed, limit });
+            return Err(failure);
         }
         Err(err) => return Err(err),
     };
@@ -852,11 +900,13 @@ async fn sample_with_temp_check<H: DiagnosisHost + ?Sized>(
     pre_write_rpm: RPM,
     saw_rpm_change: &mut bool,
 ) -> Result<RPM, DiagnosisFailure> {
-    let temp = host.max_temp_celsius().await;
-    if temp >= settings.abort_temp_max_c {
+    let hottest = host.hottest_temp(settings.abort_temp_max_c).await;
+    if hottest.celsius >= settings.abort_temp_max_c {
         return Err(DiagnosisFailure::TempAbortedAt {
-            observed: temp,
+            observed: hottest.celsius,
             limit: settings.abort_temp_max_c,
+            sensor: hottest.sensor,
+            others_over_limit: hottest.over_limit_count.saturating_sub(1),
         });
     }
     let rpm = host
@@ -1120,13 +1170,16 @@ mod tests {
             Ok(())
         }
 
-        async fn max_temp_celsius(&self) -> f64 {
-            if let Some((step, override_temp)) = self.temp_after_step.get() {
-                if self.step_counter.get() >= step {
-                    return override_temp;
-                }
+        async fn hottest_temp(&self, limit_celsius: f64) -> HottestTemp {
+            let celsius = match self.temp_after_step.get() {
+                Some((step, override_temp)) if self.step_counter.get() >= step => override_temp,
+                _ => self.temp.get(),
+            };
+            HottestTemp {
+                celsius,
+                sensor: "mock-device | mock-temp".to_string(),
+                over_limit_count: usize::from(celsius >= limit_celsius),
             }
-            self.temp.get()
         }
 
         fn snapshot_setting(&self, device_uid: &UID, channel_name: &str) -> SettingsSnapshot {
@@ -1294,7 +1347,21 @@ mod tests {
             .await
             .expect_err("preflight rejects hot system");
 
-            assert!(matches!(err, DiagnosisFailure::PreflightTempTooHigh { .. }));
+            let DiagnosisFailure::PreflightTempTooHigh {
+                observed,
+                sensor,
+                others_over_limit,
+                ..
+            } = &err
+            else {
+                panic!("expected PreflightTempTooHigh, got {err:?}");
+            };
+            assert!((observed - 80.0).abs() < f64::EPSILON);
+            // The offending sensor identity must reach the failure so the
+            // notification and UI can name it, not just the number.
+            assert_eq!(sensor, "mock-device | mock-temp");
+            // The lone mock sensor is the only one over the limit.
+            assert_eq!(*others_over_limit, 0);
             assert!(host.duty_writes.borrow().is_empty());
             assert!(host.snapshots_taken.borrow().is_empty());
             assert!(store.has(&key("dev-a", "fan1")).not());
@@ -1482,7 +1549,18 @@ mod tests {
             .await
             .expect_err("abort surfaces on hot temp");
 
-            assert!(matches!(err, DiagnosisFailure::TempAbortedAt { .. }));
+            let DiagnosisFailure::TempAbortedAt {
+                observed,
+                sensor,
+                others_over_limit,
+                ..
+            } = &err
+            else {
+                panic!("expected TempAbortedAt, got {err:?}");
+            };
+            assert!((observed - 90.0).abs() < f64::EPSILON);
+            assert_eq!(sensor, "mock-device | mock-temp");
+            assert_eq!(*others_over_limit, 0);
             let writes = host.duty_writes.borrow();
             let last_write = *writes.last().expect("at least one write");
             assert_eq!(last_write, 0, "safety write of 0% must be last");
@@ -1624,8 +1702,8 @@ mod tests {
                         .push(self.state.is_under_diagnosis(&self.channel_key));
                     self.inner.write_raw_duty(d, c, duty).await
                 }
-                async fn max_temp_celsius(&self) -> f64 {
-                    self.inner.max_temp_celsius().await
+                async fn hottest_temp(&self, limit_celsius: f64) -> HottestTemp {
+                    self.inner.hottest_temp(limit_celsius).await
                 }
                 fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
                     self.inner.snapshot_setting(d, c)
@@ -2195,8 +2273,8 @@ mod tests {
                 async fn write_raw_duty(&self, d: &UID, c: &str, duty: Duty) -> Result<()> {
                     self.inner.write_raw_duty(d, c, duty).await
                 }
-                async fn max_temp_celsius(&self) -> f64 {
-                    self.inner.max_temp_celsius().await
+                async fn hottest_temp(&self, limit_celsius: f64) -> HottestTemp {
+                    self.inner.hottest_temp(limit_celsius).await
                 }
                 fn snapshot_setting(&self, d: &UID, c: &str) -> SettingsSnapshot {
                     self.inner.snapshot_setting(d, c)

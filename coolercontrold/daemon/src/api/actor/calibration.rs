@@ -19,7 +19,8 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::calibration::CalibrationView;
 use crate::calibration::{
-    Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
+    others_over_limit_note, Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure,
+    DiagnosisPhase, DiagnosisProgress, CALIBRATION_TEMP_HINT,
 };
 use crate::device::{ChannelName, DeviceUID};
 use crate::engine::main::Engine;
@@ -124,13 +125,31 @@ impl CalibrationStatus {
         failure: &DiagnosisFailure,
     ) -> Self {
         let (reason, message) = match failure {
-            DiagnosisFailure::PreflightTempTooHigh { observed, limit } => (
+            DiagnosisFailure::PreflightTempTooHigh {
+                observed,
+                limit,
+                sensor,
+                others_over_limit,
+            } => (
                 "preflight_temp_too_high",
-                format!("preflight temp {observed:.1} C exceeded limit {limit:.1} C"),
+                format!(
+                    "{sensor} at {observed:.1} C exceeded the {limit:.1} C pre-flight limit{}. {}",
+                    others_over_limit_note(*others_over_limit),
+                    CALIBRATION_TEMP_HINT,
+                ),
             ),
-            DiagnosisFailure::TempAbortedAt { observed, limit } => (
+            DiagnosisFailure::TempAbortedAt {
+                observed,
+                limit,
+                sensor,
+                others_over_limit,
+            } => (
                 "temp_aborted",
-                format!("temperature {observed:.1} C exceeded abort limit {limit:.1} C mid-sweep"),
+                format!(
+                    "{sensor} reached {observed:.1} C, over the {limit:.1} C abort limit{}. {}",
+                    others_over_limit_note(*others_over_limit),
+                    CALIBRATION_TEMP_HINT,
+                ),
             ),
             DiagnosisFailure::Cancelled => ("user_cancelled", "diagnosis cancelled".to_string()),
             DiagnosisFailure::WriteFailed(err) => ("write_failed", err.clone()),
@@ -572,5 +591,74 @@ impl CalibrationHandle {
             .send(CalibrationMessage::BatchStatus { respond_to: tx })
             .await;
         rx.await.ok().flatten()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::Not;
+
+    fn failed_fields(status: &CalibrationStatus) -> (&str, &str) {
+        match status {
+            CalibrationStatus::Failed {
+                reason, message, ..
+            } => (reason.as_str(), message.as_str()),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preflight_temp_failure_message_names_the_offending_sensor() {
+        // Goal: a pre-flight temp block carries the offending sensor's
+        // identity into the UI message, reports how many other sensors
+        // are over the limit, and appends the disable/cool hint, so the
+        // user sees what to address rather than just a number. The reason
+        // code stays stable for the UI to key on.
+        let failure = DiagnosisFailure::PreflightTempTooHigh {
+            observed: 86.0,
+            limit: 75.0,
+            sensor: "CPU | Tctl".to_string(),
+            others_over_limit: 2,
+        };
+        let status =
+            CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
+        let (reason, message) = failed_fields(&status);
+        assert_eq!(reason, "preflight_temp_too_high");
+        assert!(message.contains("CPU | Tctl"), "message: {message}");
+        assert!(message.contains("86.0"), "message: {message}");
+        assert!(message.contains("75.0"), "message: {message}");
+        assert!(
+            message.contains("2 other sensors are also over the limit"),
+            "message: {message}"
+        );
+        assert!(
+            message.contains(CALIBRATION_TEMP_HINT),
+            "message: {message}"
+        );
+    }
+
+    #[test]
+    fn temp_abort_message_names_the_offending_sensor() {
+        // Goal: same guarantee for a mid-sweep abort; a lone hot sensor
+        // omits the "other sensors" clause but still gets the hint.
+        let failure = DiagnosisFailure::TempAbortedAt {
+            observed: 90.0,
+            limit: 85.0,
+            sensor: "GPU | edge".to_string(),
+            others_over_limit: 0,
+        };
+        let status =
+            CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
+        let (reason, message) = failed_fields(&status);
+        assert_eq!(reason, "temp_aborted");
+        assert!(message.contains("GPU | edge"), "message: {message}");
+        assert!(message.contains("90.0"), "message: {message}");
+        assert!(message.contains("85.0"), "message: {message}");
+        assert!(message.contains("other sensor").not(), "message: {message}");
+        assert!(
+            message.contains(CALIBRATION_TEMP_HINT),
+            "message: {message}"
+        );
     }
 }
