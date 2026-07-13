@@ -25,6 +25,7 @@
 //! atomically. There is no auto-snapshot: the user is told to back up first if
 //! they want a safety net.
 
+use std::ffi::OsStr;
 use std::fs::Permissions;
 use std::io::{IsTerminal, Write};
 use std::ops::Not;
@@ -172,29 +173,31 @@ fn confirm(backup_dir: &Path, yes: bool) -> Result<bool> {
     Ok(line.trim() == "yes")
 }
 
-/// Copies every file in the backup (except the manifest) over the live config,
-/// each written to a temp file and renamed into place. Credential files are made
-/// owner-only. Returns the number of files restored.
+/// Copies the backup's config files over the live config, each written to a temp
+/// file and renamed into place. The set of files comes from the manifest (see
+/// `restorable_files`), never from a raw directory listing, so an untrusted backup
+/// cannot smuggle extra files. Credential files are made owner-only. Returns the
+/// number of files restored.
 async fn apply_backup(backup_dir: &Path, config_dir: &Path) -> Result<usize> {
+    let names = restorable_files(backup_dir).await;
     cc_fs::create_dir_all(config_dir)
         .await
         .with_context(|| format!("Creating config directory {}", config_dir.display()))?;
     let mut restored = 0;
-    for entry in cc_fs::read_dir(backup_dir)?.flatten() {
-        let file_name = entry.file_name();
-        let name = file_name.to_string_lossy().into_owned();
-        if name == MANIFEST_FILE_NAME || entry.path().is_dir() {
+    for name in &names {
+        let src = backup_dir.join(name);
+        if src.is_file().not() {
             continue;
         }
-        let bytes = cc_fs::read_image(entry.path())
+        let bytes = cc_fs::read_image(&src)
             .await
             .with_context(|| format!("Reading backup file {name}"))?;
-        let dst = config_dir.join(&file_name);
+        let dst = config_dir.join(name);
         let tmp = config_dir.join(format!(".{name}.restore-tmp"));
         cc_fs::write(&tmp, bytes)
             .await
             .with_context(|| format!("Writing {}", dst.display()))?;
-        if is_secret(&name) {
+        if is_secret(name) {
             // Credential files must not be world-readable once in the config dir.
             cc_fs::set_permissions(&tmp, Permissions::from_mode(0o600))
                 .await
@@ -206,6 +209,52 @@ async fn apply_backup(backup_dir: &Path, config_dir: &Path) -> Result<usize> {
         restored += 1;
     }
     Ok(restored)
+}
+
+/// The config file names a restore will write, taken from the backup manifest so
+/// only files the backup declares are applied: an untrusted archive cannot smuggle
+/// arbitrary files, and a manifest that declares no secrets cannot carry
+/// credentials. Falls back to the recognized config names for a manifest-less
+/// directory. Every name is constrained to a single path component, so a crafted
+/// manifest entry can never escape the config directory.
+async fn restorable_files(backup_dir: &Path) -> Vec<String> {
+    let Some(manifest) = read_manifest(backup_dir).await else {
+        warn!("Backup has no readable manifest; restoring only recognized config files");
+        return known_config_names();
+    };
+    let includes_secrets = manifest.includes_secrets;
+    manifest
+        .files
+        .into_iter()
+        .filter(|name| is_plain_file_name(name))
+        .filter(|name| name != MANIFEST_FILE_NAME)
+        .filter(|name| includes_secrets || is_secret(name).not())
+        .collect()
+}
+
+async fn read_manifest(backup_dir: &Path) -> Option<Manifest> {
+    let contents = cc_fs::read_txt(backup_dir.join(MANIFEST_FILE_NAME))
+        .await
+        .ok()?;
+    Manifest::from_toml(&contents).ok()
+}
+
+/// True when `name` is a single path component (no directory parts, no `..`), so
+/// `config_dir.join(name)` cannot escape the config directory.
+fn is_plain_file_name(name: &str) -> bool {
+    Path::new(name).file_name() == Some(OsStr::new(name))
+}
+
+/// The files a restore recognizes when a backup has no manifest to enumerate them:
+/// the known daemon config files plus the two credential files.
+fn known_config_names() -> Vec<String> {
+    let mut names: Vec<String> = crate::config_validate::CONFIG_FILE_NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect();
+    names.push(".passwd".to_string());
+    names.push(".tokens".to_string());
+    names
 }
 
 fn is_secret(name: &str) -> bool {
@@ -233,7 +282,12 @@ mod tests {
             std::fs::create_dir_all(&config).unwrap();
             write(&backup, "config.toml", "new = true\n");
             write(&backup, ".passwd", "hash");
-            write(&backup, MANIFEST_FILE_NAME, "format_version = 1\n");
+            let manifest = Manifest::new(
+                "2026-07-12T10:00:00+00:00".to_string(),
+                vec!["config.toml".to_string(), ".passwd".to_string()],
+                true,
+            );
+            write(&backup, MANIFEST_FILE_NAME, &manifest.to_toml().unwrap());
             write(&config, "config.toml", "old = true\n");
 
             let restored = apply_backup(&backup, &config).await.unwrap();
@@ -314,7 +368,8 @@ mod tests {
 
             let out = tmp.path().join("out");
             std::fs::create_dir_all(&out).unwrap();
-            let archive_path = archive::write(&backup, "2026-07-12T10-00-00", Some(&out)).unwrap();
+            let archive_path =
+                archive::write(&backup, "2026-07-12T10-00-00", Some(&out), false).unwrap();
 
             let extract_dir = tmp.path().join("x");
             let root = archive::extract(&archive_path, &extract_dir).unwrap();
@@ -326,6 +381,71 @@ mod tests {
                 std::fs::read_to_string(config.join("config.toml")).unwrap(),
                 "from = \"archive\"\n"
             );
+        });
+    }
+
+    /// Goal: restore applies only the files the manifest declares, so an untrusted
+    /// backup cannot smuggle an unlisted file, and a "no secrets" manifest cannot
+    /// carry credentials even when a `.passwd` sits in the directory. Method: stage
+    /// a backup whose manifest lists only config.toml but whose directory also holds
+    /// an extra file and a secret, then assert only config.toml is restored.
+    #[test]
+    fn apply_backup_restores_only_manifested_files() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let backup = tmp.path().join("backup");
+            let config = tmp.path().join("config");
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::create_dir_all(&config).unwrap();
+            let manifest = Manifest::new(
+                "2026-07-12T10:00:00+00:00".to_string(),
+                vec!["config.toml".to_string()],
+                false,
+            );
+            write(&backup, MANIFEST_FILE_NAME, &manifest.to_toml().unwrap());
+            write(&backup, "config.toml", "ok = true\n");
+            write(&backup, "evil.sh", "rm -rf /\n");
+            write(&backup, ".passwd", "attacker-known");
+
+            let restored = apply_backup(&backup, &config).await.unwrap();
+
+            assert_eq!(restored, 1);
+            assert!(config.join("config.toml").exists());
+            assert!(
+                config.join("evil.sh").exists().not(),
+                "an unlisted file must not be restored"
+            );
+            assert!(
+                config.join(".passwd").exists().not(),
+                "a secret must not be restored when the manifest excludes it"
+            );
+        });
+    }
+
+    /// Goal: manifest file names that are not a single path component (traversal or
+    /// nested paths) are dropped, so `config_dir.join(name)` cannot escape. Method:
+    /// build a manifest with a `..` entry and a nested entry and assert only the
+    /// plain name survives.
+    #[test]
+    fn restorable_files_rejects_path_traversal() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let backup = tmp.path().join("backup");
+            std::fs::create_dir_all(&backup).unwrap();
+            let manifest = Manifest::new(
+                "2026-07-12T10:00:00+00:00".to_string(),
+                vec![
+                    "config.toml".to_string(),
+                    "../escape.toml".to_string(),
+                    "sub/nested.toml".to_string(),
+                ],
+                false,
+            );
+            write(&backup, MANIFEST_FILE_NAME, &manifest.to_toml().unwrap());
+
+            let names = restorable_files(&backup).await;
+
+            assert_eq!(names, vec!["config.toml"]);
         });
     }
 }
