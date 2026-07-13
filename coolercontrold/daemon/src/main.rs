@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -266,6 +267,23 @@ struct Args {
 
     #[command(subcommand)]
     command: Option<SubCommands>,
+}
+
+impl Args {
+    /// Whether to log the System Info banner. A real daemon start wants it, as do
+    /// the commands whose purpose is to report system state (`--system-info`,
+    /// `detect`). The config maintenance one-shots (backup/restore/list/check,
+    /// password reset) only add noise, so they skip it.
+    fn wants_system_info_banner(&self) -> bool {
+        if self.system_info {
+            return true;
+        }
+        match &self.command {
+            Some(SubCommands::Detect { .. }) => true,
+            Some(_) => false,
+            None => (self.backup || self.reset_password).not(),
+        }
+    }
 }
 
 /// `coolercontrold` uses a single-threaded asynchronous runtime. It uses a structured concurrency
@@ -925,4 +943,63 @@ async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     }
     info!("Shutdown Complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_args() -> Args {
+        Args {
+            debug: false,
+            system_info: false,
+            backup: false,
+            reset_password: false,
+            nvidia_cli: false,
+            reset_plugin_user: false,
+            command: None,
+        }
+    }
+
+    /// Goal: the System Info banner logs for a real daemon start and for the
+    /// system-reporting commands (`--system-info`, `detect`), but not for the
+    /// config maintenance one-shots (backup/restore/list/check, password reset).
+    /// Method: exercise each invocation shape against the predicate.
+    #[test]
+    fn banner_only_for_daemon_and_system_reporting_commands() {
+        assert!(base_args().wants_system_info_banner()); // bare daemon start
+
+        let mut sys_info = base_args();
+        sys_info.system_info = true;
+        assert!(sys_info.wants_system_info_banner());
+
+        let mut detect = base_args();
+        detect.command = Some(SubCommands::Detect { load: false });
+        assert!(detect.wants_system_info_banner());
+
+        let mut deprecated_backup = base_args();
+        deprecated_backup.backup = true;
+        assert!(deprecated_backup.wants_system_info_banner().not());
+
+        let mut reset = base_args();
+        reset.reset_password = true;
+        assert!(reset.wants_system_info_banner().not());
+
+        let mut list = base_args();
+        list.command = Some(SubCommands::List);
+        assert!(list.wants_system_info_banner().not());
+
+        let mut check = base_args();
+        check.command = Some(SubCommands::Check);
+        assert!(check.wants_system_info_banner().not());
+
+        let mut backup = base_args();
+        backup.command = Some(SubCommands::Backup {
+            keep: backup::DEFAULT_KEEP,
+            archive: false,
+            output: None,
+            include_secrets: false,
+        });
+        assert!(backup.wants_system_info_banner().not());
+    }
 }
