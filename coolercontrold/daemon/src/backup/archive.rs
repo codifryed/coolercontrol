@@ -23,12 +23,18 @@
 //! restore can treat the two identically.
 
 use std::fs::Permissions;
+use std::io::Read;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use super::manifest::MANIFEST_FILE_NAME;
+
+/// Cap on total decompressed bytes read while extracting an archive. A config
+/// backup is tiny (KBs); this exists only to stop a malicious archive (a
+/// decompression bomb) from filling the temp filesystem during restore.
+const MAX_EXTRACT_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Writes a gzipped tarball of `backup_dir` and returns the archive path. `name`
 /// is the backup's directory name, used both to nest the entries and to name the
@@ -79,7 +85,8 @@ pub fn extract(archive_path: &Path, dest: &Path) -> Result<PathBuf> {
     let file = std::fs::File::open(archive_path)
         .with_context(|| format!("Opening archive {}", archive_path.display()))?;
     let decoder = flate2::read::GzDecoder::new(file);
-    tar::Archive::new(decoder)
+    let reader = LimitReader::new(decoder, MAX_EXTRACT_BYTES);
+    tar::Archive::new(reader)
         .unpack(dest)
         .with_context(|| format!("Extracting archive {}", archive_path.display()))?;
     find_backup_root(dest).with_context(|| {
@@ -116,6 +123,39 @@ fn resolve_dest(name: &str, output: Option<&Path>) -> Result<PathBuf> {
             .join(default_name)),
         Some(path) if path.is_dir() => Ok(path.join(default_name)),
         Some(path) => Ok(path.to_path_buf()),
+    }
+}
+
+/// Read adapter that fails once more than `remaining` bytes have been read,
+/// bounding how much an archive is allowed to decompress to.
+struct LimitReader<R> {
+    inner: R,
+    remaining: u64,
+}
+
+impl<R> LimitReader<R> {
+    fn new(inner: R, limit: u64) -> Self {
+        Self {
+            inner,
+            remaining: limit,
+        }
+    }
+}
+
+impl<R: Read> Read for LimitReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.remaining == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "backup archive is larger than the allowed maximum",
+            ));
+        }
+        let cap = usize::try_from(self.remaining)
+            .unwrap_or(usize::MAX)
+            .min(buf.len());
+        let read = self.inner.read(&mut buf[..cap])?;
+        self.remaining -= read as u64;
+        Ok(read)
     }
 }
 
@@ -188,5 +228,18 @@ mod tests {
         let secure = write(&backup_dir, "s", Some(&dest), true).unwrap();
         let mode = std::fs::metadata(&secure).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    /// Goal: the limit reader yields bytes up to the cap and then errors, so a
+    /// decompression bomb cannot stream unbounded data into extraction. Method:
+    /// read a 100-byte source through a 10-byte limit and assert the failure.
+    #[test]
+    fn limit_reader_errors_past_cap() {
+        let data = vec![0_u8; 100];
+        let mut reader = LimitReader::new(&data[..], 10);
+        let mut out = Vec::new();
+        let err = reader.read_to_end(&mut out).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(out.len() <= 10, "read {} bytes past the cap", out.len());
     }
 }
