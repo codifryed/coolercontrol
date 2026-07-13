@@ -19,7 +19,8 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::calibration::CalibrationView;
 use crate::calibration::{
-    Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure, DiagnosisPhase, DiagnosisProgress,
+    others_over_limit_note, Calibration, CalibrationEntry, ChannelKey, DiagnosisFailure,
+    DiagnosisPhase, DiagnosisProgress, CALIBRATION_TEMP_HINT,
 };
 use crate::device::{ChannelName, DeviceUID};
 use crate::engine::main::Engine;
@@ -128,18 +129,26 @@ impl CalibrationStatus {
                 observed,
                 limit,
                 sensor,
+                others_over_limit,
             } => (
                 "preflight_temp_too_high",
-                format!("{sensor} at {observed:.1} C exceeded the {limit:.1} C pre-flight limit"),
+                format!(
+                    "{sensor} at {observed:.1} C exceeded the {limit:.1} C pre-flight limit{}. {}",
+                    others_over_limit_note(*others_over_limit),
+                    CALIBRATION_TEMP_HINT,
+                ),
             ),
             DiagnosisFailure::TempAbortedAt {
                 observed,
                 limit,
                 sensor,
+                others_over_limit,
             } => (
                 "temp_aborted",
                 format!(
-                    "{sensor} reached {observed:.1} C, over the {limit:.1} C abort limit mid-sweep"
+                    "{sensor} reached {observed:.1} C, over the {limit:.1} C abort limit{}. {}",
+                    others_over_limit_note(*others_over_limit),
+                    CALIBRATION_TEMP_HINT,
                 ),
             ),
             DiagnosisFailure::Cancelled => ("user_cancelled", "diagnosis cancelled".to_string()),
@@ -588,6 +597,7 @@ impl CalibrationHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     fn failed_fields(status: &CalibrationStatus) -> (&str, &str) {
         match status {
@@ -601,13 +611,15 @@ mod tests {
     #[test]
     fn preflight_temp_failure_message_names_the_offending_sensor() {
         // Goal: a pre-flight temp block carries the offending sensor's
-        // identity into the UI message, not just the number, so the
-        // user sees which reading (often an unrelated device) blocked
-        // the sweep. The reason code stays stable for the UI to key on.
+        // identity into the UI message, reports how many other sensors
+        // are over the limit, and appends the disable/cool hint, so the
+        // user sees what to address rather than just a number. The reason
+        // code stays stable for the UI to key on.
         let failure = DiagnosisFailure::PreflightTempTooHigh {
             observed: 86.0,
             limit: 75.0,
             sensor: "CPU | Tctl".to_string(),
+            others_over_limit: 2,
         };
         let status =
             CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
@@ -616,15 +628,25 @@ mod tests {
         assert!(message.contains("CPU | Tctl"), "message: {message}");
         assert!(message.contains("86.0"), "message: {message}");
         assert!(message.contains("75.0"), "message: {message}");
+        assert!(
+            message.contains("2 other sensors are also over the limit"),
+            "message: {message}"
+        );
+        assert!(
+            message.contains(CALIBRATION_TEMP_HINT),
+            "message: {message}"
+        );
     }
 
     #[test]
     fn temp_abort_message_names_the_offending_sensor() {
-        // Goal: same guarantee for a mid-sweep abort.
+        // Goal: same guarantee for a mid-sweep abort; a lone hot sensor
+        // omits the "other sensors" clause but still gets the hint.
         let failure = DiagnosisFailure::TempAbortedAt {
             observed: 90.0,
             limit: 85.0,
             sensor: "GPU | edge".to_string(),
+            others_over_limit: 0,
         };
         let status =
             CalibrationStatus::from_failure("dev-a".to_string(), "fan1".to_string(), &failure);
@@ -633,5 +655,10 @@ mod tests {
         assert!(message.contains("GPU | edge"), "message: {message}");
         assert!(message.contains("90.0"), "message: {message}");
         assert!(message.contains("85.0"), "message: {message}");
+        assert!(message.contains("other sensor").not(), "message: {message}");
+        assert!(
+            message.contains(CALIBRATION_TEMP_HINT),
+            "message: {message}"
+        );
     }
 }
