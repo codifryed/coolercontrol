@@ -29,7 +29,7 @@ use std::ffi::OsStr;
 use std::fs::Permissions;
 use std::io::{IsTerminal, Write};
 use std::ops::Not;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -194,14 +194,15 @@ async fn apply_backup(backup_dir: &Path, config_dir: &Path) -> Result<usize> {
             .with_context(|| format!("Reading backup file {name}"))?;
         let dst = config_dir.join(name);
         let tmp = config_dir.join(format!(".{name}.restore-tmp"));
-        cc_fs::write(&tmp, bytes)
-            .await
-            .with_context(|| format!("Writing {}", dst.display()))?;
         if is_secret(name) {
-            // Credential files must not be world-readable once in the config dir.
-            cc_fs::set_permissions(&tmp, Permissions::from_mode(0o600))
+            // Owner-only from creation: avoids the world-readable window that a
+            // write-then-chmod would open for a credential file in the config dir.
+            write_secret_temp(&tmp, &bytes)
+                .with_context(|| format!("Writing {}", dst.display()))?;
+        } else {
+            cc_fs::write(&tmp, bytes)
                 .await
-                .with_context(|| format!("Securing {}", dst.display()))?;
+                .with_context(|| format!("Writing {}", dst.display()))?;
         }
         cc_fs::rename(&tmp, &dst)
             .await
@@ -255,6 +256,24 @@ fn known_config_names() -> Vec<String> {
     names.push(".passwd".to_string());
     names.push(".tokens".to_string());
     names
+}
+
+/// Writes a credential file's bytes with owner-only permissions from creation, so
+/// the file is never briefly world-readable in the config directory. Synchronous
+/// std IO on a small file is fine for this one-shot CLI command about to exit.
+fn write_secret_temp(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+        .with_context(|| format!("Creating {}", path.display()))?;
+    // Enforce 0600 even if a stale temp from a crashed run pre-existed at looser perms.
+    file.set_permissions(Permissions::from_mode(0o600))
+        .with_context(|| format!("Securing {}", path.display()))?;
+    file.write_all(bytes)
+        .with_context(|| format!("Writing {}", path.display()))
 }
 
 fn is_secret(name: &str) -> bool {
@@ -447,5 +466,22 @@ mod tests {
 
             assert_eq!(names, vec!["config.toml"]);
         });
+    }
+
+    /// Goal: a restored credential file is owner-only, even when a stale temp from
+    /// a crashed run already existed at looser perms. Method: pre-create the temp at
+    /// 0644, write a secret over it, and assert the mode and contents.
+    #[test]
+    fn write_secret_temp_is_owner_only_over_stale_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".passwd.restore-tmp");
+        std::fs::write(&path, b"stale").unwrap();
+        std::fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
+
+        write_secret_temp(&path, b"secret").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "secret");
     }
 }
