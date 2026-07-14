@@ -36,7 +36,6 @@ RUN apt update && apt install -y --no-install-recommends \
     # coolercontrold
     libdrm-dev \
     cargo-1.91 \
-    protobuf-compiler \
     # nodesource:
     curl \
     ca-certificates \
