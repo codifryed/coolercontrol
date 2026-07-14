@@ -216,6 +216,10 @@ tokio = { version = "1.52.3", default-features = false, features = [
 # >= 0.14.6 requires rustc 1.88:
 tonic-prost-build = "=0.14.5"
 tonic-build = "=0.14.5"
+# Pure-Rust protobuf compiler: drops the protoc binary as a system build dependency. Pinned to 0.9.1
+# to match prost 0.14 (tonic-prost-build).
+# build.rs persists its descriptor set (via the re-exported protox::prost) for the gRPC reflection service.
+protox = "=0.9.1"
 
 [lints.clippy]
 upper_case_acronyms = "allow"
