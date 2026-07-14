@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
@@ -32,6 +33,7 @@ use crate::device::{
 use crate::device_health::FailsafeRef;
 use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
+use crate::repositories::hwmon::devices;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -231,6 +233,8 @@ impl LiquidctlRepo {
         let devices_response = self.liqctld_client.get_all_devices().await?;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
         let poll_rate = self.config.get_settings()?.poll_rate;
+        // Final guard so no two liquidctl devices share a UID and get dropped from the map.
+        let mut assigned_uids: HashSet<UID> = HashSet::new();
 
         for device_response in devices_response.devices {
             let Some(driver_type) = self.map_driver_type(&device_response) else {
@@ -246,6 +250,22 @@ impl LiquidctlRepo {
             let device_info = self
                 .device_mapper
                 .extract_info(&driver_type, &device_response);
+            // get_unique_identifiers already dedupes co-present devices; this is the final safety
+            // net. A distinct per-device address is used only on a residual collision.
+            let identifier = unique_device_identifiers
+                .remove(&device_response.id)
+                .unwrap_or_default();
+            // Resolve to the device's stable sysfs realpath (like the hwmon repo); the raw hidraw
+            // and hwmon class paths renumber across boots. Falls back to the liqctld id.
+            let distinguisher = stable_device_path(&device_response)
+                .unwrap_or_else(|| device_response.id.to_string());
+            let (identifier, _) = Device::assign_unique(
+                &mut assigned_uids,
+                DeviceType::Liquidctl,
+                &device_response.description,
+                &identifier,
+                &distinguisher,
+            );
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -256,7 +276,7 @@ impl LiquidctlRepo {
                     unknown_asetek: false,
                 }),
                 device_info,
-                unique_device_identifiers.remove(&device_response.id),
+                Some(identifier),
                 poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
@@ -1357,6 +1377,23 @@ struct DeviceIdMetadata {
     device_index: TypeIndex,
 }
 
+/// Resolves a liquidctl device's sysfs address to its canonical, reboot-stable device realpath, the
+/// same way the hwmon repo derives device identity. The raw class paths (`/dev/hidrawN`,
+/// `/sys/class/hidraw/hidrawN/device/hwmon/hwmonM`) embed hidraw/hwmon enumeration numbers that
+/// renumber across boots, so both are resolved through the `device` symlink to the underlying
+/// device path (the USB topology). Returns `None` if neither address resolves.
+fn stable_device_path(device_response: &DeviceResponse) -> Option<String> {
+    if let Some(hwmon_address) = &device_response.hwmon_address {
+        if let Some(path) = devices::get_static_device_path_str(Path::new(hwmon_address)) {
+            return Some(path);
+        }
+    }
+    // `/dev/hidrawN` has no `device` link; map it to its `/sys/class/hidraw/hidrawN` entry first.
+    let hid_address = device_response.hid_address.as_deref()?;
+    let node = Path::new(hid_address).file_name()?.to_str()?;
+    devices::get_static_device_path_str(&PathBuf::from(format!("/sys/class/hidraw/{node}")))
+}
+
 /// This function checks for duplicate liquidctl unique identifiers, and if found, goes through
 /// a step by step process to find the most useful unique identifier.
 ///
@@ -1466,6 +1503,40 @@ mod tests {
         let devices_response = vec![];
         let returned_identifiers = get_unique_identifiers(&devices_response);
         assert!(returned_identifiers.is_empty());
+    }
+
+    #[test]
+    fn stable_device_path_is_none_without_addresses() {
+        // Goal: with neither a hwmon nor a hid address, no stable path is derivable, so the caller
+        // falls back to the liqctld id. Method: a DeviceResponse with both addresses None.
+        let response = DeviceResponse {
+            id: 1,
+            description: "dev".to_string(),
+            device_type: "DeviceType".to_string(),
+            serial_number: None,
+            properties: DEV_PROPS.clone(),
+            liquidctl_version: None,
+            hid_address: None,
+            hwmon_address: None,
+        };
+        assert_eq!(stable_device_path(&response), None);
+    }
+
+    #[test]
+    fn stable_device_path_is_none_for_unresolvable_address() {
+        // Goal: an address that does not resolve on this system yields None (graceful fallback),
+        // never a panic. Method: a bogus hidraw node that maps to a non-existent sysfs path.
+        let response = DeviceResponse {
+            id: 1,
+            description: "dev".to_string(),
+            device_type: "DeviceType".to_string(),
+            serial_number: None,
+            properties: DEV_PROPS.clone(),
+            liquidctl_version: None,
+            hid_address: Some("/dev/hidraw-cc-does-not-exist".to_string()),
+            hwmon_address: None,
+        };
+        assert_eq!(stable_device_path(&response), None);
     }
 
     #[test]

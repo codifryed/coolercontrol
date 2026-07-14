@@ -17,7 +17,7 @@
  */
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -86,13 +86,25 @@ impl GpuAMD {
         // Set when an amdgpu device is present but libdrm could not be loaded,
         // so we can warn once after probing all devices.
         let mut libdrm_unavailable = false;
+        // Guards against two GPUs resolving to the same UID (e.g. serial-less duplicates that both
+        // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
+        let mut assigned_uids: HashSet<UID> = HashSet::new();
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
-            let u_id = devices::get_device_unique_id(&path, &device_name).await;
-            let device_uid = Device::create_uid_from(&device_name, DeviceType::GPU, 0, Some(&u_id));
+            let raw_id = devices::get_device_unique_id(&path, &device_name).await;
+            // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
+            let path_id = devices::get_static_device_path_str(&path)
+                .unwrap_or_else(|| path.to_string_lossy().into_owned());
+            let (u_id, device_uid) = Device::assign_unique(
+                &mut assigned_uids,
+                DeviceType::GPU,
+                &device_name,
+                &raw_id,
+                &path_id,
+            );
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)

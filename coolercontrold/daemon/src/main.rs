@@ -57,6 +57,7 @@ mod config_validate;
 mod device;
 mod device_health;
 mod device_listener;
+mod device_uid;
 mod engine;
 mod grpc_api;
 mod hashutil;
@@ -909,6 +910,16 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     for repo in repos.iter() {
         for device_lock in repo.devices().await {
             let uid = device_lock.borrow().uid.clone();
+            if all_devices.contains_key(&uid) {
+                // Each repository guarantees unique UIDs internally, and DeviceType is part of the
+                // hash, so a cross-repository collision should be impossible. Log loudly rather than
+                // silently overwrite (and drop a device) if it ever happens.
+                log::error!(
+                    "Two devices resolved to the same UID {uid} across repositories; keeping the \
+                     first. This is a UID derivation bug, please report it."
+                );
+                continue;
+            }
             all_devices.insert(uid, Rc::clone(&device_lock));
         }
     }
