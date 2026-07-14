@@ -17,7 +17,6 @@ BuildRequires:  systemd-rpm-macros
 BuildRequires:  rpm_macro(cargo_build)
 BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
-BuildRequires:  pkgconfig(protobuf)
 Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 

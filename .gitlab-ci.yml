@@ -417,7 +417,7 @@ build_daemon_msrv_bookworm:
     - apt-get update
     - >
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
-      cargo-web protobuf-compiler libdrm-dev build-essential ca-certificates
+      cargo-web libdrm-dev build-essential ca-certificates
     - cargo --version
     - rustc --version
   script:

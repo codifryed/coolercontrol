@@ -33,7 +33,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cargo-1.91 \
         rust-1.91-clippy \
         jq \
-        protobuf-compiler \
         # python
         python3-pip \
         python3-venv \

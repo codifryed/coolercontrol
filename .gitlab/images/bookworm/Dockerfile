@@ -44,7 +44,6 @@ RUN apt update && apt install -y --no-install-recommends \
     # external libs:
     curl \
     ca-certificates \
-    protobuf-compiler \
     debhelper
 
 # rust toolchain

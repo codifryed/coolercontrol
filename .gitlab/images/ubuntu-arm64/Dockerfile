@@ -31,7 +31,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # for standard appstream checks:
         #desktop-file-utils appstream-util \
         # rust
-        protobuf-compiler \
         cargo-1.91 \
         #jq \
         # python
