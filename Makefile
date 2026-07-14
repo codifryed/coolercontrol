@@ -172,7 +172,8 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
-# Maintainer / release-engineering targets live in these includes:
-include make/docker.mk
-include make/release.mk
-include make/appimage.mk
+# Maintainer / release-engineering targets live in these includes. Optional (-include) so a partial
+# checkout that has only this Makefile (the dockerhub images run `make build-daemon`) still parses.
+-include make/docker.mk
+-include make/release.mk
+-include make/appimage.mk
