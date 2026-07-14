@@ -144,7 +144,12 @@ fn maybe_archive(final_dir: &Path, opts: &BackupOptions) -> Result<Option<PathBu
         .file_name()
         .expect("backup dir has a name")
         .to_string_lossy();
-    let path = archive::write(final_dir, name.as_ref(), opts.output.as_deref())?;
+    let path = archive::write(
+        final_dir,
+        name.as_ref(),
+        opts.output.as_deref(),
+        opts.include_secrets,
+    )?;
     Ok(Some(path))
 }
 
