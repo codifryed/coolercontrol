@@ -38,6 +38,7 @@ use log::{debug, info};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 
 /// The connection-driver task handle. On Tokio it is abortable; under compio it cancels when
 /// dropped (compio's spawn cancels on handle drop). `SocketConnection::abort` unifies the two.
@@ -109,6 +110,9 @@ pub type LCStatus = Vec<(String, String, String)>;
 /// `LiqctldClient` represents a client for interacting with a connection pool of socket connections.
 pub struct LiqctldClient {
     connection_pool: RefCell<VecDeque<PooledConnection>>,
+    /// Daemon-wide shutdown token. Used to skip request retries once shutting down, so a failing
+    /// device does not add seconds of delay and log spam to the shutdown path.
+    run_token: CancellationToken,
 }
 
 impl LiqctldClient {
@@ -118,12 +122,13 @@ impl LiqctldClient {
     ///
     /// Returns:
     /// a Result containing either an instance of the struct or an error.
-    pub async fn new(connection_tries: usize) -> Result<Self> {
+    pub async fn new(connection_tries: usize, run_token: CancellationToken) -> Result<Self> {
         let mut connection_pool = VecDeque::with_capacity(LIQCTLD_MAX_POOL_SIZE);
         let connection = Self::create_connection(connection_tries).await?;
         connection_pool.push_back(PooledConnection::new(connection));
         Ok(Self {
             connection_pool: RefCell::new(connection_pool),
+            run_token,
         })
     }
 
@@ -416,6 +421,12 @@ impl LiqctldClient {
         let mut response = self.make_request(&request).await;
         if response.is_err() {
             for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
+                // Do not retry while shutting down: the device is already failing, and each retry
+                // only adds a 1s delay plus log spam to the shutdown path (e.g. the LCD shutdown
+                // image). One failed attempt is enough.
+                if self.run_token.is_cancelled() {
+                    return response;
+                }
                 sleep(Duration::from_millis(LIQCTLD_INIT_PAUSE_MS)).await;
                 info!("Retrying liquidctl device #{device_index} initialization request.");
                 response = self.make_request(&request).await;

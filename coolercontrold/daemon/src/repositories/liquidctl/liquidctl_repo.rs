@@ -111,7 +111,7 @@ impl LiquidctlRepo {
         {
             let _: Result<()> = async {
                 // attempt to quickly shut down the liqctld service if it happens to be running.
-                let liqctld_client = LiqctldClient::new(1).await?;
+                let liqctld_client = LiqctldClient::new(1, run_token.clone()).await?;
                 liqctld_client.post_quit().await?;
                 liqctld_client.shutdown();
                 Ok(())
@@ -139,7 +139,8 @@ impl LiquidctlRepo {
         let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
-        let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
+        let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES, run_token.clone()).await
+        {
             Ok(client) => client,
             Err(err) => {
                 let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
