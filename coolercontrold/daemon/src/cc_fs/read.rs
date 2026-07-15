@@ -159,8 +159,8 @@ mod tests {
     #[test]
     fn read_sysfs_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
             const N: usize = 256; // high concurrency to stress io_uring ring reuse
+            let dir = tempfile::tempdir().unwrap();
             let mut expected = Vec::with_capacity(N);
             for i in 0..N {
                 let contents = format!("{}\n", "9".repeat((i % 17) + 1));

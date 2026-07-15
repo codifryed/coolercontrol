@@ -235,7 +235,7 @@ mod tests {
     /// read a 100-byte source through a 10-byte limit and assert the failure.
     #[test]
     fn limit_reader_errors_past_cap() {
-        let data = vec![0_u8; 100];
+        let data = [0_u8; 100];
         let mut reader = LimitReader::new(&data[..], 10);
         let mut out = Vec::new();
         let err = reader.read_to_end(&mut out).unwrap_err();

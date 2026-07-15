@@ -830,8 +830,8 @@ mod tests {
         // back), a fresh entry means every later entry is fresh too, so the scan can stop early.
         // Method: build instants relative to a fixed `now` and assert the counted prefix.
         let now = Instant::now();
-        let old = now - Duration::from_secs(120);
-        let fresh = now - Duration::from_secs(1);
+        let old = now.checked_sub(Duration::from_secs(120)).unwrap();
+        let fresh = now.checked_sub(Duration::from_secs(1)).unwrap();
         let timeout = Duration::from_secs(30);
         assert_eq!(
             stale_prefix_len([old, old, fresh, fresh].into_iter(), now, timeout),

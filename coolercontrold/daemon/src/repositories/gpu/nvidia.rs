@@ -1526,7 +1526,7 @@ mod tests {
         // so a disabled sibling cannot be released independently.
         let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
         let uid_b = nvml_name_and_uid(Some("GPU B".to_string()), 3).1;
-        let repo = repo_with_disabled(&[uid_a.clone()]); // GPU B left enabled
+        let repo = repo_with_disabled(std::slice::from_ref(&uid_a)); // GPU B left enabled
         assert!(repo.should_release_nvml(&[uid_a, uid_b], 2).not());
     }
 
@@ -1535,7 +1535,7 @@ mod tests {
         // The len == device_count guard: a device failed to enumerate (one UID for a count
         // of two), so NVML must stay attached even though the collected device is disabled.
         let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
-        let repo = repo_with_disabled(&[uid_a.clone()]);
+        let repo = repo_with_disabled(std::slice::from_ref(&uid_a));
         assert!(repo.should_release_nvml(&[uid_a], 2).not());
     }
 
