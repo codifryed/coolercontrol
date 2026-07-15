@@ -19,9 +19,12 @@
 use crate::ENV_CC_LOG;
 use anyhow::{anyhow, Result};
 use log::{debug, info, log, warn};
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::process::{ExitStatus, Stdio};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
@@ -34,6 +37,24 @@ use tokio_util::sync::CancellationToken;
 
 const MAX_RETRIES: u32 = 3;
 const SHUTDOWN_TIMEOUT_SECS: u64 = 10;
+
+/// PID of the currently running liqctld child, or 0 when none is running. Recorded so the daemon's
+/// shutdown path (and the sidecar force-exit backstop) can SIGKILL the process group directly if
+/// the child does not exit gracefully in time. `std::process::exit` runs no destructors, so the
+/// child's `kill_on_drop` would otherwise leak it and leave systemd to reap (and SIGABRT) an orphan.
+static LIQCTLD_PID: AtomicI32 = AtomicI32::new(0);
+
+/// Force-kills the liqctld child process group, if one is recorded. Idempotent: the stored PID is
+/// swapped out so repeated calls (the bounded shutdown fallback, then the sidecar backstop) send at
+/// most one signal. The child is spawned with its own process group (`process_group(0)`), so its
+/// PGID equals its PID and signalling `-pid` reaches the whole group. A no-op when no child is
+/// recorded (PID 0), which also avoids ever signalling a recycled PID after the child was reaped.
+pub fn force_kill_liqctld() {
+    let pid = LIQCTLD_PID.swap(0, Ordering::AcqRel);
+    if pid > 0 {
+        let _ = kill(Pid::from_raw(-pid), Signal::SIGKILL);
+    }
+}
 
 const PY_VERIFY: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -153,7 +174,13 @@ fn child_envs() -> HashMap<String, String> {
 /// The child process is killed if it does not exit.
 fn watch_child(mut child: Child, run_token: CancellationToken) -> JoinHandle<Result<ExitStatus>> {
     tokio::task::spawn_local(async move {
-        tokio::select! {
+        // Record the PID while we own the child so the shutdown path and the sidecar backstop can
+        // force-kill its group; clear it on any exit so a recycled PID is never signalled. A PID
+        // always fits in an i32 on Linux, so a failed conversion just skips recording (no kill).
+        if let Some(pid) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
+            LIQCTLD_PID.store(pid, Ordering::Release);
+        }
+        let result = tokio::select! {
             () = delayed_cancelled(run_token) => {
                 if let Ok(Some(status)) = child.try_wait() {
                     Ok(status)
@@ -164,7 +191,10 @@ fn watch_child(mut child: Child, run_token: CancellationToken) -> JoinHandle<Res
             }
             Ok(status) = child.wait() => Ok(status),
             else => {Err(anyhow!("liqctld Child process exited unexpectedly!"))}
-        }
+        };
+        // The child has been reaped (or force-killed above); drop the stale PID.
+        LIQCTLD_PID.store(0, Ordering::Release);
+        result
     })
 }
 
@@ -244,6 +274,9 @@ mod tests {
     use super::*;
     use crate::cc_fs::sidecar_fs;
     use serial_test::serial;
+    use std::os::unix::process::CommandExt;
+    use std::process::Command as StdCommand;
+
     #[test]
     #[serial]
     fn test_verify_env() {
@@ -254,5 +287,48 @@ mod tests {
             // Err would mean that the liquidctl package is not installed, which is fine for testing.
             assert!(result.is_ok() || result.is_err());
         });
+    }
+
+    // Goal: with no child recorded (PID 0), force_kill_liqctld must signal nothing and leave the
+    // slot at 0. Method: clear the slot, call, assert it stays 0 (negative space: never signal a
+    // non-existent group).
+    #[test]
+    #[serial]
+    fn force_kill_is_noop_without_a_recorded_child() {
+        LIQCTLD_PID.store(0, Ordering::Release);
+        force_kill_liqctld();
+        assert_eq!(LIQCTLD_PID.load(Ordering::Acquire), 0);
+    }
+
+    // Goal: force_kill_liqctld SIGKILLs the recorded child's process group and clears the PID so a
+    // second call is a no-op. Method: spawn a real long-lived child in its own process group (as
+    // run_python does via process_group(0)), record its PID, force-kill, and confirm it terminated
+    // and the slot was cleared.
+    #[test]
+    #[serial]
+    fn force_kill_terminates_recorded_process_group_and_clears_pid() {
+        let mut child = StdCommand::new("sleep")
+            .arg("60")
+            .process_group(0)
+            .spawn()
+            .expect("spawn sleep child");
+        assert!(child.id() > 0);
+        let pid = i32::try_from(child.id()).expect("PID fits in i32");
+        LIQCTLD_PID.store(pid, Ordering::Release);
+
+        force_kill_liqctld();
+        assert_eq!(
+            LIQCTLD_PID.load(Ordering::Acquire),
+            0,
+            "PID must be cleared after force-kill"
+        );
+
+        let status = child.wait().expect("reap the killed child");
+        assert!(
+            status.success().not(),
+            "child must have been killed, not exited cleanly"
+        );
+        // A second call is a harmless no-op (slot already cleared).
+        force_kill_liqctld();
     }
 }

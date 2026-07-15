@@ -44,7 +44,7 @@ use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::repositories::utils::apply_device_command_delay;
-use crate::rt::sleep;
+use crate::rt::{sleep, timeout};
 use crate::setting::{
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource,
 };
@@ -64,6 +64,15 @@ use tokio_util::sync::CancellationToken;
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 /// Time to wait for the liqctld Python service to start listening on its socket.
 const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
+/// Best-effort window for liqctld to acknowledge `/quit` at shutdown. A wedged service would
+/// otherwise block on the full 15s request timeout, so bound it tightly here.
+const LIQCTLD_QUIT_TIMEOUT: Duration = Duration::from_secs(2);
+/// Time to wait for the liqctld child to exit gracefully before force-killing its process group.
+/// The Python service self-exits within ~4s of a signal, so this covers it with margin while
+/// keeping total shutdown well under systemd's `TimeoutStopSec`.
+const LIQCTLD_GRACEFUL_EXIT_TIMEOUT: Duration = Duration::from_secs(4);
+/// Time to wait for the supervisor to observe and reap the child after a force-kill.
+const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
@@ -320,7 +329,7 @@ impl LiquidctlRepo {
             info!(
                 "No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down."
             );
-            self.shutdown_service_and_client().await?;
+            self.shutdown_service_and_client().await;
         }
         debug!("List of received Devices: {:?}", self.devices);
         info!(
@@ -385,9 +394,7 @@ impl LiquidctlRepo {
             return Vec::new();
         }
         let descriptions = self.scan_devices().await.unwrap_or_default();
-        if let Err(err) = self.shutdown_service_and_client().await {
-            debug!("Failed to shut down liqctld after on-demand scan: {err}");
-        }
+        self.shutdown_service_and_client().await;
         debug_assert!(
             self.is_service_running().not(),
             "Service must be stopped after scan_devices_with_restart."
@@ -964,22 +971,42 @@ impl LiquidctlRepo {
         })
     }
 
-    async fn shutdown_service_and_client(&self) -> Result<()> {
+    /// Bounded, best-effort shutdown of the liqctld service and client. Never blocks longer than the
+    /// combined timeouts above, so a wedged Python service cannot stall the daemon past systemd's
+    /// `TimeoutStopSec`. Order: ask liqctld to `/quit` (short timeout), wait a bounded time for the
+    /// supervisor to report the child exited, then SIGKILL the process group as a fallback so the
+    /// child is never left for systemd to reap.
+    async fn shutdown_service_and_client(&self) {
         // sometimes we want to shut the service down before the daemon, hence the stop token:
         self.liqctld_stop_token.borrow().cancel();
-        self.liqctld_client.post_quit().await?;
-        // proper shutdown of liqctld service child process: wait for the supervisor (on the
-        // sidecar) to report its exit over the channel.
+        // Best-effort graceful quit. Ignore both a timeout and a device error here: the child still
+        // exits on its own signal handler, and the bounded await below plus the force-kill fallback
+        // guarantee it is gone regardless.
+        if timeout(LIQCTLD_QUIT_TIMEOUT, self.liqctld_client.post_quit())
+            .await
+            .is_err()
+        {
+            debug!("liqctld did not acknowledge /quit within {LIQCTLD_QUIT_TIMEOUT:?}");
+        }
+        // Wait for the supervisor (on the sidecar) to report the child's exit over the channel.
         let done_rx = self.liqctld_service_done.borrow_mut().take();
-        if let Some(done_rx) = done_rx {
-            match done_rx.await {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => warn!("liqctld service did not shutdown properly: {err}"),
-                Err(_) => debug!("liqctld supervisor already gone before shutdown await"),
+        if let Some(mut done_rx) = done_rx {
+            match timeout(LIQCTLD_GRACEFUL_EXIT_TIMEOUT, &mut done_rx).await {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(err))) => warn!("liqctld service did not shutdown properly: {err}"),
+                Ok(Err(_)) => debug!("liqctld supervisor already gone before shutdown await"),
+                Err(_) => {
+                    warn!(
+                        "liqctld did not exit within {LIQCTLD_GRACEFUL_EXIT_TIMEOUT:?}; \
+                        force-killing its process group"
+                    );
+                    liqctld_service::force_kill_liqctld();
+                    // Let the supervisor observe the dead child and reap it (bounded).
+                    let _ = timeout(LIQCTLD_REAP_TIMEOUT, &mut done_rx).await;
+                }
             }
         }
         self.liqctld_client.shutdown();
-        Ok(())
     }
 
     #[allow(dead_code)]
@@ -1219,12 +1246,15 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        if self.liqctld_client.is_connected() {
+        // Tear down whenever the supervisor was started, NOT when the connection pool is non-empty:
+        // an error storm drains the pool (a failed request drops its connection), so gating on
+        // `is_connected()` would skip `/quit` and leave liqctld running for systemd to SIGKILL.
+        if self.liqctld_service_running.load(Ordering::Acquire) {
             // Due to issue quickly mentioned here:
             // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
-            self.shutdown_service_and_client().await?;
+            self.shutdown_service_and_client().await;
         }
         info!("LIQUIDCTL Repository Shutdown");
         Ok(())

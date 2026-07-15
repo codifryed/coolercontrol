@@ -671,16 +671,6 @@ impl LiqctldClient {
             pooled.connection.abort();
         }
     }
-
-    /// Checks if the connection pool is empty and returns a boolean value
-    /// indicating whether there are active connections.
-    ///
-    /// Returns:
-    ///
-    /// a boolean value.
-    pub fn is_connected(&self) -> bool {
-        self.connection_pool.borrow().is_empty().not()
-    }
 }
 
 /// A pooled connection and the instant it last became idle (was returned to the pool). The pool is
