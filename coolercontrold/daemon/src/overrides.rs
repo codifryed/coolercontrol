@@ -915,16 +915,13 @@ mod tests {
                 Some("Motherboard".to_string())
             );
             assert_eq!(
-                controller.channel_label_override(&uid_a, &"fan1".to_string()),
+                controller.channel_label_override(&uid_a, "fan1"),
                 Some("Front Intake".to_string())
             );
             // temp1 had no userName and must not gain an entry.
+            assert_eq!(controller.channel_label_override(&uid_a, "temp1"), None);
             assert_eq!(
-                controller.channel_label_override(&uid_a, &"temp1".to_string()),
-                None
-            );
-            assert_eq!(
-                controller.channel_label_override(&uid_custom, &"sensor1".to_string()),
+                controller.channel_label_override(&uid_custom, "sensor1"),
                 Some("Avg Coolant".to_string())
             );
             let contents = std::fs::read_to_string(&path).unwrap();
@@ -1021,12 +1018,9 @@ mod tests {
 
             let uid = "uid-a".to_string();
             assert_eq!(controller.device_name_override(&uid), Some(long_name));
+            assert_eq!(controller.channel_label_override(&uid, "fan1"), None);
             assert_eq!(
-                controller.channel_label_override(&uid, &"fan1".to_string()),
-                None
-            );
-            assert_eq!(
-                controller.channel_label_override(&uid, &"fan2".to_string()),
+                controller.channel_label_override(&uid, "fan2"),
                 Some("Rear Exhaust".to_string())
             );
         });
@@ -1053,7 +1047,7 @@ mod tests {
                 Some("Motherboard".to_string())
             );
             assert_eq!(
-                controller.channel_label_override(&uid, &"fan1".to_string()),
+                controller.channel_label_override(&uid, "fan1"),
                 Some("Front Intake".to_string())
             );
         });
@@ -1126,7 +1120,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(
-                controller.channel_label_override(&uid, &"chan0".to_string()),
+                controller.channel_label_override(&uid, "chan0"),
                 Some("Renamed".to_string())
             );
         });

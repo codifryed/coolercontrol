@@ -79,6 +79,11 @@ DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 # a legitimately slow command is never mistaken for a wedge.
 WEDGE_THRESHOLD_SECS: float = DEVICE_TIMEOUT_SECS * 2
 MAX_CONNECT_LIQUIDCTL_RETRIES: int = 5
+# Hard cap from the first shutdown signal to os._exit(). Best-effort device reset (which can include
+# an in-flight LCD write of 2+ seconds) runs within this window, then the process exits
+# unconditionally so a device wedged in an uninterruptible USB read can never stall systemd past its
+# TimeoutStopSec.
+SHUTDOWN_DEADLINE_SECS: float = 4.0
 
 #####################################################################
 # Models
@@ -664,6 +669,10 @@ class DeviceService:
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
         self.liquidctl_version: str = get_liquidctl_version()
+        # Guards shutdown(): the /quit handler and the signal handler can both call it, so the
+        # actual device teardown must run at most once. Only the check-and-set is under the lock.
+        self._shutdown_lock: threading.Lock = threading.Lock()
+        self._shutdown_started: bool = False
 
     ###########################################################################
     # Device Startup
@@ -1331,7 +1340,15 @@ class DeviceService:
         Shutdown all devices and their workers.
         This includes calling initialize() to attempt to reset devices to their default state,
         then calling disconnect() to disconnect all devices.
+
+        Idempotent and thread-safe: the /quit handler and the signal handler may both call this,
+        but the device teardown runs at most once. The lock guards only the check-and-set so a
+        second caller returns immediately instead of blocking behind the first caller's I/O.
         """
+        with self._shutdown_lock:
+            if self._shutdown_started:
+                return
+            self._shutdown_started = True
         for device_id, lc_device in self.devices.items():
             if isinstance(
                 lc_device, CorsairHidPsu
@@ -1617,18 +1634,34 @@ def server_run(device_service: DeviceService) -> None:
     log.info("liqctld initialized and listening for connections")
     server.socket.listen(queue_size)
 
+    def finish_shutdown() -> None:
+        # Best-effort hardware cleanup, run in a daemon thread so a worker wedged in an
+        # uninterruptible USB read cannot delay the hard exit below. device_service.shutdown() is
+        # idempotent, so it is safe alongside a concurrent /quit.
+        try:
+            server.device_service.shutdown()
+        except BaseException as exc:
+            sys.stderr.write(f"liqctld shutdown error: {exc}\n")
+        server.shutting_down = True
+        try:
+            server.server_close()
+        except BaseException:
+            pass
+
     def shutdown_gracefully(_signum, _frame) -> None:
-        for _ in range(40):  # max 8 seconds
-            if server.shutting_down:
-                return
-            else:
-                # Give the server a moment to receive the quit request and shutdown
-                time.sleep(0.2)
-        # If we get here, we've exceeded the timeout, so try to force the shutdown
-        server.device_service.shutdown()
-        # we shouldn't block here, as we're on the main thread, so we set the internal boolean
-        server.__shutdown_request = True
-        server.server_close()
+        # A repeated signal means the first attempt is still running (or is wedged): exit now, since
+        # systemd is already counting down and no further cleanup can be trusted to finish.
+        if getattr(server, "forced_exit", False):
+            os._exit(0)
+        server.forced_exit = True
+        # Do the cleanup off the main thread and cap the whole shutdown at a hard deadline. os._exit
+        # skips atexit and thread joins, so even a permanently wedged worker cannot hang the exit.
+        finisher = threading.Thread(
+            target=finish_shutdown, name="liqctld-shutdown", daemon=True
+        )
+        finisher.start()
+        finisher.join(SHUTDOWN_DEADLINE_SECS)
+        os._exit(0)
 
     signal.signal(signal.SIGINT, shutdown_gracefully)
     signal.signal(signal.SIGTERM, shutdown_gracefully)

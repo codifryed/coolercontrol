@@ -1404,7 +1404,7 @@ mod tests {
     }
 
     /// Goal: a channel minimum duty raises the Silent AIO pump curve floor so a high-min_duty pump
-    /// cannot stall. Method: generate Silent with min_duty 70 and assert every duty is at least 70.
+    /// cannot stall. Method: generate Silent with `min_duty` 70 and assert every duty is at least 70.
     #[test]
     fn aio_pump_silent_floor_clamped_to_min_duty() {
         let context = context_with_min_duty("dev-aio-1", "fan1", 70);
@@ -1418,7 +1418,7 @@ mod tests {
     }
 
     /// Goal: a channel minimum duty raises the AIO radiator curve floor so a high-min_duty fan
-    /// cannot stall. Method: generate Silent off a liquid temp with min_duty 50 and assert every
+    /// cannot stall. Method: generate Silent off a liquid temp with `min_duty` 50 and assert every
     /// duty is at least 50.
     #[test]
     fn aio_radiator_floor_clamped_to_min_duty() {
@@ -1439,7 +1439,7 @@ mod tests {
     }
 
     /// Goal: a channel minimum duty raises the laptop fan curve floor so a high-min_duty fan cannot
-    /// stall. Method: generate the default Silent laptop with min_duty 50 and assert every duty is
+    /// stall. Method: generate the default Silent laptop with `min_duty` 50 and assert every duty is
     /// at least 50.
     #[test]
     fn laptop_floor_clamped_to_min_duty() {
@@ -1452,7 +1452,7 @@ mod tests {
     }
 
     /// Goal: each member of a laptop Mix gets its curve floor raised to the channel minimum, so the
-    /// Max output cannot stall. Method: generate the Mix strategy with a GPU temp and min_duty 50,
+    /// Max output cannot stall. Method: generate the Mix strategy with a GPU temp and `min_duty` 50,
     /// then assert every member graph's duties are at least 50.
     #[test]
     fn laptop_mix_members_floor_clamped_to_min_duty() {

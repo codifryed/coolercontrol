@@ -4143,7 +4143,7 @@ mod slow_device_tests {
             {
                 let mut entries = repo.duty_cache[&TEST_TYPE_INDEX].borrow_mut();
                 let entry = entries.get_mut("fan1").unwrap();
-                entry.next_verify_at = Instant::now() - Duration::from_secs(1);
+                entry.next_verify_at = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
             }
             repo.preloaded_statuses
                 .borrow_mut()

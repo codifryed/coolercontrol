@@ -171,6 +171,11 @@ impl Sidecar {
         });
         if done_rx.recv_timeout(SHUTDOWN_GRACE).is_err() {
             warn!("Sidecar did not shut down within {SHUTDOWN_GRACE:?}; forcing process exit");
+            // A wedged hosted task means the async runtime can no longer drive the liqctld
+            // supervisor's kill path, and `process::exit` runs no destructors (so the child's
+            // `kill_on_drop` never fires). Kill the liqctld process group directly first so systemd
+            // is never left to reap (and SIGABRT) an orphan. A no-op if it already exited.
+            crate::repositories::liquidctl::liqctld_service::force_kill_liqctld();
             std::process::exit(0);
         }
     }

@@ -32,9 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             the coolercontrol-ui build at compile time, so the UI must be built first. From \
             the repo root run `make` (builds everything in the correct order), or `make \
             build-ui` to build just the UI.";
-        if std::env::var("PROFILE").as_deref() == Ok("release") {
-            panic!("{msg}");
-        }
+        assert!(
+            std::env::var("PROFILE").as_deref() != Ok("release"),
+            "{msg}"
+        );
         println!("cargo:warning={msg}");
     }
 
