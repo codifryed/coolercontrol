@@ -139,14 +139,14 @@ impl LiquidctlRepo {
         let done_rx = Self::spawn_service_task(&running, run_token.clone(), stop_token.clone());
         // Allow the Python service to start listening on the Unix socket.
         sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
-        let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES, run_token.clone()).await
-        {
-            Ok(client) => client,
-            Err(err) => {
-                let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
-                return Err(InitError::Connection { msg: err_msg }.into());
-            }
-        };
+        let liqctld_client =
+            match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES, run_token.clone()).await {
+                Ok(client) => client,
+                Err(err) => {
+                    let err_msg = Self::service_exit_message(&running, done_rx, &err).await;
+                    return Err(InitError::Connection { msg: err_msg }.into());
+                }
+            };
         liqctld_client
             .handshake()
             .await
