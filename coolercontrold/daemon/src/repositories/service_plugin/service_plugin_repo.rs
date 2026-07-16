@@ -18,13 +18,13 @@
 
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Status, TempStatus,
-    UID,
+    ChannelExtensionNames, ChannelKind, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Status,
+    TempStatus, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
 use crate::overrides::OverridesController;
-use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
+use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
@@ -83,10 +83,92 @@ pub struct ServicePluginRepo {
     device_delays: HashMap<DeviceUID, u16>,
 }
 
-#[derive(Debug)]
+/// The last preloaded status per device, kept as an upsert cache so a sensor
+/// missing from one poll keeps its last-known-good value (the per-channel
+/// staleness path substitutes a failsafe only after the threshold). Vec-backed
+/// because `tick_per_channel_staleness` operates on `&mut Vec`.
+#[derive(Debug, Default)]
 struct PreloadData {
-    channels: HashMap<ChannelName, ChannelStatus>,
-    temps: HashMap<ChannelName, TempStatus>,
+    channels: Vec<ChannelStatus>,
+    temps: Vec<TempStatus>,
+}
+
+/// Replace-or-append a fresh channel reading into the upsert cache.
+fn upsert_channel(channels: &mut Vec<ChannelStatus>, fresh: ChannelStatus) {
+    if let Some(entry) = channels.iter_mut().find(|c| c.name == fresh.name) {
+        *entry = fresh;
+    } else {
+        channels.push(fresh);
+    }
+}
+
+/// Mirror of `upsert_channel` for temps.
+fn upsert_temp(temps: &mut Vec<TempStatus>, fresh: TempStatus) {
+    if let Some(entry) = temps.iter_mut().find(|t| t.name == fresh.name) {
+        *entry = fresh;
+    } else {
+        temps.push(fresh);
+    }
+}
+
+/// Emits the one-shot logs at the per-channel failsafe engage / recover edges.
+fn log_failsafe_transition(device_name: &str, newly_failsafing: bool, just_recovered: bool) {
+    if newly_failsafing {
+        error!(
+            "Significant issue retrieving status for device: {device_name}. \
+             Substituting failsafe values for stale sensors."
+        );
+    }
+    if just_recovered {
+        info!(
+            "Recovered from failsafe for device: {device_name}. \
+             Resuming normal status reads."
+        );
+    }
+}
+
+/// Builds the failsafe seed for a device from its full declared sensor set.
+///
+/// The Monitoring panel lists sensors from `info`, and a plugin may declare a
+/// sensor in `info` yet omit it from a status read, so seeding from the initial
+/// read alone (as this repo once did) leaves such sensors unprotected. Here the
+/// real initial readings win for field shape, and every remaining `info` temp
+/// and value channel is filled with a stub so all of them get a failsafe entry.
+///
+/// Lighting and LCD channels carry no readable metric and are excluded, matching
+/// what the panel monitors. A value channel's metric shape (rpm/duty/freq/watts)
+/// is only known from a real read, so a channel absent from the initial read
+/// seeds a name-only stub rather than inventing a wrong metric.
+fn synthesize_failsafe_seed(
+    info: &DeviceInfo,
+    channel_statuses: &[ChannelStatus],
+    temp_statuses: &[TempStatus],
+) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+    let mut channels = channel_statuses.to_vec();
+    for (name, channel_info) in &info.channels {
+        match channel_info.kind {
+            ChannelKind::Lighting(_) | ChannelKind::Lcd { .. } => continue,
+            ChannelKind::Speed(_) | ChannelKind::InfoOnly => {}
+        }
+        if channels.iter().any(|c| &c.name == name) {
+            continue;
+        }
+        channels.push(ChannelStatus {
+            name: name.clone(),
+            ..Default::default()
+        });
+    }
+    let mut temps = temp_statuses.to_vec();
+    for name in info.temps.keys() {
+        if temps.iter().any(|t| &t.name == name) {
+            continue;
+        }
+        temps.push(TempStatus {
+            name: name.clone(),
+            temp: 0.0,
+        });
+    }
+    (channels, temps)
 }
 
 impl ServicePluginRepo {
@@ -628,24 +710,21 @@ impl ServicePluginRepo {
                 .retain(|name, _info| disabled_channels.contains(name).not());
         }
 
+        // Seed failsafes from the full declared sensor set (info), not just the
+        // sensors this initial read returned, so a plugin sensor missing from a
+        // later poll still resolves to a failsafe value instead of vanishing.
+        let (seed_channels, seed_temps) =
+            synthesize_failsafe_seed(&device.borrow().info, &channel_statuses, &temp_statuses);
         let (channel_failsafes, temp_failsafes) =
-            failsafe::create_failsafe_data(&channel_statuses, &temp_statuses);
+            failsafe::create_failsafe_data(&seed_channels, &seed_temps);
         if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
             failsafe_statuses
                 .borrow_mut()
                 .insert(device_uid.clone(), fsd);
         }
         let preload_data = PreloadData {
-            channels: channel_statuses
-                .iter()
-                .cloned()
-                .map(|s| (s.name.clone(), s))
-                .collect(),
-            temps: temp_statuses
-                .iter()
-                .cloned()
-                .map(|t| (t.name.clone(), t))
-                .collect(),
+            channels: channel_statuses.clone(),
+            temps: temp_statuses.clone(),
         };
         preloaded_statuses
             .borrow_mut()
@@ -660,35 +739,23 @@ impl ServicePluginRepo {
             .initialize_status_history_with(status, poll_rate);
     }
 
-    /// Records a failed status read: logs the failsafe transition once and
-    /// substitutes the failsafe values as the preloaded status.
-    fn note_status_failure(
-        &self,
-        device_uid: DeviceUID,
-        device_name: &str,
-        service: &Rc<DeviceServiceConnection>,
-    ) {
-        let mut missing_lock = self.failsafe_statuses.borrow_mut();
-        let Some(msd) = missing_lock.get_mut(&device_uid) else {
+    /// Records a whole-device read failure: marks nothing fresh this tick and
+    /// advances the per-channel staleness path so every sensor moves toward its
+    /// failsafe. The preload cache is left intact, so last-known-good values are
+    /// served during the grace window before the threshold.
+    fn note_status_failure(&self, device_uid: &DeviceUID, device_name: &str) {
+        let mut failsafe_lock = self.failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafe_lock.get_mut(device_uid) else {
             return;
         };
-        if msd.record_failure() {
-            if msd.log_once() {
-                error!(
-                    "Significant issue retrieving status for \
-                     device: {device_name}, from service: {}. \
-                     Setting failsafe values.",
-                    service.id
-                );
-            }
-            let preload_data = PreloadData {
-                channels: msd.channel_failsafes.clone(),
-                temps: msd.temp_failsafes.clone(),
-            };
-            self.preloaded_statuses
-                .borrow_mut()
-                .insert(device_uid, preload_data);
-        }
+        let mut preload_lock = self.preloaded_statuses.borrow_mut();
+        let Some(cache) = preload_lock.get_mut(device_uid) else {
+            return;
+        };
+        fsd.reset_fresh_this_tick();
+        let (newly_failsafing, just_recovered) =
+            fsd.tick_per_channel_staleness(&mut cache.channels, &mut cache.temps);
+        log_failsafe_transition(device_name, newly_failsafing, just_recovered);
     }
 
     async fn preload_device_status(
@@ -701,7 +768,7 @@ impl ServicePluginRepo {
         let Ok((mut channel_statuses, mut temp_statuses)) =
             service.client.status(&device_uid).await
         else {
-            self.note_status_failure(device_uid, &device_name, service);
+            self.note_status_failure(&device_uid, &device_name);
             apply_device_command_delay(delay).await;
             return;
         };
@@ -710,70 +777,50 @@ impl ServicePluginRepo {
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
         temp_statuses
             .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
-        {
-            let mut missing_lock = self.failsafe_statuses.borrow_mut();
-            if let Some(msd) = missing_lock.get_mut(&device_uid) {
-                let mut has_missing_statuses = false;
-                for (f_name, f_status) in &msd.channel_failsafes {
-                    if channel_statuses.iter().all(|status| &status.name != f_name) {
-                        if has_missing_statuses.not() {
-                            has_missing_statuses = true;
-                            msd.count += 1;
-                        }
-                        if msd.count > MISSING_STATUS_THRESHOLD {
-                            channel_statuses.push(f_status.clone());
-                        }
-                    }
-                }
-                for (f_name, f_status) in &msd.temp_failsafes {
-                    if temp_statuses.iter().all(|status| &status.name != f_name) {
-                        if has_missing_statuses.not() {
-                            has_missing_statuses = true;
-                            msd.count += 1;
-                        }
-                        if msd.count > MISSING_STATUS_THRESHOLD {
-                            temp_statuses.push(f_status.clone());
-                        }
-                    }
-                }
-                if has_missing_statuses {
-                    if msd.count > MISSING_STATUS_THRESHOLD && msd.logged.not() {
-                        error!(
-                            "Significant issue retrieving status for \
-                             device: {device_uid}, from service: {}. \
-                             Setting failsafe values.",
-                            service.id
-                        );
-                        msd.logged = true;
-                    }
-                } else if msd.count > 0 {
-                    let recovered = msd.count > MISSING_STATUS_THRESHOLD;
-                    msd.count = 0;
-                    if recovered {
-                        msd.logged = false;
-                        info!(
-                            "Recovered from failsafe for device: {device_name}, \
-                             from service: {}. Resuming normal status reads.",
-                            service.id
-                        );
-                    }
-                }
-            }
-        }
-        let preload_data = PreloadData {
-            channels: channel_statuses
-                .into_iter()
-                .map(|s| (s.name.clone(), s))
-                .collect(),
-            temps: temp_statuses
-                .into_iter()
-                .map(|t| (t.name.clone(), t))
-                .collect(),
-        };
-        self.preloaded_statuses
-            .borrow_mut()
-            .insert(device_uid, preload_data);
+        self.record_fresh_statuses(&device_uid, &device_name, channel_statuses, temp_statuses);
         apply_device_command_delay(delay).await;
+    }
+
+    /// Folds a successful read into the upsert cache and advances per-channel
+    /// staleness: fresh sensors reset and refresh their cached value, sensors
+    /// missing from this read tick toward their failsafe. Holds no borrow
+    /// across an await.
+    fn record_fresh_statuses(
+        &self,
+        device_uid: &DeviceUID,
+        device_name: &str,
+        channel_statuses: Vec<ChannelStatus>,
+        temp_statuses: Vec<TempStatus>,
+    ) {
+        let mut failsafe_lock = self.failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafe_lock.get_mut(device_uid) else {
+            // No failsafe seed (device declared no seedable sensors): serve the
+            // read as-is so the device still reports something.
+            self.preloaded_statuses.borrow_mut().insert(
+                device_uid.clone(),
+                PreloadData {
+                    channels: channel_statuses,
+                    temps: temp_statuses,
+                },
+            );
+            return;
+        };
+        let mut preload_lock = self.preloaded_statuses.borrow_mut();
+        let Some(cache) = preload_lock.get_mut(device_uid) else {
+            return; // A seeded device always has a preload entry (set at init).
+        };
+        fsd.reset_fresh_this_tick();
+        for status in channel_statuses {
+            fsd.mark_channel_fresh(&status.name);
+            upsert_channel(&mut cache.channels, status);
+        }
+        for status in temp_statuses {
+            fsd.mark_temp_fresh(&status.name);
+            upsert_temp(&mut cache.temps, status);
+        }
+        let (newly_failsafing, just_recovered) =
+            fsd.tick_per_channel_staleness(&mut cache.channels, &mut cache.temps);
+        log_failsafe_transition(device_name, newly_failsafing, just_recovered);
     }
 
     fn retain_enabled_channels(
@@ -816,7 +863,7 @@ impl Repository for ServicePluginRepo {
     fn failsafing(&self) -> Vec<FailsafeRef> {
         let mut out = Vec::new();
         for (device_uid, fsd) in self.failsafe_statuses.borrow().iter() {
-            out.extend(fsd.device_failsafe_refs(device_uid));
+            out.extend(fsd.per_channel_failsafe_refs(device_uid));
         }
         out
     }
@@ -983,11 +1030,7 @@ impl Repository for ServicePluginRepo {
                 .preloaded_statuses
                 .borrow()
                 .get(device_uid)
-                .map(|data| {
-                    let temps = data.temps.values().cloned().collect();
-                    let channels = data.channels.values().cloned().collect();
-                    (temps, channels)
-                })
+                .map(|data| (data.temps.clone(), data.channels.clone()))
                 .expect("Preloaded Data should always be present");
             let status = Status {
                 temps,
@@ -1289,5 +1332,143 @@ impl Repository for ServicePluginRepo {
             }
         })
         .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{synthesize_failsafe_seed, upsert_channel, upsert_temp};
+    use crate::device::{
+        ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, SpeedOptions, TempInfo, TempStatus,
+    };
+    use crate::repositories::failsafe::{self, MISSING_TEMP_FAILSAFE};
+    use std::ops::Not;
+
+    fn device_info_with(channels: Vec<(&str, ChannelKind)>, temps: Vec<&str>) -> DeviceInfo {
+        let mut info = DeviceInfo::default();
+        for (name, kind) in channels {
+            info.channels
+                .insert(name.to_string(), ChannelInfo { label: None, kind });
+        }
+        for name in temps {
+            info.temps.insert(name.to_string(), TempInfo::default());
+        }
+        info
+    }
+
+    fn temp(name: &str, value: f64) -> TempStatus {
+        TempStatus {
+            name: name.to_string(),
+            temp: value,
+        }
+    }
+
+    fn fan(name: &str, rpm: u32, duty: f64) -> ChannelStatus {
+        ChannelStatus {
+            name: name.to_string(),
+            rpm: Some(rpm),
+            duty: Some(duty),
+            ..Default::default()
+        }
+    }
+
+    // Goal: an info temp the initial read omitted must still get a seed entry so
+    // it is protected. Method: seed with a read that lacks "temp_missing" and
+    // assert the synthesized seed contains it while preserving the read temp.
+    #[test]
+    fn synthesize_seed_covers_info_temps_missing_from_read() {
+        let info = device_info_with(vec![], vec!["temp_present", "temp_missing"]);
+        let read_temps = vec![temp("temp_present", 42.0)];
+        let (_channels, temps) = synthesize_failsafe_seed(&info, &[], &read_temps);
+        let names: Vec<&str> = temps.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"temp_present"));
+        assert!(names.contains(&"temp_missing"));
+        assert_eq!(temps.len(), 2); // the present temp is not duplicated
+        let present = temps.iter().find(|t| t.name == "temp_present").unwrap();
+        assert_eq!(present.temp, 42.0); // real reading preserved for shape
+    }
+
+    // Goal: the end-to-end bug scenario. A plugin temp declared in info but never
+    // read once blanked Dashboards because it had no failsafe. Method: feed the
+    // synthesized seed into create_failsafe_data and assert the missing temp gets
+    // the critical failsafe value.
+    #[test]
+    fn info_only_temp_gets_critical_failsafe_value() {
+        let info = device_info_with(vec![], vec!["temp_missing"]);
+        let (seed_channels, seed_temps) = synthesize_failsafe_seed(&info, &[], &[]);
+        let (_channel_failsafes, temp_failsafes) =
+            failsafe::create_failsafe_data(&seed_channels, &seed_temps);
+        let failsafe_value = temp_failsafes
+            .get("temp_missing")
+            .expect("seeded from info");
+        assert_eq!(failsafe_value.temp, MISSING_TEMP_FAILSAFE);
+    }
+
+    // Goal: value channels (Speed, InfoOnly) missing from the read seed a
+    // name-only stub, while Lighting/Lcd channels carry no metric and are
+    // excluded, matching what the panel monitors. Method: one channel of each
+    // kind, none present in the read.
+    #[test]
+    fn synthesize_seed_channels_by_kind() {
+        let info = device_info_with(
+            vec![
+                ("fan", ChannelKind::Speed(SpeedOptions::default())),
+                ("power", ChannelKind::InfoOnly),
+                ("rgb", ChannelKind::Lighting(vec![])),
+                (
+                    "screen",
+                    ChannelKind::Lcd {
+                        modes: vec![],
+                        info: None,
+                    },
+                ),
+            ],
+            vec![],
+        );
+        let (channels, _temps) = synthesize_failsafe_seed(&info, &[], &[]);
+        let names: Vec<&str> = channels.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"fan"));
+        assert!(names.contains(&"power"));
+        assert!(names.contains(&"rgb").not()); // lighting excluded
+        assert!(names.contains(&"screen").not()); // lcd excluded
+                                                  // Stubs carry no metric shape; it is only known from a real read.
+        let fan_stub = channels.iter().find(|c| c.name == "fan").unwrap();
+        assert!(fan_stub.rpm.is_none());
+        assert!(fan_stub.duty.is_none());
+    }
+
+    // Goal: a real reading present in the initial read keeps its shape and is not
+    // shadowed or duplicated by an info stub. Method: read reports "fan" with
+    // rpm/duty; info also declares it as a Speed channel.
+    #[test]
+    fn synthesize_seed_prefers_real_reading_shape() {
+        let info = device_info_with(
+            vec![("fan", ChannelKind::Speed(SpeedOptions::default()))],
+            vec![],
+        );
+        let read = vec![fan("fan", 1200, 55.0)];
+        let (channels, _temps) = synthesize_failsafe_seed(&info, &read, &[]);
+        assert_eq!(channels.len(), 1); // not duplicated by the info stub
+        assert_eq!(channels[0].rpm, Some(1200));
+        assert_eq!(channels[0].duty, Some(55.0));
+    }
+
+    // Goal: the upsert cache replaces an existing sensor in place (last-known-good
+    // maintained) and appends a new one, never growing on a repeated name.
+    #[test]
+    fn upsert_replaces_then_appends() {
+        let mut channels = vec![fan("fan", 1000, 40.0)];
+        upsert_channel(&mut channels, fan("fan", 1500, 60.0));
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].rpm, Some(1500));
+        upsert_channel(&mut channels, fan("fan2", 800, 30.0));
+        assert_eq!(channels.len(), 2);
+
+        let mut temps = vec![temp("t", 30.0)];
+        upsert_temp(&mut temps, temp("t", 45.0));
+        assert_eq!(temps.len(), 1);
+        assert_eq!(temps[0].temp, 45.0);
+        upsert_temp(&mut temps, temp("t2", 50.0));
+        assert_eq!(temps.len(), 2);
     }
 }
