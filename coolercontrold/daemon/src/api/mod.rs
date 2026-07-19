@@ -80,7 +80,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
 use axum_server::tls_rustls::RustlsConfig;
 use derive_more::{Display, Error};
-use log::{debug, info, warn};
+use log::{debug, info, warn, Level};
 use moro_local::Scope;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -147,11 +147,9 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port)
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
-    let ipv4 = determine_ipv4_address(&config, rest_port)
-        .inspect_err(|err| warn!("IPv4 bind error: {err}"));
-    let ipv6 = determine_ipv6_address(&config, rest_port)
-        .inspect_err(|err| warn!("IPv6 bind error: {err}"));
-    if ipv4.is_err() && ipv6.is_err() {
+    let ipv4 = log_bind_outcome(determine_ipv4_address(&config, rest_port), "IPv4");
+    let ipv6 = log_bind_outcome(determine_ipv6_address(&config, rest_port), "IPv6");
+    if ipv4.is_none() && ipv6.is_none() {
         return Err(anyhow!(
             "Could not bind API to any address. No API and UI connection available."
         ));
@@ -225,11 +223,9 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port.map(|p| p + 1))
                 .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
         });
-    let grpc_ipv4 = determine_ipv4_address(&config, grpc_port)
-        .inspect_err(|err| warn!("IPv4 GRPC bind error: {err}"));
-    let grpc_ipv6 = determine_ipv6_address(&config, grpc_port)
-        .inspect_err(|err| warn!("IPv6 GRPC bind error: {err}"));
-    if grpc_ipv4.is_err() && grpc_ipv6.is_err() {
+    let grpc_ipv4 = log_bind_outcome(determine_ipv4_address(&config, grpc_port), "IPv4 GRPC");
+    let grpc_ipv6 = log_bind_outcome(determine_ipv6_address(&config, grpc_port), "IPv6 GRPC");
+    if grpc_ipv4.is_none() && grpc_ipv6.is_none() {
         return Err(anyhow!(
             "Could not bind GRPC API to any address. External Device services are unavailable."
         ));
@@ -244,10 +240,10 @@ pub async fn start_server<'s>(
     // data and is invoked on the sidecar to construct the `!Send` server future.
     crate::sidecar::handle().spawn(move || {
         run_all_api_servers(
-            ipv4.ok(),
-            ipv6.ok(),
-            grpc_ipv4.ok(),
-            grpc_ipv6.ok(),
+            ipv4,
+            ipv6,
+            grpc_ipv4,
+            grpc_ipv6,
             app_state,
             session_layer,
             expired_deletion_store,
@@ -980,51 +976,65 @@ fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
     }
 }
 
-fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
-    match env::var(ENV_HOST_IP4) {
-        Ok(env_ipv4) => {
-            if env_ipv4.trim().is_empty() {
-                return Err(anyhow!("IPv4 address disabled"));
-            }
-            is_free_tcp_ipv4(Some(&env_ipv4), port)
-        }
-        Err(_) => {
-            // get from config
-            match config.get_settings()?.ipv4_address {
-                Some(ipv4_str) => {
-                    if ipv4_str.is_empty() {
-                        Err(anyhow!("IPv4 address disabled"))
-                    } else {
-                        is_free_tcp_ipv4(Some(&ipv4_str), port)
-                    }
-                }
-                None => is_free_tcp_ipv4(None, port), // Defaults to loopback
-            }
-        }
+/// How an address family was configured. An empty value is a deliberate opt-out, not a failure.
+#[derive(Debug, PartialEq, Eq)]
+enum AddressSetting<'a> {
+    /// Nothing configured. Falls back to the loopback address.
+    Unset,
+    /// Empty value. This address family is turned off.
+    Disabled,
+    Set(&'a str),
+}
+
+fn address_setting(configured: Option<&str>) -> AddressSetting<'_> {
+    match configured {
+        None => AddressSetting::Unset,
+        Some(address) if address.trim().is_empty() => AddressSetting::Disabled,
+        Some(address) => AddressSetting::Set(address),
     }
 }
 
-fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
-    match env::var(ENV_HOST_IP6) {
-        Ok(env_ipv6) => {
-            if env_ipv6.trim().is_empty() {
-                return Err(anyhow!("IPv6 address disabled"));
-            }
-            is_free_tcp_ipv6(Some(&env_ipv6), port)
-        }
-        Err(_) => {
-            // get from config
-            match config.get_settings()?.ipv6_address {
-                Some(ipv6_str) => {
-                    if ipv6_str.is_empty() {
-                        Err(anyhow!("IPv6 address disabled"))
-                    } else {
-                        is_free_tcp_ipv6(Some(&ipv6_str), port)
-                    }
-                }
-                None => is_free_tcp_ipv6(None, port), // Defaults to loopback
-            }
-        }
+/// What to log about a resolution outcome, if anything. A disabled family is normal
+/// operation and only informational: warning about it looks like a malfunction.
+fn bind_outcome_log<A>(outcome: &Result<Option<A>>, family: &str) -> Option<(Level, String)> {
+    match outcome {
+        Ok(Some(_)) => None,
+        Ok(None) => Some((Level::Info, format!("{family} address disabled"))),
+        Err(err) => Some((Level::Warn, format!("{family} bind error: {err}"))),
+    }
+}
+
+/// Logs how an address family resolved and reduces it to the address to bind, if any.
+fn log_bind_outcome<A>(outcome: Result<Option<A>>, family: &str) -> Option<A> {
+    if let Some((level, message)) = bind_outcome_log(&outcome, family) {
+        log::log!(level, "{message}");
+    }
+    outcome.ok().flatten()
+}
+
+/// `Ok(None)` means the address family is disabled by configuration.
+fn determine_ipv4_address(config: &Rc<Config>, port: Port) -> Result<Option<SocketAddrV4>> {
+    let configured = match env::var(ENV_HOST_IP4) {
+        Ok(env_ipv4) => Some(env_ipv4),
+        Err(_) => config.get_settings()?.ipv4_address,
+    };
+    match address_setting(configured.as_deref()) {
+        AddressSetting::Disabled => Ok(None),
+        AddressSetting::Set(address) => is_free_tcp_ipv4(Some(address), port).map(Some),
+        AddressSetting::Unset => is_free_tcp_ipv4(None, port).map(Some),
+    }
+}
+
+/// `Ok(None)` means the address family is disabled by configuration.
+fn determine_ipv6_address(config: &Rc<Config>, port: Port) -> Result<Option<SocketAddrV6>> {
+    let configured = match env::var(ENV_HOST_IP6) {
+        Ok(env_ipv6) => Some(env_ipv6),
+        Err(_) => config.get_settings()?.ipv6_address,
+    };
+    match address_setting(configured.as_deref()) {
+        AddressSetting::Disabled => Ok(None),
+        AddressSetting::Set(address) => is_free_tcp_ipv6(Some(address), port).map(Some),
+        AddressSetting::Unset => is_free_tcp_ipv6(None, port).map(Some),
     }
 }
 
@@ -1244,6 +1254,63 @@ pub struct AppState {
 mod tests {
     use super::*;
     use tower::ServiceExt as _;
+
+    /// An empty or blank address is the documented way to turn an address family off,
+    /// so it must resolve to `Disabled` and never reach the parser.
+    #[test]
+    fn test_address_setting_empty_is_disabled() {
+        assert_eq!(address_setting(Some("")), AddressSetting::Disabled);
+        assert_eq!(address_setting(Some("   ")), AddressSetting::Disabled);
+        assert_eq!(address_setting(Some("\t\n")), AddressSetting::Disabled);
+    }
+
+    /// A missing value falls back to loopback, a present one is used as given.
+    #[test]
+    fn test_address_setting_unset_and_set() {
+        assert_eq!(address_setting(None), AddressSetting::Unset);
+        assert_eq!(address_setting(Some("::1")), AddressSetting::Set("::1"));
+        assert_eq!(
+            address_setting(Some("127.0.0.1")),
+            AddressSetting::Set("127.0.0.1")
+        );
+    }
+
+    /// The regression this guards: disabling IPv6 on purpose used to warn, which reads
+    /// as a malfunction in the logs. It must be informational.
+    #[test]
+    fn test_disabled_family_logs_info() {
+        let outcome: Result<Option<SocketAddrV6>> = Ok(None);
+        let (level, message) = bind_outcome_log(&outcome, "IPv6").expect("disabled is logged");
+        assert_eq!(level, Level::Info);
+        assert_eq!(message, "IPv6 address disabled");
+    }
+
+    /// A real bind failure must still warn, at both the REST and GRPC call sites.
+    #[test]
+    fn test_bind_failure_logs_warn() {
+        let outcome: Result<Option<SocketAddrV6>> = Err(anyhow!("port in use"));
+        let (level, message) = bind_outcome_log(&outcome, "IPv6 GRPC").expect("failure is logged");
+        assert_eq!(level, Level::Warn);
+        assert_eq!(message, "IPv6 GRPC bind error: port in use");
+    }
+
+    /// A successfully resolved address is silent and passes straight through.
+    #[test]
+    fn test_bound_address_is_silent() {
+        let address = SocketAddrV6::new(Ipv6Addr::LOCALHOST, 11987, 0, 0);
+        let outcome: Result<Option<SocketAddrV6>> = Ok(Some(address));
+        assert!(bind_outcome_log(&outcome, "IPv6").is_none());
+        assert_eq!(log_bind_outcome(outcome, "IPv6"), Some(address));
+    }
+
+    /// Both log paths reduce to "nothing to bind" so the caller's no-address check fires.
+    #[test]
+    fn test_disabled_and_failed_both_yield_no_address() {
+        let disabled: Result<Option<SocketAddrV4>> = Ok(None);
+        assert_eq!(log_bind_outcome(disabled, "IPv4"), None);
+        let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
+        assert_eq!(log_bind_outcome(failed, "IPv4"), None);
+    }
 
     fn default_allowed_hosts() -> Vec<String> {
         vec![
