@@ -1,6 +1,6 @@
 [Unit]
 Description=CoolerControl Daemon
-After=network.target
+After=network.target lm-sensors.service lm_sensors.service
 StartLimitIntervalSec=60
 StartLimitBurst=10
 
