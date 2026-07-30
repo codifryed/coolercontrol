@@ -46,7 +46,7 @@ sudo make install
 ```
 
 **Alternatively:**  
-One can use the dev-build and dev-install steps below.
+One can use the build and dev-install steps below.
 
 ## Development
 
@@ -67,7 +67,7 @@ make
 You can also build the daemon and desktop release binaries:
 
 ```bash
-cd .. && make dev-build
+cd .. && make build
 ```
 
 Install the build daemon and desktop binaries to the system:
@@ -79,7 +79,7 @@ cd .. && make dev-install
 Run all tests for the UI assets, daemon, and desktop application:
 
 ```bash
-cd .. && make dev-test
+cd .. && make test
 ```
 
 ## Formatting
