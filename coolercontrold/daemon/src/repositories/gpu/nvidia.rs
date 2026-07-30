@@ -17,7 +17,7 @@
  */
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::{Add, Not, RangeInclusive, Sub};
 use std::rc::Rc;
@@ -28,7 +28,8 @@ use crate::rt;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
-use nvml_wrapper::enums::device::SampleValue;
+use nvml_wrapper::enums::device::{DeviceArchitecture, SampleValue};
+use nvml_wrapper::error::NvmlError;
 use nvml_wrapper::structs::device::FieldId;
 use nvml_wrapper::sys_exports::field_id;
 use nvml_wrapper::Nvml;
@@ -237,8 +238,26 @@ impl GpuNVidia {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             return NvmlInitResult::Unavailable;
         }
-        self.nvapi = super::nvapi::NvApi::try_init();
+        let register_hotspot_buses = self.collect_register_hotspot_buses();
+        self.nvapi = super::nvapi::NvApi::try_init(&register_hotspot_buses);
         NvmlInitResult::Active(self.nvidia_nvml_devices.len() as u8)
+    }
+
+    /// PCI bus IDs of the GPUs whose architecture keeps hotspot out of the nvapi
+    /// thermals array, so nvapi reads it from the aggregated hotspot register instead.
+    fn collect_register_hotspot_buses(&self) -> HashSet<u32> {
+        let mut register_hotspot_buses = HashSet::with_capacity(self.nvidia_nvml_devices.len());
+        for nvml_device in self.nvidia_nvml_devices.values() {
+            let nvml_device = nvml_device.borrow();
+            if needs_hotspot_register(nvml_device.architecture()).not() {
+                continue;
+            }
+            let Ok(pci_info) = nvml_device.pci_info() else {
+                continue;
+            };
+            register_hotspot_buses.insert(pci_info.bus);
+        }
+        register_hotspot_buses
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -1469,6 +1488,21 @@ fn collect_nvml_device_uids(
     device_uids
 }
 
+/// True when the GPU is Blackwell or newer, which is where NVIDIA stopped publishing
+/// hotspot through the nvapi thermals array. NVML's architecture constants are ordered,
+/// so anything at or above Blackwell is newer: `Unknown` (`u32::MAX`) and the raw values
+/// this nvml-wrapper release cannot map both land there. A wrong guess is cheap, since
+/// nvapi probes the register once and falls back to the thermals array if it fails.
+fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -> bool {
+    let raw_architecture = match architecture {
+        Ok(architecture) => architecture.as_c(),
+        Err(NvmlError::UnexpectedVariant(raw_architecture)) => raw_architecture,
+        // Any other error means the architecture is unreadable, not that it is newer.
+        Err(_) => return false,
+    };
+    raw_architecture >= DeviceArchitecture::Blackwell.as_c()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1554,5 +1588,33 @@ mod tests {
         let uid_a = nvml_name_and_uid(Some("GPU A".to_string()), 2).1;
         let repo = repo_with_disabled(&[]);
         assert!(repo.is_nvml_device_disabled(&uid_a).not());
+    }
+
+    #[test]
+    fn blackwell_and_newer_take_the_hotspot_register() {
+        // Blackwell is the cutoff where hotspot left the thermals array. Unknown is NVML
+        // saying "newer than I know", and UnexpectedVariant is a raw constant this
+        // nvml-wrapper release cannot name yet; both sort above Blackwell, so both take
+        // the register path rather than silently losing the sensor on a new card.
+        assert!(needs_hotspot_register(Ok(DeviceArchitecture::Blackwell)));
+        assert!(needs_hotspot_register(Ok(DeviceArchitecture::Unknown)));
+        assert!(needs_hotspot_register(Err(NvmlError::UnexpectedVariant(
+            DeviceArchitecture::Blackwell.as_c() + 1
+        ))));
+    }
+
+    #[test]
+    fn older_architectures_keep_the_thermals_array() {
+        // Every architecture below Blackwell reports hotspot through the thermals array,
+        // as does a raw constant that sorts below it. An architecture that simply could
+        // not be read is not evidence of a new card, so it stays on the old path too.
+        assert!(needs_hotspot_register(Ok(DeviceArchitecture::Ada)).not());
+        assert!(needs_hotspot_register(Ok(DeviceArchitecture::Hopper)).not());
+        assert!(needs_hotspot_register(Ok(DeviceArchitecture::Kepler)).not());
+        assert!(needs_hotspot_register(Err(NvmlError::UnexpectedVariant(
+            DeviceArchitecture::Blackwell.as_c() - 1
+        )))
+        .not());
+        assert!(needs_hotspot_register(Err(NvmlError::NotSupported)).not());
     }
 }
