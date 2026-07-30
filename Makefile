@@ -13,11 +13,11 @@ qt_dir := 'coolercontrol'
 CARGO := $(shell command -v cargo || command -v cargo-1.88 || command -v cargo-1.85 || command -v cargo-1.91)
 
 .PHONY: help \
-	build build-ui build-daemon build-qt dev-build \
+	build build-ui build-daemon build-qt \
 	build-offline build-daemon-offline build-ui-offline \
-	test test-ui test-daemon test-qt dev-test \
+	test test-ui test-daemon test-qt \
 	ci-install ci-test ci-test-ui ci-test-daemon ci-test-qt \
-	ci-check ci-fmt pr-check validate-metadata \
+	ci-check ci-fmt ci-local pr-check validate-metadata \
 	clean clean-ui install install-source uninstall dev-run dev-install
 
 # Run `make help` for the common developer targets.
@@ -27,13 +27,13 @@ help:
 	@printf '    make build            Build everything (UI + daemon + Qt), release\n'
 	@printf '    make build-ui         Build just the Vue UI (embedded in the daemon)\n'
 	@printf '    make build-daemon     Build the Rust daemon (builds UI first)\n'
-	@printf '    make build-qt         Build the Qt desktop app\n'
-	@printf '    make dev-build        Clean UI, then full release build\n\n'
+	@printf '    make build-qt         Build the Qt desktop app\n\n'
 	@printf '  \033[1mTest & check\033[0m\n'
 	@printf '    make test             Run all tests (UI + daemon + Qt)\n'
 	@printf '    make test-daemon      Run daemon (Rust) tests\n'
 	@printf '    make test-ui          Run UI (Vitest) tests\n'
-	@printf '    make pr-check         Pre-PR gate: lint diff, tests, clippy, Qt build\n\n'
+	@printf '    make pr-check         Pre-PR gate: lint diff, tests, clippy, Qt build\n'
+	@printf '    make ci-local         Reproduce the CI pipeline locally (full clean, slow)\n\n'
 	@printf '  \033[1mFormat & lint\033[0m\n'
 	@printf '    make ci-fmt           Auto-format all files (trunk)\n'
 	@printf '    make ci-check         Run formatting/lint checks (trunk)\n\n'
@@ -143,10 +143,8 @@ dev-run: build-qt
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 
-# full release build of daemon and UI binaries:
-dev-build: clean-ui build
-
-dev-test: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
+# reproduce the CI pipeline locally: full clean, CI tooling, trunk checks, junit-producing tests
+ci-local: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
 # pre-PR gate: lints the committed branch diff only, then UI and daemon tests, clippy pedantic, Qt build
 # usage: make pr-check [base=<ref>]
@@ -161,7 +159,7 @@ pr-check: validate-metadata
 	@$(MAKE) -C $(qt_dir) build
 
 # installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)
-dev-install:
+dev-install: build
 	@sudo $(MAKE) install
 	@sudo systemctl restart coolercontrold
 

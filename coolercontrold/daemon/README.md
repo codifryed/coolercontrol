@@ -71,7 +71,7 @@ sudo make install
 ```
 
 **Alternatively:**  
-One can use the dev-build and dev-install steps below.
+One can use the build and dev-install steps below.
 
 ## Development
 
@@ -79,10 +79,10 @@ When developing the daemon, one has to also consider that it embeds the web asse
 To this end, the best way to develop the application is to install one of the distribution packages,
 then:
 
-Clean & Build the UI assets, daemon and desktop release binaries:
+Build the UI assets, daemon and desktop release binaries:
 
 ```bash
-cd ../.. && make dev-build
+cd ../.. && make build
 ```
 
 Install the build daemon and desktop binaries:
@@ -94,7 +94,7 @@ cd ../.. && make dev-install
 Run all tests for the UI assets, daemon, and desktop application:
 
 ```bash
-cd ../.. && make dev-test
+cd ../.. && make test
 ```
 
 **Alternatively:**  
