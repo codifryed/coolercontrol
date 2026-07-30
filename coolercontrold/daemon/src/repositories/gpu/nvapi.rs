@@ -20,6 +20,7 @@
 // Based on reverse engineering work from the LACT project:
 // https://github.com/ilya-zlobintsev/LACT (MIT License, Copyright 2023 Ilya Zlobintsev)
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, CStr};
 use std::mem;
@@ -141,17 +142,19 @@ impl NvGpuRegisterOpData {
 
 /// How one GPU's hotspot temperature has to be read. Resolved once at init so the
 /// per-tick read is a straight dispatch with no capability probing.
-#[derive(Clone, Copy)]
 enum HotspotSource {
     /// Pre-Blackwell: a fixed slot of the nvapi thermals array.
     Thermals { read: ThermalsFn, mask: i32 },
-    /// Blackwell and newer: that slot reads back invalid, so the aggregated hotspot
-    /// register is read directly.
-    Register { read: RegisterOpFn },
+    /// Blackwell and newer: read via the aggregated hotspot register. The request
+    /// buffer is built once and reused, so a poll tick issues no new allocation.
+    /// Boxed so the batch-sized buffer doesn't blow up every `HotspotSource`.
+    Register {
+        read: RegisterOpFn,
+        request: Box<RefCell<NvGpuRegisterOpData>>,
+    },
 }
 
-/// The nvapi entry points a hotspot read can go through. Either may be missing on a
-/// given driver, so source resolution picks from whatever actually resolved.
+/// The nvapi entry points a hotspot read can go through; either may be unresolved.
 struct HotspotFunctions {
     thermals: Option<ThermalsFn>,
     register_op: Option<RegisterOpFn>,
@@ -190,12 +193,12 @@ impl NvApi {
     /// Returns the hotspot/junction temperature for the GPU at the given PCI bus ID.
     pub fn get_hotspot_temp(&self, pci_bus: u32) -> Option<f64> {
         let entry = self.gpu_entries.get(&pci_bus)?;
-        match entry.hotspot_source {
+        match &entry.hotspot_source {
             HotspotSource::Thermals { read, mask } => {
-                read_thermals_hotspot(self.query_interface, read, entry.handle, mask)
+                read_thermals_hotspot(self.query_interface, *read, entry.handle, *mask)
             }
-            HotspotSource::Register { read } => {
-                read_register_hotspot(self.query_interface, read, entry.handle)
+            HotspotSource::Register { read, request } => {
+                read_register_hotspot(self.query_interface, *read, entry.handle, request)
             }
         }
     }
@@ -243,31 +246,29 @@ fn read_register_hotspot(
     query_interface: QueryInterfaceFn,
     register_op_fn: RegisterOpFn,
     handle: NvHandle,
+    request: &RefCell<NvGpuRegisterOpData>,
 ) -> Option<f64> {
-    let raw_value = read_register(
-        query_interface,
-        register_op_fn,
-        handle,
-        REGISTER_OFFSET_HOTSPOT,
-    )?;
+    let raw_value = read_register(query_interface, register_op_fn, handle, request)?;
     register_temp_celsius(raw_value)
 }
 
-/// Issues a single 32-bit global register read and returns the raw value.
+/// Issues the request's single 32-bit global register read and returns the raw value.
+/// `request` is reused across calls: only its `value`/`status` op fields change per read.
 fn read_register(
     query_interface: QueryInterfaceFn,
     register_op_fn: RegisterOpFn,
     handle: NvHandle,
-    offset: u32,
+    request: &RefCell<NvGpuRegisterOpData>,
 ) -> Option<u64> {
-    let mut data = NvGpuRegisterOpData::new_read(offset);
+    let mut data = request.borrow_mut();
     // SAFETY: register_op_fn was resolved once at init and is a validated nvapi
     // function pointer. NvGpuRegisterOpData is #[repr(C)] with the version field
     // encoding its own size, which is how the driver validates the layout.
-    let status = unsafe { register_op_fn(handle, &raw mut data) };
+    let status = unsafe { register_op_fn(handle, &raw mut *data) };
     if status != 0 {
         debug!(
-            "nvapi register read of {offset:#x} failed: {}",
+            "nvapi register read of {:#x} failed: {}",
+            data.ops[0].offset,
             error_message(query_interface, status)
         );
         return None;
@@ -450,10 +451,8 @@ fn collect_gpu_entries(
     gpu_entries
 }
 
-/// Picks the read path for one GPU. Blackwell and newer are probed for the register
-/// first, since their thermals array carries no hotspot. The probe also covers the
-/// architectures NVML could not classify: guessing register there costs one read, and a
-/// card that turns out to be older just falls back to the thermals array.
+/// Picks the read path for one GPU: register first when `prefers_register`, else the
+/// thermals array. A failed probe falls back to thermals, so a wrong guess is cheap.
 fn resolve_hotspot_source(
     query_interface: QueryInterfaceFn,
     functions: &HotspotFunctions,
@@ -462,8 +461,11 @@ fn resolve_hotspot_source(
 ) -> Option<HotspotSource> {
     if prefers_register {
         if let Some(read) = functions.register_op {
-            if read_register_hotspot(query_interface, read, handle).is_some() {
-                return Some(HotspotSource::Register { read });
+            let request = Box::new(RefCell::new(NvGpuRegisterOpData::new_read(
+                REGISTER_OFFSET_HOTSPOT,
+            )));
+            if read_register_hotspot(query_interface, read, handle, &request).is_some() {
+                return Some(HotspotSource::Register { read, request });
             }
             debug!("nvapi hotspot register unreadable, falling back to the thermals array");
         }

@@ -1488,11 +1488,9 @@ fn collect_nvml_device_uids(
     device_uids
 }
 
-/// True when the GPU is Blackwell or newer, which is where NVIDIA stopped publishing
-/// hotspot through the nvapi thermals array. NVML's architecture constants are ordered,
-/// so anything at or above Blackwell is newer: `Unknown` (`u32::MAX`) and the raw values
-/// this nvml-wrapper release cannot map both land there. A wrong guess is cheap, since
-/// nvapi probes the register once and falls back to the thermals array if it fails.
+/// True for Blackwell and newer, where nvapi thermals no longer exposes hotspot.
+/// `Unknown` and unmapped raw variants sort above Blackwell too; guessing wrong there
+/// only costs one register probe, since nvapi falls back to thermals on failure.
 fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -> bool {
     let raw_architecture = match architecture {
         Ok(architecture) => architecture.as_c(),
