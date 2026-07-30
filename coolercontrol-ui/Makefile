@@ -12,10 +12,10 @@ build: dist
 dev:
 	@npm run dev
 
+# fast inner loop: vite build only, no type-check. The daemon's sync-app takes dist/
 dev-run:
 	@npm ci --prefer-offline
-	@npm exec vite build -- --outDir ../coolercontrold/resources/app --emptyOutDir
-	@git restore ../coolercontrold/resources/app/.gitignore
+	@npm run build-only
 
 offline:
 	@npm run build --offline
