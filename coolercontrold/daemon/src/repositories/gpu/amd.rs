@@ -926,15 +926,38 @@ impl GpuAMD {
         Self::set_fan_curve(flat_curve, &fan_curve_info.path).await
     }
 
+    /// Stages every curve point and commits them as one table.
+    ///
+    /// A point write only stages a value; the commit uploads all points at once and flips the
+    /// firmware into manual curve mode, where it validates every point. Points that were never
+    /// staged keep whatever the last reset left, which on a card with no custom curve is 0C/0%,
+    /// below both minimums. Committing that half-written table is rejected with `EIO`
+    /// (`OD_FAN_CURVE_PWM_ERROR`), so a failed point write must abandon the commit and reset
+    /// back to automatic rather than leave the table poisoned.
     async fn set_fan_curve(fan_curve: FanCurve, fan_curve_path: &Path) -> Result<()> {
         for (i, (temp, duty)) in fan_curve.points.into_iter().enumerate() {
-            cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n"))
-                .await
-                .map_err(|err| anyhow!("Error applying '{i} {temp} {duty}' to Fan Curve: {err}"))?;
+            let Err(err) =
+                cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n")).await
+            else {
+                continue;
+            };
+            Self::reset_fan_curve(fan_curve_path).await;
+            return Err(anyhow!(
+                "Error applying '{i} {temp} {duty}' to Fan Curve: {err}"
+            ));
         }
         cc_fs::write(&fan_curve_path, b"c\n".to_vec())
             .await
             .map_err(|err| anyhow!("Error committing Fan Curve changes: {err}"))
+    }
+
+    /// Returns the curve to firmware automatic mode, discarding anything staged.
+    ///
+    /// The kernel falls through from restore into commit, so this needs no separate commit.
+    async fn reset_fan_curve(fan_curve_path: &Path) {
+        if let Err(err) = cc_fs::write(&fan_curve_path, b"r\n".to_vec()).await {
+            error!("Error resetting Fan Curve to automatic mode: {err}");
+        }
     }
 
     /// Creates a "flat" fan curve by setting the duty with the `temp_min` and all the rest of
@@ -1752,6 +1775,57 @@ mod tests {
             load_teardown(&ctx).await;
             assert_eq!(path, None);
             assert_eq!(range, 0..=0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn set_fan_curve_commits_after_staging_every_point() {
+        // Verifies the commit is the last thing written, so the firmware receives the whole
+        // table in one upload.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a writable fan_curve file.
+            let path = write_fan_ctrl_file(&ctx, "fan_curve", "").await;
+            let fan_curve = FanCurve {
+                points: vec![(25, 25), (50, 50), (75, 75)],
+            };
+
+            // when:
+            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+            let last_written = cc_fs::read_txt(&path).await.unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_ok());
+            assert_eq!(last_written, "c\n");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn set_fan_curve_reports_the_failing_point_and_skips_the_commit() {
+        // Verifies a point that cannot be staged aborts the whole apply. Committing a
+        // half-staged table is what the firmware rejects with EIO (OD_FAN_CURVE_PWM_ERROR),
+        // because the points never written keep the 0C/0% defaults left by the last reset.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a fan_curve path that cannot be written, because its parent is a file.
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let path = blocker.join("fan_curve");
+            let fan_curve = FanCurve {
+                points: vec![(25, 25), (50, 50)],
+            };
+
+            // when:
+            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Error applying '0 25 25'"), "actual: {err}");
+            assert!(err.contains("committing").not(), "actual: {err}");
         });
     }
 }
