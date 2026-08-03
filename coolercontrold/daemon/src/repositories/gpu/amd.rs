@@ -42,6 +42,7 @@ use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
 use libdrm_amdgpu_sys::AMDGPU::{CHIP_CLASS, GPU_INFO};
 use log::{debug, error, info, trace, warn};
+use nix::libc;
 use regex::Regex;
 
 pub const TEMP_FOR_FAN_CURVE: &str = "temp1";
@@ -383,8 +384,13 @@ impl GpuAMD {
 
         let zero_rpm = Self::get_zero_rpm_enable_path(device_path).await;
         if zero_rpm.is_none() {
+            // Whether the firmware applies Zero RPM at all is a per-device pptable decision.
+            // Some cards, such as the Radeon AI PRO R9700, never stop the fan. Do not claim
+            // a behavior we cannot observe, only that we cannot change it.
             info!(
-                "AMD GPU RDNA 3/4 Fan Control limitations: Fan will use Zero RPM Mode until 50/60C"
+                "AMD GPU RDNA 3/4 Fan Control limitations: Zero RPM Mode is not adjustable \
+                for this device. If its firmware stops the fan below a temperature threshold, \
+                that cannot be changed."
             );
         }
 
@@ -948,7 +954,31 @@ impl GpuAMD {
         }
         cc_fs::write(&fan_curve_path, b"c\n".to_vec())
             .await
-            .map_err(|err| anyhow!("Error committing Fan Curve changes: {err}"))
+            .map_err(|err| Self::describe_commit_error(&err))
+    }
+
+    /// Explains a fan curve commit failure, since the bare errno is not actionable.
+    ///
+    /// `EIO` means PMFW rejected the uploaded `OverDrive` table and named the reason in the
+    /// kernel log. The reason we cannot recover from is a stale unsupported feature bit left
+    /// staged by a write to an unsupported Zero RPM endpoint, which disables `OverDrive` for
+    /// the rest of the boot.
+    fn describe_commit_error(err: &anyhow::Error) -> anyhow::Error {
+        if Self::is_firmware_rejection(err).not() {
+            return anyhow!("Error committing Fan Curve changes: {err}");
+        }
+        anyhow!(
+            "Error committing Fan Curve changes: {err}. The GPU firmware rejected the \
+            OverDrive table. Search the kernel log for 'Invalid overdrive table content' \
+            for the reason. If it reports OD_UNSUPPORTED_FEATURE, this GPU's OverDrive is \
+            disabled until the amdgpu module is reloaded or the machine is rebooted."
+        )
+    }
+
+    fn is_firmware_rejection(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::raw_os_error)
+            .is_some_and(|errno| errno == libc::EIO)
     }
 
     /// Returns the curve to firmware automatic mode, discarding anything staged.
@@ -1253,6 +1283,7 @@ mod tests {
         AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
     };
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use nix::libc;
     use std::ops::Not;
     use std::ops::RangeInclusive;
     use std::path::PathBuf;
@@ -1827,5 +1858,41 @@ mod tests {
             assert!(err.contains("Error applying '0 25 25'"), "actual: {err}");
             assert!(err.contains("committing").not(), "actual: {err}");
         });
+    }
+
+    #[test]
+    fn commit_error_explains_a_firmware_rejection() {
+        // Verifies an EIO commit failure carries the recovery guidance, since the bare errno
+        // gives a user no way to tell a rejected table from a wedged OverDrive state.
+        let err: anyhow::Error = std::io::Error::from_raw_os_error(libc::EIO).into();
+
+        let described = GpuAMD::describe_commit_error(&err).to_string();
+
+        assert!(
+            described.contains("Invalid overdrive table content"),
+            "{described}"
+        );
+        assert!(described.contains("OD_UNSUPPORTED_FEATURE"), "{described}");
+        assert!(described.contains("rebooted"), "{described}");
+    }
+
+    #[test]
+    fn commit_error_stays_terse_for_other_errnos() {
+        // Verifies unrelated failures are not dressed up with firmware guidance that would
+        // send the user looking for a kernel message that is not there.
+        for errno in [libc::EINVAL, libc::EACCES, libc::ENOTSUP] {
+            let err: anyhow::Error = std::io::Error::from_raw_os_error(errno).into();
+
+            let described = GpuAMD::describe_commit_error(&err).to_string();
+
+            assert!(
+                described.starts_with("Error committing Fan Curve changes:"),
+                "{described}"
+            );
+            assert!(
+                described.contains("OD_UNSUPPORTED_FEATURE").not(),
+                "{described}"
+            );
+        }
     }
 }
