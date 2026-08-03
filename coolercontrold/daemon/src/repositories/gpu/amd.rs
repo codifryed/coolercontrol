@@ -63,7 +63,7 @@ const PATTERN_ZERO_RPM_STOP_LIMITS_TEMP: &str =
 /// fail with `ENOTSUPP`. So readability alone does not mean supported.
 const HEADER_ZERO_RPM_ENABLE: &str = "FAN_ZERO_RPM_ENABLE:";
 /// Same for the Zero RPM stop temperature, which SMU 14.0.2 (RDNA4) does not implement.
-const HEADER_ZERO_RPM_STOP_TEMP: &str = "ZERO_RPM_STOP_TEMPERATURE:";
+const HEADER_ZERO_RPM_STOP_TEMP: &str = "FAN_ZERO_RPM_STOP_TEMPERATURE:";
 type CurveTemp = u8;
 
 pub struct GpuAMD {
@@ -456,6 +456,15 @@ impl GpuAMD {
                     .parse()?;
             }
         }
+        // A readable file is not a usable curve. Without points there is no curve length,
+        // and without OD_RANGE every value would clamp to zero, so treat either as no PMFW
+        // fan curve at all rather than advertising a control that cannot work.
+        if points.is_empty() {
+            return Err(anyhow!("No fan curve points found in {}", path.display()));
+        }
+        if temp_max == 0 || duty_max == 0 {
+            return Err(anyhow!("No fan curve OD_RANGE found in {}", path.display()));
+        }
         let fan_curve = FanCurve { points };
         let temperature_range = temp_min..=temp_max;
         let speed_range = duty_min..=duty_max;
@@ -804,9 +813,11 @@ impl GpuAMD {
         }
     }
 
-    /// Returns the Zero RPM settings to their boot defaults.
+    /// Hands the Zero RPM settings back to their firmware boot defaults.
     ///
-    /// Needed when a profile no longer wants Zero RPM, to undo a previously forced enable.
+    /// This discards any value `CoolerControl` forced; it does not disable Zero RPM. The boot
+    /// default is enabled on most RDNA3/4 cards, which is the intent: a profile that does not
+    /// ask for Zero RPM gets stock firmware behavior rather than an override.
     /// Deliberately does not touch the fan curve: an apply always stages every curve point,
     /// so resetting the curve first only costs an extra upload and leaves the card briefly
     /// in firmware automatic mode with an all-zero table.
@@ -960,7 +971,12 @@ impl GpuAMD {
             else {
                 continue;
             };
-            Self::reset_fan_curve(fan_curve_path).await;
+            // Only a partially staged table needs discarding. Failing on the first point
+            // means nothing was staged, and resetting would throw away the curve that is
+            // currently applied and hand the fan back to firmware automatic control.
+            if i > 0 {
+                Self::reset_fan_curve(fan_curve_path).await;
+            }
             return Err(anyhow!(
                 "Error applying '{i} {temp} {duty}' to Fan Curve: {err}"
             ));
@@ -1292,6 +1308,7 @@ struct FanCurve {
 mod tests {
     use crate::repositories::gpu::amd::{
         AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
+        HEADER_ZERO_RPM_STOP_TEMP,
     };
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use nix::libc;
@@ -1714,6 +1731,63 @@ mod tests {
             GpuAMD::feature_is_supported(ZERO_RPM_STOP_TEMP_SUPPORTED, HEADER_ZERO_RPM_ENABLE)
                 .not()
         );
+
+        assert!(GpuAMD::feature_is_supported(
+            ZERO_RPM_STOP_TEMP_SUPPORTED,
+            HEADER_ZERO_RPM_STOP_TEMP
+        ));
+        assert!(GpuAMD::feature_is_supported("", HEADER_ZERO_RPM_STOP_TEMP).not());
+        // The OD_RANGE block alone carries "ZERO_RPM_STOP_TEMPERATURE:" without the value
+        // header, so matching the short form would report an unsupported feature as usable.
+        assert!(GpuAMD::feature_is_supported(
+            "OD_RANGE:\nZERO_RPM_STOP_TEMPERATURE: 25 100\n",
+            HEADER_ZERO_RPM_STOP_TEMP
+        )
+        .not());
+    }
+
+    #[test]
+    #[serial]
+    fn fan_curve_without_points_is_not_usable() {
+        // Verifies a curve file that parses into nothing is rejected rather than yielding a
+        // zero-length curve, which would underflow cap_speed_profile's `fan_curve_length - 1`.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a fan_curve carrying only its range lines.
+            write_fan_ctrl_file(
+                &ctx,
+                "fan_curve",
+                "OD_FAN_CURVE:\nOD_RANGE:\nFAN_CURVE(hotspot temp): 25C 100C\n\
+                 FAN_CURVE(fan speed): 25% 100%\n",
+            )
+            .await;
+
+            // when:
+            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn fan_curve_without_od_range_is_not_usable() {
+        // Verifies a curve with no OD_RANGE is rejected. Keeping it would leave both ranges at
+        // 0..=0, silently clamping every applied duty and temperature to zero.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: points but no limits.
+            write_fan_ctrl_file(&ctx, "fan_curve", "OD_FAN_CURVE:\n0: 40C 30%\n1: 60C 50%\n").await;
+
+            // when:
+            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_err());
+        });
     }
 
     #[test]
