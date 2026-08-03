@@ -804,17 +804,30 @@ impl GpuAMD {
         }
     }
 
-    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
+    /// Returns the Zero RPM settings to their boot defaults.
+    ///
+    /// Needed when a profile no longer wants Zero RPM, to undo a previously forced enable.
+    /// Deliberately does not touch the fan curve: an apply always stages every curve point,
+    /// so resetting the curve first only costs an extra upload and leaves the card briefly
+    /// in firmware automatic mode with an all-zero table.
+    async fn reset_zero_rpm_settings(fan_curve_info: &FanCurveInfo) {
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
-            let _ = cc_fs::write(zero_rpm_path, b"r\n".to_vec())
-                .await
-                .with_context(|| "Resetting Zero RPM Enable");
+            if let Err(err) = cc_fs::write(zero_rpm_path, b"r\n".to_vec()).await {
+                warn!("Error resetting Zero RPM Enable: {err}");
+            }
         }
         if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
-            let _ = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec())
-                .await
-                .with_context(|| "Resetting Zero RPM Stop Temperature");
+            if let Err(err) = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec()).await {
+                warn!("Error resetting Zero RPM Stop Temperature: {err}");
+            }
         }
+    }
+
+    /// Returns the whole fan control interface to firmware automatic mode.
+    ///
+    /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
+    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        Self::reset_zero_rpm_settings(fan_curve_info).await;
         cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
@@ -1054,9 +1067,7 @@ impl GpuAMD {
             }
         }
         if set_zero_rpm.not() {
-            if let Err(err) = Self::reset_fan_curve_and_zero_rpm(fan_curve_info).await {
-                warn!("Failed to reset fan curve and zero rpm: {err}");
-            }
+            Self::reset_zero_rpm_settings(fan_curve_info).await;
         }
         let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, set_zero_rpm);
         Self::set_fan_curve(fan_curve, &fan_curve_info.path)
@@ -1894,5 +1905,77 @@ mod tests {
                 "{described}"
             );
         }
+    }
+
+    async fn fan_curve_info_with_paths(ctx: &LoadFileContext) -> FanCurveInfo {
+        let curve = write_fan_ctrl_file(ctx, "fan_curve", "OD_FAN_CURVE:\n").await;
+        let zero_rpm =
+            write_fan_ctrl_file(ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
+        let stop_temp = write_fan_ctrl_file(
+            ctx,
+            "fan_zero_rpm_stop_temperature",
+            ZERO_RPM_STOP_TEMP_SUPPORTED,
+        )
+        .await;
+        FanCurveInfo {
+            path: curve,
+            zero_rpm: Some(zero_rpm),
+            zero_rpm_stop_temp: Some(stop_temp),
+            ..basic_test_fan_curve_info()
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn resetting_zero_rpm_leaves_the_fan_curve_alone() {
+        // Verifies the apply path no longer resets the curve. Staging always writes every
+        // point, so a reset first would only add an upload and drop the card into firmware
+        // automatic mode with an all-zero table in between.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a device with both Zero RPM endpoints present.
+            let info = fan_curve_info_with_paths(&ctx).await;
+
+            // when:
+            GpuAMD::reset_zero_rpm_settings(&info).await;
+
+            // then:
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
+                .await
+                .unwrap();
+            let stop_temp = cc_fs::read_txt(info.zero_rpm_stop_temp.as_ref().unwrap())
+                .await
+                .unwrap();
+            load_teardown(&ctx).await;
+            assert_eq!(curve, "OD_FAN_CURVE:\n", "the fan curve must not be reset");
+            assert_eq!(zero_rpm, "r\n");
+            assert_eq!(stop_temp, "r\n");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn resetting_to_default_does_return_the_fan_curve() {
+        // Verifies the reset-to-default and shutdown path still hands the curve back to the
+        // firmware, which is the one case where resetting it is the whole point.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a device with both Zero RPM endpoints present.
+            let info = fan_curve_info_with_paths(&ctx).await;
+
+            // when:
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info).await;
+
+            // then:
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
+                .await
+                .unwrap();
+            load_teardown(&ctx).await;
+            assert!(result.is_ok());
+            assert_eq!(curve, "r\n");
+            assert_eq!(zero_rpm, "r\n");
+        });
     }
 }
