@@ -56,6 +56,13 @@ const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
     r"FAN_CURVE\(fan speed\):\s+(?P<duty_min>\d+)%\s+(?P<duty_max>\d+)%";
 const PATTERN_ZERO_RPM_STOP_LIMITS_TEMP: &str =
     r"ZERO_RPM_STOP_TEMPERATURE:\s+(?P<temp_min>\d+)\s+(?P<temp_max>\d+)";
+/// Header the driver emits only when the ASIC actually supports the Zero RPM OD feature.
+/// amdgpu creates `fan_zero_rpm_enable` whenever a fan curve exists, but the show handler
+/// returns an empty buffer when the vBIOS pptable lacks the feature bit, and writes then
+/// fail with `ENOTSUPP`. So readability alone does not mean supported.
+const HEADER_ZERO_RPM_ENABLE: &str = "FAN_ZERO_RPM_ENABLE:";
+/// Same for the Zero RPM stop temperature, which SMU 14.0.2 (RDNA4) does not implement.
+const HEADER_ZERO_RPM_STOP_TEMP: &str = "ZERO_RPM_STOP_TEMPERATURE:";
 type CurveTemp = u8;
 
 pub struct GpuAMD {
@@ -374,11 +381,7 @@ impl GpuAMD {
             );
         }
 
-        let zero_rpm_enable_path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
-        let zero_rpm = cc_fs::read_txt(&zero_rpm_enable_path)
-            .await
-            .ok()
-            .map(|_| zero_rpm_enable_path);
+        let zero_rpm = Self::get_zero_rpm_enable_path(device_path).await;
         if zero_rpm.is_none() {
             info!(
                 "AMD GPU RDNA 3/4 Fan Control limitations: Fan will use Zero RPM Mode until 50/60C"
@@ -453,6 +456,24 @@ impl GpuAMD {
         Ok((path, fan_curve, temperature_range, speed_range))
     }
 
+    /// Whether the driver reported an OD feature as usable.
+    ///
+    /// The show handlers emit nothing at all when the feature is unsupported, so a present
+    /// and readable file proves only that amdgpu created the attribute.
+    fn feature_is_supported(content: &str, header: &str) -> bool {
+        content.contains(header)
+    }
+
+    /// The Zero RPM Enable path, but only when the driver reports the feature as usable.
+    async fn get_zero_rpm_enable_path(device_path: &Path) -> Option<PathBuf> {
+        let path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
+        cc_fs::read_txt(&path)
+            .await
+            .ok()
+            .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_ENABLE))
+            .map(|_| path)
+    }
+
     async fn get_zero_rpm_stop_temp_with_range(
         device_path: &Path,
     ) -> Result<(Option<PathBuf>, RangeInclusive<CurveTemp>)> {
@@ -460,9 +481,11 @@ impl GpuAMD {
         let mut zero_rpm_stop_temp_max: CurveTemp = 0;
         let zero_rpm_stop_temp_path =
             device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_stop_temperature");
-        let zero_rpm_stop_temp = if let Ok(zero_rpm_stop_temp_content) =
-            cc_fs::read_txt(&zero_rpm_stop_temp_path).await
-        {
+        let supported_content = cc_fs::read_txt(&zero_rpm_stop_temp_path)
+            .await
+            .ok()
+            .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_STOP_TEMP));
+        let zero_rpm_stop_temp = if let Some(zero_rpm_stop_temp_content) = supported_content {
             let regex_zero_rpm_stop_limits_temp = Regex::new(PATTERN_ZERO_RPM_STOP_LIMITS_TEMP)?;
             for line in zero_rpm_stop_temp_content.lines() {
                 if let Some(stop_limits_temp_cap) = regex_zero_rpm_stop_limits_temp.captures(line) {
@@ -1203,7 +1226,9 @@ struct FanCurve {
 
 #[cfg(test)]
 mod tests {
-    use crate::repositories::gpu::amd::{AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD};
+    use crate::repositories::gpu::amd::{
+        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
+    };
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use std::ops::Not;
     use std::ops::RangeInclusive;
@@ -1586,6 +1611,147 @@ mod tests {
             // then:
             load_teardown(&ctx).await;
             assert_eq!(result.len(), 0);
+        });
+    }
+
+    /// Real content from an RX 9070 XT, which does support the Zero RPM OD feature.
+    const ZERO_RPM_ENABLE_SUPPORTED: &str =
+        "FAN_ZERO_RPM_ENABLE:\n0\nOD_RANGE:\nZERO_RPM_ENABLE: 0 1\n";
+    /// Real content from a Radeon AI PRO R9700. amdgpu creates the attribute because a fan
+    /// curve exists, but the pptable lacks the feature bit, so the show handler emits nothing.
+    const ZERO_RPM_ENABLE_UNSUPPORTED: &str = "\n";
+    const ZERO_RPM_STOP_TEMP_SUPPORTED: &str =
+        "FAN_ZERO_RPM_STOP_TEMPERATURE:\n55\nOD_RANGE:\nZERO_RPM_STOP_TEMPERATURE: 25 100\n";
+
+    async fn write_fan_ctrl_file(ctx: &LoadFileContext, name: &str, content: &str) -> PathBuf {
+        let fan_ctrl_dir = ctx.test_base_path.join("gpu_od/fan_ctrl");
+        cc_fs::create_dir_all(&fan_ctrl_dir).await.unwrap();
+        let path = fan_ctrl_dir.join(name);
+        cc_fs::write(&path, content.as_bytes().to_vec())
+            .await
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn feature_is_supported_requires_the_header() {
+        // Verifies support is judged by content, not by the file being readable: the driver
+        // emits the header only when the ASIC actually supports the feature.
+        assert!(GpuAMD::feature_is_supported(
+            ZERO_RPM_ENABLE_SUPPORTED,
+            HEADER_ZERO_RPM_ENABLE
+        ));
+        assert!(
+            GpuAMD::feature_is_supported(ZERO_RPM_ENABLE_UNSUPPORTED, HEADER_ZERO_RPM_ENABLE).not()
+        );
+        assert!(GpuAMD::feature_is_supported("", HEADER_ZERO_RPM_ENABLE).not());
+        assert!(
+            GpuAMD::feature_is_supported(ZERO_RPM_STOP_TEMP_SUPPORTED, HEADER_ZERO_RPM_ENABLE)
+                .not()
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_found_when_driver_reports_support() {
+        // Verifies a card whose driver emits the header is detected as supporting Zero RPM.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_enable holds real content.
+            let expected =
+                write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, Some(expected));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_rejected_when_file_reads_empty() {
+        // Verifies the R9700 case: the attribute exists and reads without error, but is empty
+        // because the feature is unsupported. Writing to it would return ENOTSUPP.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_enable is present but empty.
+            write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_UNSUPPORTED).await;
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_rejected_when_file_absent() {
+        // Verifies pre-6.13 kernels, where the attribute does not exist at all.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: no gpu_od/fan_ctrl tree at all.
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_stop_temp_found_with_range_when_supported() {
+        // Verifies the stop temperature is accepted and its OD_RANGE parsed when present.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_stop_temperature holds real content.
+            let expected = write_fan_ctrl_file(
+                &ctx,
+                "fan_zero_rpm_stop_temperature",
+                ZERO_RPM_STOP_TEMP_SUPPORTED,
+            )
+            .await;
+
+            // when:
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
+                .await
+                .unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(path, Some(expected));
+            assert_eq!(range, 25..=100);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_stop_temp_rejected_when_file_reads_empty() {
+        // Verifies SMU 14.0.2 (RDNA4), which has no stop temperature support. A readable but
+        // empty file must not be treated as supported, or every write returns an error and the
+        // parsed range silently stays 0..=0.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: the attribute is present but empty.
+            write_fan_ctrl_file(&ctx, "fan_zero_rpm_stop_temperature", "\n").await;
+
+            // when:
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
+                .await
+                .unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(path, None);
+            assert_eq!(range, 0..=0);
         });
     }
 }
