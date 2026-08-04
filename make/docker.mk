@@ -4,7 +4,7 @@ docker_image_tag := v3
 .PHONY: docker-build-images docker-login docker-arm64 docker-push \
 	docker-ci-run docker-ci-run-deb-bookworm docker-ci-run-deb-bookworm-arm64 \
 	docker-ci-run-ubuntu docker-ci-run-ubuntu-arm64 docker-ci-run-appimage \
-	docker-ci-run-cloudsmith-cli docker-clean
+	docker-ci-run-cloudsmith-cli docker-ci-run-apt-publish docker-clean
 
 docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/images/pipeline/Dockerfile ./
@@ -12,6 +12,7 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) -f .gitlab/images/appimage/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/images/cloudsmith-cli/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(docker_image_tag) -f .gitlab/images/apt-publish/Dockerfile ./
 
 docker-login:
 	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
@@ -28,6 +29,7 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(docker_image_tag)
 
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
@@ -52,6 +54,9 @@ docker-ci-run-appimage:
 docker-ci-run-cloudsmith-cli:
 	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
 
+docker-ci-run-apt-publish:
+	@docker run --name coolercontrol-ci-apt-publish --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(docker_image_tag) bash
+
 # General:
 docker-clean:
 	@docker rm coolercontrol-ci || true
@@ -60,3 +65,4 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(docker_image_tag)
