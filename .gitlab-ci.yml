@@ -11,6 +11,8 @@ variables:
   # handle running the appimage in a docker environment without fuse:
   APPIMAGE_EXTRACT_AND_RUN: 1
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/branch-or-tag/filename
+  # Only correct for refs without a slash (tags, plain branches). Jobs that can run on a
+  # grouped branch must pull in .safe_registry_url instead.
   PACKAGE_REGISTRY_URL: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_REF_NAME}'
   #ARTIFACT_NAME_APPIMAGE: CoolerControl-x86_64.AppImage
   ARTIFACT_NAME_APPIMAGE_DAEMON: CoolerControlD-x86_64.AppImage
@@ -92,6 +94,15 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
       echo "Commit - ${CI_COMMIT_SHA}"
       echo "Ref - ${CI_COMMIT_REF_NAME}"
       echo "Tag - ${CI_COMMIT_TAG}"
+
+# Grouped branch names (e.g. fix/foo) need the slash replaced before use as a generic package
+# version: GitLab reads the first path segment as the version and the rest as a directory in
+# the file name. Tags have no slash, so this is a no-op for releases.
+.safe_registry_url:
+  script:
+    - |
+      SAFE_REF=$(printf '%s' "${CI_COMMIT_REF_NAME}" | tr '/' '-')
+      PACKAGE_REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${SAFE_REF}"
 
 ############################################################################################
 # development pipeline tests
@@ -183,15 +194,13 @@ build_source_assets:
       SOURCE_REF="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
       packaging/release-source.sh "$SOURCE_URL" "$SOURCE_REF"
     - make vendor
-    # Grouped branch names (e.g. chore/foo) need the slash replaced for filenames and the
-    # generic-package version path. Tags have no slash, so this is a no-op for releases.
+    # SAFE_REF is also used for the tarball filenames:
+    - !reference [.safe_registry_url, script]
     - |
-      SAFE_REF=$(printf '%s' "${CI_COMMIT_REF_NAME}" | tr '/' '-')
-      REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${SAFE_REF}"
       cp coolercontrold-vendor.tar.gz "coolercontrold-vendor-${SAFE_REF}.tar.gz"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrol-${SAFE_REF}.tar.gz" "${REGISTRY_URL}/coolercontrol-${SAFE_REF}.tar.gz"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${REGISTRY_URL}/coolercontrold-vendor.tar.gz"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrold-vendor-${SAFE_REF}.tar.gz" "${REGISTRY_URL}/coolercontrold-vendor-${SAFE_REF}.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrol-${SAFE_REF}.tar.gz" "${PACKAGE_REGISTRY_URL}/coolercontrol-${SAFE_REF}.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "coolercontrold-vendor-${SAFE_REF}.tar.gz" "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor-${SAFE_REF}.tar.gz"
   artifacts:
     name: 'coolercontrol-${CI_COMMIT_REF_SLUG} Source'
     paths:
@@ -924,6 +933,7 @@ upload_package_appimage_beta:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
+    - !reference [.safe_registry_url, script]
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol"
@@ -956,6 +966,7 @@ upload_artifacts_arm64_beta:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
+    - !reference [.safe_registry_url, script]
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
@@ -995,6 +1006,7 @@ upload_package_deb_bookworm_beta_amd64:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
+    - !reference [.safe_registry_url, script]
     - mv coolercontrold_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}
     - mv coolercontrol_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
     - |
@@ -1039,6 +1051,7 @@ upload_package_deb_bookworm_beta_arm64:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
+    - !reference [.safe_registry_url, script]
     - mv coolercontrold_*_arm64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}
     - mv coolercontrol_*_arm64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
     - |
@@ -1093,6 +1106,7 @@ upload_package_ubuntu_beta:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
+    - !reference [.safe_registry_url, script]
     - mv coolercontrold_*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA_D
     - mv coolercontrol_*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA
     - |
