@@ -19,7 +19,12 @@ Two separate trees rather than two suites in one: the bookworm-built and jammy-b
 `coolercontrold_<version>_amd64.deb` have identical file names with different contents, so one pool
 cannot hold both. Path prefixes are the same approach download.docker.com uses.
 
-Both trees serve `amd64` and `arm64`. Architecture never affects which tree a user gets.
+Both trees are published for `amd64` and `arm64`. Architecture never affects which tree a user gets.
+
+The `/ubuntu` tree carries no `arm64` build of `coolercontrol` or `coolercontrold` yet. Those were
+never built: CI produces jammy amd64 only, and the arm64 debs on the Debian side are bookworm
+builds. Its `binary-arm64` index is therefore valid but empty of the two main packages, and an arm64
+Ubuntu host sees only the architecture independent ones. The `build_ubuntu_arm64` job fills this in.
 
 **The published pool is the only state.** Every publish pulls it, rebuilds the index from it plus
 the new packages, and pushes the result. There is no database in the bucket to keep in sync, lose or
@@ -111,9 +116,10 @@ its own pool, but keep new scheduled publishers staggered against the existing o
 ## Seeding a new bucket
 
 1. Collect the debs to seed: `coolercontrol` and `coolercontrold` for the releases you want
-   available from the GitLab release pages, plus the latest `it87-dkms`, `nct6687d-dkms` and
-   `liquidctl` debs from their own releases. Seed the current stable release before anything newer
-   is published, so users have a rollback target from day one.
+   available from the GitLab release pages, plus the latest `it87-dkms` and `nct6687d-dkms` debs
+   from theirs. `liquidctl-packages` publishes no GitLab release, so its deb comes from the
+   Cloudsmith CDN until that repo gets a publish job. Seed the current stable release before
+   anything newer is published, so users have a rollback target from day one.
 2. Publish them. Order does not matter: retention keeps the newest versions whatever order they
    arrive in.
 
@@ -123,8 +129,12 @@ its own pool, but keep new scheduled publishers staggered against the existing o
    apt-repo-publish --repo both    <arch all debs>
    ```
 
-   The `_bookworm` and `_ubuntu` suffixes in the release download names do not matter: pool names
-   come from the control metadata, so they normalise automatically.
+   Rename the release downloads to the names CI produces first, dropping the `_bookworm` and
+   `_ubuntu` suffixes: `coolercontrold_4.3.1_amd64.deb`. aptly keeps whatever file name it is given,
+   so a suffixed name would sit in the pool forever next to the unsuffixed ones CI publishes later.
+   Nothing breaks either way, since apt reads the path out of `Packages`, but a mixed pool is
+   needlessly confusing. The two trees are what keep the identically named bookworm and jammy builds
+   apart.
 
 3. Verify from clean containers, on both `debian:bookworm` and `ubuntu:jammy`, with only the shipped
    keyring trusted:
