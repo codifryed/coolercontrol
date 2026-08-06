@@ -42,6 +42,7 @@ use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
 use libdrm_amdgpu_sys::AMDGPU::{CHIP_CLASS, GPU_INFO};
 use log::{debug, error, info, trace, warn};
+use nix::libc;
 use regex::Regex;
 
 pub const TEMP_FOR_FAN_CURVE: &str = "temp1";
@@ -56,6 +57,13 @@ const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
     r"FAN_CURVE\(fan speed\):\s+(?P<duty_min>\d+)%\s+(?P<duty_max>\d+)%";
 const PATTERN_ZERO_RPM_STOP_LIMITS_TEMP: &str =
     r"ZERO_RPM_STOP_TEMPERATURE:\s+(?P<temp_min>\d+)\s+(?P<temp_max>\d+)";
+/// Header the driver emits only when the ASIC actually supports the Zero RPM OD feature.
+/// amdgpu creates `fan_zero_rpm_enable` whenever a fan curve exists, but the show handler
+/// returns an empty buffer when the vBIOS pptable lacks the feature bit, and writes then
+/// fail with `ENOTSUPP`. So readability alone does not mean supported.
+const HEADER_ZERO_RPM_ENABLE: &str = "FAN_ZERO_RPM_ENABLE:";
+/// Same for the Zero RPM stop temperature, which SMU 14.0.2 (RDNA4) does not implement.
+const HEADER_ZERO_RPM_STOP_TEMP: &str = "FAN_ZERO_RPM_STOP_TEMPERATURE:";
 type CurveTemp = u8;
 
 pub struct GpuAMD {
@@ -374,14 +382,15 @@ impl GpuAMD {
             );
         }
 
-        let zero_rpm_enable_path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
-        let zero_rpm = cc_fs::read_txt(&zero_rpm_enable_path)
-            .await
-            .ok()
-            .map(|_| zero_rpm_enable_path);
+        let zero_rpm = Self::get_zero_rpm_enable_path(device_path).await;
         if zero_rpm.is_none() {
+            // Whether the firmware applies Zero RPM at all is a per-device pptable decision.
+            // Some cards, such as the Radeon AI PRO R9700, never stop the fan. Do not claim
+            // a behavior we cannot observe, only that we cannot change it.
             info!(
-                "AMD GPU RDNA 3/4 Fan Control limitations: Fan will use Zero RPM Mode until 50/60C"
+                "AMD GPU RDNA 3/4 Fan Control limitations: Zero RPM Mode is not adjustable \
+                for this device. If its firmware stops the fan below a temperature threshold, \
+                that cannot be changed."
             );
         }
 
@@ -447,10 +456,37 @@ impl GpuAMD {
                     .parse()?;
             }
         }
+        // A readable file is not a usable curve. Without points there is no curve length,
+        // and without OD_RANGE every value would clamp to zero, so treat either as no PMFW
+        // fan curve at all rather than advertising a control that cannot work.
+        if points.is_empty() {
+            return Err(anyhow!("No fan curve points found in {}", path.display()));
+        }
+        if temp_max == 0 || duty_max == 0 {
+            return Err(anyhow!("No fan curve OD_RANGE found in {}", path.display()));
+        }
         let fan_curve = FanCurve { points };
         let temperature_range = temp_min..=temp_max;
         let speed_range = duty_min..=duty_max;
         Ok((path, fan_curve, temperature_range, speed_range))
+    }
+
+    /// Whether the driver reported an OD feature as usable.
+    ///
+    /// The show handlers emit nothing at all when the feature is unsupported, so a present
+    /// and readable file proves only that amdgpu created the attribute.
+    fn feature_is_supported(content: &str, header: &str) -> bool {
+        content.contains(header)
+    }
+
+    /// The Zero RPM Enable path, but only when the driver reports the feature as usable.
+    async fn get_zero_rpm_enable_path(device_path: &Path) -> Option<PathBuf> {
+        let path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
+        cc_fs::read_txt(&path)
+            .await
+            .ok()
+            .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_ENABLE))
+            .map(|_| path)
     }
 
     async fn get_zero_rpm_stop_temp_with_range(
@@ -460,9 +496,11 @@ impl GpuAMD {
         let mut zero_rpm_stop_temp_max: CurveTemp = 0;
         let zero_rpm_stop_temp_path =
             device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_stop_temperature");
-        let zero_rpm_stop_temp = if let Ok(zero_rpm_stop_temp_content) =
-            cc_fs::read_txt(&zero_rpm_stop_temp_path).await
-        {
+        let supported_content = cc_fs::read_txt(&zero_rpm_stop_temp_path)
+            .await
+            .ok()
+            .filter(|content| Self::feature_is_supported(content, HEADER_ZERO_RPM_STOP_TEMP));
+        let zero_rpm_stop_temp = if let Some(zero_rpm_stop_temp_content) = supported_content {
             let regex_zero_rpm_stop_limits_temp = Regex::new(PATTERN_ZERO_RPM_STOP_LIMITS_TEMP)?;
             for line in zero_rpm_stop_temp_content.lines() {
                 if let Some(stop_limits_temp_cap) = regex_zero_rpm_stop_limits_temp.captures(line) {
@@ -775,17 +813,32 @@ impl GpuAMD {
         }
     }
 
-    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
+    /// Hands the Zero RPM settings back to their firmware boot defaults.
+    ///
+    /// This discards any value `CoolerControl` forced; it does not disable Zero RPM. The boot
+    /// default is enabled on most RDNA3/4 cards, which is the intent: a profile that does not
+    /// ask for Zero RPM gets stock firmware behavior rather than an override.
+    /// Deliberately does not touch the fan curve: an apply always stages every curve point,
+    /// so resetting the curve first only costs an extra upload and leaves the card briefly
+    /// in firmware automatic mode with an all-zero table.
+    async fn reset_zero_rpm_settings(fan_curve_info: &FanCurveInfo) {
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
-            let _ = cc_fs::write(zero_rpm_path, b"r\n".to_vec())
-                .await
-                .with_context(|| "Resetting Zero RPM Enable");
+            if let Err(err) = cc_fs::write(zero_rpm_path, b"r\n".to_vec()).await {
+                warn!("Error resetting Zero RPM Enable: {err}");
+            }
         }
         if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
-            let _ = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec())
-                .await
-                .with_context(|| "Resetting Zero RPM Stop Temperature");
+            if let Err(err) = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec()).await {
+                warn!("Error resetting Zero RPM Stop Temperature: {err}");
+            }
         }
+    }
+
+    /// Returns the whole fan control interface to firmware automatic mode.
+    ///
+    /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
+    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        Self::reset_zero_rpm_settings(fan_curve_info).await;
         cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
@@ -903,15 +956,67 @@ impl GpuAMD {
         Self::set_fan_curve(flat_curve, &fan_curve_info.path).await
     }
 
+    /// Stages every curve point and commits them as one table.
+    ///
+    /// A point write only stages a value; the commit uploads all points at once and flips the
+    /// firmware into manual curve mode, where it validates every point. Points that were never
+    /// staged keep whatever the last reset left, which on a card with no custom curve is 0C/0%,
+    /// below both minimums. Committing that half-written table is rejected with `EIO`
+    /// (`OD_FAN_CURVE_PWM_ERROR`), so a failed point write must abandon the commit and reset
+    /// back to automatic rather than leave the table poisoned.
     async fn set_fan_curve(fan_curve: FanCurve, fan_curve_path: &Path) -> Result<()> {
         for (i, (temp, duty)) in fan_curve.points.into_iter().enumerate() {
-            cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n"))
-                .await
-                .map_err(|err| anyhow!("Error applying '{i} {temp} {duty}' to Fan Curve: {err}"))?;
+            let Err(err) =
+                cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n")).await
+            else {
+                continue;
+            };
+            // Only a partially staged table needs discarding. Failing on the first point
+            // means nothing was staged, and resetting would throw away the curve that is
+            // currently applied and hand the fan back to firmware automatic control.
+            if i > 0 {
+                Self::reset_fan_curve(fan_curve_path).await;
+            }
+            return Err(anyhow!(
+                "Error applying '{i} {temp} {duty}' to Fan Curve: {err}"
+            ));
         }
         cc_fs::write(&fan_curve_path, b"c\n".to_vec())
             .await
-            .map_err(|err| anyhow!("Error committing Fan Curve changes: {err}"))
+            .map_err(|err| Self::describe_commit_error(&err))
+    }
+
+    /// Explains a fan curve commit failure, since the bare errno is not actionable.
+    ///
+    /// `EIO` means PMFW rejected the uploaded `OverDrive` table and named the reason in the
+    /// kernel log. The reason we cannot recover from is a stale unsupported feature bit left
+    /// staged by a write to an unsupported Zero RPM endpoint, which disables `OverDrive` for
+    /// the rest of the boot.
+    fn describe_commit_error(err: &anyhow::Error) -> anyhow::Error {
+        if Self::is_firmware_rejection(err).not() {
+            return anyhow!("Error committing Fan Curve changes: {err}");
+        }
+        anyhow!(
+            "Error committing Fan Curve changes: {err}. The GPU firmware rejected the \
+            OverDrive table. Search the kernel log for 'Invalid overdrive table content' \
+            for the reason. If it reports OD_UNSUPPORTED_FEATURE, this GPU's OverDrive is \
+            disabled until the amdgpu module is reloaded or the machine is rebooted."
+        )
+    }
+
+    fn is_firmware_rejection(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::raw_os_error)
+            .is_some_and(|errno| errno == libc::EIO)
+    }
+
+    /// Returns the curve to firmware automatic mode, discarding anything staged.
+    ///
+    /// The kernel falls through from restore into commit, so this needs no separate commit.
+    async fn reset_fan_curve(fan_curve_path: &Path) {
+        if let Err(err) = cc_fs::write(&fan_curve_path, b"r\n".to_vec()).await {
+            error!("Error resetting Fan Curve to automatic mode: {err}");
+        }
     }
 
     /// Creates a "flat" fan curve by setting the duty with the `temp_min` and all the rest of
@@ -978,9 +1083,7 @@ impl GpuAMD {
             }
         }
         if set_zero_rpm.not() {
-            if let Err(err) = Self::reset_fan_curve_and_zero_rpm(fan_curve_info).await {
-                warn!("Failed to reset fan curve and zero rpm: {err}");
-            }
+            Self::reset_zero_rpm_settings(fan_curve_info).await;
         }
         let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, set_zero_rpm);
         Self::set_fan_curve(fan_curve, &fan_curve_info.path)
@@ -1203,8 +1306,12 @@ struct FanCurve {
 
 #[cfg(test)]
 mod tests {
-    use crate::repositories::gpu::amd::{AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD};
+    use crate::repositories::gpu::amd::{
+        AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
+        HEADER_ZERO_RPM_STOP_TEMP,
+    };
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use nix::libc;
     use std::ops::Not;
     use std::ops::RangeInclusive;
     use std::path::PathBuf;
@@ -1586,6 +1693,363 @@ mod tests {
             // then:
             load_teardown(&ctx).await;
             assert_eq!(result.len(), 0);
+        });
+    }
+
+    /// Real content from an RX 9070 XT, which does support the Zero RPM OD feature.
+    const ZERO_RPM_ENABLE_SUPPORTED: &str =
+        "FAN_ZERO_RPM_ENABLE:\n0\nOD_RANGE:\nZERO_RPM_ENABLE: 0 1\n";
+    /// Real content from a Radeon AI PRO R9700. amdgpu creates the attribute because a fan
+    /// curve exists, but the pptable lacks the feature bit, so the show handler emits nothing.
+    const ZERO_RPM_ENABLE_UNSUPPORTED: &str = "\n";
+    const ZERO_RPM_STOP_TEMP_SUPPORTED: &str =
+        "FAN_ZERO_RPM_STOP_TEMPERATURE:\n55\nOD_RANGE:\nZERO_RPM_STOP_TEMPERATURE: 25 100\n";
+
+    async fn write_fan_ctrl_file(ctx: &LoadFileContext, name: &str, content: &str) -> PathBuf {
+        let fan_ctrl_dir = ctx.test_base_path.join("gpu_od/fan_ctrl");
+        cc_fs::create_dir_all(&fan_ctrl_dir).await.unwrap();
+        let path = fan_ctrl_dir.join(name);
+        cc_fs::write(&path, content.as_bytes().to_vec())
+            .await
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn feature_is_supported_requires_the_header() {
+        // Verifies support is judged by content, not by the file being readable: the driver
+        // emits the header only when the ASIC actually supports the feature.
+        assert!(GpuAMD::feature_is_supported(
+            ZERO_RPM_ENABLE_SUPPORTED,
+            HEADER_ZERO_RPM_ENABLE
+        ));
+        assert!(
+            GpuAMD::feature_is_supported(ZERO_RPM_ENABLE_UNSUPPORTED, HEADER_ZERO_RPM_ENABLE).not()
+        );
+        assert!(GpuAMD::feature_is_supported("", HEADER_ZERO_RPM_ENABLE).not());
+        assert!(
+            GpuAMD::feature_is_supported(ZERO_RPM_STOP_TEMP_SUPPORTED, HEADER_ZERO_RPM_ENABLE)
+                .not()
+        );
+
+        assert!(GpuAMD::feature_is_supported(
+            ZERO_RPM_STOP_TEMP_SUPPORTED,
+            HEADER_ZERO_RPM_STOP_TEMP
+        ));
+        assert!(GpuAMD::feature_is_supported("", HEADER_ZERO_RPM_STOP_TEMP).not());
+        // The OD_RANGE block alone carries "ZERO_RPM_STOP_TEMPERATURE:" without the value
+        // header, so matching the short form would report an unsupported feature as usable.
+        assert!(GpuAMD::feature_is_supported(
+            "OD_RANGE:\nZERO_RPM_STOP_TEMPERATURE: 25 100\n",
+            HEADER_ZERO_RPM_STOP_TEMP
+        )
+        .not());
+    }
+
+    #[test]
+    #[serial]
+    fn fan_curve_without_points_is_not_usable() {
+        // Verifies a curve file that parses into nothing is rejected rather than yielding a
+        // zero-length curve, which would underflow cap_speed_profile's `fan_curve_length - 1`.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a fan_curve carrying only its range lines.
+            write_fan_ctrl_file(
+                &ctx,
+                "fan_curve",
+                "OD_FAN_CURVE:\nOD_RANGE:\nFAN_CURVE(hotspot temp): 25C 100C\n\
+                 FAN_CURVE(fan speed): 25% 100%\n",
+            )
+            .await;
+
+            // when:
+            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn fan_curve_without_od_range_is_not_usable() {
+        // Verifies a curve with no OD_RANGE is rejected. Keeping it would leave both ranges at
+        // 0..=0, silently clamping every applied duty and temperature to zero.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: points but no limits.
+            write_fan_ctrl_file(&ctx, "fan_curve", "OD_FAN_CURVE:\n0: 40C 30%\n1: 60C 50%\n").await;
+
+            // when:
+            let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_found_when_driver_reports_support() {
+        // Verifies a card whose driver emits the header is detected as supporting Zero RPM.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_enable holds real content.
+            let expected =
+                write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, Some(expected));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_rejected_when_file_reads_empty() {
+        // Verifies the R9700 case: the attribute exists and reads without error, but is empty
+        // because the feature is unsupported. Writing to it would return ENOTSUPP.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_enable is present but empty.
+            write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_UNSUPPORTED).await;
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_enable_rejected_when_file_absent() {
+        // Verifies pre-6.13 kernels, where the attribute does not exist at all.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: no gpu_od/fan_ctrl tree at all.
+
+            // when:
+            let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_stop_temp_found_with_range_when_supported() {
+        // Verifies the stop temperature is accepted and its OD_RANGE parsed when present.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: fan_zero_rpm_stop_temperature holds real content.
+            let expected = write_fan_ctrl_file(
+                &ctx,
+                "fan_zero_rpm_stop_temperature",
+                ZERO_RPM_STOP_TEMP_SUPPORTED,
+            )
+            .await;
+
+            // when:
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
+                .await
+                .unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(path, Some(expected));
+            assert_eq!(range, 25..=100);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn zero_rpm_stop_temp_rejected_when_file_reads_empty() {
+        // Verifies SMU 14.0.2 (RDNA4), which has no stop temperature support. A readable but
+        // empty file must not be treated as supported, or every write returns an error and the
+        // parsed range silently stays 0..=0.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: the attribute is present but empty.
+            write_fan_ctrl_file(&ctx, "fan_zero_rpm_stop_temperature", "\n").await;
+
+            // when:
+            let (path, range) = GpuAMD::get_zero_rpm_stop_temp_with_range(&ctx.test_base_path)
+                .await
+                .unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(path, None);
+            assert_eq!(range, 0..=0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn set_fan_curve_commits_after_staging_every_point() {
+        // Verifies the commit is the last thing written, so the firmware receives the whole
+        // table in one upload.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a writable fan_curve file.
+            let path = write_fan_ctrl_file(&ctx, "fan_curve", "").await;
+            let fan_curve = FanCurve {
+                points: vec![(25, 25), (50, 50), (75, 75)],
+            };
+
+            // when:
+            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+            let last_written = cc_fs::read_txt(&path).await.unwrap();
+
+            // then:
+            load_teardown(&ctx).await;
+            assert!(result.is_ok());
+            assert_eq!(last_written, "c\n");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn set_fan_curve_reports_the_failing_point_and_skips_the_commit() {
+        // Verifies a point that cannot be staged aborts the whole apply. Committing a
+        // half-staged table is what the firmware rejects with EIO (OD_FAN_CURVE_PWM_ERROR),
+        // because the points never written keep the 0C/0% defaults left by the last reset.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a fan_curve path that cannot be written, because its parent is a file.
+            let blocker = ctx.test_base_path.join("not_a_dir");
+            cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
+            let path = blocker.join("fan_curve");
+            let fan_curve = FanCurve {
+                points: vec![(25, 25), (50, 50)],
+            };
+
+            // when:
+            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Error applying '0 25 25'"), "actual: {err}");
+            assert!(err.contains("committing").not(), "actual: {err}");
+        });
+    }
+
+    #[test]
+    fn commit_error_explains_a_firmware_rejection() {
+        // Verifies an EIO commit failure carries the recovery guidance, since the bare errno
+        // gives a user no way to tell a rejected table from a wedged OverDrive state.
+        let err: anyhow::Error = std::io::Error::from_raw_os_error(libc::EIO).into();
+
+        let described = GpuAMD::describe_commit_error(&err).to_string();
+
+        assert!(
+            described.contains("Invalid overdrive table content"),
+            "{described}"
+        );
+        assert!(described.contains("OD_UNSUPPORTED_FEATURE"), "{described}");
+        assert!(described.contains("rebooted"), "{described}");
+    }
+
+    #[test]
+    fn commit_error_stays_terse_for_other_errnos() {
+        // Verifies unrelated failures are not dressed up with firmware guidance that would
+        // send the user looking for a kernel message that is not there.
+        for errno in [libc::EINVAL, libc::EACCES, libc::ENOTSUP] {
+            let err: anyhow::Error = std::io::Error::from_raw_os_error(errno).into();
+
+            let described = GpuAMD::describe_commit_error(&err).to_string();
+
+            assert!(
+                described.starts_with("Error committing Fan Curve changes:"),
+                "{described}"
+            );
+            assert!(
+                described.contains("OD_UNSUPPORTED_FEATURE").not(),
+                "{described}"
+            );
+        }
+    }
+
+    async fn fan_curve_info_with_paths(ctx: &LoadFileContext) -> FanCurveInfo {
+        let curve = write_fan_ctrl_file(ctx, "fan_curve", "OD_FAN_CURVE:\n").await;
+        let zero_rpm =
+            write_fan_ctrl_file(ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
+        let stop_temp = write_fan_ctrl_file(
+            ctx,
+            "fan_zero_rpm_stop_temperature",
+            ZERO_RPM_STOP_TEMP_SUPPORTED,
+        )
+        .await;
+        FanCurveInfo {
+            path: curve,
+            zero_rpm: Some(zero_rpm),
+            zero_rpm_stop_temp: Some(stop_temp),
+            ..basic_test_fan_curve_info()
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn resetting_zero_rpm_leaves_the_fan_curve_alone() {
+        // Verifies the apply path no longer resets the curve. Staging always writes every
+        // point, so a reset first would only add an upload and drop the card into firmware
+        // automatic mode with an all-zero table in between.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a device with both Zero RPM endpoints present.
+            let info = fan_curve_info_with_paths(&ctx).await;
+
+            // when:
+            GpuAMD::reset_zero_rpm_settings(&info).await;
+
+            // then:
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
+                .await
+                .unwrap();
+            let stop_temp = cc_fs::read_txt(info.zero_rpm_stop_temp.as_ref().unwrap())
+                .await
+                .unwrap();
+            load_teardown(&ctx).await;
+            assert_eq!(curve, "OD_FAN_CURVE:\n", "the fan curve must not be reset");
+            assert_eq!(zero_rpm, "r\n");
+            assert_eq!(stop_temp, "r\n");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn resetting_to_default_does_return_the_fan_curve() {
+        // Verifies the reset-to-default and shutdown path still hands the curve back to the
+        // firmware, which is the one case where resetting it is the whole point.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: a device with both Zero RPM endpoints present.
+            let info = fan_curve_info_with_paths(&ctx).await;
+
+            // when:
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info).await;
+
+            // then:
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
+                .await
+                .unwrap();
+            load_teardown(&ctx).await;
+            assert!(result.is_ok());
+            assert_eq!(curve, "r\n");
+            assert_eq!(zero_rpm, "r\n");
         });
     }
 }
