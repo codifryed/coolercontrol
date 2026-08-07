@@ -54,8 +54,8 @@ automatically. They are included here for reference:
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
-   5. Cloudsmith: Verify amd and arm package uploads are all present. Both are built by CI now,
-      so a missing one means a failed job rather than a step to do by hand.
+   5. Cloudsmith: Verify amd and arm package uploads are all present. Both are built by CI now, so a
+      missing one means a failed job rather than a step to do by hand.
    6. DockerHub: Adjust Image links on main page
    7. Copr: Adjust git tag version for each package and trigger new builds.
    8. Merge any website changes to be made.

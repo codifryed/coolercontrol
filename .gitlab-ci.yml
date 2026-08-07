@@ -1210,6 +1210,45 @@ upload_package_ubuntu_beta:
 ############################################################################################
 # Create Release
 ############################################################################################
+####################################### apt.coolercontrol.org (Cloudflare R2)
+# Two jobs rather than one because the bookworm and jammy builds share deb file names and would
+# collide in a single workspace. They also target different trees. The publish lock in
+# apt-repo-publish serializes them, so running them in parallel is safe.
+upload_package_r2_debian:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${IMAGE_VERSION}
+  dependencies:
+    - build_deb_bookworm_amd64
+    - build_deb_bookworm_arm64
+  needs:
+    - build_deb_bookworm_amd64
+    - test_deb_bookworm_amd64
+    - build_deb_bookworm_arm64
+    - test_deb_bookworm_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - ls -lah ./*.deb
+    - apt-repo-publish --repo debian ./*.deb
+
+upload_package_r2_ubuntu:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${IMAGE_VERSION}
+  dependencies:
+    - build_ubuntu
+    - build_ubuntu_arm64
+  needs:
+    - build_ubuntu
+    - test_ubuntu_22.04
+    - test_ubuntu_latest
+    - build_ubuntu_arm64
+    - test_ubuntu_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - ls -lah ./*.deb
+    - apt-repo-publish --repo ubuntu ./*.deb
+
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
@@ -1220,6 +1259,10 @@ create_release:
     - upload_package_deb_bookworm_arm64
     - upload_package_ubuntu
     - upload_package_ubuntu_arm64
+    # A release that is missing from apt.coolercontrol.org would strand transitioned users, so
+    # the release waits on both trees having been published.
+    - upload_package_r2_debian
+    - upload_package_r2_ubuntu
     - push_dh-debian
     #- push_dh-debian_amd64
     #- push_dh-debian_arm64
