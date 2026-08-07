@@ -1,7 +1,11 @@
 FROM ubuntu:jammy
 
 LABEL maintainer=codifryed
-# Image to build Ubuntu packages
+# Image to build Ubuntu packages (amd64)
+#
+# The aarch64 half of the same packages is built by the ubuntu-arm64 image. Keep the toolchain
+# here and there in step (base release, cargo-NN, NODE_MAJOR), or the two architectures of a
+# release get built with different compilers and nothing will fail to warn you.
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding

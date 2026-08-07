@@ -1,10 +1,15 @@
 FROM ubuntu:22.04
 
 LABEL maintainer=codifryed
-# Image for aarch64 artifact and asset builds
+# Image for aarch64 artifact and asset builds, and for the aarch64 Ubuntu packages
 # This image is tailored for the specific jobs of aarch64 building
 # and tries to minimize it's own build time due to the often needed
 # aarch64 emulation.
+#
+# It also builds the aarch64 Ubuntu packages, so it has to satisfy debian/control Build-Depends.
+# Keep the toolchain here in step with the ubuntu image (base release, cargo-NN, NODE_MAJOR), or
+# the two architectures of a release get built with different compilers and nothing will fail to
+# warn you.
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
