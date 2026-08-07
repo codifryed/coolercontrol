@@ -1,11 +1,11 @@
 FROM ubuntu:jammy
 
 LABEL maintainer=codifryed
-# Image to build Ubuntu packages (amd64)
+# Image to build Ubuntu packages and the aarch64 build assets, both architectures.
 #
-# The aarch64 half of the same packages is built by the ubuntu-arm64 image. Keep the toolchain
-# here and there in step (base release, cargo-NN, NODE_MAJOR), or the two architectures of a
-# release get built with different compilers and nothing will fail to warn you.
+# Built multi-arch (see docker-arm64 in make/docker.mk) and used by build_ubuntu,
+# build_ubuntu_arm64 and build_arm64. One image rather than a separate aarch64 one, so a
+# toolchain change cannot reach one architecture and miss the other.
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
@@ -44,6 +44,8 @@ RUN apt update && apt install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
+    # make targets that shell out to git
+    git \
     dh-cmake \
     debhelper
 

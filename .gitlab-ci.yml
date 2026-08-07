@@ -267,7 +267,7 @@ build_appimages:
 
 ####################################### aarch64 build assets (Ubuntu 22.04)
 build_arm64:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
@@ -496,11 +496,10 @@ build_ubuntu:
 # These used to be built by hand and uploaded to Cloudsmith after the fact (RELEASING.md). Both
 # package trees serve amd64 and arm64, so they are built here instead.
 #
-# Reuses the ubuntu-arm64 image rather than a second aarch64 one: it already satisfies every
-# Build-Depends, and an extra emulated image build is slow. The cost is that the amd64 and arm64
-# Ubuntu packages come from different Dockerfiles, which have to stay in step.
+# Same multi-arch image as build_ubuntu, so both architectures of a release are built with the
+# same toolchain.
 build_ubuntu_arm64:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
