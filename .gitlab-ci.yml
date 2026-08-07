@@ -24,6 +24,8 @@ variables:
   ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64: 'coolercontrold_${CI_COMMIT_TAG}_arm64_bookworm.deb'
   ARTIFACT_NAME_UBUNTU: 'coolercontrol_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   ARTIFACT_NAME_UBUNTU_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
+  ARTIFACT_NAME_UBUNTU_ARM64: 'coolercontrol_${CI_COMMIT_TAG}_arm64_ubuntu.deb'
+  ARTIFACT_NAME_UBUNTU_D_ARM64: 'coolercontrold_${CI_COMMIT_TAG}_arm64_ubuntu.deb'
   CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
   DH_URI: docker.io
   DH_REGISTRY_IMAGE: '${DH_URI}/coolercontrol/coolercontrold'
@@ -490,6 +492,47 @@ build_ubuntu:
       - coolercontrol*.deb
     expire_in: 5 days
 
+####################################### Ubuntu aarch64 packages
+# These used to be built by hand and uploaded to Cloudsmith after the fact (RELEASING.md). Both
+# package trees serve amd64 and arm64, so they are built here instead.
+build_ubuntu_arm64:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  needs:
+    - compile_artifacts
+    # Same reason as build_deb_bookworm_arm64: running both architectures at once causes trouble.
+    - build_ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG
+      when: always
+  script:
+    # cleanup old build files (somehow stays between runs)
+    - rm -f ../coolercontrol*.deb
+    - apt-get update
+    - |
+      python3 --version
+      cargo --version
+      rustc --version
+      npm --version
+      node --version
+      cmake --version
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - ls -lah ../
+    - cp ../coolercontrol*_arm64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: 'CoolerControl_aarch64_ubuntu_${CI_COMMIT_SHORT_SHA}'
+    paths:
+      - coolercontrol*.deb
+    expire_in: 5 days
+
 ############################################################################################
 # Docker
 ############################################################################################
@@ -883,6 +926,24 @@ test_ubuntu_22.04:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
+test_ubuntu_arm64:
+  stage: test_packages
+  tags:
+    - saas-linux-small-arm64
+  image: ubuntu:jammy
+  dependencies:
+    - build_ubuntu_arm64
+  needs:
+    - build_ubuntu_arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - apt update
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*arm64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*arm64.deb
+    - coolercontrold --version
+    - apt remove -y coolercontrold coolercontrol
+
 test_ubuntu_latest:
   stage: test_packages
   tags:
@@ -1091,6 +1152,39 @@ upload_package_ubuntu:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
 
+upload_package_ubuntu_arm64:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
+  variables:
+    ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_arm64.deb'
+    ARTIFACT_NAME_DEB_D: 'coolercontrold_${CI_COMMIT_TAG}_arm64.deb'
+  dependencies:
+    - build_ubuntu_arm64
+  needs:
+    - build_ubuntu_arm64
+    - test_ubuntu_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    # Same Ubuntu family buckets as upload_package_ubuntu, aarch64 this time:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/otherdeb/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/otherdeb/any-version $ARTIFACT_NAME_DEB
+    - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_UBUNTU_D_ARM64
+    - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU_ARM64
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_D_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D_ARM64}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_ARM64}"
+
 upload_package_ubuntu_beta:
   stage: upload_packages
   image: curlimages/curl:latest
@@ -1125,6 +1219,7 @@ create_release:
     - upload_package_deb_bookworm_amd64
     - upload_package_deb_bookworm_arm64
     - upload_package_ubuntu
+    - upload_package_ubuntu_arm64
     - push_dh-debian
     #- push_dh-debian_amd64
     #- push_dh-debian_arm64
@@ -1172,6 +1267,14 @@ create_release:
         - name: Ubuntu 22.04+ - UI
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}'
+          link_type: package
+        - name: Ubuntu 22.04+ - Daemon aarch64
+          filepath: '/packages/${ARTIFACT_NAME_UBUNTU_D_ARM64}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D_ARM64}'
+          link_type: package
+        - name: Ubuntu 22.04+ - UI aarch64
+          filepath: '/packages/${ARTIFACT_NAME_UBUNTU_ARM64}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_ARM64}'
           link_type: package
         # AppImages:
         - name: AppImage Daemon
