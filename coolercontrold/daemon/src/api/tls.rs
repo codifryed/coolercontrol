@@ -126,4 +126,28 @@ mod tests {
             assert_eq!(key_permissions.mode() & 0o777, DEFAULT_PERMISSIONS);
         });
     }
+
+    /// Goal: the TLS half of the claim that gRPC needs no transport of its own. gRPC
+    /// requires HTTP/2, so the listener must offer `h2` via ALPN; if it advertised only
+    /// `http/1.1`, every TLS gRPC client would fail to negotiate. The order matters too:
+    /// `h2` must be preferred, or a client that accepts either settles on HTTP/1.1 and
+    /// gRPC breaks on an otherwise working server.
+    #[test]
+    fn tls_config_advertises_http2_first() {
+        let CertifiedKey { cert, signing_key } = generate_self_signed_cert().unwrap();
+        // `from_pem` parses in memory, but is async, and the rustls config it builds is
+        // the same one `tls_config` hands the server.
+        let config = crate::cc_fs::sidecar_fs::test_runtime(async {
+            axum_server::tls_rustls::RustlsConfig::from_pem(
+                cert.pem().into_bytes(),
+                signing_key.serialize_pem().into_bytes(),
+            )
+            .await
+            .unwrap()
+        });
+
+        let alpn = &config.get_inner().alpn_protocols;
+        assert_eq!(alpn.first().map(Vec::as_slice), Some(b"h2".as_slice()));
+        assert!(alpn.iter().any(|protocol| protocol == b"http/1.1"));
+    }
 }

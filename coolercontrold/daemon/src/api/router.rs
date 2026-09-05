@@ -7,17 +7,23 @@ use crate::api::{
     profiles, settings, sse, stats, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
+use crate::grpc_api;
 #[cfg(debug_assertions)]
 use aide::axum::routing::get;
 use aide::axum::routing::{delete_with, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
+use axum::extract::Request;
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::Extension;
+use std::ops::Not;
 
 // Note: using `#[debug_handler]` on the handler functions themselves is sometimes very helpful.
 
-pub fn init(app_state: AppState) -> ApiRouter {
+pub async fn init(app_state: AppState) -> ApiRouter {
     let token_handle = app_state.token_handle.clone();
-    let router = documented_routes();
+    let router = documented_routes().merge(grpc_routes(&app_state).await);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
@@ -31,6 +37,91 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .layer(axum::middleware::from_fn(
             auth_throttle::throttle_middleware,
         ))
+        // Outside the throttle, so its 429 reaches gRPC clients as a status they can read.
+        .layer(axum::middleware::from_fn(grpc_error_middleware))
+}
+
+/// Renders error responses that gRPC clients can actually read.
+///
+/// The auth middleware, the throttle, and the timeout layer all answer with ordinary
+/// HTTP status codes and a JSON body. A gRPC client cannot parse that: it reports
+/// `Internal` with a content-type complaint, so an expired token would reach a user as
+/// an unexplained protocol error rather than "your credentials were refused". This
+/// translates those into properly framed `grpc-status` responses.
+///
+/// Applied outermost so it also covers the throttle's 429 and the request timeout, not
+/// just the auth middleware's 401. Requests that are not gRPC, and responses already
+/// framed as gRPC, pass through untouched.
+async fn grpc_error_middleware(request: Request, next: Next) -> Response {
+    let is_grpc = is_grpc_content_type(request.headers());
+    let response = next.run(request).await;
+    if is_grpc.not() {
+        return response;
+    }
+    if is_grpc_content_type(response.headers()) {
+        return response;
+    }
+    let Some(code) = grpc_code_for(response.status()) else {
+        return response;
+    };
+    tonic::Status::new(code, status_message(response.status())).into_http()
+}
+
+fn is_grpc_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/grpc"))
+}
+
+/// Maps the HTTP statuses our own layers produce onto gRPC codes. Anything else is left
+/// alone: a status we did not generate is not ours to reinterpret.
+fn grpc_code_for(status: StatusCode) -> Option<tonic::Code> {
+    match status {
+        StatusCode::UNAUTHORIZED => Some(tonic::Code::Unauthenticated),
+        StatusCode::FORBIDDEN => Some(tonic::Code::PermissionDenied),
+        StatusCode::TOO_MANY_REQUESTS => Some(tonic::Code::ResourceExhausted),
+        StatusCode::REQUEST_TIMEOUT => Some(tonic::Code::DeadlineExceeded),
+        StatusCode::NOT_FOUND => Some(tonic::Code::Unimplemented),
+        _ => None,
+    }
+}
+
+fn status_message(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::UNAUTHORIZED => "Invalid or missing access token.",
+        StatusCode::FORBIDDEN => "This token does not have the required access.",
+        StatusCode::TOO_MANY_REQUESTS => "Too many failed authentication attempts.",
+        StatusCode::REQUEST_TIMEOUT => "The request timed out.",
+        _ => "Unknown gRPC method.",
+    }
+}
+
+/// The gRPC services, mounted on the REST listener behind the same read-tier auth.
+///
+/// gRPC used to run its own `tonic::transport::Server` on `port + 1`, which meant it had
+/// no TLS and no authentication at all: a second, weaker front door onto the same data.
+/// Sharing the REST listener is what closes that, and it costs nothing, because that
+/// listener already speaks HTTP/2.
+///
+/// These carry no `OpenAPI` metadata on purpose. They are not REST operations and have no
+/// place in the spec, so they are merged in outside `documented_routes`.
+async fn grpc_routes(app_state: &AppState) -> ApiRouter<AppState> {
+    let device_service = grpc_api::device_service(
+        app_state.device_handle.clone(),
+        app_state.status_handle.clone(),
+        app_state.calibration_handle.clone(),
+    );
+    ApiRouter::new()
+        .route_service(grpc_api::DEVICE_SERVICE_PATH, device_service)
+        .route_service(
+            grpc_api::HEALTH_SERVICE_PATH,
+            grpc_api::health_service().await,
+        )
+        // The whole served surface is read-only: every mutating RPC answers
+        // `Unimplemented`. So it takes the same read-tier credentials as `GET /devices`,
+        // rather than a third auth semantic invented for gRPC.
+        .layer(axum::middleware::from_fn(auth::auth_middleware))
 }
 
 /// Every route carrying `OpenAPI` metadata, before state, the fallback and the doc route are
@@ -1660,4 +1751,175 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::actor::TokenHandle;
+    use crate::api::auth;
+    use crate::api::session_store::MemorySessionStore;
+    use crate::token::{self, StoredToken};
+    use axum::Extension;
+    use chrono::Local;
+    use tokio::net::TcpListener;
+    use tonic::Code;
+    use tonic_health::pb::health_client::HealthClient;
+    use tonic_health::pb::HealthCheckRequest;
+    use tower_sessions::SessionManagerLayer;
+
+    fn stored_token(raw: &str) -> StoredToken {
+        StoredToken {
+            id: "grpc-test".to_string(),
+            label: "gRPC Test".to_string(),
+            hash: token::hash_token(raw).unwrap(),
+            digest: Some(token::digest_token(raw)),
+            created_at: Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: false,
+        }
+    }
+
+    /// Mounts the health service the way `grpc_routes` and `init` mount the real ones:
+    /// same route pattern, same read-tier auth middleware, same session layer, and the
+    /// same outermost gRPC error translation. The device service needs live actor
+    /// handles, so health stands in for it; the mounting and transport path under test
+    /// is identical.
+    ///
+    /// The layer order here mirrors `init` by hand. If a layer is added there, it must
+    /// be added here too, or these tests stop covering the real stack.
+    async fn serve(token_handle: TokenHandle) -> String {
+        let router = axum::Router::new()
+            .route_service(
+                grpc_api::HEALTH_SERVICE_PATH,
+                grpc_api::health_service().await,
+            )
+            .layer(axum::middleware::from_fn(auth::auth_middleware))
+            .layer(Extension(token_handle))
+            .layer(SessionManagerLayer::new(MemorySessionStore::new(4)))
+            .layer(axum::middleware::from_fn(grpc_error_middleware));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        format!("http://{address}")
+    }
+
+    /// Goal: the load-bearing claim of the whole design. gRPC is served from the REST
+    /// listener over plaintext h2c prior-knowledge, with no `tonic::transport::Server`
+    /// and no second port. If hyper's auto builder ever stopped sniffing the HTTP/2
+    /// preface, every gRPC client would break and only this test would notice.
+    #[tokio::test]
+    async fn grpc_is_served_over_h2c_from_the_rest_listener() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .expect("h2c prior-knowledge connect must succeed");
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {raw}").parse().unwrap());
+
+        let response = client.check(request).await.expect("authenticated call");
+        assert_eq!(response.into_inner().status, 1); // SERVING
+    }
+
+    /// Goal: the gap this branch exists to close. An unauthenticated peer must not reach
+    /// the gRPC surface, on loopback included.
+    #[tokio::test]
+    async fn grpc_without_credentials_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let status = client
+            .check(HealthCheckRequest {
+                service: String::new(),
+            })
+            .await
+            .expect_err("an unauthenticated call must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
+    /// Goal: a wrong or expired token is refused just like no token, so the gRPC surface
+    /// cannot be reached by guessing.
+    #[tokio::test]
+    async fn grpc_with_an_unknown_token_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {}", token::generate_token())
+                .parse()
+                .unwrap(),
+        );
+
+        let status = client
+            .check(request)
+            .await
+            .expect_err("an unknown token must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
+    /// Goal: only the statuses our own layers emit are rewritten. Reinterpreting an
+    /// arbitrary status would turn an unrelated failure into a misleading gRPC code.
+    #[test]
+    fn only_our_own_error_statuses_map_to_grpc_codes() {
+        assert_eq!(
+            grpc_code_for(StatusCode::UNAUTHORIZED),
+            Some(tonic::Code::Unauthenticated)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::FORBIDDEN),
+            Some(tonic::Code::PermissionDenied)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::TOO_MANY_REQUESTS),
+            Some(tonic::Code::ResourceExhausted)
+        );
+        assert_eq!(grpc_code_for(StatusCode::OK), None);
+        assert_eq!(grpc_code_for(StatusCode::INTERNAL_SERVER_ERROR), None);
+        assert_eq!(grpc_code_for(StatusCode::BAD_GATEWAY), None);
+    }
+
+    /// Goal: the translation only fires for gRPC traffic, so a browser hitting the same
+    /// port keeps getting ordinary JSON errors.
+    #[test]
+    fn grpc_content_type_detection_is_exact() {
+        let mut headers = HeaderMap::new();
+        assert!(is_grpc_content_type(&headers).not());
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        assert!(is_grpc_content_type(&headers).not());
+        headers.insert(header::CONTENT_TYPE, "application/grpc".parse().unwrap());
+        assert!(is_grpc_content_type(&headers));
+        headers.insert(
+            header::CONTENT_TYPE,
+            "application/grpc+proto".parse().unwrap(),
+        );
+        assert!(is_grpc_content_type(&headers));
+    }
 }

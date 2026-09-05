@@ -42,7 +42,6 @@ use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
 use crate::device_health::DeviceHealthController;
 use crate::engine::main::Engine;
-use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
@@ -99,7 +98,6 @@ use tower_sessions::{
 };
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
-const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
@@ -201,20 +199,6 @@ pub async fn start_server<'s>(
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
-    // GRPC API
-    // We use a separate socket because the purpose and scope is quite different comparatively
-    let grpc_port = env::var(ENV_PORT)
-        .ok()
-        .and_then(|p| p.parse::<u16>().map(|p| p + 1).ok())
-        .unwrap_or_else(|| {
-            config
-                .get_settings()
-                .ok()
-                .and_then(|settings| settings.port.map(|p| p + 1))
-                .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
-        });
-    let (grpc_ipv4, grpc_ipv6) = resolve_server_addresses(&config, grpc_port, ApiServer::Grpc);
-
     // Extract proxy/cors settings for the API servers
     let cors_origins = settings.origins.clone();
     let allow_unencrypted = settings.allow_unencrypted;
@@ -226,8 +210,6 @@ pub async fn start_server<'s>(
         run_all_api_servers(
             ipv4,
             ipv6,
-            grpc_ipv4,
-            grpc_ipv6,
             app_state,
             session_layer,
             expired_deletion_store,
@@ -245,8 +227,6 @@ pub async fn start_server<'s>(
 async fn run_all_api_servers(
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
-    grpc_ipv4: Option<SocketAddrV4>,
-    grpc_ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     expired_deletion_store: FileSessionStore,
@@ -258,9 +238,6 @@ async fn run_all_api_servers(
     protocol_header: Option<String>,
 ) {
     let mut handles = Vec::new();
-    let grpc_device_handle = app_state.device_handle.clone();
-    let grpc_status_handle = app_state.status_handle.clone();
-    let grpc_calibration_handle = app_state.calibration_handle.clone();
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
@@ -296,26 +273,6 @@ async fn run_all_api_servers(
             cors_origins,
             allow_unencrypted,
             protocol_header,
-        )));
-    }
-
-    // gRPC API servers
-    if let Some(ipv4) = grpc_ipv4 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv4),
-            grpc_device_handle.clone(),
-            grpc_status_handle.clone(),
-            grpc_calibration_handle.clone(),
-            cancel_token.clone(),
-        )));
-    }
-    if let Some(ipv6) = grpc_ipv6 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv6),
-            grpc_device_handle,
-            grpc_status_handle,
-            grpc_calibration_handle,
-            cancel_token,
         )));
     }
 
@@ -419,6 +376,7 @@ async fn create_api_server(
     });
     let mut open_api = OpenApi::default();
     let router = router::init(app_state)
+        .await
         .finish_api_with(&mut open_api, api_docs)
         .layer(Extension(Arc::new(open_api)));
 
@@ -1021,34 +979,31 @@ fn log_bind_outcome<A>(outcome: Result<Option<A>>, family: &str) -> Option<A> {
     outcome.ok().flatten()
 }
 
-/// The two API servers. They bind independently: neither one being off or unable to bind
-/// may stop the other, and neither stops the daemon, whose fan control needs no socket.
+/// The API server. gRPC shares this listener, so there is one socket to bind and one
+/// failure to report; neither family failing stops the daemon, whose fan control needs
+/// no socket at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApiServer {
     Rest,
-    Grpc,
 }
 
 impl ApiServer {
     fn name(self) -> &'static str {
         match self {
             Self::Rest => "REST API",
-            Self::Grpc => "GRPC API",
         }
     }
 
-    /// Per-family log label, e.g. "IPv6 GRPC". Stable text: users grep these lines.
+    /// Per-family log label. Stable text: users grep these lines.
     fn family_label(self, family: &str) -> String {
         match self {
             Self::Rest => family.to_string(),
-            Self::Grpc => format!("{family} GRPC"),
         }
     }
 
     fn consequence(self) -> &'static str {
         match self {
-            Self::Rest => "No API and UI connection available.",
-            Self::Grpc => "External Device services are unavailable.",
+            Self::Rest => "No API, UI, or gRPC connection available.",
         }
     }
 }
@@ -1470,7 +1425,7 @@ mod tests {
         assert_eq!(level, Level::Info);
         assert_eq!(
             message,
-            "REST API disabled. No API and UI connection available."
+            "REST API disabled. No API, UI, or gRPC connection available."
         );
     }
 
@@ -1481,11 +1436,11 @@ mod tests {
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
         let (level, message) =
-            unavailable_log(&failed, &disabled, ApiServer::Grpc).expect("no address is reported");
+            unavailable_log(&failed, &disabled, ApiServer::Rest).expect("no address is reported");
         assert_eq!(level, Level::Error);
         assert_eq!(
             message,
-            "Could not bind GRPC API to any address. External Device services are unavailable."
+            "Could not bind REST API to any address. No API, UI, or gRPC connection available."
         );
     }
 
@@ -1494,8 +1449,6 @@ mod tests {
     fn test_family_labels_are_stable() {
         assert_eq!(ApiServer::Rest.family_label("IPv4"), "IPv4");
         assert_eq!(ApiServer::Rest.family_label("IPv6"), "IPv6");
-        assert_eq!(ApiServer::Grpc.family_label("IPv4"), "IPv4 GRPC");
-        assert_eq!(ApiServer::Grpc.family_label("IPv6"), "IPv6 GRPC");
     }
 
     fn default_allowed_hosts() -> Vec<String> {
