@@ -7943,6 +7943,12 @@
               "boolean",
               "null"
             ]
+          },
+          "tls_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         }
       },

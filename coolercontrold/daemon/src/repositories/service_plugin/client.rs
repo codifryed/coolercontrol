@@ -20,6 +20,7 @@ use crate::grpc_api::models::v1::ChannelExtensionName;
 use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;
+use crate::repositories::service_plugin::{transport, trust};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
 use log::error;
@@ -54,6 +55,11 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
 pub struct DeviceServiceClient {
     service_id: ServiceId,
 
+    /// Bearer token for the remote, when the user placed one in the plugin directory.
+    /// Attached to every outbound request; absent for a plugin on a Unix socket or a
+    /// remote that predates authentication.
+    token: Option<String>,
+
     /// Snapshot of the service-plugin wait timeout. `poll_rate` only
     /// changes on daemon restart, so this value is constant for the
     /// client's lifetime and is computed once in `new` to avoid per-
@@ -78,36 +84,72 @@ pub struct DeviceServiceClient {
 }
 
 impl DeviceServiceClient {
-    pub async fn connect(service_manifest: &ServiceManifest, poll_rate: f64) -> Result<Self> {
+    pub async fn connect(
+        service_manifest: &ServiceManifest,
+        poll_rate: f64,
+        tls_strict: bool,
+    ) -> Result<Self> {
         let address = Self::address_from_manifest(service_manifest)?;
-        let grpc_client =
-            device_service_client::DeviceServiceClient::connect(address.clone()).await?;
+        let channel = transport::connect(service_manifest, &address, tls_strict).await?;
+        let grpc_client = device_service_client::DeviceServiceClient::new(channel);
         Ok(Self::new(
             service_manifest.id.clone(),
             poll_rate,
             grpc_client,
+            trust::read_token(&service_manifest.path),
         ))
     }
 
     /// Derives the gRPC connection address from a manifest. Shared by `connect` and the main-side
     /// proxy handle (which needs the address to map device locations without holding the client).
+    ///
+    /// TCP is `https`: a remote device service is reached over a network, and the token
+    /// this client now sends must not cross it in the clear. Unix sockets stay plain,
+    /// since the kernel already scopes them to this machine.
     pub fn address_from_manifest(service_manifest: &ServiceManifest) -> Result<String> {
         match &service_manifest.address {
             ConnectionType::Uds(uds) => Ok(format!("unix://{}", uds.display())),
-            ConnectionType::Tcp(tcp_addr) => Ok(format!("http://{tcp_addr}")),
+            ConnectionType::Tcp(tcp_addr) => Ok(format!("https://{tcp_addr}")),
             ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
         }
+    }
+
+    /// Wraps a message in a request carrying this client's credentials.
+    ///
+    /// Every outbound call goes through here, so a new RPC cannot accidentally ship
+    /// without the token.
+    fn request<T>(&self, message: T) -> Request<T> {
+        let mut request = Request::new(message);
+        if let Some(token) = &self.token {
+            match format!("Bearer {token}").parse() {
+                Ok(value) => {
+                    request.metadata_mut().insert("authorization", value);
+                }
+                Err(err) => {
+                    // A token with characters illegal in a header is a user error in the
+                    // token file, not something to retry: say so once per request rather
+                    // than failing with an opaque `Unauthenticated` from the remote.
+                    error!(
+                        "Device service '{}' has an unusable access token: {err}",
+                        self.service_id
+                    );
+                }
+            }
+        }
+        request
     }
 
     fn new(
         service_id: ServiceId,
         poll_rate: f64,
         client: device_service_client::DeviceServiceClient<Channel>,
+        token: Option<String>,
     ) -> Self {
         let service_client = Mutex::new(client);
         let service_wait_timeout = service_wait_timeout_for(poll_rate);
         Self {
             service_id,
+            token,
             service_wait_timeout,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
@@ -169,7 +211,7 @@ impl DeviceServiceClient {
             )),
             // Health endpoint need not wait for all clients:
             mut service_client = self.service_client.lock() => {
-                let request = Request::new(HealthRequest{});
+                let request = self.request(HealthRequest{});
                 service_client.health(request).await
                 .map(tonic::Response::into_inner)
                 .map_err(|s| anyhow!("Failed to get health status: {s}"))
@@ -187,7 +229,7 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(ListDevicesRequest{});
+                let request = self.request(ListDevicesRequest{});
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
                 .map(tonic::Response::into_inner)
@@ -204,7 +246,7 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(InitializeDeviceRequest{
+                let request = self.request(InitializeDeviceRequest{
                     device_id: self.get_service_device_id(device_uid)?
                 });
                 let mut service_client = self.service_client.lock().await;
@@ -223,7 +265,7 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(ShutdownRequest{});
+                let request = self.request(ShutdownRequest{});
                 let mut service_client = self.service_client.lock().await;
                 match service_client.shutdown(request).await {
                     Ok(_) => Ok(()),
@@ -396,7 +438,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(StatusRequest{
+                let request = self.request(StatusRequest{
                     device_id: self.get_service_device_id(device_uid)?
                 });
                 device_client.status(request).await
@@ -459,7 +501,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(ResetChannelRequest{
+                let request = self.request(ResetChannelRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
@@ -482,7 +524,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(EnableManualFanControlRequest{
+                let request = self.request(EnableManualFanControlRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
@@ -506,7 +548,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(FixedDutyRequest{
+                let request = self.request(FixedDutyRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     duty: i32::from(duty),
@@ -539,7 +581,7 @@ impl DeviceServiceClient {
                         duty: u32::from(*duty),
                     });
                 }
-                let request = Request::new(SpeedProfileRequest{
+                let request = self.request(SpeedProfileRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     temp_source_id: Some(temp_source.temp_name.clone()),
@@ -580,7 +622,7 @@ impl DeviceServiceClient {
                     backward: lighting.backward,
                     colors,
                 };
-                let request = Request::new(LightingRequest {
+                let request = self.request(LightingRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     setting: Some(lighting_setting),
@@ -611,7 +653,7 @@ impl DeviceServiceClient {
                     orientation: lcd.orientation.map(u32::from),
                     image_path: lcd.image_file_processed().cloned(),
                 };
-                let request = Request::new(LcdRequest {
+                let request = self.request(LcdRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     setting: Some(lcd_setting),
@@ -632,7 +674,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut service_client = self.service_client.lock() => {
-                let request = Request::new(CustomFunctionOneRequest{});
+                let request = self.request(CustomFunctionOneRequest{});
                 service_client.custom_function_one(request).await
                 .map(|_| ())
                 .map_err(|s| anyhow!("Failed to apply custom function: {s}"))

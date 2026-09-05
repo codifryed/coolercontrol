@@ -174,3 +174,11 @@ drivetemp_suspend = false
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true
+
+# Whether a remote device-service plugin must present a TLS certificate whose fingerprint
+# you pinned in advance. When disabled (the default), the daemon trusts a remote the first
+# time it connects, records that certificate's fingerprint in a "tls_pin" file inside the
+# plugin's directory, and refuses the connection if it ever changes. Enable this to refuse
+# unknown remotes outright; you then have to write the expected fingerprint into that
+# "tls_pin" file yourself. Connections over a Unix socket and to localhost are unaffected.
+# tls_strict = false

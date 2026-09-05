@@ -366,6 +366,7 @@ impl ServicePluginRepo {
         >,
         devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
         poll_rate: f64,
+        tls_strict: bool,
         api_up_token: CancellationToken,
     ) {
         // The definition is overwritten in place rather than removed and re-added. Removing
@@ -462,7 +463,8 @@ impl ServicePluginRepo {
         }
         let mut connect_wait_secs = 0;
         'connection: loop {
-            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate).await {
+            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate, tls_strict).await
+            {
                 Ok(client) => {
                     let mut version = String::new();
                     let mut retries = 0;
@@ -897,7 +899,9 @@ impl Repository for ServicePluginRepo {
         let devices = Rc::new(RefCell::new(HashMap::new()));
         let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
         let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
-        let poll_rate = self.config.get_settings()?.poll_rate;
+        let settings = self.config.get_settings()?;
+        let poll_rate = settings.poll_rate;
+        let tls_strict = settings.tls_strict;
         if self.reset_plugin_user {
             info!("Resetting plugin user '{CC_PLUGIN_USER}' as requested");
             if let Err(err) = delete_plugin_user(CC_PLUGIN_USER).await {
@@ -927,6 +931,7 @@ impl Repository for ServicePluginRepo {
                         services,
                         devices,
                         poll_rate,
+                        tls_strict,
                         api_up_token,
                     )
                     .await;
