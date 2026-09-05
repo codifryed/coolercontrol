@@ -114,6 +114,24 @@ impl DeviceServiceClient {
         }
     }
 
+    /// Turns a gRPC failure into an error a user can act on.
+    ///
+    /// `Unauthenticated` is the one worth special-casing: it means the remote is up and
+    /// answering, and refused us. Reported as a bare status it reads like a network
+    /// fault, and the retry loop above would then blame startup time for what is
+    /// actually a missing or stale token.
+    fn call_failed(&self, context: &str, status: &tonic::Status) -> anyhow::Error {
+        if status.code() == tonic::Code::Unauthenticated {
+            return anyhow!(
+                "{context}: device service '{}' refused our credentials. Put a valid access \
+                 token from that daemon into a '{}' file in this plugin's directory.",
+                self.service_id,
+                trust::TOKEN_FILE_NAME
+            );
+        }
+        anyhow!("{context}: {status}")
+    }
+
     /// Wraps a message in a request carrying this client's credentials.
     ///
     /// Every outbound call goes through here, so a new RPC cannot accidentally ship
@@ -214,7 +232,7 @@ impl DeviceServiceClient {
                 let request = self.request(HealthRequest{});
                 service_client.health(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|s| anyhow!("Failed to get health status: {s}"))
+                .map_err(|status| self.call_failed("Failed to get health status", &status))
             }
         }
     }
@@ -233,7 +251,7 @@ impl DeviceServiceClient {
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|s| anyhow!("Failed to list devices: {s}"))
+                .map_err(|status| self.call_failed("Failed to list devices", &status))
             }
         }
     }
@@ -725,5 +743,59 @@ mod wait_timeout_tests {
         // being declared unresponsive.
         assert_eq!(service_wait_timeout_for(0.5), Duration::from_secs(4));
         assert_eq!(service_wait_timeout_for(5.0), Duration::from_secs(40));
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+    use crate::repositories::service_plugin::service_manifest::ServiceType;
+    use std::path::PathBuf;
+
+    fn manifest(address: ConnectionType) -> ServiceManifest {
+        ServiceManifest {
+            id: "test_service".to_string(),
+            service_type: ServiceType::Device,
+            description: None,
+            version: None,
+            url: None,
+            executable: None,
+            args: Vec::new(),
+            envs: Vec::new(),
+            address,
+            privileged: false,
+            proxy: None,
+            path: PathBuf::from("/var/lib/coolercontrol/plugins/test_service"),
+        }
+    }
+
+    /// Goal: a remote reached over the network must be addressed as `https`. Sending the
+    /// bearer token over plaintext `http` would hand it to anyone on the path, which is
+    /// the whole reason the token exists.
+    #[test]
+    fn tcp_services_are_addressed_over_tls() {
+        let address = DeviceServiceClient::address_from_manifest(&manifest(ConnectionType::Tcp(
+            "192.168.1.100:11987".to_string(),
+        )))
+        .unwrap();
+        assert_eq!(address, "https://192.168.1.100:11987");
+    }
+
+    /// Goal: Unix sockets stay plain. The kernel already scopes them to this machine, so
+    /// TLS would add a certificate to manage for no gain.
+    #[test]
+    fn uds_services_stay_plaintext() {
+        let address = DeviceServiceClient::address_from_manifest(&manifest(ConnectionType::Uds(
+            PathBuf::from("/run/test.sock"),
+        )))
+        .unwrap();
+        assert_eq!(address, "unix:///run/test.sock");
+    }
+
+    #[test]
+    fn missing_address_is_an_error() {
+        assert!(
+            DeviceServiceClient::address_from_manifest(&manifest(ConnectionType::None)).is_err()
+        );
     }
 }
