@@ -12,6 +12,7 @@ use crate::repositories::service_plugin::service_manifest::{ServiceManifest, Ser
 use crate::repositories::service_plugin::service_plugin_repo::{
     ServicePluginRepo, CC_PLUGIN_USER, SERVICE_MANIFEST_FILE_NAME,
 };
+use crate::repositories::service_plugin::trust;
 use crate::repositories::utils::{DirectCommand, ShellCommandResult};
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
@@ -28,6 +29,8 @@ const PLUGIN_UI_DIR_NAME: &str = "ui";
 const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 /// The manifest is root-owned and not plugin-writable. See `secure_plugin_folder`.
 const PLUGIN_MANIFEST_PERMISSIONS: u32 = 0o644;
+/// The daemon's outbound token and TLS pin: root-owned and readable by root alone.
+const PLUGIN_CREDENTIAL_PERMISSIONS: u32 = 0o600;
 const ROOT_USER: &str = "root";
 const CHOWN_BIN: &str = "chown";
 const CHOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -352,7 +355,33 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     // plugin-owned, which is the exact state this guards against.
     let handover = chown(path, owner, true).await;
     secure_manifest(path).await?;
-    handover
+    let credentials = secure_daemon_credentials(path).await;
+    handover.and(credentials)
+}
+
+/// Returns the daemon's own credentials for this plugin to root, readable by nobody else.
+///
+/// The recursive handover above hands the plugin directory to the plugin user, but the
+/// token and TLS pin are the *daemon's* credentials for talking to a remote device
+/// service, not the plugin's. A plugin has no business reading the bearer token that
+/// authenticates this daemon to another machine, and it must not be able to rewrite the
+/// pin that decides which certificate is trusted.
+async fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
+    // A failed chown on one file must not skip hardening the other: the permission bits
+    // are the part that keeps the plugin user out, and they are set first for that reason.
+    let mut outcome = Ok(());
+    for file_name in [trust::TOKEN_FILE_NAME, trust::PIN_FILE_NAME] {
+        let path = plugin_dir.join(file_name);
+        if cc_fs::exists(&path).not() {
+            continue;
+        }
+        cc_fs::set_permissions(&path, Permissions::from_mode(PLUGIN_CREDENTIAL_PERMISSIONS))
+            .await?;
+        if let Err(err) = chown(&path, ROOT_USER, false).await {
+            outcome = Err(err);
+        }
+    }
+    outcome
 }
 
 /// Returns `manifest.toml` to root and drops any group or world write bit left on it.
@@ -549,6 +578,50 @@ mod tests {
     /// Methodology: leave a 0666 manifest behind, secure the folder, and re-read the mode. This
     /// half of `secure_plugin_folder` does not need root, unlike the ownership reset.
     #[test]
+    /// Goal: the daemon's outbound credentials must not follow the rest of the plugin
+    /// directory to the plugin user. A plugin that could read the token could
+    /// authenticate as this daemon to a remote machine; one that could rewrite the pin
+    /// could redirect trust to a certificate of its choosing.
+    #[test]
+    fn secure_plugin_folder_locks_down_daemon_credentials() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let token_path = dir.path().join(trust::TOKEN_FILE_NAME);
+            let pin_path = dir.path().join(trust::PIN_FILE_NAME);
+            std::fs::write(&token_path, "cc_secret\n").unwrap();
+            std::fs::write(&pin_path, "aa:bb\n").unwrap();
+            std::fs::set_permissions(&token_path, Permissions::from_mode(0o644)).unwrap();
+            std::fs::set_permissions(&pin_path, Permissions::from_mode(0o666)).unwrap();
+
+            // The chown needs root; the permission bits are what this asserts, and they
+            // are applied before it, exactly as the manifest test does.
+            let _ = secure_daemon_credentials(dir.path()).await;
+
+            for path in [&token_path, &pin_path] {
+                let mode = std::fs::metadata(path).unwrap().permissions().mode();
+                assert_eq!(
+                    mode & 0o777,
+                    PLUGIN_CREDENTIAL_PERMISSIONS,
+                    "{} should be 0600",
+                    path.display()
+                );
+            }
+        });
+    }
+
+    /// Goal: a plugin with no credentials is the normal case, so securing must be a
+    /// no-op rather than an error that aborts plugin initialization.
+    #[test]
+    fn secure_daemon_credentials_ignores_absent_files() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            assert!(secure_daemon_credentials(dir.path()).await.is_ok());
+            assert!(dir.path().join(trust::TOKEN_FILE_NAME).exists().not());
+        });
+    }
+
     fn secure_plugin_folder_resets_manifest_permissions() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {

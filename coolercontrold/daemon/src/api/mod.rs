@@ -808,6 +808,12 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             warn!("Failed to ensure TLS certificates: {err}");
         })
         .ok()?;
+    // Announce the fingerprint a remote daemon will pin. On a headless server this log
+    // line is the only way a user can check a pin against the certificate actually served.
+    if let Some(fingerprint) = tls::certificate_fingerprint(&cert_path).await {
+        info!("TLS certificate fingerprint (SHA-256): {fingerprint}");
+        tls::set_served_fingerprint(fingerprint);
+    }
     // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
     // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
     // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.

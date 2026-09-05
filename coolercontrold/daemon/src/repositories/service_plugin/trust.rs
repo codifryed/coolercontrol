@@ -23,7 +23,6 @@ use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, Server
 use rustls::crypto::CryptoProvider;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, Error as TlsError, SignatureScheme};
-use sha2::{Digest, Sha256};
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -122,21 +121,10 @@ pub fn decide(
 }
 
 /// SHA-256 of the certificate, as colon-separated byte pairs.
-///
-/// The grouping matches `tls_trust.cpp::fingerprint` so a user can compare what the
-/// daemon logs against what the desktop app shows without losing their place.
 pub fn fingerprint(certificate: &[u8]) -> String {
-    let digest = Sha256::digest(certificate);
-    debug_assert_eq!(digest.len(), FINGERPRINT_BYTES);
-    let hex = hashutil::to_lower_hex(&digest);
-    let mut grouped = String::with_capacity(hex.len() + FINGERPRINT_BYTES - 1);
-    for (index, pair) in hex.as_bytes().chunks(2).enumerate() {
-        if index > 0 {
-            grouped.push(':');
-        }
-        grouped.push_str(std::str::from_utf8(pair).unwrap_or_default());
-    }
-    grouped
+    let printed = hashutil::to_fingerprint(certificate);
+    debug_assert_eq!(printed.split(':').count(), FINGERPRINT_BYTES);
+    printed
 }
 
 /// True when the host part of an address refers to this machine.

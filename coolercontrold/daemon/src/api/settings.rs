@@ -151,6 +151,10 @@ pub struct CoolerControlSettingsDto {
     /// Whether to apply labels and ignores from the lm-sensors configuration
     sensors_conf_enabled: Option<bool>,
     tls_strict: Option<bool>,
+    /// The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when
+    /// TLS is off. Report-only: it is derived from the certificate, so anything sent here
+    /// is ignored.
+    tls_fingerprint: Option<String>,
 }
 
 impl CoolerControlSettingsDto {
@@ -277,6 +281,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             device_listener_enabled: Some(settings.device_listener_enabled),
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
             tls_strict: Some(settings.tls_strict),
+            tls_fingerprint: crate::api::tls::served_fingerprint().map(str::to_string),
         }
     }
 }
@@ -337,6 +342,7 @@ mod tests {
                 device_listener_enabled: None,
                 sensors_conf_enabled: None,
                 tls_strict: None,
+                tls_fingerprint: None,
             }
         }
     }
