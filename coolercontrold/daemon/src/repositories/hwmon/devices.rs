@@ -221,6 +221,9 @@ pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
     if let Some(wwid) = get_scsi_device_wwid(base_path).await {
         return wwid;
     }
+    if let Some(i2c_client) = get_i2c_client_id(base_path).await {
+        return i2c_client;
+    }
     get_location_based_id(base_path, device_name).await
 }
 
@@ -244,6 +247,35 @@ async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
     } else {
         device_name.to_owned()
     }
+}
+
+/// Returns an i2c client's identity as its adapter's parent, the adapter's own name and the
+/// client address, none of which move across boots. The canonical path of an i2c client carries
+/// the kernel-assigned bus number (`.../i2c-15/15-0050`), and that number follows adapter
+/// registration order, so on a machine whose GPU drivers register DDC and AUX adapters the SMBus
+/// adapter and every client on it are re-keyed between boots.
+///
+/// The adapter's own name is part of the identifier because one controller registers several
+/// ports (`SMBus PIIX4 adapter port 0 at 0b00`, `port 2 at 0b00`, `port 1 at 0b20`) under a
+/// single PCI function, and the same client address can appear on more than one of them.
+///
+/// Deliberately absent from `get_legacy_device_unique_id`, so `migrate_legacy_device_uid`
+/// carries an affected device's saved settings onto this identity exactly once.
+pub async fn get_i2c_client_id(base_path: &Path) -> Option<String> {
+    let device = get_canonical_path_str(&device_path(base_path))?;
+    let device = Path::new(&device);
+    let (bus, address) = device.file_name()?.to_str()?.split_once('-')?;
+    if bus.is_empty() || address.is_empty() {
+        return None;
+    }
+    let adapter = device.parent()?;
+    if adapter.file_name()?.to_str()? != format!("i2c-{bus}") {
+        return None;
+    }
+    let name = cc_fs::read_sysfs(adapter.join("name")).await.ok()?;
+    let adapter_name = normalize_sysfs_identifier(&name)?;
+    let controller = adapter.parent()?.to_str()?;
+    Some(format!("{controller}/{adapter_name}/{address}"))
 }
 
 /// Returns the SCSI `wwid`, which only a `scsi_device` exposes, so this doubles as the test
@@ -1272,5 +1304,104 @@ mod tests {
             assert_ne!(current, legacy, "the affected cohort must move");
             assert!(legacy.contains("hwmon"), "legacy resolved by sysfs path");
         });
+    }
+
+    /// Builds an i2c client under `test_dir`: an adapter directory `i2c-<bus>` holding a `name`
+    /// file and a `<bus>-<address>` client, with the hwmon device link pointed at the client.
+    async fn setup_i2c_client(ctx: &HwmonDeviceContext, bus: &str, address: &str, name: &str) {
+        let controller = Path::new(&ctx.test_dir).join("devices/pci0000:00/0000:00:14.0");
+        let adapter = controller.join(format!("i2c-{bus}"));
+        let client = adapter.join(format!("{bus}-{address}"));
+        cc_fs::create_dir_all(&client).await.unwrap();
+        cc_fs::write(adapter.join("name"), format!("{name}\n").into_bytes())
+            .await
+            .unwrap();
+        let link = ctx.hwmon_path.join("device");
+        cc_fs::remove_file(&link).await.ok();
+        std::os::unix::fs::symlink(&client, &link).unwrap();
+    }
+
+    // Goal: a DDR5 SPD sensor keeps one identity when the kernel hands its bus a different
+    // number, which is the whole defect. Method: build the same client twice, once on i2c-15
+    // and once on i2c-16, and assert the identity is the same while the legacy chain differs.
+    #[test]
+    #[serial]
+    fn i2c_client_id_survives_a_bus_renumber() {
+        cc_fs::test_runtime(async {
+            let name = "SMBus PIIX4 adapter port 0 at 0b00";
+            let ctx_low = setup().await;
+            setup_i2c_client(&ctx_low, "15", "0050", name).await;
+            let low = get_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
+            let low_legacy = get_legacy_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
+            teardown(&ctx_low).await;
+
+            let ctx_high = setup().await;
+            setup_i2c_client(&ctx_high, "16", "0050", name).await;
+            let high = get_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
+            let high_legacy = get_legacy_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
+            teardown(&ctx_high).await;
+
+            assert!(low.ends_with(&format!("/{name}/0050")), "got {low}");
+            assert_eq!(
+                strip_test_dir(&low, &ctx_low.test_dir),
+                strip_test_dir(&high, &ctx_high.test_dir),
+                "the identity must not follow the bus number"
+            );
+            assert_ne!(
+                strip_test_dir(&low_legacy, &ctx_low.test_dir),
+                strip_test_dir(&high_legacy, &ctx_high.test_dir),
+                "the legacy chain must still differ, so the migration fires"
+            );
+        });
+    }
+
+    // Goal: two ports of one controller can each carry a client at the same address, so the
+    // adapter name must be in the identity. Method: build both and assert they differ.
+    #[test]
+    #[serial]
+    fn i2c_clients_on_two_ports_do_not_collide() {
+        cc_fs::test_runtime(async {
+            let ctx_a = setup().await;
+            setup_i2c_client(&ctx_a, "15", "0050", "SMBus PIIX4 adapter port 0 at 0b00").await;
+            let port_zero = get_device_unique_id(&ctx_a.hwmon_path, "spd5118").await;
+            let dir_a = ctx_a.test_dir.clone();
+            teardown(&ctx_a).await;
+
+            let ctx_b = setup().await;
+            setup_i2c_client(&ctx_b, "15", "0050", "SMBus PIIX4 adapter port 2 at 0b00").await;
+            let port_two = get_device_unique_id(&ctx_b.hwmon_path, "spd5118").await;
+            let dir_b = ctx_b.test_dir.clone();
+            teardown(&ctx_b).await;
+
+            assert_ne!(
+                strip_test_dir(&port_zero, &dir_a),
+                strip_test_dir(&port_two, &dir_b),
+                "the adapter port must be part of the identity"
+            );
+        });
+    }
+
+    // Goal: every device that is not an i2c client must keep the identity it has today, so no
+    // unaffected user is re-keyed. Method: a plain platform device resolves by its path.
+    #[test]
+    #[serial]
+    fn a_non_i2c_device_keeps_its_path_identity() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let device_dir = ctx.hwmon_path.join("device");
+            cc_fs::create_dir_all(&device_dir).await.unwrap();
+
+            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
+            let current = get_device_unique_id(&ctx.hwmon_path, "nct6799").await;
+            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "nct6799").await;
+
+            teardown(&ctx).await;
+            assert_eq!(i2c, None, "a plain device is not an i2c client");
+            assert_eq!(current, legacy, "an unaffected device must not move");
+        });
+    }
+
+    fn strip_test_dir(id: &str, test_dir: &str) -> String {
+        id.replace(test_dir, "")
     }
 }
