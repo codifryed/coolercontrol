@@ -20,9 +20,13 @@ pub struct ServiceManifest {
     pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
     pub envs: Vec<EnvVar>,           // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
-    pub privileged: bool,            // for device service plugins (false by default)
-    pub proxy: Option<ProxyConfig>,  // for plugins that expose a local HTTP API
-    pub path: PathBuf,               // This plugin's folder path
+    /// Whether a TCP address is reached over TLS. Absent lets the token decide; see
+    /// `trust::uses_tls`. Only a plugin author knows whether their server terminates TLS,
+    /// so their declaration wins over the default.
+    pub tls: Option<bool>,
+    pub privileged: bool, // for device service plugins (false by default)
+    pub proxy: Option<ProxyConfig>, // for plugins that expose a local HTTP API
+    pub path: PathBuf,    // This plugin's folder path
 }
 
 impl ServiceManifest {
@@ -63,6 +67,8 @@ impl ServiceManifest {
         let args = Self::get_args(document)?;
         let envs = Self::get_envs(document)?;
         let address = Self::get_address(document, &id, &service_type)?;
+        // Absent is meaningful here, so this stays an `Option` rather than defaulting.
+        let tls = document.get("tls").and_then(toml_edit::Item::as_bool);
         // A mistyped `privileged` used to fall back to `false` without a word. It fails
         // safe, but a plugin that needs root then starts unprivileged and misbehaves for
         // a reason nothing points at.
@@ -83,6 +89,7 @@ impl ServiceManifest {
             args,
             envs,
             address,
+            tls,
             privileged,
             proxy,
             path,
@@ -462,6 +469,29 @@ mod tests {
     fn parse_manifest(toml_str: &str) -> Result<ServiceManifest> {
         let doc: DocumentMut = toml_str.parse()?;
         ServiceManifest::from_document(&doc, PathBuf::from("/tmp/test"))
+    }
+
+    /// Goal: `tls` has three meanings, not two. Absent must stay absent rather than
+    /// collapsing to `false`, because absent is what hands the decision to the token and
+    /// a silent `false` would strip the token from every remote that has one.
+    #[test]
+    fn test_tls_field_distinguishes_absent_from_false() {
+        let absent = parse_manifest(&make_manifest_toml(&[])).unwrap();
+        assert_eq!(absent.tls, None);
+
+        let off = parse_manifest(&make_manifest_toml(&[("tls", "false")])).unwrap();
+        assert_eq!(off.tls, Some(false));
+
+        let on = parse_manifest(&make_manifest_toml(&[("tls", "true")])).unwrap();
+        assert_eq!(on.tls, Some(true));
+    }
+
+    /// Goal: a non-boolean `tls` must not be read as an opinion. Treating a stray string
+    /// as `false` would silently disable TLS on a link that carries a token.
+    #[test]
+    fn test_non_boolean_tls_is_ignored() {
+        let manifest = parse_manifest(&make_manifest_toml(&[("tls", "\"yes\"")])).unwrap();
+        assert_eq!(manifest.tls, None);
     }
 
     #[test]

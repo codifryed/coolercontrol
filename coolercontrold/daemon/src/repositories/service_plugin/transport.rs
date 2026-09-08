@@ -3,9 +3,11 @@
 
 //! Connecting to a device-service plugin.
 //!
-//! Unix sockets connect as they always did. TCP now goes over TLS, because a remote
-//! device service is reached across a network and the bearer token this daemon sends
-//! must not travel in the clear.
+//! Unix sockets connect as they always did. TCP goes over TLS when the link carries a
+//! token, because a remote device service is reached across a network and a bearer token
+//! must not travel in the clear. A plugin that serves plain h2c, which is every
+//! third-party plugin and every daemon older than this change, is reached exactly as
+//! before. See `trust::uses_tls`.
 //!
 //! tonic is built here without its own TLS features, so the channel is built from a
 //! connector over the `tokio-rustls` stack the daemon already carries for the server
@@ -34,13 +36,15 @@ pub async fn connect(
     tls_strict: bool,
 ) -> Result<Channel> {
     match &manifest.address {
-        ConnectionType::Uds(_) => Endpoint::try_from(address.to_string())?
+        ConnectionType::Tcp(tcp_address) if trust::uses_tls(manifest) => {
+            connect_tls(manifest, address, tcp_address, tls_strict).await
+        }
+        // Plaintext h2c. A Unix socket is already scoped to this machine by the kernel;
+        // a TCP peer reaching here has no token to protect.
+        ConnectionType::Uds(_) | ConnectionType::Tcp(_) => Endpoint::try_from(address.to_string())?
             .connect()
             .await
             .with_context(|| format!("Connecting to device service at {address}")),
-        ConnectionType::Tcp(tcp_address) => {
-            connect_tls(manifest, address, tcp_address, tls_strict).await
-        }
         ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
     }
 }
@@ -138,7 +142,7 @@ async fn build_channel(
 }
 
 /// The host part of an `address:port`, tolerating bracketed IPv6 literals.
-fn host_of(tcp_address: &str) -> String {
+pub fn host_of(tcp_address: &str) -> String {
     let trimmed = tcp_address.trim();
     if let Some(rest) = trimmed.strip_prefix('[') {
         if let Some((host, _)) = rest.split_once(']') {

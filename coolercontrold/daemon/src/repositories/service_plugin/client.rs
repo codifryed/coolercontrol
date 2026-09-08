@@ -90,26 +90,71 @@ impl DeviceServiceClient {
         tls_strict: bool,
     ) -> Result<Self> {
         let address = Self::address_from_manifest(service_manifest)?;
+        let token = Self::outbound_token(service_manifest);
         let channel = transport::connect(service_manifest, &address, tls_strict).await?;
         let grpc_client = device_service_client::DeviceServiceClient::new(channel);
         Ok(Self::new(
             service_manifest.id.clone(),
             poll_rate,
             grpc_client,
-            trust::read_token(&service_manifest.path),
+            token,
         ))
+    }
+
+    /// The token to send, withheld when the link would carry it in the clear off this
+    /// machine.
+    ///
+    /// `trust::uses_tls` already ties a token to TLS, but a plugin author can override
+    /// that with `tls = false` in their own manifest. Since the manifest is the plugin's
+    /// to write and the token is the user's, a plugin must not be able to turn the user's
+    /// credential into a plaintext broadcast.
+    fn outbound_token(service_manifest: &ServiceManifest) -> Option<String> {
+        let token = trust::read_token(&service_manifest.path)?;
+        if Self::link_protects_a_token(service_manifest) {
+            return Some(token);
+        }
+        error!(
+            "Device service '{}' declares an unencrypted connection, so its access token \
+             will not be sent. Remove 'tls = false' from that plugin's manifest, or remove \
+             the '{}' file if the remote needs no token.",
+            service_manifest.id,
+            trust::TOKEN_FILE_NAME
+        );
+        None
+    }
+
+    /// Whether a token can travel this link safely: TLS encrypts it, and a link that
+    /// never leaves this machine has nothing to eavesdrop on.
+    fn link_protects_a_token(service_manifest: &ServiceManifest) -> bool {
+        if trust::uses_tls(service_manifest) {
+            return true;
+        }
+        match &service_manifest.address {
+            ConnectionType::Uds(_) => true,
+            ConnectionType::Tcp(tcp_address) => {
+                trust::is_loopback_host(&transport::host_of(tcp_address))
+            }
+            ConnectionType::None => false,
+        }
     }
 
     /// Derives the gRPC connection address from a manifest. Shared by `connect` and the main-side
     /// proxy handle (which needs the address to map device locations without holding the client).
     ///
-    /// TCP is `https`: a remote device service is reached over a network, and the token
-    /// this client now sends must not cross it in the clear. Unix sockets stay plain,
-    /// since the kernel already scopes them to this machine.
+    /// A TCP address is `https` exactly when the link is encrypted, which
+    /// `trust::uses_tls` decides. Unix sockets stay plain, since the kernel already
+    /// scopes them to this machine.
     pub fn address_from_manifest(service_manifest: &ServiceManifest) -> Result<String> {
         match &service_manifest.address {
             ConnectionType::Uds(uds) => Ok(format!("unix://{}", uds.display())),
-            ConnectionType::Tcp(tcp_addr) => Ok(format!("https://{tcp_addr}")),
+            ConnectionType::Tcp(tcp_addr) => {
+                let scheme = if trust::uses_tls(service_manifest) {
+                    "https"
+                } else {
+                    "http"
+                };
+                Ok(format!("{scheme}://{tcp_addr}"))
+            }
             ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
         }
     }
@@ -750,9 +795,19 @@ mod wait_timeout_tests {
 mod credential_tests {
     use super::*;
     use crate::repositories::service_plugin::service_manifest::ServiceType;
+    use std::ops::Not;
     use std::path::PathBuf;
 
     fn manifest(address: ConnectionType) -> ServiceManifest {
+        manifest_in(
+            address,
+            PathBuf::from("/var/lib/coolercontrol/plugins/test_service"),
+        )
+    }
+
+    /// A manifest whose directory really exists, so the token file can be created or left
+    /// absent and `uses_tls` reads the same thing the daemon would.
+    fn manifest_in(address: ConnectionType, path: PathBuf) -> ServiceManifest {
         ServiceManifest {
             id: "test_service".to_string(),
             service_type: ServiceType::Device,
@@ -763,22 +818,120 @@ mod credential_tests {
             args: Vec::new(),
             envs: Vec::new(),
             address,
+            tls: None,
             privileged: false,
             proxy: None,
-            path: PathBuf::from("/var/lib/coolercontrol/plugins/test_service"),
+            path,
         }
     }
 
-    /// Goal: a remote reached over the network must be addressed as `https`. Sending the
-    /// bearer token over plaintext `http` would hand it to anyone on the path, which is
-    /// the whole reason the token exists.
+    fn write_token(dir: &std::path::Path) {
+        std::fs::write(dir.join(trust::TOKEN_FILE_NAME), "cc_secret\n").unwrap();
+    }
+
+    const REMOTE: &str = "192.168.1.100:11987";
+
+    /// Goal: the compatibility rule. Without a token the link is plain `http`, so an
+    /// older daemon and every third-party plugin serving plain h2c on TCP keep working
+    /// after this daemon is upgraded.
     #[test]
-    fn tcp_services_are_addressed_over_tls() {
-        let address = DeviceServiceClient::address_from_manifest(&manifest(ConnectionType::Tcp(
-            "192.168.1.100:11987".to_string(),
-        )))
-        .unwrap();
-        assert_eq!(address, "https://192.168.1.100:11987");
+    fn a_tcp_service_without_a_token_stays_plaintext() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = manifest_in(
+            ConnectionType::Tcp(REMOTE.to_string()),
+            dir.path().to_path_buf(),
+        );
+        assert!(trust::uses_tls(&manifest).not());
+        assert_eq!(
+            DeviceServiceClient::address_from_manifest(&manifest).unwrap(),
+            format!("http://{REMOTE}")
+        );
+    }
+
+    /// Goal: the other half of the rule. Placing a token is the act that says the remote
+    /// is an upgraded daemon, so it switches the link to `https`. The token must never
+    /// cross a network in the clear, and this is what guarantees it.
+    #[test]
+    fn a_token_switches_the_link_to_tls() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path());
+        let manifest = manifest_in(
+            ConnectionType::Tcp(REMOTE.to_string()),
+            dir.path().to_path_buf(),
+        );
+        assert!(trust::uses_tls(&manifest));
+        assert_eq!(
+            DeviceServiceClient::address_from_manifest(&manifest).unwrap(),
+            format!("https://{REMOTE}")
+        );
+        assert!(DeviceServiceClient::outbound_token(&manifest).is_some());
+    }
+
+    /// Goal: the escape hatch, both ways. A plugin author knows whether their server
+    /// terminates TLS, so their declaration overrides the token-derived default. This is
+    /// what a remote with `tls_enabled = false` needs.
+    #[test]
+    fn the_manifest_tls_field_overrides_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut forced_on = manifest_in(
+            ConnectionType::Tcp(REMOTE.to_string()),
+            dir.path().to_path_buf(),
+        );
+        forced_on.tls = Some(true);
+        assert!(trust::uses_tls(&forced_on));
+        assert_eq!(
+            DeviceServiceClient::address_from_manifest(&forced_on).unwrap(),
+            format!("https://{REMOTE}")
+        );
+
+        write_token(dir.path());
+        let mut forced_off = manifest_in(
+            ConnectionType::Tcp(REMOTE.to_string()),
+            dir.path().to_path_buf(),
+        );
+        forced_off.tls = Some(false);
+        assert!(trust::uses_tls(&forced_off).not());
+        assert_eq!(
+            DeviceServiceClient::address_from_manifest(&forced_off).unwrap(),
+            format!("http://{REMOTE}")
+        );
+    }
+
+    /// Goal: the manifest is the plugin's to write and the token is the user's, so a
+    /// plugin declaring `tls = false` must not be able to turn that credential into a
+    /// plaintext broadcast. The token is withheld rather than sent.
+    #[test]
+    fn a_plaintext_remote_never_receives_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path());
+        let mut manifest = manifest_in(
+            ConnectionType::Tcp(REMOTE.to_string()),
+            dir.path().to_path_buf(),
+        );
+        manifest.tls = Some(false);
+        assert!(DeviceServiceClient::outbound_token(&manifest).is_none());
+    }
+
+    /// Goal: the withholding must not fire where there is nothing to eavesdrop on. A
+    /// loopback peer and a Unix socket never leave this machine, so a token declared
+    /// plaintext there is still sent, which is what a local plugin needs.
+    #[test]
+    fn a_local_plaintext_link_still_carries_the_token() {
+        for address in [
+            ConnectionType::Tcp("127.0.0.1:11987".to_string()),
+            ConnectionType::Tcp("[::1]:11987".to_string()),
+            ConnectionType::Tcp("localhost:11987".to_string()),
+            ConnectionType::Uds(PathBuf::from("/run/test.sock")),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let mut manifest = manifest_in(address.clone(), dir.path().to_path_buf());
+            manifest.tls = Some(false);
+            assert!(
+                DeviceServiceClient::outbound_token(&manifest).is_some(),
+                "{address:?} should still carry the token"
+            );
+        }
     }
 
     /// Goal: Unix sockets stay plain. The kernel already scopes them to this machine, so

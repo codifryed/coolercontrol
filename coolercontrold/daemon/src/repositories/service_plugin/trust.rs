@@ -18,6 +18,7 @@
 //! the user placed deliberately, and refuses to trust anything on first contact.
 
 use crate::hashutil;
+use crate::repositories::service_plugin::service_manifest::ServiceManifest;
 use anyhow::{Context, Result};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::CryptoProvider;
@@ -150,6 +151,23 @@ pub fn write_pin(plugin_dir: &Path, pin: &str) -> Result<()> {
     let path = plugin_dir.join(PIN_FILE_NAME);
     std::fs::write(&path, format!("{pin}\n"))
         .with_context(|| format!("Writing TLS pin to {}", path.display()))
+}
+
+/// Whether the link to a TCP device service is encrypted.
+///
+/// The plugin's `tls` field wins when its author set one: only they know whether their
+/// server terminates TLS. Otherwise the token decides, which keeps an older daemon and
+/// every third-party plugin serving plain h2c on TCP working untouched, and upgrades the
+/// link at the moment the user places a token, which an upgraded remote requires anyway.
+///
+/// The rule also makes the dangerous combination hard to reach by accident: a token
+/// cannot leave this machine in the clear, because carrying one is what turns TLS on. An
+/// author who declares `tls = false` can still contradict that, which is why
+/// `DeviceServiceClient` withholds the token rather than trusting this alone.
+pub fn uses_tls(manifest: &ServiceManifest) -> bool {
+    manifest
+        .tls
+        .unwrap_or_else(|| read_token(&manifest.path).is_some())
 }
 
 /// The bearer token for a remote device service, if the user placed one.
