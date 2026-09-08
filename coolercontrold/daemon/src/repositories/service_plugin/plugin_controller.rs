@@ -573,11 +573,6 @@ mod tests {
         );
     }
 
-    /// Goal: the manifest must not stay group- or world-writable, since it declares `privileged`
-    /// and therefore decides whether the plugin runs as root.
-    /// Methodology: leave a 0666 manifest behind, secure the folder, and re-read the mode. This
-    /// half of `secure_plugin_folder` does not need root, unlike the ownership reset.
-    #[test]
     /// Goal: the daemon's outbound credentials must not follow the rest of the plugin
     /// directory to the plugin user. A plugin that could read the token could
     /// authenticate as this daemon to a remote machine; one that could rewrite the pin
@@ -622,6 +617,11 @@ mod tests {
         });
     }
 
+    /// Goal: the manifest must not stay group- or world-writable, since it declares `privileged`
+    /// and therefore decides whether the plugin runs as root.
+    /// Methodology: leave a 0666 manifest behind, secure the folder, and re-read the mode. This
+    /// half of `secure_plugin_folder` does not need root, unlike the ownership reset.
+    #[test]
     fn secure_plugin_folder_resets_manifest_permissions() {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
