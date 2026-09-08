@@ -70,6 +70,7 @@ automatically. They are included here for reference:
       - `sudo mount --bind ~/.local/share/nix/root/nix /nix`
    7. Build the packages, replacing the Hashes where appropriate:
       `nix --extra-experimental-features nix-command build -f . coolercontrol -L`
+      `nixpkgs-review wip`
    8. Run the built binaries (in a root-less install):
       - `sudo ./result-1/bin/coolercontrold`
       - `./result/bin/coolercontrol --disable-gpu` -- doesn't work on a non-native NixOS
