@@ -411,7 +411,7 @@ async fn create_api_server(
         // Dual-protocol server: accepts both HTTP and HTTPS on the same port
         // HTTP requests from non-localhost are redirected to HTTPS (via middleware)
         // HTTP requests from localhost and to /health are allowed
-        info!("Serving HTTP and HTTPS API on {addr}");
+        info!("Serving HTTP, HTTPS and gRPC API on {addr}");
 
         // Add HTTPS redirect layer for non-localhost HTTP requests
         let redirect_layer = dual_protocol::HttpsRedirectLayer {
@@ -435,7 +435,7 @@ async fn create_api_server(
             .await?;
     } else {
         // Plain HTTP server (no redirect needed)
-        info!("Serving HTTP API on: {addr}");
+        info!("Serving HTTP and gRPC API on {addr}");
         let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(base_router);
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
