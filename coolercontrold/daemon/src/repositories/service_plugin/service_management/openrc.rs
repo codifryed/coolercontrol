@@ -10,6 +10,7 @@ use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
 use crate::repositories::utils::DirectCommand;
 use crate::rt::sleep;
 use anyhow::{anyhow, Result};
+use log::warn;
 use std::fmt::Write;
 use std::fs::Permissions;
 use std::ops::Not;
@@ -173,8 +174,14 @@ fn create_service_file(
     service_definition: &ServiceDefinition,
 ) -> String {
     let mut script = String::new();
-    let args = service_definition.args.join(" ");
-    let program_path = service_definition.executable.to_string_lossy();
+    warn_about_unrepresentable_args(service_definition);
+    let args = service_definition
+        .args
+        .iter()
+        .map(|arg| escape_shell_dquoted(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let program_path = escape_shell_dquoted(&service_definition.executable.to_string_lossy());
     let _ = writeln!(script, "#!/sbin/openrc-run");
     let _ = writeln!(script);
     let _ = writeln!(script, "description=\"{description}\"");
@@ -206,10 +213,49 @@ fn build_supervise_daemon_args(service_definition: &ServiceDefinition) -> String
     }
     if let Some(envs) = &service_definition.envs {
         for (var, val) in envs {
-            parts.push(format!("-e {var}={val}"));
+            parts.push(format!("-e {var}={}", escape_shell_dquoted(val)));
         }
     }
     parts.join(" ")
+}
+
+/// Neutralises the characters that keep their meaning inside a double-quoted shell word.
+///
+/// Everything this generator writes lands inside `name="..."` in a POSIX shell script, so
+/// a value carrying `$`, a backtick, `"` or `\` would be expanded or would close the
+/// quoting and let the rest of the value execute. Only these four matter inside double
+/// quotes; the rest of the shell's metacharacters do not.
+///
+/// Note that this protects the script, not the argument's shape: see
+/// [`warn_about_unrepresentable_args`].
+fn escape_shell_dquoted(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if matches!(character, '\\' | '"' | '$' | '`') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+/// Warns about arguments `OpenRC` cannot pass through intact.
+///
+/// `command_args` is one shell string that `OpenRC` word-splits, so an argument holding
+/// whitespace arrives at the plugin as several arguments and there is no quoting that
+/// prevents it. Saying so beats corrupting it silently, which is how the old allowlist
+/// behaved. systemd has no such limit, so this is not worth rejecting in the manifest.
+fn warn_about_unrepresentable_args(service_definition: &ServiceDefinition) {
+    for arg in &service_definition.args {
+        if arg.chars().any(char::is_whitespace) {
+            warn!(
+                "Plugin '{}' has the argument {arg:?}, which contains whitespace. OpenRC \
+                 passes arguments as one word-split string, so the plugin will receive this \
+                 as several arguments.",
+                service_definition.service_id
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +272,98 @@ mod tests {
             envs: None,
             disable_restart_on_failure: false,
         }
+    }
+
+    fn command_args_of(args: Vec<String>) -> String {
+        let mut definition = base_definition();
+        definition.args = args;
+        let script = create_service_file("Test", "test", &definition);
+        script
+            .lines()
+            .find(|line| line.starts_with("command_args="))
+            .expect("command_args is present")
+            .to_string()
+    }
+
+    /// Goal: the four characters that keep their meaning inside a double-quoted shell
+    /// word are neutralised. Everything here lands inside `name="..."` in a POSIX shell
+    /// script, so an unescaped one of these would be expanded, or would close the quoting
+    /// and let the remainder of the value execute.
+    #[test]
+    fn command_args_neutralises_shell_metacharacters() {
+        assert_eq!(
+            command_args_of(vec!["$HOME".into()]),
+            r#"command_args="\$HOME""#
+        );
+        assert_eq!(
+            command_args_of(vec!["`id`".into()]),
+            r#"command_args="\`id\`""#
+        );
+        assert_eq!(
+            command_args_of(vec![r#"a";id;""#.into()]),
+            r#"command_args="a\";id;\"""#
+        );
+        assert_eq!(
+            command_args_of(vec![r"C:\tmp".into()]),
+            r#"command_args="C:\\tmp""#
+        );
+    }
+
+    /// Goal: characters the old allowlist deleted now reach the plugin. None of these has
+    /// any meaning inside double quotes, so none of them needs touching.
+    #[test]
+    fn command_args_preserves_previously_stripped_characters() {
+        for arg in [
+            "50%",
+            "x~",
+            "--listen=[::1]:8080",
+            "~/.config/foo.toml",
+            "*",
+            ";",
+            "p@ss!word",
+            "https://ex.com/a?b=1&c=2",
+        ] {
+            let line = command_args_of(vec![arg.to_string()]);
+            assert_eq!(line, format!("command_args=\"{arg}\""), "for {arg}");
+        }
+    }
+
+    /// Goal: the program path is escaped too, since it is written into the same kind of
+    /// shell assignment as the arguments.
+    #[test]
+    fn command_escapes_the_program_path() {
+        let mut definition = base_definition();
+        definition.executable = PathBuf::from("/opt/plugin/run$x");
+        let script = create_service_file("Test", "test", &definition);
+        assert!(
+            script.contains(r#"command="/opt/plugin/run\$x""#),
+            "{script}"
+        );
+    }
+
+    /// Goal: an environment value goes through the same escaping, because it is joined
+    /// into `supervise_daemon_args` and written into the same shell assignment.
+    #[test]
+    fn supervise_daemon_args_escapes_environment_values() {
+        let mut definition = base_definition();
+        definition.username = Some("cc-plugin-user".to_string());
+        definition.envs = Some(vec![("LITERAL".into(), "$HOME".into())]);
+        let args = build_supervise_daemon_args(&definition);
+        assert!(args.contains(r"-e LITERAL=\$HOME"), "{args}");
+    }
+
+    /// Goal: an argument containing whitespace is reported rather than silently reshaped.
+    /// `command_args` is one shell string that OpenRC word-splits, so no quoting makes it
+    /// arrive as a single argument; saying so is the honest option.
+    #[test]
+    fn whitespace_in_an_argument_is_reported_not_hidden() {
+        let mut definition = base_definition();
+        definition.args = vec!["--name".into(), "My Device".into()];
+        // The value is still written out unaltered: it splits, but nothing is deleted.
+        let line = command_args_of(definition.args.clone());
+        assert_eq!(line, r#"command_args="--name My Device""#);
+        // And the warning names it, which is what `create_service_file` emits.
+        warn_about_unrepresentable_args(&definition);
     }
 
     /// Goal: the wait for a reported stop to finish must terminate. An unbounded wait
