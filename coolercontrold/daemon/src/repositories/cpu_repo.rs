@@ -53,7 +53,7 @@ type ZoneID = u8;
 type ProcessorCount = u16; // the logical processor count (aka how many cores per physical cpu)
 
 /// How confidently a CPU hwmon device is tied to a physical processor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CpuAssociation {
     /// Tied to a cpuinfo physical id. Load, frequency and power all describe this processor.
     Socket(PhysicalID),
@@ -390,15 +390,42 @@ impl CpuRepo {
             .map(|(_, model_name)| model_name.clone())
     }
 
+    /// The 1-based number a CPU device is presented under, which its UID is derived from.
+    ///
+    /// A socket keeps `physical id + 1` so that existing device UIDs, and the settings saved
+    /// against them, do not change. A zone is numbered past every physical id: a zone id and a
+    /// physical id are different quantities, so the two would otherwise collide wherever cpuinfo
+    /// numbers its packages sparsely. Keeping zones above the sockets also means the physical id
+    /// that `preload_statuses` recovers as `type_index - 1` can never alias a real processor.
+    fn device_type_index(&self, association: CpuAssociation) -> Option<u8> {
+        match association {
+            CpuAssociation::Socket(physical_id) => {
+                debug_assert!(self.cpu_infos.contains_key(&physical_id));
+                physical_id.checked_add(1)
+            }
+            CpuAssociation::Zone(zone_id) => {
+                let highest_physical_id = self.cpu_infos.keys().max().copied()?;
+                // One past the highest socket number, then the zone's own offset.
+                let type_index = highest_physical_id.checked_add(2)?.checked_add(zone_id)?;
+                debug_assert!(type_index > highest_physical_id + 1);
+                Some(type_index)
+            }
+        }
+    }
+
     /// The physical processors that no CPU hwmon device was matched to, ascending.
     fn unmatched_physical_ids(
         &self,
-        matched: &HashMap<PhysicalID, HwmonDriverInfo>,
+        matched: &HashMap<CpuAssociation, HwmonDriverInfo>,
     ) -> Vec<PhysicalID> {
         let mut unmatched = self
             .cpu_infos
             .keys()
-            .filter(|physical_id| matched.contains_key(physical_id).not())
+            .filter(|physical_id| {
+                matched
+                    .contains_key(&CpuAssociation::Socket(**physical_id))
+                    .not()
+            })
             .copied()
             .collect::<Vec<PhysicalID>>();
         unmatched.sort_unstable();
@@ -849,7 +876,7 @@ impl CpuRepo {
     async fn init_hwmon_cpu_devices(
         &mut self,
         potential_cpu_paths: Vec<(String, PathBuf)>,
-    ) -> HashMap<PhysicalID, HwmonDriverInfo> {
+    ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_left_to_find = num_of_cpus;
@@ -882,9 +909,9 @@ impl CpuRepo {
                     continue;
                 };
                 let cpu_id = association.device_id();
-                if hwmon_devices.contains_key(&cpu_id) {
+                if hwmon_devices.contains_key(&association) {
                     info!(
-                        "A CPU device is already registered for id {cpu_id}. \
+                        "A CPU device is already registered for {association:?}. \
                         Skipping {device_name} at {}.",
                         path.display()
                     );
@@ -900,7 +927,13 @@ impl CpuRepo {
                         path.display()
                     );
                 }
-                let type_index = cpu_id + 1;
+                let Some(type_index) = self.device_type_index(association) else {
+                    error!(
+                        "No device number left for {association:?}. Skipping {device_name} at {}.",
+                        path.display()
+                    );
+                    continue;
+                };
                 // cpu_info is set first, filling in model names:
                 let Some(cpu_name) = self.cpu_model_name(cpu_id) else {
                     error!("No CPU model name found. Skipping {device_name} device.");
@@ -935,7 +968,7 @@ impl CpuRepo {
                     channels,
                     ..Default::default()
                 };
-                hwmon_devices.insert(cpu_id, hwmon_driver_info);
+                hwmon_devices.insert(association, hwmon_driver_info);
                 if num_cpu_devices_left_to_find > 1 {
                     num_cpu_devices_left_to_find -= 1;
                     continue;
@@ -992,13 +1025,20 @@ impl Repository for CpuRepo {
         // These are keyed by `CpuAssociation::device_id()`, so a zone-keyed device has no cpuinfo
         // entry of its own. The name has to be resolved the same way it was when the device was
         // built, or every such device would be dropped here.
-        for (device_id, driver) in hwmon_devices {
-            let Some(cpu_name) = self.cpu_model_name(device_id) else {
-                error!("No CPU model name for CPU device id {device_id}. Skipping device.");
+        for (association, driver) in hwmon_devices {
+            let Some(cpu_name) = self.cpu_model_name(association.device_id()) else {
+                error!("No CPU model name for {association:?}. Skipping device.");
                 continue;
             };
+            let Some(type_index) = self.device_type_index(association) else {
+                error!("No device number left for {association:?}. Skipping device.");
+                continue;
+            };
+            // `preload_statuses` recovers this same id from `type_index`, so both paths must
+            // derive it the same way or a device's seeded counters would not be found again.
+            let status_id = type_index - 1;
             for channel in driver.channels.iter().filter(|channel| {
-                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == device_id
+                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == status_id
             }) {
                 // Fill initial joule_count with a real count (needed before
                 // request_status). If the initial read fails, seed with 0 so the
@@ -1008,12 +1048,11 @@ impl Repository for CpuRepo {
                         .await
                         .unwrap_or(0.0);
                 self.energy_counters
-                    .insert(device_id, Cell::new(joule_count));
+                    .insert(status_id, Cell::new(joule_count));
             }
             let (channels, temps) = self
-                .request_status(device_id, &driver, &mut cpu_freqs, true)
+                .request_status(status_id, &driver, &mut cpu_freqs, true)
                 .await;
-            let type_index = device_id + 1;
             self.preloaded_statuses
                 .borrow_mut()
                 .insert(type_index, (channels.clone(), temps.clone()));
@@ -1280,10 +1319,11 @@ mod tests {
     use std::ops::Not;
     use std::rc::Rc;
 
-    fn matched(physical_ids: &[PhysicalID]) -> HashMap<PhysicalID, HwmonDriverInfo> {
+    /// CPU devices matched as sockets, the only kind that answers for a physical processor.
+    fn matched(physical_ids: &[PhysicalID]) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         physical_ids
             .iter()
-            .map(|id| (*id, HwmonDriverInfo::default()))
+            .map(|id| (CpuAssociation::Socket(*id), HwmonDriverInfo::default()))
             .collect()
     }
 
@@ -2081,6 +2121,52 @@ mod tests {
             assert!(cpu_repo
                 .unmatched_physical_ids(&matched(&[0, 1, 7]))
                 .is_empty());
+            // then: a zone-keyed device places no processor, so it must not mark one matched
+            // even where its id happens to equal a physical id.
+            let zone_only = HashMap::from([(CpuAssociation::Zone(0), HwmonDriverInfo::default())]);
+            assert_eq!(cpu_repo.unmatched_physical_ids(&zone_only), vec![0, 1]);
+        });
+    }
+
+    /// Goal: a socket and a zone that share a number are two different devices and must each get
+    /// their own device number, since that number is what the device UID is built from. Method: a
+    /// two-package cpuinfo, asked to number both kinds across the whole id range.
+    #[test]
+    #[serial]
+    fn test_zone_and_socket_device_numbers_cannot_collide() {
+        cc_fs::test_runtime(async {
+            // given: physical ids 0 and 1.
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_DOUBLE_CPU.to_vec()).await;
+
+            // then: a socket keeps its historical number, so saved settings still resolve.
+            assert_eq!(
+                cpu_repo.device_type_index(CpuAssociation::Socket(0)),
+                Some(1)
+            );
+            assert_eq!(
+                cpu_repo.device_type_index(CpuAssociation::Socket(1)),
+                Some(2)
+            );
+            // then: a zone sharing a socket's id gets a different number anyway.
+            assert_ne!(
+                cpu_repo.device_type_index(CpuAssociation::Zone(0)),
+                cpu_repo.device_type_index(CpuAssociation::Socket(0))
+            );
+            // then: every zone number sits above every socket number, so the physical id that
+            // `preload_statuses` recovers as `type_index - 1` can never alias a processor.
+            // Every zone the numbering has room for, given the highest physical id here is 1.
+            for zone_id in 0..=(u8::MAX - 3) {
+                let type_index = cpu_repo
+                    .device_type_index(CpuAssociation::Zone(zone_id))
+                    .unwrap();
+                assert!(type_index > 2);
+                assert!(cpu_repo.cpu_infos.contains_key(&(type_index - 1)).not());
+            }
+            // then: a zone that would number past the range is refused, not wrapped.
+            assert_eq!(
+                cpu_repo.device_type_index(CpuAssociation::Zone(u8::MAX)),
+                None
+            );
         });
     }
 }
