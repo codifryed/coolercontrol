@@ -18,7 +18,7 @@ pub struct ServiceManifest {
     pub url: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
     pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
-    pub envs: Vec<(String, String)>, // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
+    pub envs: Vec<EnvVar>,           // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
     pub privileged: bool,            // for device service plugins (false by default)
     pub proxy: Option<ProxyConfig>,  // for plugins that expose a local HTTP API
@@ -200,7 +200,7 @@ impl ServiceManifest {
     /// one in which a malformed entry cannot be written. In the string form a token
     /// without an `=` used to be dropped without a word, which turned a typo into a
     /// missing variable the author had no way to notice.
-    fn get_envs(document: &DocumentMut) -> Result<Vec<(String, String)>> {
+    fn get_envs(document: &DocumentMut) -> Result<Vec<EnvVar>> {
         let Some(item) = document.get("envs") else {
             return Ok(Vec::new());
         };
@@ -210,7 +210,7 @@ impl ServiceManifest {
                 let text = value
                     .as_str()
                     .with_context(|| format!("Service manifest env '{name}' should be a string"))?;
-                envs.push((validate_env_name(name)?, validate_field("envs", text)?));
+                envs.push(EnvVar::new(name, &validate_field("envs", text)?)?);
             }
             return Ok(envs);
         }
@@ -224,7 +224,7 @@ impl ServiceManifest {
             let (name, value) = entry.split_once('=').with_context(|| {
                 format!("Service manifest env entry '{entry}' is missing its '='")
             })?;
-            envs.push((validate_env_name(name)?, value.to_string()));
+            envs.push(EnvVar::new(name, value)?);
         }
         Ok(envs)
     }
@@ -339,31 +339,46 @@ fn validate_field(field_name: &str, value: &str) -> Result<String> {
     Ok(value.to_string())
 }
 
-/// An environment variable name, per `systemd.exec(5)`: ASCII letters, digits and
-/// underscores, non-empty, and not starting with a digit.
+/// One environment variable handed to a plugin's service.
 ///
-/// Rejecting here beats writing a unit file that systemd then refuses to load, which
-/// would surface as the whole plugin failing to start for no stated reason.
-fn validate_env_name(name: &str) -> Result<String> {
-    if name.is_empty() {
-        return Err(anyhow!("Service manifest env name must not be empty"));
+/// A named type rather than a `(String, String)`, so a name can only be validated once,
+/// here, and no consumer downstream can pair the halves the wrong way round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvVar {
+    pub name: String,
+    pub value: String,
+}
+
+impl EnvVar {
+    /// Rejects a name outside `systemd.exec(5)`: ASCII letters, digits and underscores,
+    /// non-empty, and not starting with a digit.
+    ///
+    /// Rejecting here beats writing a unit file that systemd then refuses to load, which
+    /// would surface as the whole plugin failing to start for no stated reason.
+    pub fn new(name: &str, value: &str) -> Result<Self> {
+        if name.is_empty() {
+            return Err(anyhow!("Service manifest env name must not be empty"));
+        }
+        if name.starts_with(|c: char| c.is_ascii_digit()) {
+            return Err(anyhow!(
+                "Service manifest env name '{name}' must not start with a digit"
+            ));
+        }
+        if name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            .not()
+        {
+            return Err(anyhow!(
+                "Service manifest env name '{name}' may hold only ASCII letters, digits \
+                 and underscores"
+            ));
+        }
+        Ok(Self {
+            name: name.to_string(),
+            value: value.to_string(),
+        })
     }
-    if name.starts_with(|c: char| c.is_ascii_digit()) {
-        return Err(anyhow!(
-            "Service manifest env name '{name}' must not start with a digit"
-        ));
-    }
-    if name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        .not()
-    {
-        return Err(anyhow!(
-            "Service manifest env name '{name}' may hold only ASCII letters, digits and \
-             underscores"
-        ));
-    }
-    Ok(name.to_string())
 }
 
 #[cfg(test)]
@@ -389,6 +404,10 @@ mod tests {
             .join("\n")
     }
 
+    fn env(name: &str, value: &str) -> EnvVar {
+        EnvVar::new(name, value).unwrap()
+    }
+
     fn parse_manifest(toml_str: &str) -> Result<ServiceManifest> {
         let doc: DocumentMut = toml_str.parse()?;
         ServiceManifest::from_document(&doc, PathBuf::from("/tmp/test"))
@@ -410,10 +429,7 @@ mod tests {
         assert_eq!(manifest.args, vec!["--verbose", "--port=8080"]);
         assert_eq!(
             manifest.envs,
-            vec![
-                ("LOG_LEVEL".into(), "debug".into()),
-                ("PORT".into(), "3000".into()),
-            ]
+            vec![env("LOG_LEVEL", "debug"), env("PORT", "3000")]
         );
     }
 
@@ -669,10 +685,7 @@ mod tests {
         let manifest = parse_manifest(&toml).unwrap();
         assert_eq!(
             manifest.envs,
-            vec![
-                ("FMT".into(), "%Y-%m-%d".into()),
-                ("PATH".into(), "/a:/b".into()),
-            ]
+            vec![env("FMT", "%Y-%m-%d"), env("PATH", "/a:/b")]
         );
     }
 
@@ -684,10 +697,7 @@ mod tests {
         let manifest = parse_manifest(&toml).unwrap();
         assert_eq!(
             manifest.envs,
-            vec![
-                ("GREETING".into(), "hello world".into()),
-                ("N".into(), "1".into()),
-            ]
+            vec![env("GREETING", "hello world"), env("N", "1")]
         );
     }
 
@@ -713,7 +723,7 @@ mod tests {
         let good = make_manifest_toml(&[("envs", "\"_UNDER1=x\"")]);
         assert_eq!(
             parse_manifest(&good).unwrap().envs,
-            vec![("_UNDER1".into(), "x".into())]
+            vec![env("_UNDER1", "x")]
         );
     }
 

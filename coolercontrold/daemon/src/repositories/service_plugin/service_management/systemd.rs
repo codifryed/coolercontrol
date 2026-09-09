@@ -229,8 +229,12 @@ fn create_unit_file(
         )?;
     }
     if let Some(env_vars) = service_definition.envs {
-        for (var, val) in env_vars {
-            let _ = writeln!(service, "Environment={}", escape_environment(&var, &val));
+        for env_var in env_vars {
+            let _ = writeln!(
+                service,
+                "Environment={}",
+                escape_environment(&env_var.name, &env_var.value)
+            );
         }
     }
     // The program is quoted like any other word: a path containing a space would
@@ -329,6 +333,11 @@ pub enum SystemdServiceRestartType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::service_plugin::service_manifest::EnvVar;
+
+    fn env(name: &str, value: &str) -> EnvVar {
+        EnvVar::new(name, value).unwrap()
+    }
 
     fn base_definition() -> ServiceDefinition {
         ServiceDefinition {
@@ -342,7 +351,7 @@ mod tests {
         }
     }
 
-    fn exec_start_of(args: Vec<String>, envs: Option<Vec<(String, String)>>) -> String {
+    fn exec_start_of(args: Vec<String>, envs: Option<Vec<EnvVar>>) -> String {
         let mut definition = base_definition();
         definition.args = args;
         definition.envs = envs;
@@ -428,9 +437,9 @@ mod tests {
         let unit = create_unit_file(&SystemdConfig::default(), &"Test".to_string(), {
             let mut definition = base_definition();
             definition.envs = Some(vec![
-                ("FMT".into(), "%Y-%m-%d".into()),
-                ("GREETING".into(), "hello world".into()),
-                ("LITERAL".into(), "$NOT_EXPANDED".into()),
+                env("FMT", "%Y-%m-%d"),
+                env("GREETING", "hello world"),
+                env("LITERAL", "$NOT_EXPANDED"),
             ]);
             definition
         })

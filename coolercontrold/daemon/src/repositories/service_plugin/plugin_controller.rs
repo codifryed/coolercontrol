@@ -426,7 +426,7 @@ async fn chown(path: &Path, owner: &str, recursive: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::service_plugin::service_manifest::ConnectionType;
+    use crate::repositories::service_plugin::service_manifest::{ConnectionType, EnvVar};
     use std::os::unix::fs::MetadataExt;
 
     fn is_root() -> bool {
@@ -447,7 +447,7 @@ mod tests {
             url: None,
             executable: Some(PathBuf::from("/usr/bin/test-plugin")),
             args: vec!["--verbose".to_string()],
-            envs: vec![("MY_VAR".to_string(), "value".to_string())],
+            envs: vec![EnvVar::new("MY_VAR", "value").unwrap()],
             address: ConnectionType::None,
             privileged: true,
             proxy: None,
@@ -463,7 +463,7 @@ mod tests {
         // Privileged plugins run as root, so no user is set for the supervisor.
         assert!(definition.username.is_none());
         let envs = definition.envs.expect("log level is always passed through");
-        assert!(envs.contains(&("MY_VAR".to_string(), "value".to_string())));
+        assert!(envs.contains(&EnvVar::new("MY_VAR", "value").unwrap()));
     }
 
     /// Goal: a manifest without an executable has nothing for an init system to manage, and

@@ -4,6 +4,7 @@
 use crate::repositories::service_plugin::service_management::openrc::OpenRcManager;
 use crate::repositories::service_plugin::service_management::systemd::SystemdManager;
 use crate::repositories::service_plugin::service_management::ServiceId;
+use crate::repositories::service_plugin::service_manifest::EnvVar;
 use crate::ENV_SERVICE_MANAGER;
 use anyhow::{anyhow, Result};
 use log::info;
@@ -136,7 +137,7 @@ pub struct ServiceDefinition {
     pub args: Vec<String>,
     pub username: Option<String>,
     pub wrk_dir: Option<PathBuf>,
-    pub envs: Option<Vec<(String, String)>>,
+    pub envs: Option<Vec<EnvVar>>,
     pub disable_restart_on_failure: bool,
 }
 

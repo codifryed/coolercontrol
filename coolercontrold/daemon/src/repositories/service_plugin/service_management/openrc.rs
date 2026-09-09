@@ -211,10 +211,11 @@ fn build_supervise_daemon_args(service_definition: &ServiceDefinition) -> String
         parts.push("--no-new-privs".to_string());
     }
     if let Some(envs) = &service_definition.envs {
-        for (var, val) in envs {
+        for env_var in envs {
             // Quoted whole, so `supervise-daemon` receives one `VAR=value` argument even
             // when the value contains whitespace.
-            parts.push(format!("-e {}", openrc_word(&format!("{var}={val}"))));
+            let assignment = format!("{}={}", env_var.name, env_var.value);
+            parts.push(format!("-e {}", openrc_word(&assignment)));
         }
     }
     parts.join(" ")
@@ -274,6 +275,11 @@ fn escape_dquoted(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::service_plugin::service_manifest::EnvVar;
+
+    fn env(name: &str, value: &str) -> EnvVar {
+        EnvVar::new(name, value).unwrap()
+    }
 
     fn base_definition() -> ServiceDefinition {
         ServiceDefinition {
@@ -421,8 +427,8 @@ mod tests {
         let mut definition = base_definition();
         definition.username = Some("cc-plugin-user".to_string());
         definition.envs = Some(vec![
-            ("GREETING".into(), "hello world".into()),
-            ("LITERAL".into(), "$HOME".into()),
+            env("GREETING", "hello world"),
+            env("LITERAL", "$HOME"),
         ]);
         let script = create_service_file("Test", "test", &definition);
         let words = words_after_eval(
@@ -534,7 +540,7 @@ mod tests {
         // Environment variables must appear as -e flags in
         // supervise_daemon_args.
         let mut def = base_definition();
-        def.envs = Some(vec![("MY_VAR".to_string(), "value".to_string())]);
+        def.envs = Some(vec![env("MY_VAR", "value")]);
         let script = create_service_file("Test Plugin", "cc-plugin-test-plugin", &def);
         assert!(script.contains("supervise_daemon_args=\"-e 'MY_VAR=value'\""));
     }
@@ -545,7 +551,7 @@ mod tests {
         // together in supervise_daemon_args.
         let mut def = base_definition();
         def.username = Some("cc-plugin-user".to_string());
-        def.envs = Some(vec![("KEY".to_string(), "val".to_string())]);
+        def.envs = Some(vec![env("KEY", "val")]);
         let script = create_service_file("Test Plugin", "cc-plugin-test-plugin", &def);
         assert!(script
             .contains("supervise_daemon_args=\"-u 'cc-plugin-user' --no-new-privs -e 'KEY=val'\""));

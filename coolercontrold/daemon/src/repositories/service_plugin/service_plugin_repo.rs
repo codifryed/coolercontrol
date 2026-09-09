@@ -22,7 +22,7 @@ use crate::repositories::service_plugin::service_management::manager::{
 use crate::repositories::service_plugin::service_management::{
     delete_plugin_user, ServiceId, ServiceIdExt,
 };
-use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
+use crate::repositories::service_plugin::service_manifest::{EnvVar, ServiceManifest, ServiceType};
 use crate::repositories::utils::apply_device_command_delay;
 use crate::rt::sleep;
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -348,45 +348,11 @@ impl ServicePluginRepo {
         })
     }
 
-    fn env_log_level() -> Vec<(String, String)> {
-        match log::max_level() {
-            LevelFilter::Off => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Off.to_string().to_uppercase(),
-                )]
-            }
-            LevelFilter::Error => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Error.to_string().to_uppercase(),
-                )]
-            }
-            LevelFilter::Warn => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Warn.to_string().to_uppercase(),
-                )]
-            }
-            LevelFilter::Info => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Info.to_string().to_uppercase(),
-                )]
-            }
-            LevelFilter::Debug => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Debug.to_string().to_uppercase(),
-                )]
-            }
-            LevelFilter::Trace => {
-                vec![(
-                    ENV_CC_LOG.to_string(),
-                    LevelFilter::Trace.to_string().to_uppercase(),
-                )]
-            }
-        }
+    fn env_log_level() -> Vec<EnvVar> {
+        let level = log::max_level().to_string().to_uppercase();
+        // ENV_CC_LOG is a compile-time constant that already satisfies the env name rules,
+        // so construction cannot fail.
+        vec![EnvVar::new(ENV_CC_LOG, &level).expect("ENV_CC_LOG is a valid env name")]
     }
 
     #[allow(clippy::too_many_lines)]
