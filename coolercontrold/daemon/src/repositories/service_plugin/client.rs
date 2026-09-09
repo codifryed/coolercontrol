@@ -250,10 +250,7 @@ impl DeviceServiceClient {
         }
     }
 
-    fn get_device_client(
-        &self,
-        device_uid: &DeviceUID,
-    ) -> Result<Rc<Mutex<PluginClient>>> {
+    fn get_device_client(&self, device_uid: &DeviceUID) -> Result<Rc<Mutex<PluginClient>>> {
         self.device_clients
             .borrow()
             .get(device_uid)

@@ -148,7 +148,9 @@ pub fn is_loopback_host(host: &str) -> bool {
 /// which runs there, so these use the always-Tokio helpers rather than the main-thread
 /// `cc_fs` facade.
 pub async fn read_pin(plugin_dir: &Path) -> Option<String> {
-    let pin = sidecar_fs::read_txt(plugin_dir.join(PIN_FILE_NAME)).await.ok()?;
+    let pin = sidecar_fs::read_txt(plugin_dir.join(PIN_FILE_NAME))
+        .await
+        .ok()?;
     let pin = pin.trim().to_string();
     if pin.is_empty() {
         return None;
@@ -211,7 +213,9 @@ impl LinkPlan {
 /// Absent is not an error: a plugin on a Unix socket, or an older remote with no auth,
 /// simply has no token to send.
 pub async fn read_token(plugin_dir: &Path) -> Option<String> {
-    let token = cc_fs::read_txt(plugin_dir.join(TOKEN_FILE_NAME)).await.ok()?;
+    let token = cc_fs::read_txt(plugin_dir.join(TOKEN_FILE_NAME))
+        .await
+        .ok()?;
     let token = token.trim().to_string();
     if token.is_empty() {
         return None;

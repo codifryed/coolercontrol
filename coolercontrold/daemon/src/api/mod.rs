@@ -1407,8 +1407,7 @@ mod tests {
     fn test_server_fully_disabled_logs_info() {
         let v4: Result<Option<SocketAddrV4>> = Ok(None);
         let v6: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&v4, &v6).expect("no address is reported");
+        let (level, message) = unavailable_log(&v4, &v6).expect("no address is reported");
         assert_eq!(level, Level::Info);
         assert_eq!(
             message,
@@ -1422,8 +1421,7 @@ mod tests {
     fn test_server_unable_to_bind_logs_error() {
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&failed, &disabled).expect("no address is reported");
+        let (level, message) = unavailable_log(&failed, &disabled).expect("no address is reported");
         assert_eq!(level, Level::Error);
         assert_eq!(
             message,

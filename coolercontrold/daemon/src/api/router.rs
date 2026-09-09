@@ -1983,7 +1983,10 @@ mod tests {
         let response = router.oneshot(request).await.unwrap();
 
         assert_eq!(
-            response.headers().get("grpc-status").and_then(|v| v.to_str().ok()),
+            response
+                .headers()
+                .get("grpc-status")
+                .and_then(|v| v.to_str().ok()),
             Some((tonic::Code::DeadlineExceeded as i32).to_string().as_str()),
             "a 408 must be translated, not passed through as an HTTP status"
         );
