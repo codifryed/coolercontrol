@@ -730,16 +730,11 @@ impl CpuRepo {
                     else {
                         continue;
                     };
-                    let previous_joule_count = self
-                        .energy_counters
-                        .get(&phys_cpu_id)
-                        .expect("Energy Counters should be initialized")
-                        .replace(joule_count);
-                    let mut watts = power_cap::calculate_power_watts(
-                        joule_count,
-                        previous_joule_count,
-                        self.poll_rate,
-                    );
+                    let Some(mut watts) =
+                        self.power_watts_since_last_tick(phys_cpu_id, joule_count)
+                    else {
+                        continue;
+                    };
                     self.use_cached_value_if_zero(&mut watts, init, phys_cpu_id, &channel.name);
                     let power_status = ChannelStatus {
                         name: channel.name.clone(),
@@ -763,6 +758,22 @@ impl CpuRepo {
             })
             .collect();
         (status_channels, temps)
+    }
+
+    /// The watts a power channel has drawn since the last tick.
+    ///
+    /// Returns `None` when this processor has no energy counter. There is then no previous count
+    /// to take a delta from, and a fabricated 0 watts would be indistinguishable from a real
+    /// reading, so the caller omits the channel for this tick the same way it does for a failed
+    /// counter read. Every device that carries a power channel is seeded with a counter at
+    /// initialization, so this is a guard and not an expected path.
+    fn power_watts_since_last_tick(&self, cpu_id: PhysicalID, joule_count: f64) -> Option<Watts> {
+        let previous_joule_count = self.energy_counters.get(&cpu_id)?.replace(joule_count);
+        Some(power_cap::calculate_power_watts(
+            joule_count,
+            previous_joule_count,
+            self.poll_rate,
+        ))
     }
 
     /// CPU power should rarely be 0, but it looks like the energy counter is either not
@@ -1253,6 +1264,7 @@ mod tests {
     use crate::repositories::cpu_repo::{CpuAssociation, CpuFreqs, CpuRepo, PhysicalID};
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
+    use std::cell::Cell;
     use std::collections::HashMap;
     use std::ops::Not;
     use std::rc::Rc;
@@ -1917,6 +1929,28 @@ mod tests {
             assert_eq!(cpu_repo.cpu_model_name(1).as_ref(), Some(&expected));
             // then: an unknown id falls back to the lowest known entry, not to nothing.
             assert_eq!(cpu_repo.cpu_model_name(7).as_ref(), Some(&expected));
+        });
+    }
+
+    /// Goal: a power channel whose processor has no seeded energy counter must be omitted, not
+    /// panic and not report a fabricated 0 watts, since 0 is a value the counter genuinely
+    /// reports. Method: a repo with one processor seeded, asked for that processor and for one it
+    /// has no counter for.
+    #[test]
+    #[serial]
+    fn test_power_watts_needs_a_seeded_energy_counter() {
+        cc_fs::test_runtime(async {
+            // given: a seeded counter at 10 joules and a one second poll rate.
+            let mut cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            cpu_repo.poll_rate = 1.0;
+            cpu_repo.energy_counters.insert(0, Cell::new(10.0));
+
+            // then: the delta against the seeded count becomes watts.
+            assert_eq!(cpu_repo.power_watts_since_last_tick(0, 25.0), Some(15.0));
+            // then: the counter has advanced, so the next tick measures from there.
+            assert_eq!(cpu_repo.power_watts_since_last_tick(0, 30.0), Some(5.0));
+            // then: a processor with no counter yields nothing at all, rather than 0 watts.
+            assert_eq!(cpu_repo.power_watts_since_last_tick(1, 30.0), None);
         });
     }
 
