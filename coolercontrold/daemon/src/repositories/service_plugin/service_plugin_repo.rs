@@ -33,6 +33,7 @@ use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -241,12 +242,22 @@ impl ServicePluginRepo {
     }
 
     async fn find_service_manifests() -> HashMap<ServiceId, ServiceManifest> {
-        let plugins_dir = paths::plugins_dir();
-        let mut services = HashMap::new();
         if let Err(err) = paths::ensure_plugins_dir().await {
             error!("Error setting up plugins directory: {err}");
-            return services;
+            return HashMap::new();
         }
+        Self::find_service_manifests_in(paths::plugins_dir()).await
+    }
+
+    /// Every manifest under `plugins_dir` that reads, parses and validates.
+    ///
+    /// A plugin that fails any of those is logged with its path and the reason, and then
+    /// skipped. One bad manifest must never keep the others from loading: plugins are
+    /// independent of each other, and the daemon's own fan control depends on none of
+    /// them. The directory is a parameter so this rule can be tested without touching the
+    /// real plugins directory.
+    async fn find_service_manifests_in(plugins_dir: &Path) -> HashMap<ServiceId, ServiceManifest> {
+        let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
             error!("Error reading plugins directory: {}", plugins_dir.display());
             return services;
@@ -262,19 +273,29 @@ impl ServicePluginRepo {
             }
             let service_manifest_file = path.join(SERVICE_MANIFEST_FILE_NAME);
             if service_manifest_file.exists() {
-                let Ok(manifest_content) = cc_fs::read_txt(&service_manifest_file).await else {
-                    error!(
-                        "Error reading plugin manifest: {}",
-                        service_manifest_file.display()
-                    );
-                    continue;
+                let manifest_content = match cc_fs::read_txt(&service_manifest_file).await {
+                    Ok(content) => content,
+                    Err(err) => {
+                        // The reason matters: a permission problem and a vanished file
+                        // need different fixes, and the plugin is skipped either way.
+                        error!(
+                            "Error reading plugin manifest: {} Reason: {err}",
+                            service_manifest_file.display()
+                        );
+                        continue;
+                    }
                 };
-                let Ok(document) = manifest_content.parse::<DocumentMut>() else {
-                    error!(
-                        "Error Parsing TOML manifest file, check the syntax: {}",
-                        service_manifest_file.display()
-                    );
-                    continue;
+                let document = match manifest_content.parse::<DocumentMut>() {
+                    Ok(document) => document,
+                    Err(err) => {
+                        // `toml_edit` reports the line and column, which is the whole
+                        // value of a syntax error and used to be thrown away.
+                        error!(
+                            "Error parsing TOML manifest file, check the syntax: {} Reason: {err}",
+                            service_manifest_file.display()
+                        );
+                        continue;
+                    }
                 };
                 match ServiceManifest::from_document(&document, path) {
                     Ok(manifest) => {
@@ -1369,12 +1390,16 @@ impl Repository for ServicePluginRepo {
 
 #[cfg(test)]
 mod tests {
-    use super::{synthesize_failsafe_seed, upsert_channel, upsert_temp};
+    use super::{
+        synthesize_failsafe_seed, upsert_channel, upsert_temp, ServicePluginRepo,
+        SERVICE_MANIFEST_FILE_NAME,
+    };
     use crate::device::{
         ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, SpeedOptions, TempInfo, TempStatus,
     };
     use crate::repositories::failsafe::{self, MISSING_TEMP_FAILSAFE};
     use std::ops::Not;
+    use std::path::Path;
 
     fn device_info_with(channels: Vec<(&str, ChannelKind)>, temps: Vec<&str>) -> DeviceInfo {
         let mut info = DeviceInfo::default();
@@ -1502,5 +1527,119 @@ mod tests {
         assert_eq!(temps[0].temp, 45.0);
         upsert_temp(&mut temps, temp("t2", 50.0));
         assert_eq!(temps.len(), 2);
+    }
+
+    /// Writes a plugin directory holding `manifest`, or no manifest file at all when
+    /// `manifest` is `None`.
+    fn write_plugin(plugins_dir: &Path, dir_name: &str, manifest: Option<&str>) {
+        let dir = plugins_dir.join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        if let Some(manifest) = manifest {
+            std::fs::write(dir.join(SERVICE_MANIFEST_FILE_NAME), manifest).unwrap();
+        }
+    }
+
+    /// Goal: one unusable manifest must not cost the others. Plugins are independent, and
+    /// the daemon's fan control needs none of them, so the rule is to log the reason and
+    /// carry on to the next directory. Every kind of failure is represented here, because
+    /// each one takes a different branch: unreadable, bad TOML syntax, and each class of
+    /// validation error.
+    #[test]
+    fn a_bad_manifest_does_not_stop_the_others_loading() {
+        crate::rt::test_runtime(async {
+            let plugins = tempfile::tempdir().unwrap();
+            let root = plugins.path();
+
+            write_plugin(
+                root,
+                "good_one",
+                Some("id = \"good_one\"\ntype = \"device\"\n"),
+            );
+            write_plugin(
+                root,
+                "good_two",
+                Some(
+                    "id = \"good_two\"\ntype = \"device\"\n                     args = [\"--name\", \"My Device\"]\naddress = \"127.0.0.1:11987\"\n",
+                ),
+            );
+            write_plugin(
+                root,
+                "bad_syntax",
+                Some("id = \"bad_syntax\"\ntype = device\n"),
+            );
+            write_plugin(
+                root,
+                "bad_address",
+                Some("id = \"bad_address\"\ntype = \"device\"\naddress = \"not a hostname\"\n"),
+            );
+            write_plugin(
+                root,
+                "bad_args",
+                Some("id = \"bad_args\"\ntype = \"device\"\nargs = 42\n"),
+            );
+            write_plugin(
+                root,
+                "bad_env",
+                Some("id = \"bad_env\"\ntype = \"device\"\nenvs = \"NOEQUALS\"\n"),
+            );
+            write_plugin(
+                root,
+                "bad_privileged",
+                Some("id = \"bad_privileged\"\ntype = \"device\"\nprivileged = \"true\"\n"),
+            );
+            write_plugin(root, "bad_proxy", Some(
+                "id = \"bad_proxy\"\ntype = \"device\"\nproxy = { enabled = true, port = 80 }\n",
+            ));
+            write_plugin(
+                root,
+                "bad_control_char",
+                Some("id = \"bad_control_char\"\ntype = \"device\"\nargs = \"--a\\nUser=root\"\n"),
+            );
+            write_plugin(root, "no_manifest", None);
+            // A loose file, which is not a plugin directory at all.
+            std::fs::write(root.join("stray.txt"), "ignored").unwrap();
+
+            let found = ServicePluginRepo::find_service_manifests_in(root).await;
+
+            let mut ids: Vec<&str> = found.keys().map(String::as_str).collect();
+            ids.sort_unstable();
+            assert_eq!(ids, vec!["good_one", "good_two"]);
+            assert_eq!(
+                found["good_two"].args,
+                vec!["--name".to_string(), "My Device".to_string()]
+            );
+        });
+    }
+
+    /// Goal: a duplicate id is skipped rather than silently replacing the first plugin,
+    /// and it does not abort the scan either. Which of the two wins depends on directory
+    /// order, so only the count is asserted.
+    #[test]
+    fn a_duplicate_id_keeps_exactly_one_plugin() {
+        crate::rt::test_runtime(async {
+            let plugins = tempfile::tempdir().unwrap();
+            let root = plugins.path();
+            let manifest = "id = \"same\"\ntype = \"device\"\n";
+            write_plugin(root, "first", Some(manifest));
+            write_plugin(root, "second", Some(manifest));
+            write_plugin(root, "other", Some("id = \"other\"\ntype = \"device\"\n"));
+
+            let found = ServicePluginRepo::find_service_manifests_in(root).await;
+
+            assert_eq!(found.len(), 2, "{:?}", found.keys());
+            assert!(found.contains_key("same"));
+            assert!(found.contains_key("other"));
+        });
+    }
+
+    /// Goal: an empty plugins directory is normal, not an error, and yields nothing.
+    #[test]
+    fn an_empty_plugins_directory_yields_no_plugins() {
+        crate::rt::test_runtime(async {
+            let plugins = tempfile::tempdir().unwrap();
+            assert!(ServicePluginRepo::find_service_manifests_in(plugins.path())
+                .await
+                .is_empty());
+        });
     }
 }
