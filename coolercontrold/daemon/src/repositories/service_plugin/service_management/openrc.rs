@@ -240,6 +240,10 @@ fn build_supervise_daemon_args(service_definition: &ServiceDefinition) -> String
 /// holding repeated whitespace therefore arrives with it collapsed. Tabs and newlines
 /// cannot reach here at all, since the manifest parser rejects control characters.
 fn openrc_word(value: &str) -> String {
+    debug_assert!(
+        value.chars().any(char::is_control).not(),
+        "the manifest parser rejects control characters before they reach here"
+    );
     escape_dquoted(&single_quoted(value))
 }
 
@@ -247,6 +251,7 @@ fn openrc_word(value: &str) -> String {
 fn single_quoted(value: &str) -> String {
     let mut quoted = String::with_capacity(value.len() + 2);
     quoted.push('\'');
+    debug_assert!(quoted.starts_with('\''), "a quoted word must open quoted");
     for character in value.chars() {
         if character == '\'' {
             quoted.push_str("'\\''");
@@ -262,6 +267,10 @@ fn single_quoted(value: &str) -> String {
 /// assignment a value is written into. Applied after [`single_quoted`], whose own
 /// backslashes need it too.
 fn escape_dquoted(value: &str) -> String {
+    debug_assert!(
+        value.starts_with('\'') && value.ends_with('\''),
+        "escape_dquoted takes a single-quoted word"
+    );
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
         if matches!(character, '\\' | '"' | '$' | '`') {
@@ -269,6 +278,15 @@ fn escape_dquoted(value: &str) -> String {
         }
         escaped.push(character);
     }
+    // Nothing that ends the assignment or starts an expansion may survive unescaped: the
+    // rest of the value would then be read as script rather than as a word.
+    debug_assert!(
+        escaped
+            .char_indices()
+            .filter(|(_, character)| matches!(character, '"' | '$' | '`'))
+            .all(|(index, _)| escaped[..index].ends_with('\\')),
+        "{escaped} would break out of its assignment"
+    );
     escaped
 }
 

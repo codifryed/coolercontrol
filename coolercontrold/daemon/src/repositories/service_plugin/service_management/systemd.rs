@@ -276,6 +276,10 @@ fn create_unit_file(
 ///
 /// The layers act on disjoint characters, so the substitutions cannot interfere.
 fn escape_exec_word(word: &str) -> String {
+    debug_assert!(
+        word.chars().any(char::is_control).not(),
+        "the manifest parser rejects control characters before they reach here"
+    );
     let mut escaped = String::with_capacity(word.len() + 2);
     escaped.push('"');
     for character in word.chars() {
@@ -288,6 +292,10 @@ fn escape_exec_word(word: &str) -> String {
         }
     }
     escaped.push('"');
+    debug_assert!(
+        quoted_as_one_item(&escaped),
+        "{escaped} is not one quoted item"
+    );
     escaped
 }
 
@@ -299,6 +307,11 @@ fn escape_exec_word(word: &str) -> String {
 /// literal `$$` into the plugin's environment. Specifier expansion still applies, so `%`
 /// is still doubled.
 fn escape_environment(name: &str, value: &str) -> String {
+    debug_assert!(name.is_empty().not(), "an env name is validated non-empty");
+    debug_assert!(
+        value.chars().any(char::is_control).not(),
+        "the manifest parser rejects control characters before they reach here"
+    );
     let mut escaped = String::with_capacity(name.len() + value.len() + 4);
     escaped.push('"');
     escaped.push_str(name);
@@ -312,7 +325,28 @@ fn escape_environment(name: &str, value: &str) -> String {
         }
     }
     escaped.push('"');
+    debug_assert!(
+        quoted_as_one_item(&escaped),
+        "{escaped} is not one quoted item"
+    );
     escaped
+}
+
+/// Whether a value is wrapped in double quotes that nothing inside it can close early.
+///
+/// The postcondition every escaper here owes its caller: an item that ends its own quoting
+/// spills the rest of the value into the unit file as further arguments.
+fn quoted_as_one_item(item: &str) -> bool {
+    let Some(inner) = item
+        .strip_prefix('"')
+        .and_then(|item| item.strip_suffix('"'))
+    else {
+        return false;
+    };
+    inner
+        .char_indices()
+        .filter(|(_, character)| *character == '"')
+        .all(|(index, _)| inner[..index].ends_with('\\'))
 }
 
 #[derive(Copy, Clone, Display, Debug, Default, PartialEq, Eq)]
