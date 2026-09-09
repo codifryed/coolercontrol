@@ -62,10 +62,10 @@ pub async fn grpc_error_middleware(request: Request, next: Next) -> Response {
     if is_grpc_content_type(response.headers()) {
         return response;
     }
-    let Some(code) = grpc_code_for(response.status()) else {
+    let Some((code, message)) = grpc_code_for(response.status()) else {
         return response;
     };
-    tonic::Status::new(code, status_message(response.status())).into_http()
+    tonic::Status::new(code, message).into_http()
 }
 
 fn is_grpc_content_type(headers: &HeaderMap) -> bool {
@@ -77,24 +77,25 @@ fn is_grpc_content_type(headers: &HeaderMap) -> bool {
 
 /// Maps the HTTP statuses our own layers produce onto gRPC codes. Anything else is left
 /// alone: a status we did not generate is not ours to reinterpret.
-fn grpc_code_for(status: StatusCode) -> Option<tonic::Code> {
+fn grpc_code_for(status: StatusCode) -> Option<(tonic::Code, &'static str)> {
     match status {
-        StatusCode::UNAUTHORIZED => Some(tonic::Code::Unauthenticated),
-        StatusCode::FORBIDDEN => Some(tonic::Code::PermissionDenied),
-        StatusCode::TOO_MANY_REQUESTS => Some(tonic::Code::ResourceExhausted),
-        StatusCode::REQUEST_TIMEOUT => Some(tonic::Code::DeadlineExceeded),
-        StatusCode::NOT_FOUND => Some(tonic::Code::Unimplemented),
+        StatusCode::UNAUTHORIZED => Some((
+            tonic::Code::Unauthenticated,
+            "Invalid or missing access token.",
+        )),
+        StatusCode::FORBIDDEN => Some((
+            tonic::Code::PermissionDenied,
+            "This token does not have the required access.",
+        )),
+        StatusCode::TOO_MANY_REQUESTS => Some((
+            tonic::Code::ResourceExhausted,
+            "Too many failed authentication attempts.",
+        )),
+        StatusCode::REQUEST_TIMEOUT => {
+            Some((tonic::Code::DeadlineExceeded, "The request timed out."))
+        }
+        StatusCode::NOT_FOUND => Some((tonic::Code::Unimplemented, "Unknown gRPC method.")),
         _ => None,
-    }
-}
-
-fn status_message(status: StatusCode) -> &'static str {
-    match status {
-        StatusCode::UNAUTHORIZED => "Invalid or missing access token.",
-        StatusCode::FORBIDDEN => "This token does not have the required access.",
-        StatusCode::TOO_MANY_REQUESTS => "Too many failed authentication attempts.",
-        StatusCode::REQUEST_TIMEOUT => "The request timed out.",
-        _ => "Unknown gRPC method.",
     }
 }
 
@@ -1930,23 +1931,23 @@ mod tests {
     #[test]
     fn only_our_own_error_statuses_map_to_grpc_codes() {
         assert_eq!(
-            grpc_code_for(StatusCode::UNAUTHORIZED),
+            grpc_code_for(StatusCode::UNAUTHORIZED).map(|(code, _)| code),
             Some(tonic::Code::Unauthenticated)
         );
         assert_eq!(
-            grpc_code_for(StatusCode::FORBIDDEN),
+            grpc_code_for(StatusCode::FORBIDDEN).map(|(code, _)| code),
             Some(tonic::Code::PermissionDenied)
         );
         assert_eq!(
-            grpc_code_for(StatusCode::TOO_MANY_REQUESTS),
+            grpc_code_for(StatusCode::TOO_MANY_REQUESTS).map(|(code, _)| code),
             Some(tonic::Code::ResourceExhausted)
         );
         assert_eq!(
-            grpc_code_for(StatusCode::REQUEST_TIMEOUT),
+            grpc_code_for(StatusCode::REQUEST_TIMEOUT).map(|(code, _)| code),
             Some(tonic::Code::DeadlineExceeded)
         );
         assert_eq!(
-            grpc_code_for(StatusCode::NOT_FOUND),
+            grpc_code_for(StatusCode::NOT_FOUND).map(|(code, _)| code),
             Some(tonic::Code::Unimplemented)
         );
         assert_eq!(grpc_code_for(StatusCode::OK), None);
