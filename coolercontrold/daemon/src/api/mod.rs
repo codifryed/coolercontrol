@@ -138,7 +138,7 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port)
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
-    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port, ApiServer::Rest);
+    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port);
 
     let settings = config.get_settings()?;
     let compression_layers = if settings.compress {
@@ -989,52 +989,30 @@ fn log_bind_outcome<A>(outcome: Result<Option<A>>, family: &str) -> Option<A> {
     outcome.ok().flatten()
 }
 
-/// The API server. gRPC shares this listener, so there is one socket to bind and one
-/// failure to report; neither family failing stops the daemon, whose fan control needs
-/// no socket at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ApiServer {
-    Rest,
-}
+/// Stable log text: users grep these lines. gRPC shares the REST listener, so there is
+/// one socket to bind and one failure to report; neither family failing stops the daemon,
+/// whose fan control needs no socket at all.
+const API_SERVER_NAME: &str = "REST API";
+const API_SERVER_CONSEQUENCE: &str = "No API, UI, or gRPC connection available.";
 
-impl ApiServer {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Rest => "REST API",
-        }
-    }
-
-    /// Per-family log label. Stable text: users grep these lines.
-    fn family_label(self, family: &str) -> String {
-        match self {
-            Self::Rest => family.to_string(),
-        }
-    }
-
-    fn consequence(self) -> &'static str {
-        match self {
-            Self::Rest => "No API, UI, or gRPC connection available.",
-        }
-    }
-}
-
-/// What to log when a server ends up with nothing to listen on. Both families switched off
-/// is a deliberate opt-out; anything else means we tried to bind and could not.
+/// What to log when the server ends up with nothing to listen on. Both families switched
+/// off is a deliberate opt-out; anything else means we tried to bind and could not.
 fn unavailable_log<A4, A6>(
     ipv4: &Result<Option<A4>>,
     ipv6: &Result<Option<A6>>,
-    server: ApiServer,
 ) -> Option<(Level, String)> {
     if matches!(ipv4, Ok(Some(_))) || matches!(ipv6, Ok(Some(_))) {
         return None;
     }
-    let (name, consequence) = (server.name(), server.consequence());
     if matches!(ipv4, Ok(None)) && matches!(ipv6, Ok(None)) {
-        return Some((Level::Info, format!("{name} disabled. {consequence}")));
+        return Some((
+            Level::Info,
+            format!("{API_SERVER_NAME} disabled. {API_SERVER_CONSEQUENCE}"),
+        ));
     }
     Some((
         Level::Error,
-        format!("Could not bind {name} to any address. {consequence}"),
+        format!("Could not bind {API_SERVER_NAME} to any address. {API_SERVER_CONSEQUENCE}"),
     ))
 }
 
@@ -1044,13 +1022,12 @@ fn unavailable_log<A4, A6>(
 fn resolve_server_addresses(
     config: &Rc<Config>,
     port: Port,
-    server: ApiServer,
 ) -> (Option<SocketAddrV4>, Option<SocketAddrV6>) {
     let ipv4_outcome = determine_ipv4_address(config, port);
     let ipv6_outcome = determine_ipv6_address(config, port);
-    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome, server);
-    let ipv4 = log_bind_outcome(ipv4_outcome, &server.family_label("IPv4"));
-    let ipv6 = log_bind_outcome(ipv6_outcome, &server.family_label("IPv6"));
+    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome);
+    let ipv4 = log_bind_outcome(ipv4_outcome, "IPv4");
+    let ipv6 = log_bind_outcome(ipv6_outcome, "IPv6");
     if let Some((level, message)) = unavailable {
         log::log!(level, "{message}");
     }
@@ -1419,9 +1396,9 @@ mod tests {
     #[test]
     fn test_server_with_one_family_is_not_reported() {
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        assert!(unavailable_log(&bound_v4(), &disabled, ApiServer::Rest).is_none());
+        assert!(unavailable_log(&bound_v4(), &disabled).is_none());
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
-        assert!(unavailable_log(&failed, &bound_v6(), ApiServer::Rest).is_none());
+        assert!(unavailable_log(&failed, &bound_v6()).is_none());
     }
 
     /// Turning both families off is a deliberate opt-out, so a server that is entirely
@@ -1431,7 +1408,7 @@ mod tests {
         let v4: Result<Option<SocketAddrV4>> = Ok(None);
         let v6: Result<Option<SocketAddrV6>> = Ok(None);
         let (level, message) =
-            unavailable_log(&v4, &v6, ApiServer::Rest).expect("no address is reported");
+            unavailable_log(&v4, &v6).expect("no address is reported");
         assert_eq!(level, Level::Info);
         assert_eq!(
             message,
@@ -1446,19 +1423,12 @@ mod tests {
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
         let (level, message) =
-            unavailable_log(&failed, &disabled, ApiServer::Rest).expect("no address is reported");
+            unavailable_log(&failed, &disabled).expect("no address is reported");
         assert_eq!(level, Level::Error);
         assert_eq!(
             message,
             "Could not bind REST API to any address. No API, UI, or gRPC connection available."
         );
-    }
-
-    /// The per-family log labels are what users grep for, so keep them exact.
-    #[test]
-    fn test_family_labels_are_stable() {
-        assert_eq!(ApiServer::Rest.family_label("IPv4"), "IPv4");
-        assert_eq!(ApiServer::Rest.family_label("IPv6"), "IPv6");
     }
 
     fn default_allowed_hosts() -> Vec<String> {
