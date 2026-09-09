@@ -280,29 +280,74 @@ const PROXY_PORT_MIN: u16 = 1024;
 /// and then failed at connect time with an opaque URI error that named neither the
 /// manifest nor the field.
 ///
-/// Deliberately not a full hostname grammar: this rejects what cannot possibly work, and
-/// leaves the resolver to judge whether a well-formed host actually exists.
+/// Deliberately not a full hostname grammar: this rejects what cannot possibly reach the
+/// right target, and leaves the resolver to judge whether a well-formed host exists.
 fn validate_tcp_address(address: &str) -> Result<()> {
-    let malformed = || {
-        anyhow!(
-            "Service manifest address '{address}' should be 'host:port', or an absolute \
-             path for a Unix socket"
-        )
-    };
-    let (host, port) = split_host_port(address).ok_or_else(malformed)?;
+    debug_assert!(
+        address.is_empty().not(),
+        "an empty address is replaced by the default before it reaches here"
+    );
+    if address.starts_with('[') {
+        return validate_bracketed_address(address);
+    }
+    validate_host_port_address(address)
+}
+
+/// `[literal]:port`, the only form in which an IPv6 address is unambiguous.
+fn validate_bracketed_address(address: &str) -> Result<()> {
+    debug_assert!(address.starts_with('['), "the caller matched the bracket");
+    let malformed = || malformed_address(address);
+    let (host, tail) = address[1..].split_once(']').ok_or_else(malformed)?;
+    let port = tail.strip_prefix(':').ok_or_else(malformed)?;
+    if host.parse::<Ipv6Addr>().is_err() {
+        return Err(anyhow!(
+            "Service manifest address '{address}' brackets '{host}', which is not an \
+             IPv6 literal"
+        ));
+    }
+    validate_port(address, port)
+}
+
+/// `host:port`, where the host is a name or an IPv4 literal.
+///
+/// The host is held to the URI unreserved set because the address is later interpolated
+/// into `http://{address}`. A `/` or an `@` in it does not fail there, it silently parses
+/// as a path or as userinfo, and the client then connects somewhere else entirely.
+fn validate_host_port_address(address: &str) -> Result<()> {
+    let (host, port) = address
+        .rsplit_once(':')
+        .ok_or_else(|| malformed_address(address))?;
     if host.is_empty() {
-        return Err(malformed());
+        return Err(malformed_address(address));
     }
     if host.chars().any(char::is_whitespace) {
         return Err(anyhow!(
             "Service manifest address host '{host}' contains whitespace"
         ));
     }
-    // A colon left in the host means an IPv6 literal that was not bracketed. Accept it
-    // when it really is one, since it is unambiguous, and reject the leftovers.
-    if host.contains(':') && host.parse::<Ipv6Addr>().is_err() {
-        return Err(malformed());
+    // A colon left in the host is an IPv6 literal that was not bracketed. `http://::1:80`
+    // is not a URI, so it would fail at connect time with the opaque error this check
+    // exists to replace.
+    if host.contains(':') {
+        return Err(anyhow!(
+            "Service manifest address '{address}' should bracket its IPv6 host, as in \
+             '[{host}]:{port}'"
+        ));
     }
+    if let Some(found) = host
+        .chars()
+        .find(|c| c.is_ascii_alphanumeric().not() && matches!(c, '-' | '.' | '_' | '~').not())
+    {
+        return Err(anyhow!(
+            "Service manifest address host '{host}' contains '{}', which cannot appear \
+             in a host name",
+            found.escape_debug()
+        ));
+    }
+    validate_port(address, port)
+}
+
+fn validate_port(address: &str, port: &str) -> Result<()> {
     let port: u16 = port.parse().map_err(|_| {
         anyhow!(
             "Service manifest address '{address}' should end in a port from 1 to {}",
@@ -317,13 +362,11 @@ fn validate_tcp_address(address: &str) -> Result<()> {
     Ok(())
 }
 
-/// Splits `host:port`, tolerating a bracketed IPv6 literal.
-fn split_host_port(address: &str) -> Option<(&str, &str)> {
-    if let Some(rest) = address.strip_prefix('[') {
-        let (host, tail) = rest.split_once(']')?;
-        return tail.strip_prefix(':').map(|port| (host, port));
-    }
-    address.rsplit_once(':')
+fn malformed_address(address: &str) -> anyhow::Error {
+    anyhow!(
+        "Service manifest address '{address}' should be 'host:port', or an absolute path \
+         for a Unix socket"
+    )
 }
 
 /// Rejects the one thing no manifest field may contain.
@@ -499,24 +542,45 @@ mod tests {
             "my host:11987",
             "::1",
             "[::1]11987",
+            "[not-a-literal]:11987",
         ] {
             let toml = make_manifest_toml(&[("address", &format!("\"{bad}\""))]);
             assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
         }
     }
 
+    /// Goal: a host that changes what `http://{address}` means is refused here rather
+    /// than quietly connecting elsewhere. `a/b:80` parses as host `a` with path `/b:80`,
+    /// and `u@h:80` as userinfo, so both reach a target the author never wrote.
+    #[test]
+    fn test_host_that_would_reparse_as_a_uri_rejected() {
+        for bad in ["a/b:11987", "u@h:11987", "h?x:11987", "h#x:11987"] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{bad}\""))]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: an unbracketed IPv6 literal is refused, and the message says to bracket it.
+    /// It used to be accepted as unambiguous, but `http://::1:11987` is not a URI, so it
+    /// still failed at connect time with the opaque error this check replaced.
+    #[test]
+    fn test_unbracketed_ipv6_address_rejected() {
+        let toml = make_manifest_toml(&[("address", "\"::1:11987\"")]);
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("[::1]:11987"), "{error}");
+    }
+
     /// Goal: every shape that must keep working, so the new check cannot turn a valid
-    /// address away. A bracketed IPv6 literal and an unbracketed one are both accepted,
-    /// since an unbracketed one is unambiguous when it really parses as an address.
+    /// address away.
     #[test]
     fn test_valid_addresses_accepted() {
         for good in [
             "192.168.1.100:11987",
             "localhost:11987",
             "my-server.example.com:11987",
+            "host_with_underscore:11987",
             "[::1]:11987",
             "[fe80::1]:11987",
-            "::1:11987",
         ] {
             let toml = make_manifest_toml(&[("address", &format!("\"{good}\""))]);
             let manifest = parse_manifest(&toml)
