@@ -10,6 +10,7 @@ use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
 use crate::repositories::utils::DirectCommand;
 use crate::rt::sleep;
 use anyhow::{anyhow, Result};
+use log::warn;
 use std::fmt::Write;
 use std::fs::Permissions;
 use std::ops::Not;
@@ -173,6 +174,7 @@ fn create_service_file(
     service_definition: &ServiceDefinition,
 ) -> String {
     let mut script = String::new();
+    warn_about_collapsed_whitespace(service_definition);
     let args = service_definition
         .args
         .iter()
@@ -245,6 +247,29 @@ fn openrc_word(value: &str) -> String {
         "the manifest parser rejects control characters before they reach here"
     );
     escape_dquoted(&single_quoted(value))
+}
+
+/// Warns about an argument `OpenRC` cannot carry through unaltered.
+///
+/// `$command_args` is expanded unquoted, so the shell field-splits it before `eval`
+/// rejoins the fields with single spaces. Nothing here can prevent that, but a plugin
+/// that behaves differently under `OpenRC` than under systemd should say why rather than
+/// leave the author to find it.
+fn warn_about_collapsed_whitespace(service_definition: &ServiceDefinition) {
+    for arg in &service_definition.args {
+        if whitespace_is_collapsed(arg) {
+            warn!(
+                "Plugin {} argument '{arg}' reaches it with the whitespace collapsed: \
+                 OpenRC re-splits the command line and cannot carry it verbatim",
+                service_definition.service_id
+            );
+        }
+    }
+}
+
+/// Whether the shell's field splitting would alter this argument's whitespace.
+fn whitespace_is_collapsed(arg: &str) -> bool {
+    arg.split_whitespace().collect::<Vec<_>>().join(" ") != arg
 }
 
 /// POSIX single-quoting: wrap in `'`, and close, escape, reopen around each `'`.
@@ -472,6 +497,22 @@ mod tests {
             window <= RC_SERVICE_TIMEOUT,
             "the verify window must not outlast the command timeout that precedes it"
         );
+    }
+
+    /// Goal: the one thing OpenRC cannot carry verbatim is recognised, so the author is
+    /// told rather than left to find that the plugin behaves differently from systemd.
+    /// Method: the predicate the warning is gated on, over the shapes that matter.
+    #[test]
+    fn collapsed_whitespace_is_recognised() {
+        for altered in ["--flag  value", " --flag", "--flag ", "a  b  c"] {
+            assert!(whitespace_is_collapsed(altered), "{altered} is altered");
+        }
+        for intact in ["--flag value", "--flag", "", "--port=8080"] {
+            assert!(
+                whitespace_is_collapsed(intact).not(),
+                "{intact} survives intact"
+            );
+        }
     }
 
     #[test]
