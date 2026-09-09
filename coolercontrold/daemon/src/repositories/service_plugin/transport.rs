@@ -136,8 +136,10 @@ async fn build_channel(
                 let stream = TcpStream::connect(&target).await?;
                 // The pin is the peer's identity here, so this name only satisfies
                 // rustls' API; `PinnedCertVerifier` ignores it.
-                let server_name = ServerName::try_from(host)
-                    .unwrap_or_else(|_| ServerName::try_from("localhost").expect("static name"));
+                let server_name = ServerName::try_from(host).unwrap_or_else(|_| {
+                    ServerName::try_from("localhost")
+                        .expect("'localhost' is a valid DNS name, so this parse cannot fail")
+                });
                 let tls = TlsConnector::from(config)
                     .connect(server_name, stream)
                     .await?;
@@ -227,6 +229,9 @@ where
 /// The host part of an `address:port`, tolerating bracketed IPv6 literals.
 pub fn host_of(tcp_address: &str) -> String {
     let trimmed = tcp_address.trim();
+    // The result feeds both the loopback exemption and the TLS server name, so an empty
+    // or bracket-only host would silently widen trust.
+    debug_assert!(trimmed.is_empty().not());
     if let Some(rest) = trimmed.strip_prefix('[') {
         if let Some((host, _)) = rest.split_once(']') {
             return host.to_string();

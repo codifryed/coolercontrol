@@ -26,6 +26,7 @@ use rustls::crypto::CryptoProvider;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, Error as TlsError, SignatureScheme};
 use std::net::IpAddr;
+use std::ops::Not;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -97,6 +98,10 @@ pub fn decide(
     pinned: Option<&str>,
     presented: &str,
 ) -> TrustDecision {
+    // A blank fingerprint on either side would compare equal to the other and accept
+    // anything. The length is already asserted where the fingerprint is produced.
+    debug_assert!(presented.is_empty().not());
+    debug_assert!(pinned.is_none_or(|pin| pin.is_empty().not()));
     if strict {
         return match pinned {
             Some(pin) if pin == presented => TrustDecision::Accept,
@@ -341,7 +346,6 @@ impl ServerCertVerifier for PinnedCertVerifier {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::ops::Not;
     use tempfile::tempdir;
 
     const PIN_A: &str = "aa:bb:cc";
