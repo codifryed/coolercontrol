@@ -9,17 +9,35 @@ use std::pin::pin;
 use std::task::Poll;
 use std::time::Instant;
 
+use compio::driver::{DriverType, ProactorBuilder};
 use compio::runtime::Runtime;
 use log::info;
 use nix::sys::signal::{SigSet, Signal};
 
 pub use compio::time::{interval, sleep, timeout};
 
+/// Environment variable selecting the reactor backend. See `parse_driver_override`.
+const DRIVER_ENV: &str = "CC_RUNTIME_DRIVER";
+
+/// Driver used when `DRIVER_ENV` is unset. `None` lets compio probe the kernel and pick
+/// `io_uring` when every opcode we need is supported, falling back to polling otherwise.
+///
+/// Left on `io_uring` despite issue 606, where its `io_uring_enter(GETEVENTS)` wait is accounted
+/// as iowait (kernel 6.5+) and so pins an idle core at ~100% on per-core monitors. That is a
+/// reporting artifact, while polling costs real wakeups: measured over 90s windows, polling took
+/// daemon context switches from 30/s to 159/s and threads from 3 to 13, because on Linux it sends
+/// every file op to the `AsyncifyPool` (the `aio` path is BSD-only). Set `DRIVER_ENV=poll` to take
+/// that trade. The real fix is `IORING_ENTER_NO_IOWAIT`, which needs compio-driver 0.12.5 and so
+/// rustc 1.95 for `cfg_select!`; EL10 AppStream is on 1.92, so the MSRV bump waits on it. Even
+/// after that, polling stays the only answer for kernels 6.5 to 6.14, which have the accounting
+/// but not the opt-out.
+const DEFAULT_DRIVER: Option<DriverType> = None;
+
 /// Initialize and run the main single-threaded runtime to completion.
 pub fn runtime<F: Future>(future: F) -> F::Output {
     // compio is inherently single-threaded and `!Send`, so there is no `LocalSet` to set up nor a
     // multi-thread builder to constrain. The fusion driver (io-uring + polling) is selected at
-    // compile time and auto-falls-back to polling when io_uring is unavailable.
+    // compile time; which half runs is `DEFAULT_DRIVER`, overridable with `DRIVER_ENV`.
     //
     // Mask termination signals before the runtime and the tokio sidecar spawn any threads, so they
     // all inherit the mask and compio's signalfd listener is the sole consumer. See
@@ -27,21 +45,78 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     block_termination_signals();
     // A failed build means the OS denied the io_uring/epoll reactor at startup; the daemon cannot
     // run without it, so failing fast is correct.
-    Runtime::new()
+    build_runtime(driver_override())
         .expect("compio runtime builds")
         .block_on(future)
 }
 
-/// Log which fusion-driver backend compio selected. The fusion driver uses `io_uring` when the
-/// kernel supports every opcode we need, otherwise it falls back to polling (epoll on Linux, e.g.
-/// when `kernel.io_uring_disabled` blocks it). Call from within the runtime, after logging is set
-/// up, so `with_current` sees the active runtime.
+/// Build the main runtime, forcing `driver` when one is given and letting compio probe otherwise.
+fn build_runtime(driver: Option<DriverType>) -> std::io::Result<Runtime> {
+    let Some(driver_type) = driver else {
+        return Runtime::new();
+    };
+    let mut proactor_builder = ProactorBuilder::new();
+    proactor_builder.driver_type(driver_type);
+    Runtime::builder().with_proactor(proactor_builder).build()
+}
+
+/// Read `DRIVER_ENV` and resolve it to a driver to force, falling back to `DEFAULT_DRIVER`.
+fn driver_override() -> Option<DriverType> {
+    let Ok(raw) = std::env::var(DRIVER_ENV) else {
+        return DEFAULT_DRIVER;
+    };
+    let Some(choice) = parse_driver_override(&raw) else {
+        // Logging is not set up this early, so stderr is the only channel available. An unusable
+        // value must not stop the daemon booting, so fall back to the default.
+        eprintln!("{DRIVER_ENV}: unrecognized value {raw:?}, using the default reactor backend");
+        return DEFAULT_DRIVER;
+    };
+    choice.into_forced_driver()
+}
+
+/// What a recognized `DRIVER_ENV` value asks the runtime to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DriverChoice {
+    /// Force the polling (epoll) driver.
+    Poll,
+    /// Let compio probe the kernel and keep its own fallback.
+    Probe,
+}
+
+impl DriverChoice {
+    /// The driver to force, or `None` to leave compio's probe in charge.
+    fn into_forced_driver(self) -> Option<DriverType> {
+        match self {
+            Self::Poll => Some(DriverType::Poll),
+            Self::Probe => None,
+        }
+    }
+}
+
+/// Resolve a `DRIVER_ENV` value, or `None` when the value is not recognized.
+///
+/// Note that `io_uring` deliberately resolves to `Probe` rather than forcing `DriverType::IoUring`.
+/// Setting that explicitly clears compio's `fallback` flag, turning an unavailable `io_uring` into
+/// a hard startup failure instead of a graceful degrade to polling. Probing selects the same driver
+/// without that cliff, so only polling is ever forced.
+fn parse_driver_override(raw: &str) -> Option<DriverChoice> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "poll" | "polling" | "epoll" => Some(DriverChoice::Poll),
+        "io_uring" | "io-uring" | "iouring" | "uring" => Some(DriverChoice::Probe),
+        _ => None,
+    }
+}
+
+/// Log which fusion-driver backend compio selected. `io_uring` is the default and is used when the
+/// kernel supports every opcode we need; polling (epoll on Linux) is reached either as compio's
+/// fallback or by opting in through `DRIVER_ENV`. Call from within the runtime, after logging is
+/// set up, so `with_current` sees the active runtime.
 pub fn log_active_backend() {
     let driver_type = Runtime::with_current(Runtime::driver_type);
     if driver_type.is_iouring() {
         info!("Using the io_uring backend");
     } else {
-        info!("Using the polling (epoll) fallback backend");
+        info!("Using the polling (epoll) backend");
     }
 }
 
@@ -51,7 +126,8 @@ pub fn log_active_backend() {
 /// runs tests in parallel by default. We use the `serial_test` crate to explicitly ensure this.
 #[allow(dead_code)]
 pub fn test_runtime<F: Future>(future: F) -> F::Output {
-    Runtime::new()
+    // Same driver the daemon ships with, so tests exercise the reactor users actually run.
+    build_runtime(DEFAULT_DRIVER)
         .expect("compio test runtime builds")
         .block_on(future)
 }
@@ -224,6 +300,97 @@ mod tests {
 
         pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&original), None)
             .expect("restore original signal mask");
+    }
+
+    /// Goal: `parse_driver_override` must accept the spellings a user is likely to reach for, in
+    /// any case and with surrounding whitespace, and must map every `io_uring` spelling to "do not
+    /// force" so compio keeps its graceful fallback. Method: table-drive the accepted values and
+    /// assert the resolved driver for each.
+    #[test]
+    fn parse_driver_override_accepts_known_spellings() {
+        for raw in ["poll", "polling", "epoll", "POLL", "  Poll  ", "EPoll"] {
+            assert_eq!(
+                parse_driver_override(raw),
+                Some(DriverChoice::Poll),
+                "{raw:?} should force the polling driver"
+            );
+        }
+        for raw in [
+            "io_uring",
+            "io-uring",
+            "iouring",
+            "uring",
+            "IO_URing",
+            " io-uring ",
+        ] {
+            assert_eq!(
+                parse_driver_override(raw),
+                Some(DriverChoice::Probe),
+                "{raw:?} should probe rather than force io_uring"
+            );
+        }
+    }
+
+    /// Goal: an unrecognized value must be reported as unrecognized rather than silently treated as
+    /// a driver choice, so `driver_override` can warn and fall back instead of forcing the wrong
+    /// reactor. Method: assert the negative space, including the empty string and near-misses.
+    #[test]
+    fn parse_driver_override_rejects_unknown_values() {
+        for raw in ["", "  ", "iocp", "tokio", "io uring", "polled", "1", "true"] {
+            assert_eq!(
+                parse_driver_override(raw),
+                None,
+                "{raw:?} should not resolve to a driver"
+            );
+        }
+    }
+
+    /// Goal: forcing `DriverType::Poll` must actually produce a polling runtime, since that is the
+    /// whole mechanism behind the `CC_RUNTIME_DRIVER=poll` escape hatch for the io_uring iowait
+    /// accounting. Method: build a runtime through the same helper `runtime` uses and assert from
+    /// inside `block_on` that the live driver is polling and specifically not io_uring, which is
+    /// what this machine would otherwise have selected.
+    #[test]
+    fn build_runtime_forces_the_polling_driver() {
+        build_runtime(Some(DriverType::Poll))
+            .expect("compio runtime builds with the polling driver forced")
+            .block_on(async {
+                let driver_type = Runtime::with_current(Runtime::driver_type);
+                assert!(driver_type.is_polling());
+                assert!(driver_type.is_iouring().not());
+            });
+    }
+
+    /// Goal: the shipped default must leave compio's probe in charge rather than pinning a
+    /// driver, so an unavailable `io_uring` still degrades to polling instead of failing startup.
+    /// The explicit `is_none` assertion is the tripwire: issue 606 is a standing temptation to
+    /// force polling here, and that trade costs real wakeups, so a flip must be deliberate.
+    /// Method: assert the constant, then build through the same helper `runtime` uses and confirm
+    /// the live driver is one of the two Linux fusion options.
+    #[test]
+    fn default_driver_leaves_compio_probing() {
+        assert!(DEFAULT_DRIVER.is_none());
+        build_runtime(DEFAULT_DRIVER)
+            .expect("compio runtime builds on the default driver")
+            .block_on(async {
+                let driver_type = Runtime::with_current(Runtime::driver_type);
+                assert!(driver_type.is_iouring() || driver_type.is_polling());
+                assert!(driver_type.is_iocp().not());
+            });
+    }
+
+    /// Goal: opting back in to `io_uring` must leave compio's own probe in charge, so that path
+    /// keeps the graceful fallback rather than being pinned by this module. Method: build through
+    /// the helper with `None` and assert the driver is one of the two Linux fusion options.
+    #[test]
+    fn build_runtime_without_override_lets_compio_probe() {
+        build_runtime(None)
+            .expect("compio runtime builds without a forced driver")
+            .block_on(async {
+                let driver_type = Runtime::with_current(Runtime::driver_type);
+                assert!(driver_type.is_iouring() || driver_type.is_polling());
+                assert!(driver_type.is_iocp().not());
+            });
     }
 
     /// Goal: `log_active_backend` must be callable from within the compio runtime, where its
