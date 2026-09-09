@@ -3,6 +3,7 @@
 
 use crate::paths;
 use anyhow::{anyhow, Context, Result};
+use std::net::Ipv6Addr;
 use std::ops::Not;
 use std::path::PathBuf;
 use strum::{Display, EnumString};
@@ -61,42 +62,33 @@ impl ServiceManifest {
             .transpose()?;
         let args = Self::get_args(document)?;
         let envs = Self::get_envs(document)?;
-        let address_opt = Self::get_optional_string(document, "address")
-            .or_else(|| Some(format!("/tmp/{id}.sock")))
-            .filter(|_| service_type == ServiceType::Device);
-        let address = match address_opt {
-            None => ConnectionType::None,
-            Some(address) => {
-                if address.is_empty() {
-                    ConnectionType::Uds(PathBuf::from(format!(
-                        "/run/coolercontrol-plugin-{id}.sock"
-                    )))
-                } else {
-                    let check_path = PathBuf::from(&address);
-                    if check_path.is_absolute() {
-                        ConnectionType::Uds(check_path)
-                    } else {
-                        ConnectionType::Tcp(address)
-                    }
-                }
+        // Only a device service connects anywhere, so an integration service is left
+        // with no address even when its manifest names one.
+        let address = if service_type == ServiceType::Device {
+            let address = Self::get_optional_string(document, "address")
+                .map(|address| validate_field("address", &address))
+                .transpose()?
+                .unwrap_or_else(|| format!("/tmp/{id}.sock"));
+            let path = PathBuf::from(&address);
+            if path.is_absolute() {
+                ConnectionType::Uds(path)
+            } else {
+                validate_tcp_address(&address)?;
+                ConnectionType::Tcp(address)
             }
+        } else {
+            ConnectionType::None
         };
-        let privileged = document
-            .get("privileged")
-            .and_then(toml_edit::Item::as_bool)
-            .unwrap_or(false);
-        let proxy = document
-            .get("proxy")
-            .and_then(toml_edit::Item::as_table)
-            .and_then(|table| {
-                let enabled = table.get("enabled")?.as_bool()?;
-                if enabled.not() {
-                    return None;
-                }
-                let port_value = table.get("port")?.as_integer()?;
-                let port = u16::try_from(port_value).ok().filter(|&p| p >= 1024)?;
-                Some(ProxyConfig { port })
-            });
+        // A mistyped `privileged` used to fall back to `false` without a word. It fails
+        // safe, but a plugin that needs root then starts unprivileged and misbehaves for
+        // a reason nothing points at.
+        let privileged = match document.get("privileged") {
+            None => false,
+            Some(item) => item
+                .as_bool()
+                .context("Service manifest privileged should be a boolean")?,
+        };
+        let proxy = Self::get_proxy(document)?;
         Ok(Self {
             id,
             service_type,
@@ -127,6 +119,47 @@ impl ServiceManifest {
             ));
         }
         Ok(())
+    }
+
+    /// The proxy configuration, or `None` when the plugin has no proxy or disabled it.
+    ///
+    /// Every problem here used to yield `None`, which silently disabled the proxy: a
+    /// privileged port, a missing port, or a `proxy = { ... }` inline table, since the
+    /// old code matched only a `[proxy]` table and an inline one is a value.
+    fn get_proxy(document: &DocumentMut) -> Result<Option<ProxyConfig>> {
+        let Some(item) = document.get("proxy") else {
+            return Ok(None);
+        };
+        let table = item
+            .as_table_like()
+            .context("Service manifest proxy should be a table")?;
+        let enabled = match table.get("enabled") {
+            None => false,
+            Some(value) => value
+                .as_bool()
+                .context("Service manifest proxy.enabled should be a boolean")?,
+        };
+        if enabled.not() {
+            return Ok(None);
+        }
+        let port_value = table
+            .get("port")
+            .context("Service manifest proxy.port is required when the proxy is enabled")?
+            .as_integer()
+            .context("Service manifest proxy.port should be an integer")?;
+        // Below 1024 needs privileges the plugin user does not have, so a proxy there
+        // could never bind.
+        let port = u16::try_from(port_value)
+            .ok()
+            .filter(|&port| port >= PROXY_PORT_MIN)
+            .with_context(|| {
+                format!(
+                    "Service manifest proxy.port {port_value} should be between \
+                     {PROXY_PORT_MIN} and {}",
+                    u16::MAX
+                )
+            })?;
+        Ok(Some(ProxyConfig { port }))
     }
 
     /// `args` as either a whitespace-separated string or an array of arguments.
@@ -227,6 +260,62 @@ pub enum ConnectionType {
     None,
     Uds(PathBuf),
     Tcp(String),
+}
+
+/// Lowest port a plugin's proxy may use, since anything below needs privileges the
+/// plugin user does not have.
+const PROXY_PORT_MIN: u16 = 1024;
+
+/// Checks that a non-path address is something a URI can be built from.
+///
+/// Anything at all used to be accepted, so `address = "not a hostname"` parsed happily
+/// and then failed at connect time with an opaque URI error that named neither the
+/// manifest nor the field.
+///
+/// Deliberately not a full hostname grammar: this rejects what cannot possibly work, and
+/// leaves the resolver to judge whether a well-formed host actually exists.
+fn validate_tcp_address(address: &str) -> Result<()> {
+    let malformed = || {
+        anyhow!(
+            "Service manifest address '{address}' should be 'host:port', or an absolute \
+             path for a Unix socket"
+        )
+    };
+    let (host, port) = split_host_port(address).ok_or_else(malformed)?;
+    if host.is_empty() {
+        return Err(malformed());
+    }
+    if host.chars().any(char::is_whitespace) {
+        return Err(anyhow!(
+            "Service manifest address host '{host}' contains whitespace"
+        ));
+    }
+    // A colon left in the host means an IPv6 literal that was not bracketed. Accept it
+    // when it really is one, since it is unambiguous, and reject the leftovers.
+    if host.contains(':') && host.parse::<Ipv6Addr>().is_err() {
+        return Err(malformed());
+    }
+    let port: u16 = port.parse().map_err(|_| {
+        anyhow!(
+            "Service manifest address '{address}' should end in a port from 1 to {}",
+            u16::MAX
+        )
+    })?;
+    if port == 0 {
+        return Err(anyhow!(
+            "Service manifest address '{address}' cannot use port 0"
+        ));
+    }
+    Ok(())
+}
+
+/// Splits `host:port`, tolerating a bracketed IPv6 literal.
+fn split_host_port(address: &str) -> Option<(&str, &str)> {
+    if let Some(rest) = address.strip_prefix('[') {
+        let (host, tail) = rest.split_once(']')?;
+        return tail.strip_prefix(':').map(|port| (host, port));
+    }
+    address.rsplit_once(':')
 }
 
 /// Rejects the one thing no manifest field may contain.
@@ -368,6 +457,138 @@ mod tests {
         let toml = make_manifest_toml(&[("id", &format!("\"{id}\""))]);
         let manifest = parse_manifest(&toml).unwrap();
         assert_eq!(manifest.id, id);
+    }
+
+    /// Goal: an address that cannot become a URI is refused where the message can name
+    /// the manifest. It used to parse happily and fail much later inside the gRPC client,
+    /// with nothing pointing back at the field that was wrong.
+    #[test]
+    fn test_malformed_tcp_address_rejected() {
+        for bad in [
+            "not a hostname",
+            "192.168.1.100",
+            "192.168.1.100:",
+            "192.168.1.100:notaport",
+            "192.168.1.100:0",
+            "192.168.1.100:99999",
+            ":11987",
+            "my host:11987",
+            "::1",
+            "[::1]11987",
+        ] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{bad}\""))]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: every shape that must keep working, so the new check cannot turn a valid
+    /// address away. A bracketed IPv6 literal and an unbracketed one are both accepted,
+    /// since an unbracketed one is unambiguous when it really parses as an address.
+    #[test]
+    fn test_valid_addresses_accepted() {
+        for good in [
+            "192.168.1.100:11987",
+            "localhost:11987",
+            "my-server.example.com:11987",
+            "[::1]:11987",
+            "[fe80::1]:11987",
+            "::1:11987",
+        ] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{good}\""))]);
+            let manifest = parse_manifest(&toml)
+                .unwrap_or_else(|err| panic!("{good} should parse, got {err}"));
+            assert!(
+                matches!(manifest.address, ConnectionType::Tcp(_)),
+                "{good} should be a TCP address, got {:?}",
+                manifest.address
+            );
+        }
+    }
+
+    /// Goal: an absolute path is a Unix socket and is not held to the host:port rule.
+    #[test]
+    fn test_absolute_address_is_a_unix_socket() {
+        let toml = make_manifest_toml(&[("address", "\"/run/my plugin.sock\"")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(
+            manifest.address,
+            ConnectionType::Uds(PathBuf::from("/run/my plugin.sock"))
+        );
+    }
+
+    /// Goal: an integration service has nothing to connect to, so it gets no address even
+    /// when its manifest names one. This also pins the default a device service falls
+    /// back to, which the old code reached through a branch that could never run.
+    #[test]
+    fn test_address_defaults_only_for_a_device_service() {
+        let device = parse_manifest(&make_manifest_toml(&[])).unwrap();
+        assert_eq!(
+            device.address,
+            ConnectionType::Uds(PathBuf::from("/tmp/test-plugin.sock"))
+        );
+
+        let integration =
+            parse_manifest(&make_manifest_toml(&[("type", "\"integration\"")])).unwrap();
+        assert_eq!(integration.address, ConnectionType::None);
+
+        let addressed_integration = parse_manifest(&make_manifest_toml(&[
+            ("type", "\"integration\""),
+            ("address", "\"192.168.1.100:11987\""),
+        ]))
+        .unwrap();
+        assert_eq!(addressed_integration.address, ConnectionType::None);
+    }
+
+    /// Goal: a mistyped `privileged` says so. Falling back to `false` is safe but silent,
+    /// so a plugin that needs root starts unprivileged and fails for a reason nothing
+    /// points at.
+    #[test]
+    fn test_non_boolean_privileged_rejected() {
+        for bad in ["\"true\"", "1", "\"yes\""] {
+            let toml = make_manifest_toml(&[("privileged", bad)]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+        assert!(
+            parse_manifest(&make_manifest_toml(&[("privileged", "true")]))
+                .unwrap()
+                .privileged
+        );
+    }
+
+    /// Goal: a proxy the daemon cannot honour is an error, not a silent omission. Every
+    /// one of these used to disable the proxy without a word.
+    #[test]
+    fn test_unusable_proxy_rejected() {
+        for bad in [
+            "{ enabled = true, port = 80 }",
+            "{ enabled = true, port = 0 }",
+            "{ enabled = true, port = 70000 }",
+            "{ enabled = true }",
+            "{ enabled = \"yes\", port = 8080 }",
+            "{ enabled = true, port = \"8080\" }",
+            "\"true\"",
+        ] {
+            let toml = make_manifest_toml(&[("proxy", bad)]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: an inline `proxy` table works. The old code matched only a `[proxy]` table,
+    /// and an inline table is a value, so `proxy = { enabled = true, port = 8080 }` was
+    /// silently ignored and the proxy never came up.
+    #[test]
+    fn test_inline_proxy_table_is_honoured() {
+        let toml = make_manifest_toml(&[("proxy", "{ enabled = true, port = 8080 }")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(manifest.proxy.map(|proxy| proxy.port), Some(8080));
+    }
+
+    /// Goal: a disabled proxy needs no port and is not an error, which is the normal way
+    /// to turn one off.
+    #[test]
+    fn test_disabled_proxy_needs_no_port() {
+        let toml = make_manifest_toml(&[("proxy", "{ enabled = false }")]);
+        assert!(parse_manifest(&toml).unwrap().proxy.is_none());
     }
 
     /// Goal: a control character is refused rather than deleted. A newline in `args`
