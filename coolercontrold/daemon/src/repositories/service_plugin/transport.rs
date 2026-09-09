@@ -7,7 +7,7 @@
 //! token, because a remote device service is reached across a network and a bearer token
 //! must not travel in the clear. A plugin that serves plain h2c, which is every
 //! third-party plugin and every daemon older than this change, is reached exactly as
-//! before. See `trust::uses_tls`.
+//! before. See `trust::LinkPlan`.
 //!
 //! tonic is built here without its own TLS features, so the channel is built from a
 //! connector over the `tokio-rustls` stack the daemon already carries for the server
@@ -33,10 +33,11 @@ use tonic::transport::{Channel, Endpoint, Uri};
 pub async fn connect(
     manifest: &ServiceManifest,
     address: &str,
+    plan: &trust::LinkPlan,
     tls_strict: bool,
 ) -> Result<Channel> {
     match &manifest.address {
-        ConnectionType::Tcp(tcp_address) if trust::uses_tls(manifest) => {
+        ConnectionType::Tcp(tcp_address) if plan.encrypted() => {
             connect_tls(manifest, address, tcp_address, tls_strict).await
         }
         // Plaintext h2c. A Unix socket is already scoped to this machine by the kernel;
@@ -57,7 +58,7 @@ async fn connect_tls(
 ) -> Result<Channel> {
     let host = host_of(tcp_address);
     let is_loopback = trust::is_loopback_host(&host);
-    let pinned = trust::read_pin(&manifest.path);
+    let pinned = trust::read_pin(&manifest.path).await;
     let provider = rustls::crypto::ring::default_provider();
     let verifier = Arc::new(PinnedCertVerifier::new(
         Arc::new(provider.clone()),
@@ -99,7 +100,7 @@ async fn connect_tls(
             manifest.id,
             trust::PIN_FILE_NAME
         );
-        if let Err(err) = trust::write_pin(&manifest.path, &pin) {
+        if let Err(err) = trust::write_pin(&manifest.path, &pin).await {
             // Not fatal: the connection is up. It just means the next start pins again,
             // so the user loses change detection until the write succeeds.
             warn!(

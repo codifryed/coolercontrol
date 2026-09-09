@@ -17,6 +17,7 @@
 //! demands a CA-valid chain; here, with no roots to check against, it demands a pin that
 //! the user placed deliberately, and refuses to trust anything on first contact.
 
+use crate::cc_fs::{self, sidecar_fs};
 use crate::hashutil;
 use crate::repositories::service_plugin::service_manifest::ServiceManifest;
 use anyhow::{Context, Result};
@@ -138,8 +139,11 @@ pub fn is_loopback_host(host: &str) -> bool {
         .is_ok_and(|address| address.is_loopback())
 }
 
-pub fn read_pin(plugin_dir: &Path) -> Option<String> {
-    let pin = std::fs::read_to_string(plugin_dir.join(PIN_FILE_NAME)).ok()?;
+/// The pin lives on the sidecar: it is read and written from `transport::connect_tls`,
+/// which runs there, so these use the always-Tokio helpers rather than the main-thread
+/// `cc_fs` facade.
+pub async fn read_pin(plugin_dir: &Path) -> Option<String> {
+    let pin = sidecar_fs::read_txt(plugin_dir.join(PIN_FILE_NAME)).await.ok()?;
     let pin = pin.trim().to_string();
     if pin.is_empty() {
         return None;
@@ -147,35 +151,62 @@ pub fn read_pin(plugin_dir: &Path) -> Option<String> {
     Some(pin)
 }
 
-pub fn write_pin(plugin_dir: &Path, pin: &str) -> Result<()> {
+pub async fn write_pin(plugin_dir: &Path, pin: &str) -> Result<()> {
     let path = plugin_dir.join(PIN_FILE_NAME);
-    std::fs::write(&path, format!("{pin}\n"))
+    sidecar_fs::write_string(&path, format!("{pin}\n"))
+        .await
         .with_context(|| format!("Writing TLS pin to {}", path.display()))
 }
 
-/// Whether the link to a TCP device service is encrypted.
+/// What the daemon knows about a plugin's link before the channel is built.
 ///
-/// The plugin's `tls` field wins when its author set one: only they know whether their
-/// server terminates TLS. Otherwise the token decides, which keeps an older daemon and
-/// every third-party plugin serving plain h2c on TCP working untouched, and upgrades the
-/// link at the moment the user places a token, which an upgraded remote requires anyway.
-///
-/// The rule also makes the dangerous combination hard to reach by accident: a token
-/// cannot leave this machine in the clear, because carrying one is what turns TLS on. An
-/// author who declares `tls = false` can still contradict that, which is why
-/// `DeviceServiceClient` withholds the token rather than trusting this alone.
-pub fn uses_tls(manifest: &ServiceManifest) -> bool {
-    manifest
-        .tls
-        .unwrap_or_else(|| read_token(&manifest.path).is_some())
+/// Resolved once per connect and threaded through. The scheme, the transport and the
+/// decision to send a token all used to ask separately, re-reading the token file each
+/// time: redundant IO, and a window in which two of them disagreed because the file
+/// appeared in between.
+#[derive(Debug, Clone)]
+pub struct LinkPlan {
+    token: Option<String>,
+    encrypted: bool,
+}
+
+impl LinkPlan {
+    /// The plugin's `tls` field wins when its author set one: only they know whether their
+    /// server terminates TLS. Otherwise the token decides, which keeps an older daemon and
+    /// every third-party plugin serving plain h2c on TCP working untouched, and upgrades the
+    /// link at the moment the user places a token, which an upgraded remote requires anyway.
+    ///
+    /// The rule also makes the dangerous combination hard to reach by accident: a token
+    /// cannot leave this machine in the clear, because carrying one is what turns TLS on. An
+    /// author who declares `tls = false` can still contradict that, which is why
+    /// `DeviceServiceClient` withholds the token rather than trusting this alone.
+    ///
+    /// Resolved on the main thread, before the client is handed to the sidecar, so this
+    /// reads through the main-thread `cc_fs` facade.
+    pub async fn resolve(manifest: &ServiceManifest) -> Self {
+        let token = read_token(&manifest.path).await;
+        let encrypted = manifest.tls.unwrap_or(token.is_some());
+        Self { token, encrypted }
+    }
+
+    /// Whether the link is TLS. A plaintext link is either a Unix socket or a peer with
+    /// no token to protect.
+    pub fn encrypted(&self) -> bool {
+        self.encrypted
+    }
+
+    /// The token the user placed, before the separate decision of whether to send it.
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
 }
 
 /// The bearer token for a remote device service, if the user placed one.
 ///
 /// Absent is not an error: a plugin on a Unix socket, or an older remote with no auth,
 /// simply has no token to send.
-pub fn read_token(plugin_dir: &Path) -> Option<String> {
-    let token = std::fs::read_to_string(plugin_dir.join(TOKEN_FILE_NAME)).ok()?;
+pub async fn read_token(plugin_dir: &Path) -> Option<String> {
+    let token = cc_fs::read_txt(plugin_dir.join(TOKEN_FILE_NAME)).await.ok()?;
     let token = token.trim().to_string();
     if token.is_empty() {
         return None;
@@ -309,6 +340,7 @@ impl ServerCertVerifier for PinnedCertVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::ops::Not;
     use tempfile::tempdir;
 
@@ -415,40 +447,49 @@ mod tests {
     }
 
     /// Goal: a pin round-trips through the file the user is told to edit, tolerating the
-    /// trailing newline any editor adds.
+    /// trailing newline any editor adds. Runs on Tokio because the pin is read and written
+    /// from the sidecar.
     #[test]
+    #[serial]
     fn pin_file_round_trips() {
-        let dir = tempdir().unwrap();
-        assert_eq!(read_pin(dir.path()), None);
+        sidecar_fs::test_runtime(async {
+            let dir = tempdir().unwrap();
+            assert_eq!(read_pin(dir.path()).await, None);
 
-        write_pin(dir.path(), PIN_A).unwrap();
-        assert_eq!(read_pin(dir.path()).as_deref(), Some(PIN_A));
+            write_pin(dir.path(), PIN_A).await.unwrap();
+            assert_eq!(read_pin(dir.path()).await.as_deref(), Some(PIN_A));
 
-        std::fs::write(dir.path().join(PIN_FILE_NAME), format!("  {PIN_B}  \n\n")).unwrap();
-        assert_eq!(read_pin(dir.path()).as_deref(), Some(PIN_B));
+            std::fs::write(dir.path().join(PIN_FILE_NAME), format!("  {PIN_B}  \n\n")).unwrap();
+            assert_eq!(read_pin(dir.path()).await.as_deref(), Some(PIN_B));
+        });
     }
 
     /// Goal: an empty pin file reads as no pin rather than as a pin that can never match,
     /// which would wedge the connection with a confusing mismatch every time.
     #[test]
+    #[serial]
     fn empty_pin_file_reads_as_absent() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(PIN_FILE_NAME), "   \n").unwrap();
-        assert_eq!(read_pin(dir.path()), None);
+        sidecar_fs::test_runtime(async {
+            let dir = tempdir().unwrap();
+            std::fs::write(dir.path().join(PIN_FILE_NAME), "   \n").unwrap();
+            assert_eq!(read_pin(dir.path()).await, None);
+        });
     }
 
     /// Goal: a token is optional and whitespace-tolerant. A missing file is the normal
     /// case for a Unix-socket plugin, not an error.
     #[test]
     fn token_file_is_optional_and_trimmed() {
-        let dir = tempdir().unwrap();
-        assert_eq!(read_token(dir.path()), None);
+        crate::rt::test_runtime(async {
+            let dir = tempdir().unwrap();
+            assert_eq!(read_token(dir.path()).await, None);
 
-        std::fs::write(dir.path().join(TOKEN_FILE_NAME), "  cc_abc123  \n").unwrap();
-        assert_eq!(read_token(dir.path()).as_deref(), Some("cc_abc123"));
+            std::fs::write(dir.path().join(TOKEN_FILE_NAME), "  cc_abc123  \n").unwrap();
+            assert_eq!(read_token(dir.path()).await.as_deref(), Some("cc_abc123"));
 
-        std::fs::write(dir.path().join(TOKEN_FILE_NAME), "\n \n").unwrap();
-        assert_eq!(read_token(dir.path()), None);
+            std::fs::write(dir.path().join(TOKEN_FILE_NAME), "\n \n").unwrap();
+            assert_eq!(read_token(dir.path()).await, None);
+        });
     }
 
     /// Goal: the rejection messages name the plugin and say what to do about it. These

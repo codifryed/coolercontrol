@@ -18,6 +18,7 @@
 use super::client::DeviceServiceClient;
 use super::service_manifest::ServiceManifest;
 use super::service_plugin_repo::ServiceDeviceID;
+use super::trust;
 use crate::device::{ChannelStatus, Device, DeviceUID, Duty, Temp, TempStatus};
 use crate::grpc_api::device_service::v1::{HealthResponse, ListDevicesResponse};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -108,12 +109,16 @@ impl DeviceServiceClientHandle {
         poll_rate: f64,
         tls_strict: bool,
     ) -> Result<Self> {
-        let client_address = DeviceServiceClient::address_from_manifest(service_manifest)?;
+        // Resolved here, on the main thread, and carried onto the sidecar: the token file
+        // is read once for the address, the transport and the credentials together.
+        let plan = trust::LinkPlan::resolve(service_manifest).await;
+        let client_address = DeviceServiceClient::address_from_manifest(service_manifest, &plan)?;
         let (request_tx, request_rx) = mpsc::channel(REQUEST_CHANNEL_CAP);
         let manifest = service_manifest.clone();
         crate::sidecar::handle()
             .run(move || async move {
-                let client = DeviceServiceClient::connect(&manifest, poll_rate, tls_strict).await?;
+                let client =
+                    DeviceServiceClient::connect(&manifest, &plan, poll_rate, tls_strict).await?;
                 tokio::task::spawn_local(run_dispatcher(Rc::new(client), request_rx));
                 Ok::<(), anyhow::Error>(())
             })
