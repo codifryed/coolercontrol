@@ -23,13 +23,13 @@ pub fn to_lower_hex(bytes: &[u8]) -> String {
 /// (which pins a remote's), so the two can never disagree on the format.
 pub fn to_fingerprint(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    let hex = to_lower_hex(&digest);
-    let mut grouped = String::with_capacity(hex.len() + hex.len() / 2);
-    for (index, pair) in hex.as_bytes().chunks(2).enumerate() {
+    let mut grouped = String::with_capacity(digest.len() * 3);
+    for (index, byte) in digest.iter().enumerate() {
         if index > 0 {
             grouped.push(':');
         }
-        grouped.push_str(std::str::from_utf8(pair).unwrap_or_default());
+        // `fmt::Write` for `String` is infallible; it only calls `push_str` internally.
+        write!(grouped, "{byte:02x}").unwrap();
     }
     grouped
 }
