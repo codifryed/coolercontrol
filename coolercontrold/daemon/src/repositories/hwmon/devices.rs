@@ -376,6 +376,25 @@ fn parse_hex_str_to_u16(value: &str) -> Option<u16> {
     u16::from_str_radix(value, 16).ok()
 }
 
+/// The instance id of a platform device, i.e. `1` for `/sys/devices/platform/coretemp.1`.
+///
+/// Drivers that own one platform device per CPU package derive this id from the CPU topology
+/// rather than from probe order, so unlike the `hwmonN` index it is stable across boots.
+pub fn get_platform_device_id(base_path: &Path) -> Option<u8> {
+    parse_platform_device_id(&get_static_device_path_str(base_path)?)
+}
+
+/// Only a direct child of the platform bus has an instance id we can read. A PCI address ends in
+/// a function number that would otherwise parse as one, so the prefix check is load bearing.
+fn parse_platform_device_id(device_path: &str) -> Option<u8> {
+    let device_name = device_path.strip_prefix("/sys/devices/platform/")?;
+    if device_name.contains('/') {
+        return None;
+    }
+    let (_, instance_id) = device_name.rsplit_once('.')?;
+    instance_id.parse().ok()
+}
+
 pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
@@ -488,6 +507,47 @@ mod tests {
     use super::*;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    /// Goal: a coretemp zone number must be read from the platform device path, since that is
+    /// the only stable tie between an hwmon device and a CPU package. Method: the real path
+    /// shapes seen on multi-socket and single-socket machines, plus the shapes that must be
+    /// rejected so a PCI function number is never mistaken for an instance id.
+    #[test]
+    fn platform_device_id_is_parsed_only_for_platform_devices() {
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/coretemp.0"),
+            Some(0)
+        );
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/coretemp.1"),
+            Some(1)
+        );
+        // A PCI address ends in a function number that would parse as an instance id.
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/pci0000:00/0000:00:18.3"),
+            None
+        );
+        // Ids wider than a zone number belong to ISA addresses, not package instances.
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/applesmc.768"),
+            None
+        );
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/nct6687.2592"),
+            None
+        );
+        // Nested platform devices are not package instances.
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/foo.0/bar.1"),
+            None
+        );
+        // No instance suffix at all.
+        assert_eq!(
+            parse_platform_device_id("/sys/devices/platform/coretemp"),
+            None
+        );
+        assert_eq!(parse_platform_device_id(""), None);
+    }
 
     struct HwmonDeviceContext {
         test_dir: String,

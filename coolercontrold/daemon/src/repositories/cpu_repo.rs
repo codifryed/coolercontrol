@@ -24,7 +24,6 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
-use regex::Regex;
 use std::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
@@ -41,12 +40,35 @@ pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
     "zenpower",        // zenpower AMD module
     "cpu_thermal",     // Raspberry Pi module
 ];
-const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
 
 // The ID of the actual physical CPU. On most systems, there is only one:
 type PhysicalID = u8;
 type ProcessorCount = u16; // the logical processor count (aka how many cores per physical cpu)
+
+/// How confidently a CPU hwmon device is tied to a physical processor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CpuAssociation {
+    /// Tied to a cpuinfo physical id. Load, frequency and power all describe this processor.
+    Socket(PhysicalID),
+    /// Only the driver's own package zone id is known. The temps are real, but nothing says
+    /// which processor they came from, so the signals keyed by physical id are left off rather
+    /// than attached to a guess.
+    Zone(PhysicalID),
+}
+
+impl CpuAssociation {
+    /// The id the device is keyed and numbered by, whichever kind it is.
+    fn cpu_id(self) -> PhysicalID {
+        match self {
+            Self::Socket(id) | Self::Zone(id) => id,
+        }
+    }
+
+    fn is_socket(self) -> bool {
+        matches!(self, Self::Socket(_))
+    }
+}
 
 #[derive(Default, Debug, PartialEq)]
 struct CpuFreqs {
@@ -63,6 +85,8 @@ pub struct CpuRepo {
     devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     cpu_infos: HashMap<PhysicalID, Cell<ProcessorCount>>,
     cpu_model_names: HashMap<PhysicalID, String>,
+    /// Physical ids in the order the kernel numbers package zones, i.e. ascending APIC id.
+    cpu_apic_order: Vec<PhysicalID>,
     cpu_percent_collector: RefCell<CpuPercentCollector>,
     preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
@@ -77,6 +101,7 @@ impl CpuRepo {
             devices: HashMap::new(),
             cpu_infos: HashMap::new(),
             cpu_model_names: HashMap::new(),
+            cpu_apic_order: Vec::new(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
             preloaded_statuses: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
@@ -209,7 +234,9 @@ impl CpuRepo {
             self.cpu_infos.entry(0).or_default().set(processor_count);
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
+            self.cpu_apic_order = Self::order_physical_ids_by_apic(&cpu_info_data);
             trace!("CPUInfo: {:?}", self.cpu_infos);
+            trace!("CPU APIC order: {:?}", self.cpu_apic_order);
             Ok(())
         } else {
             Err(anyhow!(
@@ -296,6 +323,65 @@ impl CpuRepo {
         temps::init_temps(path, include_all_devices).await
     }
 
+    /// Orders physical processors the way the kernel numbers package zones: by ascending APIC id.
+    ///
+    /// `topology_get_logical_id()` counts the set APIC id bits below a domain's own, so a
+    /// `coretemp.N` zone number is that package's rank in this order. cpuinfo prints `apicid` in
+    /// the same block as `physical id`, so wherever there is more than one package to tell apart,
+    /// both are present.
+    fn order_physical_ids_by_apic(cpu_info_data: &str) -> Vec<PhysicalID> {
+        let mut lowest_apic_ids: HashMap<PhysicalID, u32> = HashMap::new();
+        let mut physical_id: Option<PhysicalID> = None;
+        for line in cpu_info_data.lines() {
+            let mut it = line.split(':');
+            let (key, value) = match (it.next(), it.next()) {
+                (Some(key), Some(value)) => (key.trim(), value.trim()),
+                _ => continue, // will skip empty lines and non-key-value lines
+            };
+            if key == "physical id" {
+                physical_id = value.parse().ok();
+            } else if key == "apicid" {
+                // cpuinfo prints physical id first, so this pairs with the current processor.
+                // `initial apicid` is a different key and never lands here.
+                let Some(current_physical_id) = physical_id.take() else {
+                    continue;
+                };
+                let Ok(apic_id) = value.parse::<u32>() else {
+                    continue;
+                };
+                lowest_apic_ids
+                    .entry(current_physical_id)
+                    .and_modify(|lowest| *lowest = (*lowest).min(apic_id))
+                    .or_insert(apic_id);
+            }
+        }
+        let mut ordered = lowest_apic_ids
+            .into_iter()
+            .collect::<Vec<(PhysicalID, u32)>>();
+        // The physical id breaks ties so the order cannot vary between runs.
+        ordered.sort_unstable_by_key(|(physical_id, apic_id)| (*apic_id, *physical_id));
+        ordered
+            .into_iter()
+            .map(|(physical_id, _)| physical_id)
+            .collect()
+    }
+
+    /// The model name to show for a CPU device.
+    ///
+    /// A device keyed by its package zone may have no cpuinfo entry under that id. Multi-socket
+    /// x86 requires identical processors, so any known name describes every package. The lowest
+    /// id is used rather than any, so the name and the UID derived from it cannot vary between
+    /// runs with `HashMap` order.
+    fn cpu_model_name(&self, cpu_id: PhysicalID) -> Option<String> {
+        if let Some(model_name) = self.cpu_model_names.get(&cpu_id) {
+            return Some(model_name.clone());
+        }
+        self.cpu_model_names
+            .iter()
+            .min_by_key(|(physical_id, _)| **physical_id)
+            .map(|(_, model_name)| model_name.clone())
+    }
+
     /// The physical processors that no CPU hwmon device was matched to, ascending.
     fn unmatched_physical_ids(
         &self,
@@ -312,60 +398,57 @@ impl CpuRepo {
         unmatched
     }
 
-    /// Returns the proper CPU physical ID.
+    /// Ties a CPU hwmon device to the processor it measures.
     fn match_physical_id(
         &self,
         device_name: &str,
-        channels: &Vec<HwmonChannelInfo>,
+        path: &Path,
         index: usize,
-    ) -> Result<PhysicalID> {
+    ) -> Option<CpuAssociation> {
         if device_name == INTEL_DEVICE_NAME {
-            self.parse_intel_physical_id(device_name, channels)
+            self.match_intel_association(path)
         } else {
-            self.parse_amd_physical_id(index)
+            self.match_amd_association(index)
         }
     }
 
-    /// For Intel, this is given by the package ID in the hwmon temp labels.
-    fn parse_intel_physical_id(
-        &self,
-        device_name: &str,
-        channels: &Vec<HwmonChannelInfo>,
-    ) -> Result<PhysicalID> {
-        let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
-        for channel in channels {
-            if channel.label.is_none() {
-                continue; // package ID is in the label
-            }
-            let channel_label_lower = channel.label.as_ref().unwrap().to_lowercase();
-            if regex_package_id.is_match(&channel_label_lower) {
-                let package_id: u8 = regex_package_id
-                    .captures(&channel_label_lower)
-                    .context("Package ID should exist")?
-                    .name("number")
-                    .context("Number Group should exist")?
-                    .as_str()
-                    .parse()?;
-                if self.cpu_infos.contains_key(&package_id) {
-                    // verify there is a match
-                    return Ok(package_id);
-                }
-            }
-        }
-        // Older Intel CPUs don't always have a Package sensor present, so if
-        // we have only one CPU, we simply return the only physicalID present.
+    /// Intel registers one `coretemp` platform device per package zone, and the kernel numbers
+    /// those zones by ascending APIC id, so the device's instance id is its package's rank in
+    /// `cpu_apic_order`.
+    ///
+    /// The temp labels cannot answer this. `Package id N` exists only on packages with the PTS
+    /// feature, so pre-Sandy Bridge parts have none, and the remaining `Core N` labels carry core
+    /// ids that repeat identically across sockets.
+    fn match_intel_association(&self, path: &Path) -> Option<CpuAssociation> {
+        self.intel_association(devices::get_platform_device_id(path))
+    }
+
+    /// The zone id is passed in rather than read here, so the ranking can be tested without a
+    /// fake sysfs tree.
+    fn intel_association(&self, zone_id: Option<u8>) -> Option<CpuAssociation> {
+        // A single package needs no ranking, and its physical id is not always 0.
         if self.cpu_infos.len() == 1 {
-            Ok(*self.cpu_infos.keys().next().unwrap())
-        } else {
-            Err(anyhow!(
-                "Could not find and match package ID to physical ID: {device_name}, {channels:?}"
-            ))
+            return self
+                .cpu_infos
+                .keys()
+                .next()
+                .copied()
+                .map(CpuAssociation::Socket);
         }
+        let zone_id = zone_id?;
+        if let Some(physical_id) = self.cpu_apic_order.get(zone_id as usize) {
+            if self.cpu_infos.contains_key(physical_id) {
+                return Some(CpuAssociation::Socket(*physical_id));
+            }
+        }
+        // More zones than packages means a multi-die package, which cpuinfo cannot resolve since
+        // it reports no die id. The temps are still real, so keep them under the zone.
+        Some(CpuAssociation::Zone(zone_id))
     }
 
     /// For AMD, this is done by comparing hwmon devices to the cpuinfo processor list.
     #[allow(clippy::cast_possible_truncation)]
-    fn parse_amd_physical_id(&self, index: usize) -> Result<PhysicalID> {
+    fn match_amd_association(&self, index: usize) -> Option<CpuAssociation> {
         // NOTE: not currently used due to an apparent bug in the amd hwmon kernel driver:
         // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
         // for (physical_id, processor_list) in &self.cpu_infos {
@@ -378,16 +461,51 @@ impl CpuRepo {
         // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
         // Otherwise, we do a simple assumption that the physical cpu ID == hwmon device index:
         if self.cpu_infos.len() == 1 {
-            return Ok(*self.cpu_infos.keys().next().unwrap());
+            return self
+                .cpu_infos
+                .keys()
+                .next()
+                .copied()
+                .map(CpuAssociation::Socket);
         }
         let physical_id = index as PhysicalID;
         if self.cpu_infos.contains_key(&physical_id) {
-            Ok(physical_id)
+            Some(CpuAssociation::Socket(physical_id))
         } else {
-            Err(anyhow!(
-                "Could not match hwmon index to cpuinfo physical id"
-            ))
+            None
         }
+    }
+
+    /// The channels that only make sense once a device is tied to a processor: load, frequency
+    /// and package power are all keyed by cpuinfo's physical id, not by the hwmon device.
+    async fn init_socket_channels(
+        &self,
+        physical_id: PhysicalID,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+    ) -> Vec<HwmonChannelInfo> {
+        let mut channels = Vec::with_capacity(5); // one load, up to three freqs, one power
+        match self.init_cpu_load(physical_id).await {
+            Ok(load) => channels.push(load),
+            Err(err) => error!("Error matching cpu load percents to processors: {err}"),
+        }
+        if cpu_freqs.is_empty().not() {
+            match Self::init_cpu_freq(physical_id, cpu_freqs) {
+                Ok(freqs) => channels.extend(freqs),
+                Err(err) => error!("Error matching cpu frequencies to processors: {err}"),
+            }
+        }
+        match power_cap::find_power_cap_paths().await {
+            Ok(power_channels) => {
+                if let Some(channel) = power_channels
+                    .into_iter()
+                    .find(|channel| channel.number == physical_id)
+                {
+                    channels.push(channel);
+                }
+            }
+            Err(err) => debug!("Error finding power cap paths: {err}"),
+        }
+        channels
     }
 
     /// We calculate total system load.
@@ -729,18 +847,37 @@ impl CpuRepo {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {err}"),
                 }
-                // requires temp channels beforehand
-                let physical_id = match self.match_physical_id(device_name, &channels, index) {
-                    Ok(id) => id,
-                    Err(err) => {
-                        error!("Error matching CPU physical ID: {err}");
-                        continue;
-                    }
+                let Some(association) = self.match_physical_id(device_name, path, index) else {
+                    info!(
+                        "Could not tie {device_name} at {} to a physical processor. \
+                        Skipping device.",
+                        path.display()
+                    );
+                    continue;
                 };
-                let type_index = physical_id + 1;
+                let cpu_id = association.cpu_id();
+                if hwmon_devices.contains_key(&cpu_id) {
+                    info!(
+                        "A CPU device is already registered for id {cpu_id}. \
+                        Skipping {device_name} at {}.",
+                        path.display()
+                    );
+                    continue;
+                }
+                if association.is_socket().not() {
+                    // Temps are what a cooling app needs, so they are kept. Load, frequency and
+                    // power are keyed by physical id and would have to be guessed, so they are
+                    // left off rather than shown against the wrong processor.
+                    info!(
+                        "Could not tie {device_name} at {} to a physical processor. Its temps are \
+                        shown on their own, without processor load, frequency or power.",
+                        path.display()
+                    );
+                }
+                let type_index = cpu_id + 1;
                 // cpu_info is set first, filling in model names:
-                let Some(cpu_name) = self.cpu_model_names.get(&physical_id).cloned() else {
-                    error!("No CPU model name for physical id {physical_id}. Skipping device.");
+                let Some(cpu_name) = self.cpu_model_name(cpu_id) else {
+                    error!("No CPU model name found. Skipping {device_name} device.");
                     continue;
                 };
                 let device_uid =
@@ -753,32 +890,8 @@ impl CpuRepo {
                     info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
                     continue;
                 }
-                match self.init_cpu_load(physical_id).await {
-                    Ok(load) => channels.push(load),
-                    Err(err) => {
-                        error!("Error matching cpu load percents to processors: {err}");
-                    }
-                }
-                if cpu_freqs.is_empty().not() {
-                    match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
-                        Ok(freqs) => channels.extend(freqs),
-                        Err(err) => {
-                            error!("Error matching cpu frequencies to processors: {err}");
-                        }
-                    }
-                }
-                match power_cap::find_power_cap_paths().await {
-                    Ok(power_channels) => {
-                        if let Some(channel) = power_channels
-                            .into_iter()
-                            .find(|channel| channel.number == physical_id)
-                        {
-                            channels.push(channel);
-                        }
-                    }
-                    Err(err) => {
-                        debug!("Error finding power cap paths: {err}");
-                    }
+                if association.is_socket() {
+                    channels.extend(self.init_socket_channels(cpu_id, &mut cpu_freqs).await);
                 }
                 let channels = self
                     .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
@@ -796,7 +909,7 @@ impl CpuRepo {
                     channels,
                     ..Default::default()
                 };
-                hwmon_devices.insert(physical_id, hwmon_driver_info);
+                hwmon_devices.insert(cpu_id, hwmon_driver_info);
                 if num_cpu_devices_left_to_find > 1 {
                     num_cpu_devices_left_to_find -= 1;
                     continue;
@@ -1130,10 +1243,11 @@ mod tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::overrides::OverridesController;
-    use crate::repositories::cpu_repo::{CpuFreqs, CpuRepo, PhysicalID};
+    use crate::repositories::cpu_repo::{CpuAssociation, CpuFreqs, CpuRepo, PhysicalID};
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
     use std::collections::HashMap;
+    use std::ops::Not;
     use std::rc::Rc;
 
     fn matched(physical_ids: &[PhysicalID]) -> HashMap<PhysicalID, HwmonDriverInfo> {
@@ -1155,6 +1269,33 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/resources/tests/cpuinfo/intel_single_cpu"
     ));
+    static CPUINFO_INTEL_DOUBLE_CPU: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/intel_double_cpu"
+    ));
+    /// Two packages whose physical ids run opposite to their APIC ids. Real firmware rarely does
+    /// this, but it is the only shape that tells the two orderings apart.
+    static CPUINFO_INVERTED_APIC: &str = concat!(
+        "processor\t: 0\n",
+        "model name\t: Test CPU\n",
+        "physical id\t: 0\n",
+        "apicid\t\t: 32\n",
+        "\n",
+        "processor\t: 1\n",
+        "model name\t: Test CPU\n",
+        "physical id\t: 1\n",
+        "apicid\t\t: 0\n",
+    );
+
+    async fn repo_from_cpuinfo(cpu_info_data: Vec<u8>) -> CpuRepo {
+        let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+        cc_fs::write(&test_cpuinfo, cpu_info_data).await.unwrap();
+        let test_config = Rc::new(Config::init_default_config().unwrap());
+        let mut cpu_repo =
+            CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
+        cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+        cpu_repo
+    }
     static CPUINFO_RASPBERRY_PI_5: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/resources/tests/cpuinfo/raspberry_pi_5"
@@ -1654,6 +1795,121 @@ mod tests {
                 initial_count,
                 "processor count should remain unchanged when file is empty"
             );
+        });
+    }
+
+    /// Goal: the dual Xeon X5672 in the report has no `Package id` label and identical core ids
+    /// on both sockets, so the zone ranking is the only thing that can tell its packages apart.
+    /// Method: its real cpuinfo, checking that package 0 ranks before package 1 by APIC id
+    /// (0 against 32) and that each coretemp zone resolves to the matching socket.
+    #[test]
+    #[serial]
+    fn test_intel_double_cpu_zones_map_to_sockets() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+
+            // then: two packages, ordered by their lowest APIC id.
+            assert_eq!(cpu_repo.cpu_infos.len(), 2);
+            assert_eq!(cpu_repo.cpu_apic_order, vec![0, 1]);
+
+            // then: each zone resolves to its own socket, with load and frequency attached.
+            assert_eq!(
+                cpu_repo.intel_association(Some(0)),
+                Some(CpuAssociation::Socket(0))
+            );
+            assert_eq!(
+                cpu_repo.intel_association(Some(1)),
+                Some(CpuAssociation::Socket(1))
+            );
+        });
+    }
+
+    /// Goal: the ranking must follow the APIC id, not the physical id, because that is what
+    /// `topology_get_logical_id()` counts when the kernel numbers coretemp zones. Method: a
+    /// cpuinfo whose physical ids run opposite to its APIC ids, which is the only shape where
+    /// the two orderings disagree.
+    #[test]
+    #[serial]
+    fn test_zone_ranking_follows_apic_id_not_physical_id() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INVERTED_APIC.as_bytes().to_vec()).await;
+
+            // then: physical id 1 holds the lower APIC id, so it owns zone 0.
+            assert_eq!(cpu_repo.cpu_apic_order, vec![1, 0]);
+            assert_eq!(
+                cpu_repo.intel_association(Some(0)),
+                Some(CpuAssociation::Socket(1))
+            );
+            assert_eq!(
+                cpu_repo.intel_association(Some(1)),
+                Some(CpuAssociation::Socket(0))
+            );
+        });
+    }
+
+    /// Goal: a zone we cannot tie to a package must keep its temps rather than be dropped or
+    /// guessed onto a socket, and a device with no readable zone at all must be dropped. Method:
+    /// a two-package cpuinfo queried with a zone beyond its package count, and with no zone.
+    #[test]
+    #[serial]
+    fn test_unresolvable_zone_falls_back_to_temps_only() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+
+            // then: a multi-die package reports more zones than cpuinfo has packages. The temps
+            // are real, so they are kept under the zone with no socket claim.
+            let association = cpu_repo.intel_association(Some(2));
+            assert_eq!(association, Some(CpuAssociation::Zone(2)));
+            assert!(association.unwrap().is_socket().not());
+            assert_eq!(association.unwrap().cpu_id(), 2);
+
+            // then: without a zone id there is nothing to key the device on at all.
+            assert_eq!(cpu_repo.intel_association(None), None);
+        });
+    }
+
+    /// Goal: a single package must resolve without any zone id, since its own physical id is not
+    /// always 0 and older parts expose no package label. Method: a single-socket cpuinfo queried
+    /// with no zone and with a nonsense zone.
+    #[test]
+    #[serial]
+    fn test_intel_single_cpu_needs_no_zone() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_SINGLE_CPU.to_vec()).await;
+
+            // then:
+            assert_eq!(cpu_repo.cpu_infos.len(), 1);
+            assert_eq!(
+                cpu_repo.intel_association(None),
+                Some(CpuAssociation::Socket(0))
+            );
+            assert_eq!(
+                cpu_repo.intel_association(Some(9)),
+                Some(CpuAssociation::Socket(0))
+            );
+        });
+    }
+
+    /// Goal: a device keyed by a zone rather than a physical id still needs a name to show, and
+    /// that name must not vary between runs with `HashMap` order. Method: a two-package cpuinfo
+    /// asked for a known id and for an id it has no entry for.
+    #[test]
+    #[serial]
+    fn test_model_name_falls_back_for_zone_keyed_devices() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let expected = cpu_repo.cpu_model_names.get(&0).cloned().unwrap();
+
+            // then: a known id returns its own entry.
+            assert_eq!(cpu_repo.cpu_model_name(0).as_ref(), Some(&expected));
+            assert_eq!(cpu_repo.cpu_model_name(1).as_ref(), Some(&expected));
+            // then: an unknown id falls back to the lowest known entry, not to nothing.
+            assert_eq!(cpu_repo.cpu_model_name(7).as_ref(), Some(&expected));
         });
     }
 
