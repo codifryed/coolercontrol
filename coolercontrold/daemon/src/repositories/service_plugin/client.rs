@@ -20,6 +20,7 @@ use crate::grpc_api::models::v1::ChannelExtensionName;
 use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;
+use crate::repositories::service_plugin::transport::PluginChannel;
 use crate::repositories::service_plugin::{transport, trust};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
@@ -32,7 +33,6 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tonic::metadata::{Ascii, MetadataValue};
-use tonic::transport::Channel;
 use tonic::Request;
 
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
@@ -52,6 +52,10 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
 /// This handles CC's device service contract by only allowing a single request at a time per device,
 /// handling the permit/locking system and timeouts. It also maps CC's models to the generated
 /// device service models.
+/// The generated client over the daemon's own channel. Named once so a change to the
+/// channel stack does not ripple through every field and signature below.
+type PluginClient = device_service_client::DeviceServiceClient<PluginChannel>;
+
 #[derive(Debug)]
 pub struct DeviceServiceClient {
     service_id: ServiceId,
@@ -70,7 +74,7 @@ pub struct DeviceServiceClient {
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
-    service_client: Mutex<device_service_client::DeviceServiceClient<Channel>>,
+    service_client: Mutex<PluginClient>,
 
     /// For each device present, we clone the client for it, so we can handle requests per device
     /// concurrently. Clone is a cheap operation for the tonic Client. Each per-device client sits
@@ -78,8 +82,7 @@ pub struct DeviceServiceClient {
     /// so a caller can clone the `Rc<Mutex>` out of the map and lock it without holding a `RefCell`
     /// borrow across the `.await`. The `RefCell` makes the map interior-mutable so `with_device_ids`
     /// can populate it once at setup while the client is shared (`Rc`) on the sidecar.
-    device_clients:
-        RefCell<HashMap<DeviceUID, Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>>>,
+    device_clients: RefCell<HashMap<DeviceUID, Rc<Mutex<PluginClient>>>>,
 
     /// Maps the device UID to the service device ID, so we can pass the correct ID to the device service.
     device_ids: RefCell<HashMap<DeviceUID, ServiceDeviceID>>,
@@ -95,6 +98,7 @@ impl DeviceServiceClient {
         let address = Self::address_from_manifest(service_manifest, plan)?;
         let credentials = Self::outbound_credentials(service_manifest, plan)?;
         let channel = transport::connect(service_manifest, &address, plan, tls_strict).await?;
+        let channel = transport::ExplainRefusals::new(channel, service_manifest.id.clone());
         let grpc_client = device_service_client::DeviceServiceClient::new(channel);
         Ok(Self::new(
             service_manifest.id.clone(),
@@ -188,24 +192,6 @@ impl DeviceServiceClient {
         }
     }
 
-    /// Turns a gRPC failure into an error a user can act on.
-    ///
-    /// `Unauthenticated` is the one worth special-casing: it means the remote is up and
-    /// answering, and refused us. Reported as a bare status it reads like a network
-    /// fault, and the retry loop above would then blame startup time for what is
-    /// actually a missing or stale token.
-    fn call_failed(&self, context: &str, status: &tonic::Status) -> anyhow::Error {
-        if status.code() == tonic::Code::Unauthenticated {
-            return anyhow!(
-                "{context}: device service '{}' refused our credentials. Put a valid access \
-                 token from that daemon into a '{}' file in this plugin's directory.",
-                self.service_id,
-                trust::TOKEN_FILE_NAME
-            );
-        }
-        anyhow!("{context}: {status}")
-    }
-
     /// Wraps a message in a request carrying this client's credentials.
     ///
     /// Every outbound call goes through here, so a new RPC cannot accidentally ship
@@ -223,7 +209,7 @@ impl DeviceServiceClient {
     fn new(
         service_id: ServiceId,
         poll_rate: f64,
-        client: device_service_client::DeviceServiceClient<Channel>,
+        client: PluginClient,
         credentials: Option<MetadataValue<Ascii>>,
     ) -> Self {
         let service_client = Mutex::new(client);
@@ -267,7 +253,7 @@ impl DeviceServiceClient {
     fn get_device_client(
         &self,
         device_uid: &DeviceUID,
-    ) -> Result<Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>> {
+    ) -> Result<Rc<Mutex<PluginClient>>> {
         self.device_clients
             .borrow()
             .get(device_uid)
@@ -295,7 +281,7 @@ impl DeviceServiceClient {
                 let request = self.request(HealthRequest{});
                 service_client.health(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|status| self.call_failed("Failed to get health status", &status))
+                .map_err(|status| anyhow!("Failed to get health status: {status}"))
             }
         }
     }
@@ -314,7 +300,7 @@ impl DeviceServiceClient {
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|status| self.call_failed("Failed to list devices", &status))
+                .map_err(|status| anyhow!("Failed to list devices: {status}"))
             }
         }
     }

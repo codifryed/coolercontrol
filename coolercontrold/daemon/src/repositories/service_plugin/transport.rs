@@ -14,14 +14,20 @@
 //! side. That is also the only way to install [`trust::PinnedCertVerifier`], since no
 //! public CA is involved and identity has to come from the certificate fingerprint.
 
+use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::trust::{self, PinnedCertVerifier};
 use anyhow::{anyhow, Context, Result};
+use axum::http::{HeaderMap, HeaderValue, Request, Response};
 use hyper_util::rt::TokioIo;
 use log::{error, info, warn};
 use rustls::pki_types::ServerName;
 use rustls::ClientConfig;
+use std::future::Future;
+use std::ops::Not;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context as TaskContext, Poll};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tonic::transport::{Channel, Endpoint, Uri};
@@ -142,6 +148,82 @@ async fn build_channel(
         .with_context(|| format!("Connecting to device service at {address}"))
 }
 
+/// The channel a plugin client talks over: a `Channel` that explains credential refusals.
+pub type PluginChannel = ExplainRefusals<Channel>;
+
+const GRPC_STATUS: &str = "grpc-status";
+const GRPC_MESSAGE: &str = "grpc-message";
+/// `tonic::Code::Unauthenticated` on the wire.
+const UNAUTHENTICATED: &str = "16";
+
+/// Wraps a channel so a refusal from the remote says what to do about it.
+///
+/// Deliberately at the HTTP layer, not at the call sites. The RPC methods are generated
+/// from the proto, so anything wired in per call site loses coverage the moment a method
+/// is added: whoever writes the new one copies the neighbouring `map_err` and the
+/// explanation quietly stops applying. Here every RPC on the channel is covered, present
+/// and future, and nothing in this file knows a single method name.
+#[derive(Clone, Debug)]
+pub struct ExplainRefusals<S> {
+    inner: S,
+    service_id: ServiceId,
+}
+
+impl<S> ExplainRefusals<S> {
+    pub fn new(inner: S, service_id: ServiceId) -> Self {
+        Self { inner, service_id }
+    }
+}
+
+/// Replaces the remote's `grpc-message` when it refused our credentials.
+///
+/// Only the trailers-only shape is rewritten, which is what an auth rejection is: both
+/// our own `grpc_error_middleware` and a tonic interceptor answer before any message, so
+/// `grpc-status` lands in the headers. A refusal raised mid-stream would carry its status
+/// in the trailers instead and is left alone, since no device-service RPC streams.
+fn explain_refusal(headers: &mut HeaderMap, service_id: &str) {
+    let refused = headers
+        .get(GRPC_STATUS)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == UNAUTHENTICATED);
+    if refused.not() {
+        return;
+    }
+    let message = format!(
+        "device service '{service_id}' refused our credentials. Put a valid access token          from that daemon into a '{}' file in this plugin's directory.",
+        trust::TOKEN_FILE_NAME
+    );
+    if let Ok(value) = HeaderValue::from_str(&message) {
+        headers.insert(GRPC_MESSAGE, value);
+    }
+}
+
+impl<S, ReqBody, ResBody> tower::Service<Request<ReqBody>> for ExplainRefusals<S>
+where
+    S: tower::Service<Request<ReqBody>, Response = Response<ResBody>>,
+    S::Future: Send + 'static,
+    S::Error: Send + 'static,
+    ResBody: Send + 'static,
+{
+    type Response = Response<ResBody>;
+    type Error = S::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
+        let service_id = self.service_id.clone();
+        let future = self.inner.call(request);
+        Box::pin(async move {
+            let mut response = future.await?;
+            explain_refusal(response.headers_mut(), &service_id);
+            Ok(response)
+        })
+    }
+}
+
 /// The host part of an `address:port`, tolerating bracketed IPv6 literals.
 pub fn host_of(tcp_address: &str) -> String {
     let trimmed = tcp_address.trim();
@@ -171,6 +253,70 @@ mod tests {
         assert_eq!(host_of("[::1]:11987"), "::1");
         assert_eq!(host_of("[fe80::1]:11987"), "fe80::1");
         assert_eq!(host_of(" 127.0.0.1:11987 "), "127.0.0.1");
+    }
+
+    fn refusal_headers(status: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(GRPC_STATUS, HeaderValue::from_str(status).unwrap());
+        headers.insert(GRPC_MESSAGE, HeaderValue::from_static("unauthenticated"));
+        headers
+    }
+
+    /// Goal: a remote refusing our credentials must say so in terms a user can act on.
+    /// Reported as the bare status it reads like a network fault, and the client's retry
+    /// loop then blames startup lag for a missing token.
+    #[test]
+    fn a_refusal_is_explained() {
+        let mut headers = refusal_headers(UNAUTHENTICATED);
+        explain_refusal(&mut headers, "my_plugin");
+        let message = headers.get(GRPC_MESSAGE).unwrap().to_str().unwrap();
+        assert!(message.contains("my_plugin"), "{message}");
+        assert!(message.contains(trust::TOKEN_FILE_NAME), "{message}");
+    }
+
+    /// Goal: only a refusal is rewritten. Relabelling an unrelated failure would hide the
+    /// real fault behind a credentials message and send the user editing the wrong file.
+    #[test]
+    fn other_outcomes_are_left_alone() {
+        for status in ["0", "14", "4", "12"] {
+            let mut headers = refusal_headers(status);
+            explain_refusal(&mut headers, "my_plugin");
+            assert_eq!(
+                headers.get(GRPC_MESSAGE).unwrap(),
+                "unauthenticated",
+                "status {status} should not be rewritten"
+            );
+        }
+
+        let mut no_status = HeaderMap::new();
+        no_status.insert(GRPC_MESSAGE, HeaderValue::from_static("unauthenticated"));
+        explain_refusal(&mut no_status, "my_plugin");
+        assert_eq!(no_status.get(GRPC_MESSAGE).unwrap(), "unauthenticated");
+    }
+
+    /// Goal: the wrapper covers whatever goes through the channel, which is the point of
+    /// putting it here rather than at the call sites. This drives it as a real
+    /// `tower::Service`, so the response actually passes through `call`.
+    #[tokio::test]
+    async fn the_wrapper_explains_every_response_on_the_channel() {
+        use tower::ServiceExt;
+
+        let inner = tower::service_fn(|_: Request<()>| async {
+            let mut response = Response::new(());
+            *response.headers_mut() = refusal_headers(UNAUTHENTICATED);
+            Ok::<_, std::convert::Infallible>(response)
+        });
+        let service = ExplainRefusals::new(inner, "my_plugin".to_string());
+
+        let response = service.oneshot(Request::new(())).await.unwrap();
+
+        let message = response
+            .headers()
+            .get(GRPC_MESSAGE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(message.contains("my_plugin"), "{message}");
     }
 
     /// Goal: an address with no port, or a trailing colon that is not one, is not
