@@ -62,23 +62,7 @@ impl ServiceManifest {
             .transpose()?;
         let args = Self::get_args(document)?;
         let envs = Self::get_envs(document)?;
-        // Only a device service connects anywhere, so an integration service is left
-        // with no address even when its manifest names one.
-        let address = if service_type == ServiceType::Device {
-            let address = Self::get_optional_string(document, "address")
-                .map(|address| validate_field("address", &address))
-                .transpose()?
-                .unwrap_or_else(|| format!("/tmp/{id}.sock"));
-            let path = PathBuf::from(&address);
-            if path.is_absolute() {
-                ConnectionType::Uds(path)
-            } else {
-                validate_tcp_address(&address)?;
-                ConnectionType::Tcp(address)
-            }
-        } else {
-            ConnectionType::None
-        };
+        let address = Self::get_address(document, &id, &service_type)?;
         // A mistyped `privileged` used to fall back to `false` without a word. It fails
         // safe, but a plugin that needs root then starts unprivileged and misbehaves for
         // a reason nothing points at.
@@ -160,6 +144,30 @@ impl ServiceManifest {
                 )
             })?;
         Ok(Some(ProxyConfig { port }))
+    }
+
+    /// Where a device service is reached, defaulting to a socket named after the plugin.
+    ///
+    /// Only a device service connects anywhere, so an integration service is left with no
+    /// address even when its manifest names one.
+    fn get_address(
+        document: &DocumentMut,
+        id: &str,
+        service_type: &ServiceType,
+    ) -> Result<ConnectionType> {
+        if *service_type != ServiceType::Device {
+            return Ok(ConnectionType::None);
+        }
+        let address = Self::get_optional_string(document, "address")
+            .map(|address| validate_field("address", &address))
+            .transpose()?
+            .unwrap_or_else(|| format!("/tmp/{id}.sock"));
+        let path = PathBuf::from(&address);
+        if path.is_absolute() {
+            return Ok(ConnectionType::Uds(path));
+        }
+        validate_tcp_address(&address)?;
+        Ok(ConnectionType::Tcp(address))
     }
 
     /// `args` as either a whitespace-separated string or an array of arguments.
