@@ -38,6 +38,11 @@ pub struct EnvVarDoc {
 /// printed reference and the source scan agree regardless of the build target.
 const SENSORS_DETECT_NAME: &str = "CC_SENSORS_DETECT";
 
+/// `CC_RUNTIME_DRIVER` is only read under the `compio-rt` feature, where the const is
+/// compiled. Named here the same way as `SENSORS_DETECT_NAME`, and for the same reason:
+/// the printed reference and the source scan must agree regardless of the build's features.
+const RUNTIME_DRIVER_NAME: &str = "CC_RUNTIME_DRIVER";
+
 pub const ENV_VARS: &[EnvVarDoc] = &[
     EnvVarDoc {
         name: ENV_CC_LOG,
@@ -112,6 +117,15 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
         description: "NVML integration for NVIDIA GPUs. When off, the CLI tools are used instead.",
         values: TOGGLE_VALUES,
         default: TOGGLE_DEFAULT,
+    },
+    EnvVarDoc {
+        name: RUNTIME_DRIVER_NAME,
+        description: "Reactor backend the async runtime uses. Polling avoids the io_uring \
+                      wait being accounted as iowait, which shows an otherwise idle core as \
+                      fully busy, at the cost of noticeably more wakeups. Read on builds with \
+                      the compio runtime only.",
+        values: "poll | polling | epoll | io_uring | io-uring | iouring | uring",
+        default: "io_uring where the kernel supports it, otherwise polling",
     },
     EnvVarDoc {
         name: ENV_CONFIG_DIR,

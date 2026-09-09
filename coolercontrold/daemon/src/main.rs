@@ -186,6 +186,16 @@ const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 /// ```
 const ENV_NVML: &str = "CC_NVML";
 
+/// Environment Variable: Force the async runtime's reactor backend
+/// Takes one of: [`poll`, `polling`, `epoll`, `io_uring`, `io-uring`, `iouring`, `uring`]
+///
+/// # Example
+/// ```
+/// CC_RUNTIME_DRIVER=poll coolercontrold
+/// ```
+#[cfg(feature = "compio-rt")]
+const ENV_RUNTIME_DRIVER: &str = "CC_RUNTIME_DRIVER";
+
 /// Environment Variable: Override the configuration directory path
 /// Takes a directory path string. Defaults to `/etc/coolercontrol`.
 ///

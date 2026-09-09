@@ -14,30 +14,29 @@ use compio::runtime::Runtime;
 use log::info;
 use nix::sys::signal::{SigSet, Signal};
 
+use crate::ENV_RUNTIME_DRIVER;
+
 pub use compio::time::{interval, sleep, timeout};
 
-/// Environment variable selecting the reactor backend. See `parse_driver_override`.
-const DRIVER_ENV: &str = "CC_RUNTIME_DRIVER";
-
-/// Driver used when `DRIVER_ENV` is unset. `None` lets compio probe the kernel and pick
+/// Driver used when `ENV_RUNTIME_DRIVER` is unset. `None` lets compio probe the kernel and pick
 /// `io_uring` when every opcode we need is supported, falling back to polling otherwise.
 ///
 /// Left on `io_uring` despite issue 606, where its `io_uring_enter(GETEVENTS)` wait is accounted
 /// as iowait (kernel 6.5+) and so pins an idle core at ~100% on per-core monitors. That is a
 /// reporting artifact, while polling costs real wakeups: measured over 90s windows, polling took
 /// daemon context switches from 30/s to 159/s and threads from 3 to 13, because on Linux it sends
-/// every file op to the `AsyncifyPool` (the `aio` path is BSD-only). Set `DRIVER_ENV=poll` to take
-/// that trade. The real fix is `IORING_ENTER_NO_IOWAIT`, which needs compio-driver 0.12.5 and so
-/// rustc 1.95 for `cfg_select!`; EL10 AppStream is on 1.92, so the MSRV bump waits on it. Even
-/// after that, polling stays the only answer for kernels 6.5 to 6.14, which have the accounting
-/// but not the opt-out.
+/// every file op to the `AsyncifyPool` (the `aio` path is BSD-only). Set `CC_RUNTIME_DRIVER=poll`
+/// to take that trade. The real fix is `IORING_ENTER_NO_IOWAIT`, which lands in compio-driver
+/// 0.12.5; that is reachable only through compio 0.19, whose `cfg_select!` usage requires rustc
+/// 1.95. EL10 `AppStream` is on 1.92, so the MSRV bump waits on it. Even after that, polling stays
+/// the only answer for kernels 6.5 to 6.14, which have the accounting but not the opt-out.
 const DEFAULT_DRIVER: Option<DriverType> = None;
 
 /// Initialize and run the main single-threaded runtime to completion.
 pub fn runtime<F: Future>(future: F) -> F::Output {
     // compio is inherently single-threaded and `!Send`, so there is no `LocalSet` to set up nor a
     // multi-thread builder to constrain. The fusion driver (io-uring + polling) is selected at
-    // compile time; which half runs is `DEFAULT_DRIVER`, overridable with `DRIVER_ENV`.
+    // compile time; which half runs is `DEFAULT_DRIVER`, overridable with `ENV_RUNTIME_DRIVER`.
     //
     // Mask termination signals before the runtime and the tokio sidecar spawn any threads, so they
     // all inherit the mask and compio's signalfd listener is the sole consumer. See
@@ -57,24 +56,31 @@ fn build_runtime(driver: Option<DriverType>) -> std::io::Result<Runtime> {
     };
     let mut proactor_builder = ProactorBuilder::new();
     proactor_builder.driver_type(driver_type);
-    Runtime::builder().with_proactor(proactor_builder).build()
+    let runtime = Runtime::builder().with_proactor(proactor_builder).build()?;
+    // Read the driver back. Forcing a type clears compio's fallback, so the built runtime must be
+    // running exactly what was asked for; anything else means the request was silently dropped.
+    debug_assert_eq!(runtime.driver_type(), driver_type);
+    Ok(runtime)
 }
 
-/// Read `DRIVER_ENV` and resolve it to a driver to force, falling back to `DEFAULT_DRIVER`.
+/// Read `ENV_RUNTIME_DRIVER` and resolve it to a driver to force, falling back to
+/// `DEFAULT_DRIVER`.
 fn driver_override() -> Option<DriverType> {
-    let Ok(raw) = std::env::var(DRIVER_ENV) else {
+    let Ok(raw) = std::env::var(ENV_RUNTIME_DRIVER) else {
         return DEFAULT_DRIVER;
     };
     let Some(choice) = parse_driver_override(&raw) else {
         // Logging is not set up this early, so stderr is the only channel available. An unusable
         // value must not stop the daemon booting, so fall back to the default.
-        eprintln!("{DRIVER_ENV}: unrecognized value {raw:?}, using the default reactor backend");
+        eprintln!(
+            "{ENV_RUNTIME_DRIVER}: unrecognized value {raw:?}, using the default reactor backend"
+        );
         return DEFAULT_DRIVER;
     };
-    choice.into_forced_driver()
+    choice.forced_driver()
 }
 
-/// What a recognized `DRIVER_ENV` value asks the runtime to do.
+/// What a recognized `ENV_RUNTIME_DRIVER` value asks the runtime to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DriverChoice {
     /// Force the polling (epoll) driver.
@@ -85,7 +91,7 @@ enum DriverChoice {
 
 impl DriverChoice {
     /// The driver to force, or `None` to leave compio's probe in charge.
-    fn into_forced_driver(self) -> Option<DriverType> {
+    fn forced_driver(self) -> Option<DriverType> {
         match self {
             Self::Poll => Some(DriverType::Poll),
             Self::Probe => None,
@@ -93,7 +99,7 @@ impl DriverChoice {
     }
 }
 
-/// Resolve a `DRIVER_ENV` value, or `None` when the value is not recognized.
+/// Resolve an `ENV_RUNTIME_DRIVER` value, or `None` when the value is not recognized.
 ///
 /// Note that `io_uring` deliberately resolves to `Probe` rather than forcing `DriverType::IoUring`.
 /// Setting that explicitly clears compio's `fallback` flag, turning an unavailable `io_uring` into
@@ -109,8 +115,8 @@ fn parse_driver_override(raw: &str) -> Option<DriverChoice> {
 
 /// Log which fusion-driver backend compio selected. `io_uring` is the default and is used when the
 /// kernel supports every opcode we need; polling (epoll on Linux) is reached either as compio's
-/// fallback or by opting in through `DRIVER_ENV`. Call from within the runtime, after logging is
-/// set up, so `with_current` sees the active runtime.
+/// fallback or by opting in through `ENV_RUNTIME_DRIVER`. Call from within the runtime, after
+/// logging is set up, so `with_current` sees the active runtime.
 pub fn log_active_backend() {
     let driver_type = Runtime::with_current(Runtime::driver_type);
     if driver_type.is_iouring() {
@@ -126,7 +132,9 @@ pub fn log_active_backend() {
 /// runs tests in parallel by default. We use the `serial_test` crate to explicitly ensure this.
 #[allow(dead_code)]
 pub fn test_runtime<F: Future>(future: F) -> F::Output {
-    // Same driver the daemon ships with, so tests exercise the reactor users actually run.
+    // Follows the compiled-in default, so a flip of `DEFAULT_DRIVER` moves the tests with it.
+    // `ENV_RUNTIME_DRIVER` is deliberately not consulted: test results must not depend on the
+    // ambient environment.
     build_runtime(DEFAULT_DRIVER)
         .expect("compio test runtime builds")
         .block_on(future)
@@ -275,6 +283,7 @@ pub async fn shutdown_signal() {
 mod tests {
     use super::*;
     use nix::sys::signal::{pthread_sigmask, SigmaskHow};
+    use serial_test::serial;
     use std::ops::Not;
 
     /// Goal: `block_termination_signals` must leave SIGINT, SIGTERM, and SIGQUIT masked on the
@@ -359,6 +368,43 @@ mod tests {
                 assert!(driver_type.is_polling());
                 assert!(driver_type.is_iouring().not());
             });
+    }
+
+    /// Goal: `driver_override` must read the variable the documentation promises, and must resolve
+    /// every branch the way issue 606 settled: unset and unrecognized both fall back to the
+    /// default, `poll` forces polling, and an `io_uring` spelling opts back in without pinning the
+    /// driver. `parse_driver_override`'s own tests cannot catch a typo in the variable name, which
+    /// is the failure that would silently make the escape hatch unreachable. Method: drive the
+    /// real process environment, which is global, so the test is serial and restores the prior
+    /// value on the way out.
+    #[test]
+    #[serial]
+    fn driver_override_reads_the_documented_variable() {
+        let original = std::env::var(ENV_RUNTIME_DRIVER).ok();
+        assert_eq!(ENV_RUNTIME_DRIVER, "CC_RUNTIME_DRIVER");
+
+        // SAFETY: `set_var`/`remove_var` are unsound only alongside concurrent environment
+        // access. `#[serial]` gives this test the process to itself, and the value is restored
+        // before it yields.
+        unsafe {
+            std::env::remove_var(ENV_RUNTIME_DRIVER);
+            assert_eq!(driver_override(), DEFAULT_DRIVER);
+
+            std::env::set_var(ENV_RUNTIME_DRIVER, "poll");
+            assert_eq!(driver_override(), Some(DriverType::Poll));
+
+            std::env::set_var(ENV_RUNTIME_DRIVER, "io_uring");
+            assert_eq!(driver_override(), None);
+
+            // Negative space: an unusable value must boot on the default, never force a driver.
+            std::env::set_var(ENV_RUNTIME_DRIVER, "nonsense");
+            assert_eq!(driver_override(), DEFAULT_DRIVER);
+
+            match original {
+                Some(value) => std::env::set_var(ENV_RUNTIME_DRIVER, value),
+                None => std::env::remove_var(ENV_RUNTIME_DRIVER),
+            }
+        }
     }
 
     /// Goal: the shipped default must leave compio's probe in charge rather than pinning a
