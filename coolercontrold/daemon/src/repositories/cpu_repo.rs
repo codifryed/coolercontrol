@@ -399,16 +399,11 @@ impl CpuRepo {
     }
 
     /// Ties a CPU hwmon device to the processor it measures.
-    fn match_physical_id(
-        &self,
-        device_name: &str,
-        path: &Path,
-        index: usize,
-    ) -> Option<CpuAssociation> {
+    fn match_physical_id(&self, device_name: &str, path: &Path) -> Option<CpuAssociation> {
         if device_name == INTEL_DEVICE_NAME {
             self.match_intel_association(path)
         } else {
-            self.match_amd_association(index)
+            self.match_amd_association(path)
         }
     }
 
@@ -416,9 +411,13 @@ impl CpuRepo {
     /// those zones by ascending APIC id, so the device's instance id is its package's rank in
     /// `cpu_apic_order`.
     ///
-    /// The temp labels cannot answer this. `Package id N` exists only on packages with the PTS
-    /// feature, so pre-Sandy Bridge parts have none, and the remaining `Core N` labels carry core
-    /// ids that repeat identically across sockets.
+    /// The temp labels cannot answer this, which is why the `Package id N` label that this used
+    /// to parse is gone. That label was the wrong quantity: `coretemp_device_add()` sets
+    /// `pdata->pkg_id = zoneid`, so it prints the zone number and not cpuinfo's physical id. The
+    /// two coincide on most hardware, which is the only reason parsing it worked. It is also
+    /// absent entirely on packages without the PTS feature (pre-Sandy Bridge), and the remaining
+    /// `Core N` labels carry core ids that repeat identically across sockets. The zone ranking
+    /// gives the same answer wherever the label worked, and an answer where it did not.
     fn match_intel_association(&self, path: &Path) -> Option<CpuAssociation> {
         self.intel_association(devices::get_platform_device_id(path))
     }
@@ -446,20 +445,28 @@ impl CpuRepo {
         Some(CpuAssociation::Zone(zone_id))
     }
 
-    /// For AMD, this is done by comparing hwmon devices to the cpuinfo processor list.
-    #[allow(clippy::cast_possible_truncation)]
-    fn match_amd_association(&self, index: usize) -> Option<CpuAssociation> {
-        // NOTE: not currently used due to an apparent bug in the amd hwmon kernel driver:
+    /// AMD registers one `k10temp` device per node against that node's northbridge or data
+    /// fabric PCI function, which sits at a slot fixed by the hardware.
+    ///
+    /// The node id read from that slot replaces the hwmon enumeration index this used to assume.
+    /// Hwmon paths are sorted as strings, so `hwmon10` precedes `hwmon2` and that index inverts
+    /// as soon as a machine has ten or more hwmon devices.
+    fn match_amd_association(&self, path: &Path) -> Option<CpuAssociation> {
+        // NOTE: the node cpulist was the other way to do this, and is not used due to an apparent
+        // bug in the amd hwmon kernel driver. Kept as a reference to the alternative:
         // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
         // for (physical_id, processor_list) in &self.cpu_infos {
         //     if cpu_list.iter().eq(processor_list.iter()) {
         //         return Ok(physical_id.clone());
         //     }
         // }
+        self.amd_association(devices::get_amd_node_id(path))
+    }
 
-        // If we have only one CPU, we simply return the only physicalID present.
-        // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
-        // Otherwise, we do a simple assumption that the physical cpu ID == hwmon device index:
+    /// The node id is passed in rather than read here, so the association can be tested without
+    /// a fake sysfs tree.
+    fn amd_association(&self, node_id: Option<u8>) -> Option<CpuAssociation> {
+        // A single node needs no id at all, and its physical id is not always 0 (AMD APU).
         if self.cpu_infos.len() == 1 {
             return self
                 .cpu_infos
@@ -468,12 +475,13 @@ impl CpuRepo {
                 .copied()
                 .map(CpuAssociation::Socket);
         }
-        let physical_id = index as PhysicalID;
-        if self.cpu_infos.contains_key(&physical_id) {
-            Some(CpuAssociation::Socket(physical_id))
-        } else {
-            None
+        let node_id = node_id?;
+        if self.cpu_infos.contains_key(&node_id) {
+            return Some(CpuAssociation::Socket(node_id));
         }
+        // Pre-Zen multi-chip packages report more nodes than cpuinfo has physical ids. The temps
+        // are still real, so keep them under the node.
+        Some(CpuAssociation::Zone(node_id))
     }
 
     /// The channels that only make sense once a device is tied to a processor: load, frequency
@@ -837,8 +845,7 @@ impl CpuRepo {
             log!(lvl, "No CPU frequencies found in cpuinfo");
         }
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
-                // is sorted
+            for (device_name, path) in &potential_cpu_paths {
                 if device_name != cpu_device_name {
                     continue;
                 }
@@ -847,7 +854,7 @@ impl CpuRepo {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {err}"),
                 }
-                let Some(association) = self.match_physical_id(device_name, path, index) else {
+                let Some(association) = self.match_physical_id(device_name, path) else {
                     info!(
                         "Could not tie {device_name} at {} to a physical processor. \
                         Skipping device.",
@@ -1910,6 +1917,60 @@ mod tests {
             assert_eq!(cpu_repo.cpu_model_name(1).as_ref(), Some(&expected));
             // then: an unknown id falls back to the lowest known entry, not to nothing.
             assert_eq!(cpu_repo.cpu_model_name(7).as_ref(), Some(&expected));
+        });
+    }
+
+    /// Goal: a two-socket AMD system must key its k10temp devices by node id, not by the hwmon
+    /// enumeration index the old code assumed. Method: a two-package cpuinfo against the node ids
+    /// a dual EPYC reports from PCI slots 0x18 and 0x19.
+    #[test]
+    #[serial]
+    fn test_amd_double_cpu_nodes_map_to_sockets() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_DOUBLE_CPU.to_vec()).await;
+
+            // then:
+            assert_eq!(cpu_repo.cpu_infos.len(), 2);
+            assert_eq!(
+                cpu_repo.amd_association(Some(0)),
+                Some(CpuAssociation::Socket(0))
+            );
+            assert_eq!(
+                cpu_repo.amd_association(Some(1)),
+                Some(CpuAssociation::Socket(1))
+            );
+            // then: a pre-Zen multi-chip package reports more nodes than cpuinfo has ids. Keep
+            // the temps under the node rather than guessing a socket for them.
+            assert_eq!(
+                cpu_repo.amd_association(Some(2)),
+                Some(CpuAssociation::Zone(2))
+            );
+            // then: no readable node id leaves nothing to key the device on.
+            assert_eq!(cpu_repo.amd_association(None), None);
+        });
+    }
+
+    /// Goal: the single-socket AMD path must be untouched by the node id change, since that is
+    /// every AMD desktop and the short circuit runs before any id is consulted. Method: a
+    /// single-package cpuinfo with no node id and with a node id that does not exist.
+    #[test]
+    #[serial]
+    fn test_amd_single_cpu_ignores_the_node_id() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_SINGLE_CPU.to_vec()).await;
+
+            // then:
+            assert_eq!(cpu_repo.cpu_infos.len(), 1);
+            assert_eq!(
+                cpu_repo.amd_association(None),
+                Some(CpuAssociation::Socket(0))
+            );
+            assert_eq!(
+                cpu_repo.amd_association(Some(3)),
+                Some(CpuAssociation::Socket(0))
+            );
         });
     }
 

@@ -28,6 +28,10 @@ const GLOB_FAN_PATH: &str = "/sys/class/hwmon/hwmon*/fan*_input";
 const GLOB_PWM_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/pwm*";
 const GLOB_TEMP_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/temp*_input";
 const GLOB_FAN_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/fan*_input";
+/// PCI slot of AMD node 0's northbridge / data fabric function, per `k10temp.c`.
+const AMD_NODE0_PCI_SLOT: u8 = 0x18;
+/// A PCI slot is five bits wide, so 0x18 through 0x1f bounds the nodes it can hold.
+const AMD_MAX_NODES: u8 = 8;
 const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
@@ -395,6 +399,34 @@ fn parse_platform_device_id(device_path: &str) -> Option<u8> {
     instance_id.parse().ok()
 }
 
+/// The AMD node whose northbridge or data fabric function this PCI device is: node N sits at PCI
+/// slot `AMD_NODE0_PCI_SLOT + N`. This is the kernel's own derivation, `amd_pci_dev_to_node_id()`
+/// in `k10temp.c`, and the slot is fixed by the hardware rather than by probe order.
+pub fn get_amd_node_id(base_path: &Path) -> Option<u8> {
+    parse_amd_node_id(&get_static_device_path_str(base_path)?)
+}
+
+/// A PCI address is `<domain>:<bus>:<slot>.<function>`, i.e. `0000:00:18.3` for node 0. Requiring
+/// all three colon-separated fields keeps a platform device name from parsing as an address.
+fn parse_amd_node_id(device_path: &str) -> Option<u8> {
+    let device_name = device_path.rsplit('/').next()?;
+    let (pci_address, _function) = device_name.rsplit_once('.')?;
+    let mut address_fields = pci_address.split(':');
+    let (_domain, _bus, slot) = (
+        address_fields.next()?,
+        address_fields.next()?,
+        address_fields.next()?,
+    );
+    if address_fields.next().is_some() {
+        return None;
+    }
+    let node_id = u8::from_str_radix(slot, 16)
+        .ok()?
+        .checked_sub(AMD_NODE0_PCI_SLOT)?;
+    // A PCI slot is five bits, so 0x18..=0x1f is the whole range a node can occupy.
+    (node_id < AMD_MAX_NODES).then_some(node_id)
+}
+
 pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
@@ -507,6 +539,51 @@ mod tests {
     use super::*;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    /// Goal: the k10temp node id must come from the PCI slot, since that is what the kernel
+    /// itself derives it from and it does not move with probe order. Method: the real device
+    /// paths from a two-socket EPYC report, plus the shapes that must be rejected.
+    #[test]
+    fn amd_node_id_is_read_from_the_pci_slot() {
+        // The two k10temp devices of a dual-socket EPYC, same domain and bus, slots 0x18 / 0x19.
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:00/0000:00:18.3"),
+            Some(0)
+        );
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:00/0000:00:19.3"),
+            Some(1)
+        );
+        // A node's slot is what counts, not the domain it is reached through.
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:60/0000:60:1a.3"),
+            Some(2)
+        );
+        // A platform device name must not parse as a PCI address.
+        assert_eq!(parse_amd_node_id("/sys/devices/platform/coretemp.0"), None);
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/platform/applesmc.768"),
+            None
+        );
+        // Devices below node 0's slot are not nodes. An NVMe drive from the same report:
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:40/0000:40:01.2/0000:42:00.0"),
+            None
+        );
+        // An address must have exactly the three fields a PCI address has, so that no other
+        // colon-separated name can present its tail as a slot.
+        assert_eq!(parse_amd_node_id("/sys/devices/weird/a:b:0000:18.3"), None);
+        // Nor is anything past the five bits a PCI slot has to spend.
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:00/0000:00:20.3"),
+            None
+        );
+        assert_eq!(
+            parse_amd_node_id("/sys/devices/pci0000:00/0000:00:ff.3"),
+            None
+        );
+        assert_eq!(parse_amd_node_id(""), None);
+    }
 
     /// Goal: a coretemp zone number must be read from the platform device path, since that is
     /// the only stable tie between an hwmon device and a CPU package. Method: the real path
