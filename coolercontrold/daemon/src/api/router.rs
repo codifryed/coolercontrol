@@ -33,12 +33,11 @@ pub async fn init(app_state: AppState) -> ApiRouter {
         .with_state(app_state)
         // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
         .layer(Extension(token_handle))
-        // Outermost, so a throttled peer is turned away before any credential work runs.
+        // Outermost here, so a throttled peer is turned away before any credential work
+        // runs. `grpc_error_middleware` wraps this whole router from `create_api_server`.
         .layer(axum::middleware::from_fn(
             auth_throttle::throttle_middleware,
         ))
-        // Outside the throttle, so its 429 reaches gRPC clients as a status they can read.
-        .layer(axum::middleware::from_fn(grpc_error_middleware))
 }
 
 /// Renders error responses that gRPC clients can actually read.
@@ -49,10 +48,12 @@ pub async fn init(app_state: AppState) -> ApiRouter {
 /// an unexplained protocol error rather than "your credentials were refused". This
 /// translates those into properly framed `grpc-status` responses.
 ///
-/// Applied outermost so it also covers the throttle's 429 and the request timeout, not
-/// just the auth middleware's 401. Requests that are not gRPC, and responses already
-/// framed as gRPC, pass through untouched.
-async fn grpc_error_middleware(request: Request, next: Next) -> Response {
+/// Applied by `create_api_server` outside every other layer, which is the only position
+/// that catches the timeout: `TimeoutLayer` wraps this router, so a 408 is produced above
+/// anything `init` could install and would otherwise never reach this translation.
+/// Requests that are not gRPC, and responses already framed as gRPC, pass through
+/// untouched.
+pub async fn grpc_error_middleware(request: Request, next: Next) -> Response {
     let is_grpc = is_grpc_content_type(request.headers());
     let response = next.run(request).await;
     if is_grpc.not() {
@@ -1766,6 +1767,8 @@ mod tests {
     use tonic::Code;
     use tonic_health::pb::health_client::HealthClient;
     use tonic_health::pb::HealthCheckRequest;
+    use tower::ServiceExt;
+    use tower_http::timeout::TimeoutLayer;
     use tower_sessions::SessionManagerLayer;
 
     fn stored_token(raw: &str) -> StoredToken {
@@ -1904,6 +1907,40 @@ mod tests {
         assert_eq!(grpc_code_for(StatusCode::OK), None);
         assert_eq!(grpc_code_for(StatusCode::INTERNAL_SERVER_ERROR), None);
         assert_eq!(grpc_code_for(StatusCode::BAD_GATEWAY), None);
+    }
+
+    /// Goal: the request timeout must reach a gRPC client as `DeadlineExceeded`. This is
+    /// a layer-ordering test, not a mapping test: `TimeoutLayer` wraps the router in
+    /// `create_api_server`, so the translation only ever sees a 408 while it sits outside
+    /// that layer. Nest it the other way and this fails with a bare 408 and no
+    /// `grpc-status`, which is what a user would have got.
+    #[tokio::test]
+    async fn a_timed_out_grpc_request_comes_back_as_deadline_exceeded() {
+        async fn too_slow() -> StatusCode {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            StatusCode::OK
+        }
+
+        let router = axum::Router::new()
+            .route("/slow", axum::routing::get(too_slow))
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                std::time::Duration::from_millis(10),
+            ))
+            .layer(axum::middleware::from_fn(grpc_error_middleware));
+
+        let request = Request::builder()
+            .uri("/slow")
+            .header(header::CONTENT_TYPE, "application/grpc")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            response.headers().get("grpc-status").and_then(|v| v.to_str().ok()),
+            Some((tonic::Code::DeadlineExceeded as i32).to_string().as_str()),
+            "a 408 must be translated, not passed through as an HTTP status"
+        );
     }
 
     /// Goal: the translation only fires for gRPC traffic, so a browser hitting the same

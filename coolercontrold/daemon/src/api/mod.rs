@@ -397,7 +397,11 @@ async fn create_api_server(
                 StatusCode::REQUEST_TIMEOUT,
                 Duration::from_secs(API_TIMEOUT_SECS),
             ),
-        ));
+        ))
+        // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
+        // gRPC clients as statuses they can read. Inside the timeout layer it would never
+        // see a 408 at all.
+        .layer(middleware::from_fn(router::grpc_error_middleware));
 
     let listener = TcpListener::bind(addr).await?;
     let handle = axum_server::Handle::new();
