@@ -41,9 +41,15 @@ pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
     "cpu_thermal",     // Raspberry Pi module
 ];
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
+/// Packages on a dual-socket board, which is as wide as commodity x86 goes. Only a capacity hint,
+/// so a larger machine still parses, it just grows the map once.
+const EXPECTED_PACKAGE_COUNT: usize = 2;
 
 // The ID of the actual physical CPU. On most systems, there is only one:
 type PhysicalID = u8;
+// A driver's own package zone or node id. Numbered by the driver, not by cpuinfo, so it is only
+// a physical id on the hardware where the two happen to coincide:
+type ZoneID = u8;
 type ProcessorCount = u16; // the logical processor count (aka how many cores per physical cpu)
 
 /// How confidently a CPU hwmon device is tied to a physical processor.
@@ -54,12 +60,13 @@ enum CpuAssociation {
     /// Only the driver's own package zone id is known. The temps are real, but nothing says
     /// which processor they came from, so the signals keyed by physical id are left off rather
     /// than attached to a guess.
-    Zone(PhysicalID),
+    Zone(ZoneID),
 }
 
 impl CpuAssociation {
-    /// The id the device is keyed and numbered by, whichever kind it is.
-    fn cpu_id(self) -> PhysicalID {
+    /// The id the device is keyed and numbered by, whichever kind it is. Only a `Socket` id is a
+    /// physical id, so this must not be used to look anything up by physical id.
+    fn device_id(self) -> u8 {
         match self {
             Self::Socket(id) | Self::Zone(id) => id,
         }
@@ -330,7 +337,8 @@ impl CpuRepo {
     /// the same block as `physical id`, so wherever there is more than one package to tell apart,
     /// both are present.
     fn order_physical_ids_by_apic(cpu_info_data: &str) -> Vec<PhysicalID> {
-        let mut lowest_apic_ids: HashMap<PhysicalID, u32> = HashMap::new();
+        let mut lowest_apic_ids: HashMap<PhysicalID, u32> =
+            HashMap::with_capacity(EXPECTED_PACKAGE_COUNT);
         let mut physical_id: Option<PhysicalID> = None;
         for line in cpu_info_data.lines() {
             let mut it = line.split(':');
@@ -424,7 +432,7 @@ impl CpuRepo {
 
     /// The zone id is passed in rather than read here, so the ranking can be tested without a
     /// fake sysfs tree.
-    fn intel_association(&self, zone_id: Option<u8>) -> Option<CpuAssociation> {
+    fn intel_association(&self, zone_id: Option<ZoneID>) -> Option<CpuAssociation> {
         // A single package needs no ranking, and its physical id is not always 0.
         if self.cpu_infos.len() == 1 {
             return self
@@ -465,7 +473,7 @@ impl CpuRepo {
 
     /// The node id is passed in rather than read here, so the association can be tested without
     /// a fake sysfs tree.
-    fn amd_association(&self, node_id: Option<u8>) -> Option<CpuAssociation> {
+    fn amd_association(&self, node_id: Option<ZoneID>) -> Option<CpuAssociation> {
         // A single node needs no id at all, and its physical id is not always 0 (AMD APU).
         if self.cpu_infos.len() == 1 {
             return self
@@ -873,7 +881,7 @@ impl CpuRepo {
                     );
                     continue;
                 };
-                let cpu_id = association.cpu_id();
+                let cpu_id = association.device_id();
                 if hwmon_devices.contains_key(&cpu_id) {
                     info!(
                         "A CPU device is already registered for id {cpu_id}. \
@@ -1883,7 +1891,7 @@ mod tests {
             let association = cpu_repo.intel_association(Some(2));
             assert_eq!(association, Some(CpuAssociation::Zone(2)));
             assert!(association.unwrap().is_socket().not());
-            assert_eq!(association.unwrap().cpu_id(), 2);
+            assert_eq!(association.unwrap().device_id(), 2);
 
             // then: without a zone id there is nothing to key the device on at all.
             assert_eq!(cpu_repo.intel_association(None), None);
