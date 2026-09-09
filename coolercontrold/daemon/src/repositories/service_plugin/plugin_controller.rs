@@ -351,12 +351,16 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     let Some(owner) = owner else {
         return Ok(());
     };
-    // Harden the manifest even when the handover fails: a previous run may have left it
-    // plugin-owned, which is the exact state this guards against.
+    // Every step runs even when an earlier one fails, and the first error is reported at
+    // the end. A previous run may have left the manifest plugin-owned, which is the exact
+    // state this guards against, and the caller only warns on error and starts the plugin
+    // anyway: a step that is skipped is a file left readable by the plugin user.
     let handover = chown(path, owner, true).await;
-    secure_manifest(path).await?;
+    let manifest = secure_manifest(path).await;
+    // Must follow the handover, not precede it: the recursive chown above would take these
+    // files back for the plugin user.
     let credentials = secure_daemon_credentials(path).await;
-    handover.and(credentials)
+    handover.and(manifest).and(credentials)
 }
 
 /// Returns the daemon's own credentials for this plugin to root, readable by nobody else.
@@ -367,16 +371,20 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
 /// authenticates this daemon to another machine, and it must not be able to rewrite the
 /// pin that decides which certificate is trusted.
 async fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
-    // A failed chown on one file must not skip hardening the other: the permission bits
-    // are the part that keeps the plugin user out, and they are set first for that reason.
+    // A failure on one file must not skip hardening the other. Both the mode and the
+    // ownership reset matter, so neither short-circuits the loop.
     let mut outcome = Ok(());
     for file_name in [trust::TOKEN_FILE_NAME, trust::PIN_FILE_NAME] {
         let path = plugin_dir.join(file_name);
         if cc_fs::exists(&path).not() {
             continue;
         }
-        cc_fs::set_permissions(&path, Permissions::from_mode(PLUGIN_CREDENTIAL_PERMISSIONS))
-            .await?;
+        if let Err(err) =
+            cc_fs::set_permissions(&path, Permissions::from_mode(PLUGIN_CREDENTIAL_PERMISSIONS))
+                .await
+        {
+            outcome = Err(err);
+        }
         if let Err(err) = chown(&path, ROOT_USER, false).await {
             outcome = Err(err);
         }
@@ -602,6 +610,50 @@ mod tests {
                     mode & 0o777,
                     PLUGIN_CREDENTIAL_PERMISSIONS,
                     "{} should be 0600",
+                    path.display()
+                );
+            }
+        });
+    }
+
+    /// Goal: a failure part-way through securing must not skip the steps after it. The
+    /// caller only warns and starts the plugin anyway, so a skipped step leaves the
+    /// daemon's own credentials owned and readable by the plugin user.
+    /// Methodology: as a non-root user every `chown` fails, which is exactly the partial
+    /// failure this guards. Setting the permission bits needs no root, so all three files
+    /// must still be hardened even though the call reports an error.
+    #[test]
+    fn secure_plugin_folder_hardens_every_file_despite_a_failure() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let manifest_path = dir.path().join(SERVICE_MANIFEST_FILE_NAME);
+            let token_path = dir.path().join(trust::TOKEN_FILE_NAME);
+            let pin_path = dir.path().join(trust::PIN_FILE_NAME);
+            std::fs::write(&manifest_path, "").unwrap();
+            std::fs::write(&token_path, "a-token\n").unwrap();
+            std::fs::write(&pin_path, "aa:bb\n").unwrap();
+            for path in [&manifest_path, &token_path, &pin_path] {
+                std::fs::set_permissions(path, Permissions::from_mode(0o666)).unwrap();
+            }
+
+            let _ = secure_plugin_folder(dir.path(), Some(CC_PLUGIN_USER)).await;
+
+            let manifest_mode = std::fs::metadata(&manifest_path)
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(
+                manifest_mode & 0o777,
+                PLUGIN_MANIFEST_PERMISSIONS,
+                "the manifest should be hardened"
+            );
+            for path in [&token_path, &pin_path] {
+                let mode = std::fs::metadata(path).unwrap().permissions().mode();
+                assert_eq!(
+                    mode & 0o777,
+                    PLUGIN_CREDENTIAL_PERMISSIONS,
+                    "{} should be 0600 even after an earlier step failed",
                     path.display()
                 );
             }
