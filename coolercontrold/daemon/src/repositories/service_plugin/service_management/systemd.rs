@@ -225,7 +225,7 @@ fn create_unit_file(
         writeln!(
             service,
             "WorkingDirectory={}",
-            working_directory.to_string_lossy()
+            escape_unit_word(&working_directory.to_string_lossy())
         )?;
     }
     if let Some(env_vars) = service_definition.envs {
@@ -299,23 +299,19 @@ fn escape_exec_word(word: &str) -> String {
     escaped
 }
 
-/// One `Environment=` assignment, quoted as a whole so a value may hold whitespace or an
-/// equals sign.
+/// One value of a unit setting that is not a command line, quoted as a whole so it may
+/// hold whitespace.
 ///
-/// `$` is deliberately left alone: `systemd.exec(5)` states that no variable expansion
-/// happens here and the character has no special meaning, so doubling it would put a
-/// literal `$$` into the plugin's environment. Specifier expansion still applies, so `%`
-/// is still doubled.
-fn escape_environment(name: &str, value: &str) -> String {
-    debug_assert!(name.is_empty().not(), "an env name is validated non-empty");
+/// `$` is deliberately left alone: variable expansion applies only to command lines
+/// (`systemd.service(5)`), so doubling it here would put a literal `$$` into the value.
+/// Specifier expansion applies to every setting, so `%` is still doubled.
+fn escape_unit_word(value: &str) -> String {
     debug_assert!(
         value.chars().any(char::is_control).not(),
         "the manifest parser rejects control characters before they reach here"
     );
-    let mut escaped = String::with_capacity(name.len() + value.len() + 4);
+    let mut escaped = String::with_capacity(value.len() + 2);
     escaped.push('"');
-    escaped.push_str(name);
-    escaped.push('=');
     for character in value.chars() {
         match character {
             '\\' => escaped.push_str("\\\\"),
@@ -330,6 +326,13 @@ fn escape_environment(name: &str, value: &str) -> String {
         "{escaped} is not one quoted item"
     );
     escaped
+}
+
+/// One `Environment=` assignment, quoted as a whole so a value may hold whitespace or an
+/// equals sign.
+fn escape_environment(name: &str, value: &str) -> String {
+    debug_assert!(name.is_empty().not(), "an env name is validated non-empty");
+    escape_unit_word(&format!("{name}={value}"))
 }
 
 /// Whether a value is wrapped in double quotes that nothing inside it can close early.
@@ -505,6 +508,21 @@ mod tests {
             .filter(|&(index, c)| c == '"' && (index == 0 || exec.as_bytes()[index - 1] != b'\\'))
             .count();
         assert_eq!(unescaped % 2, 0, "{exec}");
+    }
+
+    /// Goal: `WorkingDirectory=` is quoted like every other unit value. A path holding a
+    /// space would otherwise end the setting early, and a `%` would be read as a
+    /// specifier rather than reaching the plugin.
+    #[test]
+    fn working_directory_is_quoted() {
+        let mut definition = base_definition();
+        definition.wrk_dir = Some(PathBuf::from("/var/lib/my plugin/100%"));
+        let unit = create_unit_file(&SystemdConfig::default(), &"Test".to_string(), definition)
+            .expect("unit file");
+        assert!(
+            unit.contains(r#"WorkingDirectory="/var/lib/my plugin/100%%""#),
+            "{unit}"
+        );
     }
 
     /// Goal: an unprivileged plugin must not be able to climb back out through a setuid binary
