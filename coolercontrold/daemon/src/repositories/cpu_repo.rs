@@ -296,6 +296,22 @@ impl CpuRepo {
         temps::init_temps(path, include_all_devices).await
     }
 
+    /// The physical processors that no CPU hwmon device was matched to, ascending.
+    fn unmatched_physical_ids(
+        &self,
+        matched: &HashMap<PhysicalID, HwmonDriverInfo>,
+    ) -> Vec<PhysicalID> {
+        let mut unmatched = self
+            .cpu_infos
+            .keys()
+            .filter(|physical_id| matched.contains_key(physical_id).not())
+            .copied()
+            .collect::<Vec<PhysicalID>>();
+        unmatched.sort_unstable();
+        debug_assert!(unmatched.len() <= self.cpu_infos.len());
+        unmatched
+    }
+
     /// Returns the proper CPU physical ID.
     fn match_physical_id(
         &self,
@@ -723,7 +739,10 @@ impl CpuRepo {
                 };
                 let type_index = physical_id + 1;
                 // cpu_info is set first, filling in model names:
-                let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
+                let Some(cpu_name) = self.cpu_model_names.get(&physical_id).cloned() else {
+                    error!("No CPU model name for physical id {physical_id}. Skipping device.");
+                    continue;
+                };
                 let device_uid =
                     Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None);
                 let cc_device_setting = self
@@ -816,18 +835,26 @@ impl Repository for CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.len() != num_of_cpus {
-            if hwmon_devices.is_empty().not() {
-                return Err(anyhow!(
-                    "Missing CPU specific HWMon devices. cpuinfo count: \
-                        {num_of_cpus} hwmon devices found: {}",
+            if hwmon_devices.is_empty() {
+                info!("No CPU specific HWMON devices found.");
+            } else {
+                // The processors we did find stay fully usable, and a processor whose temps we
+                // cannot place still reports load and frequency. There is nothing to act on.
+                let missing_ids = self.unmatched_physical_ids(&hwmon_devices);
+                info!(
+                    "No CPU HWMON device found for physical processor(s) {missing_ids:?}. \
+                    cpuinfo count: {num_of_cpus}, hwmon devices found: {}",
                     hwmon_devices.len()
-                ));
+                );
             }
-            info!("No CPU specific HWMON devices found.");
         }
 
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         for (physical_id, driver) in hwmon_devices {
+            let Some(cpu_name) = self.cpu_model_names.get(&physical_id).cloned() else {
+                error!("No CPU model name for physical id {physical_id}. Skipping device.");
+                continue;
+            };
             for channel in driver.channels.iter().filter(|channel| {
                 channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
             }) {
@@ -848,7 +875,6 @@ impl Repository for CpuRepo {
             self.preloaded_statuses
                 .borrow_mut()
                 .insert(type_index, (channels.clone(), temps.clone()));
-            let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
             let chip = chip_name::derive(&driver.path).await;
             let temp_infos = driver
                 .channels
@@ -1104,9 +1130,18 @@ mod tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::overrides::OverridesController;
-    use crate::repositories::cpu_repo::{CpuFreqs, CpuRepo};
+    use crate::repositories::cpu_repo::{CpuFreqs, CpuRepo, PhysicalID};
+    use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
+    use std::collections::HashMap;
     use std::rc::Rc;
+
+    fn matched(physical_ids: &[PhysicalID]) -> HashMap<PhysicalID, HwmonDriverInfo> {
+        physical_ids
+            .iter()
+            .map(|id| (*id, HwmonDriverInfo::default()))
+            .collect()
+    }
 
     static CPUINFO_AMD_SINGLE_CPU: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -1619,6 +1654,40 @@ mod tests {
                 initial_count,
                 "processor count should remain unchanged when file is empty"
             );
+        });
+    }
+
+    /// Goal: a partial match must be reported precisely rather than failing the repository, so
+    /// the caller can name the processors whose temps could not be placed. Method: a two-socket
+    /// cpuinfo against each possible set of matched devices, covering both the fully matched and
+    /// the fully unmatched ends.
+    #[test]
+    #[serial]
+    fn test_unmatched_physical_ids_double_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo =
+                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+
+            // then: nothing matched, so both sockets are reported, ascending.
+            assert_eq!(cpu_repo.unmatched_physical_ids(&matched(&[])), vec![0, 1]);
+            // then: a partial match reports only the socket left over.
+            assert_eq!(cpu_repo.unmatched_physical_ids(&matched(&[0])), vec![1]);
+            assert_eq!(cpu_repo.unmatched_physical_ids(&matched(&[1])), vec![0]);
+            // then: a full match reports nothing.
+            assert!(cpu_repo
+                .unmatched_physical_ids(&matched(&[0, 1]))
+                .is_empty());
+            // then: a device we have no cpuinfo entry for must not appear as unmatched.
+            assert!(cpu_repo
+                .unmatched_physical_ids(&matched(&[0, 1, 7]))
+                .is_empty());
         });
     }
 }
