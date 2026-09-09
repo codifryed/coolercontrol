@@ -989,13 +989,16 @@ impl Repository for CpuRepo {
         }
 
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
-        for (physical_id, driver) in hwmon_devices {
-            let Some(cpu_name) = self.cpu_model_names.get(&physical_id).cloned() else {
-                error!("No CPU model name for physical id {physical_id}. Skipping device.");
+        // These are keyed by `CpuAssociation::device_id()`, so a zone-keyed device has no cpuinfo
+        // entry of its own. The name has to be resolved the same way it was when the device was
+        // built, or every such device would be dropped here.
+        for (device_id, driver) in hwmon_devices {
+            let Some(cpu_name) = self.cpu_model_name(device_id) else {
+                error!("No CPU model name for CPU device id {device_id}. Skipping device.");
                 continue;
             };
             for channel in driver.channels.iter().filter(|channel| {
-                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
+                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == device_id
             }) {
                 // Fill initial joule_count with a real count (needed before
                 // request_status). If the initial read fails, seed with 0 so the
@@ -1005,12 +1008,12 @@ impl Repository for CpuRepo {
                         .await
                         .unwrap_or(0.0);
                 self.energy_counters
-                    .insert(physical_id, Cell::new(joule_count));
+                    .insert(device_id, Cell::new(joule_count));
             }
             let (channels, temps) = self
-                .request_status(physical_id, &driver, &mut cpu_freqs, true)
+                .request_status(device_id, &driver, &mut cpu_freqs, true)
                 .await;
-            let type_index = physical_id + 1;
+            let type_index = device_id + 1;
             self.preloaded_statuses
                 .borrow_mut()
                 .insert(type_index, (channels.clone(), temps.clone()));
@@ -1937,6 +1940,37 @@ mod tests {
             assert_eq!(cpu_repo.cpu_model_name(1).as_ref(), Some(&expected));
             // then: an unknown id falls back to the lowest known entry, not to nothing.
             assert_eq!(cpu_repo.cpu_model_name(7).as_ref(), Some(&expected));
+        });
+    }
+
+    /// Goal: a zone-keyed device must never be looked up in `cpu_model_names` directly, because
+    /// `Zone` is produced only for an id cpuinfo has no entry for, so such a lookup always misses
+    /// and the device would be built and then dropped. Method: take the associations both drivers
+    /// return for an unresolvable zone on a two-package machine, and assert the raw map misses
+    /// while the resolver still answers.
+    #[test]
+    #[serial]
+    fn test_zone_device_id_is_never_a_model_name_key() {
+        cc_fs::test_runtime(async {
+            // given: two packages, so the single-package short circuit does not apply.
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+
+            // when: a zone beyond the packages cpuinfo knows about.
+            let associations = [
+                cpu_repo.intel_association(Some(2)).unwrap(),
+                cpu_repo.amd_association(Some(2)).unwrap(),
+            ];
+
+            // then:
+            for association in associations {
+                assert!(association.is_socket().not());
+                let device_id = association.device_id();
+                // The raw map cannot answer for a zone id, which is why the call site must not
+                // use it.
+                assert!(cpu_repo.cpu_model_names.contains_key(&device_id).not());
+                // The resolver must, or the device gets no name and is skipped.
+                assert!(cpu_repo.cpu_model_name(device_id).is_some());
+            }
         });
     }
 
