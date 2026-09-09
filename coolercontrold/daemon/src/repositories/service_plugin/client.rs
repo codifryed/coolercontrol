@@ -31,6 +31,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
+use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::Channel;
 use tonic::Request;
 
@@ -55,10 +56,11 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
 pub struct DeviceServiceClient {
     service_id: ServiceId,
 
-    /// Bearer token for the remote, when the user placed one in the plugin directory.
-    /// Attached to every outbound request; absent for a plugin on a Unix socket or a
-    /// remote that predates authentication.
-    token: Option<String>,
+    /// The `authorization` header value for the remote, parsed once at connect time so a
+    /// malformed token fails where it is read rather than on every request. Absent for a
+    /// plugin on a Unix socket, a remote that predates authentication, or a link that
+    /// cannot carry the token safely.
+    credentials: Option<MetadataValue<Ascii>>,
 
     /// Snapshot of the service-plugin wait timeout. `poll_rate` only
     /// changes on daemon restart, so this value is constant for the
@@ -91,15 +93,39 @@ impl DeviceServiceClient {
         tls_strict: bool,
     ) -> Result<Self> {
         let address = Self::address_from_manifest(service_manifest, plan)?;
-        let token = Self::outbound_token(service_manifest, plan);
+        let credentials = Self::outbound_credentials(service_manifest, plan)?;
         let channel = transport::connect(service_manifest, &address, plan, tls_strict).await?;
         let grpc_client = device_service_client::DeviceServiceClient::new(channel);
         Ok(Self::new(
             service_manifest.id.clone(),
             poll_rate,
             grpc_client,
-            token,
+            credentials,
         ))
+    }
+
+    /// The parsed `authorization` value, or `None` when there is no token to send.
+    ///
+    /// Parsing here rather than per request means a token with characters illegal in a
+    /// header refuses the connection outright. Logging and sending the request anyway
+    /// would reach the user as the remote refusing credentials that were never sent.
+    fn outbound_credentials(
+        service_manifest: &ServiceManifest,
+        plan: &trust::LinkPlan,
+    ) -> Result<Option<MetadataValue<Ascii>>> {
+        let Some(token) = Self::outbound_token(service_manifest, plan) else {
+            return Ok(None);
+        };
+        let value = format!("Bearer {token}").parse().map_err(|err| {
+            anyhow!(
+                "Device service '{}' has an unusable access token: {err}. Rewrite the '{}' \
+                 file in that plugin's directory with the token exactly as the remote \
+                 daemon issued it.",
+                service_manifest.id,
+                trust::TOKEN_FILE_NAME
+            )
+        })?;
+        Ok(Some(value))
     }
 
     /// The token to send, withheld when the link would carry it in the clear off this
@@ -186,21 +212,10 @@ impl DeviceServiceClient {
     /// without the token.
     fn request<T>(&self, message: T) -> Request<T> {
         let mut request = Request::new(message);
-        if let Some(token) = &self.token {
-            match format!("Bearer {token}").parse() {
-                Ok(value) => {
-                    request.metadata_mut().insert("authorization", value);
-                }
-                Err(err) => {
-                    // A token with characters illegal in a header is a user error in the
-                    // token file, not something to retry: say so once per request rather
-                    // than failing with an opaque `Unauthenticated` from the remote.
-                    error!(
-                        "Device service '{}' has an unusable access token: {err}",
-                        self.service_id
-                    );
-                }
-            }
+        if let Some(credentials) = &self.credentials {
+            request
+                .metadata_mut()
+                .insert("authorization", credentials.clone());
         }
         request
     }
@@ -209,13 +224,13 @@ impl DeviceServiceClient {
         service_id: ServiceId,
         poll_rate: f64,
         client: device_service_client::DeviceServiceClient<Channel>,
-        token: Option<String>,
+        credentials: Option<MetadataValue<Ascii>>,
     ) -> Self {
         let service_client = Mutex::new(client);
         let service_wait_timeout = service_wait_timeout_for(poll_rate);
         Self {
             service_id,
-            token,
+            credentials,
             service_wait_timeout,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
@@ -954,6 +969,50 @@ mod credential_tests {
                 "{address:?} should still carry the token"
             );
         }
+    }
+
+    /// Goal: a token that cannot become a header must fail the connection, not go out as
+    /// an anonymous request. Sending it unauthenticated earns an `Unauthenticated` from
+    /// the remote, which reads to the user as credentials being refused when in fact none
+    /// were sent, and it repeats on every single RPC instead of once.
+    #[test]
+    fn an_unusable_token_refuses_the_connection() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            // Survives the trim in `read_token`, but is illegal in a header value.
+            std::fs::write(dir.path().join(trust::TOKEN_FILE_NAME), "cc_\u{7f}bad\n").unwrap();
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            assert!(plan.token().is_some(), "the token must reach the parser");
+
+            let error = DeviceServiceClient::outbound_credentials(&manifest, &plan)
+                .expect_err("an unusable token must refuse the connection");
+            let message = error.to_string();
+            assert!(message.contains("test_service"), "{message}");
+            assert!(message.contains(trust::TOKEN_FILE_NAME), "{message}");
+        });
+    }
+
+    /// Goal: the ordinary case still yields a header, so the refusal above is not simply
+    /// rejecting everything.
+    #[test]
+    fn a_usable_token_becomes_a_bearer_header() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            let credentials = DeviceServiceClient::outbound_credentials(&manifest, &plan)
+                .unwrap()
+                .expect("a token on a TLS link is sent");
+            assert_eq!(credentials.to_str().unwrap(), "Bearer cc_secret");
+        });
     }
 
     /// Goal: Unix sockets stay plain. The kernel already scopes them to this machine, so
