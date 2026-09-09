@@ -1771,6 +1771,13 @@ mod tests {
     use tower_http::timeout::TimeoutLayer;
     use tower_sessions::SessionManagerLayer;
 
+    fn expired_token(raw: &str) -> StoredToken {
+        StoredToken {
+            expires_at: Some(Local::now() - chrono::Duration::hours(1)),
+            ..stored_token(raw)
+        }
+    }
+
     fn stored_token(raw: &str) -> StoredToken {
         StoredToken {
             id: "grpc-test".to_string(),
@@ -1858,8 +1865,9 @@ mod tests {
         assert_eq!(status.code(), Code::Unauthenticated);
     }
 
-    /// Goal: a wrong or expired token is refused just like no token, so the gRPC surface
-    /// cannot be reached by guessing.
+    /// Goal: a token that was never minted here is refused just like no token, so the
+    /// gRPC surface cannot be reached by guessing. Expiry is covered separately, since a
+    /// token that exists but has lapsed takes a different path through the store.
     #[tokio::test]
     async fn grpc_with_an_unknown_token_is_rejected() {
         let raw = token::generate_token();
@@ -1888,6 +1896,35 @@ mod tests {
         assert_eq!(status.code(), Code::Unauthenticated);
     }
 
+    /// Goal: plan criterion 2's other half. A token this daemon really did mint, but whose
+    /// `expires_at` has passed, must be refused on the gRPC surface exactly like an
+    /// unknown one. The digest fast path matches an expired token before expiry is
+    /// checked, so a store hit is not on its own a grant.
+    #[tokio::test]
+    async fn grpc_with_an_expired_token_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![expired_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {raw}").parse().unwrap());
+
+        let status = client
+            .check(request)
+            .await
+            .expect_err("an expired token must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
     /// Goal: only the statuses our own layers emit are rewritten. Reinterpreting an
     /// arbitrary status would turn an unrelated failure into a misleading gRPC code.
     #[test]
@@ -1903,6 +1940,14 @@ mod tests {
         assert_eq!(
             grpc_code_for(StatusCode::TOO_MANY_REQUESTS),
             Some(tonic::Code::ResourceExhausted)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::REQUEST_TIMEOUT),
+            Some(tonic::Code::DeadlineExceeded)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::NOT_FOUND),
+            Some(tonic::Code::Unimplemented)
         );
         assert_eq!(grpc_code_for(StatusCode::OK), None);
         assert_eq!(grpc_code_for(StatusCode::INTERNAL_SERVER_ERROR), None);
