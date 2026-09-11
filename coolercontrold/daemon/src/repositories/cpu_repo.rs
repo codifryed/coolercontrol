@@ -748,8 +748,8 @@ impl CpuRepo {
     ) -> Vec<HwmonChannelInfo> {
         let mut channels = Vec::with_capacity(5); // one load, up to three freqs, one power
         match self.init_cpu_load(physical_id) {
-            Ok(load) => channels.push(load),
-            Err(err) => error!("Error matching cpu load percents to processors: {err}"),
+            Some(load) => channels.push(load),
+            None => error!("No CPU load reading for physical processor {physical_id}"),
         }
         if cpu_freqs.is_empty().not() {
             match Self::init_cpu_freq(physical_id, cpu_freqs) {
@@ -773,17 +773,22 @@ impl CpuRepo {
 
     /// The load of one package: the average of its own online processors, from the sample taken
     /// once per poll by `sample_cpu_load`.
-    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
+    ///
+    /// Every status carries every channel the device has, so a package with no reading this poll
+    /// reports 0 rather than leaving the channel out. That happens when all its processors are
+    /// offline, which is a true 0, or for the one poll after they come back online.
+    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> ChannelStatus {
         let load = Self::package_load_percent(
             &self.cpu_load_percents.borrow(),
             &self.processor_physical_ids.borrow(),
             physical_id,
-        )?;
-        Some(ChannelStatus {
+        )
+        .unwrap_or(0.0);
+        ChannelStatus {
             name: channel_name.to_string(),
             duty: Some(load),
             ..Default::default()
-        })
+        }
     }
 
     /// Collects the average frequency per Physical CPU.
@@ -884,21 +889,21 @@ impl CpuRepo {
         })
     }
 
-    fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
-        if self
-            .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
-            .is_none()
-        {
-            Err(anyhow!("Error: no load percent found!"))
-        } else {
-            Ok(HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Load,
-                number: physical_id,
-                name: SINGLE_CPU_LOAD_NAME.to_string(),
-                label: Some(SINGLE_CPU_LOAD_NAME.to_string()),
-                ..Default::default()
-            })
-        }
+    /// The load channel exists only if the package had a load reading at initialization. From
+    /// then on `collect_load` reports it in every poll, as with every other channel.
+    fn init_cpu_load(&self, physical_id: PhysicalID) -> Option<HwmonChannelInfo> {
+        Self::package_load_percent(
+            &self.cpu_load_percents.borrow(),
+            &self.processor_physical_ids.borrow(),
+            physical_id,
+        )?;
+        Some(HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Load,
+            number: physical_id,
+            name: SINGLE_CPU_LOAD_NAME.to_string(),
+            label: Some(SINGLE_CPU_LOAD_NAME.to_string()),
+            ..Default::default()
+        })
     }
 
     fn init_cpu_freq(
@@ -947,10 +952,7 @@ impl CpuRepo {
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name) else {
-                        continue;
-                    };
-                    status_channels.push(load_status);
+                    status_channels.push(self.collect_load(phys_cpu_id, &channel.name));
                 }
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
@@ -1241,7 +1243,7 @@ impl Repository for CpuRepo {
         let start_initialization = Instant::now();
         self.poll_rate = self.config.get_settings()?.poll_rate;
         self.set_cpu_infos(CPUINFO_PATH.as_ref()).await?;
-        // The load channels are only created for packages with a load reading.
+        // The first load status is read during initialization, so it needs a sample already.
         self.sample_cpu_load().await;
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
@@ -2020,6 +2022,38 @@ mod tests {
         assert_eq!(CpuRepo::package_load_percent(&percents, &map, 2), None);
     }
 
+    /// Goal: a package gets a load channel only if it had a load reading at initialization, and
+    /// once it has one the channel is in every status, even in a poll with no reading, since the
+    /// rest of the app expects each timestamp to carry the same metrics. Method: the dual Xeon
+    /// repo with a sample covering only package 0, as when package 1 is offline.
+    #[test]
+    #[serial]
+    fn test_load_is_reported_in_every_poll() {
+        cc_fs::test_runtime(async {
+            // given:
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
+                .step_by(2)
+                .map(|cpu_id| CpuPercent {
+                    cpu_id,
+                    percent: 50.0,
+                })
+                .collect();
+
+            // when:
+            let package_0 = cpu_repo.collect_load(0, "CPU Load");
+            let package_1 = cpu_repo.collect_load(1, "CPU Load");
+
+            // then:
+            assert_eq!(package_0.duty, Some(50.0));
+            assert_eq!(package_1.duty, Some(0.0));
+            assert_eq!(package_1.name, "CPU Load");
+            // then: had this been the sample at initialization, only package 0 gets the channel.
+            assert!(cpu_repo.init_cpu_load(0).is_some());
+            assert!(cpu_repo.init_cpu_load(1).is_none());
+        });
+    }
+
     /// Goal: load follows processors going offline and online at runtime, without an error and
     /// without a fabricated 0. Method: the dual Xeon map, first with some of package 0's
     /// processors offline, then with all of package 1's, then checking which changes to the
@@ -2042,7 +2076,8 @@ mod tests {
             CpuRepo::package_load_percent(&some_offline, &map, 1),
             Some(90.0)
         );
-        // then: a package with every processor offline is omitted for the tick, not reported 0.
+        // then: a package with every processor offline has no average, which `collect_load`
+        // reports as 0 so the channel stays in the status.
         let package_1_offline = [percent(0, 20.0), percent(2, 40.0)];
         assert_eq!(
             CpuRepo::package_load_percent(&package_1_offline, &map, 1),
