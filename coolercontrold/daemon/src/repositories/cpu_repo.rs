@@ -956,21 +956,9 @@ impl CpuRepo {
                 }
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
-                    // If the joule counter read fails, omit the channel
-                    // status entry for this tick rather than fabricating
-                    // 0 watts, and leave the prior energy counter intact
-                    // so the next successful read's delta is not wildly
-                    // skewed by a one-tick gap.
-                    let Some(joule_count) =
-                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await
-                    else {
-                        continue;
-                    };
-                    let Some(mut watts) =
-                        self.power_watts_since_last_tick(phys_cpu_id, joule_count)
-                    else {
-                        continue;
-                    };
+                    let joule_count =
+                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await;
+                    let mut watts = self.power_watts_or_zero(phys_cpu_id, joule_count);
                     self.use_cached_value_if_zero(&mut watts, init, phys_cpu_id, &channel.name);
                     let power_status = ChannelStatus {
                         name: channel.name.clone(),
@@ -996,12 +984,22 @@ impl CpuRepo {
         (status_channels, temps)
     }
 
+    /// The watts to report for a power channel this poll.
+    ///
+    /// Every status carries every channel the device has, so a failed counter read, or a
+    /// processor with no counter, reports 0 rather than leaving the channel out. After
+    /// initialization `use_cached_value_if_zero` swaps that 0 for the last reading. A failed read
+    /// leaves the stored count alone, so the next good read's delta is not skewed by the gap.
+    fn power_watts_or_zero(&self, cpu_id: PhysicalID, joule_count: Option<f64>) -> Watts {
+        joule_count
+            .and_then(|joule_count| self.power_watts_since_last_tick(cpu_id, joule_count))
+            .unwrap_or(0.0)
+    }
+
     /// The watts a power channel has drawn since the last tick.
     ///
-    /// Returns `None` when this processor has no energy counter. There is then no previous count
-    /// to take a delta from, and a fabricated 0 watts would be indistinguishable from a real
-    /// reading, so the caller omits the channel for this tick the same way it does for a failed
-    /// counter read. Every device that carries a power channel is seeded with a counter at
+    /// Returns `None` when this processor has no energy counter, so there is no previous count to
+    /// take a delta from. Every device that carries a power channel is seeded with a counter at
     /// initialization, so this is a guard and not an expected path.
     fn power_watts_since_last_tick(&self, cpu_id: PhysicalID, joule_count: f64) -> Option<Watts> {
         let previous_joule_count = self.energy_counters.get(&cpu_id)?.replace(joule_count);
@@ -1556,7 +1554,7 @@ impl Repository for CpuRepo {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
-    use crate::device::{Device, DeviceType};
+    use crate::device::{ChannelStatus, Device, DeviceType};
     use crate::overrides::OverridesController;
     use crate::repositories::cpu_percent::CpuPercent;
     use crate::repositories::cpu_repo::{
@@ -2456,10 +2454,50 @@ mod tests {
         });
     }
 
-    /// Goal: a power channel whose processor has no seeded energy counter must be omitted, not
-    /// panic and not report a fabricated 0 watts, since 0 is a value the counter genuinely
-    /// reports. Method: a repo with one processor seeded, asked for that processor and for one it
-    /// has no counter for.
+    /// Goal: the power channel is in every status, even when the counter read fails, and the gap
+    /// must not skew the next reading. After initialization the reported value is the last one
+    /// cached, not 0. Method: a seeded repo with a failed read, a good read after it, and the
+    /// cache fallback applied the way `request_status` applies it, at and after initialization.
+    #[test]
+    #[serial]
+    fn test_power_is_reported_in_every_poll() {
+        cc_fs::test_runtime(async {
+            // given: a seeded counter at 10 joules, a one second poll, and 42 watts cached.
+            let mut cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            cpu_repo.poll_rate = 1.0;
+            cpu_repo.energy_counters.insert(0, Cell::new(10.0));
+            let cached = ChannelStatus {
+                name: "CPU Power".to_string(),
+                watts: Some(42.0),
+                ..Default::default()
+            };
+            cpu_repo
+                .preloaded_statuses
+                .borrow_mut()
+                .insert(1, (vec![cached], Vec::new()));
+
+            // then: a failed read reports 0 and leaves the stored count alone.
+            assert_eq!(cpu_repo.power_watts_or_zero(0, None), 0.0);
+            assert_eq!(cpu_repo.energy_counters.get(&0).unwrap().get(), 10.0);
+            // then: the next good read measures from the count before the gap.
+            assert_eq!(cpu_repo.power_watts_or_zero(0, Some(25.0)), 15.0);
+            // then: a processor with no counter reports 0 too.
+            assert_eq!(cpu_repo.power_watts_or_zero(1, Some(25.0)), 0.0);
+
+            // then: after initialization the 0 becomes the last cached reading.
+            let mut watts = 0.0;
+            cpu_repo.use_cached_value_if_zero(&mut watts, false, 0, "CPU Power");
+            assert_eq!(watts, 42.0);
+            // then: during initialization there is no cache to use yet, so 0 stands.
+            let mut watts = 0.0;
+            cpu_repo.use_cached_value_if_zero(&mut watts, true, 0, "CPU Power");
+            assert_eq!(watts, 0.0);
+        });
+    }
+
+    /// Goal: a power channel whose processor has no seeded energy counter must not panic, and
+    /// must not compute a delta from nothing. Method: a repo with one processor seeded, asked for
+    /// that processor and for one it has no counter for.
     #[test]
     #[serial]
     fn test_power_watts_needs_a_seeded_energy_counter() {
