@@ -388,6 +388,16 @@ pub fn get_platform_device_id(base_path: &Path) -> Option<u8> {
     parse_platform_device_id(&get_static_device_path_str(base_path)?)
 }
 
+/// How many platform devices a driver owns, i.e. `coretemp.0` through `coretemp.N`.
+///
+/// Current kernels create a `coretemp` platform device for every package zone when the driver
+/// loads, and keep it while the zone's CPUs are offline. Only the hwmon device under it follows
+/// CPU hotplug, so this counts the zones that exist rather than the ones with an online CPU.
+pub fn count_platform_devices(driver_name: &str) -> usize {
+    let pattern = format!("/sys/devices/platform/{driver_name}.*");
+    glob(&pattern, Uninterruptible).map_or(0, |paths| paths.filter_map(Result::ok).count())
+}
+
 /// Only a direct child of the platform bus has an instance id we can read. A PCI address ends in
 /// a function number that would otherwise parse as one, so the prefix check is load bearing.
 fn parse_platform_device_id(device_path: &str) -> Option<u8> {

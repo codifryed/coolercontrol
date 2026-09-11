@@ -78,6 +78,18 @@ impl CpuAssociation {
     }
 }
 
+/// What the association needs to know about one driver's devices as a whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DriverCensus {
+    /// The hwmon devices the driver registered.
+    device_count: usize,
+    /// Whether every zone the driver created has an online CPU. Only `coretemp` zones follow CPU
+    /// hotplug: a `k10temp` node is a PCI device and stays registered either way.
+    all_zones_online: bool,
+    /// Whether an online CPU sits on a later die of its package. Only read when a zone is offline.
+    multi_die: bool,
+}
+
 #[derive(Default, Debug, PartialEq)]
 struct CpuFreqs {
     min: Mhz,
@@ -434,19 +446,89 @@ impl CpuRepo {
         unmatched
     }
 
-    /// Ties a CPU hwmon device to the processor it measures. `driver_device_count` is how many
-    /// devices this driver registered, which says whether it reports per package or per die.
+    /// Ties a CPU hwmon device to the processor it measures. The census describes the driver's
+    /// devices as a whole, which says whether it reports per package or per die.
     fn match_physical_id(
         &self,
         device_name: &str,
         path: &Path,
-        driver_device_count: usize,
+        census: DriverCensus,
     ) -> Option<CpuAssociation> {
         if device_name == INTEL_DEVICE_NAME {
-            self.match_intel_association(path, driver_device_count)
+            self.match_intel_association(path, census)
         } else {
-            self.match_amd_association(path, driver_device_count)
+            self.match_amd_association(path, census.device_count)
         }
+    }
+
+    /// Counts a driver's devices, and for `coretemp` checks whether any zone is offline.
+    async fn driver_census(
+        driver_name: &str,
+        potential_cpu_paths: &[(String, PathBuf)],
+    ) -> DriverCensus {
+        let driver_paths = potential_cpu_paths
+            .iter()
+            .filter(|(device_name, _)| device_name == driver_name)
+            .map(|(_, path)| path);
+        if driver_name != INTEL_DEVICE_NAME {
+            return DriverCensus {
+                device_count: driver_paths.count(),
+                all_zones_online: true,
+                multi_die: false,
+            };
+        }
+        let zone_ids = driver_paths
+            .filter_map(|path| devices::get_platform_device_id(path))
+            .collect::<Vec<ZoneID>>();
+        let platform_zone_count = devices::count_platform_devices(INTEL_DEVICE_NAME);
+        let all_zones_online = Self::zones_all_online(&zone_ids, platform_zone_count);
+        // The die check reads every online CPU, and only the offline fallback needs it.
+        let multi_die = all_zones_online.not() && Self::any_cpu_on_a_later_die().await;
+        DriverCensus {
+            device_count: zone_ids.len(),
+            all_zones_online,
+            multi_die,
+        }
+    }
+
+    /// Whether every `coretemp` zone has an online CPU, so that the APIC ranking covers them all.
+    ///
+    /// cpuinfo lists only online CPUs, while zone ids count every package. An offline package
+    /// below an online one therefore shifts the ranking by one. The platform devices outlive
+    /// offlining on current kernels. Where they do not, a gap in the zone ids still exposes an
+    /// offline zone below an online one, which is the case that shifts the ranking.
+    fn zones_all_online(zone_ids: &[ZoneID], platform_zone_count: usize) -> bool {
+        let zone_total = platform_zone_count.max(zone_ids.len());
+        let mut sorted_ids = zone_ids.to_vec();
+        sorted_ids.sort_unstable();
+        sorted_ids.dedup();
+        if sorted_ids.len() != zone_total {
+            return false;
+        }
+        // Every id below the total, with none repeated, means exactly 0 through total - 1.
+        sorted_ids
+            .last()
+            .is_none_or(|id| usize::from(*id) < zone_total)
+    }
+
+    /// Whether any online CPU reports a die id above 0, i.e. its package holds several dies.
+    /// A kernel without `die_id` (before 5.2) predates multi-die support, so it reads as single.
+    /// Only asked for `coretemp`: on current AMD a die is a CCD, which a single desktop part
+    /// already has two of.
+    async fn any_cpu_on_a_later_die() -> bool {
+        let pattern = "/sys/devices/system/cpu/cpu[0-9]*/topology/die_id";
+        let Ok(paths) = nu_glob::glob(pattern, nu_glob::Uninterruptible) else {
+            return false;
+        };
+        for path in paths.filter_map(Result::ok) {
+            let Ok(die_id) = cc_fs::read_txt(&path).await else {
+                continue;
+            };
+            if die_id.trim().parse::<u32>().is_ok_and(|die_id| die_id > 0) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Intel registers one `coretemp` platform device per die zone, and the kernel numbers those
@@ -460,16 +542,16 @@ impl CpuRepo {
     /// absent entirely on packages without the PTS feature (pre-Sandy Bridge), and the remaining
     /// `Core N` labels carry core ids that repeat identically across sockets. The zone ranking
     /// gives the same answer wherever the label worked, and an answer where it did not.
-    fn match_intel_association(&self, path: &Path, zone_count: usize) -> Option<CpuAssociation> {
-        self.intel_association(devices::get_platform_device_id(path), zone_count)
+    fn match_intel_association(&self, path: &Path, census: DriverCensus) -> Option<CpuAssociation> {
+        self.intel_association(devices::get_platform_device_id(path), census)
     }
 
-    /// The zone id and count are passed in rather than read here, so the ranking can be tested
+    /// The zone id and census are passed in rather than read here, so the ranking can be tested
     /// without a fake sysfs tree.
     fn intel_association(
         &self,
         zone_id: Option<ZoneID>,
-        zone_count: usize,
+        census: DriverCensus,
     ) -> Option<CpuAssociation> {
         // A single package needs no ranking, and its physical id is not always 0.
         if self.cpu_infos.len() == 1 {
@@ -481,10 +563,13 @@ impl CpuRepo {
                 .map(CpuAssociation::Socket);
         }
         let zone_id = zone_id?;
+        if census.all_zones_online.not() {
+            return Some(self.offline_zone_association(zone_id, census.multi_die));
+        }
         // Logical die ids rank system wide and a package's dies are consecutive, since die bits
         // sit below package bits in the APIC id. This division is exact, not an assumption.
         let Some(package_rank) =
-            Self::first_die_package_rank(zone_id, zone_count, self.cpu_infos.len())
+            Self::first_die_package_rank(zone_id, census.device_count, self.cpu_infos.len())
         else {
             return Some(CpuAssociation::Zone(zone_id));
         };
@@ -495,6 +580,21 @@ impl CpuRepo {
         }
         // A zone past the ranking cannot be placed. The temps are still real, so keep them.
         Some(CpuAssociation::Zone(zone_id))
+    }
+
+    /// With a zone offline, the APIC ranking of the online packages no longer matches the zone
+    /// ids, so this falls back to what the `Package id N` label gave before: the zone id is the
+    /// physical id. That holds wherever physical ids are dense, and it keeps device UIDs exactly
+    /// as they were for as long as the zone stays offline. Several dies per package break it, as
+    /// zone 1 is then the first package's second die, so those keep their temps under the zone.
+    fn offline_zone_association(&self, zone_id: ZoneID, multi_die: bool) -> CpuAssociation {
+        if multi_die {
+            return CpuAssociation::Zone(zone_id);
+        }
+        if self.cpu_infos.contains_key(&zone_id) {
+            return CpuAssociation::Socket(zone_id);
+        }
+        CpuAssociation::Zone(zone_id)
     }
 
     /// AMD registers one `k10temp` device per node against that node's northbridge or data
@@ -535,6 +635,11 @@ impl CpuRepo {
         // Pre-Zen multi-chip parts and Zen 1 EPYC hold several nodes per package. This assumes
         // their nodes are numbered package by package, as on Zen 1 where the node id is
         // {socket, die}. That is not confirmed from kernel source for every family.
+        // Known gap: nodes are PCI devices and stay registered while a package is offline, but
+        // cpuinfo drops that package. On a four socket Opteron with a package offline, the node
+        // count then no longer divides by the package count, and nothing tells an offline package
+        // from a multi-node one. Two sockets need no division, since one online package takes
+        // the single package path above.
         let Some(package_rank) =
             Self::first_die_package_rank(node_id, node_count, self.cpu_infos.len())
         else {
@@ -951,90 +1056,27 @@ impl CpuRepo {
             log!(lvl, "No CPU frequencies found in cpuinfo");
         }
         for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            let driver_device_count = potential_cpu_paths
-                .iter()
-                .filter(|(device_name, _)| device_name == cpu_device_name)
-                .count();
+            let census = Self::driver_census(cpu_device_name, &potential_cpu_paths).await;
+            if census.all_zones_online.not() {
+                info!(
+                    "A {cpu_device_name} zone has no online CPU, so its CPU devices are matched by \
+                    zone id alone. Census: {census:?}"
+                );
+            }
             for (device_name, path) in &potential_cpu_paths {
                 if device_name != cpu_device_name {
                     continue;
                 }
-                let mut channels = Vec::new();
-                match Self::init_cpu_temp(path).await {
-                    Ok(temps) => channels.extend(temps),
-                    Err(err) => error!("Error initializing CPU Temps: {err}"),
-                }
                 let Some(association) =
-                    self.match_physical_id(device_name, path, driver_device_count)
+                    self.associate_cpu_device(device_name, path, census, &hwmon_devices)
                 else {
-                    info!(
-                        "Could not tie {device_name} at {} to a physical processor. \
-                        Skipping device.",
-                        path.display()
-                    );
                     continue;
                 };
-                let cpu_id = association.device_id();
-                if hwmon_devices.contains_key(&association) {
-                    // Expected for the later dies of a single package, which all resolve to its
-                    // one socket, so this is not worth an info line on every start.
-                    debug!(
-                        "A CPU device is already registered for {association:?}. \
-                        Skipping {device_name} at {}.",
-                        path.display()
-                    );
+                let Some(hwmon_driver_info) = self
+                    .init_cpu_device(device_name, path, association, &mut cpu_freqs)
+                    .await
+                else {
                     continue;
-                }
-                if association.is_socket().not() {
-                    // Temps are what a cooling app needs, so they are kept. Load, frequency and
-                    // power are keyed by physical id and belong to the processor's own device,
-                    // so they are left off rather than guessed or shown twice.
-                    info!(
-                        "{device_name} at {} is not a processor's own device. Its temps are \
-                        shown on their own, without processor load, frequency or power.",
-                        path.display()
-                    );
-                }
-                let Some(type_index) = self.device_type_index(association) else {
-                    error!(
-                        "No device number left for {association:?}. Skipping {device_name} at {}.",
-                        path.display()
-                    );
-                    continue;
-                };
-                // cpu_info is set first, filling in model names:
-                let Some(cpu_name) = self.cpu_model_name(cpu_id) else {
-                    error!("No CPU model name found. Skipping {device_name} device.");
-                    continue;
-                };
-                let device_uid =
-                    Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None);
-                let cc_device_setting = self
-                    .config
-                    .get_cc_settings_for_device(&device_uid)
-                    .unwrap_or(None);
-                if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
-                    info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
-                    continue;
-                }
-                if association.is_socket() {
-                    channels.extend(self.init_socket_channels(cpu_id, &mut cpu_freqs).await);
-                }
-                let channels = self
-                    .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
-                    .await;
-                let pci_device_names = devices::get_device_pci_names(path).await;
-                let model = devices::get_device_model_name(path).await.or_else(|| {
-                    pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
-                });
-                let u_id = devices::get_device_unique_id(path, device_name).await;
-                let hwmon_driver_info = HwmonDriverInfo {
-                    name: device_name.clone(),
-                    path: path.clone(),
-                    model,
-                    u_id,
-                    channels,
-                    ..Default::default()
                 };
                 hwmon_devices.insert(association, hwmon_driver_info);
             }
@@ -1046,6 +1088,101 @@ impl CpuRepo {
             }
         }
         hwmon_devices
+    }
+
+    /// Ties a CPU hwmon device to a processor, or returns `None` when it is to be skipped.
+    fn associate_cpu_device(
+        &self,
+        device_name: &str,
+        path: &Path,
+        census: DriverCensus,
+        registered: &HashMap<CpuAssociation, HwmonDriverInfo>,
+    ) -> Option<CpuAssociation> {
+        let Some(association) = self.match_physical_id(device_name, path, census) else {
+            info!(
+                "Could not tie {device_name} at {} to a physical processor. Skipping device.",
+                path.display()
+            );
+            return None;
+        };
+        if registered.contains_key(&association) {
+            // Expected for the later dies of a single package, which all resolve to its one
+            // socket, so this is not worth an info line on every start.
+            debug!(
+                "A CPU device is already registered for {association:?}. \
+                Skipping {device_name} at {}.",
+                path.display()
+            );
+            return None;
+        }
+        if association.is_socket().not() {
+            // Temps are what a cooling app needs, so they are kept. Load, frequency and power
+            // are keyed by physical id and belong to the processor's own device, so they are
+            // left off rather than guessed or shown twice.
+            info!(
+                "{device_name} at {} is not a processor's own device. Its temps are shown on \
+                their own, without processor load, frequency or power.",
+                path.display()
+            );
+        }
+        Some(association)
+    }
+
+    /// Builds the hwmon driver info for an associated CPU device, or returns `None` when the
+    /// device cannot be numbered or named, or the user disabled it.
+    async fn init_cpu_device(
+        &self,
+        device_name: &str,
+        path: &Path,
+        association: CpuAssociation,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+    ) -> Option<HwmonDriverInfo> {
+        let Some(type_index) = self.device_type_index(association) else {
+            error!(
+                "No device number left for {association:?}. Skipping {device_name} at {}.",
+                path.display()
+            );
+            return None;
+        };
+        let cpu_id = association.device_id();
+        // cpu_info is set first, filling in model names:
+        let Some(cpu_name) = self.cpu_model_name(cpu_id) else {
+            error!("No CPU model name found. Skipping {device_name} device.");
+            return None;
+        };
+        let device_uid = Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None);
+        let cc_device_setting = self
+            .config
+            .get_cc_settings_for_device(&device_uid)
+            .unwrap_or(None);
+        if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+            info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
+            return None;
+        }
+        let mut channels = Vec::new();
+        match Self::init_cpu_temp(path).await {
+            Ok(temps) => channels.extend(temps),
+            Err(err) => error!("Error initializing CPU Temps: {err}"),
+        }
+        if association.is_socket() {
+            channels.extend(self.init_socket_channels(cpu_id, cpu_freqs).await);
+        }
+        let channels = self
+            .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
+            .await;
+        let pci_device_names = devices::get_device_pci_names(path).await;
+        let model = devices::get_device_model_name(path).await.or_else(|| {
+            pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
+        });
+        let u_id = devices::get_device_unique_id(path, device_name).await;
+        Some(HwmonDriverInfo {
+            name: device_name.to_owned(),
+            path: path.to_path_buf(),
+            model,
+            u_id,
+            channels,
+            ..Default::default()
+        })
     }
 
     async fn get_driver_locations(base_path: &Path) -> Vec<String> {
@@ -1383,13 +1520,24 @@ mod tests {
     use crate::config::Config;
     use crate::device::{Device, DeviceType};
     use crate::overrides::OverridesController;
-    use crate::repositories::cpu_repo::{CpuAssociation, CpuFreqs, CpuRepo, PhysicalID};
+    use crate::repositories::cpu_repo::{
+        CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID,
+    };
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
     use std::cell::Cell;
     use std::collections::HashMap;
     use std::ops::Not;
     use std::rc::Rc;
+
+    /// A census of `device_count` devices whose zones all have an online CPU, the usual case.
+    fn online(device_count: usize) -> DriverCensus {
+        DriverCensus {
+            device_count,
+            all_zones_online: true,
+            multi_die: false,
+        }
+    }
 
     /// CPU devices matched as sockets, the only kind that answers for a physical processor.
     fn matched(physical_ids: &[PhysicalID]) -> HashMap<CpuAssociation, HwmonDriverInfo> {
@@ -1427,6 +1575,25 @@ mod tests {
         "model name\t: Test CPU\n",
         "physical id\t: 1\n",
         "apicid\t\t: 0\n",
+    );
+
+    /// A four package machine with package 1 offline, as cpuinfo shows it: physical ids 0, 2
+    /// and 3, which are packages 0, 2 and 3 of the four the kernel numbers zones over.
+    static CPUINFO_PACKAGE_1_OFFLINE: &str = concat!(
+        "processor\t: 0\n",
+        "model name\t: Test CPU\n",
+        "physical id\t: 0\n",
+        "apicid\t\t: 0\n",
+        "\n",
+        "processor\t: 2\n",
+        "model name\t: Test CPU\n",
+        "physical id\t: 2\n",
+        "apicid\t\t: 64\n",
+        "\n",
+        "processor\t: 3\n",
+        "model name\t: Test CPU\n",
+        "physical id\t: 3\n",
+        "apicid\t\t: 96\n",
     );
 
     async fn repo_from_cpuinfo(cpu_info_data: Vec<u8>) -> CpuRepo {
@@ -1957,11 +2124,11 @@ mod tests {
 
             // then: each zone resolves to its own socket, with load and frequency attached.
             assert_eq!(
-                cpu_repo.intel_association(Some(0), 2),
+                cpu_repo.intel_association(Some(0), online(2)),
                 Some(CpuAssociation::Socket(0))
             );
             assert_eq!(
-                cpu_repo.intel_association(Some(1), 2),
+                cpu_repo.intel_association(Some(1), online(2)),
                 Some(CpuAssociation::Socket(1))
             );
         });
@@ -1981,11 +2148,11 @@ mod tests {
             // then: physical id 1 holds the lower APIC id, so it owns zone 0.
             assert_eq!(cpu_repo.cpu_apic_order, vec![1, 0]);
             assert_eq!(
-                cpu_repo.intel_association(Some(0), 2),
+                cpu_repo.intel_association(Some(0), online(2)),
                 Some(CpuAssociation::Socket(1))
             );
             assert_eq!(
-                cpu_repo.intel_association(Some(1), 2),
+                cpu_repo.intel_association(Some(1), online(2)),
                 Some(CpuAssociation::Socket(0))
             );
         });
@@ -2003,13 +2170,13 @@ mod tests {
 
             // then: one zone per package, but this one ranks past them. The temps are real, so
             // they are kept under the zone with no socket claim.
-            let association = cpu_repo.intel_association(Some(2), 2);
+            let association = cpu_repo.intel_association(Some(2), online(2));
             assert_eq!(association, Some(CpuAssociation::Zone(2)));
             assert!(association.unwrap().is_socket().not());
             assert_eq!(association.unwrap().device_id(), 2);
 
             // then: without a zone id there is nothing to key the device on at all.
-            assert_eq!(cpu_repo.intel_association(None, 2), None);
+            assert_eq!(cpu_repo.intel_association(None, online(2)), None);
         });
     }
 
@@ -2026,17 +2193,17 @@ mod tests {
             // then:
             assert_eq!(cpu_repo.cpu_infos.len(), 1);
             assert_eq!(
-                cpu_repo.intel_association(None, 1),
+                cpu_repo.intel_association(None, online(1)),
                 Some(CpuAssociation::Socket(0))
             );
             assert_eq!(
-                cpu_repo.intel_association(Some(9), 1),
+                cpu_repo.intel_association(Some(9), online(1)),
                 Some(CpuAssociation::Socket(0))
             );
             // then: every die of a single package belongs to it, so a per-die driver still maps
             // to the one socket.
             assert_eq!(
-                cpu_repo.intel_association(Some(1), 2),
+                cpu_repo.intel_association(Some(1), online(2)),
                 Some(CpuAssociation::Socket(0))
             );
         });
@@ -2065,7 +2232,7 @@ mod tests {
             ];
             for (zone_id, expected) in (0..4).zip(intel_expected) {
                 assert_eq!(
-                    intel_repo.intel_association(Some(zone_id), 4),
+                    intel_repo.intel_association(Some(zone_id), online(4)),
                     Some(expected)
                 );
             }
@@ -2081,7 +2248,7 @@ mod tests {
             // then: an uneven split means a die is missing, so nothing is tied to a socket.
             for zone_id in 0..3 {
                 assert_eq!(
-                    intel_repo.intel_association(Some(zone_id), 3),
+                    intel_repo.intel_association(Some(zone_id), online(3)),
                     Some(CpuAssociation::Zone(zone_id))
                 );
                 assert_eq!(
@@ -2091,7 +2258,7 @@ mod tests {
             }
             // then: one device per package ranks directly.
             assert_eq!(
-                intel_repo.intel_association(Some(1), 2),
+                intel_repo.intel_association(Some(1), online(2)),
                 Some(CpuAssociation::Socket(1))
             );
             assert_eq!(
@@ -2133,6 +2300,80 @@ mod tests {
         }
     }
 
+    /// Goal: the APIC ranking is only trusted when every zone has an online CPU, since cpuinfo
+    /// lists online packages only. Method: zone ids against the platform device count, covering
+    /// an offline zone in the middle, at the end, and a platform count that could not be read.
+    #[test]
+    fn test_zones_all_online() {
+        let cases: [(&[u8], usize, bool); 8] = [
+            // Every zone online.
+            (&[0, 1], 2, true),
+            (&[1, 0], 2, true),
+            (&[0, 1, 2, 3], 4, true),
+            // Zone 1 offline, below an online one: the ranking would shift.
+            (&[0, 2, 3], 4, false),
+            // The last zone offline, which only the platform count can show.
+            (&[0, 1], 3, false),
+            // No platform count, as when it cannot be read: a gap still shows.
+            (&[0, 1], 0, true),
+            (&[0, 2], 0, false),
+            // A repeated id is not a full set.
+            (&[0, 0], 2, false),
+        ];
+        for (zone_ids, platform_zone_count, expected) in cases {
+            assert_eq!(
+                CpuRepo::zones_all_online(zone_ids, platform_zone_count),
+                expected,
+                "zones {zone_ids:?} of {platform_zone_count}"
+            );
+        }
+    }
+
+    /// Goal: with a package offline, its zone id still counts it while cpuinfo does not, so the
+    /// APIC ranking ties zone 2 to physical id 3. The fallback must instead take the zone id as
+    /// the physical id, as the `Package id N` label did, and must not guess on multi-die parts.
+    /// Method: a four package cpuinfo with package 1 offline, asked for each online zone with
+    /// the ranking, then with the fallback, then with the fallback on a multi-die machine.
+    #[test]
+    #[serial]
+    fn test_offline_zone_falls_back_to_the_zone_id() {
+        cc_fs::test_runtime(async {
+            // given: physical ids 0, 2 and 3, and zones 0, 2 and 3 with an online CPU.
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_PACKAGE_1_OFFLINE.as_bytes().to_vec()).await;
+            assert_eq!(cpu_repo.cpu_apic_order, vec![0, 2, 3]);
+            let offline = |multi_die: bool| DriverCensus {
+                device_count: 3,
+                all_zones_online: false,
+                multi_die,
+            };
+
+            // then: the ranking alone would tie zone 2 to package 3, which is why it is not used.
+            assert_eq!(
+                cpu_repo.intel_association(Some(2), online(3)),
+                Some(CpuAssociation::Socket(3))
+            );
+            // then: the fallback ties each zone to the physical id of the same number.
+            for zone_id in [0, 2, 3] {
+                assert_eq!(
+                    cpu_repo.intel_association(Some(zone_id), offline(false)),
+                    Some(CpuAssociation::Socket(zone_id))
+                );
+            }
+            // then: a zone with no online package of that id keeps its temps under the zone.
+            assert_eq!(
+                cpu_repo.intel_association(Some(1), offline(false)),
+                Some(CpuAssociation::Zone(1))
+            );
+            // then: with several dies per package a zone id is not a physical id, so no socket.
+            for zone_id in [0, 2, 3] {
+                assert_eq!(
+                    cpu_repo.intel_association(Some(zone_id), offline(true)),
+                    Some(CpuAssociation::Zone(zone_id))
+                );
+            }
+        });
+    }
+
     /// Goal: on the 5.0 code path a two-package machine always had CPU devices numbered 1 and 2,
     /// including multi-die machines, where zones 0 and 1 matched physical ids 0 and 1. Saved
     /// settings hang off the UIDs built from those numbers, so each processor's socket device
@@ -2163,8 +2404,9 @@ mod tests {
                 for (second_first_die, device_count) in [(1, 2), (2, 4), (4, 8)] {
                     let associations = if is_intel {
                         [
-                            cpu_repo.intel_association(Some(0), device_count),
-                            cpu_repo.intel_association(Some(second_first_die), device_count),
+                            cpu_repo.intel_association(Some(0), online(device_count)),
+                            cpu_repo
+                                .intel_association(Some(second_first_die), online(device_count)),
                         ]
                     } else {
                         [
@@ -2212,7 +2454,7 @@ mod tests {
 
             // when: a zone beyond the packages cpuinfo knows about.
             let associations = [
-                cpu_repo.intel_association(Some(2), 3).unwrap(),
+                cpu_repo.intel_association(Some(2), online(3)).unwrap(),
                 cpu_repo.amd_association(Some(2), 3).unwrap(),
             ];
 
