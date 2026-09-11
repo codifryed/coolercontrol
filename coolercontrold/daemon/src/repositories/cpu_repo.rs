@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -14,16 +14,16 @@ use crate::device::{
     DriverType, Mhz, Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::overrides::OverridesController;
-use crate::repositories::cpu_percent::CpuPercentCollector;
+use crate::repositories::cpu_percent::{CpuPercent, CpuPercentCollector, MAX_LOGICAL_CPUS};
 use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, log, trace, warn};
+use log::{debug, error, info, log, trace};
 use std::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
@@ -108,6 +108,11 @@ pub struct CpuRepo {
     /// Physical ids in the order the kernel numbers package zones, i.e. ascending APIC id.
     cpu_apic_order: Vec<PhysicalID>,
     cpu_percent_collector: RefCell<CpuPercentCollector>,
+    /// Each online processor's physical id, indexed by processor id. Refreshed whenever the online
+    /// processors change, so each load percent is counted toward its own package.
+    processor_physical_ids: RefCell<Vec<Option<PhysicalID>>>,
+    /// The latest load sample for every processor, taken once per poll and shared by all packages.
+    cpu_load_percents: RefCell<Vec<CpuPercent>>,
     preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
@@ -123,6 +128,8 @@ impl CpuRepo {
             cpu_model_names: HashMap::new(),
             cpu_apic_order: Vec::new(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
+            processor_physical_ids: RefCell::new(Vec::new()),
+            cpu_load_percents: RefCell::new(Vec::new()),
             preloaded_statuses: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
@@ -222,12 +229,9 @@ impl CpuRepo {
                 physical_id_present = true;
             }
             if processor_present && physical_id_present && model_name_present {
-                // after each processor's entry
-                processor_count += 1;
-                self.cpu_infos
-                    .entry(physical_id)
-                    .or_default()
-                    .set(processor_count);
+                // after each processor's entry, counted toward its own package only
+                let package_processor_count = self.cpu_infos.entry(physical_id).or_default();
+                package_processor_count.set(package_processor_count.get() + 1);
                 self.cpu_model_names
                     .insert(physical_id, model_name.to_string());
                 processor_present = false;
@@ -255,6 +259,8 @@ impl CpuRepo {
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
             self.cpu_apic_order = Self::order_physical_ids_by_apic(&cpu_info_data);
+            *self.processor_physical_ids.borrow_mut() =
+                Self::map_processors_to_physical_ids(&cpu_info_data);
             trace!("CPUInfo: {:?}", self.cpu_infos);
             trace!("CPU APIC order: {:?}", self.cpu_apic_order);
             Ok(())
@@ -265,16 +271,13 @@ impl CpuRepo {
         }
     }
 
-    /// Updates the processor count based on the cpuinfo file.
-    /// This is sometimes needed when the active processor count changes.
-    /// This function expects that `set_cpu_infos` has already been run at initialization.
-    async fn update_processor_count(&self, cpuinfo_path: &Path) -> Result<()> {
-        let original_processor_counts = self.cpu_infos.clone();
-        let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
-        let mut physical_id: PhysicalID = 0;
-        let mut processor_count: ProcessorCount = 0;
-        let mut processor_present = false;
-        let mut physical_id_present = false;
+    /// Each online processor's physical id, indexed by processor id.
+    ///
+    /// cpuinfo prints `processor` before `physical id` in each block, and lists only online
+    /// processors. Where there is no physical id at all, as on the Raspberry Pi, every processor
+    /// belongs to the single package 0 that `set_cpu_infos` fakes for it.
+    fn map_processors_to_physical_ids(cpu_info_data: &str) -> Vec<Option<PhysicalID>> {
+        let mut processors: Vec<(usize, Option<PhysicalID>)> = Vec::new();
         for line in cpu_info_data.lines() {
             let mut it = line.split(':');
             let (key, value) = match (it.next(), it.next()) {
@@ -282,60 +285,111 @@ impl CpuRepo {
                 _ => continue, // will skip empty lines and non-key-value lines
             };
             if key == "processor" {
-                // processor_id = value.parse()?;
-                processor_present = true;
-            }
-            if key == "physical id" {
-                physical_id = value.parse()?;
-                physical_id_present = true;
-            }
-            if processor_present && physical_id_present {
-                // after each processor's entry
-                processor_count += 1;
-                self.cpu_infos
-                    .get(&physical_id)
-                    .with_context(|| {
-                        format!("physical id ({physical_id}) not found. This shouldn't happen.")
-                    })?
-                    .set(processor_count);
-                processor_present = false;
-                physical_id_present = false;
-            }
-        }
-        if self.cpu_infos.is_empty() && self.cpu_model_names.is_empty() {
-            // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
-            // they do have a model name though.
-            for line in cpu_info_data.lines() {
-                let mut it = line.split(':');
-                let (key, _value) = match (it.next(), it.next()) {
-                    (Some(key), Some(value)) => (key.trim(), value.trim()),
-                    _ => continue, // will skip empty lines and non-key-value lines
+                let Ok(processor_id) = value.parse::<usize>() else {
+                    continue;
                 };
-                if key == "processor" {
-                    processor_count += 1;
+                // The same bound the load collector puts on the processors it reads.
+                if processor_id < MAX_LOGICAL_CPUS {
+                    processors.push((processor_id, None));
+                }
+            } else if key == "physical id" {
+                if let Some((_, physical_id)) = processors.last_mut() {
+                    *physical_id = value.parse().ok();
                 }
             }
-            self.cpu_infos
-                .get(&0)
-                .with_context(|| {
-                    format!("Temp physical id ({physical_id}) not found. This shouldn't happen.")
-                })?
-                .set(processor_count);
         }
-        if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
-            if original_processor_counts != self.cpu_infos {
-                info!(
-                    "Processor counts have changed and been updated to: {:?}",
-                    self.cpu_infos
-                );
+        let has_physical_ids = processors
+            .iter()
+            .any(|(_, physical_id)| physical_id.is_some());
+        let processor_id_end = processors.iter().map(|(id, _)| id + 1).max().unwrap_or(0);
+        let mut processor_physical_ids = vec![None; processor_id_end];
+        for (processor_id, physical_id) in processors {
+            processor_physical_ids[processor_id] = if has_physical_ids {
+                physical_id
+            } else {
+                Some(0)
+            };
+        }
+        debug_assert!(processor_physical_ids.len() <= MAX_LOGICAL_CPUS);
+        processor_physical_ids
+    }
+
+    /// Whether the processor map lists exactly the processors that are online now.
+    fn processor_map_is_current(
+        online_cpu_ids: impl Iterator<Item = u16>,
+        processor_physical_ids: &[Option<PhysicalID>],
+    ) -> bool {
+        let mut online_count = 0;
+        for cpu_id in online_cpu_ids {
+            let mapped = processor_physical_ids
+                .get(usize::from(cpu_id))
+                .is_some_and(Option::is_some);
+            if mapped.not() {
+                return false;
             }
-            debug!("Updated CPUInfo: {:?}", self.cpu_infos);
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "cpuinfo either not found or missing data on this system!"
-            ))
+            online_count += 1;
         }
+        online_count == processor_physical_ids.iter().flatten().count()
+    }
+
+    /// Takes one load sample for every processor, which all packages share for this poll.
+    ///
+    /// A sample per package would give every package after the first a near zero interval. The
+    /// processor map is refreshed here when processors went offline or came online, so load
+    /// follows them at runtime.
+    async fn sample_cpu_load(&self) {
+        let (percents, map_is_current) = {
+            let mut collector = self.cpu_percent_collector.borrow_mut();
+            let percents = collector.cpu_percent_per_cpu().unwrap_or_default();
+            let map_is_current = Self::processor_map_is_current(
+                collector.online_cpu_ids(),
+                &self.processor_physical_ids.borrow(),
+            );
+            (percents, map_is_current)
+        };
+        if map_is_current.not() {
+            self.refresh_processor_map().await;
+        }
+        *self.cpu_load_percents.borrow_mut() = percents;
+    }
+
+    /// Re-reads which physical id each online processor belongs to.
+    async fn refresh_processor_map(&self) {
+        let Ok(cpu_info_data) = cc_fs::read_txt(CPUINFO_PATH).await else {
+            debug!("Could not read cpuinfo to refresh the online processors");
+            return;
+        };
+        let processor_physical_ids = Self::map_processors_to_physical_ids(&cpu_info_data);
+        if *self.processor_physical_ids.borrow() != processor_physical_ids {
+            let mut processor_counts: BTreeMap<PhysicalID, usize> = BTreeMap::new();
+            for physical_id in processor_physical_ids.iter().flatten() {
+                *processor_counts.entry(*physical_id).or_default() += 1;
+            }
+            info!("Processor counts have changed and been updated to: {processor_counts:?}");
+        }
+        *self.processor_physical_ids.borrow_mut() = processor_physical_ids;
+    }
+
+    /// The average load of one package's online processors, or `None` when none are online.
+    fn package_load_percent(
+        cpu_load_percents: &[CpuPercent],
+        processor_physical_ids: &[Option<PhysicalID>],
+        physical_id: PhysicalID,
+    ) -> Option<f64> {
+        let mut percent_sum = 0.0;
+        let mut processor_count: u32 = 0;
+        for cpu_load in cpu_load_percents {
+            let owner = processor_physical_ids
+                .get(usize::from(cpu_load.cpu_id))
+                .copied()
+                .flatten();
+            if owner == Some(physical_id) {
+                percent_sum += f64::from(cpu_load.percent);
+                processor_count += 1;
+            }
+        }
+        debug_assert!(processor_count as usize <= cpu_load_percents.len());
+        (processor_count > 0).then(|| percent_sum / f64::from(processor_count))
     }
 
     async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
@@ -693,7 +747,7 @@ impl CpuRepo {
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
     ) -> Vec<HwmonChannelInfo> {
         let mut channels = Vec::with_capacity(5); // one load, up to three freqs, one power
-        match self.init_cpu_load(physical_id).await {
+        match self.init_cpu_load(physical_id) {
             Ok(load) => channels.push(load),
             Err(err) => error!("Error matching cpu load percents to processors: {err}"),
         }
@@ -717,33 +771,14 @@ impl CpuRepo {
         channels
     }
 
-    /// We calculate total system load.
-    #[allow(clippy::cast_precision_loss)]
-    async fn collect_load(
-        &self,
-        physical_id: PhysicalID,
-        channel_name: &str,
-    ) -> Option<ChannelStatus> {
-        let percents = self
-            .cpu_percent_collector
-            .borrow_mut()
-            .cpu_percent_per_cpu()
-            .unwrap_or_default();
-        let num_percents = percents.len();
-        let num_processors = self.cpu_infos.get(&physical_id)?.get() as usize;
-        if num_percents != num_processors {
-            // IF this is true, either something unexpected has happened, or the number of processors
-            // has changed since we last collected data. (e.g. disabled at runtime)
-            if let Err(err) = self.update_processor_count(CPUINFO_PATH.as_ref()).await {
-                warn!("Failed to update processor count: {err}");
-            }
-            // recheck after updating
-            if num_percents != self.cpu_infos.get(&physical_id)?.get() as usize {
-                error!("Non-matching processors: {num_processors} and percents: {num_percents}");
-                return None;
-            }
-        }
-        let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
+    /// The load of one package: the average of its own online processors, from the sample taken
+    /// once per poll by `sample_cpu_load`.
+    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
+        let load = Self::package_load_percent(
+            &self.cpu_load_percents.borrow(),
+            &self.processor_physical_ids.borrow(),
+            physical_id,
+        )?;
         Some(ChannelStatus {
             name: channel_name.to_string(),
             duty: Some(load),
@@ -849,10 +884,9 @@ impl CpuRepo {
         })
     }
 
-    async fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
+    fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
         if self
             .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
-            .await
             .is_none()
         {
             Err(anyhow!("Error: no load percent found!"))
@@ -913,8 +947,7 @@ impl CpuRepo {
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name).await
-                    else {
+                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name) else {
                         continue;
                     };
                     status_channels.push(load_status);
@@ -1208,6 +1241,8 @@ impl Repository for CpuRepo {
         let start_initialization = Instant::now();
         self.poll_rate = self.config.get_settings()?.poll_rate;
         self.set_cpu_infos(CPUINFO_PATH.as_ref()).await?;
+        // The load channels are only created for packages with a load reading.
+        self.sample_cpu_load().await;
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
         let num_of_cpus = self.cpu_infos.len();
@@ -1387,6 +1422,7 @@ impl Repository for CpuRepo {
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        self.sample_cpu_load().await;
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
                 let device_id = device_lock.borrow().type_index;
@@ -1520,6 +1556,7 @@ mod tests {
     use crate::config::Config;
     use crate::device::{Device, DeviceType};
     use crate::overrides::OverridesController;
+    use crate::repositories::cpu_percent::CpuPercent;
     use crate::repositories::cpu_repo::{
         CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID,
     };
@@ -1917,194 +1954,107 @@ mod tests {
         });
     }
 
+    /// Goal: load is counted per package by processor id, so the map must follow cpuinfo's own
+    /// pairing of processor and physical id. Method: the dual Xeon dump, whose kernel interleaves
+    /// the packages (even processors on package 0, odd on package 1), and the Raspberry Pi,
+    /// which has no physical id at all.
+    #[test]
+    fn test_processor_map_follows_cpuinfo() {
+        // given:
+        let intel_double = std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap();
+        let raspberry_pi = std::str::from_utf8(CPUINFO_RASPBERRY_PI_5).unwrap();
+
+        // when:
+        let intel_map = CpuRepo::map_processors_to_physical_ids(intel_double);
+        let raspberry_pi_map = CpuRepo::map_processors_to_physical_ids(raspberry_pi);
+
+        // then:
+        assert_eq!(intel_map.len(), 16);
+        for (processor_id, physical_id) in intel_map.iter().enumerate() {
+            assert_eq!(*physical_id, Some((processor_id % 2) as PhysicalID));
+        }
+        // then: the Raspberry Pi's processors all belong to the package `set_cpu_infos` fakes.
+        assert_eq!(raspberry_pi_map, vec![Some(0); 4]);
+        assert!(CpuRepo::map_processors_to_physical_ids("").is_empty());
+    }
+
+    /// Goal: each package's processor count must be its own, not a running total across
+    /// packages, which is what left every package but the last without a load channel. Method:
+    /// the dual Xeon dump, 8 logical processors per package.
     #[test]
     #[serial]
-    fn test_update_processor_count_amd_single_cpu() {
+    fn test_set_cpu_infos_counts_each_package_on_its_own() {
         cc_fs::test_runtime(async {
             // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
-            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
-
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
 
             // then:
-            assert!(
-                result.is_ok(),
-                "update_processor_count should return Ok: {result:?}"
-            );
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&0).unwrap().get(),
-                initial_count,
-                "processor count should remain the same"
-            );
+            assert_eq!(cpu_repo.cpu_infos.get(&0).unwrap().get(), 8);
+            assert_eq!(cpu_repo.cpu_infos.get(&1).unwrap().get(), 8);
         });
     }
 
+    /// Goal: every package reports the load of its own processors, which 3.1.0 lost when it
+    /// moved to a single whole-system load that only the last package could match. Method: the
+    /// dual Xeon map with package 0's processors fully busy and package 1's idle.
     #[test]
-    #[serial]
-    fn test_update_processor_count_amd_double_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
-            let initial_count_0 = cpu_repo.cpu_infos.get(&0).unwrap().get();
-            let initial_count_1 = cpu_repo.cpu_infos.get(&1).unwrap().get();
+    fn test_every_package_gets_its_own_load() {
+        // given:
+        let map = CpuRepo::map_processors_to_physical_ids(
+            std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap(),
+        );
+        let percents = (0..16)
+            .map(|cpu_id| CpuPercent {
+                cpu_id,
+                percent: if cpu_id % 2 == 0 { 100.0 } else { 0.0 },
+            })
+            .collect::<Vec<CpuPercent>>();
 
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
-
-            // then:
-            assert!(
-                result.is_ok(),
-                "update_processor_count should return Ok: {result:?}"
-            );
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&0).unwrap().get(),
-                initial_count_0,
-                "processor count for physical id 0 should remain the same"
-            );
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&1).unwrap().get(),
-                initial_count_1,
-                "processor count for physical id 1 should remain the same"
-            );
-        });
+        // then:
+        assert_eq!(
+            CpuRepo::package_load_percent(&percents, &map, 0),
+            Some(100.0)
+        );
+        assert_eq!(CpuRepo::package_load_percent(&percents, &map, 1), Some(0.0));
+        // then: a package cpuinfo does not know has no load at all.
+        assert_eq!(CpuRepo::package_load_percent(&percents, &map, 2), None);
     }
 
+    /// Goal: load follows processors going offline and online at runtime, without an error and
+    /// without a fabricated 0. Method: the dual Xeon map, first with some of package 0's
+    /// processors offline, then with all of package 1's, then checking which changes to the
+    /// online set call for a map refresh.
     #[test]
-    #[serial]
-    fn test_update_processor_count_intel_single_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
-            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
+    fn test_package_load_follows_processors_going_offline() {
+        // given:
+        let map = CpuRepo::map_processors_to_physical_ids(
+            std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap(),
+        );
+        let percent = |cpu_id: u16, percent: f32| CpuPercent { cpu_id, percent };
 
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+        // then: package 0 averages only the processors it has online.
+        let some_offline = [percent(0, 20.0), percent(2, 40.0), percent(1, 90.0)];
+        assert_eq!(
+            CpuRepo::package_load_percent(&some_offline, &map, 0),
+            Some(30.0)
+        );
+        assert_eq!(
+            CpuRepo::package_load_percent(&some_offline, &map, 1),
+            Some(90.0)
+        );
+        // then: a package with every processor offline is omitted for the tick, not reported 0.
+        let package_1_offline = [percent(0, 20.0), percent(2, 40.0)];
+        assert_eq!(
+            CpuRepo::package_load_percent(&package_1_offline, &map, 1),
+            None
+        );
 
-            // then:
-            assert!(
-                result.is_ok(),
-                "update_processor_count should return Ok: {result:?}"
-            );
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&0).unwrap().get(),
-                initial_count,
-                "processor count should remain the same"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_update_processor_count_raspberry_pi_5() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
-            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
-
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
-
-            // then:
-            assert!(
-                result.is_ok(),
-                "update_processor_count should return Ok: {result:?}"
-            );
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&0).unwrap().get(),
-                initial_count,
-                "processor count should remain the same"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_update_processor_count_fails_without_init() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            // Note: set_cpu_infos NOT called
-
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
-
-            // then:
-            assert!(
-                result.is_err(),
-                "update_processor_count should return Err when cpu_infos is empty: {result:?}"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_update_processor_count_empty_file() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
-            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
-
-            // Overwrite with empty file
-            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
-
-            // when:
-            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
-
-            // then:
-            assert!(
-                result.is_ok(),
-                "update_processor_count should return Ok even with empty file: {result:?}"
-            );
-            // The processor count should remain unchanged
-            assert_eq!(
-                cpu_repo.cpu_infos.get(&0).unwrap().get(),
-                initial_count,
-                "processor count should remain unchanged when file is empty"
-            );
-        });
+        // then: the map is current only while it lists exactly the online processors.
+        assert!(CpuRepo::processor_map_is_current(0..16, &map));
+        assert!(CpuRepo::processor_map_is_current(0..15, &map).not());
+        assert!(CpuRepo::processor_map_is_current(0..17, &map).not());
+        assert!(CpuRepo::processor_map_is_current([0, 2, 4].into_iter(), &map).not());
+        assert!(CpuRepo::processor_map_is_current(std::iter::empty(), &[]));
     }
 
     /// Goal: the dual Xeon X5672 in the report has no `Package id` label and identical core ids
