@@ -973,15 +973,57 @@ impl CpuRepo {
         if contains_freq {
             Self::get_filtered_freqs(phys_cpu_id, driver, cpu_freqs, &mut status_channels);
         }
-        let (extracted_temps, _) = temps::extract_temp_statuses(driver).await;
-        let temps = extracted_temps
+        let (read_temps, _) = temps::extract_temp_statuses(driver).await;
+        let temp_names = driver
+            .channels
             .iter()
-            .map(|temp| TempStatus {
-                name: temp.name.clone(),
-                temp: temp.temp,
-            })
-            .collect();
+            .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+            .map(|channel| channel.name.as_str());
+        // The last known temps are only needed when nothing could be read, and the preloaded
+        // status for this device is keyed by its device number, `phys_cpu_id + 1`.
+        let preloaded_statuses = self.preloaded_statuses.borrow();
+        let last_known_temps = preloaded_statuses
+            .get(&(phys_cpu_id + 1))
+            .map_or(&[][..], |(_, temps)| temps.as_slice());
+        let temps = Self::fill_missing_temps(temp_names, &read_temps, last_known_temps);
         (status_channels, temps)
+    }
+
+    /// Every temp channel the device has, for this poll, in channel order.
+    ///
+    /// Every status carries every channel, so a temp that could not be read is still reported.
+    /// An offline core's temp is removed with the core, but the core is only parked in an idle
+    /// state on the same die as the rest, so it takes the hottest temp the device read this
+    /// poll. That follows the die down as it cools, so fans come down, and never reads below it.
+    /// With nothing read at all, as when every core of an Intel package is offline and
+    /// `coretemp` removes the device, each temp keeps its last known value: the package still
+    /// draws idle power, so 0 would understate it.
+    fn fill_missing_temps<'a>(
+        temp_names: impl Iterator<Item = &'a str>,
+        read_temps: &[TempStatus],
+        last_known_temps: &[TempStatus],
+    ) -> Vec<TempStatus> {
+        let hottest_temp = read_temps
+            .iter()
+            .map(|temp_status| temp_status.temp)
+            .max_by(f64::total_cmp);
+        let mut temps = Vec::with_capacity(read_temps.len().max(last_known_temps.len()));
+        for temp_name in temp_names {
+            let find = |temps: &[TempStatus]| temps.iter().find(|t| t.name == temp_name).cloned();
+            let temp_status = find(read_temps)
+                .or_else(|| {
+                    hottest_temp.map(|temp| TempStatus {
+                        name: temp_name.to_owned(),
+                        temp,
+                    })
+                })
+                .or_else(|| find(last_known_temps));
+            // No reading and nothing known before, which only happens at initialization.
+            if let Some(temp_status) = temp_status {
+                temps.push(temp_status);
+            }
+        }
+        temps
     }
 
     /// The watts to report for a power channel this poll.
@@ -1040,23 +1082,29 @@ impl CpuRepo {
     }
 
     /// Retrieves the CPU freqs and filters out the ones that are not enabled/present.
+    ///
+    /// Every status carries every channel, so a package cpuinfo has no frequency for this poll
+    /// reports 0 MHz. That only happens with every processor of the package offline, where 0 is
+    /// the true value.
     fn get_filtered_freqs(
         phys_cpu_id: PhysicalID,
         driver: &HwmonDriverInfo,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
         status_channels: &mut Vec<ChannelStatus>,
     ) {
-        let Some(mut freq_status) = Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs)
-        else {
-            return;
-        };
+        let mut freq_status =
+            Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs).unwrap_or_default();
         for channel in &driver.channels {
-            if channel.hwmon_type == HwmonChannelType::Freq {
-                let Some(freq_index) = freq_status.iter().position(|s| s.name == channel.name)
-                else {
-                    continue;
-                };
-                status_channels.push(freq_status.swap_remove(freq_index));
+            if channel.hwmon_type != HwmonChannelType::Freq {
+                continue;
+            }
+            match freq_status.iter().position(|s| s.name == channel.name) {
+                Some(freq_index) => status_channels.push(freq_status.swap_remove(freq_index)),
+                None => status_channels.push(ChannelStatus {
+                    name: channel.name.clone(),
+                    freq: Some(0),
+                    ..Default::default()
+                }),
             }
         }
     }
@@ -1554,13 +1602,15 @@ impl Repository for CpuRepo {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
-    use crate::device::{ChannelStatus, Device, DeviceType};
+    use crate::device::{ChannelStatus, Device, DeviceType, TempStatus};
     use crate::overrides::OverridesController;
     use crate::repositories::cpu_percent::CpuPercent;
     use crate::repositories::cpu_repo::{
         CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID,
     };
-    use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use crate::repositories::hwmon::hwmon_repo::{
+        HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    };
     use serial_test::serial;
     use std::cell::Cell;
     use std::collections::HashMap;
@@ -2452,6 +2502,94 @@ mod tests {
                 assert!(cpu_repo.cpu_model_name(device_id).is_some());
             }
         });
+    }
+
+    fn temp(name: &str, temp: f64) -> TempStatus {
+        TempStatus {
+            name: name.to_owned(),
+            temp,
+        }
+    }
+
+    /// Goal: every temp channel is in every status. An unreadable temp takes the hottest temp
+    /// read on the same device, since an offline core is parked on the same die as the rest. With
+    /// nothing read at all, as for an Intel package with every core offline, each keeps its last
+    /// known value. Method: three channels against each combination of reads and cache.
+    #[test]
+    fn test_fill_missing_temps() {
+        let names = ["temp1", "temp2", "temp3"];
+        let last_known = [
+            temp("temp1", 70.0),
+            temp("temp2", 65.0),
+            temp("temp3", 60.0),
+        ];
+
+        // then: all read, so nothing is filled and the cache is ignored.
+        let all_read = vec![
+            temp("temp1", 50.0),
+            temp("temp2", 45.0),
+            temp("temp3", 40.0),
+        ];
+        assert_eq!(
+            CpuRepo::fill_missing_temps(names.into_iter(), &all_read, &last_known),
+            all_read
+        );
+        // then: an offline core takes the hottest temp read this poll, not its last value or 0.
+        let core_offline = vec![temp("temp1", 50.0), temp("temp3", 40.0)];
+        assert_eq!(
+            CpuRepo::fill_missing_temps(names.into_iter(), &core_offline, &last_known),
+            vec![
+                temp("temp1", 50.0),
+                temp("temp2", 50.0),
+                temp("temp3", 40.0)
+            ]
+        );
+        // then: nothing read, so every temp keeps its last known value.
+        assert_eq!(
+            CpuRepo::fill_missing_temps(names.into_iter(), &[], &last_known),
+            last_known.to_vec()
+        );
+        // then: nothing read and nothing known, as at initialization, reports nothing.
+        assert!(CpuRepo::fill_missing_temps(names.into_iter(), &[], &[]).is_empty());
+    }
+
+    /// Goal: a package's frequency channels are in every status, and report 0 MHz in a poll
+    /// where cpuinfo has no frequency for it because every processor is offline. Method: a
+    /// driver with the three frequency channels, with and without a frequency for package 1.
+    #[test]
+    fn test_offline_package_reports_zero_mhz() {
+        // given:
+        let driver = HwmonDriverInfo {
+            channels: ["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]
+                .into_iter()
+                .map(|name| HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    name: name.to_owned(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut cpu_freqs = HashMap::from([(
+            1,
+            CpuFreqs {
+                min: 800,
+                max: 3000,
+                avg: 1900,
+            },
+        )]);
+
+        // then: online, so the real frequencies are reported.
+        let mut online = Vec::new();
+        CpuRepo::get_filtered_freqs(1, &driver, &mut cpu_freqs, &mut online);
+        let freqs: Vec<Option<u32>> = online.iter().map(|status| status.freq).collect();
+        assert_eq!(freqs, vec![Some(1900), Some(3000), Some(800)]);
+        // then: offline, so each channel is still there, at 0 MHz.
+        let mut offline = Vec::new();
+        CpuRepo::get_filtered_freqs(1, &driver, &mut HashMap::new(), &mut offline);
+        let names: Vec<&str> = offline.iter().map(|status| status.name.as_str()).collect();
+        assert_eq!(names, vec!["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]);
+        assert!(offline.iter().all(|status| status.freq == Some(0)));
     }
 
     /// Goal: the power channel is in every status, even when the counter read fails, and the gap
