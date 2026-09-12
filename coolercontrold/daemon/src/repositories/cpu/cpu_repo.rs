@@ -14,7 +14,8 @@ use crate::device::{
     DriverType, Mhz, Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::overrides::OverridesController;
-use crate::repositories::cpu_percent::{CpuPercent, CpuPercentCollector, MAX_LOGICAL_CPUS};
+use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector, MAX_LOGICAL_CPUS};
+use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, power_cap, temps};
@@ -26,20 +27,10 @@ use heck::ToTitleCase;
 use log::{debug, error, info, log, trace};
 use std::time::Instant;
 
-pub const CPU_TEMP_NAME: &str = "CPU Temp";
-pub const CPU_POWER_NAME: &str = "CPU Power";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
 const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
 const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
-const INTEL_DEVICE_NAME: &str = "coretemp";
-// cpu_device_names have a priority, and we want to return the first match
-pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
-    "k10temp",         // standard AMD module
-    INTEL_DEVICE_NAME, // standard Intel module
-    "zenpower",        // zenpower AMD module
-    "cpu_thermal",     // Raspberry Pi module
-];
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
 /// Packages on a dual-socket board, which is as wide as commodity x86 goes. Only a capacity hint,
 /// so a larger machine still parses, it just grows the map once.
@@ -1604,10 +1595,10 @@ mod tests {
     use crate::config::Config;
     use crate::device::{ChannelStatus, Device, DeviceType, TempStatus};
     use crate::overrides::OverridesController;
-    use crate::repositories::cpu_percent::CpuPercent;
-    use crate::repositories::cpu_repo::{
+    use crate::repositories::cpu::cpu_repo::{
         CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID,
     };
+    use crate::repositories::cpu::percent::CpuPercent;
     use crate::repositories::hwmon::hwmon_repo::{
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
@@ -2801,7 +2792,7 @@ mod tests {
 mod sensors_conf_tests {
     use crate::config::Config;
     use crate::overrides::OverridesController;
-    use crate::repositories::cpu_repo::CpuRepo;
+    use crate::repositories::cpu::cpu_repo::CpuRepo;
     use crate::repositories::hwmon::chip_name::{Bus, ChipName};
     use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
     use crate::sensors_conf::SensorsConf;

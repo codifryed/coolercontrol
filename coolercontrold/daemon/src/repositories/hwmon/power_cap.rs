@@ -3,7 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::Watts;
-use crate::repositories::cpu_repo::CPU_POWER_NAME;
+use crate::repositories::cpu::CPU_POWER_NAME;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{Context, Result};
 use log::{debug, info, trace};

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cc_fs;
 use crate::device::TempStatus;
-use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
+use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
