@@ -3,6 +3,7 @@
 
 use crate::paths;
 use anyhow::{anyhow, Context, Result};
+use std::net::Ipv6Addr;
 use std::ops::Not;
 use std::path::PathBuf;
 use strum::{Display, EnumString};
@@ -17,7 +18,7 @@ pub struct ServiceManifest {
     pub url: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
     pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
-    pub envs: Vec<(String, String)>, // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
+    pub envs: Vec<EnvVar>,           // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
     pub privileged: bool,            // for device service plugins (false by default)
     pub proxy: Option<ProxyConfig>,  // for plugins that expose a local HTTP API
@@ -37,18 +38,21 @@ impl ServiceManifest {
             "integration" => ServiceType::Integration,
             _ => return Err(anyhow!("Invalid service type")),
         };
-        let description =
-            Self::get_optional_string(document, "description").map(|d| sanitize_for_unit_field(&d));
-        let version =
-            Self::get_optional_string(document, "version").map(|v| sanitize_for_unit_field(&v));
-        let url = Self::get_optional_string(document, "url");
+        // These three reach only the API and the UI: the generated unit's `Description=`
+        // is built from the already strictly validated `id`. They were being run through
+        // the unit-field allowlist anyway, which silently deleted ordinary punctuation.
+        let description = Self::get_optional_string(document, "description")
+            .map(|d| validate_field("description", &d))
+            .transpose()?;
+        let version = Self::get_optional_string(document, "version")
+            .map(|v| validate_field("version", &v))
+            .transpose()?;
+        let url = Self::get_optional_string(document, "url")
+            .map(|u| validate_field("url", &u))
+            .transpose()?;
         let executable = Self::get_optional_string(document, "executable")
-            .map(|exe| {
-                if exe.contains('\0') || exe.contains('\n') || exe.contains('\r') {
-                    return Err(anyhow!(
-                        "Service manifest executable contains invalid control characters"
-                    ));
-                }
+            .map(|exe| -> Result<PathBuf> {
+                let exe = validate_field("executable", &exe)?;
                 let mut exe_path = PathBuf::from(exe);
                 if exe_path.is_relative() {
                     exe_path = paths::plugins_dir().join(&id).join(exe_path);
@@ -56,59 +60,19 @@ impl ServiceManifest {
                 Ok(exe_path)
             })
             .transpose()?;
-        let args_str = Self::get_optional_string(document, "args").unwrap_or_default();
-        let args = args_str
-            .split_whitespace()
-            .map(sanitize_for_unit_field)
-            .collect();
-        let envs_str = Self::get_optional_string(document, "envs").unwrap_or_default();
-        let envs = envs_str
-            .split_whitespace()
-            .filter_map(|env_str| {
-                env_str.split_once('=').map(|(key, value)| {
-                    (
-                        sanitize_for_unit_field(key.trim()),
-                        sanitize_for_unit_field(value.trim()),
-                    )
-                })
-            })
-            .collect();
-        let address_opt = Self::get_optional_string(document, "address")
-            .or_else(|| Some(format!("/tmp/{id}.sock")))
-            .filter(|_| service_type == ServiceType::Device);
-        let address = match address_opt {
-            None => ConnectionType::None,
-            Some(address) => {
-                if address.is_empty() {
-                    ConnectionType::Uds(PathBuf::from(format!(
-                        "/run/coolercontrol-plugin-{id}.sock"
-                    )))
-                } else {
-                    let check_path = PathBuf::from(&address);
-                    if check_path.is_absolute() {
-                        ConnectionType::Uds(check_path)
-                    } else {
-                        ConnectionType::Tcp(address)
-                    }
-                }
-            }
+        let args = Self::get_args(document)?;
+        let envs = Self::get_envs(document)?;
+        let address = Self::get_address(document, &id, &service_type)?;
+        // A mistyped `privileged` used to fall back to `false` without a word. It fails
+        // safe, but a plugin that needs root then starts unprivileged and misbehaves for
+        // a reason nothing points at.
+        let privileged = match document.get("privileged") {
+            None => false,
+            Some(item) => item
+                .as_bool()
+                .context("Service manifest privileged should be a boolean")?,
         };
-        let privileged = document
-            .get("privileged")
-            .and_then(toml_edit::Item::as_bool)
-            .unwrap_or(false);
-        let proxy = document
-            .get("proxy")
-            .and_then(toml_edit::Item::as_table)
-            .and_then(|table| {
-                let enabled = table.get("enabled")?.as_bool()?;
-                if enabled.not() {
-                    return None;
-                }
-                let port_value = table.get("port")?.as_integer()?;
-                let port = u16::try_from(port_value).ok().filter(|&p| p >= 1024)?;
-                Some(ProxyConfig { port })
-            });
+        let proxy = Self::get_proxy(document)?;
         Ok(Self {
             id,
             service_type,
@@ -139,6 +103,138 @@ impl ServiceManifest {
             ));
         }
         Ok(())
+    }
+
+    /// The proxy configuration, or `None` when the plugin has no proxy or disabled it.
+    ///
+    /// Every problem here used to yield `None`, which silently disabled the proxy: a
+    /// privileged port, a missing port, or a `proxy = { ... }` inline table, since the
+    /// old code matched only a `[proxy]` table and an inline one is a value.
+    fn get_proxy(document: &DocumentMut) -> Result<Option<ProxyConfig>> {
+        let Some(item) = document.get("proxy") else {
+            return Ok(None);
+        };
+        let table = item
+            .as_table_like()
+            .context("Service manifest proxy should be a table")?;
+        let enabled = match table.get("enabled") {
+            None => false,
+            Some(value) => value
+                .as_bool()
+                .context("Service manifest proxy.enabled should be a boolean")?,
+        };
+        if enabled.not() {
+            return Ok(None);
+        }
+        let port_value = table
+            .get("port")
+            .context("Service manifest proxy.port is required when the proxy is enabled")?
+            .as_integer()
+            .context("Service manifest proxy.port should be an integer")?;
+        // Below 1024 needs privileges the plugin user does not have, so a proxy there
+        // could never bind.
+        let port = u16::try_from(port_value)
+            .ok()
+            .filter(|&port| port >= PROXY_PORT_MIN)
+            .with_context(|| {
+                format!(
+                    "Service manifest proxy.port {port_value} should be between \
+                     {PROXY_PORT_MIN} and {}",
+                    u16::MAX
+                )
+            })?;
+        Ok(Some(ProxyConfig { port }))
+    }
+
+    /// Where a device service is reached, defaulting to a socket named after the plugin.
+    ///
+    /// Only a device service connects anywhere, so an integration service is left with no
+    /// address even when its manifest names one.
+    fn get_address(
+        document: &DocumentMut,
+        id: &str,
+        service_type: &ServiceType,
+    ) -> Result<ConnectionType> {
+        if *service_type != ServiceType::Device {
+            return Ok(ConnectionType::None);
+        }
+        let address = Self::get_optional_string(document, "address")
+            .map(|address| validate_field("address", &address))
+            .transpose()?
+            .unwrap_or_else(|| format!("/tmp/{id}.sock"));
+        let path = PathBuf::from(&address);
+        if path.is_absolute() {
+            return Ok(ConnectionType::Uds(path));
+        }
+        validate_tcp_address(&address)?;
+        Ok(ConnectionType::Tcp(address))
+    }
+
+    /// `args` as either a whitespace-separated string or an array of arguments.
+    ///
+    /// The array form is the only way to pass an argument that contains whitespace: the
+    /// string form has to split somewhere, and it splits on whitespace. It also cannot
+    /// produce an empty argument, which the old parser did whenever an argument consisted
+    /// entirely of characters it stripped.
+    ///
+    /// Values are taken verbatim. Making them safe belongs to whichever init system file
+    /// they are written into, and only that layer knows what needs escaping there.
+    fn get_args(document: &DocumentMut) -> Result<Vec<String>> {
+        let Some(item) = document.get("args") else {
+            return Ok(Vec::new());
+        };
+        if let Some(array) = item.as_array() {
+            let mut args = Vec::with_capacity(array.len());
+            for value in array {
+                let text = value
+                    .as_str()
+                    .context("Service manifest args array should hold only strings")?;
+                args.push(validate_field("args", text)?);
+            }
+            return Ok(args);
+        }
+        let text = item
+            .as_str()
+            .context("Service manifest args should be a string or an array of strings")?;
+        // Validated whole, before splitting: `split_whitespace` would otherwise eat a
+        // newline and turn one argument into two without a word about it.
+        validate_field("args", text)?;
+        Ok(text.split_whitespace().map(str::to_string).collect())
+    }
+
+    /// `envs` as either a whitespace-separated `KEY=value` string or a table.
+    ///
+    /// The table form is the only way to give a value containing whitespace, and the only
+    /// one in which a malformed entry cannot be written. In the string form a token
+    /// without an `=` used to be dropped without a word, which turned a typo into a
+    /// missing variable the author had no way to notice.
+    fn get_envs(document: &DocumentMut) -> Result<Vec<EnvVar>> {
+        let Some(item) = document.get("envs") else {
+            return Ok(Vec::new());
+        };
+        if let Some(table) = item.as_table_like() {
+            let mut envs = Vec::with_capacity(table.len());
+            for (name, value) in table.iter() {
+                let text = value
+                    .as_str()
+                    .with_context(|| format!("Service manifest env '{name}' should be a string"))?;
+                envs.push(EnvVar::new(name, &validate_field("envs", text)?)?);
+            }
+            return Ok(envs);
+        }
+        let text = item
+            .as_str()
+            .context("Service manifest envs should be a string or a table")?;
+        // Whole-string first, for the same reason as `get_args`.
+        validate_field("envs", text)?;
+        let mut envs = Vec::new();
+        for entry in text.split_whitespace() {
+            let (name, value) = entry.split_once('=').with_context(|| {
+                format!("Service manifest env entry '{entry}' is missing its '='")
+            })?;
+            envs.push(EnvVar::new(name, value)?);
+        }
+        Ok(envs)
     }
 
     fn get_optional_string(document: &DocumentMut, field_name: &str) -> Option<String> {
@@ -174,17 +270,166 @@ pub enum ConnectionType {
     Tcp(String),
 }
 
-/// Sanitize a string for safe use in `systemd` unit files and `OpenRC` service files.
-/// Uses an allowlist approach to strip control characters, quotes, and shell metacharacters
-/// that could be used for directive injection or command injection.
-fn sanitize_for_unit_field(input: &str) -> String {
-    input
+/// Lowest port a plugin's proxy may use, since anything below needs privileges the
+/// plugin user does not have.
+const PROXY_PORT_MIN: u16 = 1024;
+
+/// Checks that a non-path address is something a URI can be built from.
+///
+/// Anything at all used to be accepted, so `address = "not a hostname"` parsed happily
+/// and then failed at connect time with an opaque URI error that named neither the
+/// manifest nor the field.
+///
+/// Deliberately not a full hostname grammar: this rejects what cannot possibly reach the
+/// right target, and leaves the resolver to judge whether a well-formed host exists.
+fn validate_tcp_address(address: &str) -> Result<()> {
+    debug_assert!(
+        address.is_empty().not(),
+        "an empty address is replaced by the default before it reaches here"
+    );
+    if address.starts_with('[') {
+        return validate_bracketed_address(address);
+    }
+    validate_host_port_address(address)
+}
+
+/// `[literal]:port`, the only form in which an IPv6 address is unambiguous.
+fn validate_bracketed_address(address: &str) -> Result<()> {
+    debug_assert!(address.starts_with('['), "the caller matched the bracket");
+    let malformed = || malformed_address(address);
+    let (host, tail) = address[1..].split_once(']').ok_or_else(malformed)?;
+    let port = tail.strip_prefix(':').ok_or_else(malformed)?;
+    if host.parse::<Ipv6Addr>().is_err() {
+        return Err(anyhow!(
+            "Service manifest address '{address}' brackets '{host}', which is not an \
+             IPv6 literal"
+        ));
+    }
+    validate_port(address, port)
+}
+
+/// `host:port`, where the host is a name or an IPv4 literal.
+///
+/// The host is held to the URI unreserved set because the address is later interpolated
+/// into `http://{address}`. A `/` or an `@` in it does not fail there, it silently parses
+/// as a path or as userinfo, and the client then connects somewhere else entirely.
+fn validate_host_port_address(address: &str) -> Result<()> {
+    let (host, port) = address
+        .rsplit_once(':')
+        .ok_or_else(|| malformed_address(address))?;
+    if host.is_empty() {
+        return Err(malformed_address(address));
+    }
+    if host.chars().any(char::is_whitespace) {
+        return Err(anyhow!(
+            "Service manifest address host '{host}' contains whitespace"
+        ));
+    }
+    // A colon left in the host is an IPv6 literal that was not bracketed. `http://::1:80`
+    // is not a URI, so it would fail at connect time with the opaque error this check
+    // exists to replace.
+    if host.contains(':') {
+        return Err(anyhow!(
+            "Service manifest address '{address}' should bracket its IPv6 host, as in \
+             '[{host}]:{port}'"
+        ));
+    }
+    if let Some(found) = host
         .chars()
-        .filter(|c| {
-            c.is_alphanumeric()
-                || matches!(c, ' ' | '.' | ',' | ':' | '-' | '_' | '/' | '=' | '+' | '@')
+        .find(|c| c.is_ascii_alphanumeric().not() && matches!(c, '-' | '.' | '_' | '~').not())
+    {
+        return Err(anyhow!(
+            "Service manifest address host '{host}' contains '{}', which cannot appear \
+             in a host name",
+            found.escape_debug()
+        ));
+    }
+    validate_port(address, port)
+}
+
+fn validate_port(address: &str, port: &str) -> Result<()> {
+    let port: u16 = port.parse().map_err(|_| {
+        anyhow!(
+            "Service manifest address '{address}' should end in a port from 1 to {}",
+            u16::MAX
+        )
+    })?;
+    if port == 0 {
+        return Err(anyhow!(
+            "Service manifest address '{address}' cannot use port 0"
+        ));
+    }
+    Ok(())
+}
+
+fn malformed_address(address: &str) -> anyhow::Error {
+    anyhow!(
+        "Service manifest address '{address}' should be 'host:port', or an absolute path \
+         for a Unix socket"
+    )
+}
+
+/// Rejects the one thing no manifest field may contain.
+///
+/// A control character is the only universal hazard: a newline injects a directive into a
+/// generated unit file or a statement into an `OpenRC` script, and a NUL cannot survive a
+/// syscall. Every other character is the generated file's problem to escape, which is why
+/// the escaping now lives in `service_management` next to the syntax it has to satisfy.
+///
+/// This replaces an allowlist that deleted anything it did not recognise. That silently
+/// corrupted ordinary values: `--rate 50%` reached the plugin as `--rate 50`, and
+/// `--listen=[::1]:8080` lost its brackets. Rejecting is loud, and a control character in
+/// a manifest is always an authoring mistake rather than something to salvage.
+fn validate_field(field_name: &str, value: &str) -> Result<String> {
+    if let Some(found) = value.chars().find(|c| c.is_control()) {
+        return Err(anyhow!(
+            "Service manifest {field_name} contains the control character '{}'",
+            found.escape_debug()
+        ));
+    }
+    Ok(value.to_string())
+}
+
+/// One environment variable handed to a plugin's service.
+///
+/// A named type rather than a `(String, String)`, so a name can only be validated once,
+/// here, and no consumer downstream can pair the halves the wrong way round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvVar {
+    pub name: String,
+    pub value: String,
+}
+
+impl EnvVar {
+    /// Rejects a name outside `systemd.exec(5)`: ASCII letters, digits and underscores,
+    /// non-empty, and not starting with a digit.
+    ///
+    /// Rejecting here beats writing a unit file that systemd then refuses to load, which
+    /// would surface as the whole plugin failing to start for no stated reason.
+    pub fn new(name: &str, value: &str) -> Result<Self> {
+        if name.is_empty() {
+            return Err(anyhow!("Service manifest env name must not be empty"));
+        }
+        if name.starts_with(|c: char| c.is_ascii_digit()) {
+            return Err(anyhow!(
+                "Service manifest env name '{name}' must not start with a digit"
+            ));
+        }
+        if name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            .not()
+        {
+            return Err(anyhow!(
+                "Service manifest env name '{name}' may hold only ASCII letters, digits \
+                 and underscores"
+            ));
+        }
+        Ok(Self {
+            name: name.to_string(),
+            value: value.to_string(),
         })
-        .collect()
+    }
 }
 
 #[cfg(test)]
@@ -210,6 +455,10 @@ mod tests {
             .join("\n")
     }
 
+    fn env(name: &str, value: &str) -> EnvVar {
+        EnvVar::new(name, value).unwrap()
+    }
+
     fn parse_manifest(toml_str: &str) -> Result<ServiceManifest> {
         let doc: DocumentMut = toml_str.parse()?;
         ServiceManifest::from_document(&doc, PathBuf::from("/tmp/test"))
@@ -231,10 +480,7 @@ mod tests {
         assert_eq!(manifest.args, vec!["--verbose", "--port=8080"]);
         assert_eq!(
             manifest.envs,
-            vec![
-                ("LOG_LEVEL".into(), "debug".into()),
-                ("PORT".into(), "3000".into()),
-            ]
+            vec![env("LOG_LEVEL", "debug"), env("PORT", "3000")]
         );
     }
 
@@ -280,62 +526,319 @@ mod tests {
         assert_eq!(manifest.id, id);
     }
 
+    /// Goal: an address that cannot become a URI is refused where the message can name
+    /// the manifest. It used to parse happily and fail much later inside the gRPC client,
+    /// with nothing pointing back at the field that was wrong.
     #[test]
-    fn test_args_injection_sanitized() {
+    fn test_malformed_tcp_address_rejected() {
+        for bad in [
+            "not a hostname",
+            "192.168.1.100",
+            "192.168.1.100:",
+            "192.168.1.100:notaport",
+            "192.168.1.100:0",
+            "192.168.1.100:99999",
+            ":11987",
+            "my host:11987",
+            "::1",
+            "[::1]11987",
+            "[not-a-literal]:11987",
+        ] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{bad}\""))]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: a host that changes what `http://{address}` means is refused here rather
+    /// than quietly connecting elsewhere. `a/b:80` parses as host `a` with path `/b:80`,
+    /// and `u@h:80` as userinfo, so both reach a target the author never wrote.
+    #[test]
+    fn test_host_that_would_reparse_as_a_uri_rejected() {
+        for bad in ["a/b:11987", "u@h:11987", "h?x:11987", "h#x:11987"] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{bad}\""))]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: an unbracketed IPv6 literal is refused, and the message says to bracket it.
+    /// It used to be accepted as unambiguous, but `http://::1:11987` is not a URI, so it
+    /// still failed at connect time with the opaque error this check replaced.
+    #[test]
+    fn test_unbracketed_ipv6_address_rejected() {
+        let toml = make_manifest_toml(&[("address", "\"::1:11987\"")]);
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("[::1]:11987"), "{error}");
+    }
+
+    /// Goal: every shape that must keep working, so the new check cannot turn a valid
+    /// address away.
+    #[test]
+    fn test_valid_addresses_accepted() {
+        for good in [
+            "192.168.1.100:11987",
+            "localhost:11987",
+            "my-server.example.com:11987",
+            "host_with_underscore:11987",
+            "[::1]:11987",
+            "[fe80::1]:11987",
+        ] {
+            let toml = make_manifest_toml(&[("address", &format!("\"{good}\""))]);
+            let manifest = parse_manifest(&toml)
+                .unwrap_or_else(|err| panic!("{good} should parse, got {err}"));
+            assert!(
+                matches!(manifest.address, ConnectionType::Tcp(_)),
+                "{good} should be a TCP address, got {:?}",
+                manifest.address
+            );
+        }
+    }
+
+    /// Goal: an absolute path is a Unix socket and is not held to the host:port rule.
+    #[test]
+    fn test_absolute_address_is_a_unix_socket() {
+        let toml = make_manifest_toml(&[("address", "\"/run/my plugin.sock\"")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(
+            manifest.address,
+            ConnectionType::Uds(PathBuf::from("/run/my plugin.sock"))
+        );
+    }
+
+    /// Goal: an integration service has nothing to connect to, so it gets no address even
+    /// when its manifest names one. This also pins the default a device service falls
+    /// back to, which the old code reached through a branch that could never run.
+    #[test]
+    fn test_address_defaults_only_for_a_device_service() {
+        let device = parse_manifest(&make_manifest_toml(&[])).unwrap();
+        assert_eq!(
+            device.address,
+            ConnectionType::Uds(PathBuf::from("/tmp/test-plugin.sock"))
+        );
+
+        let integration =
+            parse_manifest(&make_manifest_toml(&[("type", "\"integration\"")])).unwrap();
+        assert_eq!(integration.address, ConnectionType::None);
+
+        let addressed_integration = parse_manifest(&make_manifest_toml(&[
+            ("type", "\"integration\""),
+            ("address", "\"192.168.1.100:11987\""),
+        ]))
+        .unwrap();
+        assert_eq!(addressed_integration.address, ConnectionType::None);
+    }
+
+    /// Goal: a mistyped `privileged` says so. Falling back to `false` is safe but silent,
+    /// so a plugin that needs root starts unprivileged and fails for a reason nothing
+    /// points at.
+    #[test]
+    fn test_non_boolean_privileged_rejected() {
+        for bad in ["\"true\"", "1", "\"yes\""] {
+            let toml = make_manifest_toml(&[("privileged", bad)]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+        assert!(
+            parse_manifest(&make_manifest_toml(&[("privileged", "true")]))
+                .unwrap()
+                .privileged
+        );
+    }
+
+    /// Goal: a proxy the daemon cannot honour is an error, not a silent omission. Every
+    /// one of these used to disable the proxy without a word.
+    #[test]
+    fn test_unusable_proxy_rejected() {
+        for bad in [
+            "{ enabled = true, port = 80 }",
+            "{ enabled = true, port = 0 }",
+            "{ enabled = true, port = 70000 }",
+            "{ enabled = true }",
+            "{ enabled = \"yes\", port = 8080 }",
+            "{ enabled = true, port = \"8080\" }",
+            "\"true\"",
+        ] {
+            let toml = make_manifest_toml(&[("proxy", bad)]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    /// Goal: an inline `proxy` table works. The old code matched only a `[proxy]` table,
+    /// and an inline table is a value, so `proxy = { enabled = true, port = 8080 }` was
+    /// silently ignored and the proxy never came up.
+    #[test]
+    fn test_inline_proxy_table_is_honoured() {
+        let toml = make_manifest_toml(&[("proxy", "{ enabled = true, port = 8080 }")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(manifest.proxy.map(|proxy| proxy.port), Some(8080));
+    }
+
+    /// Goal: a disabled proxy needs no port and is not an error, which is the normal way
+    /// to turn one off.
+    #[test]
+    fn test_disabled_proxy_needs_no_port() {
+        let toml = make_manifest_toml(&[("proxy", "{ enabled = false }")]);
+        assert!(parse_manifest(&toml).unwrap().proxy.is_none());
+    }
+
+    /// Goal: a control character is refused rather than deleted. A newline in `args`
+    /// would inject a directive into the generated unit, and the old parser dropped it
+    /// silently, which meant the injected text became part of the argument instead.
+    #[test]
+    fn test_args_with_a_control_character_rejected() {
         let toml = make_manifest_toml(&[("args", "\"--verbose\\nExecStart=/bin/malicious\"")]);
-        let manifest = parse_manifest(&toml).unwrap();
-        // Newline is stripped, so args are joined without injection
-        for arg in &manifest.args {
-            assert!(!arg.contains('\n'));
-            assert!(!arg.contains(';'));
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("args"), "{error}");
+        assert!(error.contains("control character"), "{error}");
+    }
+
+    /// Goal: the reported bug. Every one of these was silently corrupted by the old
+    /// allowlist, most visibly by losing the final character of an argument.
+    #[test]
+    fn test_args_reach_the_plugin_verbatim() {
+        for (written, expected) in [
+            ("--rate 50%", vec!["--rate", "50%"]),
+            ("--pct 100%", vec!["--pct", "100%"]),
+            ("--tilde x~", vec!["--tilde", "x~"]),
+            ("--listen=[::1]:8080", vec!["--listen=[::1]:8080"]),
+            (
+                "--config ~/.config/foo.toml",
+                vec!["--config", "~/.config/foo.toml"],
+            ),
+            ("--filter *", vec!["--filter", "*"]),
+            ("--sep ;", vec!["--sep", ";"]),
+            ("--pass p@ss!word", vec!["--pass", "p@ss!word"]),
+            ("--path C:\\\\tmp", vec!["--path", "C:\\tmp"]),
+            (
+                "--url https://ex.com/a?b=1&c=2",
+                vec!["--url", "https://ex.com/a?b=1&c=2"],
+            ),
+        ] {
+            let toml = make_manifest_toml(&[("args", &format!("\"{written}\""))]);
+            let manifest = parse_manifest(&toml)
+                .unwrap_or_else(|err| panic!("{written} should parse, got {err}"));
+            assert_eq!(manifest.args, expected, "for {written}");
         }
     }
 
+    /// Goal: the string form cannot express an argument containing whitespace, because it
+    /// has to split somewhere. The array form is the answer, and it used to be ignored
+    /// outright: a non-string `args` fell through and produced no arguments at all.
     #[test]
-    fn test_envs_quotes_and_newlines_sanitized() {
-        let toml = make_manifest_toml(&[("envs", "\"KEY=value\\\"injected KEY2=val\\nue\"")]);
+    fn test_args_array_keeps_whitespace_in_one_argument() {
+        let toml = make_manifest_toml(&[("args", "[\"--name\", \"My Device\", \"-v\"]")]);
         let manifest = parse_manifest(&toml).unwrap();
-        for (key, value) in &manifest.envs {
-            assert!(!key.contains('"'));
-            assert!(!key.contains('\n'));
-            assert!(!value.contains('"'));
-            assert!(!value.contains('\n'));
+        assert_eq!(manifest.args, vec!["--name", "My Device", "-v"]);
+    }
+
+    /// Goal: the string form can no longer produce an empty argument, which the old
+    /// parser did whenever a whole argument was stripped away. An empty argv entry is
+    /// read as a positional argument by most parsers, so it is worse than none.
+    #[test]
+    fn test_no_argument_is_ever_empty() {
+        let toml = make_manifest_toml(&[("args", "\"--filter * --sep ;\"")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert!(manifest.args.iter().all(|arg| arg.is_empty().not()));
+    }
+
+    /// Goal: a mistyped `args` must say so rather than silently yielding nothing.
+    #[test]
+    fn test_args_of_the_wrong_type_rejected() {
+        let numeric = make_manifest_toml(&[("args", "42")]);
+        assert!(parse_manifest(&numeric).is_err());
+
+        let mixed_array = make_manifest_toml(&[("args", "[\"--a\", 42]")]);
+        assert!(parse_manifest(&mixed_array).is_err());
+    }
+
+    /// Goal: env values are verbatim too. `%Y-%m-%d` used to arrive as `Y-m-d`, which
+    /// silently changed the meaning of a log-format variable.
+    #[test]
+    fn test_env_values_reach_the_plugin_verbatim() {
+        let toml = make_manifest_toml(&[("envs", "\"FMT=%Y-%m-%d PATH=/a:/b\"")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(
+            manifest.envs,
+            vec![env("FMT", "%Y-%m-%d"), env("PATH", "/a:/b")]
+        );
+    }
+
+    /// Goal: the table form, the only way to give a value containing whitespace. The
+    /// string form silently kept `hello` and threw `world` away.
+    #[test]
+    fn test_env_table_keeps_whitespace_in_a_value() {
+        let toml = make_manifest_toml(&[("envs", "{ GREETING = \"hello world\", N = \"1\" }")]);
+        let manifest = parse_manifest(&toml).unwrap();
+        assert_eq!(
+            manifest.envs,
+            vec![env("GREETING", "hello world"), env("N", "1")]
+        );
+    }
+
+    /// Goal: a malformed entry is an error, not a silent omission. A token with no `=`
+    /// used to be dropped without a word, so a typo became a missing variable that the
+    /// author had no way to notice.
+    #[test]
+    fn test_env_entry_without_an_equals_rejected() {
+        let toml = make_manifest_toml(&[("envs", "\"NOEQUALS OTHER=1\"")]);
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("NOEQUALS"), "{error}");
+        assert!(error.contains("missing"), "{error}");
+    }
+
+    /// Goal: an env name systemd would refuse is caught here, where the message can name
+    /// it, rather than at unit load where the whole plugin just fails to start.
+    #[test]
+    fn test_env_names_follow_the_systemd_rules() {
+        for bad in ["1FIRST=x", "WITH-DASH=x", "=x", "WITH.DOT=x"] {
+            let toml = make_manifest_toml(&[("envs", &format!("\"{bad}\""))]);
+            assert!(parse_manifest(&toml).is_err(), "{bad} should be rejected");
         }
+        let good = make_manifest_toml(&[("envs", "\"_UNDER1=x\"")]);
+        assert_eq!(
+            parse_manifest(&good).unwrap().envs,
+            vec![env("_UNDER1", "x")]
+        );
     }
 
-    #[test]
-    fn test_description_newline_injection_sanitized() {
-        let toml = make_manifest_toml(&[("description", "\"Normal desc\\nExecStart=/bin/evil\"")]);
-        let manifest = parse_manifest(&toml).unwrap();
-        let desc = manifest.description.unwrap();
-        // The newline is stripped, collapsing the injected directive into the description
-        // text on a single line, which prevents systemd from interpreting it as a directive.
-        assert!(!desc.contains('\n'));
-        assert_eq!(desc, "Normal descExecStart=/bin/evil");
-    }
-
+    /// Goal: a control character is still refused in `executable`, which the old parser
+    /// checked by hand and now goes through the shared validator.
     #[test]
     fn test_executable_with_control_chars_rejected() {
         let toml = make_manifest_toml(&[("executable", "\"/usr/bin/test\\n--malicious\"")]);
-        let result = parse_manifest(&toml);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("control characters"));
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("executable"), "{error}");
+        assert!(error.contains("control character"), "{error}");
     }
 
+    /// Goal: `description`, `version` and `url` reach only the API and the UI, never a
+    /// unit file, whose `Description=` is built from the validated `id`. They were being
+    /// run through the unit allowlist anyway, which deleted ordinary punctuation from
+    /// human-written text.
     #[test]
-    fn test_sanitize_for_unit_field_strips_dangerous_chars() {
+    fn test_ui_fields_keep_their_punctuation() {
+        let toml = make_manifest_toml(&[
+            ("description", "\"Bob's plugin (v2) 100% better!\""),
+            ("version", "\"1.0~beta2\""),
+            ("url", "\"https://ex.com/a?b=1&c=2#frag\""),
+        ]);
+        let manifest = parse_manifest(&toml).unwrap();
         assert_eq!(
-            sanitize_for_unit_field("normal-value_1.0"),
-            "normal-value_1.0"
+            manifest.description.as_deref(),
+            Some("Bob's plugin (v2) 100% better!")
         );
-        assert_eq!(sanitize_for_unit_field("value\nnewline"), "valuenewline");
-        assert_eq!(sanitize_for_unit_field("value\"quoted\""), "valuequoted");
-        assert_eq!(sanitize_for_unit_field("val;rm -rf /"), "valrm -rf /");
-        assert_eq!(sanitize_for_unit_field("$(evil)"), "evil");
-        assert_eq!(sanitize_for_unit_field("key=value"), "key=value");
-        assert_eq!(sanitize_for_unit_field(""), "");
+        assert_eq!(manifest.version.as_deref(), Some("1.0~beta2"));
+        assert_eq!(
+            manifest.url.as_deref(),
+            Some("https://ex.com/a?b=1&c=2#frag")
+        );
+    }
+
+    /// Goal: a newline in a UI field is still refused. It cannot reach a unit file, but
+    /// it has no legitimate use and the old behaviour, collapsing it into the text, left
+    /// the injected directive sitting in the description.
+    #[test]
+    fn test_description_with_a_control_character_rejected() {
+        let toml = make_manifest_toml(&[("description", "\"Normal desc\\nExecStart=/bin/evil\"")]);
+        let error = parse_manifest(&toml).unwrap_err().to_string();
+        assert!(error.contains("description"), "{error}");
     }
 }

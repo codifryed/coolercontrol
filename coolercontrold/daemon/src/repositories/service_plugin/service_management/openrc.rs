@@ -10,6 +10,7 @@ use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
 use crate::repositories::utils::DirectCommand;
 use crate::rt::sleep;
 use anyhow::{anyhow, Result};
+use log::warn;
 use std::fmt::Write;
 use std::fs::Permissions;
 use std::ops::Not;
@@ -173,8 +174,14 @@ fn create_service_file(
     service_definition: &ServiceDefinition,
 ) -> String {
     let mut script = String::new();
-    let args = service_definition.args.join(" ");
-    let program_path = service_definition.executable.to_string_lossy();
+    warn_about_collapsed_whitespace(service_definition);
+    let args = service_definition
+        .args
+        .iter()
+        .map(|arg| openrc_word(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let program_path = openrc_word(&service_definition.executable.to_string_lossy());
     let _ = writeln!(script, "#!/sbin/openrc-run");
     let _ = writeln!(script);
     let _ = writeln!(script, "description=\"{description}\"");
@@ -199,22 +206,123 @@ fn create_service_file(
 fn build_supervise_daemon_args(service_definition: &ServiceDefinition) -> String {
     let mut parts = Vec::with_capacity(4);
     if let Some(username) = &service_definition.username {
-        parts.push(format!("-u {username}"));
+        parts.push(format!("-u {}", openrc_word(username)));
         // Same rule as the systemd unit: harden the unprivileged plugin, leave a plugin the
-        // user deliberately gave root alone. `--no-new-privs` is a bare flag.
+        // user deliberately gave root alone. `--no-new-privs` is a bare flag, so it needs
+        // no quoting of its own.
         parts.push("--no-new-privs".to_string());
     }
     if let Some(envs) = &service_definition.envs {
-        for (var, val) in envs {
-            parts.push(format!("-e {var}={val}"));
+        for env_var in envs {
+            // Quoted whole, so `supervise-daemon` receives one `VAR=value` argument even
+            // when the value contains whitespace.
+            let assignment = format!("{}={}", env_var.name, env_var.value);
+            parts.push(format!("-e {}", openrc_word(&assignment)));
         }
     }
     parts.join(" ")
 }
 
+/// One word for the generated script, quoted so it survives to `supervise-daemon` intact.
+///
+/// Two layers read it, and both have to be satisfied at once. `sh/supervise-daemon.sh`
+/// runs `eval supervise-daemon ... ${supervise_daemon_args} $command -- $command_args`,
+/// so the shell parses the assignment in this script and then `eval` parses the resulting
+/// value a second time. Escaping only for the assignment is not enough: a value written
+/// as a backslash-escaped backtick leaves a literal backtick pair in the variable, and
+/// the `eval` then executes it. The allowlist this replaced hid that by deleting the
+/// character outright.
+///
+/// So each word is single-quoted for the `eval`, then escaped for the double-quoted
+/// assignment that carries it there. Single quotes are what make a value inert: the shell
+/// expands nothing inside them.
+///
+/// One thing this still cannot carry: `$command_args` is expanded unquoted, so the shell
+/// field-splits it before `eval` rejoins the fields with single spaces. An argument
+/// holding repeated whitespace therefore arrives with it collapsed. Tabs and newlines
+/// cannot reach here at all, since the manifest parser rejects control characters.
+fn openrc_word(value: &str) -> String {
+    debug_assert!(
+        value.chars().any(char::is_control).not(),
+        "the manifest parser rejects control characters before they reach here"
+    );
+    escape_dquoted(&single_quoted(value))
+}
+
+/// Warns about an argument `OpenRC` cannot carry through unaltered.
+///
+/// `$command_args` is expanded unquoted, so the shell field-splits it before `eval`
+/// rejoins the fields with single spaces. Nothing here can prevent that, but a plugin
+/// that behaves differently under `OpenRC` than under systemd should say why rather than
+/// leave the author to find it.
+fn warn_about_collapsed_whitespace(service_definition: &ServiceDefinition) {
+    for arg in &service_definition.args {
+        if whitespace_is_collapsed(arg) {
+            warn!(
+                "Plugin {} argument '{arg}' reaches it with the whitespace collapsed: \
+                 OpenRC re-splits the command line and cannot carry it verbatim",
+                service_definition.service_id
+            );
+        }
+    }
+}
+
+/// Whether the shell's field splitting would alter this argument's whitespace.
+fn whitespace_is_collapsed(arg: &str) -> bool {
+    arg.split_whitespace().collect::<Vec<_>>().join(" ") != arg
+}
+
+/// POSIX single-quoting: wrap in `'`, and close, escape, reopen around each `'`.
+fn single_quoted(value: &str) -> String {
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('\'');
+    debug_assert!(quoted.starts_with('\''), "a quoted word must open quoted");
+    for character in value.chars() {
+        if character == '\'' {
+            quoted.push_str("'\\''");
+        } else {
+            quoted.push(character);
+        }
+    }
+    quoted.push('\'');
+    quoted
+}
+
+/// Escapes the four characters that keep their meaning inside the double-quoted
+/// assignment a value is written into. Applied after [`single_quoted`], whose own
+/// backslashes need it too.
+fn escape_dquoted(value: &str) -> String {
+    debug_assert!(
+        value.starts_with('\'') && value.ends_with('\''),
+        "escape_dquoted takes a single-quoted word"
+    );
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if matches!(character, '\\' | '"' | '$' | '`') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    // Nothing that ends the assignment or starts an expansion may survive unescaped: the
+    // rest of the value would then be read as script rather than as a word.
+    debug_assert!(
+        escaped
+            .char_indices()
+            .filter(|(_, character)| matches!(character, '"' | '$' | '`'))
+            .all(|(index, _)| escaped[..index].ends_with('\\')),
+        "{escaped} would break out of its assignment"
+    );
+    escaped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::service_plugin::service_manifest::EnvVar;
+
+    fn env(name: &str, value: &str) -> EnvVar {
+        EnvVar::new(name, value).unwrap()
+    }
 
     fn base_definition() -> ServiceDefinition {
         ServiceDefinition {
@@ -226,6 +334,156 @@ mod tests {
             envs: None,
             disable_restart_on_failure: false,
         }
+    }
+
+    fn line_of(script: &str, variable: &str) -> String {
+        script
+            .lines()
+            .find(|line| line.starts_with(&format!("{variable}=")))
+            .unwrap_or_else(|| panic!("{variable} is present in {script}"))
+            .to_string()
+    }
+
+    fn command_args_of(args: Vec<String>) -> String {
+        let mut definition = base_definition();
+        definition.args = args;
+        line_of(
+            &create_service_file("Test", "test", &definition),
+            "command_args",
+        )
+    }
+
+    /// Puts a generated assignment through a real shell exactly the way OpenRC does, and
+    /// returns the words `supervise-daemon` would receive.
+    ///
+    /// This is the only honest way to test the escaping. Two layers parse the value, the
+    /// assignment and then `eval`, and reasoning about their composition by hand is what
+    /// produced a command injection on the first attempt. `printf` prints one word per
+    /// line, which is what the caller compares against.
+    fn words_after_eval(assignment: &str, variable: &str) -> Vec<String> {
+        // `eval set -- $var` unquoted, which is exactly how `supervise-daemon.sh`
+        // expands it: the shell field-splits the value, `eval` rejoins the fields with
+        // single spaces and parses the result. The words are then printed outside any
+        // `eval`, since a second parse would consume printf's own escape.
+        let program = format!(
+            "{assignment}\neval set -- ${variable}\nfor word in \"$@\"; do printf '%s\\n' \"$word\"; done\n"
+        );
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&program)
+            .output()
+            .expect("/bin/sh runs");
+        assert!(
+            output.status.success(),
+            "shell failed on {program}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn args_as_the_plugin_sees_them(args: Vec<String>) -> Vec<String> {
+        words_after_eval(&command_args_of(args), "command_args")
+    }
+
+    /// Goal: an argument arrives at the plugin byte for byte, including every character
+    /// the old allowlist deleted. This is the reported bug, checked through a real shell
+    /// rather than against an expected string.
+    #[test]
+    fn arguments_reach_the_plugin_unaltered() {
+        let args: Vec<String> = [
+            "--rate",
+            "50%",
+            "x~",
+            "--listen=[::1]:8080",
+            "~/.config/foo.toml",
+            "*",
+            ";",
+            "p@ss!word",
+            "https://ex.com/a?b=1&c=2",
+            r"C:\tmp",
+            "--name",
+            "My Device",
+            "it's",
+            r#"say "hi""#,
+        ]
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect();
+        assert_eq!(args_as_the_plugin_sees_them(args.clone()), args);
+    }
+
+    /// Goal: the injection this escaping exists to stop. `supervise-daemon.sh` runs the
+    /// value through `eval`, so a value carrying a command substitution or a variable
+    /// reference would be executed or expanded as root. Each must arrive as literal text.
+    #[test]
+    fn arguments_are_never_expanded_or_executed_by_the_eval() {
+        for payload in [
+            "`id`",
+            "$(id)",
+            "$HOME",
+            "${HOME}",
+            "a\";id;\"b",
+            "a';id;'b",
+            "$(touch /tmp/coolercontrol-openrc-injection-probe)",
+        ] {
+            let words = args_as_the_plugin_sees_them(vec![payload.to_string()]);
+            assert_eq!(words, vec![payload.to_string()], "for {payload}");
+        }
+        assert!(
+            std::path::Path::new("/tmp/coolercontrol-openrc-injection-probe")
+                .exists()
+                .not(),
+            "the eval executed a command substitution"
+        );
+    }
+
+    /// Goal: an argument containing whitespace arrives as one argument. The `eval` is
+    /// what makes this possible, since single quotes survive to be parsed there.
+    #[test]
+    fn whitespace_stays_inside_one_argument() {
+        assert_eq!(
+            args_as_the_plugin_sees_them(vec!["--name".into(), "My Device".into()]),
+            vec!["--name".to_string(), "My Device".to_string()]
+        );
+    }
+
+    /// Goal: the program path goes through the same two layers, since `$command` is
+    /// expanded unquoted inside the same `eval`.
+    #[test]
+    fn the_program_path_survives_the_eval() {
+        let mut definition = base_definition();
+        definition.executable = PathBuf::from("/opt/my plugin/run$x");
+        let script = create_service_file("Test", "test", &definition);
+        assert_eq!(
+            words_after_eval(&line_of(&script, "command"), "command"),
+            vec!["/opt/my plugin/run$x".to_string()]
+        );
+    }
+
+    /// Goal: an environment value reaches `supervise-daemon` as a single `VAR=value`
+    /// argument, because `supervise_daemon_args` is expanded inside the same `eval`.
+    #[test]
+    fn environment_values_survive_the_eval() {
+        let mut definition = base_definition();
+        definition.username = Some("cc-plugin-user".to_string());
+        definition.envs = Some(vec![
+            env("GREETING", "hello world"),
+            env("LITERAL", "$HOME"),
+        ]);
+        let script = create_service_file("Test", "test", &definition);
+        let words = words_after_eval(
+            &line_of(&script, "supervise_daemon_args"),
+            "supervise_daemon_args",
+        );
+        assert!(
+            words.contains(&"GREETING=hello world".to_string()),
+            "{words:?}"
+        );
+        assert!(words.contains(&"LITERAL=$HOME".to_string()), "{words:?}");
+        assert!(words.contains(&"--no-new-privs".to_string()), "{words:?}");
     }
 
     /// Goal: the wait for a reported stop to finish must terminate. An unbounded wait
@@ -241,6 +499,22 @@ mod tests {
         );
     }
 
+    /// Goal: the one thing OpenRC cannot carry verbatim is recognised, so the author is
+    /// told rather than left to find that the plugin behaves differently from systemd.
+    /// Method: the predicate the warning is gated on, over the shapes that matter.
+    #[test]
+    fn collapsed_whitespace_is_recognised() {
+        for altered in ["--flag  value", " --flag", "--flag ", "a  b  c"] {
+            assert!(whitespace_is_collapsed(altered), "{altered} is altered");
+        }
+        for intact in ["--flag value", "--flag", "", "--port=8080"] {
+            assert!(
+                whitespace_is_collapsed(intact).not(),
+                "{intact} survives intact"
+            );
+        }
+    }
+
     #[test]
     fn service_file_contains_required_directives() {
         // A basic service file must contain the shebang, supervisor,
@@ -250,8 +524,8 @@ mod tests {
         assert!(script.starts_with("#!/sbin/openrc-run"));
         assert!(script.contains("description=\"Test Plugin\""));
         assert!(script.contains("supervisor=\"supervise-daemon\""));
-        assert!(script.contains("command=\"/usr/bin/test-plugin\""));
-        assert!(script.contains("command_args=\"--port 8080\""));
+        assert!(script.contains("command=\"'/usr/bin/test-plugin'\""));
+        assert!(script.contains("command_args=\"'--port' '8080'\""));
         assert!(script.contains("provide cc-plugin-test-plugin"));
         assert!(script.contains("use logger"));
     }
@@ -285,7 +559,7 @@ mod tests {
         let mut def = base_definition();
         def.username = Some("cc-plugin-user".to_string());
         let script = create_service_file("Test Plugin", "cc-plugin-test-plugin", &def);
-        assert!(script.contains("supervise_daemon_args=\"-u cc-plugin-user --no-new-privs\""));
+        assert!(script.contains("supervise_daemon_args=\"-u 'cc-plugin-user' --no-new-privs\""));
     }
 
     /// Goal: an unprivileged plugin must not be able to climb back out through a setuid binary
@@ -325,9 +599,9 @@ mod tests {
         // Environment variables must appear as -e flags in
         // supervise_daemon_args.
         let mut def = base_definition();
-        def.envs = Some(vec![("MY_VAR".to_string(), "value".to_string())]);
+        def.envs = Some(vec![env("MY_VAR", "value")]);
         let script = create_service_file("Test Plugin", "cc-plugin-test-plugin", &def);
-        assert!(script.contains("supervise_daemon_args=\"-e MY_VAR=value\""));
+        assert!(script.contains("supervise_daemon_args=\"-e 'MY_VAR=value'\""));
     }
 
     #[test]
@@ -336,10 +610,10 @@ mod tests {
         // together in supervise_daemon_args.
         let mut def = base_definition();
         def.username = Some("cc-plugin-user".to_string());
-        def.envs = Some(vec![("KEY".to_string(), "val".to_string())]);
+        def.envs = Some(vec![env("KEY", "val")]);
         let script = create_service_file("Test Plugin", "cc-plugin-test-plugin", &def);
         assert!(script
-            .contains("supervise_daemon_args=\"-u cc-plugin-user --no-new-privs -e KEY=val\""));
+            .contains("supervise_daemon_args=\"-u 'cc-plugin-user' --no-new-privs -e 'KEY=val'\""));
     }
 
     #[test]
