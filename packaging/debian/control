@@ -8,7 +8,7 @@ Build-Depends:
  debhelper-compat (= 13),
 # coolercontrold:
  nodejs,
- cargo (>= 1.88) | cargo-1.91 | cargo-1.88,
+ cargo (>= 1.95),
  libdrm-dev,
 # coolercontrol:
  build-essential,

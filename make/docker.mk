@@ -1,10 +1,10 @@
 # CI docker image build/push/run targets (GitLab registry). Maintainer-only.
-docker_image_tag := v3
+docker_image_tag := v4
 
 # Docker 29 enables the containerd image store, which keeps buildx provenance and SBOM
-# attestations instead of flattening them away. That turns a local build into a manifest list
-# whose attestation blobs a later `docker push` cannot upload, failing with "blob unknown to
-# registry". The docker-arm64 target below is unaffected: buildx --push uploads them directly.
+# attestations instead of flattening them away. The GitLab registry rejects those attestation
+# manifests with "blob unknown to registry", so every build here must turn them off. This applies
+# to `docker buildx --push` too, which pushes the attestations itself rather than avoiding them.
 docker_build_flags := --provenance=false --sbom=false
 
 .PHONY: docker-build-images docker-login docker-arm64 docker-push \
@@ -27,8 +27,8 @@ docker-login:
 
 docker-arm64:
 	# This is a special build from arm64 where your system needs to be setup to be able to build aarch64 images
-	@docker buildx build --platform linux/arm64,linux/amd64 -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile --push ./
-	@docker buildx build --platform linux/arm64,linux/amd64 -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile --push ./
+	@docker buildx build $(docker_build_flags) --platform linux/arm64,linux/amd64 -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile --push ./
+	@docker buildx build $(docker_build_flags) --platform linux/arm64,linux/amd64 -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile --push ./
 
 docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)

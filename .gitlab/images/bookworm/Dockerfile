@@ -8,13 +8,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
-# MSRV is 1.88. Bookworm's apt has no new enough cargo, so rustup supplies it.
+# MSRV is 1.95. Bookworm's apt has no new enough cargo, so rustup supplies it.
 # Using the same version as Ubuntu Jammy.
 # Whenever we build a Trixie build, backports has 1.91
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.91.0
+    RUST_VERSION=1.96.0
 # bookworm used node 18
 ENV NODE_MAJOR=24
 # bookworm has modern python dependencies - no issue.
