@@ -217,8 +217,12 @@ impl CpuRepo {
             debug!("Could not read cpuinfo to refresh the online processors");
             return;
         };
-        if let Some(processor_counts) = self.topology.refresh_owners(&cpu_info_data) {
-            info!("Processor counts have changed and been updated to: {processor_counts:?}");
+        match self.topology.refresh_owners(&cpu_info_data) {
+            Ok(Some(processor_counts)) => {
+                info!("Processor counts have changed and been updated to: {processor_counts:?}");
+            }
+            Ok(None) => (), // The same processors are online, so nothing to update.
+            Err(err) => error!("Could not refresh the online processors: {err}"),
         }
     }
 

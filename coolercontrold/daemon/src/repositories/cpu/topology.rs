@@ -47,7 +47,7 @@ impl CpuTopology {
     /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
     /// is what the caller needs before it can build any CPU device at all.
     pub fn parse(cpu_info_data: &str) -> Result<Self> {
-        let entries = parse_processor_entries(cpu_info_data);
+        let entries = parse_processor_entries(cpu_info_data)?;
         let mut packages = BTreeSet::new();
         let mut model_names = BTreeMap::new();
         for entry in &entries {
@@ -122,18 +122,25 @@ impl CpuTopology {
     }
 
     /// Re-reads which physical id each online processor belongs to, so load follows processors
-    /// going offline and coming online. Returns the new per-package counts when they changed.
-    pub fn refresh_owners(&self, cpu_info_data: &str) -> Option<BTreeMap<PhysicalID, usize>> {
-        let refreshed = processor_owners(&parse_processor_entries(cpu_info_data));
+    /// going offline and coming online.
+    ///
+    /// Returns the new per-package counts when they changed, and nothing when they did not. An
+    /// unreadable cpuinfo is an error and leaves the current map in place: a map built from data
+    /// this bad would put a package's load on the wrong processors.
+    pub fn refresh_owners(
+        &self,
+        cpu_info_data: &str,
+    ) -> Result<Option<BTreeMap<PhysicalID, usize>>> {
+        let refreshed = processor_owners(&parse_processor_entries(cpu_info_data)?);
         if *self.processor_owners.borrow() == refreshed {
-            return None;
+            return Ok(None);
         }
         let mut processor_counts: BTreeMap<PhysicalID, usize> = BTreeMap::new();
         for physical_id in refreshed.iter().flatten() {
             *processor_counts.entry(*physical_id).or_default() += 1;
         }
         *self.processor_owners.borrow_mut() = refreshed;
-        Some(processor_counts)
+        Ok(Some(processor_counts))
     }
 
     /// The model name to show for a CPU device.
@@ -211,9 +218,13 @@ fn cpuinfo_field(line: &str) -> Option<(&str, &str)> {
     }
 }
 
-/// Reads every processor block in one pass. A value that does not parse is left out rather than
-/// failing the whole file: one malformed line should not cost the machine its CPU devices.
-fn parse_processor_entries(cpu_info_data: &str) -> Vec<ProcessorEntry> {
+/// Reads every processor block in one pass.
+///
+/// A physical id that does not parse is an error: it is the one value every CPU device is keyed
+/// by, so a machine that reports a bad one is doing something unexpected and should say so rather
+/// than quietly show fewer processors than it has. The others are left out on a bad parse, since
+/// nothing is keyed by them.
+fn parse_processor_entries(cpu_info_data: &str) -> Result<Vec<ProcessorEntry>> {
     let mut entries: Vec<ProcessorEntry> = Vec::new();
     for line in cpu_info_data.lines() {
         let Some((key, value)) = cpuinfo_field(line) else {
@@ -231,13 +242,17 @@ fn parse_processor_entries(cpu_info_data: &str) -> Vec<ProcessorEntry> {
         };
         match key {
             "model name" => entry.model_name = Some(value.to_owned()),
-            "physical id" => entry.physical_id = value.parse().ok(),
+            "physical id" => {
+                entry.physical_id = Some(value.parse().map_err(|_| {
+                    anyhow!("cpuinfo reported an unreadable physical id: \"{value}\"")
+                })?);
+            }
             // `initial apicid` is a different key and never lands here.
             "apicid" => entry.apic_id = value.parse().ok(),
             _ => (),
         }
     }
-    entries
+    Ok(entries)
 }
 
 /// The board's model name, which is what a machine with no physical id at all, such as the
@@ -448,6 +463,43 @@ mod tests {
         assert!(CpuTopology::parse("some other file entirely\n").is_err());
     }
 
+    /// Goal: a physical id that cannot be read means the machine is reporting something
+    /// unexpected, and every CPU device is keyed by that id, so it must fail loudly rather than
+    /// silently show fewer processors. Method: a cpuinfo whose second package has a bad id, and
+    /// one with a bad value under a key nothing is keyed by.
+    #[test]
+    fn an_unreadable_physical_id_is_an_error() {
+        // given: a machine that would otherwise parse to two packages.
+        let bad_physical_id = concat!(
+            "processor\t: 0\n",
+            "model name\t: Test CPU\n",
+            "physical id\t: 0\n",
+            "\n",
+            "processor\t: 1\n",
+            "model name\t: Test CPU\n",
+            "physical id\t: not a number\n",
+        );
+
+        // then: the whole parse fails, rather than reporting a single package.
+        let result = CpuTopology::parse(bad_physical_id);
+        assert!(result.is_err(), "expected an error, got: {result:?}");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unreadable physical id"));
+
+        // then: a bad value nothing is keyed by is left out instead, since it costs no device.
+        let bad_apic_id = concat!(
+            "processor\t: 0\n",
+            "model name\t: Test CPU\n",
+            "physical id\t: 0\n",
+            "apicid\t\t: not a number\n",
+        );
+        let topology = CpuTopology::parse(bad_apic_id).unwrap();
+        assert_eq!(topology.package_count(), 1);
+        assert!(topology.apic_order().is_empty());
+    }
+
     /// Goal: each package's processor count must be its own, not a running total across packages,
     /// which is what left every package but the last without a load channel. Method: the dual
     /// Xeon dump, 8 logical processors per package.
@@ -513,7 +565,9 @@ mod tests {
         assert!(topology.owners_are_current(0..17).not());
 
         // when: refreshed from a cpuinfo listing three packages instead.
-        let processor_counts = topology.refresh_owners(fixtures::PACKAGE_1_OFFLINE);
+        let processor_counts = topology
+            .refresh_owners(fixtures::PACKAGE_1_OFFLINE)
+            .unwrap();
 
         // then: the new counts are reported, one processor per package.
         assert_eq!(
@@ -521,7 +575,12 @@ mod tests {
             vec![(0, 1), (2, 1), (3, 1)]
         );
         // then: refreshing again with no change reports nothing, so nothing is logged.
-        assert_eq!(topology.refresh_owners(fixtures::PACKAGE_1_OFFLINE), None);
+        assert_eq!(
+            topology
+                .refresh_owners(fixtures::PACKAGE_1_OFFLINE)
+                .unwrap(),
+            None
+        );
     }
 
     /// Goal: load follows processors going offline and online at runtime, without an error and
