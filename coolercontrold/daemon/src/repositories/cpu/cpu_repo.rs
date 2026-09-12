@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -11,10 +11,11 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
-    DriverType, Mhz, Status, TempInfo, TempStatus, Watts, UID,
+    DriverType, Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::overrides::OverridesController;
-use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector, MAX_LOGICAL_CPUS};
+use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
+use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -32,16 +33,10 @@ const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
 const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
 const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
-/// Packages on a dual-socket board, which is as wide as commodity x86 goes. Only a capacity hint,
-/// so a larger machine still parses, it just grows the map once.
-const EXPECTED_PACKAGE_COUNT: usize = 2;
 
-// The ID of the actual physical CPU. On most systems, there is only one:
-type PhysicalID = u8;
 // A driver's own package zone or node id. Numbered by the driver, not by cpuinfo, so it is only
 // a physical id on the hardware where the two happen to coincide:
 type ZoneID = u8;
-type ProcessorCount = u16; // the logical processor count (aka how many cores per physical cpu)
 
 /// How confidently a CPU hwmon device is tied to a physical processor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,27 +86,16 @@ struct DriverCensus {
     multi_die: bool,
 }
 
-#[derive(Default, Debug, PartialEq)]
-struct CpuFreqs {
-    min: Mhz,
-    max: Mhz,
-    avg: Mhz,
-}
-
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
     config: Rc<Config>,
     /// Owns the lm-sensors labels for the CPU chips, which the hwmon repo leaves to us.
     overrides: Rc<OverridesController>,
     devices: HashMap<UID, CpuDevice>,
-    cpu_infos: HashMap<PhysicalID, Cell<ProcessorCount>>,
-    cpu_model_names: HashMap<PhysicalID, String>,
-    /// Physical ids in the order the kernel numbers package zones, i.e. ascending APIC id.
-    cpu_apic_order: Vec<PhysicalID>,
+    /// What cpuinfo says about this machine's processors. Empty until `initialize_devices` reads
+    /// it, which every other path here runs after.
+    topology: CpuTopology,
     cpu_percent_collector: RefCell<CpuPercentCollector>,
-    /// Each online processor's physical id, indexed by processor id. Refreshed whenever the online
-    /// processors change, so each load percent is counted toward its own package.
-    processor_physical_ids: RefCell<Vec<Option<PhysicalID>>>,
     /// The latest load sample for every processor, taken once per poll and shared by all packages.
     cpu_load_percents: RefCell<Vec<CpuPercent>>,
     /// Keyed by association, so a zone-keyed device cannot be confused with the socket whose
@@ -127,11 +111,8 @@ impl CpuRepo {
             config,
             overrides,
             devices: HashMap::new(),
-            cpu_infos: HashMap::new(),
-            cpu_model_names: HashMap::new(),
-            cpu_apic_order: Vec::new(),
+            topology: CpuTopology::default(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
-            processor_physical_ids: RefCell::new(Vec::new()),
             cpu_load_percents: RefCell::new(Vec::new()),
             preloaded_statuses: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
@@ -204,135 +185,12 @@ impl CpuRepo {
         });
     }
 
-    async fn set_cpu_infos(&mut self, cpuinfo_path: &Path) -> Result<()> {
+    /// Reads cpuinfo and takes what it says about this machine's processors.
+    async fn set_topology(&mut self, cpuinfo_path: &Path) -> Result<()> {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
-        let mut physical_id: PhysicalID = 0;
-        let mut model_name = "";
-        let mut processor_count: ProcessorCount = 0;
-        let mut processor_present = false;
-        let mut physical_id_present = false;
-        let mut model_name_present = false;
-        for line in cpu_info_data.lines() {
-            let mut it = line.split(':');
-            let (key, value) = match (it.next(), it.next()) {
-                (Some(key), Some(value)) => (key.trim(), value.trim()),
-                _ => continue, // will skip empty lines and non-key-value lines
-            };
-
-            if key == "processor" {
-                // processor_id = value.parse()?;
-                processor_present = true;
-            }
-            if key == "model name" {
-                model_name = value;
-                model_name_present = true;
-            }
-            if key == "physical id" {
-                physical_id = value.parse()?;
-                physical_id_present = true;
-            }
-            if processor_present && physical_id_present && model_name_present {
-                // after each processor's entry, counted toward its own package only
-                let package_processor_count = self.cpu_infos.entry(physical_id).or_default();
-                package_processor_count.set(package_processor_count.get() + 1);
-                self.cpu_model_names
-                    .insert(physical_id, model_name.to_string());
-                processor_present = false;
-                physical_id_present = false;
-                model_name_present = false;
-            }
-        }
-        if self.cpu_infos.is_empty() && self.cpu_model_names.is_empty() {
-            // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
-            // they do have a model name though.
-            for line in cpu_info_data.lines() {
-                let mut it = line.split(':');
-                let (key, value) = match (it.next(), it.next()) {
-                    (Some(key), Some(value)) => (key.trim(), value.trim()),
-                    _ => continue, // will skip empty lines and non-key-value lines
-                };
-                if key == "processor" {
-                    processor_count += 1;
-                }
-                if key == "Model" {
-                    self.cpu_model_names.insert(0, value.to_string());
-                }
-            }
-            self.cpu_infos.entry(0).or_default().set(processor_count);
-        }
-        if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
-            self.cpu_apic_order = Self::order_physical_ids_by_apic(&cpu_info_data);
-            *self.processor_physical_ids.borrow_mut() =
-                Self::map_processors_to_physical_ids(&cpu_info_data);
-            trace!("CPUInfo: {:?}", self.cpu_infos);
-            trace!("CPU APIC order: {:?}", self.cpu_apic_order);
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "cpuinfo either not found or missing data on this system!"
-            ))
-        }
-    }
-
-    /// Each online processor's physical id, indexed by processor id.
-    ///
-    /// cpuinfo prints `processor` before `physical id` in each block, and lists only online
-    /// processors. Where there is no physical id at all, as on the Raspberry Pi, every processor
-    /// belongs to the single package 0 that `set_cpu_infos` fakes for it.
-    fn map_processors_to_physical_ids(cpu_info_data: &str) -> Vec<Option<PhysicalID>> {
-        let mut processors: Vec<(usize, Option<PhysicalID>)> = Vec::new();
-        for line in cpu_info_data.lines() {
-            let mut it = line.split(':');
-            let (key, value) = match (it.next(), it.next()) {
-                (Some(key), Some(value)) => (key.trim(), value.trim()),
-                _ => continue, // will skip empty lines and non-key-value lines
-            };
-            if key == "processor" {
-                let Ok(processor_id) = value.parse::<usize>() else {
-                    continue;
-                };
-                // The same bound the load collector puts on the processors it reads.
-                if processor_id < MAX_LOGICAL_CPUS {
-                    processors.push((processor_id, None));
-                }
-            } else if key == "physical id" {
-                if let Some((_, physical_id)) = processors.last_mut() {
-                    *physical_id = value.parse().ok();
-                }
-            }
-        }
-        let has_physical_ids = processors
-            .iter()
-            .any(|(_, physical_id)| physical_id.is_some());
-        let processor_id_end = processors.iter().map(|(id, _)| id + 1).max().unwrap_or(0);
-        let mut processor_physical_ids = vec![None; processor_id_end];
-        for (processor_id, physical_id) in processors {
-            processor_physical_ids[processor_id] = if has_physical_ids {
-                physical_id
-            } else {
-                Some(0)
-            };
-        }
-        debug_assert!(processor_physical_ids.len() <= MAX_LOGICAL_CPUS);
-        processor_physical_ids
-    }
-
-    /// Whether the processor map lists exactly the processors that are online now.
-    fn processor_map_is_current(
-        online_cpu_ids: impl Iterator<Item = u16>,
-        processor_physical_ids: &[Option<PhysicalID>],
-    ) -> bool {
-        let mut online_count = 0;
-        for cpu_id in online_cpu_ids {
-            let mapped = processor_physical_ids
-                .get(usize::from(cpu_id))
-                .is_some_and(Option::is_some);
-            if mapped.not() {
-                return false;
-            }
-            online_count += 1;
-        }
-        online_count == processor_physical_ids.iter().flatten().count()
+        self.topology = CpuTopology::parse(&cpu_info_data)?;
+        trace!("CPU topology: {:?}", self.topology);
+        Ok(())
     }
 
     /// Takes one load sample for every processor, which all packages share for this poll.
@@ -341,123 +199,32 @@ impl CpuRepo {
     /// processor map is refreshed here when processors went offline or came online, so load
     /// follows them at runtime.
     async fn sample_cpu_load(&self) {
-        let (percents, map_is_current) = {
+        let (percents, owners_are_current) = {
             let mut collector = self.cpu_percent_collector.borrow_mut();
             let percents = collector.cpu_percent_per_cpu().unwrap_or_default();
-            let map_is_current = Self::processor_map_is_current(
-                collector.online_cpu_ids(),
-                &self.processor_physical_ids.borrow(),
-            );
-            (percents, map_is_current)
+            let owners_are_current = self.topology.owners_are_current(collector.online_cpu_ids());
+            (percents, owners_are_current)
         };
-        if map_is_current.not() {
-            self.refresh_processor_map().await;
+        if owners_are_current.not() {
+            self.refresh_processor_owners().await;
         }
         *self.cpu_load_percents.borrow_mut() = percents;
     }
 
     /// Re-reads which physical id each online processor belongs to.
-    async fn refresh_processor_map(&self) {
+    async fn refresh_processor_owners(&self) {
         let Ok(cpu_info_data) = cc_fs::read_txt(CPUINFO_PATH).await else {
             debug!("Could not read cpuinfo to refresh the online processors");
             return;
         };
-        let processor_physical_ids = Self::map_processors_to_physical_ids(&cpu_info_data);
-        if *self.processor_physical_ids.borrow() != processor_physical_ids {
-            let mut processor_counts: BTreeMap<PhysicalID, usize> = BTreeMap::new();
-            for physical_id in processor_physical_ids.iter().flatten() {
-                *processor_counts.entry(*physical_id).or_default() += 1;
-            }
+        if let Some(processor_counts) = self.topology.refresh_owners(&cpu_info_data) {
             info!("Processor counts have changed and been updated to: {processor_counts:?}");
         }
-        *self.processor_physical_ids.borrow_mut() = processor_physical_ids;
-    }
-
-    /// The average load of one package's online processors, or `None` when none are online.
-    fn package_load_percent(
-        cpu_load_percents: &[CpuPercent],
-        processor_physical_ids: &[Option<PhysicalID>],
-        physical_id: PhysicalID,
-    ) -> Option<f64> {
-        let mut percent_sum = 0.0;
-        let mut processor_count: u32 = 0;
-        for cpu_load in cpu_load_percents {
-            let owner = processor_physical_ids
-                .get(usize::from(cpu_load.cpu_id))
-                .copied()
-                .flatten();
-            if owner == Some(physical_id) {
-                percent_sum += f64::from(cpu_load.percent);
-                processor_count += 1;
-            }
-        }
-        debug_assert!(processor_count as usize <= cpu_load_percents.len());
-        (processor_count > 0).then(|| percent_sum / f64::from(processor_count))
     }
 
     async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
         temps::init_temps(path, include_all_devices).await
-    }
-
-    /// Orders physical processors the way the kernel numbers package zones: by ascending APIC id.
-    ///
-    /// `topology_get_logical_id()` counts the set APIC id bits below a domain's own, so a
-    /// `coretemp.N` zone number is that package's rank in this order. cpuinfo prints `apicid` in
-    /// the same block as `physical id`, so wherever there is more than one package to tell apart,
-    /// both are present.
-    fn order_physical_ids_by_apic(cpu_info_data: &str) -> Vec<PhysicalID> {
-        let mut lowest_apic_ids: HashMap<PhysicalID, u32> =
-            HashMap::with_capacity(EXPECTED_PACKAGE_COUNT);
-        let mut physical_id: Option<PhysicalID> = None;
-        for line in cpu_info_data.lines() {
-            let mut it = line.split(':');
-            let (key, value) = match (it.next(), it.next()) {
-                (Some(key), Some(value)) => (key.trim(), value.trim()),
-                _ => continue, // will skip empty lines and non-key-value lines
-            };
-            if key == "physical id" {
-                physical_id = value.parse().ok();
-            } else if key == "apicid" {
-                // cpuinfo prints physical id first, so this pairs with the current processor.
-                // `initial apicid` is a different key and never lands here.
-                let Some(current_physical_id) = physical_id.take() else {
-                    continue;
-                };
-                let Ok(apic_id) = value.parse::<u32>() else {
-                    continue;
-                };
-                lowest_apic_ids
-                    .entry(current_physical_id)
-                    .and_modify(|lowest| *lowest = (*lowest).min(apic_id))
-                    .or_insert(apic_id);
-            }
-        }
-        let mut ordered = lowest_apic_ids
-            .into_iter()
-            .collect::<Vec<(PhysicalID, u32)>>();
-        // The physical id breaks ties so the order cannot vary between runs.
-        ordered.sort_unstable_by_key(|(physical_id, apic_id)| (*apic_id, *physical_id));
-        ordered
-            .into_iter()
-            .map(|(physical_id, _)| physical_id)
-            .collect()
-    }
-
-    /// The model name to show for a CPU device.
-    ///
-    /// A device keyed by its package zone has no physical id, so it takes the fallback. Multi-socket
-    /// x86 requires identical processors, so any known name describes every package. The lowest
-    /// id is used rather than any, so the name and the UID derived from it cannot vary between
-    /// runs with `HashMap` order.
-    fn cpu_model_name(&self, physical_id: Option<PhysicalID>) -> Option<String> {
-        if let Some(model_name) = physical_id.and_then(|id| self.cpu_model_names.get(&id)) {
-            return Some(model_name.clone());
-        }
-        self.cpu_model_names
-            .iter()
-            .min_by_key(|(physical_id, _)| **physical_id)
-            .map(|(_, model_name)| model_name.clone())
     }
 
     /// The 1-based number a CPU device is presented under, which its UID is derived from.
@@ -472,11 +239,11 @@ impl CpuRepo {
     fn device_type_index(&self, association: CpuAssociation) -> Option<u8> {
         match association {
             CpuAssociation::Socket(physical_id) => {
-                debug_assert!(self.cpu_infos.contains_key(&physical_id));
+                debug_assert!(self.topology.contains(physical_id));
                 physical_id.checked_add(1)
             }
             CpuAssociation::Zone(zone_id) => {
-                let highest_physical_id = self.cpu_infos.keys().max().copied()?;
+                let highest_physical_id = self.topology.packages().next_back()?;
                 // One past the highest socket number, then the zone's own offset.
                 let type_index = highest_physical_id.checked_add(2)?.checked_add(zone_id)?;
                 debug_assert!(type_index > highest_physical_id + 1);
@@ -490,18 +257,17 @@ impl CpuRepo {
         &self,
         matched: &HashMap<CpuAssociation, HwmonDriverInfo>,
     ) -> Vec<PhysicalID> {
-        let mut unmatched = self
-            .cpu_infos
-            .keys()
+        // `packages()` is already ascending, so the result needs no sort of its own.
+        let unmatched = self
+            .topology
+            .packages()
             .filter(|physical_id| {
                 matched
-                    .contains_key(&CpuAssociation::Socket(**physical_id))
+                    .contains_key(&CpuAssociation::Socket(*physical_id))
                     .not()
             })
-            .copied()
             .collect::<Vec<PhysicalID>>();
-        unmatched.sort_unstable();
-        debug_assert!(unmatched.len() <= self.cpu_infos.len());
+        debug_assert!(unmatched.len() <= self.topology.package_count());
         unmatched
     }
 
@@ -592,7 +358,7 @@ impl CpuRepo {
 
     /// Intel registers one `coretemp` platform device per die zone, and the kernel numbers those
     /// zones by ascending APIC id, so the device's instance id divided by the dies per package is
-    /// its package's rank in `cpu_apic_order`.
+    /// its package's rank in the APIC order.
     ///
     /// The temp labels cannot answer this, which is why the `Package id N` label that this used
     /// to parse is gone. That label was the wrong quantity: `coretemp_device_add()` sets
@@ -613,13 +379,8 @@ impl CpuRepo {
         census: DriverCensus,
     ) -> Option<CpuAssociation> {
         // A single package needs no ranking, and its physical id is not always 0.
-        if self.cpu_infos.len() == 1 {
-            return self
-                .cpu_infos
-                .keys()
-                .next()
-                .copied()
-                .map(CpuAssociation::Socket);
+        if let Some(only_package) = self.topology.only_package() {
+            return Some(CpuAssociation::Socket(only_package));
         }
         let zone_id = zone_id?;
         if census.all_zones_online.not() {
@@ -627,13 +388,15 @@ impl CpuRepo {
         }
         // Logical die ids rank system wide and a package's dies are consecutive, since die bits
         // sit below package bits in the APIC id. This division is exact, not an assumption.
-        let Some(package_rank) =
-            Self::first_die_package_rank(zone_id, census.device_count, self.cpu_infos.len())
-        else {
+        let Some(package_rank) = Self::first_die_package_rank(
+            zone_id,
+            census.device_count,
+            self.topology.package_count(),
+        ) else {
             return Some(CpuAssociation::Zone(zone_id));
         };
-        if let Some(physical_id) = self.cpu_apic_order.get(usize::from(package_rank)) {
-            if self.cpu_infos.contains_key(physical_id) {
+        if let Some(physical_id) = self.topology.apic_order().get(usize::from(package_rank)) {
+            if self.topology.contains(*physical_id) {
                 return Some(CpuAssociation::Socket(*physical_id));
             }
         }
@@ -650,7 +413,7 @@ impl CpuRepo {
         if multi_die {
             return CpuAssociation::Zone(zone_id);
         }
-        if self.cpu_infos.contains_key(&zone_id) {
+        if self.topology.contains(zone_id) {
             return CpuAssociation::Socket(zone_id);
         }
         CpuAssociation::Zone(zone_id)
@@ -666,7 +429,7 @@ impl CpuRepo {
         // NOTE: the node cpulist was the other way to do this, and is not used due to an apparent
         // bug in the amd hwmon kernel driver. Kept as a reference to the alternative:
         // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
-        // for (physical_id, processor_list) in &self.cpu_infos {
+        // for (physical_id, processor_list) in &self.topology {
         //     if cpu_list.iter().eq(processor_list.iter()) {
         //         return Ok(physical_id.clone());
         //     }
@@ -682,13 +445,8 @@ impl CpuRepo {
         node_count: usize,
     ) -> Option<CpuAssociation> {
         // A single node needs no id at all, and its physical id is not always 0 (AMD APU).
-        if self.cpu_infos.len() == 1 {
-            return self
-                .cpu_infos
-                .keys()
-                .next()
-                .copied()
-                .map(CpuAssociation::Socket);
+        if let Some(only_package) = self.topology.only_package() {
+            return Some(CpuAssociation::Socket(only_package));
         }
         let node_id = node_id?;
         // Pre-Zen multi-chip parts and Zen 1 EPYC hold several nodes per package. This assumes
@@ -700,11 +458,11 @@ impl CpuRepo {
         // from a multi-node one. Two sockets need no division, since one online package takes
         // the single package path above.
         let Some(package_rank) =
-            Self::first_die_package_rank(node_id, node_count, self.cpu_infos.len())
+            Self::first_die_package_rank(node_id, node_count, self.topology.package_count())
         else {
             return Some(CpuAssociation::Zone(node_id));
         };
-        if self.cpu_infos.contains_key(&package_rank) {
+        if self.topology.contains(package_rank) {
             return Some(CpuAssociation::Socket(package_rank));
         }
         // A node cpuinfo has no physical id for cannot be placed. The temps are still real.
@@ -783,12 +541,10 @@ impl CpuRepo {
     /// reports 0 rather than leaving the channel out. That happens when all its processors are
     /// offline, which is a true 0, or for the one poll after they come back online.
     fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> ChannelStatus {
-        let load = Self::package_load_percent(
-            &self.cpu_load_percents.borrow(),
-            &self.processor_physical_ids.borrow(),
-            physical_id,
-        )
-        .unwrap_or(0.0);
+        let load = self
+            .topology
+            .package_load_percent(&self.cpu_load_percents.borrow(), physical_id)
+            .unwrap_or(0.0);
         ChannelStatus {
             name: channel_name.to_string(),
             duty: Some(load),
@@ -796,77 +552,12 @@ impl CpuRepo {
         }
     }
 
-    /// Collects the average frequency per Physical CPU.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    /// The frequencies of every package, read fresh from cpuinfo.
     async fn collect_freq(cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
-        // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
-        // cpuinfo not only will return which frequency belongs to which physical CPU,
-        // which is important for CoolerControl's full multi-physical-cpu support,
-        // but also it's cached and therefore consistently fast across various systems.
-        // See: https://github.com/giampaolo/psutil/issues/1851
-        // The alternative is to read one of:
-        //   /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq
-        //  /sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq
-        // But these have been reported to be significantly slower on some systems, and it's not
-        // clear how to associate the frequency with the physical CPU on multi-cpu systems.
-        let mut cpu_freqs = HashMap::new();
-        let mut cpu_info_freqs: HashMap<PhysicalID, Vec<f64>> = HashMap::new();
-        let Ok(cpu_info) = cc_fs::read_txt(cpuinfo_path).await else {
-            return cpu_freqs;
+        let Ok(cpu_info_data) = cc_fs::read_txt(cpuinfo_path).await else {
+            return HashMap::new();
         };
-        let mut cpu_info_physical_id: PhysicalID = 0;
-        let mut cpu_info_freq: f64 = 0.;
-        let mut physical_id_present = false;
-        let mut freq_present = false;
-        for line in cpu_info.lines() {
-            if line.starts_with("physical id").not() && line.starts_with("cpu MHz").not() {
-                continue;
-            }
-            let mut it = line.split(':');
-            let (key, value) = match (it.next(), it.next()) {
-                (Some(key), Some(value)) => (key.trim(), value.trim()),
-                _ => continue,
-            };
-            if key == "physical id" {
-                let Ok(phy_id) = value.parse() else {
-                    return cpu_freqs;
-                };
-                cpu_info_physical_id = phy_id;
-                physical_id_present = true;
-            }
-            if key == "cpu MHz" {
-                let Ok(freq) = value.parse() else {
-                    return cpu_freqs;
-                };
-                cpu_info_freq = freq;
-                freq_present = true;
-            }
-            if physical_id_present && freq_present {
-                // after each processor's entry
-                cpu_info_freqs
-                    .entry(cpu_info_physical_id)
-                    .or_default()
-                    .push(cpu_info_freq);
-                physical_id_present = false;
-                freq_present = false;
-            }
-        }
-        for (physical_id, freqs) in cpu_info_freqs {
-            let min = freqs
-                .iter()
-                .min_by(|a, b| a.total_cmp(b))
-                .unwrap_or(&0.)
-                .round() as Mhz;
-            let max = freqs
-                .iter()
-                .max_by(|a, b| a.total_cmp(b))
-                .unwrap_or(&0.)
-                .round() as Mhz;
-            #[allow(clippy::cast_precision_loss)]
-            let avg = (freqs.iter().sum::<f64>() / freqs.len() as f64).round() as Mhz;
-            cpu_freqs.insert(physical_id, CpuFreqs { min, max, avg });
-        }
-        cpu_freqs
+        topology::parse_freqs(&cpu_info_data)
     }
 
     fn get_status_from_freq_output(
@@ -897,11 +588,8 @@ impl CpuRepo {
     /// The load channel exists only if the package had a load reading at initialization. From
     /// then on `collect_load` reports it in every poll, as with every other channel.
     fn init_cpu_load(&self, physical_id: PhysicalID) -> Option<HwmonChannelInfo> {
-        Self::package_load_percent(
-            &self.cpu_load_percents.borrow(),
-            &self.processor_physical_ids.borrow(),
-            physical_id,
-        )?;
+        self.topology
+            .package_load_percent(&self.cpu_load_percents.borrow(), physical_id)?;
         Some(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Load,
             number: physical_id,
@@ -1153,7 +841,7 @@ impl CpuRepo {
         potential_cpu_paths: Vec<(String, PathBuf)>,
     ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
-        let num_of_cpus = self.cpu_infos.len();
+        let num_of_cpus = self.topology.package_count();
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         if cpu_freqs.is_empty() {
             // should warn for multi-cpus, but info otherwise
@@ -1254,7 +942,7 @@ impl CpuRepo {
             return None;
         };
         // cpu_info is set first, filling in model names:
-        let Some(cpu_name) = self.cpu_model_name(association.physical_id()) else {
+        let Some(cpu_name) = self.topology.model_name(association.physical_id()) else {
             error!("No CPU model name found. Skipping {device_name} device.");
             return None;
         };
@@ -1330,12 +1018,12 @@ impl Repository for CpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.poll_rate = self.config.get_settings()?.poll_rate;
-        self.set_cpu_infos(CPUINFO_PATH.as_ref()).await?;
+        self.set_topology(CPUINFO_PATH.as_ref()).await?;
         // The first load status is read during initialization, so it needs a sample already.
         self.sample_cpu_load().await;
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
-        let num_of_cpus = self.cpu_infos.len();
+        let num_of_cpus = self.topology.package_count();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.is_empty() {
             info!("No CPU specific HWMON devices found.");
@@ -1358,7 +1046,7 @@ impl Repository for CpuRepo {
         // A zone-keyed device has no cpuinfo entry of its own. The name has to be resolved the
         // same way it was when the device was built, or every such device would be dropped here.
         for (association, driver) in hwmon_devices {
-            let Some(cpu_name) = self.cpu_model_name(association.physical_id()) else {
+            let Some(cpu_name) = self.topology.model_name(association.physical_id()) else {
                 error!("No CPU model name for {association:?}. Skipping device.");
                 continue;
             };
@@ -1650,9 +1338,11 @@ mod tests {
     use crate::device::{ChannelStatus, Device, DeviceType, TempStatus};
     use crate::overrides::OverridesController;
     use crate::repositories::cpu::cpu_repo::{
-        CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID, SINGLE_CPU_LOAD_NAME,
+        CpuAssociation, CpuRepo, DriverCensus, SINGLE_CPU_LOAD_NAME,
     };
+    use crate::repositories::cpu::fixtures;
     use crate::repositories::cpu::percent::CpuPercent;
+    use crate::repositories::cpu::topology::{CpuFreqs, CpuTopology, PhysicalID};
     use crate::repositories::hwmon::hwmon_repo::{
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
@@ -1679,440 +1369,14 @@ mod tests {
             .collect()
     }
 
-    static CPUINFO_AMD_SINGLE_CPU: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/cpuinfo/amd_single_cpu"
-    ));
-    static CPUINFO_AMD_DOUBLE_CPU: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/cpuinfo/amd_double_cpu"
-    ));
-    static CPUINFO_INTEL_SINGLE_CPU: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/cpuinfo/intel_single_cpu"
-    ));
-    static CPUINFO_INTEL_DOUBLE_CPU: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/cpuinfo/intel_double_cpu"
-    ));
-    /// Two packages whose physical ids run opposite to their APIC ids. Real firmware rarely does
-    /// this, but it is the only shape that tells the two orderings apart.
-    static CPUINFO_INVERTED_APIC: &str = concat!(
-        "processor\t: 0\n",
-        "model name\t: Test CPU\n",
-        "physical id\t: 0\n",
-        "apicid\t\t: 32\n",
-        "\n",
-        "processor\t: 1\n",
-        "model name\t: Test CPU\n",
-        "physical id\t: 1\n",
-        "apicid\t\t: 0\n",
-    );
-
-    /// A four package machine with package 1 offline, as cpuinfo shows it: physical ids 0, 2
-    /// and 3, which are packages 0, 2 and 3 of the four the kernel numbers zones over.
-    static CPUINFO_PACKAGE_1_OFFLINE: &str = concat!(
-        "processor\t: 0\n",
-        "model name\t: Test CPU\n",
-        "physical id\t: 0\n",
-        "apicid\t\t: 0\n",
-        "\n",
-        "processor\t: 2\n",
-        "model name\t: Test CPU\n",
-        "physical id\t: 2\n",
-        "apicid\t\t: 64\n",
-        "\n",
-        "processor\t: 3\n",
-        "model name\t: Test CPU\n",
-        "physical id\t: 3\n",
-        "apicid\t\t: 96\n",
-    );
-
-    async fn repo_from_cpuinfo(cpu_info_data: Vec<u8>) -> CpuRepo {
-        let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_cpuinfo, cpu_info_data).await.unwrap();
+    /// A repository holding what the given cpuinfo says, which is all these tests need of it.
+    /// No temp file and no cpuinfo read: the parsing itself is covered in `topology`.
+    fn repo_from_cpuinfo(cpu_info_data: &str) -> CpuRepo {
         let test_config = Rc::new(Config::init_default_config().unwrap());
         let mut cpu_repo =
             CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-        cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+        cpu_repo.topology = CpuTopology::parse(cpu_info_data).unwrap();
         cpu_repo
-    }
-    static CPUINFO_RASPBERRY_PI_5: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/cpuinfo/raspberry_pi_5"
-    ));
-
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_amd_single_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-
-            // when:
-            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
-
-            // then:
-            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
-            assert_eq!(
-                cpu_repo.cpu_infos.len(),
-                1,
-                "cpu_infos should have 1 physical cpu entry"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.len(),
-                1,
-                "cpu_model_names should have 1 entry"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.get(&0).unwrap(),
-                "AMD Ryzen 7 5800X 8-Core Processor",
-                "cpu_model_names should have the correct model name"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_collect_freq_amd_single_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-
-            // when:
-            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
-
-            // then:
-            assert_eq!(
-                result.len(),
-                1,
-                "collect_freq should have 1 physical cpu entry"
-            );
-            assert_eq!(
-                result.get(&0),
-                Some(&CpuFreqs {
-                    avg: 3006,
-                    max: 4200,
-                    min: 1754,
-                }),
-                "collect_freq should have the correct average frequency"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_amd_double_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-
-            // when:
-            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
-
-            // then:
-            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
-            assert_eq!(
-                cpu_repo.cpu_infos.len(),
-                2,
-                "cpu_infos should have 2 physical cpu entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.len(),
-                2,
-                "cpu_model_names should have 2 entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.get(&0).unwrap(),
-                "AMD Ryzen 7 5800X 8-Core Processor#1",
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.get(&1).unwrap(),
-                "AMD Ryzen 7 5800X 8-Core Processor#2",
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_collect_freq_amd_double_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
-                .await
-                .unwrap();
-
-            // when:
-            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
-
-            // then:
-            assert_eq!(
-                result.len(),
-                2,
-                "collect_freq should have 2 physical cpu entries"
-            );
-            assert_eq!(
-                result.get(&0),
-                Some(&CpuFreqs {
-                    avg: 3006,
-                    max: 4200,
-                    min: 1754,
-                }),
-                "collect_freq should have the correct frequency"
-            );
-            assert_eq!(
-                result.get(&1),
-                Some(&CpuFreqs {
-                    avg: 819,
-                    max: 1754,
-                    min: 196,
-                }),
-                "collect_freq should have the correct frequency"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_intel_single_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-
-            // when:
-            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
-
-            // then:
-            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
-            assert_eq!(
-                cpu_repo.cpu_infos.len(),
-                1,
-                "cpu_infos should have 1 physical cpu entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.len(),
-                1,
-                "cpu_model_names should have 1 entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.get(&0).unwrap(),
-                "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz",
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_collect_freq_intel_single_cpu() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
-                .await
-                .unwrap();
-
-            // when:
-            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
-
-            // then:
-            assert_eq!(
-                result.len(),
-                1,
-                "collect_freq should have 1 physical cpu entries"
-            );
-            assert_eq!(
-                result.get(&0),
-                Some(&CpuFreqs {
-                    avg: 800,
-                    max: 800,
-                    min: 800,
-                }),
-                "collect_freq should have the correct frequency"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_raspberry_pi_5() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-
-            // when:
-            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
-
-            // then:
-            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
-            assert_eq!(
-                cpu_repo.cpu_infos.len(),
-                1,
-                "cpu_infos should have 1 physical cpu entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.len(),
-                1,
-                "cpu_model_names should have 1 entries"
-            );
-            assert_eq!(
-                cpu_repo.cpu_model_names.get(&0).unwrap(),
-                "Raspberry Pi Compute Module 5 Rev 1.0",
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_collect_freq_raspberry_pi_5() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
-                .await
-                .unwrap();
-
-            // when:
-            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
-
-            // then:
-            assert_eq!(
-                result.len(),
-                0,
-                "collect_freq should have no physical cpu entries"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_empty() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-
-            // when:
-            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
-
-            // then:
-            assert!(
-                result.is_err(),
-                "set_cpu_infos should return Err when not found: {result:?}"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_collect_freq_empty() {
-        cc_fs::test_runtime(async {
-            // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
-
-            // when:
-            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
-
-            // then:
-            assert_eq!(result.len(), 0);
-        });
-    }
-
-    /// Goal: load is counted per package by processor id, so the map must follow cpuinfo's own
-    /// pairing of processor and physical id. Method: the dual Xeon dump, whose kernel interleaves
-    /// the packages (even processors on package 0, odd on package 1), and the Raspberry Pi,
-    /// which has no physical id at all.
-    #[test]
-    fn test_processor_map_follows_cpuinfo() {
-        // given:
-        let intel_double = std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap();
-        let raspberry_pi = std::str::from_utf8(CPUINFO_RASPBERRY_PI_5).unwrap();
-
-        // when:
-        let intel_map = CpuRepo::map_processors_to_physical_ids(intel_double);
-        let raspberry_pi_map = CpuRepo::map_processors_to_physical_ids(raspberry_pi);
-
-        // then:
-        assert_eq!(intel_map.len(), 16);
-        for (processor_id, physical_id) in intel_map.iter().enumerate() {
-            assert_eq!(*physical_id, Some((processor_id % 2) as PhysicalID));
-        }
-        // then: the Raspberry Pi's processors all belong to the package `set_cpu_infos` fakes.
-        assert_eq!(raspberry_pi_map, vec![Some(0); 4]);
-        assert!(CpuRepo::map_processors_to_physical_ids("").is_empty());
-    }
-
-    /// Goal: each package's processor count must be its own, not a running total across
-    /// packages, which is what left every package but the last without a load channel. Method:
-    /// the dual Xeon dump, 8 logical processors per package.
-    #[test]
-    #[serial]
-    fn test_set_cpu_infos_counts_each_package_on_its_own() {
-        cc_fs::test_runtime(async {
-            // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
-
-            // then:
-            assert_eq!(cpu_repo.cpu_infos.get(&0).unwrap().get(), 8);
-            assert_eq!(cpu_repo.cpu_infos.get(&1).unwrap().get(), 8);
-        });
-    }
-
-    /// Goal: every package reports the load of its own processors, which 3.1.0 lost when it
-    /// moved to a single whole-system load that only the last package could match. Method: the
-    /// dual Xeon map with package 0's processors fully busy and package 1's idle.
-    #[test]
-    fn test_every_package_gets_its_own_load() {
-        // given:
-        let map = CpuRepo::map_processors_to_physical_ids(
-            std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap(),
-        );
-        let percents = (0..16)
-            .map(|cpu_id| CpuPercent {
-                cpu_id,
-                percent: if cpu_id % 2 == 0 { 100.0 } else { 0.0 },
-            })
-            .collect::<Vec<CpuPercent>>();
-
-        // then:
-        assert_eq!(
-            CpuRepo::package_load_percent(&percents, &map, 0),
-            Some(100.0)
-        );
-        assert_eq!(CpuRepo::package_load_percent(&percents, &map, 1), Some(0.0));
-        // then: a package cpuinfo does not know has no load at all.
-        assert_eq!(CpuRepo::package_load_percent(&percents, &map, 2), None);
     }
 
     /// Goal: a package gets a load channel only if it had a load reading at initialization, and
@@ -2124,7 +1388,7 @@ mod tests {
     fn test_load_is_reported_in_every_poll() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
             *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
                 .step_by(2)
                 .map(|cpu_id| CpuPercent {
@@ -2157,7 +1421,7 @@ mod tests {
     fn test_status_is_keyed_by_association_not_device_number() {
         cc_fs::test_runtime(async {
             // given: package 0 fully loaded, and a driver with a load channel.
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
             *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
                 .map(|cpu_id| CpuPercent {
                     cpu_id,
@@ -2195,44 +1459,6 @@ mod tests {
         });
     }
 
-    /// Goal: load follows processors going offline and online at runtime, without an error and
-    /// without a fabricated 0. Method: the dual Xeon map, first with some of package 0's
-    /// processors offline, then with all of package 1's, then checking which changes to the
-    /// online set call for a map refresh.
-    #[test]
-    fn test_package_load_follows_processors_going_offline() {
-        // given:
-        let map = CpuRepo::map_processors_to_physical_ids(
-            std::str::from_utf8(CPUINFO_INTEL_DOUBLE_CPU).unwrap(),
-        );
-        let percent = |cpu_id: u16, percent: f32| CpuPercent { cpu_id, percent };
-
-        // then: package 0 averages only the processors it has online.
-        let some_offline = [percent(0, 20.0), percent(2, 40.0), percent(1, 90.0)];
-        assert_eq!(
-            CpuRepo::package_load_percent(&some_offline, &map, 0),
-            Some(30.0)
-        );
-        assert_eq!(
-            CpuRepo::package_load_percent(&some_offline, &map, 1),
-            Some(90.0)
-        );
-        // then: a package with every processor offline has no average, which `collect_load`
-        // reports as 0 so the channel stays in the status.
-        let package_1_offline = [percent(0, 20.0), percent(2, 40.0)];
-        assert_eq!(
-            CpuRepo::package_load_percent(&package_1_offline, &map, 1),
-            None
-        );
-
-        // then: the map is current only while it lists exactly the online processors.
-        assert!(CpuRepo::processor_map_is_current(0..16, &map));
-        assert!(CpuRepo::processor_map_is_current(0..15, &map).not());
-        assert!(CpuRepo::processor_map_is_current(0..17, &map).not());
-        assert!(CpuRepo::processor_map_is_current([0, 2, 4].into_iter(), &map).not());
-        assert!(CpuRepo::processor_map_is_current(std::iter::empty(), &[]));
-    }
-
     /// Goal: the dual Xeon X5672 in the report has no `Package id` label and identical core ids
     /// on both sockets, so the zone ranking is the only thing that can tell its packages apart.
     /// Method: its real cpuinfo, checking that package 0 ranks before package 1 by APIC id
@@ -2242,11 +1468,11 @@ mod tests {
     fn test_intel_double_cpu_zones_map_to_sockets() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
 
             // then: two packages, ordered by their lowest APIC id.
-            assert_eq!(cpu_repo.cpu_infos.len(), 2);
-            assert_eq!(cpu_repo.cpu_apic_order, vec![0, 1]);
+            assert_eq!(cpu_repo.topology.package_count(), 2);
+            assert_eq!(cpu_repo.topology.apic_order(), [0, 1]);
 
             // then: each zone resolves to its own socket, with load and frequency attached.
             assert_eq!(
@@ -2269,10 +1495,10 @@ mod tests {
     fn test_zone_ranking_follows_apic_id_not_physical_id() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INVERTED_APIC.as_bytes().to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INVERTED_APIC);
 
             // then: physical id 1 holds the lower APIC id, so it owns zone 0.
-            assert_eq!(cpu_repo.cpu_apic_order, vec![1, 0]);
+            assert_eq!(cpu_repo.topology.apic_order(), [1, 0]);
             assert_eq!(
                 cpu_repo.intel_association(Some(0), online(2)),
                 Some(CpuAssociation::Socket(1))
@@ -2292,7 +1518,7 @@ mod tests {
     fn test_unresolvable_zone_falls_back_to_temps_only() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
 
             // then: one zone per package, but this one ranks past them. The temps are real, so
             // they are kept under the zone with no socket claim.
@@ -2315,10 +1541,10 @@ mod tests {
     fn test_intel_single_cpu_needs_no_zone() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_SINGLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_SINGLE_CPU);
 
             // then:
-            assert_eq!(cpu_repo.cpu_infos.len(), 1);
+            assert_eq!(cpu_repo.topology.package_count(), 1);
             assert_eq!(
                 cpu_repo.intel_association(None, online(1)),
                 Some(CpuAssociation::Socket(0))
@@ -2347,8 +1573,8 @@ mod tests {
     fn test_first_die_of_each_package_claims_its_socket() {
         cc_fs::test_runtime(async {
             // given: cpuinfo has no die id, so a two-package dump is all these paths can see.
-            let intel_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
-            let amd_repo = repo_from_cpuinfo(CPUINFO_AMD_DOUBLE_CPU.to_vec()).await;
+            let intel_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
+            let amd_repo = repo_from_cpuinfo(fixtures::AMD_DOUBLE_CPU);
 
             // then: two dies per package, so zones 0 and 2 are the first dies.
             let intel_expected = [
@@ -2466,8 +1692,8 @@ mod tests {
     fn test_offline_zone_falls_back_to_the_zone_id() {
         cc_fs::test_runtime(async {
             // given: physical ids 0, 2 and 3, and zones 0, 2 and 3 with an online CPU.
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_PACKAGE_1_OFFLINE.as_bytes().to_vec()).await;
-            assert_eq!(cpu_repo.cpu_apic_order, vec![0, 2, 3]);
+            let cpu_repo = repo_from_cpuinfo(fixtures::PACKAGE_1_OFFLINE);
+            assert_eq!(cpu_repo.topology.apic_order(), [0, 2, 3]);
             let offline = |multi_die: bool| DriverCensus {
                 device_count: 3,
                 all_zones_online: false,
@@ -2512,18 +1738,21 @@ mod tests {
     fn test_socket_devices_keep_their_5_0_uids() {
         cc_fs::test_runtime(async {
             for (cpu_info_data, is_intel) in [
-                (CPUINFO_INTEL_DOUBLE_CPU, true),
-                (CPUINFO_AMD_DOUBLE_CPU, false),
+                (fixtures::INTEL_DOUBLE_CPU, true),
+                (fixtures::AMD_DOUBLE_CPU, false),
             ] {
                 // given:
-                let cpu_repo = repo_from_cpuinfo(cpu_info_data.to_vec()).await;
+                let cpu_repo = repo_from_cpuinfo(cpu_info_data);
                 let uid_5_0 = |physical_id: PhysicalID| {
-                    let cpu_name = cpu_repo.cpu_model_names.get(&physical_id).unwrap();
-                    Device::create_uid_from(cpu_name, DeviceType::CPU, physical_id + 1, None)
+                    let cpu_name = cpu_repo.topology.model_name(Some(physical_id)).unwrap();
+                    Device::create_uid_from(&cpu_name, DeviceType::CPU, physical_id + 1, None)
                 };
                 let uid_now = |association: CpuAssociation| {
                     let type_index = cpu_repo.device_type_index(association).unwrap();
-                    let cpu_name = cpu_repo.cpu_model_name(association.physical_id()).unwrap();
+                    let cpu_name = cpu_repo
+                        .topology
+                        .model_name(association.physical_id())
+                        .unwrap();
                     Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None)
                 };
 
@@ -2556,16 +1785,25 @@ mod tests {
     fn test_model_name_falls_back_for_zone_keyed_devices() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
-            let expected = cpu_repo.cpu_model_names.get(&0).cloned().unwrap();
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
+            let expected = cpu_repo.topology.model_name(Some(0)).unwrap();
 
             // then: a known id returns its own entry.
-            assert_eq!(cpu_repo.cpu_model_name(Some(0)).as_ref(), Some(&expected));
-            assert_eq!(cpu_repo.cpu_model_name(Some(1)).as_ref(), Some(&expected));
+            assert_eq!(
+                cpu_repo.topology.model_name(Some(0)).as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(
+                cpu_repo.topology.model_name(Some(1)).as_ref(),
+                Some(&expected)
+            );
             // then: an unknown id falls back to the lowest known entry, not to nothing.
-            assert_eq!(cpu_repo.cpu_model_name(Some(7)).as_ref(), Some(&expected));
+            assert_eq!(
+                cpu_repo.topology.model_name(Some(7)).as_ref(),
+                Some(&expected)
+            );
             // then: a zone-keyed device has no id at all, and takes the same fallback.
-            assert_eq!(cpu_repo.cpu_model_name(None).as_ref(), Some(&expected));
+            assert_eq!(cpu_repo.topology.model_name(None).as_ref(), Some(&expected));
         });
     }
 
@@ -2579,7 +1817,7 @@ mod tests {
     fn test_zone_id_is_never_a_physical_id() {
         cc_fs::test_runtime(async {
             // given: two packages, so the single-package short circuit does not apply.
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
 
             // when: a zone beyond the packages cpuinfo knows about.
             let associations = [
@@ -2594,9 +1832,12 @@ mod tests {
                 // asked with it.
                 assert_eq!(association.physical_id(), None);
                 assert_eq!(CpuAssociation::Zone(2), association);
-                assert!(cpu_repo.cpu_model_names.contains_key(&2).not());
+                assert!(cpu_repo.topology.contains(2).not());
                 // The name resolver must still answer, or the device is built and then skipped.
-                assert!(cpu_repo.cpu_model_name(association.physical_id()).is_some());
+                assert!(cpu_repo
+                    .topology
+                    .model_name(association.physical_id())
+                    .is_some());
             }
         });
     }
@@ -2698,7 +1939,7 @@ mod tests {
     fn test_power_is_reported_in_every_poll() {
         cc_fs::test_runtime(async {
             // given: a seeded counter at 10 joules, a one second poll, and 42 watts cached.
-            let mut cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let mut cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
             cpu_repo.poll_rate = 1.0;
             cpu_repo.energy_counters.insert(0, Cell::new(10.0));
             let cached = ChannelStatus {
@@ -2748,7 +1989,7 @@ mod tests {
     fn test_power_watts_needs_a_seeded_energy_counter() {
         cc_fs::test_runtime(async {
             // given: a seeded counter at 10 joules and a one second poll rate.
-            let mut cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            let mut cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
             cpu_repo.poll_rate = 1.0;
             cpu_repo.energy_counters.insert(0, Cell::new(10.0));
 
@@ -2769,10 +2010,10 @@ mod tests {
     fn test_amd_double_cpu_nodes_map_to_sockets() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::AMD_DOUBLE_CPU);
 
             // then:
-            assert_eq!(cpu_repo.cpu_infos.len(), 2);
+            assert_eq!(cpu_repo.topology.package_count(), 2);
             assert_eq!(
                 cpu_repo.amd_association(Some(0), 2),
                 Some(CpuAssociation::Socket(0))
@@ -2800,10 +2041,10 @@ mod tests {
     fn test_amd_single_cpu_ignores_the_node_id() {
         cc_fs::test_runtime(async {
             // given:
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_SINGLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::AMD_SINGLE_CPU);
 
             // then:
-            assert_eq!(cpu_repo.cpu_infos.len(), 1);
+            assert_eq!(cpu_repo.topology.package_count(), 1);
             assert_eq!(
                 cpu_repo.amd_association(None, 1),
                 Some(CpuAssociation::Socket(0))
@@ -2824,14 +2065,7 @@ mod tests {
     fn test_unmatched_physical_ids_double_cpu() {
         cc_fs::test_runtime(async {
             // given:
-            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
-                .await
-                .unwrap();
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut cpu_repo =
-                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
-            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let cpu_repo = repo_from_cpuinfo(fixtures::AMD_DOUBLE_CPU);
 
             // then: nothing matched, so both sockets are reported, ascending.
             assert_eq!(cpu_repo.unmatched_physical_ids(&matched(&[])), vec![0, 1]);
@@ -2869,7 +2103,7 @@ mod tests {
     fn test_zone_and_socket_device_numbers_cannot_collide() {
         cc_fs::test_runtime(async {
             // given: physical ids 0 and 1.
-            let cpu_repo = repo_from_cpuinfo(CPUINFO_AMD_DOUBLE_CPU.to_vec()).await;
+            let cpu_repo = repo_from_cpuinfo(fixtures::AMD_DOUBLE_CPU);
 
             // then: a socket keeps its historical number, so saved settings still resolve.
             assert_eq!(
@@ -2893,7 +2127,7 @@ mod tests {
                     .device_type_index(CpuAssociation::Zone(zone_id))
                     .unwrap();
                 assert!(type_index > 2);
-                assert!(cpu_repo.cpu_infos.contains_key(&(type_index - 1)).not());
+                assert!(cpu_repo.topology.contains(type_index - 1).not());
             }
             // then: a zone that would number past the range is refused, not wrapped.
             assert_eq!(
