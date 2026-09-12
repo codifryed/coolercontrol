@@ -187,11 +187,11 @@ const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 const ENV_NVML: &str = "CC_NVML";
 
 /// Environment Variable: Force the async runtime's reactor backend
-/// Takes one of: [`poll`, `polling`, `epoll`, `io_uring`, `io-uring`, `iouring`, `uring`]
+/// Takes one of: [`epoll`, `io_uring`]
 ///
 /// # Example
 /// ```
-/// CC_RUNTIME_DRIVER=poll coolercontrold
+/// CC_RUNTIME_DRIVER=epoll coolercontrold
 /// ```
 #[cfg(feature = "compio-rt")]
 const ENV_RUNTIME_DRIVER: &str = "CC_RUNTIME_DRIVER";

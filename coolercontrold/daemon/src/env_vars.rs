@@ -120,12 +120,13 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
     },
     EnvVarDoc {
         name: RUNTIME_DRIVER_NAME,
-        description: "Reactor backend the async runtime uses. Polling avoids the io_uring \
-                      wait being accounted as iowait, which shows an otherwise idle core as \
-                      fully busy, at the cost of noticeably more wakeups. Read on builds with \
-                      the compio runtime only.",
-        values: "poll | polling | epoll | io_uring | io-uring | iouring | uring",
-        default: "io_uring where the kernel supports it, otherwise polling",
+        description: "Reactor backend the async runtime uses. epoll avoids the io_uring wait \
+                      being accounted as iowait, which shows an otherwise idle core as fully \
+                      busy, at the cost of noticeably more wakeups. Only needed on kernels 6.5 \
+                      to 6.14: 6.15+ drops the iowait accounting on its own. Read on builds \
+                      with the compio runtime only.",
+        values: "epoll | io_uring",
+        default: "io_uring where the kernel supports it, otherwise epoll",
     },
     EnvVarDoc {
         name: ENV_CONFIG_DIR,

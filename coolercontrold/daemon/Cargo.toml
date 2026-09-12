@@ -30,10 +30,10 @@ cc-stress = { path = "../cc-stress" }
 # compio (opt-in `compio-rt` feature). 0.19 needs Rust 1.95 (`cfg_select`), which sets our MSRV.
 # Taken for `IORING_ENTER_NO_IOWAIT` (compio-driver 0.12.5): without it the idle
 # `io_uring_enter(GETEVENTS)` wait is accounted as iowait on kernel 6.5+, pinning a core at 100%
-# on per-core monitors (issue 606). The flag needs kernel 6.15+, so `CC_RUNTIME_DRIVER=poll`
+# on per-core monitors (issue 606). The flag needs kernel 6.15+, so `CC_RUNTIME_DRIVER=epoll`
 # remains the escape hatch for 6.5 through 6.14.
-# Fusion driver = io-uring + polling: auto-falls-back to polling when io_uring is unavailable
-# (e.g. kernel.io_uring_disabled=2).
+# Fusion driver = the io-uring and polling features together: auto-falls-back to epoll when
+# io_uring is unavailable (e.g. kernel.io_uring_disabled=2).
 compio = { version = "=0.19.2", default-features = false, features = [
   "runtime",
   "time",
