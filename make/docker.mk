@@ -1,5 +1,5 @@
 # CI docker image build/push/run targets (GitLab registry). Maintainer-only.
-docker_image_tag := v3
+docker_image_tag := v4
 
 # Docker 29 enables the containerd image store, which keeps buildx provenance and SBOM
 # attestations instead of flattening them away. That turns a local build into a manifest list

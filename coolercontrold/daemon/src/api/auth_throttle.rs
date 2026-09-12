@@ -39,7 +39,7 @@ const FAILURE_THRESHOLD: u32 = 5;
 const BASE_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 /// A peer idle this long is forgotten, so an honest client always recovers on its own.
-const ENTRY_TTL: Duration = Duration::from_secs(900);
+const ENTRY_TTL: Duration = Duration::from_mins(15);
 /// Hard cap on tracked peers, so the throttle's own map cannot become the memory
 /// exhaustion vector it exists to prevent.
 const MAX_TRACKED_PEERS: usize = 1024;

@@ -47,7 +47,7 @@ currently, and is something we might take advantage of in the future.
 ### Build
 
 - make
-- cargo/rust >= 1.88.0
+- cargo/rust >= 1.95.0
 - libdrm-dev
 - To build the web assets:
   - nodejs >= 22.22.2 (CI and releases build with Node 24 LTS)
