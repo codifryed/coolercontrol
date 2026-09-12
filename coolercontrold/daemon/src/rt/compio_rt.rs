@@ -21,15 +21,14 @@ pub use compio::time::{interval, sleep, timeout};
 /// Driver used when `ENV_RUNTIME_DRIVER` is unset. `None` lets compio probe the kernel and pick
 /// `io_uring` when every opcode we need is supported, falling back to polling otherwise.
 ///
-/// Left on `io_uring` despite issue 606, where its `io_uring_enter(GETEVENTS)` wait is accounted
-/// as iowait (kernel 6.5+) and so pins an idle core at ~100% on per-core monitors. That is a
-/// reporting artifact, while polling costs real wakeups: measured over 90s windows, polling took
-/// daemon context switches from 30/s to 159/s and threads from 3 to 13, because on Linux it sends
-/// every file op to the `AsyncifyPool` (the `aio` path is BSD-only). Set `CC_RUNTIME_DRIVER=poll`
-/// to take that trade. The real fix is `IORING_ENTER_NO_IOWAIT`, which lands in compio-driver
-/// 0.12.5; that is reachable only through compio 0.19, whose `cfg_select!` usage requires rustc
-/// 1.95. EL10 `AppStream` is on 1.92, so the MSRV bump waits on it. Even after that, polling stays
-/// the only answer for kernels 6.5 to 6.14, which have the accounting but not the opt-out.
+/// Stays on `io_uring`. Issue 606 (an idle core reading ~100% iowait on per-core monitors) is its
+/// `io_uring_enter(GETEVENTS)` wait being accounted as iowait since kernel 6.5. compio-driver
+/// 0.12.5 sets `IORING_ENTER_NO_IOWAIT`, which clears that outright on kernel 6.15+. Kernels 6.5
+/// to 6.14 have the accounting but not the opt-out, so `CC_RUNTIME_DRIVER=poll` stays their
+/// answer. Polling is not the default because the iowait is a reporting artifact while polling
+/// costs real wakeups: measured over 90s windows it took daemon context switches from 30/s to
+/// 159/s and threads from 3 to 13, since on Linux it sends every file op to the `AsyncifyPool`
+/// (the `aio` path is BSD-only).
 const DEFAULT_DRIVER: Option<DriverType> = None;
 
 /// Initialize and run the main single-threaded runtime to completion.
