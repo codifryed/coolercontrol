@@ -56,17 +56,27 @@ enum CpuAssociation {
 }
 
 impl CpuAssociation {
-    /// The id the device is keyed and numbered by, whichever kind it is. Only a `Socket` id is a
-    /// physical id, so this must not be used to look anything up by physical id.
-    fn device_id(self) -> u8 {
+    /// The cpuinfo physical id this device measures, or `None` when nothing ties it to one.
+    /// Everything keyed by physical id, i.e. load, frequency and package power, goes through here.
+    fn physical_id(self) -> Option<PhysicalID> {
         match self {
-            Self::Socket(id) | Self::Zone(id) => id,
+            Self::Socket(physical_id) => Some(physical_id),
+            Self::Zone(_) => None,
         }
     }
 
     fn is_socket(self) -> bool {
         matches!(self, Self::Socket(_))
     }
+}
+
+/// A CPU device and what it was built from. The association is kept rather than recovered from
+/// `type_index`, so the `+ 1` that numbers a device lives in `device_type_index` alone.
+struct CpuDevice {
+    association: CpuAssociation,
+    type_index: u8,
+    device: DeviceLock,
+    driver: Rc<HwmonDriverInfo>,
 }
 
 /// What the association needs to know about one driver's devices as a whole.
@@ -93,7 +103,7 @@ pub struct CpuRepo {
     config: Rc<Config>,
     /// Owns the lm-sensors labels for the CPU chips, which the hwmon repo leaves to us.
     overrides: Rc<OverridesController>,
-    devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
+    devices: HashMap<UID, CpuDevice>,
     cpu_infos: HashMap<PhysicalID, Cell<ProcessorCount>>,
     cpu_model_names: HashMap<PhysicalID, String>,
     /// Physical ids in the order the kernel numbers package zones, i.e. ascending APIC id.
@@ -104,7 +114,9 @@ pub struct CpuRepo {
     processor_physical_ids: RefCell<Vec<Option<PhysicalID>>>,
     /// The latest load sample for every processor, taken once per poll and shared by all packages.
     cpu_load_percents: RefCell<Vec<CpuPercent>>,
-    preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// Keyed by association, so a zone-keyed device cannot be confused with the socket whose
+    /// physical id happens to be the same number.
+    preloaded_statuses: RefCell<HashMap<CpuAssociation, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
 }
@@ -434,12 +446,12 @@ impl CpuRepo {
 
     /// The model name to show for a CPU device.
     ///
-    /// A device keyed by its package zone may have no cpuinfo entry under that id. Multi-socket
+    /// A device keyed by its package zone has no physical id, so it takes the fallback. Multi-socket
     /// x86 requires identical processors, so any known name describes every package. The lowest
     /// id is used rather than any, so the name and the UID derived from it cannot vary between
     /// runs with `HashMap` order.
-    fn cpu_model_name(&self, cpu_id: PhysicalID) -> Option<String> {
-        if let Some(model_name) = self.cpu_model_names.get(&cpu_id) {
+    fn cpu_model_name(&self, physical_id: Option<PhysicalID>) -> Option<String> {
+        if let Some(model_name) = physical_id.and_then(|id| self.cpu_model_names.get(&id)) {
             return Some(model_name.clone());
         }
         self.cpu_model_names
@@ -453,8 +465,10 @@ impl CpuRepo {
     /// A socket keeps `physical id + 1` so that existing device UIDs, and the settings saved
     /// against them, do not change. A zone is numbered past every physical id: a zone id and a
     /// physical id are different quantities, so the two would otherwise collide wherever cpuinfo
-    /// numbers its packages sparsely. Keeping zones above the sockets also means the physical id
-    /// that `preload_statuses` recovers as `type_index - 1` can never alias a real processor.
+    /// numbers its packages sparsely.
+    ///
+    /// This is the only place a device number and a processor id are converted into each other.
+    /// Nothing recovers a physical id back out of a `type_index`.
     fn device_type_index(&self, association: CpuAssociation) -> Option<u8> {
         match association {
             CpuAssociation::Socket(physical_id) => {
@@ -931,53 +945,77 @@ impl CpuRepo {
         }
     }
 
+    /// Every channel a CPU device has, for this poll.
+    ///
+    /// Load, frequency and power exist only on a device tied to a processor, so a zone-keyed
+    /// device reports its temps alone. That is enforced by the channels it was built with, and
+    /// again here by the physical id its association does not have.
     async fn request_status(
         &self,
-        phys_cpu_id: PhysicalID,
+        association: CpuAssociation,
         driver: &HwmonDriverInfo,
         cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
         init: bool,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
-        let mut status_channels = Vec::new();
-        let mut contains_freq = false;
-        for channel in &driver.channels {
-            match channel.hwmon_type {
-                HwmonChannelType::Load => {
-                    status_channels.push(self.collect_load(phys_cpu_id, &channel.name));
-                }
-                HwmonChannelType::Freq => contains_freq = true,
-                HwmonChannelType::PowerCap => {
-                    let joule_count =
-                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await;
-                    let mut watts = self.power_watts_or_zero(phys_cpu_id, joule_count);
-                    self.use_cached_value_if_zero(&mut watts, init, phys_cpu_id, &channel.name);
-                    let power_status = ChannelStatus {
-                        name: channel.name.clone(),
-                        watts: Some(watts),
-                        ..Default::default()
-                    };
-                    status_channels.push(power_status);
-                }
-                _ => (),
+        let status_channels = match association.physical_id() {
+            // Only temps, which are read below, belong to a zone-keyed device.
+            None => Vec::new(),
+            Some(physical_id) => {
+                self.collect_socket_channels(physical_id, association, driver, cpu_freqs, init)
+                    .await
             }
-        }
-        if contains_freq {
-            Self::get_filtered_freqs(phys_cpu_id, driver, cpu_freqs, &mut status_channels);
-        }
+        };
         let (read_temps, _) = temps::extract_temp_statuses(driver).await;
         let temp_names = driver
             .channels
             .iter()
             .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
             .map(|channel| channel.name.as_str());
-        // The last known temps are only needed when nothing could be read, and the preloaded
-        // status for this device is keyed by its device number, `phys_cpu_id + 1`.
+        // The last known temps are only needed when nothing could be read.
         let preloaded_statuses = self.preloaded_statuses.borrow();
         let last_known_temps = preloaded_statuses
-            .get(&(phys_cpu_id + 1))
+            .get(&association)
             .map_or(&[][..], |(_, temps)| temps.as_slice());
         let temps = Self::fill_missing_temps(temp_names, &read_temps, last_known_temps);
         (status_channels, temps)
+    }
+
+    /// The load, frequency and power channels of a device tied to a processor.
+    async fn collect_socket_channels(
+        &self,
+        physical_id: PhysicalID,
+        association: CpuAssociation,
+        driver: &HwmonDriverInfo,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        init: bool,
+    ) -> Vec<ChannelStatus> {
+        debug_assert_eq!(association.physical_id(), Some(physical_id));
+        let mut status_channels = Vec::with_capacity(driver.channels.len());
+        let mut contains_freq = false;
+        for channel in &driver.channels {
+            match channel.hwmon_type {
+                HwmonChannelType::Load => {
+                    status_channels.push(self.collect_load(physical_id, &channel.name));
+                }
+                HwmonChannelType::Freq => contains_freq = true,
+                HwmonChannelType::PowerCap => {
+                    let joule_count =
+                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await;
+                    let mut watts = self.power_watts_or_zero(physical_id, joule_count);
+                    self.use_cached_value_if_zero(&mut watts, init, association, &channel.name);
+                    status_channels.push(ChannelStatus {
+                        name: channel.name.clone(),
+                        watts: Some(watts),
+                        ..Default::default()
+                    });
+                }
+                _ => (),
+            }
+        }
+        if contains_freq {
+            Self::get_filtered_freqs(physical_id, driver, cpu_freqs, &mut status_channels);
+        }
+        status_channels
     }
 
     /// Every temp channel the device has, for this poll, in channel order.
@@ -1052,13 +1090,12 @@ impl CpuRepo {
         &self,
         watts: &mut Watts,
         init: bool,
-        physical_id: PhysicalID,
+        association: CpuAssociation,
         channel_name: &str,
     ) {
-        if *watts < 0.01 && !init {
+        if *watts < 0.01 && init.not() {
             debug!("CPU counter was measured at 0 watts");
-            let device_id = physical_id + 1;
-            if let Some(preloaded_status) = self.preloaded_statuses.borrow().get(&device_id) {
+            if let Some(preloaded_status) = self.preloaded_statuses.borrow().get(&association) {
                 *watts = preloaded_status
                     .0
                     .iter()
@@ -1216,9 +1253,8 @@ impl CpuRepo {
             );
             return None;
         };
-        let cpu_id = association.device_id();
         // cpu_info is set first, filling in model names:
-        let Some(cpu_name) = self.cpu_model_name(cpu_id) else {
+        let Some(cpu_name) = self.cpu_model_name(association.physical_id()) else {
             error!("No CPU model name found. Skipping {device_name} device.");
             return None;
         };
@@ -1236,8 +1272,8 @@ impl CpuRepo {
             Ok(temps) => channels.extend(temps),
             Err(err) => error!("Error initializing CPU Temps: {err}"),
         }
-        if association.is_socket() {
-            channels.extend(self.init_socket_channels(cpu_id, cpu_freqs).await);
+        if let Some(physical_id) = association.physical_id() {
+            channels.extend(self.init_socket_channels(physical_id, cpu_freqs).await);
         }
         let channels = self
             .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
@@ -1255,6 +1291,21 @@ impl CpuRepo {
             channels,
             ..Default::default()
         })
+    }
+
+    /// Seeds a processor's energy counter with a real reading, which `request_status` needs
+    /// before it can take a delta. A failed initial read seeds 0, so the next good read still
+    /// produces a valid forward delta.
+    async fn seed_energy_counter(&mut self, physical_id: PhysicalID, driver: &HwmonDriverInfo) {
+        for channel in driver.channels.iter().filter(|channel| {
+            channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
+        }) {
+            let joule_count = power_cap::extract_power_joule_counter(&driver.fds, channel.number)
+                .await
+                .unwrap_or(0.0);
+            self.energy_counters
+                .insert(physical_id, Cell::new(joule_count));
+        }
     }
 
     async fn get_driver_locations(base_path: &Path) -> Vec<String> {
@@ -1304,11 +1355,10 @@ impl Repository for CpuRepo {
         }
 
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
-        // These are keyed by `CpuAssociation::device_id()`, so a zone-keyed device has no cpuinfo
-        // entry of its own. The name has to be resolved the same way it was when the device was
-        // built, or every such device would be dropped here.
+        // A zone-keyed device has no cpuinfo entry of its own. The name has to be resolved the
+        // same way it was when the device was built, or every such device would be dropped here.
         for (association, driver) in hwmon_devices {
-            let Some(cpu_name) = self.cpu_model_name(association.device_id()) else {
+            let Some(cpu_name) = self.cpu_model_name(association.physical_id()) else {
                 error!("No CPU model name for {association:?}. Skipping device.");
                 continue;
             };
@@ -1316,28 +1366,17 @@ impl Repository for CpuRepo {
                 error!("No device number left for {association:?}. Skipping device.");
                 continue;
             };
-            // `preload_statuses` recovers this same id from `type_index`, so both paths must
-            // derive it the same way or a device's seeded counters would not be found again.
-            let status_id = type_index - 1;
-            for channel in driver.channels.iter().filter(|channel| {
-                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == status_id
-            }) {
-                // Fill initial joule_count with a real count (needed before
-                // request_status). If the initial read fails, seed with 0 so the
-                // next successful read still produces a valid forward delta.
-                let joule_count =
-                    power_cap::extract_power_joule_counter(&driver.fds, channel.number)
-                        .await
-                        .unwrap_or(0.0);
-                self.energy_counters
-                    .insert(status_id, Cell::new(joule_count));
+            // Only a processor's own device has a package power channel, and the counter is per
+            // processor, so a zone-keyed device seeds nothing.
+            if let Some(physical_id) = association.physical_id() {
+                self.seed_energy_counter(physical_id, &driver).await;
             }
             let (channels, temps) = self
-                .request_status(status_id, &driver, &mut cpu_freqs, true)
+                .request_status(association, &driver, &mut cpu_freqs, true)
                 .await;
             self.preloaded_statuses
                 .borrow_mut()
-                .insert(type_index, (channels.clone(), temps.clone()));
+                .insert(association, (channels.clone(), temps.clone()));
             let chip = chip_name::derive(&driver.path).await;
             let temp_infos = driver
                 .channels
@@ -1398,13 +1437,24 @@ impl Repository for CpuRepo {
             device.initialize_status_history_with(status, self.poll_rate);
             self.devices.insert(
                 device.uid.clone(),
-                (Rc::new(RefCell::new(device)), Rc::new(driver)),
+                CpuDevice {
+                    association,
+                    type_index,
+                    device: Rc::new(RefCell::new(device)),
+                    driver: Rc::new(driver),
+                },
             );
         }
 
         let mut init_devices = HashMap::new();
-        for (uid, (device, hwmon_info)) in &self.devices {
-            init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
+        for (uid, cpu_device) in &self.devices {
+            init_devices.insert(
+                uid.clone(),
+                (
+                    cpu_device.device.borrow().clone(),
+                    cpu_device.driver.clone(),
+                ),
+            );
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {init_devices:?}");
@@ -1454,7 +1504,7 @@ impl Repository for CpuRepo {
     async fn devices(&self) -> DeviceList {
         self.devices
             .values()
-            .map(|(device, _)| device.clone())
+            .map(|cpu_device| cpu_device.device.clone())
             .collect()
     }
 
@@ -1463,21 +1513,23 @@ impl Repository for CpuRepo {
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         self.sample_cpu_load().await;
         moro_local::async_scope!(|scope| {
-            for (device_lock, driver) in self.devices.values() {
-                let device_id = device_lock.borrow().type_index;
-                let physical_id = device_id - 1;
+            for cpu_device in self.devices.values() {
+                let association = cpu_device.association;
+                let driver = &cpu_device.driver;
                 let mut cpu_freq = HashMap::new();
-                if let Some(freq) = cpu_freqs.remove(&physical_id) {
-                    cpu_freq.insert(physical_id, freq);
+                if let Some(physical_id) = association.physical_id() {
+                    if let Some(freq) = cpu_freqs.remove(&physical_id) {
+                        cpu_freq.insert(physical_id, freq);
+                    }
                 }
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     let (channels, temps) = self
-                        .request_status(physical_id, driver, &mut cpu_freq, false)
+                        .request_status(association, driver, &mut cpu_freq, false)
                         .await;
                     self.preloaded_statuses
                         .borrow_mut()
-                        .insert(device_id, (channels, temps));
+                        .insert(association, (channels, temps));
                 });
             }
         })
@@ -1489,22 +1541,24 @@ impl Repository for CpuRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        for (device, _) in self.devices.values() {
-            let device_id = device.borrow().type_index;
+        for cpu_device in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
-            let preloaded_statuses = preloaded_statuses_map.get(&device_id);
-            if preloaded_statuses.is_none() {
-                error!("There is no status preloaded for this device: {device_id}");
+            let Some((channels, temps)) = preloaded_statuses_map.get(&cpu_device.association)
+            else {
+                error!(
+                    "There is no status preloaded for this device: {:?}",
+                    cpu_device.association
+                );
                 continue;
-            }
-            let (channels, temps) = preloaded_statuses.unwrap().clone();
+            };
             let status = Status {
-                temps,
-                channels,
+                temps: temps.clone(),
+                channels: channels.clone(),
                 ..Default::default()
             };
+            let device_id = cpu_device.type_index;
             trace!("CPU device #{device_id} status was updated with: {status:?}");
-            device.borrow_mut().set_status(status);
+            cpu_device.device.borrow_mut().set_status(status);
         }
         Ok(())
     }
@@ -1596,7 +1650,7 @@ mod tests {
     use crate::device::{ChannelStatus, Device, DeviceType, TempStatus};
     use crate::overrides::OverridesController;
     use crate::repositories::cpu::cpu_repo::{
-        CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID,
+        CpuAssociation, CpuFreqs, CpuRepo, DriverCensus, PhysicalID, SINGLE_CPU_LOAD_NAME,
     };
     use crate::repositories::cpu::percent::CpuPercent;
     use crate::repositories::hwmon::hwmon_repo::{
@@ -2093,6 +2147,54 @@ mod tests {
         });
     }
 
+    /// Goal: a device is keyed by its association, not by arithmetic on its device number. A zone
+    /// device's number used to be turned back into a physical id as `type_index - 1`, which is a
+    /// number no processor owns, so nothing keyed by physical id may be reached through it.
+    /// Method: a driver carrying a load channel, asked for as a socket and as a zone, with a
+    /// cached status planted under the socket that the zone must not reach.
+    #[test]
+    #[serial]
+    fn test_status_is_keyed_by_association_not_device_number() {
+        cc_fs::test_runtime(async {
+            // given: package 0 fully loaded, and a driver with a load channel.
+            let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
+            *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
+                .map(|cpu_id| CpuPercent {
+                    cpu_id,
+                    percent: 50.0,
+                })
+                .collect();
+            let driver = HwmonDriverInfo {
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Load,
+                    number: 0,
+                    name: SINGLE_CPU_LOAD_NAME.to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let mut freqs = HashMap::new();
+
+            // when: the processor's own device.
+            let (channels, _) = cpu_repo
+                .request_status(CpuAssociation::Socket(0), &driver, &mut freqs, false)
+                .await;
+
+            // then: it reports the load of the processor it is tied to.
+            assert_eq!(channels.len(), 1);
+            assert_eq!(channels[0].duty, Some(50.0));
+
+            // when: a zone device numbered so that the old `type_index - 1` would land on
+            // physical id 0.
+            let (channels, _) = cpu_repo
+                .request_status(CpuAssociation::Zone(0), &driver, &mut freqs, false)
+                .await;
+
+            // then: nothing keyed by physical id is reported for it, not even a 0.
+            assert!(channels.is_empty());
+        });
+    }
+
     /// Goal: load follows processors going offline and online at runtime, without an error and
     /// without a fabricated 0. Method: the dual Xeon map, first with some of package 0's
     /// processors offline, then with all of package 1's, then checking which changes to the
@@ -2197,7 +2299,8 @@ mod tests {
             let association = cpu_repo.intel_association(Some(2), online(2));
             assert_eq!(association, Some(CpuAssociation::Zone(2)));
             assert!(association.unwrap().is_socket().not());
-            assert_eq!(association.unwrap().device_id(), 2);
+            // Nothing keyed by physical id can be asked of it.
+            assert_eq!(association.unwrap().physical_id(), None);
 
             // then: without a zone id there is nothing to key the device on at all.
             assert_eq!(cpu_repo.intel_association(None, online(2)), None);
@@ -2420,7 +2523,7 @@ mod tests {
                 };
                 let uid_now = |association: CpuAssociation| {
                     let type_index = cpu_repo.device_type_index(association).unwrap();
-                    let cpu_name = cpu_repo.cpu_model_name(association.device_id()).unwrap();
+                    let cpu_name = cpu_repo.cpu_model_name(association.physical_id()).unwrap();
                     Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None)
                 };
 
@@ -2457,21 +2560,23 @@ mod tests {
             let expected = cpu_repo.cpu_model_names.get(&0).cloned().unwrap();
 
             // then: a known id returns its own entry.
-            assert_eq!(cpu_repo.cpu_model_name(0).as_ref(), Some(&expected));
-            assert_eq!(cpu_repo.cpu_model_name(1).as_ref(), Some(&expected));
+            assert_eq!(cpu_repo.cpu_model_name(Some(0)).as_ref(), Some(&expected));
+            assert_eq!(cpu_repo.cpu_model_name(Some(1)).as_ref(), Some(&expected));
             // then: an unknown id falls back to the lowest known entry, not to nothing.
-            assert_eq!(cpu_repo.cpu_model_name(7).as_ref(), Some(&expected));
+            assert_eq!(cpu_repo.cpu_model_name(Some(7)).as_ref(), Some(&expected));
+            // then: a zone-keyed device has no id at all, and takes the same fallback.
+            assert_eq!(cpu_repo.cpu_model_name(None).as_ref(), Some(&expected));
         });
     }
 
-    /// Goal: a zone-keyed device must never be looked up in `cpu_model_names` directly, because
-    /// `Zone` is produced only for an id cpuinfo has no entry for, so such a lookup always misses
-    /// and the device would be built and then dropped. Method: take the associations both drivers
-    /// return for an unresolvable zone on a two-package machine, and assert the raw map misses
-    /// while the resolver still answers.
+    /// Goal: a zone id must never reach a lookup keyed by physical id. `Zone` is produced only for
+    /// an id cpuinfo has no entry for, so such a lookup always misses and the device would be
+    /// built and then dropped. Method: take the associations both drivers return for an
+    /// unresolvable zone on a two-package machine, and assert the zone id cannot be spent as a
+    /// physical id while the name resolver still answers.
     #[test]
     #[serial]
-    fn test_zone_device_id_is_never_a_model_name_key() {
+    fn test_zone_id_is_never_a_physical_id() {
         cc_fs::test_runtime(async {
             // given: two packages, so the single-package short circuit does not apply.
             let cpu_repo = repo_from_cpuinfo(CPUINFO_INTEL_DOUBLE_CPU.to_vec()).await;
@@ -2485,12 +2590,13 @@ mod tests {
             // then:
             for association in associations {
                 assert!(association.is_socket().not());
-                let device_id = association.device_id();
-                // The raw map cannot answer for a zone id, which is why the call site must not
-                // use it.
-                assert!(cpu_repo.cpu_model_names.contains_key(&device_id).not());
-                // The resolver must, or the device gets no name and is skipped.
-                assert!(cpu_repo.cpu_model_name(device_id).is_some());
+                // The zone id is not available as a physical id, so nothing keyed by one can be
+                // asked with it.
+                assert_eq!(association.physical_id(), None);
+                assert_eq!(CpuAssociation::Zone(2), association);
+                assert!(cpu_repo.cpu_model_names.contains_key(&2).not());
+                // The name resolver must still answer, or the device is built and then skipped.
+                assert!(cpu_repo.cpu_model_name(association.physical_id()).is_some());
             }
         });
     }
@@ -2600,10 +2706,11 @@ mod tests {
                 watts: Some(42.0),
                 ..Default::default()
             };
+            let socket_0 = CpuAssociation::Socket(0);
             cpu_repo
                 .preloaded_statuses
                 .borrow_mut()
-                .insert(1, (vec![cached], Vec::new()));
+                .insert(socket_0, (vec![cached], Vec::new()));
 
             // then: a failed read reports 0 and leaves the stored count alone.
             assert_eq!(cpu_repo.power_watts_or_zero(0, None), 0.0);
@@ -2615,11 +2722,20 @@ mod tests {
 
             // then: after initialization the 0 becomes the last cached reading.
             let mut watts = 0.0;
-            cpu_repo.use_cached_value_if_zero(&mut watts, false, 0, "CPU Power");
+            cpu_repo.use_cached_value_if_zero(&mut watts, false, socket_0, "CPU Power");
             assert_eq!(watts, 42.0);
             // then: during initialization there is no cache to use yet, so 0 stands.
             let mut watts = 0.0;
-            cpu_repo.use_cached_value_if_zero(&mut watts, true, 0, "CPU Power");
+            cpu_repo.use_cached_value_if_zero(&mut watts, true, socket_0, "CPU Power");
+            assert_eq!(watts, 0.0);
+            // then: a zone device numbered the same as this socket cannot read its cache.
+            let mut watts = 0.0;
+            cpu_repo.use_cached_value_if_zero(
+                &mut watts,
+                false,
+                CpuAssociation::Zone(0),
+                "CPU Power",
+            );
             assert_eq!(watts, 0.0);
         });
     }
