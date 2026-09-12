@@ -221,6 +221,32 @@ test_all:
       - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
 
+####################################### MSRV floor
+# Every build image ships a newer toolchain than the daemon's declared MSRV, so no other job
+# notices when a dependency bump or a stdlib call quietly needs more than we promise. Reads the
+# floor out of Cargo.toml so the gate and the manifest cannot drift apart.
+test_msrv:
+  stage: test
+  <<: [*cache_template]
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  needs: []
+  variables:
+    # A pure compile check. An older rustc has a different lint set, so the global -Dwarnings
+    # would fail this job over warnings the shipped toolchain never emits.
+    RUSTFLAGS: ''
+  before_script:
+    - MSRV=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' coolercontrold/daemon/Cargo.toml)
+    - echo "MSRV declared in daemon/Cargo.toml - ${MSRV}"
+    - rustup toolchain install "$MSRV" --profile minimal
+    - rustup run "$MSRV" rustc --version
+  script:
+    # The default feature set (compio-rt) is what sets the floor. No UI build is needed:
+    # resources/app ships a tracked .gitignore, so include_dir! still resolves the directory.
+    - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
+
 ####################################### source tarball
 build_source_assets:
   stage: build
