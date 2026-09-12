@@ -13,7 +13,7 @@ use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
-use crate::repositories::cpu_repo::CpuRepo;
+use crate::repositories::cpu::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
