@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::device::{ChannelName, DeviceUID, Duty, Temp};
+use crate::engine::processors::functions::calc_ideal_stack_size;
 use crate::setting::{Function, ProfileUID, TempSource};
 
 mod commanders;
@@ -75,6 +76,9 @@ pub struct NormalizedGraphProfile {
     temp_source: TempSource,
     function: Function,
     poll_rate: f64,
+    /// The depth of the Function's hysteresis temp stack, in poll cycles. Derived
+    /// here so it is rebuilt with the rest of the Profile on every schedule.
+    ideal_stack_size: usize,
 }
 
 impl Default for NormalizedGraphProfile {
@@ -89,6 +93,7 @@ impl Default for NormalizedGraphProfile {
             },
             function: Function::default(),
             poll_rate: 1.0,
+            ideal_stack_size: calc_ideal_stack_size(&Function::default(), 1.0),
         }
     }
 }
