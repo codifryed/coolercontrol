@@ -17,12 +17,6 @@ pub async fn write_string(path: impl AsRef<Path>, txt: String) -> Result<()> {
 /// Opens (or creates/truncates) the file at `path` and writes all of `data` to it. Returns an error
 /// if any of the operations fail.
 pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        tokio::fs::write(path, data).await?;
-        Ok(())
-    }
-    #[cfg(feature = "compio-rt")]
     {
         // compio takes ownership of the buffer for the duration of the write and hands it back in
         // the `BufResult`; we only care about the io result.
@@ -36,11 +30,6 @@ pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
 /// operation). Used to publish a fully written temp file over its target so a
 /// crash mid-write cannot leave a partial file at `to`.
 pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::rename(from, to).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(compio::fs::rename(from.as_ref(), to.as_ref()).await?)
     }
@@ -63,11 +52,6 @@ pub async fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> 
 /// cannot be created. Possible reasons include lack of permissions, or if a
 /// non-directory file exists at one of the parent component paths.
 pub async fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::create_dir_all(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(compio::fs::create_dir_all(path.as_ref()).await?)
     }
@@ -88,11 +72,6 @@ pub async fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
 /// This function will return an error if the file cannot be removed. Possible
 /// reasons include lack of permissions, or if the file is a directory.
 pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::remove_file(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(compio::fs::remove_file(path.as_ref()).await?)
     }
@@ -117,11 +96,6 @@ pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
 // `async` for parity with the Tokio backend; the compio branch's body is a sync std call.
 #[allow(clippy::unused_async)]
 pub async fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::remove_dir_all(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         // compio has no async remove_dir_all; this is a test-only helper, so a direct std call
         // (briefly blocking the single thread during cleanup) is acceptable.

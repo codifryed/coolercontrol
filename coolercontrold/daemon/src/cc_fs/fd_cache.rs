@@ -14,17 +14,11 @@ use std::path::Path;
 
 use super::SysfsValue;
 
-#[cfg(feature = "compio-rt")]
 use super::SYSFS_VALUE_MAX_BYTES;
-#[cfg(feature = "compio-rt")]
 use nix::libc;
-#[cfg(feature = "compio-rt")]
 use std::cell::RefCell;
-#[cfg(feature = "compio-rt")]
 use std::collections::HashMap;
-#[cfg(feature = "compio-rt")]
 use std::path::PathBuf;
-#[cfg(feature = "compio-rt")]
 use std::rc::Rc;
 
 /// Upper bound on held descriptors per cache. One entry per per-tick attribute of one device, so
@@ -37,20 +31,12 @@ pub const SYSFS_FD_CACHE_MAX_ENTRIES: usize = 512;
 /// Dropping the last clone closes every descriptor, and compio's close needs no live runtime.
 #[derive(Clone, Debug, Default)]
 pub struct SysfsFdCache {
-    #[cfg(feature = "compio-rt")]
     files: Rc<RefCell<HashMap<PathBuf, compio::fs::File>>>,
 }
 
 impl SysfsFdCache {
     /// Reads one numeric attribute, reusing a held descriptor when there is one.
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
-        #[cfg(not(feature = "compio-rt"))]
-        {
-            // The tokio fallback stays on open-per-read: its file ops already hop a blocking pool
-            // per call, where the saving does not justify a second code path.
-            super::read_sysfs_value(path).await
-        }
-        #[cfg(feature = "compio-rt")]
         {
             if let Some(file) = self.held(path) {
                 return match Self::read_at_start(&file).await {
@@ -71,18 +57,12 @@ impl SysfsFdCache {
 
     /// Releases every held descriptor. Used when the devices behind them may be gone (suspend).
     pub fn clear(&self) {
-        #[cfg(feature = "compio-rt")]
         self.files.borrow_mut().clear();
     }
 
     /// Number of held descriptors. Always 0 on the tokio fallback, which holds none.
     #[must_use]
     pub fn len(&self) -> usize {
-        #[cfg(not(feature = "compio-rt"))]
-        {
-            0
-        }
-        #[cfg(feature = "compio-rt")]
         {
             self.files.borrow().len()
         }
@@ -96,12 +76,10 @@ impl SysfsFdCache {
     }
 
     /// Cloning the handle (an `Rc` bump) ends the borrow before any await point.
-    #[cfg(feature = "compio-rt")]
     fn held(&self, path: &Path) -> Option<compio::fs::File> {
         self.files.borrow().get(path).cloned()
     }
 
-    #[cfg(feature = "compio-rt")]
     fn hold(&self, path: &Path, file: &compio::fs::File) {
         let mut files = self.files.borrow_mut();
         if files.len() >= SYSFS_FD_CACHE_MAX_ENTRIES {
@@ -115,7 +93,6 @@ impl SysfsFdCache {
         debug_assert!(files.len() <= SYSFS_FD_CACHE_MAX_ENTRIES);
     }
 
-    #[cfg(feature = "compio-rt")]
     fn evict(&self, path: &Path) {
         self.files.borrow_mut().remove(path);
     }
@@ -123,7 +100,6 @@ impl SysfsFdCache {
     /// One read at offset 0. kernfs regenerates the whole attribute per read, so a second read
     /// only ever reports 0 bytes; a value that fills the buffer is rejected by
     /// `SysfsValue::parse` as possibly truncated, exactly as on the uncached path.
-    #[cfg(feature = "compio-rt")]
     async fn read_at_start(file: &compio::fs::File) -> Result<SysfsValue> {
         use compio::buf::{IntoInner, IoBuf};
         use compio::io::AsyncReadAt;
@@ -138,7 +114,6 @@ impl SysfsFdCache {
     /// path was replaced. Value-level failures (EPERM from a runtime-suspended GPU, ENODATA from
     /// an unconnected sensor slot) leave the descriptor usable, and evicting on those would
     /// reopen every tick, which is the cost this cache exists to remove.
-    #[cfg(feature = "compio-rt")]
     fn is_dead_descriptor(err: &anyhow::Error) -> bool {
         err.downcast_ref::<std::io::Error>()
             .and_then(std::io::Error::raw_os_error)
@@ -154,7 +129,6 @@ impl SysfsFdCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "compio-rt")]
     use std::ops::Not;
 
     /// Goal: a held descriptor must report the file's current contents, not the bytes seen when it
@@ -179,7 +153,6 @@ mod tests {
     /// each get their own. Method: read one path twice and a second path once, asserting the
     /// held count after each step.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn each_path_holds_exactly_one_descriptor() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -202,7 +175,6 @@ mod tests {
     /// reopening. Method: populate the cache, clear it, then read again and check the value and
     /// the held count.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn clear_releases_descriptors_and_reads_still_work() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -223,7 +195,6 @@ mod tests {
     /// Method: read a path, evict it, then read again and assert the value is correct and exactly
     /// one descriptor is held.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn eviction_forces_a_reopen() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -244,7 +215,6 @@ mod tests {
     /// would reopen every tick for a suspended GPU or an unconnected sensor slot, undoing the
     /// cache. Method: classify one error per errno, plus a non-io error.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn only_dead_descriptor_errnos_evict() {
         for errno in [libc::ENODEV, libc::ESTALE, libc::EBADF, libc::ENOENT] {
             let err: anyhow::Error = std::io::Error::from_raw_os_error(errno).into();
@@ -267,7 +237,6 @@ mod tests {
     /// Goal: a failed open must not leave anything held, so a missing attribute costs one failed
     /// open per tick and nothing else. Method: read a path that does not exist.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn a_missing_path_holds_nothing() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -283,7 +252,6 @@ mod tests {
     /// cache, while a sysfs attribute cannot be replaced that way. Method: read, replace the path
     /// with a different inode, read again, and assert the stale value.
     #[test]
-    #[cfg(feature = "compio-rt")]
     fn a_replaced_inode_is_not_seen() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -312,24 +280,6 @@ mod tests {
                 "45000",
                 "a held descriptor must not be used for files that can be replaced"
             );
-        });
-    }
-
-    /// Goal: the tokio fallback must read correctly while holding nothing, so its behaviour is
-    /// exactly today's open-per-read. Method: read twice and assert the value and an empty cache.
-    #[test]
-    #[cfg(not(feature = "compio-rt"))]
-    fn the_fallback_holds_no_descriptors() {
-        crate::rt::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("temp1_input");
-            std::fs::write(&path, "45000\n").unwrap();
-            let cache = SysfsFdCache::default();
-            for _ in 0..2 {
-                let value = cache.read_value(&path).await.unwrap();
-                assert_eq!(value.trimmed_str().unwrap(), "45000");
-            }
-            assert!(cache.is_empty());
         });
     }
 }

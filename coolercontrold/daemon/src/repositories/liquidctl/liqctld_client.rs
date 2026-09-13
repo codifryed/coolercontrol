@@ -25,22 +25,12 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
-/// The connection-driver task handle. On Tokio it is abortable; under compio it cancels when
-/// dropped (compio's spawn cancels on handle drop). `SocketConnection::abort` unifies the two.
-#[cfg(not(feature = "compio-rt"))]
-type ConnDriver = tokio::task::JoinHandle<()>;
-#[cfg(feature = "compio-rt")]
+/// The connection-driver task handle. It cancels when dropped, since compio's spawn cancels on
+/// handle drop; `SocketConnection::abort` is the named way to do that.
 type ConnDriver = compio::runtime::JoinHandle<()>;
 
-/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive. Tokio uses `TokioIo`;
-/// compio uses `cyper_core::HyperStream` over a compio `UnixStream`.
-#[cfg(not(feature = "compio-rt"))]
-async fn connect_liqctld_io(
-) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
-    let unix_stream = tokio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
-    Ok(hyper_util::rt::TokioIo::new(unix_stream))
-}
-#[cfg(feature = "compio-rt")]
+/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive, via
+/// `cyper_core::HyperStream` over a compio `UnixStream`.
 async fn connect_liqctld_io(
 ) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
     let unix_stream = compio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
@@ -49,11 +39,6 @@ async fn connect_liqctld_io(
 
 /// Spawns the hyper connection-driver future on the active runtime and returns its handle. The
 /// handle is held (not detached) so the connection can be aborted/cancelled later.
-#[cfg(not(feature = "compio-rt"))]
-fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
-    tokio::task::spawn_local(fut)
-}
-#[cfg(feature = "compio-rt")]
 fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
     compio::runtime::spawn(fut)
 }
@@ -710,14 +695,11 @@ struct SocketConnection {
 }
 
 impl SocketConnection {
-    /// Tears down the connection's driver task. On Tokio it aborts the join handle; under compio
-    /// dropping `self` (and its handle) cancels the task, so this just consumes `self`.
+    /// Tears down the connection's driver task: dropping `self` (and its handle) cancels it, so
+    /// this just consumes `self`.
     #[allow(clippy::needless_pass_by_value)] // consumes self so the compio handle drops (cancels)
     fn abort(self) {
-        #[cfg(not(feature = "compio-rt"))]
-        self.connection_handle.abort();
         // Dropping a compio JoinHandle cancels its task; do so explicitly.
-        #[cfg(feature = "compio-rt")]
         drop(self.connection_handle);
     }
 }

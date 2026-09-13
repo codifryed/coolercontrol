@@ -23,17 +23,12 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
-// Tokio's AsyncFd gives event-driven netlink readiness on the Tokio backend. compio has no
-// fd-readiness primitive, so under `compio-rt` we poll the (queued) socket on a coarse timer.
-#[cfg(not(feature = "compio-rt"))]
-use tokio::io::unix::{AsyncFd, AsyncFdReadyGuard};
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
-/// Poll interval for the netlink socket under compio (no fd-readiness primitive). uevents queue in
+/// Poll interval for the netlink socket (compio has no fd-readiness primitive). uevents queue in
 /// the socket buffer, so a coarse poll loses no events; it only adds at most this much latency to
 /// detecting a device change (already debounced), keeping idle wakeups low.
-#[cfg(feature = "compio-rt")]
 const NETLINK_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;
@@ -78,17 +73,7 @@ impl<'s> DeviceListener {
                 return Ok(Self::deaf());
             }
         };
-        // Tokio: register the fd with the reactor for event-driven readiness. compio: hold the raw
-        // fd and poll it (no fd-readiness primitive). Both feed the same `run_event_loop`.
-        #[cfg(not(feature = "compio-rt"))]
-        let event_source = match AsyncFd::new(fd) {
-            Ok(afd) => afd,
-            Err(err) => {
-                info!("Could not register netlink socket with tokio: {err}");
-                return Ok(Self::deaf());
-            }
-        };
-        #[cfg(feature = "compio-rt")]
+        // Hold the raw fd and poll it; `run_event_loop` drains whatever has queued.
         let event_source = fd;
         let hwmon_baseline = build_hwmon_baseline().await;
         let lc_baseline = build_liquidctl_baseline(&all_devices);
@@ -236,8 +221,7 @@ fn extract_disabled_device_names(
 /// together, so a device that triggers both hwmon and usb subsystem events
 /// results in one combined scan rather than two separate ones.
 async fn run_event_loop(
-    #[cfg(not(feature = "compio-rt"))] async_fd: AsyncFd<OwnedFd>,
-    #[cfg(feature = "compio-rt")] netlink_fd: OwnedFd,
+    netlink_fd: OwnedFd,
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
     disabled_names: HashSet<String>,
@@ -252,28 +236,6 @@ async fn run_event_loop(
     let lc_available = liquidctl_repo.is_some();
 
     loop {
-        // `tokio::select!` does not accept `#[cfg]` on its branches, so the readiness branch differs
-        // by whole block: Tokio waits on the reactor; compio polls the netlink socket on a timer.
-        #[cfg(not(feature = "compio-rt"))]
-        let scan_now = tokio::select! {
-            () = run_token.cancelled() => break,
-            () = sleep_until_deadline(debounce_deadline) => {
-                debounce_deadline = None;
-                true
-            },
-            result = async_fd.readable() => {
-                handle_readable_event(
-                    result,
-                    &async_fd,
-                    &mut buf,
-                    &mut debounce_deadline,
-                    &mut pending,
-                    lc_available,
-                );
-                continue;
-            },
-        };
-        #[cfg(feature = "compio-rt")]
         let scan_now = tokio::select! {
             () = run_token.cancelled() => break,
             () = sleep_until_deadline(debounce_deadline) => {
@@ -355,28 +317,6 @@ fn drain_uevents(
     }
     if any_relevant {
         *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-    }
-}
-
-/// Tokio readiness handler: on a ready guard, drain the socket and re-arm readiness.
-#[cfg(not(feature = "compio-rt"))]
-fn handle_readable_event(
-    result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
-    async_fd: &AsyncFd<OwnedFd>,
-    buf: &mut [u8],
-    debounce_deadline: &mut Option<Instant>,
-    pending: &mut PendingScans,
-    lc_available: bool,
-) {
-    if let Ok(mut guard) = result {
-        drain_uevents(
-            async_fd.as_raw_fd(),
-            buf,
-            debounce_deadline,
-            pending,
-            lc_available,
-        );
-        guard.clear_ready();
     }
 }
 

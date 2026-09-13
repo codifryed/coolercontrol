@@ -101,20 +101,6 @@ impl SysfsValue {
 pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
     let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
     let mut len = 0;
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        use tokio::io::AsyncReadExt;
-        let mut file = tokio::fs::File::open(path.as_ref()).await?;
-        // Bounded fill loop: each pass reads at least one byte or ends the read.
-        while len < SYSFS_VALUE_MAX_BYTES {
-            let bytes_read = file.read(&mut buf[len..]).await?;
-            if bytes_read == 0 {
-                break;
-            }
-            len += bytes_read;
-        }
-    }
-    #[cfg(feature = "compio-rt")]
     {
         use compio::buf::{IntoInner, IoBuf};
         use compio::io::AsyncReadAt;
@@ -147,11 +133,6 @@ pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
 /// one pool over the `io_uring` buffer ring: cross-contaminated data or "flags are invalid"). The
 /// plain read is correct and still completion-based.
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::read_to_string(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
     }
@@ -161,11 +142,6 @@ pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
 ///
 /// Returns an error if the file cannot be opened or read, or if the contents are not valid UTF-8.
 pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::read_to_string(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(String::from_utf8(compio::fs::read(path.as_ref()).await?)?)
     }
@@ -174,11 +150,6 @@ pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
 /// For small sysfs attributes that are not valid UTF-8, so cannot go through `read_sysfs`.
 /// SCSI VPD page 0x80 is the motivating case: it opens with `0x80`, an invalid lead byte.
 pub async fn read_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::read(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(compio::fs::read(path.as_ref()).await?)
     }
@@ -189,11 +160,6 @@ pub async fn read_bytes(path: impl AsRef<Path>) -> Result<Vec<u8>> {
 ///
 /// Returns an error if the file cannot be opened or read.
 pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
-    #[cfg(not(feature = "compio-rt"))]
-    {
-        Ok(tokio::fs::read(path).await?)
-    }
-    #[cfg(feature = "compio-rt")]
     {
         Ok(compio::fs::read(path.as_ref()).await?)
     }

@@ -4,10 +4,8 @@
 //! File utilities for `CoolerControl`.
 //!
 //! Specific to `CoolerControl`'s use cases and intended only for ordinary files. Async reads and
-//! writes go through the active runtime: Tokio's file utilities (a blocking-thread pool) by
-//! default, or compio (completion-based) under the
-//! `compio-rt` feature. Directory and metadata helpers fall back to `std` where appropriate and
-//! should be used sparingly.
+//! writes go through compio (completion-based). Directory and metadata helpers fall back to `std`
+//! where appropriate and should be used sparingly.
 
 mod fd_cache;
 pub use self::fd_cache::*;
