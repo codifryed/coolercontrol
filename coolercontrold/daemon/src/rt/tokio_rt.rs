@@ -44,8 +44,9 @@ pub fn log_active_backend() {
 
 /// Initialize and run a runtime for tests.
 ///
-/// Important: cargo tests need to be run single threaded, i.e. `-- --test-threads=1`, as cargo
-/// runs tests in parallel by default. We use the `serial_test` crate to explicitly ensure this.
+/// Each call builds its own current-thread runtime, so callers may run in parallel. `#[serial]`
+/// only excludes other `#[serial]` tests, never the rest of the suite, so it is not a licence to
+/// touch process-global state such as the environment or the current directory.
 #[allow(dead_code)]
 pub fn test_runtime<F: Future>(future: F) -> F::Output {
     let rt = Builder::new_current_thread().enable_all().build();

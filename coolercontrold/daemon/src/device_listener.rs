@@ -139,7 +139,14 @@ impl<'s> DeviceListener {
 /// The listener is disabled when the device events env var explicitly disables
 /// it (set to "0" or "off"). Enabled by default when unset.
 fn is_listener_disabled() -> bool {
-    let Ok(env_device_events) = env::var(ENV_DEVICE_EVENTS) else {
+    is_listener_disabled_from(env::var(ENV_DEVICE_EVENTS).ok().as_deref())
+}
+
+/// Resolve a raw `ENV_DEVICE_EVENTS` value, `None` when unset. Split from the read so the
+/// branches are testable without writing to the process environment, which is shared with
+/// every other test running at the same time.
+fn is_listener_disabled_from(env_device_events: Option<&str>) -> bool {
+    let Some(env_device_events) = env_device_events else {
         // Not set: listener enabled by default.
         return false;
     };
@@ -598,7 +605,6 @@ fn notify_device_removed(name: &str, notification_handle: &NotificationHandle) {
 
 #[cfg(test)]
 mod tests {
-    use serial_test::serial;
 
     use super::*;
 
@@ -721,33 +727,27 @@ mod tests {
     // --- is_listener_disabled ---
 
     #[test]
-    #[serial]
     fn listener_disabled_when_env_is_zero() {
         // ENV_DEVICE_EVENTS="0" explicitly disables the device change listener.
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DEVICE_EVENTS, "0") };
-        assert!(is_listener_disabled());
-        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
+        assert!(is_listener_disabled_from(Some("0")));
     }
 
     #[test]
-    #[serial]
     fn listener_disabled_when_env_is_off() {
         // ENV_DEVICE_EVENTS="off" (case-insensitive) disables the device change listener.
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DEVICE_EVENTS, "OFF") };
-        assert!(is_listener_disabled());
-        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
+        assert!(is_listener_disabled_from(Some("OFF")));
     }
 
     #[test]
-    #[serial]
     fn listener_enabled_when_env_is_one() {
         // ENV_DEVICE_EVENTS="1" keeps the device change listener enabled.
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DEVICE_EVENTS, "1") };
-        assert!(is_listener_disabled().not());
-        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
+        assert!(is_listener_disabled_from(Some("1")).not());
+    }
+
+    #[test]
+    fn listener_enabled_when_env_is_unset() {
+        // Unset is the ordinary case: the listener runs.
+        assert!(is_listener_disabled_from(None).not());
     }
 
     // --- debounce: single deadline with pending flags ---

@@ -205,24 +205,22 @@ fn ping_is_due(last_ping: Option<Instant>, ping_interval: Duration, now: Instant
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::env;
 
-    /// `init` reads the interval systemd hands us and halves it. Getting this
-    /// wrong in either direction is invisible until production: too long and
-    /// the daemon is killed while healthy, too short and it is only wasted
-    /// datagrams.
+    /// `WatchdogSec=` in `packaging/systemd/coolercontrold.service`.
+    const SHIPPED_UNIT_INTERVAL: Duration = Duration::from_secs(30);
+
+    /// The interval systemd hands us is halved. Getting this wrong in either
+    /// direction is invisible until production: too long and the daemon is
+    /// killed while healthy, too short and it is only wasted datagrams.
+    /// `init` reads `WATCHDOG_USEC` through `sd_notify` and passes the result
+    /// straight here, so the interval is supplied directly rather than through
+    /// the process environment, which the rest of the suite reads concurrently.
     #[test]
-    #[serial]
-    fn init_halves_the_supervisor_interval() {
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var("WATCHDOG_USEC", "30000000") };
-        unsafe { env::remove_var("WATCHDOG_PID") };
+    fn a_supervisor_interval_is_halved() {
         assert_eq!(
-            Watchdog::init().ping_interval(),
+            Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL)).ping_interval(),
             Some(Duration::from_secs(15))
         );
-        unsafe { env::remove_var("WATCHDOG_USEC") };
     }
 
     /// The shipped unit is the only configuration most users will ever run, so
@@ -230,31 +228,18 @@ mod tests {
     /// that matters is the ping interval plus one whole poll, not the ping
     /// interval alone.
     #[test]
-    #[serial]
     fn shipped_unit_sustains_the_slowest_poll_rate() {
-        let supervisor_interval = Duration::from_secs(30);
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var("WATCHDOG_USEC", "30000000") };
-        unsafe { env::remove_var("WATCHDOG_PID") };
-        let ping_interval = Watchdog::init().ping_interval().unwrap();
-        unsafe { env::remove_var("WATCHDOG_USEC") };
+        let ping_interval = Watchdog::with_supervisor_interval(Some(SHIPPED_UNIT_INTERVAL))
+            .ping_interval()
+            .unwrap();
         // POLL_RATE max is 5.0s.
         let worst_case_gap = ping_interval + Duration::from_secs_f64(5.0);
-        assert!(worst_case_gap < supervisor_interval);
+        assert!(worst_case_gap < SHIPPED_UNIT_INTERVAL);
     }
 
-    /// No `WATCHDOG_USEC` is the ordinary case: no unit, OpenRC, a container,
-    /// or a developer running the binary by hand.
-    #[test]
-    #[serial]
-    fn init_without_the_env_disables_the_heartbeat() {
-        // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::remove_var("WATCHDOG_USEC") };
-        assert_eq!(Watchdog::init().ping_interval(), None);
-    }
-
-    /// A disabled watchdog is the common case: no unit, no supervisor, no
-    /// environment. Nothing it exposes may claim otherwise.
+    /// A disabled watchdog is the common case: no unit, `OpenRC`, a container, or
+    /// a developer running the binary by hand. Nothing it exposes may claim
+    /// otherwise.
     #[test]
     fn disabled_watchdog_reports_no_interval() {
         let watchdog = Watchdog::disabled();
