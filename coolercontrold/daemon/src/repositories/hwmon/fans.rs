@@ -7,8 +7,7 @@ use crate::hardware_support::{self, ChannelDiagnosis, ChannelEvidence};
 use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
-use crate::repositories::hwmon::{auto_curve, devices};
-use crate::rt;
+use crate::repositories::hwmon::{auto_curve, devices, probe};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, log_enabled, trace, warn};
@@ -17,27 +16,12 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
 pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
-
-/// Passes over one fan attribute during detection before the channel is given up on.
-///
-/// Detection is one-shot: `HwmonRepo::reinitialize_devices` is unsupported and not even
-/// resume-from-sleep re-probes, so a channel dropped here is gone for the session and its saved
-/// profile is silently skipped. Polling is the opposite, absorbing failures through per-channel
-/// staleness and the failsafe overlay. Gating the retry on `cc_fs::is_transient` is what bounds
-/// startup: an attribute that is simply not readable costs one read and no delay.
-const DETECT_PROBE_PASSES: u8 = 3;
-const _: () = assert!(DETECT_PROBE_PASSES > 0);
-
-/// Wait between detection passes. A USB HID driver that just timed out over its own bounded wait
-/// needs more than an immediate re-issue to recover.
-const DETECT_PROBE_DELAY: Duration = Duration::from_millis(150);
 
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -121,36 +105,6 @@ pub fn log_uncontrollable_channel(
     );
 }
 
-/// Re-reads a fan attribute that failed transiently, so one blip cannot cost the channel for the
-/// whole session.
-///
-/// Returns whether the attribute read cleanly. `false` is not the final word: the caller still
-/// hands the decision to `get_pwm_duty`/`get_fan_rpm`, which own the auto-mode refusal fallback
-/// (`gpd_fan`, `dell_smm`) and the user-facing warning.
-async fn probe_until_readable<T>(path: &Path, mut read: impl AsyncFnMut() -> Result<T>) -> bool {
-    for pass in 1..=DETECT_PROBE_PASSES {
-        let Err(err) = read().await else {
-            return true;
-        };
-        if cc_fs::is_transient(&err).not() {
-            return false;
-        }
-        if pass == DETECT_PROBE_PASSES {
-            debug!(
-                "Transient failure on all {DETECT_PROBE_PASSES} detection passes at {}: {err}",
-                path.display()
-            );
-            return false;
-        }
-        debug!(
-            "Transient failure on detection pass {pass} at {}, re-probing: {err}",
-            path.display()
-        );
-        rt::sleep(DETECT_PROBE_DELAY).await;
-    }
-    false
-}
-
 /// Detects if a fan has pwm capability and pwm-write capabilities.
 async fn detect_pwm(
     base_path: &Path,
@@ -171,7 +125,7 @@ async fn detect_pwm(
     // Detection reads each attribute once, so this cache closes with the probe.
     let fds = cc_fs::SysfsFdCache::default();
     let pwm_path = base_path.join(format_pwm!(channel_number));
-    if probe_until_readable(&pwm_path, async || try_read_pwm_duty(&fds, &pwm_path).await)
+    if probe::until_readable(&pwm_path, async || try_read_pwm_duty(&fds, &pwm_path).await)
         .await
         .not()
         // Retries exhausted, or the failure was never transient. `get_pwm_duty` has the final
@@ -211,7 +165,7 @@ pub async fn detect_rpm(
     // Detection reads each attribute once, so this cache closes with the probe.
     let fds = cc_fs::SysfsFdCache::default();
     let rpm_path = base_path.join(format_fan_input!(channel_number));
-    if probe_until_readable(&rpm_path, async || try_read_fan_rpm(&fds, &rpm_path).await)
+    if probe::until_readable(&rpm_path, async || try_read_fan_rpm(&fds, &rpm_path).await)
         .await
         .not()
         // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
@@ -1410,64 +1364,6 @@ mod tests {
         assert!(is_kernel_refusal(&missing).not());
         let parse_err: anyhow::Error = anyhow::anyhow!("invalid digit found in string");
         assert!(is_kernel_refusal(&parse_err).not());
-    }
-
-    /// Goal: a transient failure must not cost the channel. A dropped channel is gone for the
-    /// session, so the probe has to re-read. Method: fail once with EINTR, then succeed, and
-    /// assert both that the probe reports readable and that it actually re-read.
-    #[test]
-    fn a_transient_failure_is_re_probed() {
-        cc_fs::test_runtime(async {
-            let calls = std::cell::Cell::new(0_u8);
-            let readable =
-                probe_until_readable(Path::new("/sys/class/hwmon/hwmon4/pwm3"), async || {
-                    calls.set(calls.get() + 1);
-                    if calls.get() == 1 {
-                        Err(Error::from_raw_os_error(nix::libc::EINTR).into())
-                    } else {
-                        Ok(51_u8)
-                    }
-                })
-                .await;
-            assert!(readable);
-            assert_eq!(calls.get(), 2, "the probe did not re-read");
-        });
-    }
-
-    /// Goal: the re-probe must be bounded, or a device that is genuinely gone stalls startup.
-    /// Method: fail every pass with EINTR and assert the pass count is exactly the budget.
-    #[test]
-    fn re_probing_is_bounded_by_the_pass_budget() {
-        cc_fs::test_runtime(async {
-            let calls = std::cell::Cell::new(0_u8);
-            let readable =
-                probe_until_readable(Path::new("/sys/class/hwmon/hwmon4/pwm3"), async || {
-                    calls.set(calls.get() + 1);
-                    Err::<u8, _>(Error::from_raw_os_error(nix::libc::EINTR).into())
-                })
-                .await;
-            assert!(readable.not());
-            assert_eq!(calls.get(), DETECT_PROBE_PASSES);
-        });
-    }
-
-    /// Goal: this is what keeps startup bounded. An attribute that is simply not readable is the
-    /// common case on a populated board, and it must cost one read and no delay, not
-    /// `DETECT_PROBE_PASSES` reads spaced by `DETECT_PROBE_DELAY`. Method: fail with ENODATA and
-    /// assert a single pass.
-    #[test]
-    fn a_non_transient_failure_is_not_re_probed() {
-        cc_fs::test_runtime(async {
-            let calls = std::cell::Cell::new(0_u8);
-            let readable =
-                probe_until_readable(Path::new("/sys/class/hwmon/hwmon4/pwm3"), async || {
-                    calls.set(calls.get() + 1);
-                    Err::<u8, _>(Error::from_raw_os_error(nix::libc::ENODATA).into())
-                })
-                .await;
-            assert!(readable.not());
-            assert_eq!(calls.get(), 1, "an unreadable attribute was re-probed");
-        });
     }
 
     #[test]

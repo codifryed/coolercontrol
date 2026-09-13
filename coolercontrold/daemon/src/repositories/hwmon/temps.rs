@@ -11,6 +11,7 @@ use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{debug, info, log_enabled, trace, warn};
@@ -201,11 +202,9 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &str) -> bool {
     let temp_path = base_path.join(format_temp_input!(channel_number));
-    match cc_fs::read_sysfs_value(&temp_path)
-        .await
-        .and_then(check_parsing_32)
-        .map(|degrees| f64::from(degrees) / 1000.0f64)
-    {
+    // Re-probe a transient failure before giving the channel up for the session. The sanity-range
+    // verdict below is not a read failure and is deliberately left as a single shot.
+    match probe::read_until_ok(&temp_path, async || read_temp_degrees(&temp_path).await).await {
         Ok(degrees) => {
             let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
             if !has_sane_value {
@@ -233,6 +232,16 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &s
             false
         }
     }
+}
+
+/// One temp read in degrees, error intact. Detection needs the errno to tell a transient failure
+/// from a sensor that is simply not readable.
+async fn read_temp_degrees(temp_path: &Path) -> Result<f64> {
+    cc_fs::read_sysfs_value(temp_path)
+        .await
+        .and_then(check_parsing_32)
+        // hwmon temps are in millidegrees:
+        .map(|degrees| f64::from(degrees) / 1000.0f64)
 }
 
 /// Returns true when `err` is the well-known `thinkpad_hwmon` ENXIO that
