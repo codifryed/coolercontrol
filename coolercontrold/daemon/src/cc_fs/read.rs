@@ -2,15 +2,41 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::Result;
+use log::trace;
 use std::fmt::Display;
 use std::fs::ReadDir;
 use std::io::{Error, ErrorKind};
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// Upper bound for one sysfs value read by `read_sysfs_value`. Every numeric sysfs value the
 /// daemon reads is a short number or flag; 64 bytes covers all of them with headroom.
 pub const SYSFS_VALUE_MAX_BYTES: usize = 64;
+
+/// Attempts at a read the kernel aborted before it produced anything.
+///
+/// `io_uring` converts the kernel's internal `-ERESTARTSYS` into `EINTR` instead of restarting the
+/// read the way a plain `read(2)` does (`io_uring/rw.c:io_fixup_restart_res`: "We can't just
+/// restart the syscall, since previously submitted sqes may already be in progress. Just fail this
+/// IO with EINTR."), so the restart is ours to make. Drivers that sleep interruptibly inside their
+/// sysfs read hit this; see `cc_fs::is_transient`.
+///
+/// compio already re-issues for us inside `read_to_end_at`, `read_exact_at` and `write_all_at`, so
+/// `read_txt` and every `cc_fs::write` are covered. The fixed-buffer readers here issue a bare
+/// `read_at` and have to do it themselves. Only `EINTR` is retried: this is the per-tick path, and
+/// a slow device must not pay a doubled read every tick.
+pub const INTERRUPTED_READ_ATTEMPTS: u8 = 3;
+const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
+
+/// Whether a failed read should be re-issued, given the attempts left after this one.
+///
+/// Only `EINTR`, deliberately. This is the per-tick path: a device that is merely slow must not
+/// pay a doubled read every tick, which is what the detection re-probe and its wider
+/// `cc_fs::is_transient` set are for.
+pub fn should_reissue(attempts_left: u8, err: &Error) -> bool {
+    attempts_left > 0 && err.kind() == ErrorKind::Interrupted
+}
 
 /// One sysfs value in a fixed stack buffer. Avoids the per-read heap ceremony of `read_sysfs`
 /// (Vec growth + UTF-8 pass + String) on the per-tick sensor path.
@@ -99,22 +125,32 @@ impl SysfsValue {
 /// corruption entirely while avoiding the Vec + UTF-8 + String ceremony per scalar. Contents
 /// beyond `SYSFS_VALUE_MAX_BYTES` are cut off; `SysfsValue::parse` rejects a full buffer.
 pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
+    use compio::buf::{IntoInner, IoBuf};
+    use compio::io::AsyncReadAt;
+    let file = compio::fs::File::open(path.as_ref()).await?;
     let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
     let mut len = 0;
-    {
-        use compio::buf::{IntoInner, IoBuf};
-        use compio::io::AsyncReadAt;
-        let file = compio::fs::File::open(path.as_ref()).await?;
-        // Bounded fill loop: each pass reads at least one byte or ends the read. The array
-        // round-trips through the op by value; no buffer allocation.
-        while len < SYSFS_VALUE_MAX_BYTES {
-            let compio::BufResult(result, slice) = file.read_at(buf.slice(len..), len as u64).await;
-            buf = slice.into_inner();
-            let bytes_read = result?;
-            if bytes_read == 0 {
-                break;
+    let mut attempts = INTERRUPTED_READ_ATTEMPTS;
+    // Bounded on both axes: every pass reads at least one byte, ends the read, or spends one of
+    // `INTERRUPTED_READ_ATTEMPTS`, so passes are capped at the sum of the two. The array
+    // round-trips through the op by value; no buffer allocation.
+    while len < SYSFS_VALUE_MAX_BYTES {
+        let compio::BufResult(result, slice) = file.read_at(buf.slice(len..), len as u64).await;
+        buf = slice.into_inner();
+        match result {
+            Ok(0) => break,
+            Ok(bytes_read) => len += bytes_read,
+            Err(err) => {
+                debug_assert!(attempts > 0);
+                attempts -= 1;
+                if should_reissue(attempts, &err).not() {
+                    return Err(err.into());
+                }
+                trace!(
+                    "sysfs read interrupted, re-issuing: {}",
+                    path.as_ref().display()
+                );
             }
-            len += bytes_read;
         }
     }
     debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
@@ -187,6 +223,47 @@ mod tests {
     use super::*;
     #[cfg(feature = "gated-tests")]
     use std::ops::Not;
+
+    /// Goal: an interrupted read must be re-issued. `io_uring` hands us `EINTR` for a read the
+    /// kernel aborted before it produced anything, instead of restarting it the way a plain
+    /// `read(2)` does, so giving up loses a sensor value that was never actually read. Method:
+    /// exercise the policy directly; a real `EINTR` needs a driver that sleeps interruptibly
+    /// inside its sysfs read and cannot be produced from a regular file.
+    #[test]
+    fn an_interrupted_read_is_reissued_while_attempts_remain() {
+        let interrupted = Error::from(ErrorKind::Interrupted);
+        assert!(should_reissue(INTERRUPTED_READ_ATTEMPTS - 1, &interrupted));
+        assert!(should_reissue(1, &interrupted));
+    }
+
+    /// Goal: the re-issue must be bounded, or a persistently interrupted read spins forever on
+    /// the per-tick path. Method: spend the last attempt and assert the policy gives up.
+    #[test]
+    fn the_last_attempt_does_not_reissue() {
+        let interrupted = Error::from(ErrorKind::Interrupted);
+        assert!(should_reissue(0, &interrupted).not());
+    }
+
+    /// Goal: only `EINTR`. A slow or absent device must not pay a doubled read every tick; the
+    /// one-shot detection re-probe is what covers the wider transient set. Method: one error per
+    /// kind these sysfs paths actually see.
+    #[test]
+    fn other_failures_are_not_reissued() {
+        for kind in [
+            ErrorKind::NotFound,
+            ErrorKind::Unsupported,
+            ErrorKind::PermissionDenied,
+            ErrorKind::TimedOut,
+            ErrorKind::WouldBlock,
+            ErrorKind::InvalidData,
+        ] {
+            let err = Error::from(kind);
+            assert!(
+                should_reissue(INTERRUPTED_READ_ATTEMPTS, &err).not(),
+                "{kind:?} must not be re-issued"
+            );
+        }
+    }
 
     /// Goal: `read_sysfs` must return EXACTLY the file's bytes, no stale/garbage tail. A wrong
     /// length leaves trailing bytes that break numeric parsing ("invalid digit found in string").
