@@ -14,7 +14,8 @@ use std::path::Path;
 
 use super::SysfsValue;
 
-use super::{should_reissue, INTERRUPTED_READ_ATTEMPTS, SYSFS_VALUE_MAX_BYTES};
+use super::{reissue_backoff, should_reissue, INTERRUPTED_READ_ATTEMPTS, SYSFS_VALUE_MAX_BYTES};
+use crate::rt;
 use log::trace;
 use nix::libc;
 use std::cell::RefCell;
@@ -124,6 +125,7 @@ impl SysfsFdCache {
                         break err;
                     }
                     trace!("held sysfs descriptor read interrupted, re-issuing");
+                    rt::sleep(reissue_backoff(attempts)).await;
                 }
             }
         };

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::rt;
 use anyhow::Result;
 use log::trace;
 use std::fmt::Display;
@@ -9,6 +10,7 @@ use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 
 /// Upper bound for one sysfs value read by `read_sysfs_value`. Every numeric sysfs value the
 /// daemon reads is a short number or flag; 64 bytes covers all of them with headroom.
@@ -29,6 +31,23 @@ pub const SYSFS_VALUE_MAX_BYTES: usize = 64;
 pub const INTERRUPTED_READ_ATTEMPTS: u8 = 3;
 const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
 
+/// Base pause before re-issuing an interrupted read, multiplied by the attempts already spent.
+///
+/// An immediate re-issue mostly fails again, because the interrupting condition is not a one-off.
+/// `io_uring` issues these reads inline on the ring thread (kernfs advertises a `.poll`, so
+/// `io_file_supports_nowait` says yes and the read is never punted to `io_wq`), and it re-arms
+/// `TIF_NOTIFY_SIGNAL` on that same thread for every completion carrying `task_work`. A tick that
+/// reads several devices therefore keeps the flag set for as long as the other reads take to
+/// drain, and every re-issue inside that window aborts again. Observed on a Ryujin II with six
+/// hwmon devices: the first three reads of the device failed on all attempts across about 5 ms,
+/// then every later read in the same tick succeeded, once the other devices had finished.
+///
+/// Awaiting here is what fixes it rather than merely delaying: the sleep yields the runtime
+/// instead of parking it, so the very completions that clear the flag get to run. It also stops
+/// us spending a USB round trip per doomed attempt, since the driver sends its request before
+/// waiting.
+pub const INTERRUPTED_READ_BACKOFF: Duration = Duration::from_millis(2);
+
 /// Whether a failed read should be re-issued, given the attempts left after this one.
 ///
 /// Only `EINTR`, deliberately. This is the per-tick path: a device that is merely slow must not
@@ -36,6 +55,15 @@ const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
 /// `cc_fs::is_transient` set are for.
 pub fn should_reissue(attempts_left: u8, err: &Error) -> bool {
     attempts_left > 0 && err.kind() == ErrorKind::Interrupted
+}
+
+/// How long to wait before the next re-issue, growing with the attempts already spent.
+#[must_use]
+pub fn reissue_backoff(attempts_left: u8) -> Duration {
+    debug_assert!(attempts_left < INTERRUPTED_READ_ATTEMPTS);
+    let spent = INTERRUPTED_READ_ATTEMPTS - attempts_left;
+    debug_assert!(spent > 0);
+    INTERRUPTED_READ_BACKOFF * u32::from(spent)
 }
 
 /// One sysfs value in a fixed stack buffer. Avoids the per-read heap ceremony of `read_sysfs`
@@ -150,6 +178,7 @@ pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
                     "sysfs read interrupted, re-issuing: {}",
                     path.as_ref().display()
                 );
+                rt::sleep(reissue_backoff(attempts)).await;
             }
         }
     }
@@ -234,6 +263,26 @@ mod tests {
         let interrupted = Error::from(ErrorKind::Interrupted);
         assert!(should_reissue(INTERRUPTED_READ_ATTEMPTS - 1, &interrupted));
         assert!(should_reissue(1, &interrupted));
+    }
+
+    /// Goal: the wait before a re-issue must grow, and must never be zero. An immediate re-issue
+    /// lands inside the same burst of completions that caused the interrupt, so it fails again;
+    /// the wait is what lets that burst drain. Method: walk every reachable attempt count.
+    #[test]
+    fn the_reissue_backoff_grows_and_is_never_zero() {
+        let mut previous = Duration::ZERO;
+        for attempts_left in (0..INTERRUPTED_READ_ATTEMPTS).rev() {
+            let wait = reissue_backoff(attempts_left);
+            assert!(
+                wait > previous,
+                "backoff must grow, got {wait:?} after {previous:?}"
+            );
+            previous = wait;
+        }
+        assert_eq!(
+            reissue_backoff(INTERRUPTED_READ_ATTEMPTS - 1),
+            INTERRUPTED_READ_BACKOFF
+        );
     }
 
     /// Goal: the re-issue must be bounded, or a persistently interrupted read spins forever on
