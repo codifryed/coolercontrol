@@ -11,8 +11,8 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::engine::main::DutyWritersByType;
 use crate::engine::processors::functions::{
-    FunctionDutyThresholdPostProcessor, FunctionIdentityPreProcessor, FunctionSafetyLatchProcessor,
-    FunctionStandardPostProcessor, FunctionStandardPreProcessor,
+    calc_ideal_stack_size, FunctionDutyThresholdPostProcessor, FunctionIdentityPreProcessor,
+    FunctionSafetyLatchProcessor, FunctionStandardPostProcessor, FunctionStandardPreProcessor,
 };
 use crate::engine::processors::profiles::GraphProcessor;
 use crate::engine::{
@@ -300,6 +300,7 @@ impl GraphProfileCommander {
         let function = self.get_profiles_function(&profile.function_uid)?;
         let normalized_speed_profile = utils::normalize_profile(speed_profile, max_temp, max_duty);
         let poll_rate = self.config.get_settings()?.poll_rate;
+        let ideal_stack_size = calc_ideal_stack_size(&function, poll_rate);
         Ok(NormalizedGraphProfile {
             profile_uid: profile.uid.clone(),
             profile_name: profile.name.clone(),
@@ -307,6 +308,7 @@ impl GraphProfileCommander {
             temp_source: temp_source.clone(),
             function,
             poll_rate,
+            ideal_stack_size,
         })
     }
 

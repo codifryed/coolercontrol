@@ -65,10 +65,17 @@ fn build_runtime(driver: Option<DriverType>) -> std::io::Result<Runtime> {
 /// Read `ENV_RUNTIME_DRIVER` and resolve it to a driver to force, falling back to
 /// `DEFAULT_DRIVER`.
 fn driver_override() -> Option<DriverType> {
-    let Ok(raw) = std::env::var(ENV_RUNTIME_DRIVER) else {
+    driver_override_from(std::env::var(ENV_RUNTIME_DRIVER).ok().as_deref())
+}
+
+/// Resolve a raw `ENV_RUNTIME_DRIVER` value, `None` when unset. Split from the read so the
+/// branches are testable without writing to the process environment, which is shared with
+/// every other test running at the same time.
+fn driver_override_from(raw: Option<&str>) -> Option<DriverType> {
+    let Some(raw) = raw else {
         return DEFAULT_DRIVER;
     };
-    let Some(choice) = parse_driver_override(&raw) else {
+    let Some(choice) = parse_driver_override(raw) else {
         // Logging is not set up this early, so stderr is the only channel available. An unusable
         // value must not stop the daemon booting, so fall back to the default.
         eprintln!(
@@ -134,8 +141,9 @@ pub fn log_active_backend() {
 
 /// Initialize and run a runtime for tests.
 ///
-/// Important: cargo tests need to be run single threaded, i.e. `-- --test-threads=1`, as cargo
-/// runs tests in parallel by default. We use the `serial_test` crate to explicitly ensure this.
+/// Each call builds its own runtime, so callers may run in parallel. `#[serial]` only excludes
+/// other `#[serial]` tests, never the rest of the suite, so it is not a licence to touch
+/// process-global state such as the environment or the current directory.
 #[allow(dead_code)]
 pub fn test_runtime<F: Future>(future: F) -> F::Output {
     // Follows the compiled-in default, so a flip of `DEFAULT_DRIVER` moves the tests with it.
@@ -289,7 +297,6 @@ pub async fn shutdown_signal() {
 mod tests {
     use super::*;
     use nix::sys::signal::{pthread_sigmask, SigmaskHow};
-    use serial_test::serial;
     use std::ops::Not;
 
     /// Goal: `block_termination_signals` must leave SIGINT, SIGTERM, and SIGQUIT masked on the
@@ -376,43 +383,23 @@ mod tests {
     /// Goal: `driver_override` must read the variable the documentation promises, and must resolve
     /// every branch the way issue 606 settled: unset and unrecognized both fall back to the
     /// default, `epoll` forces epoll, and `io_uring` opts back in without pinning the
-    /// driver. `parse_driver_override`'s own tests cannot catch a typo in the variable name, which
-    /// is the failure that would silently make the escape hatch unreachable. Method: drive the
-    /// real process environment, which is global, so the test is serial and restores the prior
-    /// value on the way out.
+    /// driver. Method: drive the resolver directly and assert the name of the variable the one
+    /// reader passes it, which is the typo `parse_driver_override`'s own tests cannot catch.
+    /// Setting the variable for real would write to the process environment while the rest of the
+    /// suite reads it from other threads.
     #[test]
-    #[serial]
     fn driver_override_reads_the_documented_variable() {
-        let original = std::env::var(ENV_RUNTIME_DRIVER).ok();
         assert_eq!(ENV_RUNTIME_DRIVER, "CC_RUNTIME_DRIVER");
 
-        // SAFETY: `set_var`/`remove_var` are unsound only alongside concurrent environment
-        // access. `#[serial]` gives this test the process to itself, and the value is restored
-        // before it yields.
-        unsafe {
-            std::env::remove_var(ENV_RUNTIME_DRIVER);
-            assert_eq!(driver_override(), DEFAULT_DRIVER);
+        assert_eq!(driver_override_from(None), DEFAULT_DRIVER);
+        assert_eq!(driver_override_from(Some("epoll")), Some(DriverType::Poll));
+        assert_eq!(driver_override_from(Some("io_uring")), None);
 
-            std::env::set_var(ENV_RUNTIME_DRIVER, "epoll");
-            assert_eq!(driver_override(), Some(DriverType::Poll));
-
-            std::env::set_var(ENV_RUNTIME_DRIVER, "io_uring");
-            assert_eq!(driver_override(), None);
-
-            // Negative space: an unusable value must boot on the default, never force a driver.
-            // `poll` is checked alongside nonsense because it reads like a valid value and is
-            // deliberately not one.
-            std::env::set_var(ENV_RUNTIME_DRIVER, "nonsense");
-            assert_eq!(driver_override(), DEFAULT_DRIVER);
-
-            std::env::set_var(ENV_RUNTIME_DRIVER, "poll");
-            assert_eq!(driver_override(), DEFAULT_DRIVER);
-
-            match original {
-                Some(value) => std::env::set_var(ENV_RUNTIME_DRIVER, value),
-                None => std::env::remove_var(ENV_RUNTIME_DRIVER),
-            }
-        }
+        // Negative space: an unusable value must boot on the default, never force a driver.
+        // `poll` is checked alongside nonsense because it reads like a valid value and is
+        // deliberately not one.
+        assert_eq!(driver_override_from(Some("nonsense")), DEFAULT_DRIVER);
+        assert_eq!(driver_override_from(Some("poll")), DEFAULT_DRIVER);
     }
 
     /// Goal: the shipped default must leave compio's probe in charge rather than pinning a

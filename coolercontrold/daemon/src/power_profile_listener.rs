@@ -191,8 +191,14 @@ pub fn start(
 }
 
 fn dbus_listener_enabled() -> bool {
-    env::var(ENV_DBUS)
-        .ok()
+    dbus_listener_enabled_from(env::var(ENV_DBUS).ok().as_deref())
+}
+
+/// Resolve a raw `ENV_DBUS` value, `None` when unset. Split from the read so the branches are
+/// testable without writing to the process environment, which is shared with every other test
+/// running at the same time.
+fn dbus_listener_enabled_from(env_dbus: Option<&str>) -> bool {
+    env_dbus
         .and_then(|env_dbus| {
             env_dbus
                 .parse::<u8>()
@@ -793,22 +799,25 @@ mod tests {
 
     /// Goal: `CC_DBUS` gates this listener the same way it gates the sleep listener, so one
     /// switch disables all dbus use.
-    /// Methodology: set each documented form and read the gate back.
+    /// Methodology: resolve each documented form and read the gate back. Setting the variable
+    /// for real would write to the process environment while the rest of the suite reads it
+    /// from other threads, so the resolver is driven directly.
     #[test]
-    #[serial]
     fn dbus_env_var_gates_the_listener() {
-        // Safety: test is single-threaded and serialized; no concurrent env reads.
-        unsafe { env::remove_var(ENV_DBUS) };
-        assert!(dbus_listener_enabled(), "Absent means enabled");
+        assert_eq!(ENV_DBUS, "CC_DBUS");
+        assert!(dbus_listener_enabled_from(None), "Absent means enabled");
 
         for enabled in ["1", "ON", "on", "anything-else"] {
-            unsafe { env::set_var(ENV_DBUS, enabled) };
-            assert!(dbus_listener_enabled(), "'{enabled}' must enable");
+            assert!(
+                dbus_listener_enabled_from(Some(enabled)),
+                "'{enabled}' must enable"
+            );
         }
         for disabled in ["0", "OFF", "off"] {
-            unsafe { env::set_var(ENV_DBUS, disabled) };
-            assert!(dbus_listener_enabled().not(), "'{disabled}' must disable");
+            assert!(
+                dbus_listener_enabled_from(Some(disabled)).not(),
+                "'{disabled}' must disable"
+            );
         }
-        unsafe { env::remove_var(ENV_DBUS) };
     }
 }

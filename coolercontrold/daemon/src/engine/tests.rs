@@ -17,7 +17,7 @@ mod engine_tests {
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
         Function, FunctionKind, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
-        ProfileUID, TempSource,
+        ProfileUID, Setting, SettingKind, TempSource,
     };
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
@@ -345,6 +345,29 @@ mod engine_tests {
         };
         config.set_function(function).unwrap();
         function_uid
+    }
+
+    /// Rewrites an existing Standard Function with a new response delay, the way a
+    /// user edit does, so the engine has to pick the change up on a live Profile.
+    fn update_standard_function_response_delay(
+        config: &Config,
+        function_uid: &FunctionUID,
+        response_delay: u8,
+    ) {
+        config
+            .update_function(Function {
+                uid: function_uid.clone(),
+                name: "StandardFunction".to_string(),
+                step_size_min: 2,
+                step_size_max: 100,
+                kind: FunctionKind::Standard {
+                    deviance: Some(2.0),
+                    only_downward: Some(false),
+                    response_delay: Some(response_delay),
+                },
+                ..Default::default()
+            })
+            .unwrap();
     }
 
     fn create_standard_function_with_steps(
@@ -1032,6 +1055,128 @@ mod engine_tests {
                 speeds.last(),
                 Some(&75),
                 "speed should change after response delay"
+            );
+        });
+    }
+
+    /// Shared setup for the response delay edit tests: one Graph Profile driven by a
+    /// Standard Function, applied to two fan channels on the same device. Two channels
+    /// is the case that keeps the Profile scheduled while a single channel is being
+    /// re-applied, so the processor metadata survives the edit.
+    async fn setup_two_channel_delay_test(
+        response_delay: u8,
+    ) -> (
+        DeviceLock,
+        Engine,
+        Rc<Config>,
+        Rc<RefCell<Vec<Duty>>>,
+        TempName,
+        FunctionUID,
+    ) {
+        let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
+        let fan1_name = create_controllable_fan(&device, "fan1");
+        let fan2_name = create_controllable_fan(&device, "fan2");
+        let temp_channel_name = create_temp(&device, "temp1");
+        let device_uid = device.borrow().uid.clone();
+
+        let function_uid = create_standard_function(&config, response_delay, 2.0, false);
+        let profile_uid = create_graph_profile_with_temp_source_and_function(
+            &config,
+            vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
+            TempSource {
+                device_uid: device_uid.clone(),
+                temp_name: temp_channel_name.clone(),
+            },
+            &function_uid,
+        );
+        for channel_name in [&fan1_name, &fan2_name] {
+            let setting = Setting {
+                channel_name: channel_name.clone(),
+                kind: SettingKind::Profile {
+                    profile_uid: profile_uid.clone(),
+                },
+            };
+            // The engine re-applies Profiles from the device settings on a Function
+            // edit, so the setting has to be in the config as well.
+            config.set_device_setting(&device_uid, &setting);
+            engine
+                .set_config_setting(&device_uid, &setting)
+                .await
+                .unwrap();
+        }
+        (
+            device,
+            engine,
+            config,
+            set_speeds,
+            temp_channel_name,
+            function_uid,
+        )
+    }
+
+    #[test]
+    #[serial]
+    fn test_raised_response_delay_applies_to_multi_channel_profile() {
+        cc_fs::test_runtime(async {
+            // Goal: verify that raising a Function's response delay takes effect for a
+            // Profile applied to more than one channel. Method: settle at the baseline
+            // with a 2 cycle delay, raise it to 10 cycles, then jump the temp and assert
+            // that no new duty is applied before the new delay has elapsed. The
+            // hysteresis stack is keyed by Profile and outlives the edit here, so a
+            // stale stack size would keep the old, shorter delay in force.
+            let (device, engine, config, set_speeds, temp_name, function_uid) =
+                setup_two_channel_delay_test(2).await;
+            process_cycles(&engine, &device, &temp_name, 20., 4).await;
+
+            // When: the response delay is raised while both channels stay scheduled.
+            update_standard_function_response_delay(&config, &function_uid, 10);
+            engine.function_updated(&function_uid).await;
+
+            // Then: a temp jump must not reach the fans within the old, shorter delay.
+            process_cycles(&engine, &device, &temp_name, 60., 5).await;
+            let speeds_within_old_delay = set_speeds.borrow().clone();
+            assert!(
+                speeds_within_old_delay.contains(&75).not(),
+                "the raised response delay should still be holding the duty back: \
+                 {speeds_within_old_delay:?}"
+            );
+
+            // And: the new duty lands once the new delay has elapsed.
+            process_cycles(&engine, &device, &temp_name, 60., 8).await;
+            let speeds_after_new_delay = set_speeds.borrow().clone();
+            assert_eq!(
+                speeds_after_new_delay.last(),
+                Some(&75),
+                "duty should change after the raised response delay: {speeds_after_new_delay:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_lowered_response_delay_applies_to_multi_channel_profile() {
+        cc_fs::test_runtime(async {
+            // Goal: the negative space of the test above. Lowering the delay has to
+            // shorten an already filled stack, otherwise the old, longer delay keeps
+            // holding the duty back. Method: settle at the baseline with a 10 cycle
+            // delay, lower it to 2 cycles, then jump the temp and assert the duty lands
+            // well inside the old delay.
+            let (device, engine, config, set_speeds, temp_name, function_uid) =
+                setup_two_channel_delay_test(10).await;
+            process_cycles(&engine, &device, &temp_name, 20., 12).await;
+
+            // When: the response delay is lowered while both channels stay scheduled.
+            update_standard_function_response_delay(&config, &function_uid, 2);
+            engine.function_updated(&function_uid).await;
+
+            // Then: the temp jump reaches the fans within the new, shorter delay.
+            process_cycles(&engine, &device, &temp_name, 60., 4).await;
+            let speeds_within_old_delay = set_speeds.borrow().clone();
+            assert_eq!(
+                speeds_within_old_delay.last(),
+                Some(&75),
+                "duty should change after the lowered response delay: \
+                 {speeds_within_old_delay:?}"
             );
         });
     }

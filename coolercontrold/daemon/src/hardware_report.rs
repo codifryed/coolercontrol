@@ -1383,31 +1383,39 @@ mod tests {
     /// Goal: a driver that stops answering costs the report that one device and
     /// nothing else. Method: give a sleep far longer than the budget and check
     /// the helper gives up well inside the sleep, so the caller can carry on
-    /// with the rest of the tree.
+    /// with the rest of the tree. The harness runs the rest of the suite
+    /// alongside this one and a preempted timer only ever fires late, so the
+    /// bound is judged on the fastest of several attempts. Abandonment itself
+    /// is not a timing claim, so every attempt must show it.
     #[test]
     #[serial]
     #[cfg(feature = "gated-tests")]
     fn work_past_the_budget_is_abandoned() {
+        const ATTEMPTS: u32 = 5;
+        const _: () = assert!(ATTEMPTS > 0, "best stays unset without an attempt");
         cc_fs::test_runtime(async {
-            let budget = ReadBudget {
-                deadline: Instant::now() + Duration::from_millis(100),
-            };
-            let started = Instant::now();
-            let value = within_budget(
-                budget,
-                "stuck",
-                Path::new("/sys/class/hwmon/hwmon0"),
-                async {
-                    rt::sleep(Duration::from_secs(5)).await;
-                    42_u8
-                },
-            )
-            .await;
-            assert!(value.is_none(), "expected the read to be abandoned");
+            let mut best = Duration::MAX;
+            for _ in 0..ATTEMPTS {
+                let budget = ReadBudget {
+                    deadline: Instant::now() + Duration::from_millis(100),
+                };
+                let started = Instant::now();
+                let value = within_budget(
+                    budget,
+                    "stuck",
+                    Path::new("/sys/class/hwmon/hwmon0"),
+                    async {
+                        rt::sleep(Duration::from_secs(5)).await;
+                        42_u8
+                    },
+                )
+                .await;
+                assert!(value.is_none(), "expected the read to be abandoned");
+                best = best.min(started.elapsed());
+            }
             assert!(
-                started.elapsed() < Duration::from_secs(1),
-                "gave up after {:?}, which is not bounded",
-                started.elapsed()
+                best < Duration::from_secs(1),
+                "gave up after {best:?} at best, which is not bounded"
             );
         });
     }

@@ -23,6 +23,22 @@ const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
 const MAX_DUTY: Duty = 100;
 
+/// The depth of the hysteresis temp stack that holds a Function's response delay,
+/// in poll cycles. Derived once per schedule into `NormalizedGraphProfile` so that a
+/// live Function edit cannot leave a stale depth behind, and so the per-tick path
+/// stays free of this arithmetic.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn calc_ideal_stack_size(function: &Function, poll_rate: f64) -> usize {
+    debug_assert!(poll_rate > 0.0, "poll_rate must be positive");
+    let response_delay_secs = f64::from(
+        function
+            .response_delay()
+            .unwrap_or(DEFAULT_MAX_NO_DUTY_SET_SECONDS as u8),
+    );
+    let stack_size = (response_delay_secs / poll_rate).ceil() as u8;
+    MIN_TEMP_HIST_STACK_SIZE.max(stack_size) as usize
+}
+
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
     all_devices: AllDevices,
@@ -335,16 +351,31 @@ impl FunctionStandardPreProcessor {
             && temp_to_verify >= (last_applied_temp - deviance)
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    pub fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
-        debug_assert!(profile.poll_rate > 0.0, "poll_rate must be positive");
-        let response_delay_secs = f64::from(
-            profile
-                .function
-                .response_delay()
-                .unwrap_or(DEFAULT_MAX_NO_DUTY_SET_SECONDS as u8),
+    /// Keeps the hysteresis stack sized to the Profile's response delay. A Profile
+    /// that stays scheduled on another device channel keeps this metadata across a
+    /// Function edit, so the size has to follow the Profile rather than be set once,
+    /// otherwise the old response delay stays in force until the daemon restarts.
+    /// Shrinking drops the oldest temps, which are the ones a shorter delay must no
+    /// longer wait on.
+    fn sync_ideal_stack_size(
+        metadata: &mut ChannelSettingMetadata,
+        profile: &NormalizedGraphProfile,
+    ) {
+        debug_assert!(
+            profile.ideal_stack_size > 0,
+            "stack must hold at least one temp"
         );
-        (response_delay_secs / profile.poll_rate).ceil() as u8
+        if metadata.ideal_stack_size == profile.ideal_stack_size {
+            return;
+        }
+        metadata.ideal_stack_size = profile.ideal_stack_size;
+        while metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
+            metadata.temp_hist_stack.pop_front();
+        }
+        debug_assert!(
+            metadata.temp_hist_stack.len() <= metadata.ideal_stack_size,
+            "stack must be within the ideal size after sync"
+        );
     }
 }
 
@@ -379,11 +410,7 @@ impl Processor for FunctionStandardPreProcessor {
             error!("Missing metadata for profile: {}", data.profile.profile_uid);
             return data;
         };
-        if metadata.ideal_stack_size == 0 {
-            // set ideal size on initial run:
-            metadata.ideal_stack_size =
-                MIN_TEMP_HIST_STACK_SIZE.max(Self::calc_ideal_stack_size(&data.profile)) as usize;
-        }
+        Self::sync_ideal_stack_size(metadata, &data.profile);
         Self::fill_temp_stack(metadata, data, temp_source_device_option);
 
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
@@ -761,8 +788,9 @@ fn log_missing_temp_sensor(data: &SpeedProfileData) {
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::processors::functions::MIN_TEMP_HIST_STACK_SIZE;
     use crate::engine::processors::functions::{
-        FunctionDutyThresholdPostProcessor, FunctionStandardPreProcessor,
+        calc_ideal_stack_size, FunctionDutyThresholdPostProcessor, FunctionStandardPreProcessor,
     };
     use crate::engine::{NormalizedGraphProfile, SpeedProfileData, TempSource};
     use crate::setting::{Function, FunctionKind};
@@ -787,6 +815,7 @@ mod tests {
     }
 
     fn create_test_profile(function: Function) -> std::rc::Rc<NormalizedGraphProfile> {
+        let ideal_stack_size = calc_ideal_stack_size(&function, 1.0);
         std::rc::Rc::new(NormalizedGraphProfile {
             profile_uid: "test-profile".to_string(),
             profile_name: "Test Profile".to_string(),
@@ -797,6 +826,7 @@ mod tests {
             },
             function,
             poll_rate: 1.0,
+            ideal_stack_size,
         })
     }
 
@@ -1374,6 +1404,7 @@ mod tests {
             },
             ..Default::default()
         };
+        let ideal_stack_size = calc_ideal_stack_size(&function, 1.0);
         SpeedProfileData {
             profile: std::rc::Rc::new(NormalizedGraphProfile {
                 profile_uid: "test-profile".to_string(),
@@ -1385,6 +1416,7 @@ mod tests {
                 },
                 function,
                 poll_rate: 1.0,
+                ideal_stack_size,
             }),
             temp: None,
             duty: None,
@@ -1519,6 +1551,7 @@ mod tests {
             },
             ..Default::default()
         };
+        let ideal_stack_size = calc_ideal_stack_size(&function, 1.0);
         let mut data = SpeedProfileData {
             profile: std::rc::Rc::new(NormalizedGraphProfile {
                 profile_uid: "test-profile".to_string(),
@@ -1530,6 +1563,7 @@ mod tests {
                 },
                 function,
                 poll_rate: 1.0,
+                ideal_stack_size,
             }),
             temp: None,
             duty: None,
@@ -1789,9 +1823,9 @@ mod tests {
     // ==================== calc_ideal_stack_size tests ====================
 
     #[test]
-    fn test_calc_ideal_stack_size_zero_delay() {
-        // Goal: verify that zero response_delay produces a raw stack size of 0.
-        // The MIN clamp is applied at the call site, not inside calc_ideal_stack_size.
+    fn test_calc_ideal_stack_size_zero_delay_clamps_to_min() {
+        // Goal: verify that a zero response_delay still leaves room for one temp,
+        // since the stack is what the hysteresis reads from.
         let function = Function {
             kind: FunctionKind::Standard {
                 deviance: None,
@@ -1800,9 +1834,8 @@ mod tests {
             },
             ..Default::default()
         };
-        let profile = create_test_profile(function);
-        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
-        assert_eq!(size, 0);
+        let size = calc_ideal_stack_size(&function, 1.0);
+        assert_eq!(size, MIN_TEMP_HIST_STACK_SIZE as usize);
     }
 
     #[test]
@@ -1817,8 +1850,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let profile = create_test_profile(function);
-        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
+        let size = calc_ideal_stack_size(&function, 1.0);
         assert_eq!(size, 5);
     }
 
@@ -1834,18 +1866,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let profile = std::rc::Rc::new(NormalizedGraphProfile {
-            profile_uid: "test-profile".to_string(),
-            profile_name: "Test Profile".to_string(),
-            speed_profile: vec![],
-            temp_source: TempSource {
-                device_uid: "test-device".to_string(),
-                temp_name: "test-temp".to_string(),
-            },
-            function,
-            poll_rate: 0.5,
-        });
-        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
+        let size = calc_ideal_stack_size(&function, 0.5);
         assert_eq!(size, 6);
     }
 }
