@@ -192,7 +192,8 @@ fn explain_refusal(headers: &mut HeaderMap, service_id: &str) {
         return;
     }
     let message = format!(
-        "device service '{service_id}' refused our credentials. Put a valid access token          from that daemon into a '{}' file in this plugin's directory.",
+        "device service '{service_id}' refused our credentials. Put a valid access token \
+         from that daemon into a '{}' file in this plugin's directory.",
         trust::TOKEN_FILE_NAME
     );
     if let Ok(value) = HeaderValue::from_str(&message) {
@@ -277,6 +278,9 @@ mod tests {
         let message = headers.get(GRPC_MESSAGE).unwrap().to_str().unwrap();
         assert!(message.contains("my_plugin"), "{message}");
         assert!(message.contains(trust::TOKEN_FILE_NAME), "{message}");
+        // A dropped line continuation in the literal leaves a run of spaces mid-sentence,
+        // which the compiler is happy with and the user reads.
+        assert!(message.contains("  ").not(), "{message}");
     }
 
     /// Goal: only a refusal is rewritten. Relabelling an unrelated failure would hide the

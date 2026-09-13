@@ -21,7 +21,7 @@ pub struct ServiceManifest {
     pub envs: Vec<EnvVar>,           // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
     /// Whether a TCP address is reached over TLS. Absent lets the token decide; see
-    /// `trust::uses_tls`. Only a plugin author knows whether their server terminates TLS,
+    /// `trust::LinkPlan`. Only a plugin author knows whether their server terminates TLS,
     /// so their declaration wins over the default.
     pub tls: Option<bool>,
     pub privileged: bool, // for device service plugins (false by default)

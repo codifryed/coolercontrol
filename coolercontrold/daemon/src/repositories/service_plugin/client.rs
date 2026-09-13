@@ -48,14 +48,14 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
-/// Our client wrapper for Device Service plugins.
-/// This handles CC's device service contract by only allowing a single request at a time per device,
-/// handling the permit/locking system and timeouts. It also maps CC's models to the generated
-/// device service models.
 /// The generated client over the daemon's own channel. Named once so a change to the
 /// channel stack does not ripple through every field and signature below.
 type PluginClient = device_service_client::DeviceServiceClient<PluginChannel>;
 
+/// Our client wrapper for Device Service plugins.
+/// This handles CC's device service contract by only allowing a single request at a time per device,
+/// handling the permit/locking system and timeouts. It also maps CC's models to the generated
+/// device service models.
 #[derive(Debug)]
 pub struct DeviceServiceClient {
     service_id: ServiceId,
@@ -807,7 +807,7 @@ mod credential_tests {
     }
 
     /// A manifest whose directory really exists, so the token file can be created or left
-    /// absent and `uses_tls` reads the same thing the daemon would.
+    /// absent and `LinkPlan::resolve` reads the same thing the daemon would.
     fn manifest_in(address: ConnectionType, path: PathBuf) -> ServiceManifest {
         ServiceManifest {
             id: "test_service".to_string(),
