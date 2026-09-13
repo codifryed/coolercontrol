@@ -3,7 +3,7 @@
 
 use crate::rt;
 use anyhow::Result;
-use log::trace;
+use log::debug;
 use std::fmt::Display;
 use std::fs::ReadDir;
 use std::io::{Error, ErrorKind};
@@ -55,6 +55,25 @@ pub const INTERRUPTED_READ_BACKOFF: Duration = Duration::from_millis(2);
 /// `cc_fs::is_transient` set are for.
 pub fn should_reissue(attempts_left: u8, err: &Error) -> bool {
     attempts_left > 0 && err.kind() == ErrorKind::Interrupted
+}
+
+/// Records that an interrupted read is going round again, so a debug log shows the retry rather
+/// than only the eventual failure.
+pub fn log_reissue(path: &Path, attempts_left: u8) {
+    debug!(
+        "sysfs read at {} was interrupted, re-issuing ({attempts_left} of \
+         {INTERRUPTED_READ_ATTEMPTS} attempts left)",
+        path.display()
+    );
+}
+
+/// Records that the attempts are spent, so the caller's own message is not the first hint that
+/// anything was retried.
+pub fn log_reissue_exhausted(path: &Path) {
+    debug!(
+        "sysfs read at {} still interrupted after {INTERRUPTED_READ_ATTEMPTS} attempts, giving up",
+        path.display()
+    );
 }
 
 /// How long to wait before the next re-issue, growing with the attempts already spent.
@@ -172,12 +191,12 @@ pub async fn read_sysfs_value(path: impl AsRef<Path>) -> Result<SysfsValue> {
                 debug_assert!(attempts > 0);
                 attempts -= 1;
                 if should_reissue(attempts, &err).not() {
+                    if err.kind() == ErrorKind::Interrupted {
+                        log_reissue_exhausted(path.as_ref());
+                    }
                     return Err(err.into());
                 }
-                trace!(
-                    "sysfs read interrupted, re-issuing: {}",
-                    path.as_ref().display()
-                );
+                log_reissue(path.as_ref(), attempts);
                 rt::sleep(reissue_backoff(attempts)).await;
             }
         }

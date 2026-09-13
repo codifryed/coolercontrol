@@ -14,9 +14,11 @@ use std::path::Path;
 
 use super::SysfsValue;
 
-use super::{reissue_backoff, should_reissue, INTERRUPTED_READ_ATTEMPTS, SYSFS_VALUE_MAX_BYTES};
+use super::{
+    log_reissue, log_reissue_exhausted, reissue_backoff, should_reissue, INTERRUPTED_READ_ATTEMPTS,
+    SYSFS_VALUE_MAX_BYTES,
+};
 use crate::rt;
-use log::trace;
 use nix::libc;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -42,7 +44,7 @@ impl SysfsFdCache {
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
         {
             if let Some(file) = self.held(path) {
-                return match Self::read_at_start(&file).await {
+                return match Self::read_at_start(path, &file).await {
                     Ok(value) => Ok(value),
                     Err(err) => {
                         if Self::is_dead_descriptor(&err) {
@@ -54,7 +56,7 @@ impl SysfsFdCache {
             }
             let file = compio::fs::File::open(path).await?;
             self.hold(path, &file);
-            Self::read_at_start(&file).await
+            Self::read_at_start(path, &file).await
         }
     }
 
@@ -103,7 +105,7 @@ impl SysfsFdCache {
     /// One read at offset 0. kernfs regenerates the whole attribute per read, so a second read
     /// only ever reports 0 bytes; a value that fills the buffer is rejected by
     /// `SysfsValue::parse` as possibly truncated, exactly as on the uncached path.
-    async fn read_at_start(file: &compio::fs::File) -> Result<SysfsValue> {
+    async fn read_at_start(path: &Path, file: &compio::fs::File) -> Result<SysfsValue> {
         use compio::buf::{IntoInner, IoBuf};
         use compio::io::AsyncReadAt;
         let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
@@ -122,9 +124,12 @@ impl SysfsFdCache {
                     debug_assert!(attempts > 0);
                     attempts -= 1;
                     if should_reissue(attempts, &err).not() {
+                        if err.kind() == std::io::ErrorKind::Interrupted {
+                            log_reissue_exhausted(path);
+                        }
                         break err;
                     }
-                    trace!("held sysfs descriptor read interrupted, re-issuing");
+                    log_reissue(path, attempts);
                     rt::sleep(reissue_backoff(attempts)).await;
                 }
             }
