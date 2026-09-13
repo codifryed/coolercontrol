@@ -193,7 +193,6 @@ const ENV_NVML: &str = "CC_NVML";
 /// ```
 /// CC_RUNTIME_DRIVER=epoll coolercontrold
 /// ```
-#[cfg(feature = "compio-rt")]
 const ENV_RUNTIME_DRIVER: &str = "CC_RUNTIME_DRIVER";
 
 /// Environment Variable: Override the configuration directory path

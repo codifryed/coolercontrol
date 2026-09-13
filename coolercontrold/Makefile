@@ -7,8 +7,7 @@ release :=
 # Detect cargo or fallback (prefer newer)
 CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1.88)
 
-# Empty selects the default compio runtime. Override to build the tokio runtime instead:
-#   make build FEATURES=--no-default-features
+# Extra cargo feature flags for build/test/clippy, e.g. FEATURES=--features gated-tests
 FEATURES :=
 
 .PHONY: build sync-app test test-liqctld clippy ci-test dev-run openapi vendor clean clean-app install uninstall

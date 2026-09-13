@@ -243,8 +243,8 @@ test_msrv:
     - rustup toolchain install "$MSRV" --profile minimal
     - rustup run "$MSRV" rustc --version
   script:
-    # The default feature set (compio-rt) is what sets the floor. No UI build is needed:
-    # resources/app ships a tracked .gitignore, so include_dir! still resolves the directory.
+    # compio is what sets the floor. No UI build is needed: resources/app ships a tracked
+    # .gitignore, so include_dir! still resolves the directory.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
 
 ####################################### source tarball

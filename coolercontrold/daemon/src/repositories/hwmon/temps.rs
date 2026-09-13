@@ -506,7 +506,8 @@ mod tests {
             let (third_temps, _) = extract_temp_statuses(&driver_info).await;
 
             teardown(&ctx).await;
-            let expected_held = if cfg!(feature = "compio-rt") { 2 } else { 0 };
+            // Both temp files stay open in the fd cache across ticks.
+            let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
             assert_eq!(driver_info.fds.len(), expected_held, "descriptors grew");
             assert!((first_temps[0].temp - 35.0).abs() < f64::EPSILON);

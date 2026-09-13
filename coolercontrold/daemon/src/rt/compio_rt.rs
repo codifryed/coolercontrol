@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! compio backend for the runtime facade. Selected by the `compio-rt` feature. See `super` for the
-//! facade contract; this mirrors the tokio backend's surface on compio.
+//! compio backend for the runtime facade. See `super` for the facade contract.
 
 use std::future::{poll_fn, Future};
 use std::ops::Not;

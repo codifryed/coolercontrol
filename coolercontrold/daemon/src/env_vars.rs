@@ -38,9 +38,8 @@ pub struct EnvVarDoc {
 /// printed reference and the source scan agree regardless of the build target.
 const SENSORS_DETECT_NAME: &str = "CC_SENSORS_DETECT";
 
-/// `CC_RUNTIME_DRIVER` is only read under the `compio-rt` feature, where the const is
-/// compiled. Named here the same way as `SENSORS_DETECT_NAME`, and for the same reason:
-/// the printed reference and the source scan must agree regardless of the build's features.
+/// Named here the same way as `SENSORS_DETECT_NAME`, and for the same reason: the printed
+/// reference and the source scan must agree regardless of the build target.
 const RUNTIME_DRIVER_NAME: &str = "CC_RUNTIME_DRIVER";
 
 pub const ENV_VARS: &[EnvVarDoc] = &[

@@ -3,7 +3,7 @@ name = "coolercontrold"
 version = "5.0.0"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
-# MSRV. Set by `compio-rt` (the default feature), which needs 1.95.
+# MSRV. Set by compio, which needs 1.95.
 rust-version = "1.95"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://coolercontrol.org"
@@ -15,9 +15,6 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [features]
-default = ["compio-rt"]
-# compio main runtime (default). When off (`--no-default-features`), the tokio runtime is used.
-compio-rt = ["dep:compio", "dep:cyper-core", "dep:compio-buf"]
 # Gates tests excluded from the normal suite: ones unreliable outside a controlled environment
 # (wall-clock latency assertions, performance-sensitive, real hardware). Off by default; CI enables
 # them with `--features gated-tests`. See RUST_STYLE.md "Gated Tests".
@@ -27,7 +24,8 @@ gated-tests = []
 cc-detect = { path = "../cc-detect" }
 cc-image = { path = "../cc-image" }
 cc-stress = { path = "../cc-stress" }
-# compio (opt-in `compio-rt` feature). 0.19 needs Rust 1.95 (`cfg_select`), which sets our MSRV.
+# compio is the daemon's only main-thread runtime. 0.19 needs Rust 1.95 (`cfg_select`), which
+# sets our MSRV.
 # Taken for `IORING_ENTER_NO_IOWAIT` (compio-driver 0.12.5): without it the idle
 # `io_uring_enter(GETEVENTS)` wait is accounted as iowait on kernel 6.5+, pinning a core at 100%
 # on per-core monitors (issue 606). The flag needs kernel 6.15+, so `CC_RUNTIME_DRIVER=epoll`
@@ -43,12 +41,12 @@ compio = { version = "=0.19.2", default-features = false, features = [
   "process",
   "io-uring",
   "polling",
-], optional = true }
+] }
 # cyper-core bridges a compio stream (our UDS to liqctld) into hyper's IO traits via `HyperStream`.
 # Pinned to 0.9: it must resolve to the same compio 0.19 as above, or the stream types will not match.
-cyper-core = { version = "=0.9.0", default-features = false, optional = true }
+cyper-core = { version = "=0.9.0", default-features = false }
 # Must resolve to the same compio-buf as compio 0.19 above, or the buffer traits will not match.
-compio-buf = { version = "=0.8.3", default-features = false, optional = true }
+compio-buf = { version = "=0.8.3", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 systemd-journal-logger = "2.2"
