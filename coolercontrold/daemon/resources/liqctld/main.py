@@ -77,6 +77,10 @@ DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 # behind it) until the call returns or the device is reconnected. Kept above the 9.5s job timeout so
 # a legitimately slow command is never mistaken for a wedge.
 WEDGE_THRESHOLD_SECS: float = DEVICE_TIMEOUT_SECS * 2
+# How long a cached status may stand in for a device that is failing its background refreshes.
+# Past this the read fails instead, so the daemon sees a missing status and its failsafe can latch.
+# Generous against the ~1-2s refresh interval of a device that is merely slow.
+STALE_STATUS_BUDGET_SECS: float = 10.0
 MAX_CONNECT_LIQUIDCTL_RETRIES: int = 5
 # Hard cap from the first shutdown signal to os._exit(). Best-effort device reset (which can include
 # an in-flight LCD write of 2+ seconds) runs within this window, then the process exits
@@ -1189,6 +1193,28 @@ def get_liquidctl_version() -> str:
         return getattr(liquidctl, "__version__", "unknown")
 
 
+class _StatusCacheHealth:
+    """Tracks whether a device's cached status is still fit to serve in place of a fresh read.
+
+    Serving the cache is correct for a device that is merely slow: every read blows the short
+    future timeout while the background refresh keeps the cache current behind it. It is wrong for
+    a device that has stopped answering, where the cache freezes at its last good value and the
+    daemon never learns the device is dead.
+
+    Age alone cannot separate the two. The background refresh is only submitted when the device's
+    queue is empty, so a device taking frequent writes (an LCD Kraken) can age its cache without
+    ever having failed a read, and an age-only rule would drive it into failsafe for nothing. Both
+    conditions together can: old *and* demonstrably failing its refreshes.
+    """
+
+    __slots__ = ("cached_at", "refresh_failed", "stale_logged")
+
+    def __init__(self, cached_at: float) -> None:
+        self.cached_at: float = cached_at
+        self.refresh_failed: bool = False
+        self.stale_logged: bool = False
+
+
 class DeviceService:
     """
     The Service which keeps track of devices and handles all communication
@@ -1204,6 +1230,9 @@ class DeviceService:
         self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
+        # Parallel to device_status_cache: when each entry was written and whether the device has
+        # since failed a background refresh. See `_StatusCacheHealth`.
+        self.device_status_health: Dict[int, _StatusCacheHealth] = {}
         self.liquidctl_version: str = get_liquidctl_version()
         # Guards shutdown(): the /quit handler and the signal handler can both call it, so the
         # actual device teardown must run at most once. Only the check-and-set is under the lock.
@@ -1625,7 +1654,7 @@ class DeviceService:
                 f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
             )
             serialized_status = self._stringify_status(status)
-            self.device_status_cache[device_id] = serialized_status
+            self._cache_status(device_id, serialized_status)
             return serialized_status
         except concurrent.futures.TimeoutError as te:
             log.debug(
@@ -1633,6 +1662,9 @@ class DeviceService:
                 f"Reusing last status if possible."
             )
             cached_status = self.device_status_cache.get(device_id)
+            servable = cached_status is not None and self._cached_status_is_servable(
+                device_id
+            )
             if self.device_executor.device_queue_empty(
                 device_id
             ):  # if emtpy this was likely a device timeout with a single job
@@ -1640,10 +1672,17 @@ class DeviceService:
                 async_status_job = self.device_executor.submit(
                     device_id, self._long_async_status_request, dev_id=device_id
                 )
-                if cached_status is not None:
+                if servable:
                     # return the currently cached status immediately and
                     #  let the async request above refresh the cache in the background
                     return cached_status
+                if cached_status is not None:
+                    # The cache has gone stale on a device that is failing its refreshes. The
+                    # refresh submitted above is left running so the device can still recover, but
+                    # answering with a frozen value would hide the failure completely: the daemon
+                    # needs a missing status before its failsafe can latch.
+                    self._log_stale_status_once(device_id)
+                    raise te
                 # else rerun the status request with a very long timeout
                 #  and wait for the output so that the cache fills up at least once
                 try:
@@ -1663,10 +1702,13 @@ class DeviceService:
                 finally:
                     async_status_job.cancel()
             # otherwise, this was a future timeout with a job still running in the queue
+            if servable:
+                return cached_status
             if cached_status is None:
                 log.error(f"No Status Cache yet filled for device LC #{device_id}")
-                raise te
-            return cached_status
+            else:
+                self._log_stale_status_once(device_id)
+            raise te
         except BaseException as exc:
             log.debug(
                 f"Unexpected error getting status for device LC #{device_id}: {exc}"
@@ -1689,13 +1731,50 @@ class DeviceService:
                 f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() "
                 f"failed: {exc}"
             )
+            # This is the only place the device demonstrates that it is not answering, as opposed
+            # to merely being slower than the short read timeout. It is half of what lets a stale
+            # cache be refused without punishing a device that is simply slow.
+            health = self.device_status_health.get(dev_id)
+            if health is not None:
+                health.refresh_failed = True
             raise
         log.debug(
             f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
         )
         serialized_status = self._stringify_status(status)
-        self.device_status_cache[dev_id] = serialized_status
+        self._cache_status(dev_id, serialized_status)
         return serialized_status
+
+    def _cache_status(self, device_id: int, serialized_status: Statuses) -> None:
+        """Records a fresh status, ending any stale-serving episode for this device."""
+        previous = self.device_status_health.get(device_id)
+        if previous is not None and previous.stale_logged:
+            log.warning(f"Device LC #{device_id} is answering status requests again.")
+        self.device_status_cache[device_id] = serialized_status
+        self.device_status_health[device_id] = _StatusCacheHealth(time.monotonic())
+
+    def _cached_status_is_servable(self, device_id: int) -> bool:
+        """Whether the cache may still stand in for a fresh read. See `_StatusCacheHealth`."""
+        health = self.device_status_health.get(device_id)
+        if health is None:
+            return False
+        if health.refresh_failed is False:
+            return True
+        return time.monotonic() - health.cached_at <= STALE_STATUS_BUDGET_SECS
+
+    def _log_stale_status_once(self, device_id: int) -> None:
+        """One line per stale episode, not one per poll."""
+        health = self.device_status_health.get(device_id)
+        if health is None:
+            return
+        if health.stale_logged:
+            return
+        health.stale_logged = True
+        log.warning(
+            f"Device LC #{device_id} has not answered a status request in over "
+            f"{STALE_STATUS_BUDGET_SECS}s. Reporting it as unavailable so the daemon "
+            f"can apply its failsafe."
+        )
 
     def set_fixed_speed(
         self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]
