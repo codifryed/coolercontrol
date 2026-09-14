@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
@@ -1500,11 +1500,35 @@ fn stable_device_path(device_response: &DeviceResponse) -> Option<String> {
             return Some(path);
         }
     }
-    // `/dev/hidrawN` has no `device` link; map it to its `/sys/class/hidraw/hidrawN` entry first.
-    let hid_address = device_response.hid_address.as_deref()?;
-    let node = Path::new(hid_address).file_name()?.to_str()?;
-    devices::get_static_device_path_str(&PathBuf::from(format!("/sys/class/hidraw/{node}")))
+    hidraw_device_path(device_response.hid_address.as_deref())
 }
+
+/// Resolves a `/dev/hidrawN` node to its underlying device realpath.
+///
+/// liquidctl's address is only a hidraw node for devices on the hidraw backend. The hidapi libusb
+/// backend reports `bus:device:interface`, and `PyUSB` devices (the whole Asetek 690LC family) a
+/// bare USB device number, neither of which names anything under `/sys/class/hidraw`. Those carry
+/// no hidraw identity at all, so they are rejected here rather than looked up and warned about as a
+/// missing path on every startup.
+fn hidraw_device_path(hid_address: Option<&str>) -> Option<String> {
+    hidraw_device_path_in(hid_address, Path::new("/sys/class/hidraw"))
+}
+
+/// The class root is a parameter so a test can assert which addresses are looked up there at all.
+fn hidraw_device_path_in(hid_address: Option<&str>, class_root: &Path) -> Option<String> {
+    debug_assert!(
+        class_root.is_absolute(),
+        "the hidraw class root must be an absolute path"
+    );
+    let hid_address = hid_address?;
+    if hid_address.starts_with("/dev/hidraw").not() {
+        return None;
+    }
+    // `/dev/hidrawN` has no `device` link; map it to its `/sys/class/hidraw/hidrawN` entry first.
+    let node = Path::new(hid_address).file_name()?.to_str()?;
+    devices::get_static_device_path_str(&class_root.join(node))
+}
+
 
 /// This function checks for duplicate liquidctl unique identifiers, and if found, goes through
 /// a step by step process to find the most useful unique identifier.
@@ -1651,6 +1675,39 @@ mod tests {
         };
         assert_eq!(stable_device_path(&response), None);
     }
+
+    #[test]
+    fn hidraw_device_path_looks_up_only_hidraw_nodes() {
+        // Goal: an address that is not a hidraw node is never looked up under /sys/class/hidraw,
+        // even when an entry of that name happens to be there; that lookup is what logged the
+        // "Error getting device path from /sys/class/hidraw/5" warnings for PyUSB devices.
+        // Method: a stand-in class root holding both `hidraw6` and `6`, each resolving through a
+        // `device` link, so only the guard can tell the two apart.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let device_dir = temp_dir.path().join("devices/usb1/1-2.4");
+        std::fs::create_dir_all(&device_dir).unwrap();
+        let class_root = temp_dir.path().join("class/hidraw");
+        for node in ["hidraw6", "6"] {
+            let node_dir = class_root.join(node);
+            std::fs::create_dir_all(&node_dir).unwrap();
+            std::os::unix::fs::symlink(&device_dir, node_dir.join("device")).unwrap();
+        }
+        let expected = std::fs::canonicalize(&device_dir).unwrap();
+        // Positive control: a real hidraw node still resolves through its `device` link.
+        assert_eq!(
+            hidraw_device_path_in(Some("/dev/hidraw6"), &class_root),
+            Some(expected.to_str().unwrap().to_string())
+        );
+        // Negative space: the PyUSB device number and the hidapi libusb address name no hidraw
+        // node, and an absent address resolves to nothing.
+        assert_eq!(hidraw_device_path_in(Some("6"), &class_root), None);
+        assert_eq!(
+            hidraw_device_path_in(Some("0001:0007:00"), &class_root),
+            None
+        );
+        assert_eq!(hidraw_device_path_in(None, &class_root), None);
+    }
+
 
     #[test]
     fn test_all_serials_unique() {
