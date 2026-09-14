@@ -74,6 +74,21 @@ pub struct FailsafeRef {
     pub reason: String,
 }
 
+/// A device whose driver has stopped answering, so the daemon can neither read from it nor write
+/// to it.
+///
+/// Deliberately distinct from `FailsafeRef`. Failsafe means "the device is alive, its readings are
+/// stale, and safe values are being substituted". Unreachable means "the device is not answering,
+/// and nothing can be written to it at all". Presenting the second as the first would tell the
+/// user their fans are on a safe curve when in fact no curve can be applied.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct UnreachableRef {
+    pub device_uid: DeviceUID,
+    pub device_name: String,
+    /// Consecutive operations that timed out before the device was given up on.
+    pub consecutive_timeouts: u8,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum HealthState {
     Detected,
@@ -96,6 +111,14 @@ pub struct FailsafeDelta {
     pub state: HealthState,
 }
 
+/// SSE delta broadcast when a device stops or resumes answering.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UnreachableDelta {
+    #[serde(flatten)]
+    pub reference: UnreachableRef,
+    pub state: HealthState,
+}
+
 /// One tick's device-health transitions, folded into the existing status SSE
 /// stream as a named event so it does not open another connection. Batched per
 /// subject per tick so a burst (a whole device disconnecting) is one broadcast
@@ -105,6 +128,7 @@ pub enum HealthEvent {
     Missing(Vec<SourceDelta>),
     StaleSource(Vec<SourceDelta>),
     Failsafe(Vec<FailsafeDelta>),
+    Unreachable(Vec<UnreachableDelta>),
 }
 
 /// Full current health snapshot returned by `GET /devices/health`.
@@ -120,6 +144,8 @@ pub enum HealthEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceHealthDto {
     pub failsafe: Vec<FailsafeRef>,
+    /// Current state: devices whose driver has stopped answering entirely.
+    pub unreachable: Vec<UnreachableRef>,
     pub missing: Vec<SourceRef>,
     pub stale_source: Vec<SourceRef>,
     /// Current state: firmware reclaimed a channel this daemon controls.
@@ -151,6 +177,7 @@ pub struct DeviceHealthController {
     missing: RefCell<Vec<SourceRef>>,
     stale_source: RefCell<Vec<SourceRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
+    unreachable: RefCell<Vec<UnreachableRef>>,
     hardware_support: Option<Rc<crate::hardware_support::HardwareSupportController>>,
     /// Temp-source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
@@ -166,6 +193,7 @@ impl DeviceHealthController {
         overrides: Rc<OverridesController>,
     ) -> Self {
         Self {
+            unreachable: RefCell::new(Vec::new()),
             all_devices,
             config,
             repos,
@@ -207,6 +235,7 @@ impl DeviceHealthController {
             .unwrap_or_default();
         DeviceHealthDto {
             failsafe: self.failsafe.borrow().clone(),
+            unreachable: self.unreachable.borrow().clone(),
             missing: self.missing.borrow().clone(),
             stale_source: self.stale_source.borrow().clone(),
             firmware_overrides,
@@ -225,6 +254,7 @@ impl DeviceHealthController {
         let current_stale = self.scan_stale_sources(&current_failsafe);
         self.diff_and_broadcast_failsafe(current_failsafe);
         self.diff_and_broadcast_stale_sources(current_stale);
+        self.diff_and_broadcast_unreachable(self.scan_unreachable());
     }
 
     /// Re-extracts the config temp-source references, but only when the config
@@ -274,6 +304,14 @@ impl DeviceHealthController {
         let mut out = Vec::new();
         for repo in self.repos.iter() {
             out.extend(repo.failsafing());
+        }
+        out
+    }
+
+    fn scan_unreachable(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for repo in self.repos.iter() {
+            out.extend(repo.unreachable_devices());
         }
         out
     }
@@ -482,6 +520,23 @@ impl DeviceHealthController {
             return;
         }
         handle.broadcast(HealthEvent::StaleSource(deltas));
+    }
+
+    fn diff_and_broadcast_unreachable(&self, current: Vec<UnreachableRef>) {
+        let (added, removed) = Self::diff_added_removed(&self.unreachable.borrow(), &current);
+        self.unreachable.replace(current);
+        let handle_ref = self.handle.borrow();
+        let Some(handle) = handle_ref.as_ref() else {
+            return;
+        };
+        let deltas = Self::delta_batch(added, removed, |reference, state| UnreachableDelta {
+            reference,
+            state,
+        });
+        if deltas.is_empty() {
+            return;
+        }
+        handle.broadcast(HealthEvent::Unreachable(deltas));
     }
 
     fn diff_and_broadcast_failsafe(&self, current: Vec<FailsafeRef>) {
@@ -915,6 +970,7 @@ mod tests {
         // missing, and stale arrays, the two hardware-support sections, and
         // empty lists serialized as [] not omitted.
         let dto = DeviceHealthDto {
+            unreachable: Vec::new(),
             failsafe: vec![FailsafeRef {
                 device_uid: "dev1".to_string(),
                 name: "temp1".to_string(),
@@ -942,6 +998,7 @@ mod tests {
                 "firmware_overrides": [],
                 "channel_capabilities": [],
                 "system_findings": [],
+            "unreachable": [],
             })
         );
     }

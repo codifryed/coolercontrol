@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::device_health::UnreachableRef;
+use crate::repositories::hwmon::device_io::DeviceHealth;
 use std::collections::HashMap;
 use std::env;
 use std::ops::Not;
@@ -422,6 +424,24 @@ impl Repository for GpuRepo {
         self.gpus_amd.update_all_statuses();
         self.gpus_nvidia.update_all_statuses();
         Ok(())
+    }
+
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = amd_driver.hwmon.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: amd_driver.hwmon.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        out
     }
 
     async fn shutdown(&self) -> Result<()> {

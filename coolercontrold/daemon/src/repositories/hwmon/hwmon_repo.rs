@@ -62,13 +62,13 @@ use crate::device::{
     DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp,
     TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
-use crate::device_health::FailsafeRef;
+use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::chip_name::ChipName;
-use crate::repositories::hwmon::device_io::{self, DeviceIo};
+use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
@@ -1750,6 +1750,24 @@ async fn apply_pwm_duty_write(
 impl Repository for HwmonRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Hwmon
+    }
+
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, (_, driver)) in &self.devices {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = driver.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: driver.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        out
     }
 
     fn failsafing(&self) -> Vec<FailsafeRef> {
@@ -5605,6 +5623,60 @@ mod shutdown_tests {
                 .await
                 .unwrap();
             assert_eq!(healthy_after.trim(), "2", "healthy device should be reset");
+
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: a device that stops answering must be reportable as its own health state, distinct
+    /// from failsafe. Failsafe means the device is alive with stale readings and safe values
+    /// substituted; unreachable means nothing can be read from or written to it at all, and the UI
+    /// must be able to tell a user which of those is happening.
+    ///
+    /// Method: wedge one device past the threshold, leave a second healthy, and assert only the
+    /// wedged one is reported, carrying the timeout count that condemned it.
+    #[test]
+    #[serial]
+    fn unreachable_devices_reports_only_the_wedged_one() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_wedged = base.join("dev_wedged");
+            let dir_healthy = base.join("dev_healthy");
+            seed_pwm_dir(&dir_wedged, b"1").await;
+            seed_pwm_dir(&dir_healthy, b"1").await;
+
+            let mut repo = empty_repo();
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
+            insert_device_with_io(
+                &mut repo,
+                1,
+                "dev_wedged",
+                dir_wedged.clone(),
+                vec![fan_channel(1, "fan1", &dir_wedged, Some(2))],
+                wedged_io.clone(),
+            );
+            insert_device(
+                &mut repo,
+                2,
+                "dev_healthy",
+                dir_healthy.clone(),
+                vec![fan_channel(1, "fan1", &dir_healthy, Some(2))],
+            );
+
+            // Nothing is wrong yet, so nothing is reported.
+            assert!(repo.unreachable_devices().is_empty());
+
+            for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
+                let _ = wedged_io.read_value(&dir_wedged.join("pwm1")).await;
+            }
+
+            let reported = repo.unreachable_devices();
+            assert_eq!(reported.len(), 1, "only the wedged device is unreachable");
+            assert_eq!(reported[0].device_name, "dev_wedged");
+            assert_eq!(
+                reported[0].consecutive_timeouts,
+                device_io::UNREACHABLE_AFTER_TIMEOUTS
+            );
 
             let _ = cc_fs::remove_dir_all(&base).await;
         });

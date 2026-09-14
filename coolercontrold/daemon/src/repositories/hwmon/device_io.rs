@@ -98,7 +98,7 @@ pub enum DeviceHealth {
     /// At least one reply timed out, but not yet enough to give up on it.
     Degraded { consecutive_timeouts: u8 },
     /// Not answering. Out of the per-tick rotation until the next probe is due.
-    Unreachable,
+    Unreachable { consecutive_timeouts: u8 },
 }
 
 /// One device's sysfs IO.
@@ -284,7 +284,7 @@ impl DeviceIo {
     /// Whether the per-tick rotation should skip this device for now.
     #[must_use]
     pub fn is_unreachable(&self) -> bool {
-        matches!(self.health(), DeviceHealth::Unreachable)
+        matches!(self.health(), DeviceHealth::Unreachable { .. })
     }
 }
 
@@ -388,10 +388,12 @@ impl Worker {
     }
 
     fn health(&self) -> DeviceHealth {
-        if self.probe_after.get().is_some() {
-            return DeviceHealth::Unreachable;
-        }
         let consecutive_timeouts = self.consecutive_timeouts.get();
+        if self.probe_after.get().is_some() {
+            return DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            };
+        }
         if consecutive_timeouts == 0 {
             return DeviceHealth::Healthy;
         }
@@ -650,7 +652,12 @@ mod tests {
             for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
                 assert!(io.read_value(path).await.is_err());
             }
-            assert_eq!(io.health(), DeviceHealth::Unreachable);
+            assert_eq!(
+                io.health(),
+                DeviceHealth::Unreachable {
+                    consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+                }
+            );
             assert!(io.is_unreachable());
 
             // The gate must be cheap: no dispatch, no timeout, no queue growth.
@@ -704,7 +711,12 @@ mod tests {
             let worker = worker_of(&io);
             worker.consecutive_timeouts.set(UNREACHABLE_AFTER_TIMEOUTS);
             worker.probe_after.set(Some(Instant::now()));
-            assert_eq!(io.health(), DeviceHealth::Unreachable);
+            assert_eq!(
+                io.health(),
+                DeviceHealth::Unreachable {
+                    consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+                }
+            );
 
             let value = io.read_value(&path).await.unwrap();
             assert_eq!(value.trimmed_str().unwrap(), "41000");
@@ -730,7 +742,12 @@ mod tests {
                 .await;
             assert!(result.is_err());
             assert_eq!(drain(&mut rx), 0);
-            assert_eq!(io.health(), DeviceHealth::Unreachable);
+            assert_eq!(
+                io.health(),
+                DeviceHealth::Unreachable {
+                    consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+                }
+            );
         });
     }
 

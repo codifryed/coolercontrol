@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::repositories::hwmon::device_io::{self, DeviceIo};
+use crate::device_health::UnreachableRef;
+use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -1011,6 +1012,24 @@ impl Repository for CpuRepo {
             cpu_device.device.borrow_mut().set_status(status);
         }
         Ok(())
+    }
+
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, cpu_device) in &self.devices {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = cpu_device.driver.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: cpu_device.driver.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        out
     }
 
     async fn shutdown(&self) -> Result<()> {

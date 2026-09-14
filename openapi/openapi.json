@@ -8441,10 +8441,18 @@
             "items": {
               "$ref": "#/components/schemas/SystemFinding"
             }
+          },
+          "unreachable": {
+            "description": "Current state: devices whose driver has stopped answering entirely.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnreachableRef"
+            }
           }
         },
         "required": [
           "failsafe",
+          "unreachable",
           "missing",
           "stale_source",
           "firmware_overrides",
@@ -10640,6 +10648,26 @@
             ]
           },
           {
+            "description": "Devices that stopped or resumed answering this tick.",
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UnreachableDelta"
+                }
+              },
+              "event": {
+                "type": "string",
+                "const": "unreachable"
+              }
+            },
+            "required": [
+              "event",
+              "data"
+            ]
+          },
+          {
             "description": "Full device-health snapshot, sent to a consumer that lagged the transitions.",
             "type": "object",
             "properties": {
@@ -11326,6 +11354,58 @@
         },
         "required": [
           "token_id"
+        ]
+      },
+      "UnreachableDelta": {
+        "description": "SSE delta broadcast when a device stops or resumes answering.",
+        "type": "object",
+        "properties": {
+          "consecutive_timeouts": {
+            "description": "Consecutive operations that timed out before the device was given up on.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "device_uid": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HealthState"
+          }
+        },
+        "required": [
+          "device_uid",
+          "device_name",
+          "consecutive_timeouts",
+          "state"
+        ]
+      },
+      "UnreachableRef": {
+        "description": "A device whose driver has stopped answering, so the daemon can neither read from it nor write\n to it.\n\n Deliberately distinct from `FailsafeRef`. Failsafe means \"the device is alive, its readings are\n stale, and safe values are being substituted\". Unreachable means \"the device is not answering,\n and nothing can be written to it at all\". Presenting the second as the first would tell the\n user their fans are on a safe curve when in fact no curve can be applied.",
+        "type": "object",
+        "properties": {
+          "consecutive_timeouts": {
+            "description": "Consecutive operations that timed out before the device was given up on.",
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "device_uid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_uid",
+          "device_name",
+          "consecutive_timeouts"
         ]
       },
       "UpdateModeDto": {
