@@ -225,6 +225,26 @@ impl DeviceIo {
         }
     }
 
+    /// A `DeviceIo` whose worker never answers, for tests that need a wedged device.
+    ///
+    /// Nothing drains the returned receiver, so every dispatch times out. That is what a wedged
+    /// driver looks like from the main thread, without needing a driver that wedges or a thread
+    /// that never returns. The caller must keep the receiver alive: dropping it closes the
+    /// channel, which is the distinct "worker gone" path.
+    #[cfg(test)]
+    #[must_use]
+    pub fn wedged_for_test(reply_timeout: Duration) -> (Self, mpsc::Receiver<Request>) {
+        let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
+        let worker = Worker {
+            device_name: "wedged".to_owned(),
+            tx,
+            reply_timeout,
+            consecutive_timeouts: Cell::new(0),
+            probe_after: Cell::new(None),
+        };
+        (Self::Threaded(Rc::new(worker)), rx)
+    }
+
     /// Whether this device is answering. Always `Healthy` when not isolated.
     #[must_use]
     pub fn health(&self) -> DeviceHealth {
@@ -471,22 +491,6 @@ mod tests {
     /// build machine answers well inside it.
     const TEST_TIMEOUT: Duration = Duration::from_millis(80);
 
-    /// A worker whose queue nobody drains. Every dispatch then times out, which is exactly what a
-    /// wedged driver looks like from the main thread, without needing a driver that wedges or a
-    /// thread that never returns. The receiver must be kept alive by the caller: dropping it
-    /// closes the channel, which is the distinct "worker gone" path.
-    fn wedged_io(reply_timeout: Duration) -> (DeviceIo, mpsc::Receiver<Request>) {
-        let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
-        let worker = Worker {
-            device_name: "wedged".to_owned(),
-            tx,
-            reply_timeout,
-            consecutive_timeouts: Cell::new(0),
-            probe_after: Cell::new(None),
-        };
-        (DeviceIo::Threaded(Rc::new(worker)), rx)
-    }
-
     fn worker_of(io: &DeviceIo) -> &Rc<Worker> {
         match io {
             DeviceIo::Threaded(worker) => worker,
@@ -596,7 +600,7 @@ mod tests {
     #[test]
     fn a_wedged_device_times_out_instead_of_blocking() {
         crate::rt::test_runtime(async {
-            let (io, _rx) = wedged_io(TEST_TIMEOUT);
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             assert_eq!(io.health(), DeviceHealth::Healthy);
 
             let started = Instant::now();
@@ -627,7 +631,7 @@ mod tests {
     #[test]
     fn a_wedged_device_becomes_unreachable_and_stops_dispatching() {
         crate::rt::test_runtime(async {
-            let (io, _rx) = wedged_io(TEST_TIMEOUT);
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
 
             for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
@@ -657,7 +661,7 @@ mod tests {
     #[test]
     fn an_unreachable_device_enqueues_nothing_further() {
         crate::rt::test_runtime(async {
-            let (io, mut rx) = wedged_io(TEST_TIMEOUT);
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let path = Path::new("/sys/class/hwmon/hwmon0/temp1_input");
 
             for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
@@ -701,7 +705,7 @@ mod tests {
     #[test]
     fn an_unreachable_device_waits_for_its_probe_interval() {
         crate::rt::test_runtime(async {
-            let (io, mut rx) = wedged_io(TEST_TIMEOUT);
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let worker = worker_of(&io);
             worker.consecutive_timeouts.set(UNREACHABLE_AFTER_TIMEOUTS);
             worker
@@ -722,7 +726,7 @@ mod tests {
     #[test]
     fn a_gone_worker_reports_immediately() {
         crate::rt::test_runtime(async {
-            let (io, rx) = wedged_io(TEST_TIMEOUT);
+            let (io, rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             drop(rx);
 
             let started = Instant::now();
@@ -754,7 +758,7 @@ mod tests {
             io.clear_descriptors();
             assert_eq!(io.health(), DeviceHealth::Healthy);
 
-            let (wedged, _rx) = wedged_io(TEST_TIMEOUT);
+            let (wedged, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             wedged.clear_descriptors();
             assert_eq!(wedged.health(), DeviceHealth::Healthy);
         });

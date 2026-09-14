@@ -788,17 +788,20 @@ impl HwmonRepo {
             self.tick_staleness_and_log(type_index, &driver.name);
             return;
         }
+        let _coalesce_guard = PreloadInFlightGuard {
+            flag: Rc::clone(flag),
+        };
         // A device that has stopped answering is left alone until its worker's probe is due.
         // Dispatching anyway would spend a full reply budget per tick to learn what the last tick
         // already established, and would queue work nothing is draining. Staleness still ticks, so
         // the failsafe takes over for its channels on the usual schedule.
+        //
+        // Must stay below the coalesce guard: returning above it would leave `preload_in_flight`
+        // set with nothing to clear it, and every later tick for this device would coalesce away.
         if driver.io.is_unreachable() {
             self.tick_staleness_and_log(type_index, &driver.name);
             return;
         }
-        let _coalesce_guard = PreloadInFlightGuard {
-            flag: Rc::clone(flag),
-        };
 
         // `is_failsafed` and `stale_ticks` persist across preloads;
         // only the fresh-this-tick flags get cleared here.
@@ -2428,6 +2431,14 @@ mod preload_tests {
         base_path: &Path,
         channels: Vec<HwmonChannelInfo>,
     ) -> Rc<HwmonDriverInfo> {
+        driver_with_io(base_path, channels, DeviceIo::default())
+    }
+
+    fn driver_with_io(
+        base_path: &Path,
+        channels: Vec<HwmonChannelInfo>,
+        io: DeviceIo,
+    ) -> Rc<HwmonDriverInfo> {
         Rc::new(HwmonDriverInfo {
             name: "test_driver".to_string(),
             path: base_path.to_path_buf(),
@@ -2436,7 +2447,7 @@ mod preload_tests {
             channels,
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
-            io: DeviceIo::default(),
+            io,
         })
     }
 
@@ -2453,6 +2464,70 @@ mod preload_tests {
         if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
             repo.failsafe_statuses.borrow_mut().insert(type_index, fsd);
         }
+    }
+
+    /// Goal: the reason this whole mechanism exists. A device that stops answering must not stop
+    /// the daemon, must leave the per-tick rotation rather than costing a timeout every tick, and
+    /// must not hold up a healthy device sharing the same repo.
+    ///
+    /// Method: give one device a worker nobody drains and a second device ordinary inline IO,
+    /// preload both until the wedged one crosses the unreachable threshold, then assert the wedged
+    /// device is skipped cheaply while the healthy one keeps producing fresh readings.
+    #[test]
+    #[serial]
+    fn a_wedged_device_does_not_stop_a_healthy_one() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let channels = vec![fan_channel_with_paths(1, "fan1", base)];
+
+            // Short budget so the test does not spend the real per-device timeout eight times.
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let wedged = driver_with_io(base, channels.clone(), wedged_io);
+            let healthy = driver_with_channels(base, channels);
+
+            let repo = new_test_repo();
+            repo.device_permits
+                .get(&TEST_TYPE_INDEX)
+                .expect("test device permit exists");
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // when: the wedged device is polled past its threshold.
+            for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            }
+
+            // then: it is out of the rotation, and skipping it is cheap.
+            assert!(wedged.io.is_unreachable());
+            let started = Instant::now();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            assert!(
+                started.elapsed() < Duration::from_millis(20),
+                "skipping an unreachable device still dispatched: {:?}",
+                started.elapsed()
+            );
+
+            // and: a healthy device on the same repo is unaffected.
+            assert!(healthy.io.is_unreachable().not());
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &healthy)
+                .await;
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded
+                    .get(&TEST_TYPE_INDEX)
+                    .expect("healthy device produced a status");
+                assert_eq!(channels.len(), 1);
+                assert_eq!(channels[0].name, "fan1");
+                assert_eq!(channels[0].rpm, Some(1200));
+            }
+            teardown(&ctx).await;
+        });
     }
 
     #[test]
