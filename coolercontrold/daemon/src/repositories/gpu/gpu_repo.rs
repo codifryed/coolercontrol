@@ -278,7 +278,7 @@ impl GpuRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 scope.spawn(async move {
-                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info);
+                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
                     self.gpus_nvidia
                         .nvidia_preloaded_statuses
                         .borrow_mut()
