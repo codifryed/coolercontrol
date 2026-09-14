@@ -457,6 +457,39 @@ def _send_frame_to_spare_bucket(self, data, bulk_info):
     self._cc_active_bucket = target_bucket
 
 
+_ORIGINAL_CORSAIR_PSU_EXEC = getattr(CorsairHidPsu, "_exec", None)
+
+
+def _exec_with_drained_queue(self, writebit, command, data=None):
+    """Drains queued reports before every Corsair HID PSU command.
+
+    `_exec` writes a command and asserts that the report it reads back echoes it, but the PSU also
+    sends reports unasked. One that arrives while nothing is reading becomes the answer to the next
+    command, and every read after it is one behind, which surfaces as "invalid response (possible
+    conflict with another program)".
+
+    liquidctl drains for this in `_get_status_directly` and nowhere else, so `initialize` walks
+    straight into it, and a resume is exactly when a backlog is waiting: the device kept sending
+    while the system was asleep. That failure is what made a PSU exhaust every init retry after a
+    wake and stay unusable for minutes, until enough reads had drained the queue by hand.
+
+    Draining before the write is always safe. Anything already queued was sent before the request
+    went out, so it can never be that request's answer.
+    """
+    self.device.clear_enqueued_reports()
+    return _ORIGINAL_CORSAIR_PSU_EXEC(self, writebit, command, data)
+
+
+def patch_corsair_psu_report_drain() -> bool:
+    """Installs the drain above. See `_exec_with_drained_queue`."""
+    if _ORIGINAL_CORSAIR_PSU_EXEC is None:
+        log.warning("liquidctl CorsairHidPsu is missing _exec; report drain unpatched")
+        return False
+    CorsairHidPsu._exec = _exec_with_drained_queue
+    log.debug("Corsair PSU commands patched to drain queued reports first")
+    return True
+
+
 def patch_kraken_lcd_transfer() -> bool:
     """Installs the whole-frame transfer and the two-bucket rotation.
 
@@ -2369,6 +2402,7 @@ def main() -> None:
     log.info("liqctld service starting...")
     patch_kraken_lcd_packing()
     patch_kraken_lcd_transfer()
+    patch_corsair_psu_report_drain()
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.
