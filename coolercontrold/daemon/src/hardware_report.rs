@@ -16,6 +16,7 @@ use crate::hardware_support::{
     self, ChannelExclusion, ChannelVerdict, DetectedChipRef, HiddenHardware, HwmonExclusion,
     ProbeEnvironment, SystemFinding, SystemInfo,
 };
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::{cc_fs, rt, VERSION};
@@ -763,7 +764,9 @@ async fn collect_retained(
 /// Reads a device's fan channels with the exact same `init_fans` the daemon
 /// uses, so a scanned device and a retained one describe themselves alike.
 async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
-    fans::init_fans(path, name)
+    // Inline on purpose: the report is a one-shot scan with no tick to protect, so a device that
+    // stalls here delays only the report that asked for it.
+    fans::init_fans(path, name, &DeviceIo::default())
         .await
         .unwrap_or_default()
         .into_iter()

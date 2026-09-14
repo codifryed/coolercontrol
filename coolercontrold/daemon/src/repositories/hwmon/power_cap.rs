@@ -4,6 +4,7 @@
 use crate::cc_fs;
 use crate::device::Watts;
 use crate::repositories::cpu::CPU_POWER_NAME;
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{Context, Result};
 use log::{debug, info, trace};
@@ -70,11 +71,8 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
 /// Extract the power cap energy count in Joules. Returns `None` on
 /// read or parse failure so callers can distinguish a failed read from
 /// a legitimate 0-joule counter.
-pub async fn extract_power_joule_counter(
-    fds: &cc_fs::SysfsFdCache,
-    channel_number: u8,
-) -> Option<f64> {
-    fds.read_value(Path::new(&format!(
+pub async fn extract_power_joule_counter(io: &DeviceIo, channel_number: u8) -> Option<f64> {
+    io.read_value(Path::new(&format!(
         "/sys/class/powercap/intel-rapl:{channel_number}/energy_uj"
     )))
     .await

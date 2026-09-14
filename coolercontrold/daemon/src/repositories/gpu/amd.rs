@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Not, RangeInclusive};
@@ -82,11 +83,15 @@ impl GpuAMD {
         // Guards against two GPUs resolving to the same UID (e.g. serial-less duplicates that both
         // hash blank). base_paths is path-sorted, so the assignment is stable across boots.
         let mut assigned_uids: HashSet<UID> = HashSet::new();
+        let io_reply_timeout =
+            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate));
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
+            // Before any value read, so detection is isolated too.
+            let io = DeviceIo::isolated_or_inline(&device_name, io_reply_timeout);
             let raw_id = devices::get_device_unique_id(&path, &device_name).await;
             // Distinct per-device sysfs path, used only if raw_id collides (e.g. a blank serial).
             let path_id = devices::get_static_device_path_str(&path)
@@ -109,7 +114,7 @@ impl GpuAMD {
             let disabled_channels =
                 cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
-            match fans::init_fans(&path, &device_name).await {
+            match fans::init_fans(&path, &device_name, &io).await {
                 Ok(fans) => channels.extend(
                     fans.into_iter()
                         .filter(|fan| disabled_channels.contains(&fan.name).not())
@@ -117,7 +122,7 @@ impl GpuAMD {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Fans: {err}"),
             }
-            match temps::init_temps(&path, &device_name).await {
+            match temps::init_temps(&path, &device_name, &io).await {
                 Ok(temps) => channels.extend(
                     temps
                         .into_iter()
@@ -151,7 +156,7 @@ impl GpuAMD {
                     }
                 }
             }
-            match freqs::init_freqs(&path).await {
+            match freqs::init_freqs(&path, &io).await {
                 Ok(freqs) => channels.extend(
                     freqs
                         .into_iter()
@@ -160,7 +165,7 @@ impl GpuAMD {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
             }
-            match power::init_power(&path).await {
+            match power::init_power(&path, &io).await {
                 Ok(power) => channels.extend(
                     power
                         .into_iter()
@@ -196,6 +201,7 @@ impl GpuAMD {
                     model,
                     u_id,
                     channels,
+                    io,
                     ..Default::default()
                 },
                 device_path,
@@ -735,7 +741,7 @@ impl GpuAMD {
             }
             let result = driver
                 .hwmon
-                .fds
+                .io
                 .read_value(&driver.device_path.join("gpu_busy_percent"))
                 .await
                 .and_then(fans::check_parsing_8);
@@ -797,7 +803,12 @@ impl GpuAMD {
                     channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                 })
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-            fans::set_pwm_enable_to_default_or_auto(&amd_hwmon_info.hwmon.path, channel_info).await
+            fans::set_pwm_enable_to_default_or_auto(
+                &amd_hwmon_info.hwmon.path,
+                channel_info,
+                &amd_hwmon_info.hwmon.io,
+            )
+            .await
         }
     }
 
@@ -911,16 +922,22 @@ impl GpuAMD {
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &amd_driver_info.hwmon.path,
                 channel_info,
+                &amd_driver_info.hwmon.io,
             )
             .await?;
-            fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
-                        amd_driver_info.hwmon.name
-                    )
-                })
+            fans::set_pwm_duty(
+                &amd_driver_info.hwmon.path,
+                channel_info,
+                fixed_speed,
+                &amd_driver_info.hwmon.io,
+            )
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                    amd_driver_info.hwmon.name
+                )
+            })
         }
     }
 

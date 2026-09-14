@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::repositories::hwmon::device_io::DeviceIo;
 use std::io::Error;
 use std::ops::Not;
 use std::path::Path;
@@ -25,7 +26,11 @@ macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($
 static THINKPAD_GPU_ENXIO_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Initialize all applicable temp sensors
-pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_temps(
+    base_path: &Path,
+    device_name: &str,
+    io: &DeviceIo,
+) -> Result<Vec<HwmonChannelInfo>> {
     if temps_used_by_another_repo(device_name) {
         return Ok(vec![]);
     }
@@ -43,7 +48,7 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if sensor_is_usable(base_path, &channel_number, device_name)
+            if sensor_is_usable(base_path, &channel_number, device_name, io)
                 .await
                 .not()
             {
@@ -106,7 +111,7 @@ pub async fn read_one_temp_status(
         None => &driver.path.join(format_temp_input!(channel.number)),
     };
     match driver
-        .fds
+        .io
         .read_value(temp_path)
         .await
         .and_then(check_parsing_32)
@@ -166,7 +171,7 @@ pub async fn extract_temp_statuses_concurrently(
             }
             let temp_task = scope.spawn(async {
                 let result = driver
-                    .fds
+                    .io
                     .read_value(&driver.path.join(format_temp_input!(channel.number)))
                     .await
                     .and_then(check_parsing_32)
@@ -200,11 +205,16 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 
 /// Returns whether the temperature sensor is returning valid and sane values
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &str) -> bool {
+async fn sensor_is_usable(
+    base_path: &Path,
+    channel_number: &u8,
+    driver_name: &str,
+    io: &DeviceIo,
+) -> bool {
     let temp_path = base_path.join(format_temp_input!(channel_number));
     // Re-probe a transient failure before giving the channel up for the session. The sanity-range
     // verdict below is not a read failure and is deliberately left as a single shot.
-    match probe::read_until_ok(&temp_path, async || read_temp_degrees(&temp_path).await).await {
+    match probe::read_until_ok(&temp_path, async || read_temp_degrees(io, &temp_path).await).await {
         Ok(degrees) => {
             let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
             if !has_sane_value {
@@ -236,8 +246,8 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &s
 
 /// One temp read in degrees, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_temp_degrees(temp_path: &Path) -> Result<f64> {
-    cc_fs::read_sysfs_value(temp_path)
+async fn read_temp_degrees(io: &DeviceIo, temp_path: &Path) -> Result<f64> {
+    io.read_value(temp_path)
         .await
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
@@ -370,7 +380,8 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result = init_temps(&test_base_path, &device_name).await;
+            let temps_result =
+                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             assert!(temps_result.is_err());
@@ -402,7 +413,8 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result = init_temps(&test_base_path, &device_name).await;
+            let temps_result =
+                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             // println!("RESULT: {:?}", fans_result);
@@ -504,7 +516,7 @@ mod tests {
             };
 
             let (first_temps, _) = extract_temp_statuses(&driver_info).await;
-            let held_after_first_tick = driver_info.fds.len();
+            let held_after_first_tick = driver_info.io.descriptor_count();
             let (second_temps, _) = extract_temp_statuses(&driver_info).await;
             cc_fs::write(test_base_path.join("temp1_input"), b"55000".to_vec())
                 .await
@@ -518,7 +530,11 @@ mod tests {
             // Both temp files stay open in the fd cache across ticks.
             let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
-            assert_eq!(driver_info.fds.len(), expected_held, "descriptors grew");
+            assert_eq!(
+                driver_info.io.descriptor_count(),
+                expected_held,
+                "descriptors grew"
+            );
             assert!((first_temps[0].temp - 35.0).abs() < f64::EPSILON);
             assert!((second_temps[1].temp - 42.0).abs() < f64::EPSILON);
             assert!((third_temps[0].temp - 55.0).abs() < f64::EPSILON);

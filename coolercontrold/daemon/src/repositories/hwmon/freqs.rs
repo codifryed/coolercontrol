@@ -3,6 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
-pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut freqs = vec![];
     let dir_entries = cc_fs::read_dir(base_path)?;
     let regex_freq_input = Regex::new(PATTERN_FREQ_INPUT_NUMBER)?;
@@ -28,7 +29,7 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if !sensor_is_usable(base_path, &channel_number).await {
+            if !sensor_is_usable(base_path, &channel_number, io).await {
                 continue;
             }
             let channel_name = get_freq_channel_name(channel_number);
@@ -65,7 +66,7 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
             continue;
         }
         let result = driver
-            .fds
+            .io
             .read_value(&driver.path.join(format!("freq{}_input", channel.number)))
             .await
             .and_then(check_parsing_64)
@@ -91,7 +92,7 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
             }
             let freq_task = scope.spawn(async {
                 let result = driver
-                    .fds
+                    .io
                     .read_value(&driver.path.join(format!("freq{}_input", channel.number)))
                     .await
                     .and_then(check_parsing_64)
@@ -112,17 +113,20 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
     .collect()
 }
 
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8, io: &DeviceIo) -> bool {
     let freq_path = base_path.join(format!("freq{channel_number}_input"));
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
     // for the session. See `probe::until_readable`.
-    probe::until_readable(&freq_path, async || read_freq_megahertz(&freq_path).await).await
+    probe::until_readable(&freq_path, async || {
+        read_freq_megahertz(io, &freq_path).await
+    })
+    .await
 }
 
 /// One frequency read in MHz, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_freq_megahertz(freq_path: &Path) -> Result<Mhz> {
-    cc_fs::read_sysfs_value(freq_path)
+async fn read_freq_megahertz(io: &DeviceIo, freq_path: &Path) -> Result<Mhz> {
+    io.read_value(freq_path)
         .await
         .and_then(check_parsing_64)
         .map(hertz_to_megahertz)

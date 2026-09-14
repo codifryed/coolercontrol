@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -186,9 +187,9 @@ impl CpuRepo {
         }
     }
 
-    async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_cpu_temp(path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
-        temps::init_temps(path, include_all_devices).await
+        temps::init_temps(path, include_all_devices, io).await
     }
 
     /// Counts a driver's devices, and for `coretemp` checks whether any zone is offline.
@@ -436,7 +437,7 @@ impl CpuRepo {
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
                     let joule_count =
-                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await;
+                        power_cap::extract_power_joule_counter(&driver.io, channel.number).await;
                     let mut watts = self.power_watts_or_zero(physical_id, joule_count);
                     self.use_cached_value_if_zero(&mut watts, init, association, &channel.name);
                     status_channels.push(ChannelStatus {
@@ -709,7 +710,12 @@ impl CpuRepo {
             return None;
         }
         let mut channels = Vec::new();
-        match Self::init_cpu_temp(path).await {
+        // Before any value read, so detection is isolated too.
+        let io = DeviceIo::isolated_or_inline(
+            device_name,
+            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate)),
+        );
+        match Self::init_cpu_temp(path, &io).await {
             Ok(temps) => channels.extend(temps),
             Err(err) => error!("Error initializing CPU Temps: {err}"),
         }
@@ -730,6 +736,7 @@ impl CpuRepo {
             model,
             u_id,
             channels,
+            io,
             ..Default::default()
         })
     }
@@ -741,7 +748,7 @@ impl CpuRepo {
         for channel in driver.channels.iter().filter(|channel| {
             channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
         }) {
-            let joule_count = power_cap::extract_power_joule_counter(&driver.fds, channel.number)
+            let joule_count = power_cap::extract_power_joule_counter(&driver.io, channel.number)
                 .await
                 .unwrap_or(0.0);
             self.energy_counters

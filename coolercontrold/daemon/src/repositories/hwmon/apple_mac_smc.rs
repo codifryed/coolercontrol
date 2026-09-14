@@ -3,6 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::DEVICE_NAME_MAC_SMC;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
@@ -83,8 +84,8 @@ impl AppleMacSMC {
 
     /// Returns every detected fan, including ones the user has disabled. The
     /// caller drops those, so both hwmon branches record the same exclusions.
-    pub async fn init_fans(base_path: &Path) -> Vec<HwmonChannelInfo> {
-        Self::init_apple_fans(base_path)
+    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
+        Self::init_apple_fans(base_path, io)
             .await
             .unwrap_or_else(|err| {
                 error!("Error initializing Apple Mac SMC Fans: {err}");
@@ -92,14 +93,14 @@ impl AppleMacSMC {
             })
     }
 
-    async fn init_apple_fans(base_path: &Path) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_apple_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let dir_entries = cc_fs::read_dir(base_path)?;
         let mut fan_caps = HashMap::new();
         for entry in dir_entries {
             let os_file_name = entry?.file_name();
             let file_name = os_file_name.to_str().context("File Name should be a str")?;
             Self::detect_apple_smc_fans(base_path, file_name, &mut fan_caps).await?;
-            fans::detect_rpm(base_path, file_name, &mut fan_caps).await?;
+            fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
         }
         let mut fans = Self::caps_to_hwmon_fans(base_path, fan_caps).await?;
         fans.sort_by_key(|c| c.number);
@@ -150,15 +151,9 @@ impl AppleMacSMC {
             return Ok(()); // skip if fan_target file isn't writable
         }
         // Detection reads each attribute once, so this cache closes with the probe.
-        if fans::get_fan_rpm(
-            &cc_fs::SysfsFdCache::default(),
-            base_path,
-            &channel_number,
-            None,
-            true,
-        )
-        .await
-        .is_none()
+        if fans::get_fan_rpm(&DeviceIo::default(), base_path, &channel_number, None, true)
+            .await
+            .is_none()
         {
             return Ok(()); // skip if fan_input file isn't readable (no indicator of speed)
         }
@@ -345,14 +340,14 @@ impl AppleMacSMC {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         let fan_duty = if channel.caps.is_apple_smc() {
-            self.get_fan_duty(&driver.fds, channel.number, channel.rpm_path.as_ref())
+            self.get_fan_duty(&driver.io, channel.number, channel.rpm_path.as_ref())
                 .await
         } else {
             None
         };
         let fan_rpm = if channel.caps.has_rpm() {
             fans::get_fan_rpm(
-                &driver.fds,
+                &driver.io,
                 &driver.path,
                 &channel.number,
                 channel.rpm_path.as_ref(),
@@ -391,7 +386,7 @@ impl AppleMacSMC {
             return Some(None);
         }
         let fan_rpm = fans::get_fan_rpm(
-            &driver.fds,
+            &driver.io,
             &driver.path,
             &channel.number,
             channel.rpm_path.as_ref(),
@@ -500,12 +495,12 @@ impl AppleMacSMC {
 
     pub async fn get_fan_duty(
         &self,
-        fds: &cc_fs::SysfsFdCache,
+        io: &DeviceIo,
         channel_number: u8,
         rpm_path: Option<&PathBuf>,
     ) -> Option<f64> {
         fans::get_fan_rpm(
-            fds,
+            io,
             &self.path,
             &channel_number,
             rpm_path,
@@ -966,7 +961,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::init_apple_fans(test_base_path).await;
+            let result = AppleMacSMC::init_apple_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1005,7 +1000,7 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let channels = AppleMacSMC::init_fans(test_base_path).await;
+            let channels = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1254,9 +1249,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc
-                .get_fan_duty(&cc_fs::SysfsFdCache::default(), 1, None)
-                .await;
+            let result = apple_smc.get_fan_duty(&DeviceIo::default(), 1, None).await;
 
             // then:
             teardown(&ctx).await;
@@ -1336,7 +1329,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -1916,7 +1909,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -1966,7 +1959,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -2056,7 +2049,7 @@ mod tests {
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -2142,7 +2135,7 @@ mod tests {
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -2180,7 +2173,7 @@ mod tests {
                 channels: vec![],
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             let mut invocations: u32 = 0;

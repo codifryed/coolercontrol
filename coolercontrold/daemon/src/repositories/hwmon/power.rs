@@ -3,6 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -19,7 +20,7 @@ macro_rules! format_power_label { ($($arg:tt)*) => {{ format!("power{}_label", $
 /// This initializes the `powerN` hwmon sysfs files. These are used to
 /// measure power usage in microWatts.
 /// See [kernel docs](https://docs.kernel.org/gpu/amdgpu/thermal.html)
-pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_power(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut powers = vec![];
     let mut preferred_powers = HashMap::new();
     let mut power_inputs = vec![];
@@ -33,6 +34,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
             file_name,
             &mut preferred_powers,
             &mut power_inputs,
+            io,
         )
         .await?;
     }
@@ -65,6 +67,7 @@ async fn insert_power_metrics(
     file_name: &str,
     preferred_powers: &mut HashMap<u8, String>,
     power_inputs: &mut Vec<(u8, String)>,
+    io: &DeviceIo,
 ) -> Result<()> {
     let regex_power_file = Regex::new(PATTERN_POWER_FILE_NUMBER)?;
     if regex_power_file.is_match(file_name).not() {
@@ -77,7 +80,7 @@ async fn insert_power_metrics(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if sensor_is_not_usable(base_path, file_name).await {
+    if sensor_is_not_usable(base_path, file_name, io).await {
         return Ok(()); // skip if pwm file isn't readable
     }
     if file_name.ends_with(POWER_AVERAGE_SUFFIX) {
@@ -124,7 +127,7 @@ pub async fn read_one_power_status(
     // In the Power case, channel.name is the real name of the sysfs file.
     let power_path = driver.path.join(&channel.name);
     driver
-        .fds
+        .io
         .read_value(&power_path)
         .await
         .and_then(check_parsing_64)
@@ -160,19 +163,21 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
 }
 
 /// Check if the power channel is usable
-async fn sensor_is_not_usable(base_path: &Path, file_name: &str) -> bool {
+async fn sensor_is_not_usable(base_path: &Path, file_name: &str, io: &DeviceIo) -> bool {
     let power_path = base_path.join(file_name);
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
     // for the session. See `probe::until_readable`.
-    probe::until_readable(&power_path, async || read_power_watts(&power_path).await)
-        .await
-        .not()
+    probe::until_readable(&power_path, async || {
+        read_power_watts(io, &power_path).await
+    })
+    .await
+    .not()
 }
 
 /// One power read in watts, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_power_watts(power_path: &Path) -> Result<f64> {
-    cc_fs::read_sysfs_value(power_path)
+async fn read_power_watts(io: &DeviceIo, power_path: &Path) -> Result<f64> {
+    io.read_value(power_path)
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
@@ -250,7 +255,7 @@ mod tests {
             let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let power_result = init_power(&test_base_path).await;
+            let power_result = init_power(&test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(power_result.is_err()); // does not currently error no matter what
@@ -278,7 +283,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -310,7 +315,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -339,7 +344,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -371,7 +376,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -413,7 +418,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;

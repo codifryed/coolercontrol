@@ -27,6 +27,7 @@
 //! that are assigned to specific fan channels. i.e. pwm1 and pwm2.
 
 use crate::device::{Duty, Temp};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::fans::{
     PWM_ENABLE_AUTO_VALUE, PWM_ENABLE_MANUAL_VALUE, PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
 };
@@ -77,6 +78,7 @@ pub async fn init_auto_curve_fans(
     base_path: &Path,
     fans: &mut Vec<HwmonChannelInfo>,
     device_name: &str,
+    io: &DeviceIo,
 ) -> Result<()> {
     if let Some(driver_name) = devices::get_device_driver_name(base_path).await {
         if DISABLED_DRIVER_NAMES.contains(&driver_name.as_str()) {
@@ -88,7 +90,7 @@ pub async fn init_auto_curve_fans(
             continue; // we only support fans that have pwmN controls
         }
         if is_temp_sel(base_path, fan.number) {
-            init_temp_sel_pwm_based_curve(base_path, fan, device_name).await?;
+            init_temp_sel_pwm_based_curve(base_path, fan, device_name, io).await?;
         } else if is_temp_based(base_path, fan.number) {
             init_temp_based_curve(base_path, fan)?;
         } else if DEVICE_NAMES_NZXT_KRAKEN3.contains(&device_name) {
@@ -256,6 +258,7 @@ async fn init_temp_sel_pwm_based_curve(
     base_path: &Path,
     fan: &mut HwmonChannelInfo,
     device_name: &str,
+    io: &DeviceIo,
 ) -> Result<()> {
     // This is currently only known to by used by the `nct6775` kernel driver.
     let regex_pwm_auto_points = Regex::new(format_pwm_auto_point_regex!(fan.number).as_str())?;
@@ -311,7 +314,7 @@ async fn init_temp_sel_pwm_based_curve(
         );
         return Ok(());
     }
-    let temp_lengths = temps::init_temps(base_path, device_name)
+    let temp_lengths = temps::init_temps(base_path, device_name, io)
         .await?
         .into_iter()
         .map(|channel_info| (channel_info.name, max_points))
@@ -326,21 +329,24 @@ pub async fn apply_curve(
     speed_profile: &[(Temp, Duty)],
     temp_channel_info: &HwmonChannelInfo,
     device_name: &str,
+    io: &DeviceIo,
 ) -> Result<()> {
     match &fan_channel_info.auto_curve {
         AutoCurveInfo::None => Ok(()),
         AutoCurveInfo::PWM { point_length } => {
             if DEVICE_NAMES_NZXT_KRAKEN3.contains(&device_name) {
                 let interpolated_pwms = interpolate_kraken3_curve(speed_profile);
-                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info).await?;
+                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
+                    .await?;
                 apply_kraken3_curve(base_path, fan_channel_info.number, interpolated_pwms).await?;
             } else {
                 let normalized_curve =
                     normalize_speed_profile(speed_profile, *point_length as usize);
-                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info).await?;
+                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
+                    .await?;
                 apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve).await?;
             }
-            fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info).await
+            fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info, io).await
         }
         AutoCurveInfo::Temp { temp_lengths } => {
             let point_length = temp_lengths
@@ -354,16 +360,19 @@ pub async fn apply_curve(
                 })?;
             let normalized_curve = normalize_speed_profile(speed_profile, point_length as usize);
             if is_temp_sel(base_path, fan_channel_info.number) {
-                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info).await?;
+                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
+                    .await?;
                 apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve).await?;
                 fans::set_pwm_enable(
                     PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
                     base_path,
                     fan_channel_info,
+                    io,
                 )
                 .await
             } else {
-                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info).await?;
+                fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
+                    .await?;
                 apply_temp_curve(base_path, temp_channel_info.number, normalized_curve).await?;
                 apply_temp_curve_to_pwm_channel(
                     base_path,
@@ -371,7 +380,7 @@ pub async fn apply_curve(
                     fan_channel_info.number,
                 )
                 .await?;
-                fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info).await
+                fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info, io).await
             }
         }
     }

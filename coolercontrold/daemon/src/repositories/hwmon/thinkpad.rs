@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::cc_fs;
 use crate::config::Config;
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::fans::{
     check_parsing_8, set_pwm_duty, set_pwm_enable_if_not_already, PWM_ENABLE_MANUAL_VALUE,
 };
@@ -29,7 +29,7 @@ pub async fn apply_speed_fixed(
     speed_fixed: u8,
 ) -> Result<()> {
     let result = if speed_fixed == 100 && config.get_settings()?.thinkpad_full_speed {
-        set_to_full_speed(&hwmon_driver.path, channel_info).await
+        set_to_full_speed(&hwmon_driver.path, channel_info, &hwmon_driver.io).await
     } else {
         set_manual_duty(hwmon_driver, channel_info, speed_fixed).await
     };
@@ -41,32 +41,50 @@ async fn set_manual_duty(
     channel_info: &HwmonChannelInfo,
     speed_fixed: u8,
 ) -> Result<()> {
-    set_pwm_enable_if_not_already(PWM_ENABLE_MANUAL_VALUE, &hwmon_driver.path, channel_info)
-        .await?;
-    set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Error on {}:{} for duty {speed_fixed} - {err}",
-                hwmon_driver.name,
-                channel_info.name
-            )
-        })
+    set_pwm_enable_if_not_already(
+        PWM_ENABLE_MANUAL_VALUE,
+        &hwmon_driver.path,
+        channel_info,
+        &hwmon_driver.io,
+    )
+    .await?;
+    set_pwm_duty(
+        &hwmon_driver.path,
+        channel_info,
+        speed_fixed,
+        &hwmon_driver.io,
+    )
+    .await
+    .map_err(|err| {
+        anyhow!(
+            "Error on {}:{} for duty {speed_fixed} - {err}",
+            hwmon_driver.name,
+            channel_info.name
+        )
+    })
 }
 
 /// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
 /// for `ThinkPads` where this means "full-speed". See:
 /// [Kernel Doc](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
-pub async fn set_to_full_speed(base_path: &Path, channel_info: &HwmonChannelInfo) -> Result<()> {
+pub async fn set_to_full_speed(
+    base_path: &Path,
+    channel_info: &HwmonChannelInfo,
+    io: &DeviceIo,
+) -> Result<()> {
     // set to 100% first for consistent pwm duty-reporting behavior
     // (the driver doesn't automatically set the duty to 100% in full-speed mode)
-    set_pwm_duty(base_path, channel_info, 100).await?;
+    set_pwm_duty(base_path, channel_info, 100, io).await?;
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-    let current_pwm_enable = cc_fs::read_sysfs_value(&path_pwm_enable)
+    let current_pwm_enable = io
+        .read_value(&path_pwm_enable)
         .await
         .and_then(check_parsing_8)?;
     if current_pwm_enable != PWM_ENABLE_THINKPAD_FULL_SPEED {
-        cc_fs::write_string(&path_pwm_enable, PWM_ENABLE_THINKPAD_FULL_SPEED.to_string())
+        io.write_value(
+            &path_pwm_enable,
+            PWM_ENABLE_THINKPAD_FULL_SPEED.to_string().into_bytes(),
+        )
                 .await
                 .inspect(|()| {
                     debug!("Applied pwm_enable for {} of {PWM_ENABLE_THINKPAD_FULL_SPEED}", path_pwm_enable.display());
@@ -86,6 +104,7 @@ pub async fn set_to_full_speed(base_path: &Path, channel_info: &HwmonChannelInfo
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::cc_fs;
     use crate::config::Config;
     use crate::repositories::hwmon::fans::pwm_value_to_duty;
     use crate::repositories::hwmon::hwmon_repo::{
@@ -360,7 +379,8 @@ mod tests {
             };
 
             // when:
-            let result = set_to_full_speed(test_base_path, &channel_info).await;
+            let result =
+                set_to_full_speed(test_base_path, &channel_info, &DeviceIo::default()).await;
 
             // then:
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))

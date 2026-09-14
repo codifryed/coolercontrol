@@ -68,6 +68,7 @@ use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::chip_name::ChipName;
+use crate::repositories::hwmon::device_io::{self, DeviceIo};
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
@@ -297,7 +298,7 @@ pub struct HwmonDriverInfo {
     /// driver's lifetime: dropping the driver info closes them, and the channel set detected with
     /// it bounds how many there can be.
     #[serde(skip)]
-    pub fds: cc_fs::SysfsFdCache,
+    pub io: DeviceIo,
 }
 
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
@@ -370,6 +371,10 @@ pub struct HwmonRepo {
     /// for the repo's lifetime.
     slow_devices: HashSet<TypeIndex>,
 
+    /// Budget for one `DeviceIo` operation before the device counts
+    /// as not answering.
+    device_io_reply_timeout: Duration,
+
     /// Per-slow-device PWM duty cache. `Rc<RefCell<...>>` so the
     /// writer task can also update `last_known` on successful writes.
     duty_cache: HashMap<TypeIndex, Rc<RefCell<HashMap<ChannelName, DutyCacheEntry>>>>,
@@ -410,6 +415,7 @@ impl HwmonRepo {
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         let slow_device_init_threshold = slow_device_init_threshold_for(poll_rate);
         let drivetemp_ioctl_timeout = drivetemp_ioctl_timeout_for(poll_rate);
+        let device_io_reply_timeout = device_io::reply_timeout_for(poll_rate);
         Self {
             config,
             overrides,
@@ -436,6 +442,7 @@ impl HwmonRepo {
             device_write_permit_timeout,
             slow_device_init_threshold,
             drivetemp_ioctl_timeout,
+            device_io_reply_timeout,
         }
     }
 
@@ -521,7 +528,9 @@ impl HwmonRepo {
                         if thinkpad_fan_control.is_some() && channel.number == 1 {
                             thinkpad_fan_control = Some(
                                 // verify if fan control for this ThinkPad is enabled or not:
-                                fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
+                                fans::set_pwm_enable(2, &driver.path, channel, &driver.io)
+                                    .await
+                                    .is_ok(),
                             );
                         }
                         let extension = match &channel.auto_curve {
@@ -703,6 +712,19 @@ impl HwmonRepo {
     /// nothing has attempted control yet, so there has been nothing to
     /// reclaim. Nothing republishes a channel afterwards: only a duty-response
     /// probe can observe a reclaim, and that is not part of this work.
+    /// Gives one device a thread and an `io_uring` ring of its own.
+    ///
+    /// Isolation is the point: a driver that blocks inside its sysfs read parks only its own
+    /// thread, so the main runtime keeps polling every other device, serving the API, and running
+    /// the timers that let this repo's own permit timeouts and the failsafe actually fire.
+    ///
+    /// A device whose worker cannot start falls back to inline IO. That loses the isolation, not
+    /// the device, which is the right way round: a machine short on threads should still report
+    /// its temperatures.
+    fn spawn_device_io(&self, device_name: &str) -> DeviceIo {
+        DeviceIo::isolated_or_inline(device_name, self.device_io_reply_timeout)
+    }
+
     fn publish_channel_verdicts(&self, device_uid: &UID, driver: &HwmonDriverInfo) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Fan {
@@ -763,6 +785,14 @@ impl HwmonRepo {
             "invariant: preload_in_flight entry exists for every registered device type_index",
         );
         if flag.replace(true) {
+            self.tick_staleness_and_log(type_index, &driver.name);
+            return;
+        }
+        // A device that has stopped answering is left alone until its worker's probe is due.
+        // Dispatching anyway would spend a full reply budget per tick to learn what the last tick
+        // already established, and would queue work nothing is draining. Staleness still ticks, so
+        // the failsafe takes over for its channels on the usual schedule.
+        if driver.io.is_unreachable() {
             self.tick_staleness_and_log(type_index, &driver.name);
             return;
         }
@@ -1640,7 +1670,7 @@ async fn apply_pwm_duty_write(
             .set_fan_duty(channel_info.number, target_duty)
             .await
     } else {
-        fans::set_pwm_duty(&driver.path, channel_info, target_duty)
+        fans::set_pwm_duty(&driver.path, channel_info, target_duty, &driver.io)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1755,11 +1785,14 @@ impl Repository for HwmonRepo {
             // The chip identity the lm-sensors configuration names, needed here to apply its
             // `ignore` statements, and reused below for the labels and the summary log.
             let chip = chip_name::derive(&path).await;
+            // Before any value read: detection is exactly where a driver that sleeps inside its
+            // sysfs read first bites (issue 609), so it belongs on the device's own thread.
+            let io = self.spawn_device_io(&device_name);
             let mut channels = vec![];
             let fans = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::init_fans(&path).await
+                AppleMacSMC::init_fans(&path, &io).await
             } else {
-                fans::init_fans(&path, &device_name)
+                fans::init_fans(&path, &device_name, &io)
                     .await
                     .unwrap_or_else(|err| {
                         error!("Error initializing Hwmon Fans: {err}");
@@ -1777,7 +1810,7 @@ impl Repository for HwmonRepo {
                 fans.into_iter()
                     .filter(|fan| disabled_channels.contains(&fan.name).not()),
             );
-            match temps::init_temps(&path, &device_name).await {
+            match temps::init_temps(&path, &device_name, &io).await {
                 Ok(temps) => channels.extend(
                     temps
                         .into_iter()
@@ -1786,7 +1819,7 @@ impl Repository for HwmonRepo {
                 ),
                 Err(err) => error!("Error initializing Hwmon Temps: {err}"),
             }
-            match power::init_power(&path).await {
+            match power::init_power(&path, &io).await {
                 Ok(power) => channels.extend(
                     power
                         .into_iter()
@@ -1852,7 +1885,7 @@ impl Repository for HwmonRepo {
                 channels,
                 drivetemp,
                 apple_smc,
-                fds: cc_fs::SysfsFdCache::default(),
+                io,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -2022,8 +2055,12 @@ impl Repository for HwmonRepo {
                         continue;
                     }
                 };
-                if let Err(err) =
-                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+                if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
+                    &hwmon_driver.path,
+                    channel_info,
+                    &hwmon_driver.io,
+                )
+                .await
                 {
                     error!(
                         "Shutdown reset failed for {}:{}: {err}",
@@ -2063,7 +2100,12 @@ impl Repository for HwmonRepo {
                 .set_to_auto_control(channel_info.number)
                 .await
         } else {
-            fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+            fans::set_pwm_enable_to_default_or_auto(
+                &hwmon_driver.path,
+                channel_info,
+                &hwmon_driver.io,
+            )
+            .await
         };
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -2098,6 +2140,7 @@ impl Repository for HwmonRepo {
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &hwmon_driver.path,
                 channel_info,
+                &hwmon_driver.io,
             )
             .await
             .map_err(|err| {
@@ -2216,6 +2259,7 @@ impl Repository for HwmonRepo {
             speed_profile,
             temp_channel_info,
             &hwmon_driver.name,
+            &hwmon_driver.io,
         )
         .await
         .map_err(|err| {
@@ -2266,7 +2310,7 @@ impl Repository for HwmonRepo {
         // and recover on its own, but dropping them here means the first tick back never spends a
         // read finding that out.
         for (_device_lock, hwmon_driver) in self.devices.values() {
-            hwmon_driver.fds.clear();
+            hwmon_driver.io.clear_descriptors();
         }
         // Tight systemd-sleep window (1-3 s). No permit taken:
         // ThinkPad EC tolerates concurrent ops with preload, and
@@ -2290,6 +2334,7 @@ impl Repository for HwmonRepo {
                     fans::PWM_ENABLE_AUTO_VALUE,
                     &hwmon_driver.path,
                     channel_info,
+                    &hwmon_driver.io,
                 );
                 match rt::timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
                     Ok(Ok(())) => {}
@@ -2391,7 +2436,7 @@ mod preload_tests {
             channels,
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
-            fds: cc_fs::SysfsFdCache::default(),
+            io: DeviceIo::default(),
         })
     }
 
