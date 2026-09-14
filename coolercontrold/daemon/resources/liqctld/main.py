@@ -54,6 +54,8 @@ from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 from liquidctl.error import NotSupportedByDriver, Timeout
+from liquidctl.pmbus import CommandCode as CMD
+from liquidctl.pmbus import WriteBit
 from PIL import Image
 
 _ORIGINAL_KRAKENZ3_CONNECT = KrakenZ3.connect
@@ -457,36 +459,84 @@ def _send_frame_to_spare_bucket(self, data, bulk_info):
     self._cc_active_bucket = target_bucket
 
 
+# The Corsair PSU's own report length and PMBus slave address, needed to rebuild the request
+# `_exec` sends. Both are stable parts of the protocol rather than liquidctl implementation detail.
+_CORSAIR_REPORT_LENGTH = 64
+_CORSAIR_SLAVE_ADDRESS = 0x02
+# How many reports to discard while hunting for the one that answers our command. A desync is one
+# or two reports deep in practice; a device answering nothing recognisable is a real fault.
+_CORSAIR_MAX_RESYNC_READS = 4
+# Reports queued behind a stale one are already in hand, so the hunt does not need the full 5s
+# default. This bounds a resync well inside liqctld's 9.5s per-job budget.
+_CORSAIR_RESYNC_READ_TIMEOUT_MS = 250
+
 _ORIGINAL_CORSAIR_PSU_EXEC = getattr(CorsairHidPsu, "_exec", None)
 
 
-def _exec_with_drained_queue(self, writebit, command, data=None):
-    """Drains queued reports before every Corsair HID PSU command.
+def _exec_resyncing_reads(self, writebit, command, data=None):
+    """Runs a Corsair HID PSU command, skipping past reports that answer something else.
 
-    `_exec` writes a command and asserts that the report it reads back echoes it, but the PSU also
-    sends reports unasked. One that arrives while nothing is reading becomes the answer to the next
-    command, and every read after it is one behind, which surfaces as "invalid response (possible
-    conflict with another program)".
+    liquidctl writes a command and asserts that the very next report echoes it, which holds only
+    while this process is the device's only correspondent. Two things break that, and both are
+    ordinary on a working system.
 
-    liquidctl drains for this in `_get_status_directly` and nowhere else, so `initialize` walks
-    straight into it, and a resume is exactly when a backlog is waiting: the device kept sending
-    while the system was asleep. That failure is what made a PSU exhaust every init retry after a
-    wake and stay unusable for minutes, until enough reads had drained the queue by hand.
+    The kernel's `corsair_psu` hwmon driver binds to the same device and issues its own HID
+    transactions. With `direct_access` enabled we set `_hwmon` to None so liquidctl talks to the
+    device rather than reading that driver's sysfs, which is the only way to control the fan, and
+    from then on both sides are writing commands to it. hidraw gives each opener its own queue, so
+    neither steals the other's reports, but every one of the driver's replies lands in ours looking
+    like an answer we did not ask for. Anything that makes the driver busy, such as another process
+    walking the whole hwmon tree, turns that from occasional into constant. liquidctl names this
+    exact case in its message: "possible conflict with another program".
 
-    Draining before the write is always safe. Anything already queued was sent before the request
-    went out, so it can never be that request's answer.
+    `initialize` then adds a second way in, on its own. It writes a wake-up command and blind-reads
+    one report, so a single foreign report already queued makes that read take the wrong one and
+    leaves the wake-up's own reply in the stream for the next command to trip over. liquidctl
+    half-expects this and only warns about it in `_get_status_directly`; in `initialize` it raises,
+    which is what left the PSU failing every init retry after a resume, when the kernel driver is
+    re-reading the device at the same moment.
+
+    Draining cannot fix either. `clear_enqueued_reports` is non-blocking and discards only what has
+    already arrived, while the report that displaces ours is typically still in flight. Identifying
+    the right report is the only thing that works, so the reply is matched against the request and
+    anything else is discarded. Discarding is safe: a report that answers someone else's command is
+    a copy, and dropping our copy takes nothing from them.
+
+    Reimplemented rather than wrapped because the mismatch has to be caught between the write and
+    the read, which the original does back to back.
     """
+    out = [_CORSAIR_SLAVE_ADDRESS | WriteBit(writebit), CMD(command)] + (data or [])
+    expected = list(out[0:2])
+    # Cheap first: clears a backlog that has already landed, so the hunt below rarely runs.
     self.device.clear_enqueued_reports()
-    return _ORIGINAL_CORSAIR_PSU_EXEC(self, writebit, command, data)
+    self._write(out)
+    reply = self._read()
+    for _ in range(_CORSAIR_MAX_RESYNC_READS):
+        if list(reply[0:2]) == expected:
+            return reply
+        log.debug(
+            "Corsair PSU answered %s to a %s request, discarding it and reading on",
+            list(reply[0:2]),
+            expected,
+        )
+        reply = self.device.read(
+            _CORSAIR_REPORT_LENGTH, timeout=_CORSAIR_RESYNC_READ_TIMEOUT_MS
+        )
+    if list(reply[0:2]) == expected:
+        return reply
+    raise LiquidctlException(
+        f"Corsair PSU did not answer a {expected} request after "
+        f"{_CORSAIR_MAX_RESYNC_READS} attempts; its report stream is out of step"
+    )
 
 
 def patch_corsair_psu_report_drain() -> bool:
-    """Installs the drain above. See `_exec_with_drained_queue`."""
+    """Installs the resynchronizing read above. See `_exec_resyncing_reads`."""
     if _ORIGINAL_CORSAIR_PSU_EXEC is None:
-        log.warning("liquidctl CorsairHidPsu is missing _exec; report drain unpatched")
+        log.warning("liquidctl CorsairHidPsu is missing _exec; report resync unpatched")
         return False
-    CorsairHidPsu._exec = _exec_with_drained_queue
-    log.debug("Corsair PSU commands patched to drain queued reports first")
+    CorsairHidPsu._exec = _exec_resyncing_reads
+    log.debug("Corsair PSU commands patched to resynchronize their reads")
     return True
 
 
