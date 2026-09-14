@@ -22,6 +22,7 @@ use crate::repositories::cpu::association::{
 use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
 use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
+use crate::repositories::device_summary;
 use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
@@ -917,38 +918,9 @@ impl Repository for CpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {init_devices:?}");
         } else {
-            let device_map: HashMap<_, _> = init_devices
-                .iter()
-                .map(|d| {
-                    (
-                        d.1 .0.name.clone(),
-                        HashMap::from([
-                            (
-                                "driver name",
-                                vec![d.1 .0.info.driver_info.name.clone().unwrap_or_default()],
-                            ),
-                            (
-                                "driver version",
-                                vec![d.1 .0.info.driver_info.version.clone().unwrap_or_default()],
-                            ),
-                            ("locations", d.1 .0.info.driver_info.locations.clone()),
-                            ("channels", {
-                                let mut ch: Vec<_> = d.1 .0.info.channels.keys().cloned().collect();
-                                ch.sort();
-                                ch
-                            }),
-                            ("temps", {
-                                let mut t: Vec<_> = d.1 .0.info.temps.keys().cloned().collect();
-                                t.sort();
-                                t
-                            }),
-                        ]),
-                    )
-                })
-                .collect();
             info!(
                 "Initialized CPU Devices: {}",
-                serde_json::to_string(&device_map).unwrap_or_default()
+                device_summary::summarize_devices(init_devices.values().map(|(device, _)| device))
             );
         }
         trace!(

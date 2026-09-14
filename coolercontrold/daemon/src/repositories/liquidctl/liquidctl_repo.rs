@@ -19,6 +19,7 @@ use crate::device::{
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
 use crate::overrides::OverridesController;
+use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::hwmon::devices;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
@@ -1191,38 +1192,9 @@ impl Repository for LiquidctlRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Liquidctl Devices: {init_devices:?}");
         } else {
-            let device_map: HashMap<_, _> = init_devices
-                .iter()
-                .map(|d| {
-                    (
-                        d.1.name.clone(),
-                        HashMap::from([
-                            (
-                                "driver name",
-                                vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
-                            ),
-                            (
-                                "driver version",
-                                vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
-                            ),
-                            ("locations", d.1.info.driver_info.locations.clone()),
-                            ("channels", {
-                                let mut ch: Vec<_> = d.1.info.channels.keys().cloned().collect();
-                                ch.sort();
-                                ch
-                            }),
-                            ("temps", {
-                                let mut t: Vec<_> = d.1.info.temps.keys().cloned().collect();
-                                t.sort();
-                                t
-                            }),
-                        ]),
-                    )
-                })
-                .collect();
             info!(
                 "Initialized Liquidctl Devices: {}",
-                serde_json::to_string(&device_map).unwrap_or_default()
+                device_summary::summarize_devices(init_devices.values())
             );
         }
         trace!(
@@ -1529,7 +1501,6 @@ fn hidraw_device_path_in(hid_address: Option<&str>, class_root: &Path) -> Option
     devices::get_static_device_path_str(&class_root.join(node))
 }
 
-
 /// This function checks for duplicate liquidctl unique identifiers, and if found, goes through
 /// a step by step process to find the most useful unique identifier.
 ///
@@ -1557,6 +1528,10 @@ fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIn
 
     let non_unique_names = find_duplicate_names(&non_unique_serials);
 
+    if let Some(message) = enumeration_dependent_identity_notice(&non_unique_names) {
+        info!("{message}");
+    }
+
     for id_metadata in unique_identifier_metadata.values() {
         let device_index = id_metadata.device_index;
         let unique_identifier = if non_unique_names.contains_key(&device_index) {
@@ -1570,6 +1545,32 @@ fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIn
     }
 
     unique_device_identifiers
+}
+
+/// The notice for devices whose identity falls back to enumeration order, or `None` when none do.
+///
+/// That fallback is the only branch where a liquidctl UID depends on enumeration order rather than
+/// on the hardware, so those devices swap their saved settings with each other if the order ever
+/// changes. In practice it only changes when the devices move between USB ports or a liquidctl
+/// device is added or removed, but a user hitting it has no way to know that, and neither does
+/// anyone reading their journal afterwards.
+fn enumeration_dependent_identity_notice(
+    non_unique_names: &HashMap<TypeIndex, &DeviceIdMetadata>,
+) -> Option<String> {
+    if non_unique_names.is_empty() {
+        return None;
+    }
+    let mut affected: Vec<String> = non_unique_names
+        .values()
+        .map(|id_metadata| format!("#{} {}", id_metadata.device_index, id_metadata.name))
+        .collect();
+    affected.sort();
+    Some(format!(
+        "These liquidctl devices share both a name and a serial number, so their identity falls \
+        back to enumeration order: {}. Their saved settings follow that order, so moving them \
+        between USB ports may swap the settings between them.",
+        affected.join(", ")
+    ))
 }
 
 fn find_duplicate_serial_numbers(
@@ -1677,6 +1678,65 @@ mod tests {
     }
 
     #[test]
+    fn identical_devices_get_an_enumeration_order_notice() {
+        // Goal: a user whose UIDs depend on enumeration order is told so, and the line names both
+        // devices, because this is the case that made one report read as a missing device.
+        // Method: the shape of two identical AIOs, same description and same serial.
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            1,
+            DeviceIdMetadata {
+                serial_number: "CCVI_1.0".to_string(),
+                name: "Asetek 690LC".to_string(),
+                device_index: 1,
+            },
+        );
+        metadata.insert(
+            2,
+            DeviceIdMetadata {
+                serial_number: "CCVI_1.0".to_string(),
+                name: "Asetek 690LC".to_string(),
+                device_index: 2,
+            },
+        );
+        let non_unique_serials = find_duplicate_serial_numbers(&metadata);
+        let non_unique_names = find_duplicate_names(&non_unique_serials);
+        let notice = enumeration_dependent_identity_notice(&non_unique_names)
+            .expect("two identical devices must produce a notice");
+        assert!(notice.contains("#1 Asetek 690LC"), "got {notice}");
+        assert!(notice.contains("#2 Asetek 690LC"), "got {notice}");
+    }
+
+    #[test]
+    fn distinguishable_devices_get_no_notice() {
+        // Goal: the negative space. The notice must stay silent for everyone whose devices carry
+        // real identity, which is nearly every user. Method: distinct serial numbers.
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            1,
+            DeviceIdMetadata {
+                serial_number: "serial-a".to_string(),
+                name: "Kraken X62".to_string(),
+                device_index: 1,
+            },
+        );
+        metadata.insert(
+            2,
+            DeviceIdMetadata {
+                serial_number: "serial-b".to_string(),
+                name: "Kraken X62".to_string(),
+                device_index: 2,
+            },
+        );
+        let non_unique_serials = find_duplicate_serial_numbers(&metadata);
+        let non_unique_names = find_duplicate_names(&non_unique_serials);
+        assert_eq!(
+            enumeration_dependent_identity_notice(&non_unique_names),
+            None
+        );
+    }
+
+    #[test]
     fn hidraw_device_path_looks_up_only_hidraw_nodes() {
         // Goal: an address that is not a hidraw node is never looked up under /sys/class/hidraw,
         // even when an entry of that name happens to be there; that lookup is what logged the
@@ -1707,7 +1767,6 @@ mod tests {
         );
         assert_eq!(hidraw_device_path_in(None, &class_root), None);
     }
-
 
     #[test]
     fn test_all_serials_unique() {

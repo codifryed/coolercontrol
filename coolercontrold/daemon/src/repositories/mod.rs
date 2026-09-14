@@ -3,6 +3,7 @@
 
 pub mod cpu;
 pub mod custom_sensors_repo;
+pub mod device_summary;
 pub mod failsafe;
 pub mod gpu;
 pub mod hwmon;
