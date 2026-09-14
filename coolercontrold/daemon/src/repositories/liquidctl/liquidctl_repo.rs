@@ -818,6 +818,42 @@ impl LiquidctlRepo {
         failed_devices
     }
 
+    /// Reconnects each failed device's handle and re-initializes it, the lighter half of recovery.
+    ///
+    /// Returns the ids still failed afterwards, which are what a restart has to take over.
+    ///
+    /// Restarting liqctld is the only intervention with field evidence behind it, but it answers a
+    /// device-level problem at process level: it tears down every device to reach one, and costs
+    /// seconds. What it does to a device is release its interface and open it again, and that much
+    /// can be done to a single device in milliseconds. The driver object survives, so unlike after
+    /// a restart there is no legacy690 flip or direct access to re-apply here.
+    async fn reconnect_failed_devices(
+        &self,
+        failed_devices: HashSet<TypeIndex>,
+    ) -> HashSet<TypeIndex> {
+        let mut still_failed = HashSet::with_capacity(failed_devices.len());
+        for device_index in failed_devices {
+            match self.reconnect_and_initialize(device_index).await {
+                Ok(()) => {
+                    info!("Liquidctl device #{device_index} recovered after reconnecting it.");
+                }
+                Err(err) => {
+                    debug!("Reconnecting liquidctl device #{device_index} did not help: {err}");
+                    still_failed.insert(device_index);
+                }
+            }
+        }
+        still_failed
+    }
+
+    async fn reconnect_and_initialize(&self, device_index: TypeIndex) -> Result<()> {
+        self.liqctld_client.put_reconnect(&device_index).await?;
+        self.liqctld_client
+            .initialize_device(&device_index, None)
+            .await?;
+        Ok(())
+    }
+
     /// Runs one recovery attempt if one is scheduled and due.
     ///
     /// Driven from `preload_statuses`, which the main loop spawns per tick and bounds with its
@@ -830,8 +866,8 @@ impl LiquidctlRepo {
         let attempt = self.recovery.borrow_mut().claim_attempt();
         if attempt == 1 {
             warn!(
-                "A liquidctl device failed to re-initialize. Restarting \
-                coolercontrol-liqctld to reconnect it."
+                "A liquidctl device did not come back after reconnecting it. Restarting \
+                coolercontrol-liqctld, which reopens every device from scratch."
             );
         } else {
             debug!("Liquidctl device recovery attempt {attempt}.");
@@ -1749,7 +1785,12 @@ impl Repository for LiquidctlRepo {
             return;
         }
         let failed_devices = self.call_reinitialize_concurrently().await;
-        self.recovery.borrow_mut().begin_episode(failed_devices);
+        if failed_devices.is_empty() {
+            return;
+        }
+        // A device-level answer first, before the process-level one below.
+        let still_failed = self.reconnect_failed_devices(failed_devices).await;
+        self.recovery.borrow_mut().begin_episode(still_failed);
         // Escalates with no wait. This runs on the wake path, which already pauses for the
         // configured startup delay, and the devices that hit this fail every init retry on every
         // resume: a backoff before the first restart would only leave them dead for longer.

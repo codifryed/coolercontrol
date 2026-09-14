@@ -62,6 +62,7 @@ const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
 const LIQCTLD_DIRECT_ACCESS: &str = "/devices/{}/direct-access";
+const LIQCTLD_RECONNECT: &str = "/devices/{}/reconnect";
 const LIQCTLD_INITIALIZE: &str = "/devices/{}/initialize";
 const LIQCTLD_STATUS: &str = "/devices/{}/status";
 const LIQCTLD_FIXED_SPEED: &str = "/devices/{}/speed/fixed";
@@ -72,9 +73,9 @@ const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_SCAN: &str = "/devices/scan";
 const LIQCTLD_QUIT: &str = "/quit";
 /// Total initialization attempts, the first plus its retries. Kept low because these retries are
-/// no longer the only recovery: the repository escalates a failure to a liqctld restart, which
-/// actually reopens the device, so retrying a dead handle four more times at 1s each just delays
-/// the thing that works.
+/// no longer the only recovery: the repository escalates a failure to reconnecting the device, and
+/// then to restarting liqctld, both of which actually reopen it. Retrying a dead handle four more
+/// times at 1s each just delays whichever of those works.
 const LIQCTLD_MAX_INIT_RETRIES: usize = 2;
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
@@ -444,6 +445,24 @@ impl LiqctldClient {
     /// Returns:
     ///
     /// a Result object with a value of `DeviceResponse`.
+    /// Releases and re-opens one device's USB handle, leaving the others alone.
+    ///
+    /// The lighter half of recovery: it does to a single device what restarting liqctld does to
+    /// every device, and keeps the driver object, so a legacy690 flip and a forced direct access
+    /// survive it. The device still has to be re-initialized afterwards.
+    ///
+    /// Arguments:
+    ///
+    /// * `device_index`: the liqctld id of the device to reconnect.
+    pub async fn put_reconnect(&self, device_index: &u8) -> Result<()> {
+        let request = Self::request_builder()
+            .uri(LIQCTLD_RECONNECT.replace("{}", &device_index.to_string()))
+            .method("PUT")
+            .body(String::new())?;
+        self.make_request::<IgnoredAny>(&request).await?;
+        Ok(())
+    }
+
     pub async fn put_direct_access(&self, device_index: &u8) -> Result<()> {
         let request = Self::request_builder()
             .uri(LIQCTLD_DIRECT_ACCESS.replace("{}", &device_index.to_string()))

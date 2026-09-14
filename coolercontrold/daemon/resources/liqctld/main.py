@@ -1667,6 +1667,40 @@ class DeviceService:
             else []
         )
 
+    def reconnect_device(self, device_id: int) -> None:
+        """Releases and re-opens one device's USB handle, leaving every other device alone.
+
+        This is what restarting the service does to a device, minus the process teardown: closing
+        the handle releases the interface and hands it back to any kernel driver, and opening it
+        again claims it back. The driver object is kept, so a legacy690 flip and a forced direct
+        access both survive, which is exactly why this is cheaper than starting over. The caller
+        still has to re-initialize afterwards, as it would for a device that had just been found.
+
+        A device whose worker is wedged cannot be reconnected this way: the disconnect is refused
+        like any other submission, and the error sends the caller on to restarting the service,
+        which does not need the device to cooperate.
+        """
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        lc_device = self.devices[device_id]
+        log.info(f"Reconnecting to LC #{device_id} {lc_device.__class__.__name__}")
+        try:
+            self._disconnect_device(device_id, lc_device)
+            self._connect_device(device_id, lc_device)
+        except LiquidctlException:
+            raise
+        except BaseException as err:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error reconnecting device "
+                    f"#{device_id} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
+
     def force_direct_access(self, device_id: int) -> None:
         """
         Force a liquidctl device to use direct access mode.
@@ -2118,6 +2152,11 @@ class HTTPHandler(BaseHTTPRequestHandler):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
         self._send(HTTPStatus.OK, json.dumps(device.to_dict()))
 
+    # put("/devices/{device_id}/reconnect")
+    def reconnect_device(self, device_id: int):
+        self.device_service.reconnect_device(device_id)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     # put("/devices/{device_id}/direct-access")
     def force_direct_access(self, device_id: int):
         self.device_service.force_direct_access(device_id)
@@ -2236,6 +2275,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
             # put("/devices/{device_id}/legacy690")
             device_id = self._try_cast_int(path[1])
             self.set_device_as_legacy690(device_id)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "reconnect":
+            # put("/devices/{device_id}/reconnect")
+            device_id = self._try_cast_int(path[1])
+            self.reconnect_device(device_id)
         elif len(path) == 3 and path[0] == "devices" and path[2] == "direct-access":
             # put("/devices/{device_id}/direct-access")
             device_id = self._try_cast_int(path[1])
