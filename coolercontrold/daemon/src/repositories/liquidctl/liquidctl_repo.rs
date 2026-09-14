@@ -850,7 +850,14 @@ impl LiquidctlRepo {
     fn log_recovery_outcome(outcome: &RecoveryOutcome) {
         match outcome {
             RecoveryOutcome::Recovered => {
-                info!("Liquidctl devices reconnected after restarting coolercontrol-liqctld.");
+                // Deliberately narrow: every device re-initialized, which is all that was
+                // verified. A device can initialize and still answer the next read badly, so
+                // claiming it is reconnected would put a reassuring line above the errors
+                // that follow.
+                info!(
+                    "All liquidctl devices re-initialized after restarting \
+                    coolercontrol-liqctld."
+                );
             }
             RecoveryOutcome::Retrying(delay) => {
                 debug!("Liquidctl devices still unreachable, retrying in {delay:?}.");
