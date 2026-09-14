@@ -1320,12 +1320,16 @@ class DeviceService:
                 f"{[d.description for d in devices]}"
             )
             return devices
+        # A scan that blows up is not an empty bus, and the caller cannot tell the two apart from
+        # an empty list. It used to get one, which made the daemon report every known device as
+        # removed and fire a desktop notification telling the user to restart, for hardware that
+        # never left. Raising lets the daemon skip the comparison instead.
         except ValueError as ve:
             log.debug(f"ValueError when scanning for devices: {ve}")
-            return []
+            raise LiquidctlException(f"Device scan failed: {ve}") from ve
         except Exception as e:
             log.warning(f"Error scanning for liquidctl devices: {e}")
-            return []
+            raise LiquidctlException(f"Device scan failed: {e}") from e
 
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
