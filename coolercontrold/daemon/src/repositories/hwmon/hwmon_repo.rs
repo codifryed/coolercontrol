@@ -120,6 +120,18 @@ fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
+/// Cap on resetting one device's channels to their firmware defaults at shutdown.
+///
+/// Per device rather than one global deadline: worst case is device count times this, which stays
+/// predictable as device count grows, where a shared deadline would let one slow early device
+/// starve later healthy ones of their reset.
+///
+/// Sized against `TimeoutStopSec=10` in the systemd unit. Healthy devices reset in milliseconds,
+/// so the budget is only ever spent by a device that has stopped answering, and one or two of
+/// those still leaves ample margin. A machine where every device wedges at once will be killed by
+/// systemd mid-reset, which is the same outcome as waiting for them.
+const SHUTDOWN_RESET_TIMEOUT: Duration = Duration::from_secs(1);
+
 #[allow(clippy::cast_precision_loss)]
 fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
@@ -721,6 +733,56 @@ impl HwmonRepo {
     /// A device whose worker cannot start falls back to inline IO. That loses the isolation, not
     /// the device, which is the right way round: a machine short on threads should still report
     /// its temperatures.
+    /// Resets one device's fan channels to their firmware defaults, recording per-channel
+    /// failures. Continue-on-error: leaving later fans stuck in manual mode is worse than logging
+    /// each failure and reporting an aggregate.
+    async fn reset_device_for_shutdown(
+        &self,
+        device_uid: &UID,
+        type_index: TypeIndex,
+        hwmon_driver: &Rc<HwmonDriverInfo>,
+        failures: &mut Vec<String>,
+    ) {
+        for channel_info in &hwmon_driver.channels {
+            if channel_info.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            debug!(
+                "Applying HWMON device: {device_uid} channel: {}; \
+                Resetting to Original fan control mode",
+                channel_info.name
+            );
+            let device_permit = match self
+                .get_permit_with_write_timeout(type_index, &hwmon_driver.name, &channel_info.name)
+                .await
+            {
+                Ok(permit) => permit,
+                Err(err) => {
+                    error!(
+                        "Shutdown reset skipped for {}:{} - permit timeout: {err}",
+                        hwmon_driver.name, channel_info.name
+                    );
+                    failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+                    continue;
+                }
+            };
+            if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
+                &hwmon_driver.path,
+                channel_info,
+                &hwmon_driver.io,
+            )
+            .await
+            {
+                error!(
+                    "Shutdown reset failed for {}:{}: {err}",
+                    hwmon_driver.name, channel_info.name
+                );
+                failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+            }
+            drop(device_permit);
+        }
+    }
+
     fn spawn_device_io(&self, device_name: &str) -> DeviceIo {
         DeviceIo::isolated_or_inline(device_name, self.device_io_reply_timeout)
     }
@@ -2031,47 +2093,20 @@ impl Repository for HwmonRepo {
         let mut failures: Vec<String> = Vec::new();
         for (device_uid, (device_lock, hwmon_driver)) in &self.devices {
             let type_index = device_lock.borrow().type_index;
-            for channel_info in &hwmon_driver.channels {
-                if channel_info.hwmon_type != HwmonChannelType::Fan {
-                    continue;
-                }
-                debug!(
-                    "Applying HWMON device: {device_uid} channel: {}; \
-                    Resetting to Original fan control mode",
-                    channel_info.name
+            // A device that stopped answering during the session may answer now, and this is the
+            // most safety-relevant write the daemon makes, so it earns one attempt regardless.
+            hwmon_driver.io.allow_probe_now();
+            let reset =
+                self.reset_device_for_shutdown(device_uid, type_index, hwmon_driver, &mut failures);
+            if rt::timeout(SHUTDOWN_RESET_TIMEOUT, reset).await.is_err() {
+                // Actionable: an un-reset device keeps the duty the daemon last set instead of
+                // returning to firmware control, so name it.
+                warn!(
+                    "Shutdown reset for HWMon device {} exceeded {:?} and was skipped. Its fans \
+                     stay at the last duty set until the firmware takes over.",
+                    hwmon_driver.name, SHUTDOWN_RESET_TIMEOUT
                 );
-                let device_permit = match self
-                    .get_permit_with_write_timeout(
-                        type_index,
-                        &hwmon_driver.name,
-                        &channel_info.name,
-                    )
-                    .await
-                {
-                    Ok(permit) => permit,
-                    Err(err) => {
-                        error!(
-                            "Shutdown reset skipped for {}:{} - permit timeout: {err}",
-                            hwmon_driver.name, channel_info.name
-                        );
-                        failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
-                        continue;
-                    }
-                };
-                if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
-                    &hwmon_driver.path,
-                    channel_info,
-                    &hwmon_driver.io,
-                )
-                .await
-                {
-                    error!(
-                        "Shutdown reset failed for {}:{}: {err}",
-                        hwmon_driver.name, channel_info.name
-                    );
-                    failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
-                }
-                drop(device_permit);
+                failures.push(format!("{} (timed out)", hwmon_driver.name));
             }
         }
         if failures.is_empty() {
@@ -5389,6 +5424,24 @@ mod shutdown_tests {
         driver_path: PathBuf,
         channels: Vec<HwmonChannelInfo>,
     ) {
+        insert_device_with_io(
+            repo,
+            type_index,
+            driver_name,
+            driver_path,
+            channels,
+            DeviceIo::default(),
+        );
+    }
+
+    fn insert_device_with_io(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver_name: &str,
+        driver_path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+        io: DeviceIo,
+    ) {
         let driver = HwmonDriverInfo {
             name: driver_name.to_string(),
             path: driver_path,
@@ -5396,6 +5449,7 @@ mod shutdown_tests {
             u_id: format!("test-uid-{driver_name}-{type_index}"),
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
+            io,
             ..Default::default()
         };
         let device = Device::new(
@@ -5486,6 +5540,72 @@ mod shutdown_tests {
             assert_eq!(b_after.trim(), "2", "dev_b should have been reset");
 
             drop(permit_a);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: shutdown must stay inside its budget when a device has stopped answering, and must
+    /// still reset every device that can be reset. Systemd gives the daemon `TimeoutStopSec=10`;
+    /// exceeding it means SIGKILL with fans left wherever the daemon last put them.
+    ///
+    /// Method: one device whose worker never answers, one ordinary device. Assert shutdown spends
+    /// the wedged device's budget, names it in the error, and still resets the healthy one.
+    #[test]
+    #[serial]
+    fn shutdown_bounds_a_wedged_device_and_still_resets_the_others() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_wedged = base.join("dev_wedged");
+            let dir_healthy = base.join("dev_healthy");
+            seed_pwm_dir(&dir_wedged, b"1").await;
+            seed_pwm_dir(&dir_healthy, b"1").await;
+
+            let mut repo = empty_repo();
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_secs(30));
+            insert_device_with_io(
+                &mut repo,
+                1,
+                "dev_wedged",
+                dir_wedged.clone(),
+                vec![fan_channel(1, "fan1", &dir_wedged, Some(2))],
+                wedged_io,
+            );
+            insert_device(
+                &mut repo,
+                2,
+                "dev_healthy",
+                dir_healthy.clone(),
+                vec![fan_channel(1, "fan1", &dir_healthy, Some(2))],
+            );
+
+            let started = Instant::now();
+            let result = repo.shutdown().await;
+            let elapsed = started.elapsed();
+
+            // The wedged device's reply budget is 30 s; the shutdown cap is what must bound this.
+            assert!(
+                elapsed >= SHUTDOWN_RESET_TIMEOUT,
+                "shutdown should have spent the wedged device's budget: {elapsed:?}"
+            );
+            assert!(
+                elapsed < SHUTDOWN_RESET_TIMEOUT * 3,
+                "shutdown ran past its per-device cap: {elapsed:?}"
+            );
+
+            let err_msg = result
+                .expect_err("shutdown reports the wedged device")
+                .to_string();
+            assert!(
+                err_msg.contains("dev_wedged"),
+                "error should name the un-reset device: {err_msg}"
+            );
+
+            // The healthy device was reset regardless of the wedged one.
+            let healthy_after = cc_fs::read_sysfs(&dir_healthy.join("pwm1_enable"))
+                .await
+                .unwrap();
+            assert_eq!(healthy_after.trim(), "2", "healthy device should be reset");
+
             let _ = cc_fs::remove_dir_all(&base).await;
         });
     }

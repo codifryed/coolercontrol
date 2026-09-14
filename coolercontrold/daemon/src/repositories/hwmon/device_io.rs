@@ -245,6 +245,19 @@ impl DeviceIo {
         (Self::Threaded(Rc::new(worker)), rx)
     }
 
+    /// Lets the next dispatch through even if the device is currently unreachable.
+    ///
+    /// Shutdown uses this: resetting a channel to its firmware default is the most
+    /// safety-relevant write the daemon makes, and a device that stopped answering during the
+    /// session may well answer now. One attempt is cheap, and its outcome updates the state the
+    /// same as any other.
+    pub fn allow_probe_now(&self) {
+        match self {
+            Self::Inline(_) => {}
+            Self::Threaded(worker) => worker.probe_after.set(None),
+        }
+    }
+
     /// Whether this device is answering. Always `Healthy` when not isolated.
     #[must_use]
     pub fn health(&self) -> DeviceHealth {
