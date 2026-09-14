@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -62,6 +62,96 @@ const LIQCTLD_GRACEFUL_EXIT_TIMEOUT: Duration = Duration::from_secs(4);
 /// Time to wait for the supervisor to observe and reap the child after a force-kill.
 const LIQCTLD_REAP_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// Delay before each restart after the first. The first failure escalates with no wait, so this is
+/// indexed by the number of attempts already made. Past the end, recovery stops until the next
+/// resume: a device that is simply gone must not respawn a Python service forever.
+const RECOVERY_BACKOFF: [Duration; 3] = [
+    Duration::from_secs(30),
+    Duration::from_secs(60),
+    Duration::from_secs(300),
+];
+
+/// Schedules liqctld restarts for devices that failed to re-initialize.
+///
+/// Restarting the service is what recovery means here. A daemon restart has fixed this in every
+/// reported case, and what it actually does is kill the Python process: the kernel closes every USB
+/// handle, releases every claimed interface, and reaps any worker thread wedged in a call that
+/// cannot be interrupted from inside it. Reconnecting in-process does none of that.
+#[derive(Debug, Default)]
+struct RecoveryState {
+    /// Devices whose last re-initialization failed, by liqctld device id.
+    failed_devices: HashSet<TypeIndex>,
+    /// Restarts attempted in the current episode.
+    attempts: usize,
+    /// When the next restart may run. `None` when none is scheduled or recovery has given up.
+    next_attempt_at: Option<Instant>,
+}
+
+/// What a finished recovery attempt leaves behind.
+#[derive(Debug, PartialEq, Eq)]
+enum RecoveryOutcome {
+    Recovered,
+    Retrying(Duration),
+    GaveUp,
+}
+
+impl RecoveryState {
+    /// Starts an episode for `failed_devices`, or ends one when nothing failed.
+    ///
+    /// The first attempt is due immediately: the devices that hit this fail every init retry on
+    /// every resume, so waiting only leaves them dead for longer.
+    fn begin_episode(&mut self, failed_devices: HashSet<TypeIndex>) {
+        if failed_devices.is_empty() {
+            self.clear();
+            return;
+        }
+        self.failed_devices = failed_devices;
+        self.attempts = 0;
+        self.next_attempt_at = Some(Instant::now());
+    }
+
+    fn clear(&mut self) {
+        self.failed_devices.clear();
+        self.attempts = 0;
+        self.next_attempt_at = None;
+    }
+
+    /// Whether a restart is scheduled and due.
+    fn is_attempt_due(&self) -> bool {
+        if self.failed_devices.is_empty() {
+            return false;
+        }
+        self.next_attempt_at
+            .is_some_and(|attempt_at| Instant::now() >= attempt_at)
+    }
+
+    /// Claims the due attempt so a concurrent poll cannot start a second one. Returns its number.
+    fn claim_attempt(&mut self) -> usize {
+        self.next_attempt_at = None;
+        self.attempts += 1;
+        self.attempts
+    }
+
+    /// Records an attempt's outcome and schedules the next one, if any remain.
+    fn record_attempt(&mut self, still_failed: HashSet<TypeIndex>) -> RecoveryOutcome {
+        assert!(
+            self.attempts > 0,
+            "an attempt must be claimed before it is recorded"
+        );
+        if still_failed.is_empty() {
+            self.clear();
+            return RecoveryOutcome::Recovered;
+        }
+        self.failed_devices = still_failed;
+        let Some(delay) = RECOVERY_BACKOFF.get(self.attempts - 1).copied() else {
+            self.next_attempt_at = None;
+            return RecoveryOutcome::GaveUp;
+        };
+        self.next_attempt_at = Some(Instant::now() + delay);
+        RecoveryOutcome::Retrying(delay)
+    }
+}
+
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
@@ -87,6 +177,24 @@ pub struct LiquidctlRepo {
     /// never opens more concurrent connections to one device than liqctld (which processes each
     /// device serially) can use.
     device_permits: HashMap<u8, Semaphore>,
+    /// What each device reported at discovery, before any legacy690 flip rewrote its name and
+    /// driver class. A fresh liqctld reports these pre-flip values again, so they are what a
+    /// post-restart device list has to be compared against; comparing against the current, flipped
+    /// state would see every 690LC as a different device.
+    initial_descriptors: HashMap<TypeIndex, InitialDescriptor>,
+    /// Drives liqctld restarts for devices that failed to re-initialize. See `RecoveryState`.
+    recovery: RefCell<RecoveryState>,
+    /// True while liqctld is being restarted. Preloads spawned by a later tick skip their reads
+    /// rather than counting them as failures: the service is deliberately down, and latching
+    /// failsafe for our own restart would be a self-inflicted fan spin-up.
+    restart_in_progress: Cell<bool>,
+}
+
+/// One device's identity as liqctld first reported it. See `LiquidctlRepo::initial_descriptors`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InitialDescriptor {
+    device_type: String,
+    description: String,
 }
 
 /// What liqctld reports gif support under, in the statuses `initialize` returns.
@@ -216,6 +324,9 @@ impl LiquidctlRepo {
             disabled_channels: RefCell::new(HashMap::new()),
             device_delays: HashMap::new(),
             device_permits: HashMap::new(),
+            initial_descriptors: HashMap::new(),
+            recovery: RefCell::new(RecoveryState::default()),
+            restart_in_progress: Cell::new(false),
         })
     }
 
@@ -328,6 +439,16 @@ impl LiquidctlRepo {
         let mut assigned_uids: HashSet<UID> = HashSet::new();
 
         for device_response in devices_response.devices {
+            // Recorded before anything filters or rewrites it: unsupported and user-disabled
+            // devices still appear in a fresh liqctld's device list, so the comparison a restart
+            // runs has to know about them too.
+            self.initial_descriptors.insert(
+                device_response.id,
+                InitialDescriptor {
+                    device_type: device_response.device_type.clone(),
+                    description: device_response.description.clone(),
+                },
+            );
             let Some(driver_type) = self.map_driver_type(&device_response) else {
                 info!(
                     "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
@@ -672,23 +793,194 @@ impl LiquidctlRepo {
         Ok(())
     }
 
-    async fn call_reinitialize_concurrently(&self) {
+    /// Re-initializes every device, returning the ids of those that failed.
+    ///
+    /// Logged at `warn`: the repository escalates from here, so the `error!` belongs to giving up,
+    /// not to a failure that is about to be acted on.
+    async fn call_reinitialize_concurrently(&self) -> HashSet<TypeIndex> {
         let mut futures = vec![];
         for (uid, device) in &self.devices {
             let delay = self.device_delay(uid);
             futures.push(async move {
+                let device_index = device.borrow().type_index;
                 let result = self.call_reinitialize_per_device(device).await;
                 apply_device_command_delay(delay).await;
-                result
+                (device_index, result)
             });
         }
-        let results: Vec<Result<()>> = join_all(futures).await;
-        for result in results {
-            match result {
-                Ok(()) => {}
-                Err(err) => error!("Error reinitializing device: {err}"),
+        let mut failed_devices = HashSet::new();
+        for (device_index, result) in join_all(futures).await {
+            if let Err(err) = result {
+                warn!("Error re-initializing liquidctl device #{device_index}: {err}");
+                failed_devices.insert(device_index);
             }
         }
+        failed_devices
+    }
+
+    /// Runs one recovery attempt if one is scheduled and due.
+    ///
+    /// Driven from `preload_statuses`, which the main loop spawns per tick and bounds with its
+    /// snapshot timeout, so a restart taking several seconds delays this repository's reads
+    /// without stalling the tick loop.
+    async fn poll_recovery(&self) {
+        if self.recovery.borrow().is_attempt_due().not() {
+            return;
+        }
+        let attempt = self.recovery.borrow_mut().claim_attempt();
+        if attempt == 1 {
+            warn!(
+                "A liquidctl device failed to re-initialize. Restarting \
+                coolercontrol-liqctld to reconnect it."
+            );
+        } else {
+            debug!("Liquidctl device recovery attempt {attempt}.");
+        }
+        let still_failed = match self.restart_liqctld_and_recover().await {
+            Ok(still_failed) => still_failed,
+            Err(err) => {
+                debug!("Restarting coolercontrol-liqctld failed: {err}");
+                self.recovery.borrow().failed_devices.clone()
+            }
+        };
+        let outcome = self.recovery.borrow_mut().record_attempt(still_failed);
+        Self::log_recovery_outcome(&outcome);
+    }
+
+    fn log_recovery_outcome(outcome: &RecoveryOutcome) {
+        match outcome {
+            RecoveryOutcome::Recovered => {
+                info!("Liquidctl devices reconnected after restarting coolercontrol-liqctld.");
+            }
+            RecoveryOutcome::Retrying(delay) => {
+                debug!("Liquidctl devices still unreachable, retrying in {delay:?}.");
+            }
+            RecoveryOutcome::GaveUp => error!(
+                "Liquidctl devices are still unreachable after restarting \
+                coolercontrol-liqctld. Giving up until the next resume from sleep. \
+                Their failsafe values stay applied."
+            ),
+        }
+    }
+
+    /// Restarts liqctld and re-establishes the devices it comes back with.
+    ///
+    /// Returns the ids that are still failed afterwards. The in-progress flag is cleared on every
+    /// path, so a failed restart cannot leave status reads suppressed forever.
+    async fn restart_liqctld_and_recover(&self) -> Result<HashSet<TypeIndex>> {
+        self.restart_in_progress.set(true);
+        let result = self.restart_and_reestablish().await;
+        self.restart_in_progress.set(false);
+        result
+    }
+
+    async fn restart_and_reestablish(&self) -> Result<HashSet<TypeIndex>> {
+        self.shutdown_service_and_client().await;
+        // Shutdown is bounded and force-kills, but if even the reap timed out the supervisor is
+        // still alive. Starting another one would leave two services fighting over one socket,
+        // which is worse than the unreachable devices we are trying to fix.
+        if self.is_service_running() {
+            return Err(anyhow!(
+                "coolercontrol-liqctld did not exit, so a replacement was not started"
+            ));
+        }
+        self.start_service().await?;
+        let fresh_devices = self.liqctld_client.get_all_devices().await?.devices;
+        let matched_devices = self.match_devices_after_restart(&fresh_devices);
+        let mut still_failed = HashSet::new();
+        for device_lock in self.devices.values() {
+            let device_index = device_lock.borrow().type_index;
+            if matched_devices.contains(&device_index).not() {
+                still_failed.insert(device_index);
+                continue;
+            }
+            if let Err(err) = self.reestablish_device(device_lock).await {
+                debug!("Device #{device_index} did not come back after the restart: {err}");
+                still_failed.insert(device_index);
+            }
+        }
+        Ok(still_failed)
+    }
+
+    /// Which of our devices a fresh liqctld still accounts for.
+    ///
+    /// Matched by liqctld id against the descriptor each device reported at discovery, which is
+    /// why that descriptor is recorded pre-flip: a fresh service reports every flipped 690LC as
+    /// its `Modern690Lc` self again, and comparing against our current state would match nothing.
+    ///
+    /// A list of a different length re-binds nothing at all. liquidctl enumeration order has not
+    /// been observed to move except when devices change USB ports or one is added or removed, and
+    /// a changed device count is the visible half of exactly those cases. Binding by position into
+    /// a list that demonstrably changed shape would hand a saved fan curve to the wrong cooler.
+    fn match_devices_after_restart(&self, fresh_devices: &[DeviceResponse]) -> HashSet<TypeIndex> {
+        match_fresh_devices(&self.initial_descriptors, fresh_devices)
+    }
+}
+
+/// See `LiquidctlRepo::match_devices_after_restart`.
+fn match_fresh_devices(
+    initial_descriptors: &HashMap<TypeIndex, InitialDescriptor>,
+    fresh_devices: &[DeviceResponse],
+) -> HashSet<TypeIndex> {
+    {
+        let mut matched_devices = HashSet::with_capacity(fresh_devices.len());
+        if fresh_devices.len() != initial_descriptors.len() {
+            warn!(
+                "coolercontrol-liqctld came back with {} liquidctl device(s) instead of {}. \
+                Not re-binding any of them, as their order can no longer be trusted.",
+                fresh_devices.len(),
+                initial_descriptors.len()
+            );
+            return matched_devices;
+        }
+        for fresh_device in fresh_devices {
+            let Some(initial) = initial_descriptors.get(&fresh_device.id) else {
+                continue;
+            };
+            if initial.device_type != fresh_device.device_type {
+                continue;
+            }
+            if initial.description != fresh_device.description {
+                continue;
+            }
+            matched_devices.insert(fresh_device.id);
+        }
+        matched_devices
+    }
+}
+
+impl LiquidctlRepo {
+    /// Re-applies what a fresh liqctld does not know about a device, then initializes it.
+    ///
+    /// A new service connects each device but knows nothing of the user's legacy690 choice or of
+    /// direct access, both of which are only ever applied during discovery. The settings re-apply
+    /// that follows on the wake path restores duties and lighting on top.
+    async fn reestablish_device(&self, device_lock: &DeviceLock) -> Result<()> {
+        let (device_index, device_uid) = {
+            let device = device_lock.borrow();
+            (device.type_index, device.uid.clone())
+        };
+        let is_legacy690 = self
+            .config
+            .legacy690_ids()?
+            .get(&device_uid)
+            .copied()
+            .unwrap_or(false);
+        if is_legacy690 {
+            // Our own name and driver type already carry the flip; only liqctld has forgotten it.
+            self.liqctld_client.put_legacy690(&device_index).await?;
+        }
+        let direct_access = self
+            .config
+            .get_cc_settings_for_device(&device_uid)?
+            .is_some_and(|settings| settings.extensions.direct_access);
+        if direct_access {
+            self.liqctld_client.put_direct_access(&device_index).await?;
+        }
+        self.liqctld_client
+            .initialize_device(&device_index, None)
+            .await?;
+        Ok(())
     }
 
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
@@ -1212,6 +1504,11 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn preload_statuses(self: Rc<Self>) {
+        self.poll_recovery().await;
+        if self.restart_in_progress.get() {
+            trace!("Skipping liquidctl status preload while the service is restarting.");
+            return;
+        }
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for (uid, device_lock) in &self.devices {
@@ -1441,9 +1738,15 @@ impl Repository for LiquidctlRepo {
                 false
             }
         };
-        if !no_init {
-            self.call_reinitialize_concurrently().await;
+        if no_init {
+            return;
         }
+        let failed_devices = self.call_reinitialize_concurrently().await;
+        self.recovery.borrow_mut().begin_episode(failed_devices);
+        // Escalates with no wait. This runs on the wake path, which already pauses for the
+        // configured startup delay, and the devices that hit this fail every init retry on every
+        // resume: a backoff before the first restart would only leave them dead for longer.
+        self.poll_recovery().await;
     }
 }
 
@@ -1675,6 +1978,156 @@ mod tests {
             hwmon_address: None,
         };
         assert_eq!(stable_device_path(&response), None);
+    }
+
+    fn descriptor(device_type: &str, description: &str) -> InitialDescriptor {
+        InitialDescriptor {
+            device_type: device_type.to_string(),
+            description: description.to_string(),
+        }
+    }
+
+    fn fresh(id: TypeIndex, device_type: &str, description: &str) -> DeviceResponse {
+        DeviceResponse {
+            id,
+            description: description.to_string(),
+            device_type: device_type.to_string(),
+            serial_number: None,
+            properties: DEV_PROPS.clone(),
+            liquidctl_version: None,
+            hid_address: None,
+            hwmon_address: None,
+        }
+    }
+
+    #[test]
+    fn a_restart_matches_devices_by_their_pre_flip_descriptor() {
+        // Goal: a flipped 690LC is matched after a restart. A fresh service has forgotten the
+        // flip and reports the device as Modern690Lc again, so matching against our current,
+        // flipped state would find nothing and leave a working device marked failed.
+        // Method: descriptors as recorded at discovery, and the same values coming back.
+        let mut initial = HashMap::new();
+        initial.insert(
+            1,
+            descriptor("Modern690Lc", "Asetek 690LC (assuming EVGA CLC)"),
+        );
+        initial.insert(
+            2,
+            descriptor("Modern690Lc", "Asetek 690LC (assuming EVGA CLC)"),
+        );
+        let fresh_devices = vec![
+            fresh(1, "Modern690Lc", "Asetek 690LC (assuming EVGA CLC)"),
+            fresh(2, "Modern690Lc", "Asetek 690LC (assuming EVGA CLC)"),
+        ];
+        let matched = match_fresh_devices(&initial, &fresh_devices);
+        assert_eq!(matched, HashSet::from([1, 2]));
+    }
+
+    #[test]
+    fn a_changed_device_count_matches_nothing() {
+        // Goal: the negative space that matters most. A cooler unplugged while the machine slept
+        // changes the list's shape, and binding by position into it would hand one device's saved
+        // fan curve to another. Method: one device missing from the fresh list.
+        let mut initial = HashMap::new();
+        initial.insert(1, descriptor("Legacy690Lc", "NZXT Kraken X61"));
+        initial.insert(2, descriptor("Legacy690Lc", "NZXT Kraken X41"));
+        let fresh_devices = vec![fresh(1, "Legacy690Lc", "NZXT Kraken X61")];
+        assert!(match_fresh_devices(&initial, &fresh_devices).is_empty());
+    }
+
+    #[test]
+    fn a_device_whose_descriptor_changed_is_left_failed() {
+        // Goal: the count can match while a device is still not the one we had, and that one is
+        // left failed rather than re-bound, while its healthy siblings recover.
+        // Method: same count, one differing driver class.
+        let mut initial = HashMap::new();
+        initial.insert(1, descriptor("Legacy690Lc", "NZXT Kraken X61"));
+        initial.insert(2, descriptor("KrakenZ3", "NZXT Kraken Z73"));
+        let fresh_devices = vec![
+            fresh(1, "Legacy690Lc", "NZXT Kraken X61"),
+            fresh(2, "SmartDevice2", "NZXT Smart Device V2"),
+        ];
+        assert_eq!(
+            match_fresh_devices(&initial, &fresh_devices),
+            HashSet::from([1])
+        );
+    }
+
+    #[test]
+    fn a_successful_reinit_starts_no_recovery_episode() {
+        // Goal: the overwhelming majority case. Nothing failed, so nothing is scheduled and no
+        // liqctld process is ever respawned. Method: an empty failure set.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::new());
+        assert!(recovery.is_attempt_due().not());
+    }
+
+    #[test]
+    fn the_first_attempt_is_due_immediately() {
+        // Goal: a device that fails every init retry on every resume must not also wait out a
+        // backoff before the restart that fixes it. Method: begin an episode and ask right away.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        assert!(recovery.is_attempt_due());
+    }
+
+    #[test]
+    fn claiming_an_attempt_stops_a_concurrent_poll_starting_a_second() {
+        // Goal: preloads from successive ticks can overlap while a restart is running, and two
+        // concurrent restarts would fight over the same service. Method: claim, then re-ask.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        assert_eq!(recovery.claim_attempt(), 1);
+        assert!(recovery.is_attempt_due().not());
+    }
+
+    #[test]
+    fn a_recovered_device_ends_the_episode() {
+        // Goal: recovery stops rescheduling once the device answers. Method: an attempt that
+        // leaves nothing failed.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        recovery.claim_attempt();
+        assert_eq!(
+            recovery.record_attempt(HashSet::new()),
+            RecoveryOutcome::Recovered
+        );
+        assert!(recovery.is_attempt_due().not());
+        assert!(recovery.failed_devices.is_empty());
+    }
+
+    #[test]
+    fn failed_attempts_back_off_and_then_give_up() {
+        // Goal: the full schedule, and that it terminates. A device that is simply gone must not
+        // respawn a Python service every minute forever.
+        // Method: four failing attempts, which is the first plus every backoff entry.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        let mut delays = Vec::with_capacity(RECOVERY_BACKOFF.len());
+        for _ in 0..=RECOVERY_BACKOFF.len() {
+            recovery.claim_attempt();
+            match recovery.record_attempt(HashSet::from([1])) {
+                RecoveryOutcome::Retrying(delay) => delays.push(delay),
+                RecoveryOutcome::GaveUp => break,
+                RecoveryOutcome::Recovered => panic!("the device never recovered"),
+            }
+        }
+        assert_eq!(delays, RECOVERY_BACKOFF.to_vec());
+        assert_eq!(recovery.attempts, RECOVERY_BACKOFF.len() + 1);
+        assert!(recovery.is_attempt_due().not());
+        // The device stays known-failed after giving up, so the next resume can pick it up again.
+        assert!(recovery.failed_devices.contains(&1));
+    }
+
+    #[test]
+    fn a_later_attempt_is_not_due_until_its_delay_elapses() {
+        // Goal: the backoff actually gates, rather than every tick retrying.
+        // Method: record a failing first attempt and ask immediately afterwards.
+        let mut recovery = RecoveryState::default();
+        recovery.begin_episode(HashSet::from([1]));
+        recovery.claim_attempt();
+        recovery.record_attempt(HashSet::from([1]));
+        assert!(recovery.is_attempt_due().not());
     }
 
     #[test]

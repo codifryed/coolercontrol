@@ -71,7 +71,11 @@ const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_SCAN: &str = "/devices/scan";
 const LIQCTLD_QUIT: &str = "/quit";
-const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
+/// Total initialization attempts, the first plus its retries. Kept low because these retries are
+/// no longer the only recovery: the repository escalates a failure to a liqctld restart, which
+/// actually reopens the device, so retrying a dead handle four more times at 1s each just delays
+/// the thing that works.
+const LIQCTLD_MAX_INIT_RETRIES: usize = 2;
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// A standard liquidctl status response (name, value, metric).
