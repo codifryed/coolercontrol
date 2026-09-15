@@ -784,10 +784,6 @@ impl HwmonRepo {
         }
     }
 
-    fn spawn_device_io(&self, device_name: &str) -> DeviceIo {
-        DeviceIo::isolated_or_inline(device_name, self.device_io_reply_timeout)
-    }
-
     fn publish_channel_verdicts(&self, device_uid: &UID, driver: &HwmonDriverInfo) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Fan {
@@ -2019,7 +2015,7 @@ impl Repository for HwmonRepo {
             let chip = chip_name::derive(&path).await;
             // Before any value read: detection is exactly where a driver that sleeps inside its
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
-            let io = self.spawn_device_io(&device_name);
+            let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
             let fans = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
                 AppleMacSMC::init_fans(&path, &io).await

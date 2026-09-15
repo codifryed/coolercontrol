@@ -157,11 +157,9 @@ impl DeviceIo {
             .stack_size(WORKER_STACK_BYTES)
             .spawn(move || run_worker(rx))?;
         Ok(Self::Threaded(Rc::new(Worker {
-            device_name: device_name.to_owned(),
+            state: HealthState::new(device_name.to_owned()),
             tx,
             reply_timeout,
-            consecutive_timeouts: Cell::new(0),
-            probe_after: Cell::new(None),
         })))
     }
 
@@ -279,7 +277,7 @@ impl DeviceIo {
                 if worker.tx.try_send(Request::ClearDescriptors).is_err() {
                     debug!(
                         "could not clear descriptors for {}: worker busy or gone",
-                        worker.device_name
+                        worker.state.device_name()
                     );
                 }
             }
@@ -297,11 +295,9 @@ impl DeviceIo {
     pub fn wedged_for_test(reply_timeout: Duration) -> (Self, mpsc::Receiver<Request>) {
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let worker = Worker {
-            device_name: "wedged".to_owned(),
+            state: HealthState::new("wedged".to_owned()),
             tx,
             reply_timeout,
-            consecutive_timeouts: Cell::new(0),
-            probe_after: Cell::new(None),
         };
         (Self::Threaded(Rc::new(worker)), rx)
     }
@@ -315,7 +311,7 @@ impl DeviceIo {
     pub fn allow_probe_now(&self) {
         match self {
             Self::Inline(_) => {}
-            Self::Threaded(worker) => worker.probe_after.set(None),
+            Self::Threaded(worker) => worker.state.allow_next_dispatch(),
         }
     }
 
@@ -349,66 +345,43 @@ impl DeviceIo {
     }
 }
 
-/// The main-thread half of a worker: the queue into it, and what we have observed about it.
+/// What we have observed about one device's responsiveness.
+///
+/// Split from `Worker` because it says nothing about sysfs: the NVML worker counts timeouts,
+/// goes unreachable and probes back on exactly the same rules.
 #[derive(Debug)]
-pub struct Worker {
+pub struct HealthState {
     device_name: String,
-    tx: mpsc::Sender<Request>,
-    reply_timeout: Duration,
     consecutive_timeouts: Cell<u8>,
     /// `Some` while the device is unreachable: no request is dispatched until this instant.
     probe_after: Cell<Option<Instant>>,
 }
 
-impl Worker {
-    /// Send one request and wait for its reply, within the device's budget.
-    ///
-    /// Only a timeout counts against the device's health. An `io::Error` coming back means the
-    /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(&self, path: &Path, make_request: F) -> Result<T>
-    where
-        F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
-    {
-        self.check_dispatchable(path)?;
-        let (reply_tx, reply_rx) = oneshot::channel();
-        let request = make_request(reply_tx);
-        let exchange = async {
-            self.tx
-                .send(request)
-                .await
-                .map_err(|_| worker_gone(&self.device_name))?;
-            reply_rx.await.map_err(|_| worker_gone(&self.device_name))?
-        };
-        match rt::timeout(self.reply_timeout, exchange).await {
-            Ok(result) => {
-                self.record_answered();
-                result
-            }
-            Err(_elapsed) => {
-                self.record_timeout(path);
-                Err(timed_out(&self.device_name, path, self.reply_timeout))
-            }
+impl HealthState {
+    #[must_use]
+    pub fn new(device_name: String) -> Self {
+        Self {
+            device_name,
+            consecutive_timeouts: Cell::new(0),
+            probe_after: Cell::new(None),
         }
     }
 
-    /// Refuses to queue work for a device that is not answering, until its next probe is due.
-    ///
-    /// Without this, every tick would add another request to a queue nobody is draining, and the
-    /// caller would pay a full timeout each time to learn what it already knew.
-    fn check_dispatchable(&self, path: &Path) -> Result<()> {
-        let Some(probe_after) = self.probe_after.get() else {
-            return Ok(());
-        };
-        if Instant::now() < probe_after {
-            return Err(unreachable(&self.device_name, path));
-        }
-        // Due for a probe: let this one through. Whether it succeeds or times out, the outcome
-        // updates the state, so the gate cannot be held open by a device that stays wedged.
-        Ok(())
+    #[must_use]
+    pub fn device_name(&self) -> &str {
+        &self.device_name
+    }
+
+    /// Whether a device that is not answering should be given its next probe yet.
+    #[must_use]
+    pub fn dispatchable(&self) -> bool {
+        self.probe_after
+            .get()
+            .is_none_or(|probe_after| Instant::now() >= probe_after)
     }
 
     /// The device answered, so whatever it said, it is alive.
-    fn record_answered(&self) {
+    pub fn record_answered(&self) {
         if self.consecutive_timeouts.get() > 0 {
             debug!("device IO recovered: {}", self.device_name);
         }
@@ -422,16 +395,15 @@ impl Worker {
         self.probe_after.set(None);
     }
 
-    /// The device did not answer in time.
-    fn record_timeout(&self, path: &Path) {
+    /// The device did not answer in time. `what` names the operation, for the log only.
+    pub fn record_timeout(&self, what: &dyn std::fmt::Display) {
         let timeouts = self.consecutive_timeouts.get().saturating_add(1);
         self.consecutive_timeouts.set(timeouts);
         let was_unreachable = self.probe_after.get().is_some();
         if timeouts < UNREACHABLE_AFTER_TIMEOUTS {
             debug!(
-                "device IO timeout {timeouts} of {UNREACHABLE_AFTER_TIMEOUTS} for {} at {}",
-                self.device_name,
-                path.display()
+                "device IO timeout {timeouts} of {UNREACHABLE_AFTER_TIMEOUTS} for {} at {what}",
+                self.device_name
             );
             return;
         }
@@ -448,7 +420,20 @@ impl Worker {
         }
     }
 
-    fn health(&self) -> DeviceHealth {
+    /// Lets the next dispatch through even if the device is currently unreachable.
+    pub fn allow_next_dispatch(&self) {
+        self.probe_after.set(None);
+    }
+
+    /// Puts the device into the state `record_timeout` would have left it in.
+    #[cfg(test)]
+    pub fn force_unreachable_at(&self, timeouts: u8, probe_after: Instant) {
+        self.consecutive_timeouts.set(timeouts);
+        self.probe_after.set(Some(probe_after));
+    }
+
+    #[must_use]
+    pub fn health(&self) -> DeviceHealth {
         let consecutive_timeouts = self.consecutive_timeouts.get();
         if self.probe_after.get().is_some() {
             return DeviceHealth::Unreachable {
@@ -461,6 +446,61 @@ impl Worker {
         DeviceHealth::Degraded {
             consecutive_timeouts,
         }
+    }
+}
+
+/// The main-thread half of a worker: the queue into it, and what we have observed about it.
+#[derive(Debug)]
+pub struct Worker {
+    state: HealthState,
+    tx: mpsc::Sender<Request>,
+    reply_timeout: Duration,
+}
+
+impl Worker {
+    /// Send one request and wait for its reply, within the device's budget.
+    ///
+    /// Only a timeout counts against the device's health. An `io::Error` coming back means the
+    /// device answered and the answer was an error, which says nothing about whether it is wedged.
+    async fn dispatch<T, F>(&self, path: &Path, make_request: F) -> Result<T>
+    where
+        F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
+    {
+        // Refuse to queue for a device that is not answering, until its next probe is due.
+        // Otherwise every tick adds a request to a queue nobody drains and pays a full timeout
+        // to learn what it already knew.
+        if self.state.dispatchable().not() {
+            return Err(unreachable(self.state.device_name(), path));
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let request = make_request(reply_tx);
+        let exchange = async {
+            self.tx
+                .send(request)
+                .await
+                .map_err(|_| worker_gone(self.state.device_name()))?;
+            reply_rx
+                .await
+                .map_err(|_| worker_gone(self.state.device_name()))?
+        };
+        match rt::timeout(self.reply_timeout, exchange).await {
+            Ok(result) => {
+                self.state.record_answered();
+                result
+            }
+            Err(_elapsed) => {
+                self.state.record_timeout(&path.display());
+                Err(timed_out(
+                    self.state.device_name(),
+                    path,
+                    self.reply_timeout,
+                ))
+            }
+        }
+    }
+
+    fn health(&self) -> DeviceHealth {
+        self.state.health()
     }
 }
 
@@ -901,8 +941,9 @@ mod tests {
 
             let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
             let worker = worker_of(&io);
-            worker.consecutive_timeouts.set(UNREACHABLE_AFTER_TIMEOUTS);
-            worker.probe_after.set(Some(Instant::now()));
+            worker
+                .state
+                .force_unreachable_at(UNREACHABLE_AFTER_TIMEOUTS, Instant::now());
             assert_eq!(
                 io.health(),
                 DeviceHealth::Unreachable {
@@ -924,10 +965,10 @@ mod tests {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             let worker = worker_of(&io);
-            worker.consecutive_timeouts.set(UNREACHABLE_AFTER_TIMEOUTS);
-            worker
-                .probe_after
-                .set(Some(Instant::now() + UNREACHABLE_PROBE_INTERVAL));
+            worker.state.force_unreachable_at(
+                UNREACHABLE_AFTER_TIMEOUTS,
+                Instant::now() + UNREACHABLE_PROBE_INTERVAL,
+            );
 
             let result = io
                 .read_value(Path::new("/sys/class/hwmon/hwmon0/temp1_input"))
