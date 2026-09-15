@@ -896,7 +896,7 @@ impl HwmonRepo {
             HwmonChannelType::Temp,
             HwmonChannelType::Fan,
         ] {
-            let typed_channels: Vec<&HwmonChannelInfo> = driver
+            let mut typed_channels: Vec<&HwmonChannelInfo> = driver
                 .channels
                 .iter()
                 .filter(|c| c.hwmon_type == ch_type)
@@ -911,15 +911,13 @@ impl HwmonRepo {
             let start = (tick as usize) % channel_count;
             // Rotated so the upsert order still varies per tick, as it did when the pass was read
             // one channel at a time.
-            let ordered: Vec<&HwmonChannelInfo> = (0..channel_count)
-                .map(|offset| typed_channels[(start + offset) % channel_count])
-                .collect();
+            typed_channels.rotate_left(start);
             if self.shutdown_token.is_cancelled() {
                 return;
             }
             // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
             if driver.apple_smc.detected {
-                for channel in ordered {
+                for &channel in &typed_channels {
                     if self.shutdown_token.is_cancelled() {
                         return;
                     }
@@ -934,7 +932,13 @@ impl HwmonRepo {
                 }
                 continue;
             }
-            self.read_channels_batched(type_index, driver, &ordered, &ch_type, drivetemp_suspended)
+            self.read_channels_batched(
+                type_index,
+                driver,
+                &typed_channels,
+                &ch_type,
+                drivetemp_suspended,
+            )
             .await;
         }
 
