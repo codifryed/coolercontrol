@@ -110,6 +110,33 @@ where
     any_failure
 }
 
+/// Reads a set of temp channels in one hop.
+///
+/// The per-tick path uses this rather than `read_one_temp_status` per channel: the device permit
+/// is held across the whole pass anyway, so the reads were already going to happen back to back,
+/// and one round trip to the device's worker is cheaper than one per channel. Results are
+/// positional, `None` where the channel has nothing usable to report.
+pub async fn read_temp_statuses(
+    driver: &HwmonDriverInfo,
+    channels: &[&HwmonChannelInfo],
+) -> Vec<Option<TempStatus>> {
+    if channels.is_empty() {
+        return Vec::new();
+    }
+    let paths: Vec<PathBuf> = channels
+        .iter()
+        .map(|channel| temp_path_for(driver, channel))
+        .collect();
+    let results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), channels.len());
+    channels
+        .iter()
+        .zip(&paths)
+        .zip(results)
+        .map(|((channel, path), result)| temp_status_from(driver, channel, path, result))
+        .collect()
+}
+
 /// Where one channel's temp value lives.
 fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
     channel

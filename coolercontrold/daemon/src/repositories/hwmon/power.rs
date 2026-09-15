@@ -127,6 +127,30 @@ where
     any_failure
 }
 
+/// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
+/// path batches.
+pub async fn read_power_statuses(
+    driver: &HwmonDriverInfo,
+    channels: &[&HwmonChannelInfo],
+) -> Vec<Option<ChannelStatus>> {
+    if channels.is_empty() {
+        return Vec::new();
+    }
+    // In the Power case, channel.name is the sysfs file name.
+    let paths: Vec<PathBuf> = channels
+        .iter()
+        .map(|channel| driver.path.join(&channel.name))
+        .collect();
+    let results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), channels.len());
+    channels
+        .iter()
+        .zip(&paths)
+        .zip(results)
+        .map(|((channel, path), result)| power_status_from(channel, path, result))
+        .collect()
+}
+
 /// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
 /// single-channel path so both log and discard failures identically.
 fn power_status_from(

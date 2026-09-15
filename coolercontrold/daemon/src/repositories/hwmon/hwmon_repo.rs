@@ -908,14 +908,33 @@ impl HwmonRepo {
             // small channel count.
             #[allow(clippy::cast_possible_truncation)]
             let start = (tick as usize) % channel_count;
-            for offset in 0..channel_count {
-                if self.shutdown_token.is_cancelled() {
-                    return;
-                }
-                let channel = typed_channels[(start + offset) % channel_count];
-                self.read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
-                    .await;
+            // Rotated so the upsert order still varies per tick, as it did when the pass was read
+            // one channel at a time.
+            let ordered: Vec<&HwmonChannelInfo> = (0..channel_count)
+                .map(|offset| typed_channels[(start + offset) % channel_count])
+                .collect();
+            if self.shutdown_token.is_cancelled() {
+                return;
             }
+            // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
+            if driver.apple_smc.detected {
+                for channel in ordered {
+                    if self.shutdown_token.is_cancelled() {
+                        return;
+                    }
+                    self.read_one_channel(
+                        type_index,
+                        driver,
+                        channel,
+                        &ch_type,
+                        drivetemp_suspended,
+                    )
+                    .await;
+                }
+                continue;
+            }
+            self.read_channels_batched(type_index, driver, &ordered, &ch_type, drivetemp_suspended)
+                .await;
         }
 
         // Drop before spawning the delay holder so any queued waiter
@@ -960,6 +979,110 @@ impl HwmonRepo {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Reads one channel type's whole set for a device in a single hop.
+    ///
+    /// Same reads as the per-channel path, same order, same decisions: only the number of round
+    /// trips to the device's IO worker changes. The device permit is held across the entire pass
+    /// either way, so nothing that could previously interleave between two channels can any more.
+    ///
+    /// The cost of that is losing the ability to abandon a pass part-way, which the round-robin
+    /// start index exists to make fair. Passes stay short because the duty cache still decides
+    /// per channel what actually needs reading, so the window this protects against stays small.
+    async fn read_channels_batched(
+        &self,
+        type_index: TypeIndex,
+        driver: &Rc<HwmonDriverInfo>,
+        channels: &[&HwmonChannelInfo],
+        ch_type: &HwmonChannelType,
+        drivetemp_suspended: bool,
+    ) {
+        match ch_type {
+            HwmonChannelType::Power => {
+                for status in power::read_power_statuses(driver, channels).await {
+                    let Some(status) = status else { continue };
+                    self.mark_channel_fresh(type_index, &status.name);
+                    self.upsert_single_channel(type_index, status);
+                }
+            }
+            HwmonChannelType::Temp => {
+                // A suspended drive must not be read at all, so it never enters the batch.
+                let statuses = if drivetemp_suspended {
+                    channels
+                        .iter()
+                        .map(|channel| Some(drivetemp::default_suspended_temp_for(channel)))
+                        .collect()
+                } else {
+                    temps::read_temp_statuses(driver, channels).await
+                };
+                for status in statuses {
+                    let Some(status) = status else { continue };
+                    self.mark_temp_fresh(type_index, &status.name);
+                    self.upsert_single_temp(type_index, status);
+                }
+            }
+            HwmonChannelType::Fan => self.read_fan_channels(type_index, driver, channels).await,
+            _ => {}
+        }
+    }
+
+    /// Batched counterpart to `read_fan_channel`, keeping its per-channel decision intact.
+    ///
+    /// The decision is made first, for every channel, and only then are the chosen attributes
+    /// read. A slow device with a fresh cache therefore still pays rpm reads alone, and at most
+    /// one channel's pwm verify falls due per tick, exactly as before.
+    async fn read_fan_channels(
+        &self,
+        type_index: TypeIndex,
+        driver: &Rc<HwmonDriverInfo>,
+        channels: &[&HwmonChannelInfo],
+    ) {
+        let slow = self.slow_devices.contains(&type_index);
+        let cache = self.duty_cache.get(&type_index);
+        let mut plan: Vec<(&HwmonChannelInfo, fans::FanRead)> = Vec::with_capacity(channels.len());
+        let mut cached_duties: Vec<Option<Duty>> = Vec::with_capacity(channels.len());
+        for channel in channels {
+            let cached = if slow {
+                cache.and_then(|c| {
+                    c.borrow()
+                        .get(&channel.name)
+                        .filter(|entry| Instant::now() < entry.next_verify_at)
+                        .map(|entry| entry.last_known)
+                })
+            } else {
+                None
+            };
+            plan.push((
+                channel,
+                if cached.is_some() {
+                    fans::FanRead::RpmOnly
+                } else {
+                    fans::FanRead::Full
+                },
+            ));
+            cached_duties.push(cached);
+        }
+
+        let readings = fans::read_fan_statuses(driver, &plan).await;
+        debug_assert_eq!(readings.len(), channels.len());
+        for ((channel, cached_duty), reading) in channels.iter().zip(cached_duties).zip(readings) {
+            let status = match reading {
+                fans::FanReading::Failed => continue,
+                fans::FanReading::Rpm(rpm) => ChannelStatus {
+                    name: channel.name.clone(),
+                    rpm,
+                    duty: cached_duty.map(f64::from),
+                    ..Default::default()
+                },
+                fans::FanReading::Full(status) => {
+                    self.refresh_duty_cache(type_index, channel, status.duty);
+                    status
+                }
+            };
+            self.mark_channel_fresh(type_index, &status.name);
+            self.upsert_single_channel(type_index, status);
         }
     }
 
@@ -1012,20 +1135,34 @@ impl HwmonRepo {
         } else {
             fans::read_one_fan_status(driver, channel).await
         }?;
-        if let Some(duty_f64) = status.duty {
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let duty_u8 = duty_f64.round().clamp(0.0, 100.0) as Duty;
-            if let Some(cache) = cache {
-                cache.borrow_mut().insert(
-                    channel.name.clone(),
-                    DutyCacheEntry {
-                        last_known: duty_u8,
-                        next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
-                    },
-                );
-            }
-        }
+        self.refresh_duty_cache(type_index, channel, status.duty);
         Some(status)
+    }
+
+    /// Records a freshly read duty and schedules this channel's next verify.
+    ///
+    /// Only devices flagged slow at init have a cache, so this is a no-op everywhere else. Each
+    /// channel carries its own `next_verify_at`, which is what staggers the expensive pwm reads
+    /// across ticks instead of bunching them into one long pass.
+    fn refresh_duty_cache(
+        &self,
+        type_index: TypeIndex,
+        channel: &HwmonChannelInfo,
+        duty: Option<f64>,
+    ) {
+        let Some(duty_f64) = duty else { return };
+        let Some(cache) = self.duty_cache.get(&type_index) else {
+            return;
+        };
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        let duty_u8 = duty_f64.round().clamp(0.0, 100.0) as Duty;
+        cache.borrow_mut().insert(
+            channel.name.clone(),
+            DutyCacheEntry {
+                last_known: duty_u8,
+                next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+            },
+        );
     }
 
     fn reset_fresh_this_tick(&self, type_index: TypeIndex) {
@@ -4584,6 +4721,84 @@ mod slow_device_tests {
             assert_eq!(orders[0], vec!["fan1", "fan2", "fan3"]);
             assert_eq!(orders[1], vec!["fan2", "fan3", "fan1"]);
             assert_eq!(orders[2], vec!["fan3", "fan1", "fan2"]);
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: batching a device's fan set must still decide per channel. One channel's cache being
+    /// fresh while another's verify is due has to produce a cached duty for the first and a real
+    /// read for the second, in the same hop.
+    ///
+    /// This is the property that keeps a slow device's pass short. Reading every channel's pwm
+    /// because one of them fell due would stretch an Octo-class pass from a few hundred
+    /// milliseconds to seconds, and any fan write queued behind it waits that long, since the
+    /// device permit is held for the whole pass.
+    ///
+    /// Method: two fan channels on a slow device, both with pwm files reading 100%, one cached at
+    /// 50% with a future verify and one cached at 10% already due. Cached duty and real duty are
+    /// deliberately distinguishable.
+    #[test]
+    #[serial]
+    fn batched_fan_read_honours_each_channels_verify_deadline() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            // Both pwm files say 255 (100%). A cached channel must not show 100.
+            seed_fan_files(&dir, &[1, 2], 255).await;
+
+            let mut repo = empty_repo();
+            let fresh = Instant::now() + Duration::from_secs(60);
+            let due = Instant::now() - Duration::from_secs(1);
+            let _uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
+                true,
+                vec![("fan1", 50, fresh), ("fan2", 10, due)],
+            );
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+            let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            let preloaded = repo.preloaded_statuses.borrow();
+            let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+            let duty_of = |name: &str| {
+                channels
+                    .iter()
+                    .find(|c| c.name == name)
+                    .unwrap_or_else(|| panic!("{name} missing"))
+                    .duty
+            };
+            assert_eq!(
+                duty_of("fan1"),
+                Some(50.0),
+                "a channel whose verify is not due keeps its cached duty, so its pwm is not read"
+            );
+            assert_eq!(
+                duty_of("fan2"),
+                Some(100.0),
+                "a channel whose verify is due gets a real pwm read"
+            );
+            drop(preloaded);
+
+            // The due channel's verify must have been rescheduled, or it would read every tick.
+            let cache = repo.duty_cache.get(&TEST_TYPE_INDEX).unwrap().borrow();
+            assert_eq!(cache.get("fan2").unwrap().last_known, 100);
+            assert!(
+                cache.get("fan2").unwrap().next_verify_at > Instant::now(),
+                "a real read must push the next verify into the future"
+            );
+            assert_eq!(
+                cache.get("fan1").unwrap().last_known,
+                50,
+                "an unread channel's cache entry is left alone"
+            );
+            drop(cache);
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;

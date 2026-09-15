@@ -307,6 +307,107 @@ where
     any_failure
 }
 
+/// What one fan channel needs read this tick.
+///
+/// The choice is the caller's, because it depends on the duty cache, which lives with the
+/// repository. Batching must not make that choice for it: reading every channel's pwm every tick
+/// is exactly what the cache exists to avoid, and on a slow device it would stretch the pass from
+/// a few hundred milliseconds to seconds, delaying any fan write queued behind it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FanRead {
+    /// Real pwm duty and rpm.
+    Full,
+    /// Rpm only; the caller supplies the duty from its cache.
+    RpmOnly,
+}
+
+/// One channel's outcome from a batched fan read.
+#[derive(Debug)]
+pub enum FanReading {
+    /// A full read that produced everything expected of the channel.
+    Full(ChannelStatus),
+    /// An rpm-only read. `None` means the channel has no rpm capability, which is not a failure.
+    Rpm(Option<u32>),
+    /// Something the channel was expected to report did not read, so the caller should treat this
+    /// tick as a miss and let staleness accumulate.
+    Failed,
+}
+
+/// Reads a set of fan channels in one hop, honouring each channel's own decision.
+///
+/// Only the attributes the caller asked for are read, so a device whose duty cache is fresh still
+/// pays rpm reads alone. The saving is round trips, not attributes: the pass reads exactly what it
+/// would have read one channel at a time.
+pub async fn read_fan_statuses(
+    driver: &HwmonDriverInfo,
+    plan: &[(&HwmonChannelInfo, FanRead)],
+) -> Vec<FanReading> {
+    if plan.is_empty() {
+        return Vec::new();
+    }
+    let mut paths: Vec<PathBuf> = Vec::with_capacity(plan.len() * 2);
+    let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
+    for (channel, want) in plan {
+        let pwm = (*want == FanRead::Full && channel.caps.has_pwm()).then(|| {
+            paths.push(pwm_path_for(driver, channel));
+            paths.len() - 1
+        });
+        let rpm = channel.caps.has_rpm().then(|| {
+            paths.push(rpm_path_for(driver, channel));
+            paths.len() - 1
+        });
+        slots.push((pwm, rpm));
+    }
+    let mut results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), paths.len());
+    debug_assert_eq!(slots.len(), plan.len());
+
+    let log_error = log_enabled!(log::Level::Debug);
+    let mut out = Vec::with_capacity(plan.len());
+    for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(slots) {
+        let fan_rpm = match rpm_slot {
+            Some(index) => {
+                let raw = take_result(&mut results, index).and_then(check_parsing_32);
+                interpret_fan_rpm(&paths[index], raw, log_error)
+            }
+            None => None,
+        };
+        if *want == FanRead::RpmOnly {
+            // An expected rpm that did not read is a miss; a channel with no rpm at all is not.
+            out.push(if channel.caps.has_rpm() && fan_rpm.is_none() {
+                FanReading::Failed
+            } else {
+                FanReading::Rpm(fan_rpm)
+            });
+            continue;
+        }
+        let fan_duty = match pwm_slot {
+            Some(index) => {
+                let raw = take_result(&mut results, index)
+                    .and_then(check_parsing_8)
+                    .map(pwm_value_to_duty);
+                interpret_pwm_duty(&driver.path, &channel.number, &paths[index], raw, log_error)
+                    .await
+            }
+            None => None,
+        };
+        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
+        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+        out.push(if expected_pwm_failed || expected_rpm_failed {
+            FanReading::Failed
+        } else {
+            FanReading::Full(ChannelStatus {
+                name: channel.name.clone(),
+                rpm: fan_rpm,
+                duty: fan_duty,
+                ..Default::default()
+            })
+        });
+    }
+    debug_assert_eq!(out.len(), plan.len());
+    out
+}
+
 /// Takes one positional result out of a batch, leaving a placeholder behind. The batch is consumed
 /// exactly once per slot, so the placeholder is never read.
 fn take_result(
