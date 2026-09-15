@@ -58,6 +58,25 @@ impl NvmlIo {
         })
     }
 
+    /// A handle with no worker behind it, for tests.
+    ///
+    /// The handle never owned the device: the worker thread does. So a test can hold one without
+    /// NVML, an NVIDIA driver, or a card. Nothing drains the returned receiver, so every call
+    /// times out, which is also what a wedged GPU looks like from here.
+    #[cfg(test)]
+    #[must_use]
+    pub fn for_test(device_name: &str) -> (Self, mpsc::Receiver<NvmlJob>) {
+        let (tx, rx) = mpsc::channel::<NvmlJob>(QUEUE_DEPTH);
+        (
+            Self {
+                tx,
+                reply_timeout: Duration::from_millis(10),
+                state: HealthState::new(device_name.to_owned()),
+            },
+            rx,
+        )
+    }
+
     /// Run one NVML call on the device's thread, within its budget. `what` names it for logs.
     ///
     /// Only a timeout counts against the GPU's health; an error from NVML means it answered.

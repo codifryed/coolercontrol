@@ -68,8 +68,10 @@ pub struct GpuNVidia {
     pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
     /// Owned handles, held only until `start_nvml_workers` moves each onto its own thread.
-    /// Empty from then on; `nvml_io` is what the running daemon talks to.
-    nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
+    ///
+    /// **Empty once detection finishes.** Never test this to decide whether NVML is in play: it
+    /// says "workers not started yet", not "NVML unavailable". `nvml_io` is that answer.
+    nvml_handles_pending_workers: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
     /// One worker per GPU. Owns the device, so NVML needs no lock and a hung call parks only
     /// that GPU's thread.
     nvml_io: HashMap<GpuIndex, NvmlIo>,
@@ -86,7 +88,7 @@ impl GpuNVidia {
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
-            nvidia_nvml_devices: HashMap::new(),
+            nvml_handles_pending_workers: HashMap::new(),
             nvml_io: HashMap::new(),
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
@@ -99,7 +101,7 @@ impl GpuNVidia {
         &mut self,
         starting_nvidia_index: GpuIndex,
     ) -> Result<HashMap<UID, DeviceLock>> {
-        let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
+        let nvidia_devices = if self.nvml_handles_pending_workers.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
             self.retrieve_nvml_devices(starting_nvidia_index)?
@@ -130,7 +132,7 @@ impl GpuNVidia {
         for device_lock in self.nvidia_devices.values() {
             let device_uid = device_lock.borrow().uid.clone();
             if let Some(nv_info) = self.nvidia_device_infos.get(&device_uid) {
-                if self.nvidia_nvml_devices.is_empty() {
+                if self.is_nvml_controlled(nv_info).not() {
                     self.reset_nvidia_settings_to_default(nv_info).await.ok();
                 } else {
                     let channel_names: Vec<String> =
@@ -149,7 +151,7 @@ impl GpuNVidia {
         let Some(nv_info) = self.nvidia_device_infos.get(device_uid) else {
             return Err(anyhow!("Device UID not found! {device_uid}"));
         };
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.is_nvml_controlled(nv_info).not() {
             self.reset_nvidia_settings_to_default(nv_info).await?;
         } else {
             self.reset_nvml_device_to_default(nv_info, channel_name)
@@ -168,7 +170,7 @@ impl GpuNVidia {
             .nvidia_device_infos
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?;
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.is_nvml_controlled(nvidia_gpu_info).not() {
             self.set_nvidia_settings_fan_duty(nvidia_gpu_info, speed_fixed)
                 .await
         } else {
@@ -232,20 +234,21 @@ impl GpuNVidia {
             return NvmlInitResult::Unavailable;
         }
         self.populate_nvml_device_handles(device_count);
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.nvml_handles_pending_workers.is_empty() {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             return NvmlInitResult::Unavailable;
         }
         let register_hotspot_buses = self.collect_register_hotspot_buses();
         self.nvapi = super::nvapi::NvApi::try_init(&register_hotspot_buses);
-        NvmlInitResult::Active(self.nvidia_nvml_devices.len() as u8)
+        NvmlInitResult::Active(self.nvml_handles_pending_workers.len() as u8)
     }
 
     /// PCI bus IDs of the GPUs whose architecture keeps hotspot out of the nvapi
     /// thermals array, so nvapi reads it from the aggregated hotspot register instead.
     fn collect_register_hotspot_buses(&self) -> HashSet<u32> {
-        let mut register_hotspot_buses = HashSet::with_capacity(self.nvidia_nvml_devices.len());
-        for nvml_device in self.nvidia_nvml_devices.values() {
+        let mut register_hotspot_buses =
+            HashSet::with_capacity(self.nvml_handles_pending_workers.len());
+        for nvml_device in self.nvml_handles_pending_workers.values() {
             if needs_hotspot_register(nvml_device.architecture()).not() {
                 continue;
             }
@@ -275,7 +278,7 @@ impl GpuNVidia {
             else {
                 continue;
             };
-            self.nvidia_nvml_devices
+            self.nvml_handles_pending_workers
                 .insert(device_index as GpuIndex, accessible_device);
         }
     }
@@ -321,7 +324,7 @@ impl GpuNVidia {
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
-        for (gpu_index, device_lock) in &self.nvidia_nvml_devices {
+        for (gpu_index, device_lock) in &self.nvml_handles_pending_workers {
             let type_index = gpu_index + starting_nvidia_index;
             let (name, device_uid) = nvml_name_and_uid(device_lock.name().ok(), type_index);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
@@ -606,6 +609,14 @@ impl GpuNVidia {
         Ok(devices)
     }
 
+    /// Whether this GPU is driven through NVML rather than the `nvidia-settings` CLI.
+    ///
+    /// Per GPU, and read from the worker table: a card whose worker failed to start correctly
+    /// falls back on its own rather than dragging every other card with it.
+    fn is_nvml_controlled(&self, nv_info: &NvidiaDeviceInfo) -> bool {
+        self.nvml_io.contains_key(&nv_info.gpu_index)
+    }
+
     /// This GPU's NVML worker, when it has one.
     #[must_use]
     pub fn nvml_worker(&self, gpu_index: GpuIndex) -> Option<&NvmlIo> {
@@ -628,7 +639,7 @@ impl GpuNVidia {
     /// From here on the device is only reachable through its worker.
     fn start_nvml_workers(&mut self, starting_nvidia_index: GpuIndex, poll_rate: f64) {
         let reply_timeout = device_io::reply_timeout_for(poll_rate);
-        for (gpu_index, device) in std::mem::take(&mut self.nvidia_nvml_devices) {
+        for (gpu_index, device) in std::mem::take(&mut self.nvml_handles_pending_workers) {
             let type_index = gpu_index + starting_nvidia_index;
             let (name, _) = nvml_name_and_uid(device.name().ok(), type_index);
             match NvmlIo::spawn(name.clone(), device, reply_timeout) {
@@ -1615,6 +1626,59 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 mod tests {
     use super::*;
     use crate::setting::CCDeviceSettings;
+
+    fn nv_info_for(gpu_index: GpuIndex) -> NvidiaDeviceInfo {
+        NvidiaDeviceInfo {
+            gpu_index,
+            display_id: 0,
+            fan_indices: vec![0],
+            fan_ranges: HashMap::new(),
+            temps: Vec::new(),
+            freqs: Vec::new(),
+            power: false,
+            pci_bus: None,
+        }
+    }
+
+    /// Goal: the handle map is drained into the workers at init, so it is empty for the whole life
+    /// of a running daemon. Deciding the control path from it therefore sends every NVML card down
+    /// the `nvidia-settings` branch, which returns `Ok(())` without doing anything when there is no
+    /// xauthority: fan speeds are silently never applied, with nothing in the log to say so.
+    ///
+    /// Method: a GPU with a worker and an empty handle map, which is exactly the running state.
+    #[test]
+    fn a_gpu_with_a_worker_is_nvml_controlled_though_the_handle_map_is_empty() {
+        let mut repo = repo_with_disabled(&[]);
+        let nv_info = nv_info_for(0);
+        assert!(
+            repo.is_nvml_controlled(&nv_info).not(),
+            "no worker yet, so the CLI is correct here"
+        );
+
+        let (io, _rx) = NvmlIo::for_test("test-gpu");
+        repo.nvml_io.insert(0, io);
+
+        assert!(
+            repo.nvml_handles_pending_workers.is_empty(),
+            "the running state: handles were moved into the workers"
+        );
+        assert!(
+            repo.is_nvml_controlled(&nv_info),
+            "a GPU with a worker must stay on NVML, or its fan writes go nowhere"
+        );
+    }
+
+    /// Goal: a card whose worker never started falls back on its own, rather than one bad card
+    /// deciding the path for every other.
+    #[test]
+    fn a_gpu_without_a_worker_falls_back_alone() {
+        let mut repo = repo_with_disabled(&[]);
+        let (io, _rx) = NvmlIo::for_test("test-gpu");
+        repo.nvml_io.insert(0, io);
+
+        assert!(repo.is_nvml_controlled(&nv_info_for(0)));
+        assert!(repo.is_nvml_controlled(&nv_info_for(1)).not());
+    }
 
     /// Goal: moving the NVML reads to a blocking thread must not reorder what the device reports.
     /// Temps are assembled on this thread from two sources now (NVML for gpu and memory, nvapi for
