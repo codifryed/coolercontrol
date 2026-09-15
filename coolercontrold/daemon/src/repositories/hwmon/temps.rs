@@ -4,10 +4,10 @@
 use crate::repositories::hwmon::device_io::DeviceIo;
 use std::io::Error;
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::cc_fs;
+use crate::cc_fs::{self, SysfsValue};
 use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::devices;
@@ -84,17 +84,38 @@ pub async fn stream_temp_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> b
 where
     F: FnMut(TempStatus),
 {
+    let channels: Vec<&HwmonChannelInfo> = driver
+        .channels
+        .iter()
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+        .collect();
+    if channels.is_empty() {
+        return false;
+    }
+    // One hop for the whole device rather than one per channel. The device permit is already held
+    // across the entire pass, so batching changes nothing about who may interleave.
+    let paths: Vec<PathBuf> = channels
+        .iter()
+        .map(|channel| temp_path_for(driver, channel))
+        .collect();
+    let results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), channels.len());
     let mut any_failure = false;
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Temp {
-            continue;
-        }
-        match read_one_temp_status(driver, channel).await {
+    for ((channel, path), result) in channels.iter().zip(&paths).zip(results) {
+        match temp_status_from(driver, channel, path, result) {
             Some(status) => sink(status),
             None => any_failure = true,
         }
     }
     any_failure
+}
+
+/// Where one channel's temp value lives.
+fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+    channel
+        .temp_path
+        .clone()
+        .unwrap_or_else(|| driver.path.join(format_temp_input!(channel.number)))
 }
 
 /// Reads the temp file for one channel and returns the resulting
@@ -106,14 +127,21 @@ pub async fn read_one_temp_status(
     channel: &HwmonChannelInfo,
 ) -> Option<TempStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
-    let temp_path = match channel.temp_path.as_ref() {
-        Some(path) => path,
-        None => &driver.path.join(format_temp_input!(channel.number)),
-    };
-    match driver
-        .io
-        .read_value(temp_path)
-        .await
+    let temp_path = temp_path_for(driver, channel);
+    let result = driver.io.read_value(&temp_path).await;
+    temp_status_from(driver, channel, &temp_path, result)
+}
+
+/// Turns one raw read into a `TempStatus`, or `None` when the channel has nothing usable to
+/// report. Shared by the batched pass and the single-channel path so both interpret a failure,
+/// and the `ThinkPad` powered-down carve-out, identically.
+fn temp_status_from(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+    temp_path: &Path,
+    result: Result<SysfsValue>,
+) -> Option<TempStatus> {
+    match result
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)

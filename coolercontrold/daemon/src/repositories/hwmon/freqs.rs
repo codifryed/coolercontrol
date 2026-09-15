@@ -61,17 +61,23 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         .filter(|c| c.hwmon_type == HwmonChannelType::Freq)
         .count();
     let mut freqs = Vec::with_capacity(freq_channel_count);
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Freq {
-            continue;
-        }
-        let result = driver
-            .io
-            .read_value(&driver.path.join(format!("freq{}_input", channel.number)))
-            .await
-            .and_then(check_parsing_64)
-            .map(hertz_to_megahertz);
-        if let Ok(freq) = result {
+    let channels: Vec<&HwmonChannelInfo> = driver
+        .channels
+        .iter()
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq)
+        .collect();
+    if channels.is_empty() {
+        return freqs;
+    }
+    // One hop for the device's whole frequency set.
+    let paths: Vec<PathBuf> = channels
+        .iter()
+        .map(|channel| driver.path.join(format!("freq{}_input", channel.number)))
+        .collect();
+    let results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), channels.len());
+    for (channel, result) in channels.iter().zip(results) {
+        if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
             freqs.push(ChannelStatus {
                 name: channel.name.clone(),
                 freq: Some(freq),

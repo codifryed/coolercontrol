@@ -70,6 +70,14 @@ pub const UNREACHABLE_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 pub const QUEUE_DEPTH: usize = 128;
 const _: () = assert!(QUEUE_DEPTH > 0);
 
+/// Upper bound on one batched read.
+///
+/// A batch is one device's attributes of one kind, so it is bounded by that device's channel
+/// count. The cap is the descriptor cache's, since a batch can hold at most one descriptor per
+/// entry; past it the caller splits rather than growing a request without limit.
+pub const READ_BATCH_MAX: usize = cc_fs::SYSFS_FD_CACHE_MAX_ENTRIES;
+const _: () = assert!(READ_BATCH_MAX > 0);
+
 /// Stack for a worker thread. It runs one `async fn` with a fixed buffer and no recursion, so the
 /// default 8 MiB is wasted address space once there is one per device.
 const WORKER_STACK_BYTES: usize = 256 * 1024;
@@ -185,6 +193,58 @@ impl DeviceIo {
                         reply,
                     })
                     .await
+            }
+        }
+    }
+
+    /// Reads several attributes in one hop.
+    ///
+    /// This is the shape the per-tick paths should use. One `read_value` per attribute costs a
+    /// thread round trip each, and a device's whole attribute set is known before any of it is
+    /// read, so the batch is free to build and turns N round trips into one. Results are
+    /// positional: `out[i]` is the result for `paths[i]`, with per-path errors preserved so a
+    /// caller can still tell which single attribute failed.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
+    pub async fn read_many(&self, paths: &[PathBuf]) -> Vec<Result<SysfsValue>> {
+        debug_assert!(paths.len() <= READ_BATCH_MAX);
+        if paths.is_empty() {
+            return Vec::new();
+        }
+        match self {
+            Self::Inline(fds) => {
+                let mut out = Vec::with_capacity(paths.len());
+                for path in paths {
+                    out.push(fds.read_value(path).await);
+                }
+                out
+            }
+            Self::Threaded(worker) => {
+                let first = &paths[0];
+                let batch = paths.to_vec();
+                let expected = batch.len();
+                let dispatched = worker
+                    .dispatch(first, |reply| Request::ReadMany {
+                        paths: batch,
+                        reply,
+                    })
+                    .await;
+                match dispatched {
+                    Ok(values) => {
+                        debug_assert_eq!(values.len(), expected);
+                        values
+                    }
+                    // The device did not answer at all, so every path in the batch failed the
+                    // same way. Fanning the one error out keeps the result positional.
+                    Err(err) => {
+                        let message = err.to_string();
+                        (0..expected)
+                            .map(|_| Err(anyhow::anyhow!("{message}")))
+                            .collect()
+                    }
+                }
             }
         }
     }
@@ -411,6 +471,10 @@ pub enum Request {
         path: PathBuf,
         reply: oneshot::Sender<Result<SysfsValue>>,
     },
+    ReadMany {
+        paths: Vec<PathBuf>,
+        reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
+    },
     Write {
         path: PathBuf,
         data: Vec<u8>,
@@ -438,6 +502,13 @@ async fn serve(mut rx: mpsc::Receiver<Request>) {
                 let result = fds.read_value(&path).await;
                 // A dropped receiver means the caller already timed out. Expected, not an error.
                 let _ = reply.send(result);
+            }
+            Request::ReadMany { paths, reply } => {
+                let mut values = Vec::with_capacity(paths.len());
+                for path in &paths {
+                    values.push(fds.read_value(path).await);
+                }
+                let _ = reply.send(Ok(values));
             }
             Request::Write { path, data, reply } => {
                 let result = cc_fs::write(&path, data).await;
@@ -511,6 +582,114 @@ mod tests {
             DeviceIo::Threaded(worker) => worker,
             DeviceIo::Inline(_) => panic!("expected a threaded DeviceIo"),
         }
+    }
+
+    /// Goal: a batch must be positional and per-path, because every caller zips the results back
+    /// against the channels that asked for them. A shifted or collapsed result would silently
+    /// report one channel's value under another channel's name.
+    /// Method: mix readable and missing paths and assert each slot carries its own outcome.
+    #[test]
+    fn a_batch_returns_one_result_per_path_in_order() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let good = dir.path().join("temp1_input");
+            let absent = dir.path().join("temp2_input");
+            let other = dir.path().join("temp3_input");
+            std::fs::write(&good, "41000\n").unwrap();
+            std::fs::write(&other, "52000\n").unwrap();
+
+            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let results = io
+                .read_many(&[good.clone(), absent.clone(), other.clone()])
+                .await;
+
+            assert_eq!(results.len(), 3);
+            assert_eq!(results[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
+            let err = results[1].as_ref().unwrap_err();
+            assert_eq!(
+                err.downcast_ref::<Error>().unwrap().kind(),
+                ErrorKind::NotFound,
+                "a missing path fails only its own slot"
+            );
+            assert_eq!(results[2].as_ref().unwrap().trimmed_str().unwrap(), "52000");
+        });
+    }
+
+    /// Goal: batching is the whole point of `read_many`, so it must cost one message rather than
+    /// one per path. Method: drain the queue after a batch and count what was actually sent.
+    #[test]
+    fn a_batch_costs_one_message_regardless_of_size() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let paths: Vec<PathBuf> = (1..=12)
+                .map(|n| PathBuf::from(format!("/sys/class/hwmon/hwmon0/temp{n}_input")))
+                .collect();
+
+            let results = io.read_many(&paths).await;
+
+            assert_eq!(results.len(), 12, "every path still gets a result");
+            let mut queued = 0;
+            while let Ok(request) = rx.try_recv() {
+                assert!(matches!(request, Request::ReadMany { .. }));
+                queued += 1;
+            }
+            assert_eq!(queued, 1, "12 paths must cost one message, not 12");
+        });
+    }
+
+    /// Goal: when the device does not answer at all, every path in the batch has to fail, or a
+    /// caller zipping results would read a stale slot as a fresh value.
+    #[test]
+    fn a_batch_that_times_out_fails_every_path() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let paths: Vec<PathBuf> = (1..=4)
+                .map(|n| PathBuf::from(format!("/sys/class/hwmon/hwmon0/temp{n}_input")))
+                .collect();
+
+            let results = io.read_many(&paths).await;
+
+            assert_eq!(results.len(), 4);
+            assert!(results.iter().all(Result::is_err), "no slot may look fresh");
+        });
+    }
+
+    /// Goal: an empty batch must not dispatch. A device with no channels of a given kind calls
+    /// this every tick, and a round trip for nothing is exactly the cost batching exists to remove.
+    #[test]
+    fn an_empty_batch_dispatches_nothing() {
+        crate::rt::test_runtime(async {
+            let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            assert!(io.read_many(&[]).await.is_empty());
+            assert!(rx.try_recv().is_err(), "an empty batch must not be sent");
+        });
+    }
+
+    /// Goal: the inline variant must agree with the threaded one, since tests and any device
+    /// without a worker take that path.
+    #[test]
+    fn inline_batches_match_the_threaded_results() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let good = dir.path().join("temp1_input");
+            std::fs::write(&good, "33000\n").unwrap();
+            let absent = dir.path().join("nope_input");
+            let paths = vec![good, absent];
+
+            let inline = DeviceIo::default().read_many(&paths).await;
+            let threaded = DeviceIo::threaded("testdev", TEST_TIMEOUT)
+                .unwrap()
+                .read_many(&paths)
+                .await;
+
+            assert_eq!(inline.len(), threaded.len());
+            assert_eq!(
+                inline[0].as_ref().unwrap().trimmed_str().unwrap(),
+                threaded[0].as_ref().unwrap().trimmed_str().unwrap()
+            );
+            assert!(inline[1].is_err());
+            assert!(threaded[1].is_err());
+        });
     }
 
     /// Goal: thread names must fit the kernel's 15-byte cap, whatever the device is called.

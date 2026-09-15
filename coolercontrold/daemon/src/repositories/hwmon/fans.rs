@@ -244,17 +244,96 @@ pub async fn stream_fan_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> bo
 where
     F: FnMut(ChannelStatus),
 {
+    let channels: Vec<&HwmonChannelInfo> = driver
+        .channels
+        .iter()
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
+        .collect();
+    if channels.is_empty() {
+        return false;
+    }
+    // One hop for the device's whole fan set rather than two per channel. The device permit is
+    // already held across the entire pass, so batching changes nothing about who may interleave.
+    let mut paths: Vec<PathBuf> = Vec::with_capacity(channels.len() * 2);
+    let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(channels.len());
+    for channel in &channels {
+        let pwm = channel.caps.has_pwm().then(|| {
+            paths.push(pwm_path_for(driver, channel));
+            paths.len() - 1
+        });
+        let rpm = channel.caps.has_rpm().then(|| {
+            paths.push(rpm_path_for(driver, channel));
+            paths.len() - 1
+        });
+        slots.push((pwm, rpm));
+    }
+    let mut results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), paths.len());
+    debug_assert_eq!(slots.len(), channels.len());
+
+    let log_error = log_enabled!(log::Level::Debug);
     let mut any_failure = false;
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Fan {
+    for (channel, (pwm_slot, rpm_slot)) in channels.iter().zip(slots) {
+        let fan_duty = match pwm_slot {
+            Some(index) => {
+                let raw = take_result(&mut results, index)
+                    .and_then(check_parsing_8)
+                    .map(pwm_value_to_duty);
+                interpret_pwm_duty(&driver.path, &channel.number, &paths[index], raw, log_error)
+                    .await
+            }
+            None => None,
+        };
+        let fan_rpm = match rpm_slot {
+            Some(index) => {
+                let raw = take_result(&mut results, index).and_then(check_parsing_32);
+                interpret_fan_rpm(&paths[index], raw, log_error)
+            }
+            None => None,
+        };
+        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
+        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+        if expected_pwm_failed || expected_rpm_failed {
+            any_failure = true;
             continue;
         }
-        match read_one_fan_status(driver, channel).await {
-            Some(status) => sink(status),
-            None => any_failure = true,
-        }
+        sink(ChannelStatus {
+            name: channel.name.clone(),
+            rpm: fan_rpm,
+            duty: fan_duty,
+            ..Default::default()
+        });
     }
     any_failure
+}
+
+/// Takes one positional result out of a batch, leaving a placeholder behind. The batch is consumed
+/// exactly once per slot, so the placeholder is never read.
+fn take_result(
+    results: &mut [Result<cc_fs::SysfsValue>],
+    index: usize,
+) -> Result<cc_fs::SysfsValue> {
+    debug_assert!(index < results.len());
+    std::mem::replace(
+        &mut results[index],
+        Err(anyhow!("batched sysfs result already taken")),
+    )
+}
+
+/// Where one channel's pwm value lives.
+fn pwm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+    channel
+        .pwm_path
+        .clone()
+        .unwrap_or_else(|| driver.path.join(format_pwm!(channel.number)))
+}
+
+/// Where one channel's fan-input value lives.
+fn rpm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+    channel
+        .rpm_path
+        .clone()
+        .unwrap_or_else(|| driver.path.join(format_fan_input!(channel.number)))
 }
 
 /// Reads pwm-duty and fan-rpm for one channel and returns the
@@ -463,7 +542,23 @@ async fn get_pwm_duty(
         Some(path) => path,
         None => &base_path.join(format_pwm!(channel_number)),
     };
-    match try_read_pwm_duty(io, pwm_path).await {
+    let result = try_read_pwm_duty(io, pwm_path).await;
+    interpret_pwm_duty(base_path, channel_number, pwm_path, result, log_error).await
+}
+
+/// Turns one raw pwm read into a duty, including the auto-mode carve-out. Shared by the batched
+/// pass and the single-channel path.
+///
+/// The refusal fallback costs a second read, but only on a channel that already failed, so it
+/// stays off the batched happy path.
+async fn interpret_pwm_duty(
+    base_path: &Path,
+    channel_number: &u8,
+    pwm_path: &Path,
+    result: Result<f64>,
+    log_error: bool,
+) -> Option<f64> {
+    match result {
         Ok(duty) => {
             debug!("hwmon read {}: {duty}% duty", pwm_path.display());
             Some(duty)
@@ -503,8 +598,14 @@ pub async fn get_fan_rpm(
         Some(path) => path,
         None => &base_path.join(format_fan_input!(channel_number)),
     };
-    try_read_fan_rpm(io, fan_input_path)
-        .await
+    let result = try_read_fan_rpm(io, fan_input_path).await;
+    interpret_fan_rpm(fan_input_path, result, log_error)
+}
+
+/// Turns one raw fan-input read into an rpm. Shared by the batched pass and the single-channel
+/// path so both log and discard failures identically.
+fn interpret_fan_rpm(fan_input_path: &Path, result: Result<u32>, log_error: bool) -> Option<u32> {
+    result
         .inspect(|rpm| debug!("hwmon read {}: {rpm} RPM", fan_input_path.display()))
         .inspect_err(|err| {
             if log_error {

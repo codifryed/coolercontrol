@@ -101,12 +101,25 @@ pub async fn stream_power_status<F>(driver: &HwmonDriverInfo, mut sink: F) -> bo
 where
     F: FnMut(ChannelStatus),
 {
+    let channels: Vec<&HwmonChannelInfo> = driver
+        .channels
+        .iter()
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power)
+        .collect();
+    if channels.is_empty() {
+        return false;
+    }
+    // One hop for the device's whole power set. In the Power case, channel.name is the sysfs
+    // file name.
+    let paths: Vec<PathBuf> = channels
+        .iter()
+        .map(|channel| driver.path.join(&channel.name))
+        .collect();
+    let results = driver.io.read_many(&paths).await;
+    debug_assert_eq!(results.len(), channels.len());
     let mut any_failure = false;
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Power {
-            continue;
-        }
-        match read_one_power_status(driver, channel).await {
+    for ((channel, path), result) in channels.iter().zip(&paths).zip(results) {
+        match power_status_from(channel, path, result) {
             Some(status) => sink(status),
             None => any_failure = true,
         }
@@ -114,22 +127,14 @@ where
     any_failure
 }
 
-/// Reads the power-input file for one channel and returns the
-/// resulting `ChannelStatus`, or `None` if the read failed.
-/// Pulled out so the preload loop can acquire the device permit
-/// per channel and avoid holding it across the whole device's
-/// power-channel set.
-pub async fn read_one_power_status(
-    driver: &HwmonDriverInfo,
+/// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
+/// single-channel path so both log and discard failures identically.
+fn power_status_from(
     channel: &HwmonChannelInfo,
+    power_path: &Path,
+    result: Result<cc_fs::SysfsValue>,
 ) -> Option<ChannelStatus> {
-    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
-    // In the Power case, channel.name is the real name of the sysfs file.
-    let power_path = driver.path.join(&channel.name);
-    driver
-        .io
-        .read_value(&power_path)
-        .await
+    result
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
         .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path.display()))
@@ -147,6 +152,22 @@ pub async fn read_one_power_status(
             watts: Some(watts),
             ..Default::default()
         })
+}
+
+/// Reads the power-input file for one channel and returns the
+/// resulting `ChannelStatus`, or `None` if the read failed.
+/// Pulled out so the preload loop can acquire the device permit
+/// per channel and avoid holding it across the whole device's
+/// power-channel set.
+pub async fn read_one_power_status(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+) -> Option<ChannelStatus> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
+    // In the Power case, channel.name is the real name of the sysfs file.
+    let power_path = driver.path.join(&channel.name);
+    let result = driver.io.read_value(&power_path).await;
+    power_status_from(channel, &power_path, result)
 }
 
 /// Buffered wrapper over `stream_power_status` for callers that want
