@@ -45,7 +45,7 @@ pub async fn init_fans(
         detect_pwm(base_path, file_name, &mut fan_caps, io).await?;
         detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
     }
-    let mut fans = caps_to_hwmon_fans(base_path, device_name, fan_caps).await?;
+    let mut fans = caps_to_hwmon_fans(base_path, device_name, fan_caps, io).await?;
     fans.sort_by_key(|c| c.number);
     auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name, io).await?;
     trace!(
@@ -135,7 +135,7 @@ async fn detect_pwm(
         .is_err()
         // Retries exhausted, or the failure was never transient. `get_pwm_duty` has the final
         // say: it owns the auto-mode refusal fallback and the warning.
-        && get_pwm_duty(io, base_path, &channel_number, Some(&pwm_path), true)
+        && get_pwm_duty(io, base_path, &channel_number, Some(&pwm_path), None, true)
             .await
             .is_none()
     {
@@ -192,10 +192,11 @@ async fn caps_to_hwmon_fans(
     base_path: &Path,
     device_name: &str,
     fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+    io: &DeviceIo,
 ) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     for (channel_number, fan_cap) in fan_caps {
-        let pwm_enable_at_init = current_pwm_enable(base_path, channel_number).await;
+        let pwm_enable_at_init = current_pwm_enable(io, base_path, channel_number, None).await;
         let pwm_enable_default = adjusted_pwm_default(pwm_enable_at_init, device_name);
         let channel_name = get_fan_channel_name(channel_number);
         let label = get_fan_channel_label(base_path, &channel_number).await;
@@ -310,9 +311,11 @@ pub async fn read_fan_statuses(
                     .and_then(check_parsing_8)
                     .map(pwm_value_to_duty);
                 interpret_pwm_duty(
+                    &driver.io,
                     &driver.path,
                     &channel.number,
                     &pwm_path_for(driver, channel),
+                    channel.read_slot.pwm_enable,
                     raw,
                     log_error,
                 )
@@ -383,6 +386,7 @@ pub async fn read_one_fan_status(
             &driver.path,
             &channel.number,
             channel.pwm_path.as_deref(),
+            channel.read_slot.pwm_enable,
             log_enabled!(log::Level::Debug),
         )
         .await
@@ -496,6 +500,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                                 &driver.path,
                                 &channel.number,
                                 channel.pwm_path.as_deref(),
+                                channel.read_slot.pwm_enable,
                                 false,
                             )
                             .await
@@ -576,6 +581,7 @@ async fn get_pwm_duty(
     base_path: &Path,
     channel_number: &u8,
     pwm_path: Option<&Path>,
+    enable_slot: Option<ReadIndex>,
     log_error: bool,
 ) -> Option<f64> {
     let pwm_path = match pwm_path {
@@ -583,7 +589,16 @@ async fn get_pwm_duty(
         None => &base_path.join(format_pwm!(channel_number)),
     };
     let result = try_read_pwm_duty(io, pwm_path).await;
-    interpret_pwm_duty(base_path, channel_number, pwm_path, result, log_error).await
+    interpret_pwm_duty(
+        io,
+        base_path,
+        channel_number,
+        pwm_path,
+        enable_slot,
+        result,
+        log_error,
+    )
+    .await
 }
 
 /// Turns one raw pwm read into a duty, including the auto-mode carve-out. Shared by the batched
@@ -592,9 +607,11 @@ async fn get_pwm_duty(
 /// The refusal fallback costs a second read, but only on a channel that already failed, so it
 /// stays off the batched happy path.
 async fn interpret_pwm_duty(
+    io: &DeviceIo,
     base_path: &Path,
     channel_number: &u8,
     pwm_path: &Path,
+    enable_slot: Option<ReadIndex>,
     result: Result<f64>,
     log_error: bool,
 ) -> Option<f64> {
@@ -605,7 +622,9 @@ async fn interpret_pwm_duty(
         }
         Err(err) => {
             if is_kernel_refusal(&err) {
-                if let Some(pwm_enable) = current_pwm_enable(base_path, *channel_number).await {
+                if let Some(pwm_enable) =
+                    current_pwm_enable(io, base_path, *channel_number, enable_slot).await
+                {
                     if pwm_enable >= PWM_ENABLE_AUTO_VALUE {
                         debug!(
                             "pwmX read refused by kernel driver in auto mode \
@@ -669,9 +688,15 @@ fn interpret_fan_rpm(fan_input_path: &Path, result: Result<u32>, log_error: bool
 ///  - 5 : "Smart Fan IV" mode (modern `MoBo`'s with build-in smart fan control probably use this)
 /// Reads `pwmN_enable`. `None` when the driver exposes no such file, which
 /// means there is no auto mode to hand control back to.
-async fn current_pwm_enable(base_path: &Path, channel_number: u8) -> Option<u8> {
+async fn current_pwm_enable(
+    io: &DeviceIo,
+    base_path: &Path,
+    channel_number: u8,
+    slot: Option<ReadIndex>,
+) -> Option<u8> {
     let pwm_enable_path = base_path.join(format_pwm_enable!(channel_number));
-    let current_pwm_enable = cc_fs::read_sysfs_value(&pwm_enable_path)
+    let current_pwm_enable = io
+        .read_one(slot, &pwm_enable_path)
         .await
         .and_then(check_parsing_8)
         .ok();
@@ -1449,8 +1474,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, true).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                true,
+            )
+            .await;
 
             // then:
             teardown(&ctx).await;
@@ -1468,8 +1500,15 @@ mod tests {
             // given: no pwm1 file exists
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then:
             teardown(&ctx).await;
@@ -1490,8 +1529,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then:
             teardown(&ctx).await;
@@ -1557,8 +1603,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then: normal read succeeds, no fallback needed
             teardown(&ctx).await;
@@ -1579,8 +1632,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then: ENOENT is not a kernel refusal — must return None
             teardown(&ctx).await;
@@ -1597,8 +1657,15 @@ mod tests {
             // given: no pwm1 file, no pwm1_enable file
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then:
             teardown(&ctx).await;
@@ -1622,8 +1689,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then: parse error has no raw_os_error — must return None
             teardown(&ctx).await;
@@ -1646,8 +1720,15 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result =
-                get_pwm_duty(&DeviceIo::default(), &ctx.test_base_path, &1, None, false).await;
+            let result = get_pwm_duty(
+                &DeviceIo::default(),
+                &ctx.test_base_path,
+                &1,
+                None,
+                None,
+                false,
+            )
+            .await;
 
             // then: parse error + manual mode = no fallback
             teardown(&ctx).await;

@@ -236,6 +236,9 @@ pub struct HwmonChannelInfo {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelReadSlots {
     pub pwm: Option<ReadIndex>,
+    /// Read only when a driver refuses its `pwmN` in auto mode, but every tick on the drivers
+    /// that always do, so it is registered like any other per-tick attribute.
+    pub pwm_enable: Option<ReadIndex>,
     pub rpm: Option<ReadIndex>,
     /// Temp, power, freq, powercap or load: the channel's single value file.
     pub value: Option<ReadIndex>,
@@ -318,6 +321,8 @@ pub async fn install_read_registry(
                         .clone()
                         .unwrap_or_else(|| base_path.join(format!("pwm{}", channel.number)));
                     channel.read_slot.pwm = slot(&mut paths, path);
+                    let enable_path = base_path.join(format!("pwm{}_enable", channel.number));
+                    channel.read_slot.pwm_enable = slot(&mut paths, enable_path);
                 }
                 if channel.caps.has_rpm() {
                     let path = channel
@@ -2815,6 +2820,12 @@ mod preload_tests {
                     .expect("slot is registered")
             };
             assert_eq!(slot_path(channels[0].read_slot.pwm), base.join("pwm1"));
+            // Read only on the auto-mode refusal fallback, but every tick on the drivers that
+            // always refuse, so it is registered rather than read straight off the main runtime.
+            assert_eq!(
+                slot_path(channels[0].read_slot.pwm_enable),
+                base.join("pwm1_enable")
+            );
             assert_eq!(
                 slot_path(channels[0].read_slot.rpm),
                 base.join("fan1_input")
