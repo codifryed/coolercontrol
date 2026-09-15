@@ -2574,6 +2574,8 @@ mod preload_tests {
     use uuid::Uuid;
 
     const TEST_TYPE_INDEX: TypeIndex = 1;
+    /// A second registered device, for tests that must keep two devices genuinely apart.
+    const TEST_TYPE_INDEX_B: TypeIndex = 2;
 
     struct PreloadContext {
         test_base_path: PathBuf,
@@ -2602,11 +2604,13 @@ mod preload_tests {
         // Per-device-map invariant: one entry per registered
         // type_index across device_permits, preload_in_flight, and
         // delay_logged.
-        repo.device_permits
-            .insert(TEST_TYPE_INDEX, Rc::new(Semaphore::new(1)));
-        repo.preload_in_flight
-            .insert(TEST_TYPE_INDEX, Rc::new(Cell::new(false)));
-        repo.delay_logged.insert(TEST_TYPE_INDEX, Cell::new(0));
+        for type_index in [TEST_TYPE_INDEX, TEST_TYPE_INDEX_B] {
+            repo.device_permits
+                .insert(type_index, Rc::new(Semaphore::new(1)));
+            repo.preload_in_flight
+                .insert(type_index, Rc::new(Cell::new(false)));
+            repo.delay_logged.insert(type_index, Cell::new(0));
+        }
         repo
     }
 
@@ -2665,12 +2669,13 @@ mod preload_tests {
     }
 
     /// Goal: the reason this whole mechanism exists. A device that stops answering must not stop
-    /// the daemon, must leave the per-tick rotation rather than costing a timeout every tick, and
-    /// must not hold up a healthy device sharing the same repo.
+    /// the daemon: it must leave the per-tick rotation rather than costing a timeout every tick,
+    /// its channels must go stale and fall to the failsafe on the usual schedule, and a healthy
+    /// device sharing the repo must be untouched by any of it.
     ///
-    /// Method: give one device a worker nobody drains and a second device ordinary inline IO,
-    /// preload both until the wedged one crosses the unreachable threshold, then assert the wedged
-    /// device is skipped cheaply while the healthy one keeps producing fresh readings.
+    /// Method: give one device a worker nobody drains and a second device ordinary inline IO, on
+    /// two separate type indexes so neither can borrow the other's state. Preload the wedged one
+    /// past both thresholds, then assert all four properties.
     #[test]
     #[serial]
     fn a_wedged_device_does_not_stop_a_healthy_one() {
@@ -2691,18 +2696,28 @@ mod preload_tests {
             let healthy = driver_with_channels(base, channels);
 
             let repo = new_test_repo();
-            repo.device_permits
-                .get(&TEST_TYPE_INDEX)
-                .expect("test device permit exists");
-            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+            // Seeded as if both had preloaded once at init, so their channels have failsafe state
+            // to go stale from. Without this there is nothing for staleness to tick.
+            let seed = ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                ..Default::default()
+            };
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[seed.clone()], &[]);
+            seed_failsafe(&repo, TEST_TYPE_INDEX_B, &[seed], &[]);
 
-            // when: the wedged device is polled past its threshold.
+            // when: the wedged device is polled past the unreachable threshold, and then past the
+            // failsafe's staleness threshold while it stays unreachable.
             for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
                 repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
             }
-
-            // then: it is out of the rotation, and skipping it is cheap.
             assert!(wedged.io.is_unreachable());
+            for _ in 0..=MISSING_STATUS_THRESHOLD {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            }
+
+            // then: skipping it is cheap, so it costs nothing per tick.
             let started = Instant::now();
             repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
             assert!(
@@ -2711,18 +2726,42 @@ mod preload_tests {
                 started.elapsed()
             );
 
+            // and: leaving the rotation did not stop its channels going stale and failsafing.
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map
+                    .get(&TEST_TYPE_INDEX)
+                    .expect("the wedged device has failsafe state");
+                let fan1 = &fsd.channel_state["fan1"];
+                assert!(
+                    (fan1.stale_ticks as usize) > MISSING_STATUS_THRESHOLD,
+                    "staleness must keep ticking while the device is unreachable"
+                );
+                assert!(fan1.is_failsafed, "the failsafe must take the channel over");
+                assert!(fsd.was_failsafing);
+            }
+
             // and: a healthy device on the same repo is unaffected.
             assert!(healthy.io.is_unreachable().not());
-            repo.preload_device_statuses(TEST_TYPE_INDEX, &healthy)
+            repo.preload_device_statuses(TEST_TYPE_INDEX_B, &healthy)
                 .await;
             {
                 let preloaded = repo.preloaded_statuses.borrow();
                 let (channels, _) = preloaded
-                    .get(&TEST_TYPE_INDEX)
+                    .get(&TEST_TYPE_INDEX_B)
                     .expect("healthy device produced a status");
                 assert_eq!(channels.len(), 1);
                 assert_eq!(channels[0].name, "fan1");
                 assert_eq!(channels[0].rpm, Some(1200));
+            }
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map.get(&TEST_TYPE_INDEX_B).unwrap();
+                assert_eq!(
+                    fsd.channel_state["fan1"].stale_ticks, 0,
+                    "the healthy device must not inherit the wedged one's staleness"
+                );
+                assert!(fsd.channel_state["fan1"].is_failsafed.not());
             }
             teardown(&ctx).await;
         });
