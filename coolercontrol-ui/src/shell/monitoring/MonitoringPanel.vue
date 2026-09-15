@@ -171,7 +171,15 @@ const liveValue = (sensor: MonitoringSensor): string => {
     return ''
 }
 
-const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
+const isDeviceUnreachable = (deviceUID: UID): boolean =>
+    settingsStore.healthUnreachable.some((ref) => ref.device_uid === deviceUID)
+
+// An unreachable device's channels also failsafe, so the device state is reported instead: it is
+// the cause, and "not responding" is what the user can act on.
+const healthTooltip = (deviceUID: UID, channelName?: string): string => {
+    if (isDeviceUnreachable(deviceUID)) {
+        return `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
+    }
     const ref = settingsStore.healthFailsafe.find(
         (entry) =>
             entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
@@ -181,6 +189,7 @@ const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
 }
 
 const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
+    isDeviceUnreachable(deviceUID) ||
     settingsStore.healthFailsafe.some(
         (ref) => ref.device_uid === deviceUID && ref.name === channelName,
     )
@@ -786,7 +795,7 @@ const isRouteActive = useRouteActive()
                             />
                             <UiTooltip
                                 v-if="isUnhealthy(sensor.deviceUID, sensor.channelName)"
-                                :text="failsafeTooltip(sensor.deviceUID, sensor.channelName)"
+                                :text="healthTooltip(sensor.deviceUID, sensor.channelName)"
                             >
                                 <svg-icon
                                     type="mdi"

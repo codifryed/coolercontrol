@@ -32,6 +32,7 @@ import {
     HealthEntityType,
     type SourceRef,
     failsafeKey,
+    unreachableKey,
     sourceKey,
     sourceTempDisplayName,
 } from '@/models/DeviceHealth.ts'
@@ -184,7 +185,22 @@ const failsafeDetail = (ref: FailsafeRef): string =>
 const healthRows = computed((): Array<HealthRow> => {
     const rows: Array<HealthRow> = []
     const failsafedCustomSensors = new Set<string>()
+    // A device that stopped answering fails every one of its channels over, so one row for the
+    // device says what all of them would, and links to the device rather than to a channel that
+    // cannot be driven either way.
+    const unreachableDevices = new Set<string>()
+    for (const ref of settingsStore.healthUnreachable) {
+        unreachableDevices.add(ref.device_uid)
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
+        rows.push({
+            key: `unreachable/${unreachableKey(ref)}`,
+            label: deviceSettings?.name ?? ref.device_name,
+            detail: `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
+            to: { name: 'devices-device', params: { deviceUID: ref.device_uid } },
+        })
+    }
     for (const ref of settingsStore.healthFailsafe) {
+        if (unreachableDevices.has(ref.device_uid)) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
         const channelName = deviceSettings?.sensorsAndChannels.get(ref.name)?.name ?? ref.name
         if (customSensorsDeviceUID.value === ref.device_uid) {

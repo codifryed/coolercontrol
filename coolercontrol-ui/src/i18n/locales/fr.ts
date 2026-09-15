@@ -661,6 +661,9 @@ export default {
             findingDetectionUnsupported:
                 "La détection matérielle n'est pas prise en charge sur cette architecture.",
             failsafeActive: 'Valeurs de secours utilisées',
+            deviceUnreachable: 'Le périphérique ne répond pas',
+            deviceUnreachableDetail:
+                'Le pilote ne répond plus, ce périphérique ne peut donc être ni lu ni contrôlé. Nouvelle tentative périodique.',
             missingTempSource: 'Source de température manquante',
             staleTempSource: 'La source de température utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',

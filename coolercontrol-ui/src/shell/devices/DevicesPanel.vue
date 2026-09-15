@@ -8,6 +8,7 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
     mdiAlert,
+    mdiLanDisconnect,
     mdiDragVertical,
     mdiLightbulbOutline,
     mdiPinOff,
@@ -107,16 +108,25 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
+const isDeviceUnreachable = (deviceUID: UID): boolean =>
+    settingsStore.healthUnreachable.some((ref) => ref.device_uid === deviceUID)
+
 const isDeviceUnhealthy = (device: Device): boolean =>
     device.type !== DeviceType.CUSTOM_SENSORS &&
-    settingsStore.healthFailsafe.some((ref) => ref.device_uid === device.uid)
+    (isDeviceUnreachable(device.uid) ||
+        settingsStore.healthFailsafe.some((ref) => ref.device_uid === device.uid))
 
 const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
     settingsStore.healthFailsafe.some(
         (ref) => ref.device_uid === deviceUID && ref.name === channelName,
     )
 
-const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
+// An unreachable device's channels also failsafe, so the device state is reported instead: it is
+// the cause, and "not responding" is what the user can act on.
+const healthTooltip = (deviceUID: UID, channelName?: string): string => {
+    if (isDeviceUnreachable(deviceUID)) {
+        return `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
+    }
     const ref = settingsStore.healthFailsafe.find(
         (entry) =>
             entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
@@ -211,11 +221,13 @@ const isRouteActive = useRouteActive()
                         </span>
                         <UiTooltip
                             v-if="isDeviceUnhealthy(device)"
-                            :text="failsafeTooltip(device.uid)"
+                            :text="healthTooltip(device.uid)"
                         >
                             <svg-icon
                                 type="mdi"
-                                :path="mdiAlert"
+                                :path="
+                                    isDeviceUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert
+                                "
                                 :size="14"
                                 class="shrink-0 text-error"
                             />
@@ -295,7 +307,7 @@ const isRouteActive = useRouteActive()
                                 </span>
                                 <UiTooltip
                                     v-if="isChannelUnhealthy(device.uid, sensorName)"
-                                    :text="failsafeTooltip(device.uid, sensorName)"
+                                    :text="healthTooltip(device.uid, sensorName)"
                                 >
                                     <svg-icon
                                         type="mdi"

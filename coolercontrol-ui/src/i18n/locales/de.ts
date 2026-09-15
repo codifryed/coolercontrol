@@ -657,6 +657,9 @@ export default {
             findingDetectionUnsupported:
                 'Die Hardware-Erkennung wird auf dieser Architektur nicht unterstützt.',
             failsafeActive: 'Failsafe-Werte in Verwendung',
+            deviceUnreachable: 'Gerät antwortet nicht',
+            deviceUnreachableDetail:
+                'Der Treiber antwortet nicht mehr, daher kann dieses Gerät weder ausgelesen noch gesteuert werden. Es wird regelmäßig erneut versucht.',
             missingTempSource: 'Fehlende Temperaturquelle',
             staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',

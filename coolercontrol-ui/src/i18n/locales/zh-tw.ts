@@ -611,6 +611,8 @@ export default {
             findingBlockedByNoDevPort: '/dev/port 無法使用，硬體偵測無法執行。',
             findingDetectionUnsupported: '此架構不支援硬體偵測。',
             failsafeActive: '正在使用故障保護值',
+            deviceUnreachable: '裝置無回應',
+            deviceUnreachableDetail: '驅動程式已停止回應，因此無法讀取或控制此裝置。正在定期重試。',
             missingTempSource: '缺少溫度來源',
             staleTempSource: '溫度來源正在使用故障保護值',
             stressTest: '熱壓力測試',

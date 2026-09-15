@@ -631,6 +631,9 @@ export default {
             findingBlockedByNoDevPort: 'تعذّر تشغيل اكتشاف الأجهزة لأن ‎/dev/port غير متاح.',
             findingDetectionUnsupported: 'اكتشاف الأجهزة غير مدعوم على هذه البنية.',
             failsafeActive: 'قيم الأمان قيد الاستخدام',
+            deviceUnreachable: 'الجهاز لا يستجيب',
+            deviceUnreachableDetail:
+                'توقف المشغّل عن الاستجابة، لذا لا يمكن قراءة هذا الجهاز أو التحكم فيه. تجري إعادة المحاولة دوريًا.',
             missingTempSource: 'مصدر درجة الحرارة مفقود',
             staleTempSource: 'مصدر درجة الحرارة يستخدم قيم الأمان',
             stressTest: 'اختبارات الإجهاد الحراري',

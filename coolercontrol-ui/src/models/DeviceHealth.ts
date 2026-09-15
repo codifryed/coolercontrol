@@ -110,6 +110,22 @@ export class SourceRef {
 }
 
 /**
+ * A device whose driver has stopped answering, so the daemon can neither read from it nor write
+ * to it.
+ *
+ * Deliberately distinct from FailsafeRef. Failsafe means the device is alive, its readings are
+ * stale, and safe values are being substituted. Unreachable means the device is not answering at
+ * all, so no value can be written to it. Showing the second as the first would tell the user
+ * their fans are on a safe curve when in fact no curve can be applied.
+ */
+export class UnreachableRef {
+    device_uid: UID = ''
+    device_name: string = ''
+    /** Consecutive operations that timed out before the daemon gave up on the device. */
+    consecutive_timeouts: number = 0
+}
+
+/**
  * A present channel/temp currently serving failsafe values.
  */
 export class FailsafeRef {
@@ -129,6 +145,10 @@ export class FailsafeDelta extends FailsafeRef {
     state: HealthState = HealthState.Detected
 }
 
+export class UnreachableDelta extends UnreachableRef {
+    state: HealthState = HealthState.Detected
+}
+
 /**
  * Full snapshot from GET /devices/health.
  *
@@ -141,6 +161,8 @@ export class FailsafeDelta extends FailsafeRef {
 export class DeviceHealthDTO {
     @Type(() => FailsafeRef)
     failsafe: Array<FailsafeRef> = []
+    @Type(() => UnreachableRef)
+    unreachable: Array<UnreachableRef> = []
     @Type(() => SourceRef)
     missing: Array<SourceRef> = []
     @Type(() => SourceRef)
@@ -231,4 +253,8 @@ export function sourceKey(ref: SourceRef): string {
 
 export function failsafeKey(ref: FailsafeRef): string {
     return `${ref.device_uid}/${ref.kind}/${ref.name}`
+}
+
+export function unreachableKey(ref: UnreachableRef): string {
+    return ref.device_uid
 }

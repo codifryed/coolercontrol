@@ -75,9 +75,22 @@ const issues = computed((): Array<string> => {
     const lines: Array<string> = []
     const subject = failsafeSubject.value
     if (subject != null) {
-        const failsafeRef = settingsStore.healthFailsafe.find(
-            (ref) => ref.device_uid === subject.deviceUid && ref.name === subject.channelName,
+        // The device not answering is the cause of its channels' failsafe, so it is reported in
+        // their place: it is what the user can act on, and it says why a setting here has no
+        // effect right now.
+        const unreachable = settingsStore.healthUnreachable.some(
+            (ref) => ref.device_uid === subject.deviceUid,
         )
+        if (unreachable) {
+            lines.push(
+                `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
+            )
+        }
+        const failsafeRef = unreachable
+            ? undefined
+            : settingsStore.healthFailsafe.find(
+                  (ref) => ref.device_uid === subject.deviceUid && ref.name === subject.channelName,
+              )
         if (failsafeRef != null) {
             lines.push(
                 failsafeRef.reason
