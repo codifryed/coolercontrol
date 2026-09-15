@@ -963,7 +963,11 @@ onMounted(async () => {
                             {{ t('layout.shell.coolingPage.fullChart') }}
                         </RouterLink>
                     </div>
-                    <TimeChart :key="chartKey" :dashboard="singleDashboard" />
+                    <TimeChart
+                        :key="chartKey"
+                        :dashboard="singleDashboard"
+                        @line-set-changed="chartKey = uuidV4()"
+                    />
                 </div>
             </ScrollAreaViewport>
             <ScrollAreaScrollbar
