@@ -439,13 +439,17 @@ mod tests {
                 .expect("read current signal mask");
 
             block_termination_signals();
-            let mut waiting = pin!(shutdown_signal());
-            let state = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
+            // Scoped, not dropped: `Pin<&mut F>` does not implement `Drop`, so `drop` on the pin
+            // released nothing and the future outlived the mask restore it has to precede.
+            let (state, masked) = {
+                let mut waiting = pin!(shutdown_signal());
+                let state = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
 
-            let mut masked = SigSet::empty();
-            pthread_sigmask(SigmaskHow::SIG_SETMASK, None, Some(&mut masked))
-                .expect("read signal mask after the first poll");
-            drop(waiting);
+                let mut masked = SigSet::empty();
+                pthread_sigmask(SigmaskHow::SIG_SETMASK, None, Some(&mut masked))
+                    .expect("read signal mask after the first poll");
+                (state, masked)
+            };
             pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&original), None)
                 .expect("restore original signal mask");
 
