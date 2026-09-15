@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{info, trace};
 use regex::Regex;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
@@ -29,7 +30,7 @@ pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonC
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if !sensor_is_usable(base_path, &channel_number, io).await {
+            if sensor_is_usable(base_path, &channel_number, io).await.not() {
                 continue;
             }
             let channel_name = get_freq_channel_name(channel_number);
