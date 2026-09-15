@@ -10,21 +10,26 @@
 //! 3. the label the driver reports
 //! 4. the raw channel name
 //!
-//! This controller owns the top two layers. They are applied at different points and cannot be
-//! collapsed into one call: an override can change while the daemon runs, so it is applied per
-//! request at the DTO boundary, while the lm-sensors layer is fixed at startup and is folded into
-//! the label a repository detects. Baking an override in at detection time would leave a stale
-//! name behind when the user later clears it.
+//! This controller owns the top two layers and answers the whole chain. The layers are applied
+//! at different points and cannot be collapsed into one: an override can change while the daemon
+//! runs, so it is applied per request at the DTO boundary, while the lm-sensors layer is fixed at
+//! startup and is folded into the label a repository detects. Baking an override in at detection
+//! time would leave a stale name behind when the user later clears it.
+//!
+//! Resolution needs the detected labels, which only exist once devices have been detected, so the
+//! device map is bound after the fact by [`OverridesController::set_device_context`]. Log lines
+//! resolve through the same chain as the DTO boundary, in the form `Resolved (raw)`, keeping the
+//! raw name a log line can be grepped by.
 //!
 //! The overrides file is hand-editable; edits are read only at startup. Entries are pruned only on
 //! deliberate entity deletion, never on hardware absence.
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::cell::{Cell, OnceCell, RefCell};
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use anyhow::{anyhow, Context, Result};
 use log::{info, warn};
@@ -34,10 +39,13 @@ use toml_edit::{DocumentMut, Item, Value};
 
 use crate::api::{is_forbidden_name_char, validate_name_string};
 use crate::cc_fs;
+use crate::config::Config;
 use crate::device::{ChannelName, DeviceName, DeviceUID};
 use crate::paths;
 use crate::repositories::hwmon::chip_name::ChipName;
+use crate::repositories::repository::DeviceLock;
 use crate::sensors_conf::SensorsConf;
+use crate::AllDevices;
 
 const BANNER: &str = "\
 # CoolerControl display-name overrides.
@@ -60,6 +68,22 @@ pub struct OverridesController {
     /// renames, the custom sensor delete cascade) and a cycle spans await
     /// points, so unserialized writes could interleave and lose one.
     write_lock: tokio::sync::Mutex<()>,
+    /// The layers below lm-sensors, late-bound. See [`Self::set_device_context`].
+    devices: OnceCell<DeviceContext>,
+}
+
+/// The detected layers of the chain, which only exist once devices have been detected.
+struct DeviceContext {
+    /// Carries the labels the drivers report, layer 3.
+    ///
+    /// Weak on purpose, and it must stay weak: a device owns its status augmenter, the
+    /// calibration augmenter owns the calibration store, and the store resolves names through
+    /// this controller. A strong reference here closes that loop and no device would ever drop.
+    /// `main` holds the map for the life of the process, so the upgrade always succeeds.
+    all_devices: Weak<HashMap<DeviceUID, DeviceLock>>,
+    /// The config device list, which is never pruned and so still names hardware that is no
+    /// longer present. Without it an absent device resolves to nothing but its UID.
+    config: Rc<Config>,
 }
 
 impl OverridesController {
@@ -93,6 +117,7 @@ impl OverridesController {
                     sensors_conf: Rc::new(SensorsConf::default()),
                     document: RefCell::new(document),
                     write_lock: tokio::sync::Mutex::new(()),
+                    devices: OnceCell::new(),
                 };
             }
         }
@@ -122,6 +147,7 @@ impl OverridesController {
             sensors_conf: Rc::new(SensorsConf::default()),
             document: RefCell::new(document),
             write_lock: tokio::sync::Mutex::new(()),
+            devices: OnceCell::new(),
         }
     }
 
@@ -142,6 +168,7 @@ impl OverridesController {
             sensors_conf: Rc::new(SensorsConf::default()),
             document: RefCell::new(OverridesDocument::default()),
             write_lock: tokio::sync::Mutex::new(()),
+            devices: OnceCell::new(),
         }
     }
 
@@ -198,8 +225,56 @@ impl OverridesController {
             .and_then(|channel| channel.label.clone())
     }
 
-    /// Resolves a device display name. Layer order: override > detected > raw.
-    pub fn resolve_device_name(
+    /// Binds the detected layers, which cannot be constructor arguments: the repositories
+    /// consume this controller to build the labels the device map holds, so the map does not
+    /// exist yet. Called once at startup, right after the map is created. Until then, and in
+    /// tests, resolution simply skips the layers it cannot see.
+    pub fn set_device_context(&self, all_devices: &AllDevices, config: Rc<Config>) {
+        let bound = self.devices.set(DeviceContext {
+            all_devices: Rc::downgrade(all_devices),
+            config,
+        });
+        debug_assert!(bound.is_ok(), "device context must be bound exactly once");
+    }
+
+    /// The label the driver reports for a channel, layer 3. `None` when the device is absent or
+    /// reports no label for it.
+    fn detected_channel_label(&self, device_uid: &DeviceUID, channel_name: &str) -> Option<String> {
+        self.devices
+            .get()?
+            .all_devices
+            .upgrade()?
+            .get(device_uid)?
+            .borrow()
+            .info
+            .detected_channel_label(channel_name)
+    }
+
+    /// The device's detected name: the live device first, then the config device list, which is
+    /// never pruned and so still names hardware that is no longer detected.
+    fn detected_device_name(&self, device_uid: &DeviceUID) -> Option<DeviceName> {
+        let context = self.devices.get()?;
+        if let Some(device) = context
+            .all_devices
+            .upgrade()
+            .and_then(|all| all.get(device_uid).cloned())
+        {
+            return Some(device.borrow().name.clone());
+        }
+        context.config.device_name(device_uid)
+    }
+
+    /// The chain's answer for a device, or `None` when no layer names it: not overridden, not
+    /// detected, and absent from the config device list. Callers that must render something
+    /// either way want [`Self::log_device_name`] instead.
+    pub fn known_device_name(&self, device_uid: &DeviceUID) -> Option<DeviceName> {
+        self.device_name_override(device_uid)
+            .or_else(|| self.detected_device_name(device_uid))
+    }
+
+    /// The whole chain for a device, highest layer first. `detected` is the caller's own answer
+    /// for layer 3, which callers holding the device pass to save a map lookup.
+    fn chain_device_name(
         &self,
         device_uid: &DeviceUID,
         detected: Option<&str>,
@@ -207,36 +282,75 @@ impl OverridesController {
     ) -> DeviceName {
         self.device_name_override(device_uid)
             .or_else(|| detected.map(str::to_owned))
+            .or_else(|| self.detected_device_name(device_uid))
             .unwrap_or_else(|| raw_name.to_owned())
     }
 
+    /// The whole chain for a channel, highest layer first. The lm-sensors layer sits inside
+    /// `detected`: a repository folds it into the label it reports at detection time.
+    fn chain_channel_label(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+        detected: Option<String>,
+    ) -> String {
+        self.channel_label_override(device_uid, channel_name)
+            .or(detected)
+            .or_else(|| self.detected_channel_label(device_uid, channel_name))
+            .unwrap_or_else(|| channel_name.to_owned())
+    }
+
+    /// Resolves a device display name. Layer order: override > detected > raw.
+    pub fn resolve_device_name(
+        &self,
+        device_uid: &DeviceUID,
+        detected: Option<&str>,
+        raw_name: &str,
+    ) -> DeviceName {
+        self.chain_device_name(device_uid, detected, raw_name)
+    }
+
     /// Channel display label: override > detected > raw. Plain, not the
-    /// `Override (raw)` log form, and sanitized because it reaches log lines.
+    /// `Resolved (raw)` log form, and sanitized because it reaches log lines.
     pub fn resolve_channel_label(
         &self,
         device_uid: &DeviceUID,
         channel_name: &str,
         detected: Option<String>,
     ) -> String {
-        let label = self
-            .channel_label_override(device_uid, channel_name)
-            .or(detected)
-            .unwrap_or_else(|| channel_name.to_owned());
+        let label = self.chain_channel_label(device_uid, channel_name, detected);
         sanitize_for_log(&label).into_owned()
     }
 
-    /// Log display form of a device name: `Override (raw)` when a user
-    /// override exists and differs, plain raw otherwise.
+    /// Log display form of a device name: `Resolved (raw)` when the chain answers something
+    /// other than the raw name, plain raw otherwise.
     pub fn log_device_name(&self, device_uid: &DeviceUID, raw_name: &str) -> String {
-        format_log_name(self.device_name_override(device_uid), raw_name)
+        format_log_name(
+            Some(self.chain_device_name(device_uid, None, raw_name)),
+            raw_name,
+        )
     }
 
-    /// Log display form of a channel name: `Override (raw)` when a user
-    /// override exists and differs, plain raw otherwise.
+    /// Log display form of a channel name: `Resolved (raw)` when the chain answers something
+    /// other than the raw channel key, plain raw otherwise. The raw key is kept so a log line
+    /// still names the channel the way the config files and sysfs do.
     pub fn log_channel_name(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
         format_log_name(
-            self.channel_label_override(device_uid, channel_name),
+            Some(self.chain_channel_label(device_uid, channel_name, None)),
             channel_name,
+        )
+    }
+
+    /// Log display form of a device and channel pair: `Device (raw) | Channel (raw)`. The one
+    /// call sites use when they hold nothing but the pair of identifiers.
+    pub fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
+        let raw_device_name = self
+            .detected_device_name(device_uid)
+            .unwrap_or_else(|| unnamed_device(device_uid));
+        format!(
+            "{} | {}",
+            self.log_device_name(device_uid, &raw_device_name),
+            self.log_channel_name(device_uid, channel_name)
         )
     }
 
@@ -439,12 +553,23 @@ pub fn validate(contents: &str) -> Result<()> {
 /// One place owns the log format so it cannot drift per call site. Names are
 /// sanitized here because hand-edited overrides bypass intake validation, so
 /// the log boundary re-applies the injection-character policy.
-fn format_log_name(override_name: Option<String>, raw_name: &str) -> String {
+fn format_log_name(resolved_name: Option<String>, raw_name: &str) -> String {
     let raw = sanitize_for_log(raw_name);
-    match override_name {
+    match resolved_name {
         Some(name) if name != raw_name => format!("{} ({raw})", sanitize_for_log(&name)),
         _ => raw.into_owned(),
     }
+}
+
+/// UID characters kept when nothing names a device. Enough to stay unique in practice and to
+/// grep the config files with, without pasting a 64 character hash into a log line.
+const UNNAMED_DEVICE_UID_CHARS: usize = 12;
+
+/// Stands in for a device no layer can name: not detected, and absent from the config device
+/// list. Rare, and the full UID is not worth a log line when it happens.
+fn unnamed_device(device_uid: &DeviceUID) -> String {
+    let short: String = device_uid.chars().take(UNNAMED_DEVICE_UID_CHARS).collect();
+    format!("unknown device ({short})")
 }
 
 /// Drops injection-capable characters from a name destined for a log line.
@@ -793,6 +918,138 @@ mod tests {
             assert_eq!(
                 controller.resolve_device_name(&uid, Some("detected"), "raw"),
                 "Motherboard"
+            );
+        });
+    }
+
+    /// A one-device map plus the config device list, the two layers bound after detection.
+    fn device_context(
+        name: &str,
+        channels: &[(&str, Option<&str>)],
+    ) -> (DeviceUID, AllDevices, Rc<Config>) {
+        let mut info = crate::device::DeviceInfo::default();
+        for (channel_name, label) in channels {
+            info.channels.insert(
+                (*channel_name).to_string(),
+                crate::device::ChannelInfo {
+                    label: label.map(ToString::to_string),
+                    ..Default::default()
+                },
+            );
+        }
+        let device = Rc::new(RefCell::new(crate::device::Device::new(
+            name.to_string(),
+            crate::device::DeviceType::Hwmon,
+            0,
+            None,
+            info,
+            None,
+            1.0,
+        )));
+        let uid = device.borrow().uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(uid.clone(), device)]));
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+        (uid, all_devices, config)
+    }
+
+    #[test]
+    fn channel_log_name_falls_back_to_the_driver_label() {
+        // Goal: a log line names a channel the driver labelled, without the user having to
+        // rename it first. The raw key is kept so the line still maps to sysfs.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (uid, all_devices, config) =
+                device_context("nct6798", &[("fan1", Some("CPU Fan")), ("fan2", None)]);
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            controller.set_device_context(&all_devices, config);
+
+            assert_eq!(controller.log_channel_name(&uid, "fan1"), "CPU Fan (fan1)");
+            // Negative space: a channel the driver does not label stays the bare key rather
+            // than growing an empty parenthetical.
+            assert_eq!(controller.log_channel_name(&uid, "fan2"), "fan2");
+
+            controller
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.log_channel_name(&uid, "fan1"),
+                "Front Intake (fan1)"
+            );
+        });
+    }
+
+    #[test]
+    fn device_log_name_falls_back_to_the_persisted_list() {
+        // Goal: a calibration or setting outlives its hardware, so a device absent at boot is
+        // still named from the config device list, which is never pruned.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (uid, all_devices, config) = device_context("nct6798", &[("fan1", None)]);
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            controller.set_device_context(&all_devices, Rc::clone(&config));
+
+            assert_eq!(
+                controller.log_device_channel(&uid, "fan1"),
+                "nct6798 | fan1"
+            );
+
+            // The same UID with the device gone: the persisted list still names it.
+            let absent: AllDevices = Rc::new(HashMap::new());
+            let absent_controller =
+                OverridesController::init_from(overrides_path(&tmp).with_extension("two")).await;
+            absent_controller.set_device_context(&absent, config);
+            assert_eq!(
+                absent_controller.log_device_channel(&uid, "fan1"),
+                "nct6798 | fan1"
+            );
+        });
+    }
+
+    #[test]
+    fn device_log_name_marks_a_uid_no_layer_knows() {
+        // Goal: the one case nothing can name reads as an unknown device, and never pastes a
+        // 64 character hash into the log line.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (_, all_devices, config) = device_context("nct6798", &[("fan1", None)]);
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            controller.set_device_context(&all_devices, config);
+
+            let stranger = CURRENT_UID.to_string();
+            let logged = controller.log_device_channel(&stranger, "fan1");
+            assert_eq!(
+                logged,
+                format!(
+                    "unknown device ({}) | fan1",
+                    &CURRENT_UID[..UNNAMED_DEVICE_UID_CHARS]
+                )
+            );
+            assert!(logged.contains(CURRENT_UID).not());
+        });
+    }
+
+    #[test]
+    fn resolution_without_a_device_context_uses_the_layers_it_has() {
+        // Goal: the detected layers are bound after detection, so every resolution before that
+        // point, and every test that never binds them, still answers from the layers it has.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+
+            assert_eq!(controller.log_channel_name(&uid, "fan1"), "fan1");
+            assert_eq!(controller.log_device_name(&uid, "nct6798"), "nct6798");
+            assert_eq!(controller.known_device_name(&uid), None);
+
+            controller
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.log_channel_name(&uid, "fan1"),
+                "Front Intake (fan1)"
             );
         });
     }

@@ -1082,17 +1082,9 @@ impl AlertController {
     /// The user-facing label for an alert source: override > detected > raw.
     fn source_label(&self, source: &ChannelSource) -> String {
         debug_assert!(source.channel_name.is_empty().not());
-        let detected = self.all_devices.get(&source.device_uid).and_then(|device| {
-            device
-                .borrow()
-                .info
-                .detected_channel_label(&source.channel_name)
-        });
-        let label = self.overrides.resolve_channel_label(
-            &source.device_uid,
-            &source.channel_name,
-            detected,
-        );
+        let label =
+            self.overrides
+                .resolve_channel_label(&source.device_uid, &source.channel_name, None);
         debug_assert!(label.is_empty().not());
         label
     }

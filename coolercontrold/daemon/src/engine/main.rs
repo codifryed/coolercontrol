@@ -159,18 +159,10 @@ impl Engine {
         }
     }
 
-    /// Log form of a device and channel pair with user overrides applied:
-    /// `Device (raw) | Channel (raw)`, plain raw parts when no override.
+    /// Log form of a device and channel pair, resolved through the name chain:
+    /// `Device (raw) | Channel (raw)`, plain raw parts when nothing overrides them.
     pub fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
-        let raw_device_name = self
-            .all_devices
-            .get(device_uid)
-            .map_or_else(|| device_uid.clone(), |device| device.borrow().name.clone());
-        format!(
-            "{} | {}",
-            self.overrides.log_device_name(device_uid, &raw_device_name),
-            self.overrides.log_channel_name(device_uid, channel_name)
-        )
+        self.overrides.log_device_channel(device_uid, channel_name)
     }
 
     /// This is used to set the config Setting model configuration.
