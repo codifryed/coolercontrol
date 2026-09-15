@@ -73,9 +73,8 @@ class FakeCorsairPsu:
         return self.landed.pop(0)
 
     def _write(self, data):
-        packet = bytearray(1 + _CORSAIR_REPORT_LENGTH)
-        packet[1 : 1 + len(data)] = data
-        self.write(packet)
+        # liquidctl prefixes a report number byte that this device does not use.
+        self.write(bytes([0, *data]))
 
     def _read(self):
         return self.read(_CORSAIR_REPORT_LENGTH)
