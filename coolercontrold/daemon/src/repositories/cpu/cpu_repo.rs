@@ -440,7 +440,7 @@ impl CpuRepo {
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
                     let joule_count =
-                        power_cap::extract_power_joule_counter(&driver.io, channel.number).await;
+                        power_cap::extract_power_joule_counter(&driver.io, channel).await;
                     let mut watts = self.power_watts_or_zero(physical_id, joule_count);
                     self.use_cached_value_if_zero(&mut watts, init, association, &channel.name);
                     status_channels.push(ChannelStatus {
@@ -756,7 +756,7 @@ impl CpuRepo {
         for channel in driver.channels.iter().filter(|channel| {
             channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
         }) {
-            let joule_count = power_cap::extract_power_joule_counter(&driver.io, channel.number)
+            let joule_count = power_cap::extract_power_joule_counter(&driver.io, channel)
                 .await
                 .unwrap_or(0.0);
             self.energy_counters

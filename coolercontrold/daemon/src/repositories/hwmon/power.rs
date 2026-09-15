@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
-use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Watts};
-use crate::repositories::hwmon::device_io::DeviceIo;
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -102,10 +101,8 @@ pub async fn read_power_statuses(
     if channels.is_empty() {
         return Vec::new();
     }
-    let slots: Vec<ReadIndex> = channels
-        .iter()
-        .filter_map(|channel| channel.read_slot.value)
-        .collect();
+    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
+    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
     debug_assert_eq!(
         slots.len(),
         channels.len(),
@@ -118,11 +115,14 @@ pub async fn read_power_statuses(
                 .debug_assert_slot(*slot, &driver.path.join(&channel.name));
         }
     }
-    let results = driver.io.read_many(&slots).await;
+    let mut results = driver.io.read_many(&slots).await.into_iter();
     channels
         .iter()
-        .zip(results)
-        .map(|(channel, result)| power_status_from(driver, channel, result))
+        .zip(slotted)
+        .map(|(channel, has_slot)| {
+            let result = has_slot.then(|| results.next()).flatten()?;
+            power_status_from(driver, channel, result)
+        })
         .collect()
 }
 

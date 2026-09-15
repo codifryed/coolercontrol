@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
-use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Mhz};
-use crate::repositories::hwmon::device_io::DeviceIo;
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -72,17 +71,18 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         return freqs;
     }
     // One hop for the device's whole frequency set.
-    let slots: Vec<ReadIndex> = channels
-        .iter()
-        .filter_map(|channel| channel.read_slot.value)
-        .collect();
+    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
+    let (slots, slotted) = slots_for(&channels, |channel| channel.read_slot.value);
     debug_assert_eq!(
         slots.len(),
         channels.len(),
         "every freq channel needs a read slot; was the registry installed?"
     );
-    let results = driver.io.read_many(&slots).await;
-    for (channel, result) in channels.iter().zip(results) {
+    let mut results = driver.io.read_many(&slots).await.into_iter();
+    for (channel, has_slot) in channels.iter().zip(slotted) {
+        let Some(result) = has_slot.then(|| results.next()).flatten() else {
+            continue;
+        };
         if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
             freqs.push(ChannelStatus {
                 name: channel.name.clone(),

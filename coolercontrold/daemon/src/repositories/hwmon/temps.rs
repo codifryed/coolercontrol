@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::repositories::hwmon::device_io::DeviceIo;
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use std::io::Error;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::cc_fs::ReadIndex;
 use crate::cc_fs::{self, SysfsValue};
 use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
@@ -85,10 +84,10 @@ pub async fn read_temp_statuses(
     if channels.is_empty() {
         return Vec::new();
     }
-    let slots: Vec<ReadIndex> = channels
-        .iter()
-        .filter_map(|channel| channel.read_slot.value)
-        .collect();
+    // `slotted` keeps the reply aligned to the channels. Zipping the reply straight onto
+    // `channels` would silently pair a channel with another sensor's reading the moment one of
+    // them had no slot, and a temperature from the wrong sensor drives the wrong fan curve.
+    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
     debug_assert_eq!(
         slots.len(),
         channels.len(),
@@ -101,11 +100,14 @@ pub async fn read_temp_statuses(
                 .debug_assert_slot(*slot, &temp_path_for(driver, channel));
         }
     }
-    let results = driver.io.read_many(&slots).await;
+    let mut results = driver.io.read_many(&slots).await.into_iter();
     channels
         .iter()
-        .zip(results)
-        .map(|(channel, result)| temp_status_from(driver, channel, result))
+        .zip(slotted)
+        .map(|(channel, has_slot)| {
+            let result = has_slot.then(|| results.next()).flatten()?;
+            temp_status_from(driver, channel, result)
+        })
         .collect()
 }
 

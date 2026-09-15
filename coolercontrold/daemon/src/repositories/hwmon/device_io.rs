@@ -479,6 +479,30 @@ impl HealthState {
     }
 }
 
+/// Splits a channel set into the slots to read and a per-channel flag saying whether it has one.
+///
+/// The flags are what keep a positional reply aligned: a channel with no slot contributes nothing
+/// to the batch, so zipping the reply onto the channels directly would hand it the next channel's
+/// reading. Returning the flags alongside lets the caller skip it instead.
+pub fn slots_for<T>(
+    channels: &[T],
+    slot_of: impl Fn(&T) -> Option<ReadIndex>,
+) -> (Vec<ReadIndex>, Vec<bool>) {
+    let mut slots = Vec::with_capacity(channels.len());
+    let mut slotted = Vec::with_capacity(channels.len());
+    for channel in channels {
+        match slot_of(channel) {
+            Some(slot) => {
+                slots.push(slot);
+                slotted.push(true);
+            }
+            None => slotted.push(false),
+        }
+    }
+    debug_assert_eq!(slotted.len(), channels.len());
+    (slots, slotted)
+}
+
 /// The main-thread half of a worker: the queue into it, and what we have observed about it.
 #[derive(Debug)]
 pub struct Worker {
@@ -744,6 +768,38 @@ mod tests {
             );
             assert!(matches!(io.health(), DeviceHealth::Degraded { .. }));
         });
+    }
+
+    // --- slots_for: keeping a positional reply aligned ---
+
+    /// Goal: slots are positional, so a channel with no slot must be marked, not skipped silently.
+    /// Zipping a short reply onto the full channel list reports one sensor's value under another
+    /// sensor's name, which a fan curve then follows with nothing logged. The debug assertion in
+    /// the readers catches a missing slot in tests; this is what keeps release builds correct.
+    ///
+    /// Method: gaps at both ends and in the middle, then walk the reply back onto the channels the
+    /// way the readers do and check each value lands on its own channel.
+    #[test]
+    fn an_unslotted_channel_is_flagged_so_the_reply_stays_aligned() {
+        let channels = [None, Some(7), None, Some(3), None];
+        let (slots, slotted) = slots_for(&channels, |slot| *slot);
+
+        assert_eq!(slots, vec![7, 3], "only real slots go into the batch");
+        assert_eq!(slotted, vec![false, true, false, true, false]);
+
+        // The reply comes back in slot order; walk it back the way the readers do.
+        let reply = ["value-for-7", "value-for-3"];
+        let mut reply = reply.into_iter();
+        let landed: Vec<Option<&str>> = slotted
+            .into_iter()
+            .map(|has_slot| has_slot.then(|| reply.next()).flatten())
+            .collect();
+
+        assert_eq!(
+            landed,
+            vec![None, Some("value-for-7"), None, Some("value-for-3"), None],
+            "each value must land on the channel that asked for it"
+        );
     }
 
     // --- HealthState: the rules both workers share ---
