@@ -108,13 +108,13 @@ mod tests {
     use crate::config::Config;
     use crate::repositories::hwmon::fans::pwm_value_to_duty;
     use crate::repositories::hwmon::hwmon_repo::{
-        AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelType,
+        AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelType,
     };
     use crate::setting::CoolerControlSettings;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
-    use std::sync::Arc;
+
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
@@ -159,9 +159,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
+                pwm_path: Some(test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -209,9 +210,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(ctx.test_base_path.join("pwm1"))),
+                pwm_path: Some(ctx.test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             let hwmon_info = Rc::new(HwmonDriverInfo {
@@ -253,9 +255,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
+                pwm_path: Some(test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -315,9 +318,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
+                pwm_path: Some(test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -374,9 +378,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
+                pwm_path: Some(test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:

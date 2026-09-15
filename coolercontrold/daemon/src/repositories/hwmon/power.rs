@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -12,7 +13,6 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -102,37 +102,49 @@ pub async fn read_power_statuses(
     if channels.is_empty() {
         return Vec::new();
     }
-    // In the Power case, channel.name is the sysfs file name.
-    let paths: Vec<Arc<Path>> = channels
+    let slots: Vec<ReadIndex> = channels
         .iter()
-        .map(|channel| Arc::from(driver.path.join(&channel.name)))
+        .filter_map(|channel| channel.read_slot.value)
         .collect();
-    let results = driver.io.read_many(&paths).await;
-    debug_assert_eq!(results.len(), channels.len());
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every power channel needs a read slot; was the registry installed?"
+    );
+    if cfg!(debug_assertions) {
+        for (channel, slot) in channels.iter().zip(&slots) {
+            driver
+                .io
+                .debug_assert_slot(*slot, &driver.path.join(&channel.name));
+        }
+    }
+    let results = driver.io.read_many(&slots).await;
     channels
         .iter()
-        .zip(&paths)
         .zip(results)
-        .map(|((channel, path), result)| power_status_from(channel, path, result))
+        .map(|(channel, result)| power_status_from(driver, channel, result))
         .collect()
 }
 
 /// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
 /// single-channel path so both log and discard failures identically.
 fn power_status_from(
+    driver: &HwmonDriverInfo,
     channel: &HwmonChannelInfo,
-    power_path: &Path,
     result: Result<cc_fs::SysfsValue>,
 ) -> Option<ChannelStatus> {
+    // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
+    // the per-tick pass never builds a path.
+    let power_path = || driver.path.join(&channel.name);
     result
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
-        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path.display()))
+        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path().display()))
         .inspect_err(|err| {
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read power value at {} ; {err}",
-                    power_path.display()
+                    power_path().display()
                 );
             }
         })
@@ -154,10 +166,12 @@ pub async fn read_one_power_status(
     channel: &HwmonChannelInfo,
 ) -> Option<ChannelStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
-    // In the Power case, channel.name is the real name of the sysfs file.
-    let power_path = driver.path.join(&channel.name);
-    let result = driver.io.read_value(&power_path).await;
-    power_status_from(channel, &power_path, result)
+    let result = match channel.read_slot.value {
+        Some(slot) => driver.io.read_many(&[slot]).await.remove(0),
+        // In the Power case, channel.name is the real name of the sysfs file.
+        None => driver.io.read_value(&driver.path.join(&channel.name)).await,
+    };
+    power_status_from(driver, channel, result)
 }
 
 /// Every power channel in one hop, for callers that want an owned `Vec` (the reinit path).
@@ -240,7 +254,7 @@ async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option
 mod tests {
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     use super::*;
@@ -477,7 +491,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -511,7 +527,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -534,7 +552,9 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: test_base_path.to_owned(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -565,7 +585,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -617,7 +639,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (statuses, any_failure) = extract_power_status(&driver_info).await;
@@ -661,7 +685,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (statuses, any_failure) = extract_power_status(&driver_info).await;
@@ -684,7 +710,9 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             let (statuses, any_failure) = extract_power_status(&driver_info).await;
 
@@ -725,7 +753,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;

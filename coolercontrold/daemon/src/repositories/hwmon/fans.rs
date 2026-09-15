@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::device::ChannelStatus;
 use crate::hardware_support::{self, ChannelDiagnosis, ChannelEvidence};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
+    HwmonDriverInfo,
 };
 use crate::repositories::hwmon::{auto_curve, devices, probe};
 use anyhow::{anyhow, Context, Result};
@@ -15,8 +17,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -205,10 +206,10 @@ async fn caps_to_hwmon_fans(
         // symptom.
         let pwm_path = fan_cap
             .has_pwm()
-            .then(|| Arc::from(base_path.join(format_pwm!(channel_number))));
+            .then(|| base_path.join(format_pwm!(channel_number)));
         let rpm_path = fan_cap
             .has_rpm()
-            .then(|| Arc::from(base_path.join(format_fan_input!(channel_number))));
+            .then(|| base_path.join(format_fan_input!(channel_number)));
         fans.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Fan,
             number: channel_number,
@@ -220,6 +221,7 @@ async fn caps_to_hwmon_fans(
             pwm_path,
             rpm_path,
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         });
     }
     Ok(fans)
@@ -261,30 +263,35 @@ pub async fn read_fan_statuses(
     if plan.is_empty() {
         return Vec::new();
     }
-    let mut paths: Vec<Arc<Path>> = Vec::with_capacity(plan.len() * 2);
-    let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
+    // Two passes: gather the slots this tick actually needs, then map each channel to its
+    // position in the reply. Only the attributes the caller asked for are read.
+    let mut batch: Vec<ReadIndex> = Vec::with_capacity(plan.len() * 2);
+    let mut positions: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
     for (channel, want) in plan {
-        let pwm = (*want == FanRead::Full && channel.caps.has_pwm()).then(|| {
-            paths.push(pwm_path_for(driver, channel));
-            paths.len() - 1
+        let pwm = (*want == FanRead::Full)
+            .then_some(channel.read_slot.pwm)
+            .flatten()
+            .map(|slot| {
+                batch.push(slot);
+                batch.len() - 1
+            });
+        let rpm = channel.read_slot.rpm.map(|slot| {
+            batch.push(slot);
+            batch.len() - 1
         });
-        let rpm = channel.caps.has_rpm().then(|| {
-            paths.push(rpm_path_for(driver, channel));
-            paths.len() - 1
-        });
-        slots.push((pwm, rpm));
+        positions.push((pwm, rpm));
     }
-    let mut results = driver.io.read_many(&paths).await;
-    debug_assert_eq!(results.len(), paths.len());
-    debug_assert_eq!(slots.len(), plan.len());
+    let mut results = driver.io.read_many(&batch).await;
+    debug_assert_eq!(results.len(), batch.len());
+    debug_assert_eq!(positions.len(), plan.len());
 
     let log_error = log_enabled!(log::Level::Debug);
     let mut out = Vec::with_capacity(plan.len());
-    for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(slots) {
+    for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(positions) {
         let fan_rpm = match rpm_slot {
             Some(index) => {
                 let raw = take_result(&mut results, index).and_then(check_parsing_32);
-                interpret_fan_rpm(&paths[index], raw, log_error)
+                interpret_fan_rpm(&rpm_path_for(driver, channel), raw, log_error)
             }
             None => None,
         };
@@ -302,8 +309,14 @@ pub async fn read_fan_statuses(
                 let raw = take_result(&mut results, index)
                     .and_then(check_parsing_8)
                     .map(pwm_value_to_duty);
-                interpret_pwm_duty(&driver.path, &channel.number, &paths[index], raw, log_error)
-                    .await
+                interpret_pwm_duty(
+                    &driver.path,
+                    &channel.number,
+                    &pwm_path_for(driver, channel),
+                    raw,
+                    log_error,
+                )
+                .await
             }
             None => None,
         };
@@ -338,19 +351,19 @@ fn take_result(
 }
 
 /// Where one channel's pwm value lives.
-fn pwm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
+fn pwm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
     channel
         .pwm_path
         .clone()
-        .unwrap_or_else(|| Arc::from(driver.path.join(format_pwm!(channel.number))))
+        .unwrap_or_else(|| driver.path.join(format_pwm!(channel.number)))
 }
 
 /// Where one channel's fan-input value lives.
-fn rpm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
+fn rpm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
     channel
         .rpm_path
         .clone()
-        .unwrap_or_else(|| Arc::from(driver.path.join(format_fan_input!(channel.number))))
+        .unwrap_or_else(|| driver.path.join(format_fan_input!(channel.number)))
 }
 
 /// Reads pwm-duty and fan-rpm for one channel and returns the
@@ -1063,6 +1076,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1101,6 +1115,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1144,6 +1159,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1186,6 +1202,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1226,6 +1243,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1268,6 +1286,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1310,6 +1329,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1346,9 +1366,10 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
+                pwm_path: Some(test_base_path.join("pwm1")),
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1388,6 +1409,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             };
 
             // when:
@@ -1626,7 +1648,7 @@ mod tests {
     }
 
     // --- extract_fan_statuses: failure indicator ---
-    fn make_driver(base_path: &Path, channels: Vec<HwmonChannelInfo>) -> HwmonDriverInfo {
+    async fn make_driver(base_path: &Path, channels: Vec<HwmonChannelInfo>) -> HwmonDriverInfo {
         HwmonDriverInfo {
             name: "test_driver".to_string(),
             path: base_path.to_path_buf(),
@@ -1637,6 +1659,8 @@ mod tests {
             apple_smc: crate::repositories::hwmon::apple_mac_smc::AppleMacSMC::default(),
             io: DeviceIo::default(),
         }
+        .with_read_registry()
+        .await
     }
 
     fn fan_channel(number: u8, caps: HwmonChannelCapabilities) -> HwmonChannelInfo {
@@ -1651,6 +1675,7 @@ mod tests {
             pwm_path: None,
             rpm_path: None,
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         }
     }
 
@@ -1669,7 +1694,7 @@ mod tests {
                 .await
                 .unwrap();
             let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
-            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1696,7 +1721,7 @@ mod tests {
                 .await
                 .unwrap();
             let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
-            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1721,7 +1746,7 @@ mod tests {
                 .await
                 .unwrap();
             let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
-            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1745,7 +1770,7 @@ mod tests {
             let ctx = setup().await;
             // given: neither pwm1 nor fan1_input exist.
             let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
-            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1769,7 +1794,7 @@ mod tests {
                 .await
                 .unwrap();
             let caps = HwmonChannelCapabilities::RPM;
-            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1815,7 +1840,8 @@ mod tests {
                     fan_channel(2, caps.clone()),
                     fan_channel(3, caps),
                 ],
-            );
+            )
+            .await;
 
             // when: collect invocations in order.
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1850,7 +1876,8 @@ mod tests {
             let driver = make_driver(
                 &ctx.test_base_path,
                 vec![fan_channel(1, caps.clone()), fan_channel(2, caps)],
-            );
+            )
+            .await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
@@ -1870,7 +1897,7 @@ mod tests {
         // fan channels, and any_failure is false.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
-            let driver = make_driver(&ctx.test_base_path, vec![]);
+            let driver = make_driver(&ctx.test_base_path, vec![]).await;
 
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
@@ -1888,7 +1915,7 @@ mod tests {
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             // given: driver with no channels.
-            let driver = make_driver(&ctx.test_base_path, vec![]);
+            let driver = make_driver(&ctx.test_base_path, vec![]).await;
 
             // when:
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;

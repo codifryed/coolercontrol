@@ -11,7 +11,8 @@
 //!
 //! One thread, one ring and one `SysfsFdCache` per device makes that machinery able to run. It
 //! adds no safety of its own.
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::fmt::Display;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -22,10 +23,9 @@ use anyhow::Result;
 use log::{debug, error, warn};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::cc_fs::{self, SysfsValue};
+use crate::cc_fs::{self, ReadIndex, SysfsValue};
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::rt;
-use std::sync::Arc;
 
 /// Consecutive reply timeouts before a device is declared unreachable and taken out of the
 /// per-tick rotation.
@@ -56,7 +56,7 @@ const _: () = assert!(QUEUE_DEPTH > 0);
 /// A batch is one device's attributes of one kind, so it is bounded by that device's channel
 /// count. The cap is the descriptor cache's, since a batch can hold at most one descriptor per
 /// entry; past it the caller splits rather than growing a request without limit.
-pub const READ_BATCH_MAX: usize = cc_fs::SYSFS_FD_CACHE_MAX_ENTRIES;
+pub const READ_BATCH_MAX: usize = 512;
 const _: () = assert!(READ_BATCH_MAX > 0);
 
 /// Stack for a worker thread. It runs one `async fn` with a fixed buffer and no recursion, so the
@@ -135,6 +135,7 @@ impl DeviceIo {
             state: HealthState::new(device_name.to_owned()),
             tx,
             reply_timeout,
+            pending_registry: RefCell::new(None),
         })))
     }
 
@@ -157,17 +158,60 @@ impl DeviceIo {
     }
 
     /// Reads one numeric attribute.
+    /// Reads one attribute by path, without caching its descriptor.
+    ///
+    /// For detection probes, labels and read-before-write checks: none repeat per tick, so a held
+    /// descriptor buys nothing. The per-tick set goes through `read_many`.
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
         match self {
-            Self::Inline(fds) => fds.read_value(path).await,
+            Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(path, |reply| Request::Read {
+                    .dispatch(&path.display(), |reply| Request::Read {
                         path: path.to_path_buf(),
                         reply,
                     })
                     .await
             }
+        }
+    }
+
+    /// Hands the device its read table, covering every attribute the per-tick pass reads.
+    ///
+    /// Called once, after detection settles the channel set.
+    ///
+    /// # Errors
+    ///
+    /// When the worker is gone or does not answer.
+    pub async fn install_registry(&self, paths: Vec<PathBuf>) -> Result<()> {
+        match self {
+            Self::Inline(fds) => {
+                fds.install(paths);
+                Ok(())
+            }
+            Self::Threaded(worker) => {
+                *worker.pending_registry.borrow_mut() = Some(paths);
+                worker.ensure_registry().await;
+                Ok(())
+            }
+        }
+    }
+
+    /// Debug-only check that a slot addresses the attribute the caller meant.
+    ///
+    /// Slots trade a loud failure for a quiet one: a wrong path fails `ENOENT`, but a wrong slot
+    /// reads a different sensor and reports it as this channel's. Only `Inline` can answer without
+    /// a round trip, which is the configuration tests run in, and tests are where a mismatch would
+    /// be introduced.
+    pub fn debug_assert_slot(&self, index: ReadIndex, expected: &Path) {
+        let Self::Inline(fds) = self else {
+            return;
+        };
+        if let Some(registered) = fds.path_of(index) {
+            debug_assert_eq!(
+                registered, expected,
+                "read slot {index} addresses the wrong attribute"
+            );
         }
     }
 
@@ -177,27 +221,29 @@ impl DeviceIo {
     /// # Panics
     ///
     /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
-    pub async fn read_many(&self, paths: &[Arc<Path>]) -> Vec<Result<SysfsValue>> {
-        debug_assert!(paths.len() <= READ_BATCH_MAX);
-        if paths.is_empty() {
+    pub async fn read_many(&self, indices: &[ReadIndex]) -> Vec<Result<SysfsValue>> {
+        debug_assert!(indices.len() <= READ_BATCH_MAX);
+        if indices.is_empty() {
             return Vec::new();
         }
         match self {
             Self::Inline(fds) => {
-                let mut out = Vec::with_capacity(paths.len());
-                for path in paths {
-                    out.push(fds.read_value(path).await);
+                let mut out = Vec::with_capacity(indices.len());
+                for index in indices {
+                    out.push(fds.read_index(*index).await);
                 }
                 out
             }
             Self::Threaded(worker) => {
-                let first = &paths[0];
-                let batch = paths.to_vec();
+                worker.ensure_registry().await;
+                let batch = indices.to_vec();
                 let expected = batch.len();
                 let dispatched = worker
-                    .dispatch(first, |reply| Request::ReadMany {
-                        paths: batch,
-                        reply,
+                    .dispatch(&BatchLabel(indices[0], expected), |reply| {
+                        Request::ReadMany {
+                            indices: batch,
+                            reply,
+                        }
                     })
                     .await;
                 match dispatched {
@@ -226,7 +272,7 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::write(path, data).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(path, |reply| Request::Write {
+                    .dispatch(&path.display(), |reply| Request::Write {
                         path: path.to_path_buf(),
                         data,
                         reply,
@@ -268,6 +314,7 @@ impl DeviceIo {
             state: HealthState::new("wedged".to_owned()),
             tx,
             reply_timeout,
+            pending_registry: RefCell::new(None),
         };
         (Self::Threaded(Rc::new(worker)), rx)
     }
@@ -302,8 +349,8 @@ impl DeviceIo {
         match self {
             Self::Inline(fds) => fds.len(),
             Self::Threaded(worker) => worker
-                .dispatch(Path::new("<descriptor-count>"), |reply| {
-                    Request::DescriptorCount { reply }
+                .dispatch(&"descriptor-count", |reply| Request::DescriptorCount {
+                    reply,
                 })
                 .await
                 .unwrap_or_default(),
@@ -427,6 +474,13 @@ pub struct Worker {
     state: HealthState,
     tx: mpsc::Sender<Request>,
     reply_timeout: Duration,
+    /// The read table, kept until the worker acknowledges it.
+    ///
+    /// A device that is already wedged when detection ends cannot take delivery: the install
+    /// times out like any other dispatch. Holding the table and retrying on the next batch means
+    /// such a device still reports timeouts and still goes unreachable, rather than failing every
+    /// read as unregistered and looking healthy while doing it.
+    pending_registry: RefCell<Option<Vec<PathBuf>>>,
 }
 
 impl Worker {
@@ -434,7 +488,7 @@ impl Worker {
     ///
     /// Only a timeout counts against the device's health. An `io::Error` coming back means the
     /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(&self, path: &Path, make_request: F) -> Result<T>
+    async fn dispatch<T, F>(&self, what: &dyn Display, make_request: F) -> Result<T>
     where
         F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
     {
@@ -442,7 +496,7 @@ impl Worker {
         // Otherwise every tick adds a request to a queue nobody drains and pays a full timeout
         // to learn what it already knew.
         if self.state.dispatchable().not() {
-            return Err(unreachable(self.state.device_name(), path));
+            return Err(unreachable(self.state.device_name(), what));
         }
         let (reply_tx, reply_rx) = oneshot::channel();
         let request = make_request(reply_tx);
@@ -461,10 +515,10 @@ impl Worker {
                 result
             }
             Err(_elapsed) => {
-                self.state.record_timeout(&path.display());
+                self.state.record_timeout(what);
                 Err(timed_out(
                     self.state.device_name(),
-                    path,
+                    what,
                     self.reply_timeout,
                 ))
             }
@@ -473,6 +527,20 @@ impl Worker {
 
     fn health(&self) -> DeviceHealth {
         self.state.health()
+    }
+
+    /// Delivers the read table if the worker has not taken it yet.
+    async fn ensure_registry(&self) {
+        let Some(paths) = self.pending_registry.borrow().clone() else {
+            return;
+        };
+        if self
+            .dispatch(&"install", |reply| Request::Install { paths, reply })
+            .await
+            .is_ok()
+        {
+            *self.pending_registry.borrow_mut() = None;
+        }
     }
 }
 
@@ -485,8 +553,13 @@ pub enum Request {
         reply: oneshot::Sender<Result<SysfsValue>>,
     },
     ReadMany {
-        paths: Vec<Arc<Path>>,
+        indices: Vec<ReadIndex>,
         reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
+    },
+    /// Hands the worker its read table. Sent once, after detection settles the channel set.
+    Install {
+        paths: Vec<PathBuf>,
+        reply: oneshot::Sender<Result<()>>,
     },
     Write {
         path: PathBuf,
@@ -517,16 +590,22 @@ async fn serve(mut rx: mpsc::Receiver<Request>) {
     while let Some(request) = rx.recv().await {
         match request {
             Request::Read { path, reply } => {
-                let result = fds.read_value(&path).await;
+                // Uncached: one-shots are detection probes, labels and pre-write reads, none of
+                // which repeat per tick. The table is for the per-tick set alone.
+                let result = cc_fs::read_sysfs_value(&path).await;
                 // A dropped receiver means the caller already timed out. Expected, not an error.
                 let _ = reply.send(result);
             }
-            Request::ReadMany { paths, reply } => {
-                let mut values = Vec::with_capacity(paths.len());
-                for path in &paths {
-                    values.push(fds.read_value(path).await);
+            Request::ReadMany { indices, reply } => {
+                let mut values = Vec::with_capacity(indices.len());
+                for index in &indices {
+                    values.push(fds.read_index(*index).await);
                 }
                 let _ = reply.send(Ok(values));
+            }
+            Request::Install { paths, reply } => {
+                fds.install(paths);
+                let _ = reply.send(Ok(()));
             }
             #[cfg(test)]
             Request::DescriptorCount { reply } => {
@@ -560,27 +639,32 @@ fn worker_thread_name(device_name: &str) -> String {
     name
 }
 
-fn timed_out(device_name: &str, path: &Path, budget: Duration) -> anyhow::Error {
+fn timed_out(device_name: &str, what: &dyn Display, budget: Duration) -> anyhow::Error {
     Error::new(
         ErrorKind::TimedOut,
         format!(
-            "device {device_name} did not answer within {} ms reading {}",
-            budget.as_millis(),
-            path.display()
+            "device {device_name} did not answer within {} ms reading {what}",
+            budget.as_millis()
         ),
     )
     .into()
 }
 
-fn unreachable(device_name: &str, path: &Path) -> anyhow::Error {
+fn unreachable(device_name: &str, what: &dyn Display) -> anyhow::Error {
     Error::new(
         ErrorKind::HostUnreachable,
-        format!(
-            "device {device_name} is unreachable, skipping {}",
-            path.display()
-        ),
+        format!("device {device_name} is unreachable, skipping {what}"),
     )
     .into()
+}
+
+/// Names a batch in a timeout message without carrying a path across the boundary.
+struct BatchLabel(ReadIndex, usize);
+
+impl Display for BatchLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} attribute(s) from slot {}", self.1, self.0)
+    }
 }
 
 fn worker_gone(device_name: &str) -> anyhow::Error {
@@ -606,24 +690,48 @@ mod tests {
             let second = dir.path().join("temp2_input");
             std::fs::write(&first, "41000\n").unwrap();
             std::fs::write(&second, "52000\n").unwrap();
-            let paths: Vec<Arc<Path>> = vec![first.into(), second.into()];
-
             let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            io.install_registry(vec![first, second]).await.unwrap();
+            let slots = [0, 1];
             assert_eq!(
                 io.descriptor_count().await,
                 0,
                 "nothing open before the first read"
             );
 
-            io.read_many(&paths).await;
+            io.read_many(&slots).await;
             assert_eq!(io.descriptor_count().await, 2);
 
-            io.read_many(&paths).await;
+            io.read_many(&slots).await;
             assert_eq!(
                 io.descriptor_count().await,
                 2,
                 "a second batch reopened instead of reusing the cache"
             );
+        });
+    }
+
+    /// Goal: a device already wedged when detection ends cannot take delivery of its read table,
+    /// and it must still report timeouts rather than failing every read as unregistered and
+    /// looking healthy while it does. Method: install against a worker nobody drains, then batch.
+    #[test]
+    fn a_wedged_device_still_times_out_when_it_never_took_its_table() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
+            io.install_registry(vec![PathBuf::from("/sys/class/hwmon/hwmon0/temp1_input")])
+                .await
+                .expect("install never reports failure, it retries");
+
+            let results = io.read_many(&[0]).await;
+
+            assert_eq!(results.len(), 1);
+            let message = results[0].as_ref().unwrap_err().to_string();
+            assert!(
+                message.contains("did not answer"),
+                "an undelivered table must not turn a wedged device into an unregistered slot, \
+                 got: {message}"
+            );
+            assert!(matches!(io.health(), DeviceHealth::Degraded { .. }));
         });
     }
 
@@ -707,13 +815,10 @@ mod tests {
             std::fs::write(&other, "52000\n").unwrap();
 
             let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
-            let results = io
-                .read_many(&[
-                    good.clone().into(),
-                    absent.clone().into(),
-                    other.clone().into(),
-                ])
-                .await;
+            io.install_registry(vec![good.clone(), absent.clone(), other.clone()])
+                .await
+                .unwrap();
+            let results = io.read_many(&[0, 1, 2]).await;
 
             assert_eq!(results.len(), 3);
             assert_eq!(results[0].as_ref().unwrap().trimmed_str().unwrap(), "41000");
@@ -733,17 +838,11 @@ mod tests {
     fn a_batch_costs_one_message_regardless_of_size() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            let paths: Vec<Arc<Path>> = (1..=12)
-                .map(|n| {
-                    Arc::from(PathBuf::from(format!(
-                        "/sys/class/hwmon/hwmon0/temp{n}_input"
-                    )))
-                })
-                .collect();
+            let slots: Vec<ReadIndex> = (0..12).collect();
 
-            let results = io.read_many(&paths).await;
+            let results = io.read_many(&slots).await;
 
-            assert_eq!(results.len(), 12, "every path still gets a result");
+            assert_eq!(results.len(), 12, "every slot still gets a result");
             let mut queued = 0;
             while let Ok(request) = rx.try_recv() {
                 assert!(matches!(request, Request::ReadMany { .. }));
@@ -759,15 +858,9 @@ mod tests {
     fn a_batch_that_times_out_fails_every_path() {
         crate::rt::test_runtime(async {
             let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            let paths: Vec<Arc<Path>> = (1..=4)
-                .map(|n| {
-                    Arc::from(PathBuf::from(format!(
-                        "/sys/class/hwmon/hwmon0/temp{n}_input"
-                    )))
-                })
-                .collect();
+            let slots: Vec<ReadIndex> = (0..4).collect();
 
-            let results = io.read_many(&paths).await;
+            let results = io.read_many(&slots).await;
 
             assert_eq!(results.len(), 4);
             assert!(results.iter().all(Result::is_err), "no slot may look fresh");
@@ -794,13 +887,18 @@ mod tests {
             let good = dir.path().join("temp1_input");
             std::fs::write(&good, "33000\n").unwrap();
             let absent = dir.path().join("nope_input");
-            let paths: Vec<Arc<Path>> = vec![good.into(), absent.into()];
-
-            let inline = DeviceIo::default().read_many(&paths).await;
-            let threaded = DeviceIo::threaded("testdev", TEST_TIMEOUT)
-                .unwrap()
-                .read_many(&paths)
-                .await;
+            let inline_io = DeviceIo::default();
+            inline_io
+                .install_registry(vec![good.clone(), absent.clone()])
+                .await
+                .unwrap();
+            let inline = inline_io.read_many(&[0, 1]).await;
+            let threaded_io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            threaded_io
+                .install_registry(vec![good, absent])
+                .await
+                .unwrap();
+            let threaded = threaded_io.read_many(&[0, 1]).await;
 
             assert_eq!(inline.len(), threaded.len());
             assert_eq!(

@@ -20,7 +20,9 @@ use crate::device::{
 use crate::repositories::gpu::gpu_repo::{
     GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
 };
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
 use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
@@ -189,6 +191,14 @@ impl GpuAMD {
                     (None, false)
                 }
             };
+            // `gpu_busy_percent` sits outside the hwmon directory, so the Load channel's slot is
+            // registered against the device path rather than the hwmon one.
+            let load_path = device_path.join("gpu_busy_percent");
+            if let Err(err) =
+                install_read_registry(&path, Some(&load_path), &mut channels, &io).await
+            {
+                error!("Could not install the read table for {device_name}: {err}");
+            }
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path)
                 .await

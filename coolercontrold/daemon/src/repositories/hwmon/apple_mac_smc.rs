@@ -7,7 +7,8 @@ use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::DEVICE_NAME_MAC_SMC;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
+    HwmonDriverInfo,
 };
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, log_enabled, warn};
@@ -17,7 +18,6 @@ use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 
 const DEFAULT_MIN_FAN_SPEED: RPM = 600;
 const DEFAULT_MAX_FAN_SPEED: RPM = 6_500;
@@ -287,7 +287,7 @@ impl AppleMacSMC {
             }
             let rpm_path = fan_cap
                 .has_rpm()
-                .then(|| Arc::from(base_path.join(format_fan_input!(channel_number))));
+                .then(|| base_path.join(format_fan_input!(channel_number)));
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
@@ -299,6 +299,7 @@ impl AppleMacSMC {
                 pwm_path: None,
                 rpm_path,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             });
         }
         Ok(fans)
@@ -1299,8 +1300,9 @@ mod tests {
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
+                    rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -1313,8 +1315,9 @@ mod tests {
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
+                    rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1368,8 +1371,9 @@ mod tests {
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
                 pwm_path: None,
-                rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
+                rpm_path: Some(test_base_path.join("fan1_input")),
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1403,8 +1407,9 @@ mod tests {
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
                 pwm_path: None,
-                rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
+                rpm_path: Some(test_base_path.join("fan1_input")),
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1790,6 +1795,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1822,6 +1828,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1834,6 +1841,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
 
@@ -1885,6 +1893,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1897,6 +1906,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1948,6 +1958,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
             let driver = Rc::new(HwmonDriverInfo {
                 name: "applesmc".to_string(),
@@ -2023,8 +2034,9 @@ mod tests {
                     caps: caps.clone(),
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
+                    rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -2035,8 +2047,9 @@ mod tests {
                     caps,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
+                    rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -2107,8 +2120,9 @@ mod tests {
                     caps: caps.clone(),
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
+                    rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -2119,8 +2133,9 @@ mod tests {
                     caps,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
+                    rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {

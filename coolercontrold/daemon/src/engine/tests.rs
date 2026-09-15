@@ -2930,7 +2930,7 @@ mod lcd_shutdown_tests {
     use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
     use anyhow::Result;
     use async_trait::async_trait;
-    use mime;
+
     use serial_test::serial;
     use std::cell::RefCell;
     use std::collections::HashMap;

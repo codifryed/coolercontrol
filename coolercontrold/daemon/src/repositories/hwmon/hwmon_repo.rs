@@ -55,6 +55,7 @@
 //! preload entry guard; the per-channel reset-to-default loop then
 //! runs synchronously taking the permit directly.
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device,
@@ -92,7 +93,6 @@ use std::mem;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::{Display, EnumString};
@@ -221,10 +221,38 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub auto_curve: AutoCurveInfo,
     pub caps: HwmonChannelCapabilities,
-    // Built once at init: `Arc<Path>` so the per-tick batch is refcount bumps, not allocations.
-    pub pwm_path: Option<Arc<Path>>,
-    pub rpm_path: Option<Arc<Path>>,
-    pub temp_path: Option<Arc<Path>>,
+    // Cached at detection. The per-tick pass addresses the worker's table by slot instead, so
+    // these are for writes and one-shot reads.
+    pub pwm_path: Option<PathBuf>,
+    pub rpm_path: Option<PathBuf>,
+    pub temp_path: Option<PathBuf>,
+    /// Slots in the device's read table. Assigned once, after detection settles the channel set.
+    pub read_slot: ChannelReadSlots,
+}
+
+/// Where a channel's per-tick attributes live in its device's read table.
+///
+/// `None` means the attribute is not read per tick, or the table has not been installed yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelReadSlots {
+    pub pwm: Option<ReadIndex>,
+    pub rpm: Option<ReadIndex>,
+    /// Temp, power, freq, powercap or load: the channel's single value file.
+    pub value: Option<ReadIndex>,
+}
+
+impl HwmonDriverInfo {
+    /// Installs this driver's read table, for tests that build one by hand.
+    ///
+    /// Production installs it in the detection pass, once the channel set has settled.
+    #[cfg(test)]
+    pub async fn with_read_registry(mut self) -> Self {
+        let path = self.path.clone();
+        install_read_registry(&path, None, &mut self.channels, &self.io)
+            .await
+            .expect("test read table installs");
+        self
+    }
 }
 
 impl Default for HwmonChannelInfo {
@@ -240,6 +268,7 @@ impl Default for HwmonChannelInfo {
             pwm_path: None,
             rpm_path: None,
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         }
     }
 }
@@ -254,6 +283,82 @@ bitflags! {
         // Specialities
         const APPLE_SMC = 1 << 15;
     }
+}
+
+/// Assigns every per-tick attribute a slot and installs the device's read table.
+///
+/// Called once, after detection has settled the channel set. From here the per-tick pass addresses
+/// the table by slot, so no path crosses to the worker again and nothing is hashed.
+///
+/// `load_path` is the AMD GPU's `gpu_busy_percent`, which lives outside the hwmon directory; every
+/// other attribute hangs off `base_path`.
+///
+/// # Errors
+///
+/// When the device's worker is gone or does not answer.
+pub async fn install_read_registry(
+    base_path: &Path,
+    load_path: Option<&Path>,
+    channels: &mut [HwmonChannelInfo],
+    io: &DeviceIo,
+) -> Result<()> {
+    let mut paths: Vec<PathBuf> = Vec::with_capacity(channels.len() * 2);
+    let slot = |paths: &mut Vec<PathBuf>, path: PathBuf| -> Option<ReadIndex> {
+        let index = ReadIndex::try_from(paths.len()).ok()?;
+        paths.push(path);
+        Some(index)
+    };
+    for channel in channels.iter_mut() {
+        channel.read_slot = ChannelReadSlots::default();
+        match channel.hwmon_type {
+            HwmonChannelType::Fan => {
+                if channel.caps.has_pwm() {
+                    let path = channel
+                        .pwm_path
+                        .clone()
+                        .unwrap_or_else(|| base_path.join(format!("pwm{}", channel.number)));
+                    channel.read_slot.pwm = slot(&mut paths, path);
+                }
+                if channel.caps.has_rpm() {
+                    let path = channel
+                        .rpm_path
+                        .clone()
+                        .unwrap_or_else(|| base_path.join(format!("fan{}_input", channel.number)));
+                    channel.read_slot.rpm = slot(&mut paths, path);
+                }
+            }
+            HwmonChannelType::Temp => {
+                let path = channel
+                    .temp_path
+                    .clone()
+                    .unwrap_or_else(|| base_path.join(format!("temp{}_input", channel.number)));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            // In the Power case, `channel.name` is the sysfs file name.
+            HwmonChannelType::Power => {
+                let path = base_path.join(&channel.name);
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::Freq => {
+                let path = base_path.join(format!("freq{}_input", channel.number));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::PowerCap => {
+                let path = PathBuf::from(format!(
+                    "/sys/class/powercap/intel-rapl:{}/energy_uj",
+                    channel.number
+                ));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::Load => {
+                if let Some(load_path) = load_path {
+                    channel.read_slot.value = slot(&mut paths, load_path.to_path_buf());
+                }
+            }
+        }
+    }
+    debug_assert!(paths.len() <= device_io::READ_BATCH_MAX);
+    io.install_registry(paths).await
 }
 
 impl HwmonChannelCapabilities {
@@ -2075,6 +2180,11 @@ impl Repository for HwmonRepo {
             } else {
                 AppleMacSMC::not_applicable()
             };
+            // Detection is done with this device's channel set, so the per-tick pass can stop
+            // sending paths and address the worker's table by slot from here on.
+            if let Err(err) = install_read_registry(&path, None, &mut channels, &io).await {
+                error!("Could not install the read table for {device_name}: {err}");
+            }
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -2598,34 +2708,39 @@ mod preload_tests {
             label: None,
             caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
             auto_curve: AutoCurveInfo::None,
-            pwm_path: Some(Arc::from(base_path.join(format!("pwm{number}")))),
-            rpm_path: Some(Arc::from(base_path.join(format!("fan{number}_input")))),
+            pwm_path: Some(base_path.join(format!("pwm{number}"))),
+            rpm_path: Some(base_path.join(format!("fan{number}_input"))),
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         }
     }
 
-    fn driver_with_channels(
+    async fn driver_with_channels(
         base_path: &Path,
         channels: Vec<HwmonChannelInfo>,
     ) -> Rc<HwmonDriverInfo> {
-        driver_with_io(base_path, channels, DeviceIo::default())
+        driver_with_io(base_path, channels, DeviceIo::default()).await
     }
 
-    fn driver_with_io(
+    async fn driver_with_io(
         base_path: &Path,
         channels: Vec<HwmonChannelInfo>,
         io: DeviceIo,
     ) -> Rc<HwmonDriverInfo> {
-        Rc::new(HwmonDriverInfo {
-            name: "test_driver".to_string(),
-            path: base_path.to_path_buf(),
-            model: None,
-            u_id: String::new(),
-            channels,
-            drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
-            io,
-        })
+        Rc::new(
+            HwmonDriverInfo {
+                name: "test_driver".to_string(),
+                path: base_path.to_path_buf(),
+                model: None,
+                u_id: String::new(),
+                channels,
+                drivetemp: DrivetempState::default(),
+                apple_smc: AppleMacSMC::default(),
+                io,
+            }
+            .with_read_registry()
+            .await,
+        )
     }
 
     /// Seeds the failsafe map for `type_index` using initial statuses
@@ -2667,8 +2782,8 @@ mod preload_tests {
 
             // Short budget so the test does not spend the real per-device timeout eight times.
             let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
-            let wedged = driver_with_io(base, channels.clone(), wedged_io);
-            let healthy = driver_with_channels(base, channels);
+            let wedged = driver_with_io(base, channels.clone(), wedged_io).await;
+            let healthy = driver_with_channels(base, channels).await;
 
             let repo = new_test_repo();
             // Seeded as if both had preloaded once at init, so their channels have failsafe state
@@ -2679,7 +2794,7 @@ mod preload_tests {
                 duty: Some(50.0),
                 ..Default::default()
             };
-            seed_failsafe(&repo, TEST_TYPE_INDEX, &[seed.clone()], &[]);
+            seed_failsafe(&repo, TEST_TYPE_INDEX, std::slice::from_ref(&seed), &[]);
             seed_failsafe(&repo, TEST_TYPE_INDEX_B, &[seed], &[]);
 
             // when: the wedged device is polled past the unreachable threshold, and then past the
@@ -2756,7 +2871,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2807,7 +2923,8 @@ mod preload_tests {
                     fan_channel_with_paths(1, "fan1", base),
                     fan_channel_with_paths(2, "fan2", base),
                 ],
-            );
+            )
+            .await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2849,7 +2966,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
 
             // given: initial successful read to seed cache + failsafe data.
@@ -2904,7 +3022,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             let seed_status = ChannelStatus {
                 name: "fan1".to_string(),
@@ -3112,7 +3231,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             let seed_fan = ChannelStatus {
                 name: "fan1".to_string(),
@@ -3165,7 +3285,8 @@ mod preload_tests {
                     fan_channel_with_paths(1, "fan1", base),
                     fan_channel_with_paths(2, "fan2", base),
                 ],
-            );
+            )
+            .await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3224,7 +3345,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3272,7 +3394,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3331,7 +3454,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let mut repo = new_test_repo();
             // Shorten the read permit timeout so the test does not
             // wait the full poll_rate * MISSING_STATUS_THRESHOLD (8 s
@@ -3429,7 +3553,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3470,7 +3595,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3740,8 +3866,8 @@ mod coalescer_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
-            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
             ..Default::default()
         }
     }
@@ -3770,7 +3896,7 @@ mod coalescer_tests {
     /// Registers a fake device with permit + writer mailbox in the
     /// repo, then spawns the writer task. Returns the device UID so
     /// tests can call `apply_setting_speed_fixed` on it.
-    fn install_device_and_spawn_writer(
+    async fn install_device_and_spawn_writer(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
         name: &str,
@@ -3786,7 +3912,9 @@ mod coalescer_tests {
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
-        };
+        }
+        .with_read_registry()
+        .await;
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -3874,7 +4002,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -3926,7 +4055,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4001,7 +4131,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4058,7 +4189,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 0,
-            );
+            )
+            .await;
 
             let h1 = repo.apply_setting_speed_fixed(&uid, "fan1", 50);
             let h2 = repo.apply_setting_speed_fixed(&uid, "fan2", 75);
@@ -4096,7 +4228,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 DELAY_MS,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
@@ -4140,7 +4273,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 DELAY_MS,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             // First write: spawn so it actually progresses to rx.await
@@ -4189,7 +4323,8 @@ mod coalescer_tests {
                 dir_a.clone(),
                 vec![fan_channel(1, "fan1", &dir_a)],
                 0,
-            );
+            )
+            .await;
             let uid_b = install_device_and_spawn_writer(
                 &mut repo,
                 2,
@@ -4197,7 +4332,8 @@ mod coalescer_tests {
                 dir_b.clone(),
                 vec![fan_channel(1, "fan1", &dir_b)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             let permit_a_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
@@ -4245,7 +4381,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4314,7 +4451,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4456,7 +4594,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4509,7 +4648,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
 
             let mut best = Duration::MAX;
             for _ in 0..ATTEMPTS {
@@ -4557,8 +4697,8 @@ mod slow_device_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
-            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
             ..Default::default()
         }
     }
@@ -4594,7 +4734,7 @@ mod slow_device_tests {
     /// + duty cache. Spawns the writer task. Returns the device UID.
     /// `slow == true` populates `slow_devices` and seeds `duty_cache`
     /// with the supplied cached entries; `slow == false` skips both.
-    fn install_device(
+    async fn install_device(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
         name: &str,
@@ -4611,7 +4751,9 @@ mod slow_device_tests {
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
-        };
+        }
+        .with_read_registry()
+        .await;
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -4718,7 +4860,8 @@ mod slow_device_tests {
                 ],
                 false,
                 vec![],
-            );
+            )
+            .await;
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
             let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
 
@@ -4775,7 +4918,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 true,
                 vec![("fan1", 50, fresh), ("fan2", 10, due)],
-            );
+            )
+            .await;
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
             let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
 
@@ -4844,7 +4988,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 50, future_verify)],
-            );
+            )
+            .await;
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
             let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
 
@@ -4913,7 +5058,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
-            );
+            )
+            .await;
             assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
 
             repo.apply_setting_manual_control(&uid, "fan1")
@@ -4955,7 +5101,8 @@ mod slow_device_tests {
                 vec![channel],
                 true,
                 vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
-            );
+            )
+            .await;
             assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
 
             repo.apply_setting_reset(&uid, "fan1").await.unwrap();
@@ -4999,7 +5146,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             // Seed preloaded_statuses with duty 50 for fan1.
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
@@ -5061,7 +5209,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -5141,7 +5290,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -5220,7 +5370,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -5301,7 +5452,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -5349,7 +5501,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             // Intentionally do NOT seed preloaded_statuses.
             let repo = Rc::new(repo);
 
@@ -5387,7 +5540,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 30, future_verify)],
-            );
+            )
+            .await;
             // preloaded_statuses says 30 (matches cache); ensure
             // target differs so the write goes through.
             repo.preloaded_statuses.borrow_mut().insert(
@@ -5463,8 +5617,8 @@ mod prepare_for_sleep_tests {
             name: name.to_string(),
             pwm_enable_default,
             caps: HwmonChannelCapabilities::FAN_WRITABLE | HwmonChannelCapabilities::PWM,
-            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
-            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
             ..Default::default()
         }
     }
@@ -5641,8 +5795,8 @@ mod shutdown_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
-            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
             ..Default::default()
         }
     }
@@ -6056,12 +6210,12 @@ mod init_timeout_tests {
             hwmon_type: HwmonChannelType::Temp,
             number,
             name: name.to_string(),
-            temp_path: Some(Arc::from(temp_path)),
+            temp_path: Some(temp_path),
             ..Default::default()
         }
     }
 
-    fn driver_for_test(
+    async fn driver_for_test(
         name: &str,
         base: &Path,
         channels: Vec<HwmonChannelInfo>,
@@ -6074,6 +6228,8 @@ mod init_timeout_tests {
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         }
+        .with_read_registry()
+        .await
     }
 
     fn empty_repo() -> HwmonRepo {
@@ -6100,7 +6256,8 @@ mod init_timeout_tests {
                 "test_ok",
                 &base,
                 vec![temp_channel(1, "temp1", base.join("temp1_input"))],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let result = repo
@@ -6144,7 +6301,8 @@ mod init_timeout_tests {
                 "test_slow",
                 &base,
                 vec![temp_channel(1, "temp1", fifo_path.clone())],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let start = Instant::now();
@@ -6207,8 +6365,8 @@ mod init_timeout_tests {
             // Both paths intentionally point at non-existent files
             // so extract_fan_statuses fails and omits the channel
             // from its result Vec.
-            pwm_path: Some(Arc::from(base.join("pwm1"))),
-            rpm_path: Some(Arc::from(base.join("fan1_input"))),
+            pwm_path: Some(base.join("pwm1")),
+            rpm_path: Some(base.join("fan1_input")),
             ..Default::default()
         }
     }
@@ -6224,7 +6382,8 @@ mod init_timeout_tests {
                 "test_no_files",
                 &base,
                 vec![fan_channel_no_files("fan1", &base)],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let result = repo

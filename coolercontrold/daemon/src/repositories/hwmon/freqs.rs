@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Mhz};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -12,7 +13,6 @@ use log::{info, trace};
 use regex::Regex;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
@@ -72,12 +72,16 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         return freqs;
     }
     // One hop for the device's whole frequency set.
-    let paths: Vec<Arc<Path>> = channels
+    let slots: Vec<ReadIndex> = channels
         .iter()
-        .map(|channel| Arc::from(driver.path.join(format!("freq{}_input", channel.number))))
+        .filter_map(|channel| channel.read_slot.value)
         .collect();
-    let results = driver.io.read_many(&paths).await;
-    debug_assert_eq!(results.len(), channels.len());
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every freq channel needs a read slot; was the registry installed?"
+    );
+    let results = driver.io.read_many(&slots).await;
     for (channel, result) in channels.iter().zip(results) {
         if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
             freqs.push(ChannelStatus {
@@ -184,7 +188,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::ops::Not;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
@@ -242,7 +246,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -275,7 +281,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -318,7 +326,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -360,7 +370,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;

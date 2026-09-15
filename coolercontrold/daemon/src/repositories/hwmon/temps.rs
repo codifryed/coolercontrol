@@ -3,9 +3,10 @@
 use crate::repositories::hwmon::device_io::DeviceIo;
 use std::io::Error;
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::cc_fs::ReadIndex;
 use crate::cc_fs::{self, SysfsValue};
 use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
@@ -17,7 +18,6 @@ use futures_util::future::join_all;
 use log::{debug, info, log_enabled, trace, warn};
 use nix::libc;
 use regex::Regex;
-use std::sync::Arc;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
@@ -61,9 +61,7 @@ pub async fn init_temps(
                 number: channel_number,
                 name: channel_name,
                 label,
-                temp_path: Some(Arc::from(
-                    base_path.join(format_temp_input!(channel_number)),
-                )),
+                temp_path: Some(base_path.join(format_temp_input!(channel_number))),
                 ..Default::default()
             });
         }
@@ -87,26 +85,36 @@ pub async fn read_temp_statuses(
     if channels.is_empty() {
         return Vec::new();
     }
-    let paths: Vec<Arc<Path>> = channels
+    let slots: Vec<ReadIndex> = channels
         .iter()
-        .map(|channel| temp_path_for(driver, channel))
+        .filter_map(|channel| channel.read_slot.value)
         .collect();
-    let results = driver.io.read_many(&paths).await;
-    debug_assert_eq!(results.len(), channels.len());
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every temp channel needs a read slot; was the registry installed?"
+    );
+    if cfg!(debug_assertions) {
+        for (channel, slot) in channels.iter().zip(&slots) {
+            driver
+                .io
+                .debug_assert_slot(*slot, &temp_path_for(driver, channel));
+        }
+    }
+    let results = driver.io.read_many(&slots).await;
     channels
         .iter()
-        .zip(&paths)
         .zip(results)
-        .map(|((channel, path), result)| temp_status_from(driver, channel, path, result))
+        .map(|(channel, result)| temp_status_from(driver, channel, result))
         .collect()
 }
 
 /// Where one channel's temp value lives.
-fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
+fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
     channel
         .temp_path
         .clone()
-        .unwrap_or_else(|| Arc::from(driver.path.join(format_temp_input!(channel.number))))
+        .unwrap_or_else(|| driver.path.join(format_temp_input!(channel.number)))
 }
 
 /// Reads the temp file for one channel and returns the resulting
@@ -118,9 +126,11 @@ pub async fn read_one_temp_status(
     channel: &HwmonChannelInfo,
 ) -> Option<TempStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
-    let temp_path = temp_path_for(driver, channel);
-    let result = driver.io.read_value(&temp_path).await;
-    temp_status_from(driver, channel, &temp_path, result)
+    let result = match channel.read_slot.value {
+        Some(slot) => driver.io.read_many(&[slot]).await.remove(0),
+        None => driver.io.read_value(&temp_path_for(driver, channel)).await,
+    };
+    temp_status_from(driver, channel, result)
 }
 
 /// Turns one raw read into a `TempStatus`, or `None` when the channel has nothing usable to
@@ -129,16 +139,18 @@ pub async fn read_one_temp_status(
 fn temp_status_from(
     driver: &HwmonDriverInfo,
     channel: &HwmonChannelInfo,
-    temp_path: &Path,
     result: Result<SysfsValue>,
 ) -> Option<TempStatus> {
+    // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
+    // the per-tick pass never builds a path.
+    let temp_path = || temp_path_for(driver, channel);
     match result
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)
     {
         Ok(temp) => {
-            debug!("hwmon read {}: {temp} C", temp_path.display());
+            debug!("hwmon read {}: {temp} C", temp_path().display());
             Some(TempStatus {
                 name: channel.name.clone(),
                 temp,
@@ -146,7 +158,11 @@ fn temp_status_from(
         }
         Err(err) => {
             if is_thinkpad_gpu_powerdown(&driver.name, &err) {
-                log_thinkpad_gpu_powerdown_once(&channel.name, channel.label.as_deref(), temp_path);
+                log_thinkpad_gpu_powerdown_once(
+                    &channel.name,
+                    channel.label.as_deref(),
+                    &temp_path(),
+                );
                 return Some(TempStatus {
                     name: channel.name.clone(),
                     temp: 0.0,
@@ -155,7 +171,7 @@ fn temp_status_from(
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read temp value at {} ; {err}",
-                    temp_path.display()
+                    temp_path().display()
                 );
             }
             None
@@ -488,7 +504,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -537,7 +555,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             let (first_temps, _) = extract_temp_statuses(&driver_info).await;
             let held_after_first_tick = driver_info.io.descriptor_count().await;
@@ -585,7 +605,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -626,7 +648,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -666,7 +690,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -718,7 +744,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -759,7 +787,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -782,7 +812,9 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
 
@@ -873,7 +905,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;

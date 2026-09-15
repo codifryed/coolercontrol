@@ -23,7 +23,9 @@ use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
 use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::hwmon::chip_name::{self, ChipName};
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
 use crate::repositories::hwmon::{devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -723,9 +725,14 @@ impl CpuRepo {
         if let Some(physical_id) = association.physical_id() {
             channels.extend(self.init_socket_channels(physical_id, cpu_freqs).await);
         }
-        let channels = self
+        let mut channels = self
             .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
             .await;
+        // Detection is done with this device's channel set, so the per-tick pass can address the
+        // worker's table by slot from here on.
+        if let Err(err) = install_read_registry(path, None, &mut channels, &io).await {
+            error!("Could not install the read table for {cpu_name}: {err}");
+        }
         let pci_device_names = devices::get_device_pci_names(path).await;
         let model = devices::get_device_model_name(path).await.or_else(|| {
             pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
