@@ -69,7 +69,6 @@ import {
     DeviceHealthDTO,
     UnreachableDelta,
     UnreachableRef,
-    unreachableKey,
     FailsafeDelta,
     failsafeKey,
     FailsafeRef,
@@ -1183,7 +1182,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     function applyUnreachableDelta(delta: UnreachableDelta): void {
         const index = healthUnreachable.value.findIndex(
-            (ref) => unreachableKey(ref) === unreachableKey(delta),
+            (ref) => ref.device_uid === delta.device_uid,
         )
         if (delta.state === HealthState.Detected && index === -1) {
             healthUnreachable.value.push(delta)

@@ -254,7 +254,3 @@ export function sourceKey(ref: SourceRef): string {
 export function failsafeKey(ref: FailsafeRef): string {
     return `${ref.device_uid}/${ref.kind}/${ref.name}`
 }
-
-export function unreachableKey(ref: UnreachableRef): string {
-    return ref.device_uid
-}

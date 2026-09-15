@@ -32,7 +32,6 @@ import {
     HealthEntityType,
     type SourceRef,
     failsafeKey,
-    unreachableKey,
     sourceKey,
     sourceTempDisplayName,
 } from '@/models/DeviceHealth.ts'
@@ -193,7 +192,7 @@ const healthRows = computed((): Array<HealthRow> => {
         unreachableDevices.add(ref.device_uid)
         const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
         rows.push({
-            key: `unreachable/${unreachableKey(ref)}`,
+            key: `unreachable/${ref.device_uid}`,
             label: deviceSettings?.name ?? ref.device_name,
             detail: `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
             to: { name: 'devices-device', params: { deviceUID: ref.device_uid } },

@@ -19,7 +19,6 @@ import {
     HealthState,
     UnreachableDelta,
     UnreachableRef,
-    unreachableKey,
 } from '@/models/DeviceHealth.ts'
 
 /** The precedence the device lists, the monitoring panel and the inline warning all apply. */
@@ -62,16 +61,6 @@ describe('device unreachable health state', () => {
         expect(dto.unreachable).toEqual([])
     })
 
-    it('keys an unreachable entry by device, since the whole device is the subject', () => {
-        const first = plainToInstance(UnreachableRef, { device_uid: 'dev1' } as object)
-        const second = plainToInstance(UnreachableRef, {
-            device_uid: 'dev1',
-            consecutive_timeouts: 12,
-        } as object)
-        // Same device, later count: one entry that updates, not two rows for one dead device.
-        expect(unreachableKey(first)).toBe(unreachableKey(second))
-    })
-
     it('reports the device state ahead of its channels failsafe, because it is the cause', () => {
         const unreachable = [
             plainToInstance(UnreachableRef, { device_uid: 'dev1', device_name: 'octo' } as object),
@@ -89,6 +78,6 @@ describe('device unreachable health state', () => {
             state: 'Resolved',
         } as object)
         expect(delta.state).toBe(HealthState.Resolved)
-        expect(unreachableKey(delta)).toBe('dev1')
+        expect(delta.device_uid).toBe('dev1')
     })
 })
