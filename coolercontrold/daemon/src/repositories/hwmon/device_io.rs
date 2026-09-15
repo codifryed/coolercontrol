@@ -148,13 +148,13 @@ impl DeviceIo {
         debug_assert!(reply_timeout > Duration::ZERO);
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
         let thread_name = worker_thread_name(device_name);
+        debug!("device IO worker starting: {thread_name}");
         // Detached deliberately: a wedged worker never returns, so there is no handle worth
         // keeping. Holding one would only invite a `join` that cannot be bounded.
         std::thread::Builder::new()
-            .name(thread_name.clone())
+            .name(thread_name)
             .stack_size(WORKER_STACK_BYTES)
             .spawn(move || run_worker(rx))?;
-        debug!("device IO worker started: {thread_name}");
         Ok(Self::Threaded(Rc::new(Worker {
             device_name: device_name.to_owned(),
             tx,
