@@ -732,6 +732,7 @@ onUnmounted(() => {
                     v-if="dashboard.chartType == ChartType.TIME_CHART"
                     :dashboard="viewDashboard"
                     :key="chartKey"
+                    @line-set-changed="chartKey = uuidV4()"
                 />
                 <SensorTable
                     v-else-if="dashboard.chartType == ChartType.TABLE"
