@@ -1737,7 +1737,8 @@ impl Engine {
         let key: ChannelKey = (device_uid.clone(), channel_name.clone());
         if self.diagnosis_registry.is_in_flight(&key) {
             return Err(DiagnosisFailure::WriteFailed(format!(
-                "calibration already in progress for {device_uid}:{channel_name}"
+                "calibration already in progress for {}",
+                self.log_device_channel(&device_uid, &channel_name)
             )));
         }
         if let Some(alert_name) = self.active_alert_blocking(&key) {
