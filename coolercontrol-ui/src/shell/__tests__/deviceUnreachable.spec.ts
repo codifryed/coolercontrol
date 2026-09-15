@@ -12,7 +12,10 @@
 
 import 'reflect-metadata'
 import { plainToInstance } from 'class-transformer'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
+import { mount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
 import en from '@/i18n/locales/en.ts'
 import {
     DeviceHealthDTO,
@@ -20,13 +23,32 @@ import {
     UnreachableDelta,
     UnreachableRef,
 } from '@/models/DeviceHealth.ts'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
-/** The precedence the device lists, the monitoring panel and the inline warning all apply. */
-const worseOf = (
-    unreachable: Array<UnreachableRef>,
-    deviceUid: string,
-): 'unreachable' | 'failsafe' =>
-    unreachable.some((ref) => ref.device_uid === deviceUid) ? 'unreachable' : 'failsafe'
+const healthUnreachable: Array<{ device_uid: string }> = []
+const healthFailsafe: Array<{ device_uid: string; name: string; reason?: string }> = []
+
+// The real store drags the router and the whole shell in for two arrays.
+vi.mock('@/stores/SettingsStore.ts', () => ({
+    useSettingsStore: () => ({ healthUnreachable, healthFailsafe }),
+}))
+
+const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
+
+// The composable reads a store, so it only runs inside a component setup.
+function callInSetup<T>(use: (api: ReturnType<typeof useDeviceHealth>) => T): T {
+    let captured!: T
+    mount(
+        defineComponent({
+            setup() {
+                captured = use(useDeviceHealth())
+                return () => h('div')
+            },
+        }),
+        { global: { plugins: [i18n] } },
+    )
+    return captured
+}
 
 describe('device unreachable health state', () => {
     it('has an english string for both the label and its explanation', () => {
@@ -61,13 +83,42 @@ describe('device unreachable health state', () => {
         expect(dto.unreachable).toEqual([])
     })
 
+    // Every surface that shows this resolves it through `useDeviceHealth`, so the rule is
+    // asserted against that one implementation rather than a copy of it.
     it('reports the device state ahead of its channels failsafe, because it is the cause', () => {
-        const unreachable = [
-            plainToInstance(UnreachableRef, { device_uid: 'dev1', device_name: 'octo' } as object),
-        ]
-        expect(worseOf(unreachable, 'dev1')).toBe('unreachable')
+        healthUnreachable.length = 0
+        healthFailsafe.length = 0
+        healthUnreachable.push({ device_uid: 'dev1' })
+        healthFailsafe.push(
+            { device_uid: 'dev1', name: 'fan1', reason: 'stale' },
+            { device_uid: 'dev2', name: 'fan1', reason: 'stale' },
+        )
+
+        const tips = callInSetup((api) => ({
+            wedged: api.healthTooltip('dev1', 'fan1'),
+            healthy: api.healthTooltip('dev2', 'fan1'),
+            unreachableText: api.unreachableText(),
+        }))
+
+        // The wedged device says "not responding", not "failsafe values in use".
+        expect(tips.wedged).toBe(tips.unreachableText)
         // A healthy device's failsafe is still its own story.
-        expect(worseOf(unreachable, 'dev2')).toBe('failsafe')
+        expect(tips.healthy).toContain(en.views.appInfo.failsafeActive)
+        expect(tips.healthy).not.toBe(tips.unreachableText)
+    })
+
+    it('treats a wedged device as unhealthy even before any channel failsafes', () => {
+        healthUnreachable.length = 0
+        healthFailsafe.length = 0
+        healthUnreachable.push({ device_uid: 'dev1' })
+
+        const flags = callInSetup((api) => ({
+            wedged: api.isDeviceUnhealthy('dev1'),
+            other: api.isDeviceUnhealthy('dev2'),
+        }))
+
+        expect(flags.wedged).toBe(true)
+        expect(flags.other).toBe(false)
     })
 
     it('carries the resolved state so a recovered device clears rather than latching', () => {
