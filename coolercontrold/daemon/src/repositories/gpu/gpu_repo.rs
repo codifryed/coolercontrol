@@ -441,6 +441,22 @@ impl Repository for GpuRepo {
                 consecutive_timeouts,
             });
         }
+        for (device_uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
+            let Some(io) = self.gpus_nvidia.nvml_worker(nv_info.gpu_index) else {
+                continue;
+            };
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: io.device_name().to_owned(),
+                consecutive_timeouts,
+            });
+        }
         out
     }
 
@@ -460,6 +476,9 @@ impl Repository for GpuRepo {
                 }
             }
         }
+        // A GPU that stopped answering during the session may answer now, and handing fan
+        // control back is the most safety-relevant write here, so it earns one attempt.
+        self.gpus_nvidia.allow_nvml_probe_now();
         self.gpus_nvidia.reset_devices().await;
         info!("GPU Repository shutdown");
         Ok(())
