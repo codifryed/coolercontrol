@@ -754,8 +754,9 @@ impl Engine {
         for (device_uid, channel_name, lcd_settings) in shutdown_settings {
             if Self::shutdown_setting_is_stale(&lcd_settings) {
                 warn!(
-                    "LCD shutdown image for {device_uid}:{channel_name} is gone; \
-                     dropping the stale setting and using the stock image"
+                    "LCD shutdown image for {} is gone; dropping the stale setting and using \
+                     the stock image",
+                    self.log_device_channel(&device_uid, &channel_name)
                 );
                 self.config
                     .remove_lcd_shutdown_setting(&device_uid, &channel_name);
@@ -806,7 +807,8 @@ impl Engine {
                     .await
                 {
                     warn!(
-                        "Failed to apply LCD shutdown image for {device_uid}:{channel_name}: {err}"
+                        "Failed to apply LCD shutdown image for {}: {err}",
+                        self.log_device_channel(device_uid, channel_name)
                     );
                 } else {
                     if Self::current_setting_is_externally_applied(&settings_current) {
@@ -824,12 +826,16 @@ impl Engine {
                         });
                     }
                     debug!(
-                        "Successfully applied LCD shutdown image for {device_uid}:{channel_name}"
+                        "Successfully applied LCD shutdown image for {}",
+                        self.log_device_channel(device_uid, channel_name)
                     );
                 }
             }
             Err(err) => {
-                warn!("Device not found for LCD shutdown image {device_uid}:{channel_name}: {err}");
+                warn!(
+                    "Device not found for LCD shutdown image {}: {err}",
+                    self.log_device_channel(device_uid, channel_name)
+                );
             }
         }
     }
@@ -935,7 +941,8 @@ impl Engine {
             Ok((_, data)) => data,
             Err(err) => {
                 warn!(
-                    "Failed to process default shutdown image for {device_uid}:{channel_name}: {err}"
+                    "Failed to process default shutdown image for {}: {err}",
+                    self.log_device_channel(device_uid, channel_name)
                 );
                 return;
             }
@@ -947,7 +954,8 @@ impl Engine {
             Ok(path) => path,
             Err(err) => {
                 warn!(
-                    "Failed to save default shutdown image for {device_uid}:{channel_name}: {err}"
+                    "Failed to save default shutdown image for {}: {err}",
+                    self.log_device_channel(device_uid, channel_name)
                 );
                 return;
             }
@@ -967,15 +975,20 @@ impl Engine {
                     .await
                 {
                     warn!(
-                        "Failed to apply default shutdown image for {device_uid}:{channel_name}: {err}"
+                        "Failed to apply default shutdown image for {}: {err}",
+                        self.log_device_channel(device_uid, channel_name)
                     );
                 } else {
-                    debug!("Applied default shutdown image for {device_uid}:{channel_name}");
+                    debug!(
+                        "Applied default shutdown image for {}",
+                        self.log_device_channel(device_uid, channel_name)
+                    );
                 }
             }
             Err(err) => {
                 warn!(
-                    "Device not found for default shutdown image {device_uid}:{channel_name}: {err}"
+                    "Device not found for default shutdown image {}: {err}",
+                    self.log_device_channel(device_uid, channel_name)
                 );
             }
         }
