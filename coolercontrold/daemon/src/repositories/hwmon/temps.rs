@@ -128,10 +128,10 @@ pub async fn read_one_temp_status(
     channel: &HwmonChannelInfo,
 ) -> Option<TempStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
-    let result = match channel.read_slot.value {
-        Some(slot) => driver.io.read_many(&[slot]).await.remove(0),
-        None => driver.io.read_value(&temp_path_for(driver, channel)).await,
-    };
+    let result = driver
+        .io
+        .read_one(channel.read_slot.value, &temp_path_for(driver, channel))
+        .await;
     temp_status_from(driver, channel, result)
 }
 

@@ -166,11 +166,11 @@ pub async fn read_one_power_status(
     channel: &HwmonChannelInfo,
 ) -> Option<ChannelStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
-    let result = match channel.read_slot.value {
-        Some(slot) => driver.io.read_many(&[slot]).await.remove(0),
-        // In the Power case, channel.name is the real name of the sysfs file.
-        None => driver.io.read_value(&driver.path.join(&channel.name)).await,
-    };
+    // In the Power case, channel.name is the real name of the sysfs file.
+    let result = driver
+        .io
+        .read_one(channel.read_slot.value, &driver.path.join(&channel.name))
+        .await;
     power_status_from(driver, channel, result)
 }
 

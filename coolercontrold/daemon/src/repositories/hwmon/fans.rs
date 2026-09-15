@@ -169,12 +169,12 @@ pub async fn detect_rpm(
         .as_str()
         .parse()?;
     let rpm_path = base_path.join(format_fan_input!(channel_number));
-    if probe::read_until_ok(&rpm_path, async || try_read_fan_rpm(io, &rpm_path).await)
+    if probe::read_until_ok(&rpm_path, async || try_read_fan_rpm(io, None, &rpm_path).await)
         .await
         .is_err()
         // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
         // including the warning.
-        && get_fan_rpm(io, base_path, &channel_number, Some(&rpm_path), true)
+        && get_fan_rpm(io, base_path, &channel_number, Some(&rpm_path), None, true)
             .await
             .is_none()
     {
@@ -395,6 +395,7 @@ pub async fn read_one_fan_status(
             &driver.path,
             &channel.number,
             channel.rpm_path.as_deref(),
+            channel.read_slot.rpm,
             log_enabled!(log::Level::Debug),
         )
         .await
@@ -434,6 +435,7 @@ pub async fn read_one_fan_rpm_only(
         &driver.path,
         &channel.number,
         channel.rpm_path.as_deref(),
+        channel.read_slot.rpm,
         log_enabled!(log::Level::Debug),
     )
     .await?;
@@ -479,6 +481,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                                 &driver.path,
                                 &channel.number,
                                 channel.rpm_path.as_deref(),
+                                channel.read_slot.rpm,
                                 false,
                             )
                             .await
@@ -543,8 +546,12 @@ async fn try_read_pwm_duty(io: &DeviceIo, pwm_path: &Path) -> Result<f64> {
 }
 
 /// One rpm read with the error intact. See `try_read_pwm_duty`.
-async fn try_read_fan_rpm(io: &DeviceIo, fan_input_path: &Path) -> Result<u32> {
-    io.read_value(fan_input_path)
+async fn try_read_fan_rpm(
+    io: &DeviceIo,
+    slot: Option<ReadIndex>,
+    fan_input_path: &Path,
+) -> Result<u32> {
+    io.read_one(slot, fan_input_path)
         .await
         .and_then(check_parsing_32)
         // Edge case where on spin-up the output is max value until it begins moving
@@ -625,13 +632,14 @@ pub async fn get_fan_rpm(
     base_path: &Path,
     channel_number: &u8,
     rpm_path: Option<&Path>,
+    slot: Option<ReadIndex>,
     log_error: bool,
 ) -> Option<u32> {
     let fan_input_path = match rpm_path {
         Some(path) => path,
         None => &base_path.join(format_fan_input!(channel_number)),
     };
-    let result = try_read_fan_rpm(io, fan_input_path).await;
+    let result = try_read_fan_rpm(io, slot, fan_input_path).await;
     interpret_fan_rpm(fan_input_path, result, log_error)
 }
 

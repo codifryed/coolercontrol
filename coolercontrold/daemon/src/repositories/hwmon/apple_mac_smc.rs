@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::DEVICE_NAME_MAC_SMC;
@@ -152,9 +153,16 @@ impl AppleMacSMC {
             return Ok(()); // skip if fan_target file isn't writable
         }
         // Detection reads each attribute once, so this cache closes with the probe.
-        if fans::get_fan_rpm(&DeviceIo::default(), base_path, &channel_number, None, true)
-            .await
-            .is_none()
+        if fans::get_fan_rpm(
+            &DeviceIo::default(),
+            base_path,
+            &channel_number,
+            None,
+            None,
+            true,
+        )
+        .await
+        .is_none()
         {
             return Ok(()); // skip if fan_input file isn't readable (no indicator of speed)
         }
@@ -317,8 +325,13 @@ impl AppleMacSMC {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         let fan_duty = if channel.caps.is_apple_smc() {
-            self.get_fan_duty(&driver.io, channel.number, channel.rpm_path.as_deref())
-                .await
+            self.get_fan_duty(
+                &driver.io,
+                channel.number,
+                channel.rpm_path.as_deref(),
+                channel.read_slot.rpm,
+            )
+            .await
         } else {
             None
         };
@@ -328,6 +341,7 @@ impl AppleMacSMC {
                 &driver.path,
                 &channel.number,
                 channel.rpm_path.as_deref(),
+                channel.read_slot.rpm,
                 log_enabled!(log::Level::Debug),
             )
             .await
@@ -367,6 +381,7 @@ impl AppleMacSMC {
             &driver.path,
             &channel.number,
             channel.rpm_path.as_deref(),
+            channel.read_slot.rpm,
             false,
         )
         .await?;
@@ -483,12 +498,14 @@ impl AppleMacSMC {
         io: &DeviceIo,
         channel_number: u8,
         rpm_path: Option<&Path>,
+        slot: Option<ReadIndex>,
     ) -> Option<f64> {
         fans::get_fan_rpm(
             io,
             &self.path,
             &channel_number,
             rpm_path,
+            slot,
             log_enabled!(log::Level::Debug),
         )
         .await
@@ -1246,7 +1263,9 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.get_fan_duty(&DeviceIo::default(), 1, None).await;
+            let result = apple_smc
+                .get_fan_duty(&DeviceIo::default(), 1, None, None)
+                .await;
 
             // then:
             teardown(&ctx).await;

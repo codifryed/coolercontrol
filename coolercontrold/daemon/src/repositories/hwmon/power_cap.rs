@@ -74,19 +74,17 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
 pub async fn extract_power_joule_counter(io: &DeviceIo, channel: &HwmonChannelInfo) -> Option<f64> {
     // Through its slot, so the counter keeps its descriptor across ticks like every other per-tick
     // attribute. The path is only rebuilt if detection never registered one.
-    let raw = match channel.read_slot.value {
-        Some(slot) => io.read_many(&[slot]).await.remove(0),
-        None => {
-            io.read_value(Path::new(&format!(
-                "/sys/class/powercap/intel-rapl:{}/energy_uj",
-                channel.number
-            )))
-            .await
-        }
-    };
-    raw.and_then(check_parsing_f64)
-        .map(microjoules_to_joules)
-        .ok()
+    io.read_one(
+        channel.read_slot.value,
+        Path::new(&format!(
+            "/sys/class/powercap/intel-rapl:{}/energy_uj",
+            channel.number
+        )),
+    )
+    .await
+    .and_then(check_parsing_f64)
+    .map(microjoules_to_joules)
+    .ok()
 }
 
 /// Calculate the power consumption in Watts from the current and previous energy counters.

@@ -176,6 +176,17 @@ impl DeviceIo {
         }
     }
 
+    /// Reads one attribute through its slot when the registry gave it one, by path otherwise.
+    ///
+    /// The per-tick single reads all want this: the slot keeps the descriptor across ticks, and
+    /// the path is the honest fallback for a device whose table never installed.
+    pub async fn read_one(&self, slot: Option<ReadIndex>, path: &Path) -> Result<SysfsValue> {
+        match slot {
+            Some(slot) => self.read_many(&[slot]).await.remove(0),
+            None => self.read_value(path).await,
+        }
+    }
+
     /// Hands the device its read table, covering every attribute the per-tick pass reads.
     ///
     /// Called once, after detection settles the channel set.
