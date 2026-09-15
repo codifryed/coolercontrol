@@ -129,9 +129,9 @@ async fn detect_pwm(
         .as_str()
         .parse()?;
     let pwm_path = base_path.join(format_pwm!(channel_number));
-    if probe::until_readable(&pwm_path, async || try_read_pwm_duty(io, &pwm_path).await)
+    if probe::read_until_ok(&pwm_path, async || try_read_pwm_duty(io, &pwm_path).await)
         .await
-        .not()
+        .is_err()
         // Retries exhausted, or the failure was never transient. `get_pwm_duty` has the final
         // say: it owns the auto-mode refusal fallback and the warning.
         && get_pwm_duty(io, base_path, &channel_number, Some(&pwm_path), true)
@@ -168,9 +168,9 @@ pub async fn detect_rpm(
         .as_str()
         .parse()?;
     let rpm_path = base_path.join(format_fan_input!(channel_number));
-    if probe::until_readable(&rpm_path, async || try_read_fan_rpm(io, &rpm_path).await)
+    if probe::read_until_ok(&rpm_path, async || try_read_fan_rpm(io, &rpm_path).await)
         .await
-        .not()
+        .is_err()
         // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
         // including the warning.
         && get_fan_rpm(io, base_path, &channel_number, Some(&rpm_path), true)

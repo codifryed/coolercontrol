@@ -122,11 +122,12 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8, io: &DeviceIo) -> bool {
     let freq_path = base_path.join(format!("freq{channel_number}_input"));
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
-    // for the session. See `probe::until_readable`.
-    probe::until_readable(&freq_path, async || {
+    // for the session.
+    probe::read_until_ok(&freq_path, async || {
         read_freq_megahertz(io, &freq_path).await
     })
     .await
+    .is_ok()
 }
 
 /// One frequency read in MHz, error intact. Detection needs the errno to tell a transient failure

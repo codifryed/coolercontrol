@@ -211,12 +211,12 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
 async fn sensor_is_not_usable(base_path: &Path, file_name: &str, io: &DeviceIo) -> bool {
     let power_path = base_path.join(file_name);
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
-    // for the session. See `probe::until_readable`.
-    probe::until_readable(&power_path, async || {
+    // for the session.
+    probe::read_until_ok(&power_path, async || {
         read_power_watts(io, &power_path).await
     })
     .await
-    .not()
+    .is_err()
 }
 
 /// One power read in watts, error intact. Detection needs the errno to tell a transient failure

@@ -54,14 +54,6 @@ pub async fn read_until_ok<T>(path: &Path, mut read: impl AsyncFnMut() -> Result
     Err(err)
 }
 
-/// `read_until_ok` for callers that only need the verdict.
-///
-/// `false` is not always the final word: a caller with a fallback for a driver that refuses the
-/// read (see `fans::is_kernel_refusal`) still applies it.
-pub async fn until_readable<T>(path: &Path, read: impl AsyncFnMut() -> Result<T>) -> bool {
-    read_until_ok(path, read).await.is_ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,7 +71,7 @@ mod tests {
     fn a_transient_failure_is_re_probed() {
         cc_fs::test_runtime(async {
             let calls = Cell::new(0_u8);
-            let readable = until_readable(
+            let readable = read_until_ok(
                 Path::new("/sys/class/hwmon/hwmon4/temp1_input"),
                 async || {
                     calls.set(calls.get() + 1);
@@ -90,7 +82,8 @@ mod tests {
                     }
                 },
             )
-            .await;
+            .await
+            .is_ok();
             assert!(readable);
             assert_eq!(calls.get(), 2, "the probe did not re-read");
         });
@@ -102,14 +95,15 @@ mod tests {
     fn re_probing_is_bounded_by_the_pass_budget() {
         cc_fs::test_runtime(async {
             let calls = Cell::new(0_u8);
-            let readable = until_readable(
+            let readable = read_until_ok(
                 Path::new("/sys/class/hwmon/hwmon4/temp1_input"),
                 async || {
                     calls.set(calls.get() + 1);
                     Err::<u8, _>(transient())
                 },
             )
-            .await;
+            .await
+            .is_ok();
             assert!(readable.not());
             assert_eq!(calls.get(), DETECT_PROBE_PASSES);
         });
@@ -123,14 +117,15 @@ mod tests {
     fn a_non_transient_failure_is_not_re_probed() {
         cc_fs::test_runtime(async {
             let calls = Cell::new(0_u8);
-            let readable = until_readable(
+            let readable = read_until_ok(
                 Path::new("/sys/class/hwmon/hwmon4/temp1_input"),
                 async || {
                     calls.set(calls.get() + 1);
                     Err::<u8, _>(Error::from_raw_os_error(nix::libc::ENODATA).into())
                 },
             )
-            .await;
+            .await
+            .is_ok();
             assert!(readable.not());
             assert_eq!(calls.get(), 1, "an unreadable attribute was re-probed");
         });
