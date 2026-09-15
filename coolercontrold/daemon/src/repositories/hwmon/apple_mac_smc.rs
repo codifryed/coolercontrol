@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 const DEFAULT_MIN_FAN_SPEED: RPM = 600;
 const DEFAULT_MAX_FAN_SPEED: RPM = 6_500;
@@ -284,11 +285,9 @@ impl AppleMacSMC {
                     base_path.display()
                 );
             }
-            let rpm_path = if fan_cap.has_rpm() {
-                Some(base_path.join(format_fan_input!(channel_number)))
-            } else {
-                None
-            };
+            let rpm_path = fan_cap
+                .has_rpm()
+                .then(|| Arc::from(base_path.join(format_fan_input!(channel_number))));
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
@@ -317,7 +316,7 @@ impl AppleMacSMC {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         let fan_duty = if channel.caps.is_apple_smc() {
-            self.get_fan_duty(&driver.io, channel.number, channel.rpm_path.as_ref())
+            self.get_fan_duty(&driver.io, channel.number, channel.rpm_path.as_deref())
                 .await
         } else {
             None
@@ -327,7 +326,7 @@ impl AppleMacSMC {
                 &driver.io,
                 &driver.path,
                 &channel.number,
-                channel.rpm_path.as_ref(),
+                channel.rpm_path.as_deref(),
                 log_enabled!(log::Level::Debug),
             )
             .await
@@ -366,7 +365,7 @@ impl AppleMacSMC {
             &driver.io,
             &driver.path,
             &channel.number,
-            channel.rpm_path.as_ref(),
+            channel.rpm_path.as_deref(),
             false,
         )
         .await?;
@@ -476,7 +475,7 @@ impl AppleMacSMC {
         &self,
         io: &DeviceIo,
         channel_number: u8,
-        rpm_path: Option<&PathBuf>,
+        rpm_path: Option<&Path>,
     ) -> Option<f64> {
         fans::get_fan_rpm(
             io,
@@ -1282,7 +1281,7 @@ mod tests {
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan1_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
                     temp_path: None,
                 },
                 HwmonChannelInfo {
@@ -1296,7 +1295,7 @@ mod tests {
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan2_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
                     temp_path: None,
                 },
             ];
@@ -1351,7 +1350,7 @@ mod tests {
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
                 pwm_path: None,
-                rpm_path: Some(test_base_path.join("fan1_input")),
+                rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
                 temp_path: None,
             }];
 
@@ -1386,7 +1385,7 @@ mod tests {
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
                 pwm_path: None,
-                rpm_path: Some(test_base_path.join("fan1_input")),
+                rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
                 temp_path: None,
             }];
 
@@ -2004,7 +2003,7 @@ mod tests {
                     caps: caps.clone(),
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan1_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
                     temp_path: None,
                 },
                 HwmonChannelInfo {
@@ -2016,7 +2015,7 @@ mod tests {
                     caps,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan2_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
                     temp_path: None,
                 },
             ];
@@ -2088,7 +2087,7 @@ mod tests {
                     caps: caps.clone(),
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan1_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan1_input"))),
                     temp_path: None,
                 },
                 HwmonChannelInfo {
@@ -2100,7 +2099,7 @@ mod tests {
                     caps,
                     auto_curve: AutoCurveInfo::None,
                     pwm_path: None,
-                    rpm_path: Some(test_base_path.join("fan2_input")),
+                    rpm_path: Some(Arc::from(test_base_path.join("fan2_input"))),
                     temp_path: None,
                 },
             ];

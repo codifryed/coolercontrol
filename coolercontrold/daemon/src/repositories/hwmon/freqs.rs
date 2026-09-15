@@ -12,6 +12,7 @@ use log::{info, trace};
 use regex::Regex;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
@@ -71,9 +72,9 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         return freqs;
     }
     // One hop for the device's whole frequency set.
-    let paths: Vec<PathBuf> = channels
+    let paths: Vec<Arc<Path>> = channels
         .iter()
-        .map(|channel| driver.path.join(format!("freq{}_input", channel.number)))
+        .map(|channel| Arc::from(driver.path.join(format!("freq{}_input", channel.number))))
         .collect();
     let results = driver.io.read_many(&paths).await;
     debug_assert_eq!(results.len(), channels.len());

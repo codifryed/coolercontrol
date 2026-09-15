@@ -114,6 +114,7 @@ mod tests {
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
+    use std::sync::Arc;
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
@@ -158,7 +159,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };
@@ -208,7 +209,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(ctx.test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(ctx.test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };
@@ -252,7 +253,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };
@@ -314,7 +315,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };
@@ -373,7 +374,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };

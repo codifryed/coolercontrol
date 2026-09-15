@@ -93,6 +93,7 @@ use std::mem;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::{Display, EnumString};
@@ -226,10 +227,10 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub auto_curve: AutoCurveInfo,
     pub caps: HwmonChannelCapabilities,
-    // Paths that are often used are saved to avoid cloning
-    pub pwm_path: Option<PathBuf>,
-    pub rpm_path: Option<PathBuf>,
-    pub temp_path: Option<PathBuf>,
+    // Built once at init: `Arc<Path>` so the per-tick batch is refcount bumps, not allocations.
+    pub pwm_path: Option<Arc<Path>>,
+    pub rpm_path: Option<Arc<Path>>,
+    pub temp_path: Option<Arc<Path>>,
 }
 
 impl Default for HwmonChannelInfo {
@@ -934,7 +935,7 @@ impl HwmonRepo {
                 continue;
             }
             self.read_channels_batched(type_index, driver, &ordered, &ch_type, drivetemp_suspended)
-                .await;
+            .await;
         }
 
         // Drop before spawning the delay holder so any queued waiter
@@ -2618,8 +2619,8 @@ mod preload_tests {
             label: None,
             caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
             auto_curve: AutoCurveInfo::None,
-            pwm_path: Some(base_path.join(format!("pwm{number}"))),
-            rpm_path: Some(base_path.join(format!("fan{number}_input"))),
+            pwm_path: Some(Arc::from(base_path.join(format!("pwm{number}")))),
+            rpm_path: Some(Arc::from(base_path.join(format!("fan{number}_input")))),
             temp_path: None,
         }
     }
@@ -3725,8 +3726,8 @@ mod coalescer_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(base.join(format!("pwm{number}"))),
-            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
+            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
             ..Default::default()
         }
     }
@@ -4542,8 +4543,8 @@ mod slow_device_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(base.join(format!("pwm{number}"))),
-            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
+            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
             ..Default::default()
         }
     }
@@ -5454,8 +5455,8 @@ mod prepare_for_sleep_tests {
             name: name.to_string(),
             pwm_enable_default,
             caps: HwmonChannelCapabilities::FAN_WRITABLE | HwmonChannelCapabilities::PWM,
-            pwm_path: Some(base.join(format!("pwm{number}"))),
-            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
+            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
             ..Default::default()
         }
     }
@@ -5632,8 +5633,8 @@ mod shutdown_tests {
             caps: HwmonChannelCapabilities::FAN_WRITABLE
                 | HwmonChannelCapabilities::PWM
                 | HwmonChannelCapabilities::RPM,
-            pwm_path: Some(base.join(format!("pwm{number}"))),
-            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            pwm_path: Some(Arc::from(base.join(format!("pwm{number}")))),
+            rpm_path: Some(Arc::from(base.join(format!("fan{number}_input")))),
             ..Default::default()
         }
     }
@@ -6047,7 +6048,7 @@ mod init_timeout_tests {
             hwmon_type: HwmonChannelType::Temp,
             number,
             name: name.to_string(),
-            temp_path: Some(temp_path),
+            temp_path: Some(Arc::from(temp_path)),
             ..Default::default()
         }
     }
@@ -6198,8 +6199,8 @@ mod init_timeout_tests {
             // Both paths intentionally point at non-existent files
             // so extract_fan_statuses fails and omits the channel
             // from its result Vec.
-            pwm_path: Some(base.join("pwm1")),
-            rpm_path: Some(base.join("fan1_input")),
+            pwm_path: Some(Arc::from(base.join("pwm1"))),
+            rpm_path: Some(Arc::from(base.join("fan1_input"))),
             ..Default::default()
         }
     }

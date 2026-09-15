@@ -12,6 +12,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -102,9 +103,9 @@ pub async fn read_power_statuses(
         return Vec::new();
     }
     // In the Power case, channel.name is the sysfs file name.
-    let paths: Vec<PathBuf> = channels
+    let paths: Vec<Arc<Path>> = channels
         .iter()
-        .map(|channel| driver.path.join(&channel.name))
+        .map(|channel| Arc::from(driver.path.join(&channel.name)))
         .collect();
     let results = driver.io.read_many(&paths).await;
     debug_assert_eq!(results.len(), channels.len());

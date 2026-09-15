@@ -4,7 +4,7 @@
 use crate::repositories::hwmon::device_io::DeviceIo;
 use std::io::Error;
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cc_fs::{self, SysfsValue};
@@ -18,6 +18,7 @@ use futures_util::future::join_all;
 use log::{debug, info, log_enabled, trace, warn};
 use nix::libc;
 use regex::Regex;
+use std::sync::Arc;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
@@ -61,7 +62,9 @@ pub async fn init_temps(
                 number: channel_number,
                 name: channel_name,
                 label,
-                temp_path: Some(base_path.join(format_temp_input!(channel_number))),
+                temp_path: Some(Arc::from(
+                    base_path.join(format_temp_input!(channel_number)),
+                )),
                 ..Default::default()
             });
         }
@@ -87,7 +90,7 @@ pub async fn read_temp_statuses(
     if channels.is_empty() {
         return Vec::new();
     }
-    let paths: Vec<PathBuf> = channels
+    let paths: Vec<Arc<Path>> = channels
         .iter()
         .map(|channel| temp_path_for(driver, channel))
         .collect();
@@ -102,11 +105,11 @@ pub async fn read_temp_statuses(
 }
 
 /// Where one channel's temp value lives.
-fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
     channel
         .temp_path
         .clone()
-        .unwrap_or_else(|| driver.path.join(format_temp_input!(channel.number)))
+        .unwrap_or_else(|| Arc::from(driver.path.join(format_temp_input!(channel.number))))
 }
 
 /// Reads the temp file for one channel and returns the resulting

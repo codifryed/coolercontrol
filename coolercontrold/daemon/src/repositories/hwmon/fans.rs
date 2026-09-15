@@ -16,7 +16,8 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::Arc;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -203,16 +204,12 @@ async fn caps_to_hwmon_fans(
         // Uncontrollable channels are reported by `log_channel_verdicts` once
         // the full channel is built, which can name a cause instead of a
         // symptom.
-        let pwm_path = if fan_cap.has_pwm() {
-            Some(base_path.join(format_pwm!(channel_number)))
-        } else {
-            None
-        };
-        let rpm_path = if fan_cap.has_rpm() {
-            Some(base_path.join(format_fan_input!(channel_number)))
-        } else {
-            None
-        };
+        let pwm_path = fan_cap
+            .has_pwm()
+            .then(|| Arc::from(base_path.join(format_pwm!(channel_number))));
+        let rpm_path = fan_cap
+            .has_rpm()
+            .then(|| Arc::from(base_path.join(format_fan_input!(channel_number))));
         fans.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Fan,
             number: channel_number,
@@ -267,7 +264,7 @@ pub async fn read_fan_statuses(
     if plan.is_empty() {
         return Vec::new();
     }
-    let mut paths: Vec<PathBuf> = Vec::with_capacity(plan.len() * 2);
+    let mut paths: Vec<Arc<Path>> = Vec::with_capacity(plan.len() * 2);
     let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
     for (channel, want) in plan {
         let pwm = (*want == FanRead::Full && channel.caps.has_pwm()).then(|| {
@@ -344,19 +341,19 @@ fn take_result(
 }
 
 /// Where one channel's pwm value lives.
-fn pwm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+fn pwm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
     channel
         .pwm_path
         .clone()
-        .unwrap_or_else(|| driver.path.join(format_pwm!(channel.number)))
+        .unwrap_or_else(|| Arc::from(driver.path.join(format_pwm!(channel.number))))
 }
 
 /// Where one channel's fan-input value lives.
-fn rpm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+fn rpm_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> Arc<Path> {
     channel
         .rpm_path
         .clone()
-        .unwrap_or_else(|| driver.path.join(format_fan_input!(channel.number)))
+        .unwrap_or_else(|| Arc::from(driver.path.join(format_fan_input!(channel.number))))
 }
 
 /// Reads pwm-duty and fan-rpm for one channel and returns the
@@ -375,7 +372,7 @@ pub async fn read_one_fan_status(
             &driver.io,
             &driver.path,
             &channel.number,
-            channel.pwm_path.as_ref(),
+            channel.pwm_path.as_deref(),
             log_enabled!(log::Level::Debug),
         )
         .await
@@ -387,7 +384,7 @@ pub async fn read_one_fan_status(
             &driver.io,
             &driver.path,
             &channel.number,
-            channel.rpm_path.as_ref(),
+            channel.rpm_path.as_deref(),
             log_enabled!(log::Level::Debug),
         )
         .await
@@ -426,7 +423,7 @@ pub async fn read_one_fan_rpm_only(
         &driver.io,
         &driver.path,
         &channel.number,
-        channel.rpm_path.as_ref(),
+        channel.rpm_path.as_deref(),
         log_enabled!(log::Level::Debug),
     )
     .await?;
@@ -471,7 +468,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                                 &driver.io,
                                 &driver.path,
                                 &channel.number,
-                                channel.rpm_path.as_ref(),
+                                channel.rpm_path.as_deref(),
                                 false,
                             )
                             .await
@@ -485,7 +482,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                                 &driver.io,
                                 &driver.path,
                                 &channel.number,
-                                channel.pwm_path.as_ref(),
+                                channel.pwm_path.as_deref(),
                                 false,
                             )
                             .await
@@ -566,7 +563,7 @@ async fn get_pwm_duty(
     io: &DeviceIo,
     base_path: &Path,
     channel_number: &u8,
-    pwm_path: Option<&PathBuf>,
+    pwm_path: Option<&Path>,
     log_error: bool,
 ) -> Option<f64> {
     let pwm_path = match pwm_path {
@@ -622,7 +619,7 @@ pub async fn get_fan_rpm(
     io: &DeviceIo,
     base_path: &Path,
     channel_number: &u8,
-    rpm_path: Option<&PathBuf>,
+    rpm_path: Option<&Path>,
     log_error: bool,
 ) -> Option<u32> {
     let fan_input_path = match rpm_path {
@@ -874,7 +871,7 @@ pub async fn set_pwm_duty(
     io: &DeviceIo,
 ) -> Result<()> {
     let pwm_value = duty_to_pwm_value(speed_duty);
-    let pwm_path = match channel_info.pwm_path.as_ref() {
+    let pwm_path: &Path = match channel_info.pwm_path.as_deref() {
         Some(path) => path,
         None => &base_path.join(format_pwm!(channel_info.number)),
     };
@@ -1357,7 +1354,7 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
-                pwm_path: Some(test_base_path.join("pwm1")),
+                pwm_path: Some(Arc::from(test_base_path.join("pwm1"))),
                 rpm_path: None,
                 temp_path: None,
             };

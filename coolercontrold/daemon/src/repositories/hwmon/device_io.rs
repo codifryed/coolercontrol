@@ -45,6 +45,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::cc_fs::{self, SysfsValue};
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::rt;
+use std::sync::Arc;
 
 /// Consecutive reply timeouts before a device is declared unreachable and taken out of the
 /// per-tick rotation.
@@ -208,7 +209,7 @@ impl DeviceIo {
     /// # Panics
     ///
     /// Debug builds assert the batch is within `READ_BATCH_MAX` and that the reply is positional.
-    pub async fn read_many(&self, paths: &[PathBuf]) -> Vec<Result<SysfsValue>> {
+    pub async fn read_many(&self, paths: &[Arc<Path>]) -> Vec<Result<SysfsValue>> {
         debug_assert!(paths.len() <= READ_BATCH_MAX);
         if paths.is_empty() {
             return Vec::new();
@@ -472,7 +473,7 @@ pub enum Request {
         reply: oneshot::Sender<Result<SysfsValue>>,
     },
     ReadMany {
-        paths: Vec<PathBuf>,
+        paths: Vec<Arc<Path>>,
         reply: oneshot::Sender<Result<Vec<Result<SysfsValue>>>>,
     },
     Write {
@@ -600,7 +601,11 @@ mod tests {
 
             let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
             let results = io
-                .read_many(&[good.clone(), absent.clone(), other.clone()])
+                .read_many(&[
+                    good.clone().into(),
+                    absent.clone().into(),
+                    other.clone().into(),
+                ])
                 .await;
 
             assert_eq!(results.len(), 3);
@@ -621,8 +626,12 @@ mod tests {
     fn a_batch_costs_one_message_regardless_of_size() {
         crate::rt::test_runtime(async {
             let (io, mut rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            let paths: Vec<PathBuf> = (1..=12)
-                .map(|n| PathBuf::from(format!("/sys/class/hwmon/hwmon0/temp{n}_input")))
+            let paths: Vec<Arc<Path>> = (1..=12)
+                .map(|n| {
+                    Arc::from(PathBuf::from(format!(
+                        "/sys/class/hwmon/hwmon0/temp{n}_input"
+                    )))
+                })
                 .collect();
 
             let results = io.read_many(&paths).await;
@@ -643,8 +652,12 @@ mod tests {
     fn a_batch_that_times_out_fails_every_path() {
         crate::rt::test_runtime(async {
             let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
-            let paths: Vec<PathBuf> = (1..=4)
-                .map(|n| PathBuf::from(format!("/sys/class/hwmon/hwmon0/temp{n}_input")))
+            let paths: Vec<Arc<Path>> = (1..=4)
+                .map(|n| {
+                    Arc::from(PathBuf::from(format!(
+                        "/sys/class/hwmon/hwmon0/temp{n}_input"
+                    )))
+                })
                 .collect();
 
             let results = io.read_many(&paths).await;
@@ -674,7 +687,7 @@ mod tests {
             let good = dir.path().join("temp1_input");
             std::fs::write(&good, "33000\n").unwrap();
             let absent = dir.path().join("nope_input");
-            let paths = vec![good, absent];
+            let paths: Vec<Arc<Path>> = vec![good.into(), absent.into()];
 
             let inline = DeviceIo::default().read_many(&paths).await;
             let threaded = DeviceIo::threaded("testdev", TEST_TIMEOUT)
