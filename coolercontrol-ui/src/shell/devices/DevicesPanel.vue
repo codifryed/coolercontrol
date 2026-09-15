@@ -40,6 +40,7 @@ import { pinId } from '@/shell/cooling/channels.ts'
 import { setDeviceChildrenSubset, setTopLevelOrder } from '@/shell/panelOrder.ts'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
@@ -108,32 +109,15 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
-const isDeviceUnreachable = (deviceUID: UID): boolean =>
-    settingsStore.healthUnreachable.some((ref) => ref.device_uid === deviceUID)
+const { isDeviceUnreachable, isDeviceUnhealthy: isUnhealthyUid, healthTooltip } = useDeviceHealth()
 
 const isDeviceUnhealthy = (device: Device): boolean =>
-    device.type !== DeviceType.CUSTOM_SENSORS &&
-    (isDeviceUnreachable(device.uid) ||
-        settingsStore.healthFailsafe.some((ref) => ref.device_uid === device.uid))
+    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthyUid(device.uid)
 
 const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
     settingsStore.healthFailsafe.some(
         (ref) => ref.device_uid === deviceUID && ref.name === channelName,
     )
-
-// An unreachable device's channels also failsafe, so the device state is reported instead: it is
-// the cause, and "not responding" is what the user can act on.
-const healthTooltip = (deviceUID: UID, channelName?: string): string => {
-    if (isDeviceUnreachable(deviceUID)) {
-        return `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
-    }
-    const ref = settingsStore.healthFailsafe.find(
-        (entry) =>
-            entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
-    )
-    const base = t('views.appInfo.failsafeActive')
-    return ref?.reason ? `${base}: ${ref.reason}` : base
-}
 
 const setDeviceColor = (deviceUID: UID, newColor: Color): void => {
     const setting = settingsStore.allUIDeviceSettings.get(deviceUID)

@@ -17,6 +17,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { deviceChannelLinks, deviceTypeGroups, hardwareDevices } from '@/shell/devices/devices.ts'
 import { deviceTypeIcon } from '@/shell/deviceIcon.ts'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
@@ -35,23 +36,11 @@ const deviceLabel = (deviceUID: UID): string =>
 const deviceColor = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor || 'rgb(var(--colors-text-color))'
 
-const isUnreachable = (deviceUID: UID): boolean =>
-    settingsStore.healthUnreachable.some((ref) => ref.device_uid === deviceUID)
-
-// An unreachable device's channels also failsafe, so the device state is reported instead: it is
-// the cause, and "not responding" is what the user can act on.
-const healthTooltip = (deviceUID: UID): string => {
-    if (isUnreachable(deviceUID)) {
-        return `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
-    }
-    const ref = settingsStore.healthFailsafe.find((entry) => entry.device_uid === deviceUID)
-    const base = t('views.appInfo.failsafeActive')
-    return ref?.reason ? `${base}: ${ref.reason}` : base
-}
-
-const isUnhealthy = (deviceUID: UID): boolean =>
-    isUnreachable(deviceUID) ||
-    settingsStore.healthFailsafe.some((ref) => ref.device_uid === deviceUID)
+const {
+    isDeviceUnreachable: isUnreachable,
+    isDeviceUnhealthy: isUnhealthy,
+    healthTooltip,
+} = useDeviceHealth()
 
 const facts = (device: Device): string => {
     const parts: string[] = [getDeviceTypeDisplayName(device.type)]

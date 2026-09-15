@@ -13,6 +13,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType } from '@/models/Device.ts'
 import { HealthEntityType, SourceRef, sourceTempDisplayName } from '@/models/DeviceHealth.ts'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 // Inline warning listing an entity's current device-health issues (failsafe,
 // missing or stale temp sources), so its edit page shows what is wrong.
@@ -29,6 +30,7 @@ const props = defineProps<Props>()
 const { t } = useI18n({ useScope: 'global' })
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { isDeviceUnreachable, unreachableText } = useDeviceHealth()
 
 // A custom sensor's own failsafe entry lives on the Custom Sensors device
 // under its sensor id; channels and LCDs failsafe under their own device.
@@ -78,13 +80,9 @@ const issues = computed((): Array<string> => {
         // The device not answering is the cause of its channels' failsafe, so it is reported in
         // their place: it is what the user can act on, and it says why a setting here has no
         // effect right now.
-        const unreachable = settingsStore.healthUnreachable.some(
-            (ref) => ref.device_uid === subject.deviceUid,
-        )
+        const unreachable = isDeviceUnreachable(subject.deviceUid)
         if (unreachable) {
-            lines.push(
-                `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
-            )
+            lines.push(unreachableText())
         }
         const failsafeRef = unreachable
             ? undefined
