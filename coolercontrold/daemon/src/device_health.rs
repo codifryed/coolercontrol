@@ -11,7 +11,6 @@
 //!   currently failsafed, so the consuming Profile/LCD/Custom Sensor acts on
 //!   failsafe values rather than real readings.
 //! - `failsafe`: a present channel/temp currently serving failsafe values.
-
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID, TempName, UID};
@@ -77,10 +76,9 @@ pub struct FailsafeRef {
 /// A device whose driver has stopped answering, so the daemon can neither read from it nor write
 /// to it.
 ///
-/// Deliberately distinct from `FailsafeRef`. Failsafe means "the device is alive, its readings are
-/// stale, and safe values are being substituted". Unreachable means "the device is not answering,
-/// and nothing can be written to it at all". Presenting the second as the first would tell the
-/// user their fans are on a safe curve when in fact no curve can be applied.
+/// Distinct from `FailsafeRef`, which means the device is alive with stale readings and safe
+/// values substituted. Presenting this as that would tell the user their fans are on a safe curve
+/// when no curve can be applied.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct UnreachableRef {
     pub device_uid: DeviceUID,

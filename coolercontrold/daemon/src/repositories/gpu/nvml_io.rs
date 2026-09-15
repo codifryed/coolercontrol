@@ -3,15 +3,11 @@
 
 //! One GPU's NVML calls, isolated on a thread of its own.
 //!
-//! NVML is a blocking vendor FFI with no timeout of its own, and its setters need `&mut Device`.
-//! Running it on the runtime thread parks the whole daemon when a driver hangs, and running it on
-//! a shared blocking pool behind a lock is worse: `rt::timeout` abandons the caller but cannot
-//! cancel the thread, so the lock is held forever and every later tick parks another pool thread.
-//!
-//! So the device is owned by its own thread and reached only through a queue. A hung driver parks
-//! that one thread, the caller times out, and the GPU goes unreachable on the same rules as a
-//! wedged sysfs device.
-
+//! NVML is a blocking vendor FFI with no timeout, and its setters need `&mut Device`. On a shared
+//! blocking pool behind a lock, `rt::timeout` abandons the caller but cannot cancel the thread, so
+//! the lock is held forever and every later tick parks another pool thread. Owning the device on
+//! its own thread means a hung driver parks that one thread and the GPU goes unreachable on the
+//! same rules as a wedged sysfs device.
 use std::ops::Not;
 use std::thread;
 use std::time::Duration;
@@ -62,15 +58,13 @@ impl NvmlIo {
         })
     }
 
-    /// Run one NVML call on the device's thread, within its budget.
+    /// Run one NVML call on the device's thread, within its budget. `what` names it for logs.
     ///
-    /// `what` names the call for logs only. Only a timeout counts against the GPU's health; an
-    /// error returned by NVML means the device answered, which says nothing about it being wedged.
+    /// Only a timeout counts against the GPU's health; an error from NVML means it answered.
     ///
     /// # Errors
     ///
-    /// When the GPU is currently unreachable, when its worker is gone, or when the call did not
-    /// finish inside `reply_timeout`.
+    /// When the GPU is unreachable, its worker is gone, or the call outran `reply_timeout`.
     pub async fn call<T, F>(&self, what: &str, f: F) -> Result<T>
     where
         F: FnOnce(&mut nvml_wrapper::Device<'static>) -> T + Send + 'static,

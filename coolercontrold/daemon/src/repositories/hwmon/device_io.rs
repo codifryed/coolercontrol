@@ -3,34 +3,14 @@
 
 //! Per-device sysfs IO, isolated on a thread of its own.
 //!
-//! # Why
+//! kernfs advertises a `.poll`, so `io_uring` issues sysfs reads inline on the submitting thread
+//! and kernfs then blocks anyway. A driver that does a USB round trip inside its read therefore
+//! parks the whole single-threaded runtime, and with it the snapshot cap, the permit timeouts and
+//! the failsafe's staleness counting: every protection the daemon has is a timer on the runtime
+//! the stall is holding.
 //!
-//! kernfs advertises a `.poll`, so `io_file_supports_nowait()` says yes and `io_uring` issues
-//! sysfs reads **inline on the submitting thread** rather than punting them to `io_wq`. kernfs
-//! then never checks `IOCB_NOWAIT` and blocks anyway. A driver that does a USB HID round trip
-//! inside its read therefore parks the whole single-threaded runtime for the duration.
-//!
-//! The damage is not the latency, it is that the daemon's own protections cannot fire. The 400 ms
-//! snapshot cap (`main_loop`), the read and write permit timeouts (`hwmon_repo`) and the failsafe's
-//! staleness counting are all driven by timers on the runtime the stall is holding. A wedged
-//! device is therefore not a degraded device, it is a dead daemon: no API, no fan control, and no
-//! failsafe for the healthy devices either.
-//!
-//! Moving a device's IO to its own thread does not add any safety machinery. It makes the
-//! machinery already written able to run.
-//!
-//! # Shape
-//!
-//! One thread, one compio runtime (so, one `io_uring` ring), and one `SysfsFdCache` per device.
-//! The cache shards naturally by device, which keeps the descriptor warm and the batch cheap. The
-//! per-device `Semaphore(1)` in `hwmon_repo` already serialises a device's own operations, so a
-//! worker holds at most one blocking read at a time.
-//!
-//! Measured against the alternatives on a 12-device machine: inline (today) blocks the main thread
-//! for the entire tick; `IOSQE_ASYNC` and a shared thread pool both unblock it but cost about one
-//! context switch per operation; a ring per device unblocks it at roughly a third of today's
-//! context switches, because a device's reads stay inline on a thread that is allowed to block.
-
+//! One thread, one ring and one `SysfsFdCache` per device makes that machinery able to run. It
+//! adds no safety of its own.
 use std::cell::Cell;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
@@ -85,12 +65,10 @@ const WORKER_STACK_BYTES: usize = 256 * 1024;
 
 /// How long one operation may take before it counts against the device's health.
 ///
-/// Deliberately generous, and matched to the hwmon read permit budget. A single read can take far
-/// longer than a tick: `asus_rog_ryujin` waits up to `STATUS_VALIDITY` (1.5 s) per round trip and
-/// does four of them on its first read after probe. Timing that out would mark a working device
-/// unreachable, which is much worse than noticing a wedged one a few ticks later. Being generous
-/// costs nothing now that the wait no longer parks the runtime, and the failsafe counts staleness
-/// on its own schedule regardless.
+/// Deliberately generous, and matched to the hwmon read permit budget: `asus_rog_ryujin` waits up
+/// to 1.5 s per round trip and does four on its first read, and timing that out would mark a
+/// working device unreachable. Being generous costs nothing now that the wait no longer parks the
+/// runtime.
 #[allow(clippy::cast_precision_loss)]
 #[must_use]
 pub fn reply_timeout_for(poll_rate: f64) -> Duration {
@@ -135,16 +113,13 @@ impl Default for DeviceIo {
 }
 
 impl DeviceIo {
-    /// Start a worker thread for one device.
-    ///
-    /// `reply_timeout` is how long a single operation may take before the device is counted
-    /// against `UNREACHABLE_AFTER_TIMEOUTS`. Callers pass the poll rate, so the budget tracks the
-    /// user's configured cadence instead of a fixed number.
+    /// Start a worker thread for one device, so a driver that blocks inside its sysfs read parks
+    /// only its own thread.
     ///
     /// # Errors
     ///
-    /// When the OS refuses the worker thread. The caller should fall back to `Inline` so the
-    /// device still works, without isolation.
+    /// When the OS refuses the thread. The caller should fall back to `Inline`, losing the
+    /// isolation rather than the device.
     pub fn threaded(device_name: &str, reply_timeout: Duration) -> Result<Self> {
         debug_assert!(reply_timeout > Duration::ZERO);
         let (tx, rx) = mpsc::channel::<Request>(QUEUE_DEPTH);
@@ -196,13 +171,8 @@ impl DeviceIo {
         }
     }
 
-    /// Reads several attributes in one hop.
-    ///
-    /// This is the shape the per-tick paths should use. One `read_value` per attribute costs a
-    /// thread round trip each, and a device's whole attribute set is known before any of it is
-    /// read, so the batch is free to build and turns N round trips into one. Results are
-    /// positional: `out[i]` is the result for `paths[i]`, with per-path errors preserved so a
-    /// caller can still tell which single attribute failed.
+    /// Reads several attributes in one hop, so a device's whole attribute set costs one round
+    /// trip rather than one each. Results are positional, with per-path errors preserved.
     ///
     /// # Panics
     ///
@@ -304,10 +274,8 @@ impl DeviceIo {
 
     /// Lets the next dispatch through even if the device is currently unreachable.
     ///
-    /// Shutdown uses this: resetting a channel to its firmware default is the most
-    /// safety-relevant write the daemon makes, and a device that stopped answering during the
-    /// session may well answer now. One attempt is cheap, and its outcome updates the state the
-    /// same as any other.
+    /// Shutdown uses it: resetting a channel to its firmware default is the most safety-relevant
+    /// write the daemon makes, and a device that stopped answering may well answer now.
     pub fn allow_probe_now(&self) {
         match self {
             Self::Inline(_) => {}

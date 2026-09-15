@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 use crate::cc_fs;
 use crate::device::ChannelStatus;
 use crate::hardware_support::{self, ChannelDiagnosis, ChannelEvidence};
@@ -228,10 +227,8 @@ async fn caps_to_hwmon_fans(
 
 /// What one fan channel needs read this tick.
 ///
-/// The choice is the caller's, because it depends on the duty cache, which lives with the
-/// repository. Batching must not make that choice for it: reading every channel's pwm every tick
-/// is exactly what the cache exists to avoid, and on a slow device it would stretch the pass from
-/// a few hundred milliseconds to seconds, delaying any fan write queued behind it.
+/// The caller decides, because it depends on the duty cache, which lives with the repository.
+/// Reading every channel's pwm every tick is exactly what that cache exists to avoid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FanRead {
     /// Real pwm duty and rpm.
@@ -542,16 +539,11 @@ async fn try_read_fan_rpm(io: &DeviceIo, fan_input_path: &Path) -> Result<u32> {
 }
 
 /// Whether a failed pwmX read looks like a driver refusing the read in auto mode rather than a
-/// read that did not happen.
+/// read that did not happen. `gpd_fan` returns EOPNOTSUPP and `dell_smm` ENODATA.
 ///
-/// Known drivers that refuse pwmX reads in auto mode:
-///   - `gpd_fan`:  EOPNOTSUPP (`io::ErrorKind::Unsupported`)
-///   - `dell_smm`: ENODATA    (raw os error 61)
-///
-/// Subtractive, not an allowlist: there is no standard for what a driver returns here, so an
-/// unfamiliar errno keeps the fallback. We only rule out the errnos that provably mean "the read
-/// did not happen", which never mean "there is no readable pwm here". Without that, an `EINTR`
-/// from an interrupted sysfs read would be answered with a fabricated 100% duty.
+/// Subtractive, not an allowlist: there is no standard here, so an unfamiliar errno keeps the
+/// fallback. Only errnos that provably mean "the read did not happen" are ruled out, or an
+/// `EINTR` would be answered with a fabricated 100% duty.
 fn is_kernel_refusal(err: &anyhow::Error) -> bool {
     cc_fs::is_transient(err).not()
         && err.downcast_ref::<Error>().is_some_and(|io_err| {
@@ -1634,7 +1626,6 @@ mod tests {
     }
 
     // --- extract_fan_statuses: failure indicator ---
-
     fn make_driver(base_path: &Path, channels: Vec<HwmonChannelInfo>) -> HwmonDriverInfo {
         HwmonDriverInfo {
             name: "test_driver".to_string(),
@@ -1793,7 +1784,6 @@ mod tests {
     }
 
     // --- extract_fan_statuses: ordering and failures ---
-
     #[test]
     #[serial]
     fn extract_fan_statuses_preserves_channel_order() {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! compio backend for the runtime facade. See `super` for the facade contract.
-
 use std::future::{poll_fn, Future};
 use std::ops::Not;
 use std::pin::pin;
@@ -51,9 +50,8 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
 
 /// One `AsyncifyPool` shared by every device worker runtime.
 ///
-/// Each compio `Runtime` builds its own blocking pool by default, capped at 256 threads. The
-/// daemon runs one worker per device, so without sharing, that cap is multiplied by the device
-/// count. `compio-dispatcher` reuses a single pool for the same reason.
+/// Each compio `Runtime` builds its own pool capped at 256 threads, so without sharing that cap
+/// is multiplied by the device count. `compio-dispatcher` reuses a single pool for the same reason.
 static WORKER_POOL: OnceLock<AsyncifyPool> = OnceLock::new();
 
 /// Proactor configuration for a device worker: the main runtime's driver choice, plus the shared
@@ -72,12 +70,10 @@ fn worker_proactor() -> ProactorBuilder {
 
 /// Run `future` to completion on a runtime of its own, for one device's IO worker thread.
 ///
-/// The point is that this runtime is **not** the main one: a sysfs read that blocks in the driver
-/// parks this thread and leaves the main runtime free to keep polling other devices, serving the
-/// API, and running the timers that make the daemon's own timeouts able to fire at all.
+/// The point is that it is **not** the main one: a read that blocks in the driver parks this
+/// thread and leaves the main runtime free to keep polling, serving the API and running timers.
 ///
-/// Errors only when the OS denies the reactor. The caller decides whether that is fatal; the
-/// hwmon repo falls back to inline IO so a device is still readable, just not isolated.
+/// Errors only when the OS denies the reactor; the hwmon repo then falls back to inline IO.
 pub fn worker_runtime<F: Future>(future: F) -> std::io::Result<F::Output> {
     let runtime = Runtime::builder()
         .with_proactor(worker_proactor())

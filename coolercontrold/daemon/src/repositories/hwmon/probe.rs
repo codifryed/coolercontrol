@@ -3,12 +3,9 @@
 
 //! Re-probing for the one-shot hwmon detection pass.
 //!
-//! Detection and polling have opposite failure semantics. Polling absorbs a failed read: the
-//! per-channel cache keeps the last known good value and the failsafe overlay takes over after
-//! `MISSING_STATUS_THRESHOLD` consecutive misses, and the channel is never removed. Detection gets
-//! one read, and a channel it gives up on is gone for the session: `HwmonRepo::reinitialize_devices`
-//! is unsupported and not even resume-from-sleep re-probes. So detection re-reads a failure that
-//! may not be real, and polling does not.
+//! Detection and polling have opposite failure semantics. Polling absorbs a failed read; the
+//! channel is never removed. Detection gets one read, and a channel it gives up on is gone for
+//! the session, since nothing re-probes. So detection re-reads a failure that may not be real.
 
 use crate::cc_fs;
 use crate::rt;
@@ -27,11 +24,10 @@ const _: () = assert!(DETECT_PROBE_PASSES > 0);
 const DETECT_PROBE_DELAY: Duration = Duration::from_millis(150);
 
 /// Re-reads an attribute that failed transiently, so one blip cannot cost the channel for the
-/// whole session. Returns the value, or the last error once the passes are spent.
+/// session. Returns the value, or the last error once the passes are spent.
 ///
-/// Gating on `cc_fs::is_transient` is what bounds startup. The ordinary "this attribute is not
-/// readable" errnos (ENOENT, EOPNOTSUPP, ENODATA, EACCES) are not transient, so a board full of
-/// unreadable attributes pays one read each and no delay.
+/// Gating on `cc_fs::is_transient` is what bounds startup: the ordinary "not readable" errnos are
+/// not transient, so a board full of unreadable attributes pays one read each and no delay.
 pub async fn read_until_ok<T>(path: &Path, mut read: impl AsyncFnMut() -> Result<T>) -> Result<T> {
     let mut passes = DETECT_PROBE_PASSES;
     // Bounded by `passes`, which drops by one per failure and returns the error at zero.

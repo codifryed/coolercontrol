@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 use crate::repositories::hwmon::device_io::DeviceIo;
 use std::io::Error;
 use std::ops::Not;
@@ -79,10 +78,8 @@ pub async fn init_temps(
 
 /// Reads a set of temp channels in one hop.
 ///
-/// The per-tick path uses this rather than `read_one_temp_status` per channel: the device permit
-/// is held across the whole pass anyway, so the reads were already going to happen back to back,
-/// and one round trip to the device's worker is cheaper than one per channel. Results are
-/// positional, `None` where the channel has nothing usable to report.
+/// The device permit is held across the whole pass anyway, so the reads were going to happen back
+/// to back; one round trip is cheaper than one per channel. Results are positional.
 pub async fn read_temp_statuses(
     driver: &HwmonDriverInfo,
     channels: &[&HwmonChannelInfo],
@@ -682,7 +679,6 @@ mod tests {
     }
 
     // --- extract_temp_statuses: ordering and failures ---
-
     #[test]
     #[serial]
     fn extract_temp_statuses_preserves_channel_order() {
@@ -797,7 +793,6 @@ mod tests {
     }
 
     // --- is_thinkpad_gpu_powerdown classifier ---
-
     #[test]
     fn is_thinkpad_gpu_powerdown_true_for_thinkpad_enxio() {
         // Verifies the canonical case: thinkpad driver name + io::Error

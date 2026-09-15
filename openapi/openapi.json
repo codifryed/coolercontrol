@@ -11385,7 +11385,7 @@
         ]
       },
       "UnreachableRef": {
-        "description": "A device whose driver has stopped answering, so the daemon can neither read from it nor write\n to it.\n\n Deliberately distinct from `FailsafeRef`. Failsafe means \"the device is alive, its readings are\n stale, and safe values are being substituted\". Unreachable means \"the device is not answering,\n and nothing can be written to it at all\". Presenting the second as the first would tell the\n user their fans are on a safe curve when in fact no curve can be applied.",
+        "description": "A device whose driver has stopped answering, so the daemon can neither read from it nor write\n to it.\n\n Distinct from `FailsafeRef`, which means the device is alive with stale readings and safe\n values substituted. Presenting this as that would tell the user their fans are on a safe curve\n when no curve can be applied.",
         "type": "object",
         "properties": {
           "consecutive_timeouts": {

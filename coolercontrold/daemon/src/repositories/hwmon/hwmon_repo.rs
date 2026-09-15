@@ -54,7 +54,6 @@
 //! Shutdown: `shutdown_token.cancel()` unblocks writer tasks and the
 //! preload entry guard; the per-channel reset-to-default loop then
 //! runs synchronously taking the permit directly.
-
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
@@ -123,14 +122,9 @@ fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
 
 /// Cap on resetting one device's channels to their firmware defaults at shutdown.
 ///
-/// Per device rather than one global deadline: worst case is device count times this, which stays
-/// predictable as device count grows, where a shared deadline would let one slow early device
-/// starve later healthy ones of their reset.
-///
-/// Sized against `TimeoutStopSec=10` in the systemd unit. Healthy devices reset in milliseconds,
-/// so the budget is only ever spent by a device that has stopped answering, and one or two of
-/// those still leaves ample margin. A machine where every device wedges at once will be killed by
-/// systemd mid-reset, which is the same outcome as waiting for them.
+/// Per device, so the worst case scales predictably with device count instead of letting one slow
+/// device starve the rest. Sized against `TimeoutStopSec=10`: healthy devices reset in
+/// milliseconds, so only a wedged one ever spends the budget.
 const SHUTDOWN_RESET_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[allow(clippy::cast_precision_loss)]
@@ -717,23 +711,6 @@ impl HwmonRepo {
         hardware_support.record_excluded_channel(path, channel_name, reason);
     }
 
-    /// Publishes the passive verdict for every fan channel on a device, and
-    /// logs the ones we cannot drive. Init only, so the log lines are written
-    /// once per boot rather than once per hardware report.
-    ///
-    /// `firmware_override_observed` is false here by construction: at init
-    /// nothing has attempted control yet, so there has been nothing to
-    /// reclaim. Nothing republishes a channel afterwards: only a duty-response
-    /// probe can observe a reclaim, and that is not part of this work.
-    /// Gives one device a thread and an `io_uring` ring of its own.
-    ///
-    /// Isolation is the point: a driver that blocks inside its sysfs read parks only its own
-    /// thread, so the main runtime keeps polling every other device, serving the API, and running
-    /// the timers that let this repo's own permit timeouts and the failsafe actually fire.
-    ///
-    /// A device whose worker cannot start falls back to inline IO. That loses the isolation, not
-    /// the device, which is the right way round: a machine short on threads should still report
-    /// its temperatures.
     /// Resets one device's fan channels to their firmware defaults, recording per-channel
     /// failures. Continue-on-error: leaving later fans stuck in manual mode is worse than logging
     /// each failure and reporting an aggregate.
@@ -784,6 +761,11 @@ impl HwmonRepo {
         }
     }
 
+    /// Publishes the passive verdict for every fan channel and logs the ones we cannot drive.
+    /// Init only, so each line is written once per boot.
+    ///
+    /// `firmware_override_observed` is false here by construction: nothing has attempted control
+    /// yet, so there has been nothing to reclaim.
     fn publish_channel_verdicts(&self, device_uid: &UID, driver: &HwmonDriverInfo) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Fan {
@@ -850,13 +832,10 @@ impl HwmonRepo {
         let _coalesce_guard = PreloadInFlightGuard {
             flag: Rc::clone(flag),
         };
-        // A device that has stopped answering is left alone until its worker's probe is due.
-        // Dispatching anyway would spend a full reply budget per tick to learn what the last tick
-        // already established, and would queue work nothing is draining. Staleness still ticks, so
-        // the failsafe takes over for its channels on the usual schedule.
-        //
-        // Must stay below the coalesce guard: returning above it would leave `preload_in_flight`
-        // set with nothing to clear it, and every later tick for this device would coalesce away.
+        // Left alone until its worker's probe is due: dispatching would spend a full reply budget
+        // per tick to learn what the last one established. Staleness still ticks, so the failsafe
+        // takes over on the usual schedule. Must stay below the coalesce guard, or
+        // `preload_in_flight` is left set with nothing to clear it.
         if driver.io.is_unreachable() {
             self.tick_staleness_and_log(type_index, &driver.name);
             return;
@@ -985,13 +964,9 @@ impl HwmonRepo {
 
     /// Reads one channel type's whole set for a device in a single hop.
     ///
-    /// Same reads as the per-channel path, same order, same decisions: only the number of round
-    /// trips to the device's IO worker changes. The device permit is held across the entire pass
-    /// either way, so nothing that could previously interleave between two channels can any more.
-    ///
-    /// The cost of that is losing the ability to abandon a pass part-way, which the round-robin
-    /// start index exists to make fair. Passes stay short because the duty cache still decides
-    /// per channel what actually needs reading, so the window this protects against stays small.
+    /// Same reads, order and decisions as the per-channel path; only the number of round trips to
+    /// the worker changes. It cannot be abandoned part-way, which is what the round-robin start
+    /// index exists to make fair.
     async fn read_channels_batched(
         &self,
         type_index: TypeIndex,
@@ -4774,18 +4749,12 @@ mod slow_device_tests {
         });
     }
 
-    /// Goal: batching a device's fan set must still decide per channel. One channel's cache being
-    /// fresh while another's verify is due has to produce a cached duty for the first and a real
-    /// read for the second, in the same hop.
+    /// Goal: batching a device's fan set must still decide per channel, or a slow device's pass
+    /// stretches from a few hundred milliseconds to seconds and any queued fan write waits behind
+    /// it.
     ///
-    /// This is the property that keeps a slow device's pass short. Reading every channel's pwm
-    /// because one of them fell due would stretch an Octo-class pass from a few hundred
-    /// milliseconds to seconds, and any fan write queued behind it waits that long, since the
-    /// device permit is held for the whole pass.
-    ///
-    /// Method: two fan channels on a slow device, both with pwm files reading 100%, one cached at
-    /// 50% with a future verify and one cached at 10% already due. Cached duty and real duty are
-    /// deliberately distinguishable.
+    /// Method: two fan channels on a slow device, one cached with a future verify and one already
+    /// due. Cached and real duties are deliberately distinguishable.
     #[test]
     #[serial]
     fn batched_fan_read_honours_each_channels_verify_deadline() {

@@ -2,23 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Errno classification shared by the sysfs read paths.
-
 use nix::libc;
 
 /// Errnos that mean the read did not happen and another try may succeed, never that the attribute
 /// is unreadable.
 ///
-/// `EINTR` is the one that matters in practice. A driver that sleeps interruptibly inside its
-/// sysfs read (`asus_rog_ryujin`, `nzxt-kraken3`, `gigabyte_waterforce` all do, over a USB HID
-/// round trip) returns `-ERESTARTSYS` whenever `signal_pending()` is set, and `io_uring` converts
-/// that to `EINTR` rather than restarting the read the way a plain `read(2)` does. The others are
-/// the same class: the device was busy or slow, not absent.
+/// `EINTR` is the one that matters: a driver that sleeps interruptibly inside its sysfs read
+/// returns `-ERESTARTSYS`, which `io_uring` converts rather than restarting. `EIO` is deliberately
+/// absent, being ambiguous and often permanent.
 ///
-/// `EIO` is deliberately absent. It is ambiguous and often permanent, and every errno listed here
-/// is one that `get_pwm_duty` stops reading as "this driver refuses pwm reads in auto mode".
-///
-/// The hot read path retries only `EINTR`; see `cc_fs::read`. This wider set is for one-shot
-/// detection, where the cost of giving up is a channel lost for the whole session.
+/// The hot read path retries only `EINTR`. This wider set is for one-shot detection, where giving
+/// up costs a channel for the whole session.
 pub fn is_transient(err: &anyhow::Error) -> bool {
     err.downcast_ref::<std::io::Error>()
         .and_then(std::io::Error::raw_os_error)
