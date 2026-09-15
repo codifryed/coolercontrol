@@ -7410,6 +7410,19 @@
               "lower_duty",
               "upper_duty"
             ]
+          },
+          {
+            "description": "Derived model cannot describe a real fan: a duty floor at or above\n `MAX_PLAUSIBLE_FLOOR_DUTY`, or a responsive region that never\n rises. Both come from unreliable RPM reads during the sweep.\n Mapping disabled (forced Stepped); the user re-calibrates.",
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "implausible_curve"
+              }
+            },
+            "required": [
+              "kind"
+            ]
           }
         ]
       },

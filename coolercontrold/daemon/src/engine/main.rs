@@ -2101,6 +2101,11 @@ fn describe_warning(warning: &calibration::CalibrationWarning) -> String {
                  kick-in); mapping disabled at low duty"
             )
         }
+        calibration::CalibrationWarning::ImplausibleCurve => {
+            "measured curve is flat, inverted, or starts too high to be real (RPM readings look \
+             unreliable); mapping disabled, please re-calibrate"
+                .to_string()
+        }
     }
 }
 
