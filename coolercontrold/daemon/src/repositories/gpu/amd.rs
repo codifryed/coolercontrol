@@ -788,7 +788,7 @@ impl GpuAMD {
             .with_context(|| "Hwmon Info should exist")?;
         if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
             if fan_curve_info.changeable {
-                Self::reset_fan_curve_and_zero_rpm(fan_curve_info).await
+                Self::reset_fan_curve_and_zero_rpm(fan_curve_info, &amd_hwmon_info.hwmon.io).await
             } else {
                 Err(anyhow!(
                     "PMFW Fan Curve control is present for this device, but not enabled"
@@ -820,14 +820,17 @@ impl GpuAMD {
     /// Deliberately does not touch the fan curve: an apply always stages every curve point,
     /// so resetting the curve first only costs an extra upload and leaves the card briefly
     /// in firmware automatic mode with an all-zero table.
-    async fn reset_zero_rpm_settings(fan_curve_info: &FanCurveInfo) {
+    async fn reset_zero_rpm_settings(fan_curve_info: &FanCurveInfo, io: &DeviceIo) {
         if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
-            if let Err(err) = cc_fs::write(zero_rpm_path, b"r\n".to_vec()).await {
+            if let Err(err) = io.write_value(zero_rpm_path, b"r\n".to_vec()).await {
                 warn!("Error resetting Zero RPM Enable: {err}");
             }
         }
         if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
-            if let Err(err) = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec()).await {
+            if let Err(err) = io
+                .write_value(zero_rpm_stop_temp_path, b"r\n".to_vec())
+                .await
+            {
                 warn!("Error resetting Zero RPM Stop Temperature: {err}");
             }
         }
@@ -836,9 +839,12 @@ impl GpuAMD {
     /// Returns the whole fan control interface to firmware automatic mode.
     ///
     /// For the reset-to-default and shutdown paths, where the curve itself must be given back.
-    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
-        Self::reset_zero_rpm_settings(fan_curve_info).await;
-        cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
+    async fn reset_fan_curve_and_zero_rpm(
+        fan_curve_info: &FanCurveInfo,
+        io: &DeviceIo,
+    ) -> Result<()> {
+        Self::reset_zero_rpm_settings(fan_curve_info, io).await;
+        io.write_value(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
     }
@@ -877,21 +883,29 @@ impl GpuAMD {
             }
             if fixed_speed == 0 && fan_curve_info.zero_rpm.is_some() {
                 if fan_curve_info.zero_rpm_stop_temp.is_some() {
-                    Self::set_zero_rpm(fan_curve_info, true).await?;
-                    Self::set_zero_rpm_stop_temp_highest(fan_curve_info).await
+                    Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
+                    Self::set_zero_rpm_stop_temp_highest(fan_curve_info, &amd_driver_info.hwmon.io)
+                        .await
                 } else {
-                    Self::set_zero_rpm(fan_curve_info, true).await?;
+                    Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
                     let lowest_fan_curve_speed = fan_curve_info.speed_range.start();
-                    Self::set_fan_curve_duty(fan_curve_info, *lowest_fan_curve_speed).await
+                    Self::set_fan_curve_duty(
+                        fan_curve_info,
+                        *lowest_fan_curve_speed,
+                        &amd_driver_info.hwmon.io,
+                    )
+                    .await
                 }
             } else {
-                if let Err(err) = Self::set_zero_rpm(fan_curve_info, false).await {
+                if let Err(err) =
+                    Self::set_zero_rpm(fan_curve_info, false, &amd_driver_info.hwmon.io).await
+                {
                     error!(
                         "Failed to disable Zero RPM Mode for {}: {err}",
                         amd_driver_info.hwmon.name
                     );
                 }
-                Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
+                Self::set_fan_curve_duty(fan_curve_info, fixed_speed, &amd_driver_info.hwmon.io)
                     .await
                     .map_err(|err| {
                         anyhow!(
@@ -941,39 +955,54 @@ impl GpuAMD {
         }
     }
 
-    async fn set_zero_rpm(fan_curve_info: &FanCurveInfo, enable: bool) -> Result<()> {
+    async fn set_zero_rpm(
+        fan_curve_info: &FanCurveInfo,
+        enable: bool,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let Some(zero_rpm_path) = &fan_curve_info.zero_rpm else {
             return Ok(());
         };
         let binary_bool = u8::from(enable);
-        cc_fs::write_string(zero_rpm_path, format!("{binary_bool}\n"))
+        io.write_value(zero_rpm_path, format!("{binary_bool}\n").into_bytes())
             .await
             .map_err(|err| anyhow!("Error applying {binary_bool} to Zero RPM Enable: {err}"))?;
-        cc_fs::write(&zero_rpm_path, b"c\n".to_vec())
+        io.write_value(zero_rpm_path, b"c\n".to_vec())
             .await
             .map_err(|err| anyhow!("Error Committing Zero RPM Enable: {err}"))
     }
 
-    async fn set_zero_rpm_stop_temp_highest(fan_curve_info: &FanCurveInfo) -> Result<()> {
+    async fn set_zero_rpm_stop_temp_highest(
+        fan_curve_info: &FanCurveInfo,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let highest_temp = fan_curve_info.zero_rpm_stop_temp_range.end();
-        Self::set_zero_rpm_stop_temp(fan_curve_info, highest_temp).await
+        Self::set_zero_rpm_stop_temp(fan_curve_info, highest_temp, io).await
     }
 
-    async fn set_zero_rpm_stop_temp(fan_curve_info: &FanCurveInfo, temp: &CurveTemp) -> Result<()> {
+    async fn set_zero_rpm_stop_temp(
+        fan_curve_info: &FanCurveInfo,
+        temp: &CurveTemp,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
             return Ok(());
         };
-        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{temp}\n"))
+        io.write_value(zero_rpm_stop_temp_path, format!("{temp}\n").into_bytes())
             .await
             .map_err(|err| anyhow!("Error applying {temp} to Zero RPM Stop Temperature: {err}"))?;
-        cc_fs::write(&zero_rpm_stop_temp_path, b"c\n".to_vec())
+        io.write_value(zero_rpm_stop_temp_path, b"c\n".to_vec())
             .await
             .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
     }
 
-    async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
+    async fn set_fan_curve_duty(
+        fan_curve_info: &FanCurveInfo,
+        duty: Duty,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
-        Self::set_fan_curve(flat_curve, &fan_curve_info.path).await
+        Self::set_fan_curve(flat_curve, &fan_curve_info.path, io).await
     }
 
     /// Stages every curve point and commits them as one table.
@@ -984,10 +1013,15 @@ impl GpuAMD {
     /// below both minimums. Committing that half-written table is rejected with `EIO`
     /// (`OD_FAN_CURVE_PWM_ERROR`), so a failed point write must abandon the commit and reset
     /// back to automatic rather than leave the table poisoned.
-    async fn set_fan_curve(fan_curve: FanCurve, fan_curve_path: &Path) -> Result<()> {
+    async fn set_fan_curve(
+        fan_curve: FanCurve,
+        fan_curve_path: &Path,
+        io: &DeviceIo,
+    ) -> Result<()> {
         for (i, (temp, duty)) in fan_curve.points.into_iter().enumerate() {
-            let Err(err) =
-                cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n")).await
+            let Err(err) = io
+                .write_value(fan_curve_path, format!("{i} {temp} {duty}\n").into_bytes())
+                .await
             else {
                 continue;
             };
@@ -995,13 +1029,13 @@ impl GpuAMD {
             // means nothing was staged, and resetting would throw away the curve that is
             // currently applied and hand the fan back to firmware automatic control.
             if i > 0 {
-                Self::reset_fan_curve(fan_curve_path).await;
+                Self::reset_fan_curve(fan_curve_path, io).await;
             }
             return Err(anyhow!(
                 "Error applying '{i} {temp} {duty}' to Fan Curve: {err}"
             ));
         }
-        cc_fs::write(&fan_curve_path, b"c\n".to_vec())
+        io.write_value(fan_curve_path, b"c\n".to_vec())
             .await
             .map_err(|err| Self::describe_commit_error(&err))
     }
@@ -1033,8 +1067,8 @@ impl GpuAMD {
     /// Returns the curve to firmware automatic mode, discarding anything staged.
     ///
     /// The kernel falls through from restore into commit, so this needs no separate commit.
-    async fn reset_fan_curve(fan_curve_path: &Path) {
-        if let Err(err) = cc_fs::write(&fan_curve_path, b"r\n".to_vec()).await {
+    async fn reset_fan_curve(fan_curve_path: &Path, io: &DeviceIo) {
+        if let Err(err) = io.write_value(fan_curve_path, b"r\n".to_vec()).await {
             error!("Error resetting Fan Curve to automatic mode: {err}");
         }
     }
@@ -1097,16 +1131,17 @@ impl GpuAMD {
         let mut set_zero_rpm = false;
         if fan_curve_info.zero_rpm.is_some() && fan_curve_info.zero_rpm_stop_temp.is_some() {
             if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile) {
-                Self::set_zero_rpm(fan_curve_info, true).await?;
-                Self::set_zero_rpm_stop_temp(fan_curve_info, &stop_temp).await?;
+                Self::set_zero_rpm(fan_curve_info, true, &amd_driver_info.hwmon.io).await?;
+                Self::set_zero_rpm_stop_temp(fan_curve_info, &stop_temp, &amd_driver_info.hwmon.io)
+                    .await?;
                 set_zero_rpm = true;
             }
         }
         if set_zero_rpm.not() {
-            Self::reset_zero_rpm_settings(fan_curve_info).await;
+            Self::reset_zero_rpm_settings(fan_curve_info, &amd_driver_info.hwmon.io).await;
         }
         let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, set_zero_rpm);
-        Self::set_fan_curve(fan_curve, &fan_curve_info.path)
+        Self::set_fan_curve(fan_curve, &fan_curve_info.path, &amd_driver_info.hwmon.io)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1330,11 +1365,13 @@ mod tests {
         AMDDriverInfo, FanCurve, FanCurveInfo, GpuAMD, HEADER_ZERO_RPM_ENABLE,
         HEADER_ZERO_RPM_STOP_TEMP,
     };
+    use crate::repositories::hwmon::device_io::DeviceIo;
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use nix::libc;
     use std::ops::Not;
     use std::ops::RangeInclusive;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn basic_test_fan_curve_info() -> FanCurveInfo {
         FanCurveInfo {
@@ -1928,7 +1965,7 @@ mod tests {
             };
 
             // when:
-            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+            let result = GpuAMD::set_fan_curve(fan_curve, &path, &DeviceIo::default()).await;
             let last_written = cc_fs::read_txt(&path).await.unwrap();
 
             // then:
@@ -1955,7 +1992,7 @@ mod tests {
             };
 
             // when:
-            let result = GpuAMD::set_fan_curve(fan_curve, &path).await;
+            let result = GpuAMD::set_fan_curve(fan_curve, &path, &DeviceIo::default()).await;
 
             // then:
             load_teardown(&ctx).await;
@@ -2031,7 +2068,7 @@ mod tests {
             let info = fan_curve_info_with_paths(&ctx).await;
 
             // when:
-            GpuAMD::reset_zero_rpm_settings(&info).await;
+            GpuAMD::reset_zero_rpm_settings(&info, &DeviceIo::default()).await;
 
             // then:
             let curve = cc_fs::read_txt(&info.path).await.unwrap();
@@ -2048,6 +2085,26 @@ mod tests {
         });
     }
 
+    /// Goal: the shutdown reset must go through the device's worker, not inline, or a wedged
+    /// card blocks shutdown past its budget. Method: reset through a worker nobody drains and
+    /// assert it gives up instead of writing.
+    #[test]
+    #[serial]
+    fn resetting_a_wedged_device_fails_instead_of_blocking() {
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            let info = fan_curve_info_with_paths(&ctx).await;
+            let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info, &wedged).await;
+
+            let curve = cc_fs::read_txt(&info.path).await.unwrap();
+            load_teardown(&ctx).await;
+            assert!(result.is_err(), "a wedged device must not report success");
+            assert!(curve.contains('r').not(), "nothing may reach the card");
+        });
+    }
+
     #[test]
     #[serial]
     fn resetting_to_default_does_return_the_fan_curve() {
@@ -2059,7 +2116,7 @@ mod tests {
             let info = fan_curve_info_with_paths(&ctx).await;
 
             // when:
-            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info).await;
+            let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info, &DeviceIo::default()).await;
 
             // then:
             let curve = cc_fs::read_txt(&info.path).await.unwrap();

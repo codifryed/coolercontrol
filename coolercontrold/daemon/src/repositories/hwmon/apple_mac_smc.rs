@@ -393,20 +393,23 @@ impl AppleMacSMC {
         (fans, any_failure)
     }
 
-    pub async fn set_to_auto_control(&self, channel_number: u8) -> Result<()> {
+    pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let fan_min_default = self
             .fans
             .get(&channel_number)
             .map_or(DEFAULT_MIN_FAN_SPEED, |info| info.default_min_rpm);
         let fan_min_path = self.path.join(format_fan_min!(channel_number));
         let fan_manual_path = self.path.join(format_fan_manual!(channel_number));
-        if let Err(e) = cc_fs::write_string(&fan_min_path, fan_min_default.to_string()).await {
+        if let Err(e) = io
+            .write_value(&fan_min_path, fan_min_default.to_string().into_bytes())
+            .await
+        {
             warn!(
                 "Unable to set Fan Min value {fan_min_default} for {} Reason: {e}",
                 fan_min_path.display()
             );
         }
-        cc_fs::write_string(&fan_manual_path, FAN_AUTO_CONTROL.to_string())
+        io.write_value(&fan_manual_path, FAN_AUTO_CONTROL.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -416,23 +419,26 @@ impl AppleMacSMC {
             })
     }
 
-    pub async fn set_to_manual_control(&self, channel_number: u8) -> Result<()> {
+    pub async fn set_to_manual_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let fan_min_path = self.path.join(format_fan_min!(channel_number));
         let fan_manual_path = self.path.join(format_fan_manual!(channel_number));
-        if let Err(e) = cc_fs::write_string(&fan_min_path, "0".to_string()).await {
+        if let Err(e) = io.write_value(&fan_min_path, b"0".to_vec()).await {
             warn!(
                 "Unable to set Fan Min value 0 for {}. The driver will not allow you to set fan speeds to 0. Reason: {e}",
                 fan_min_path.display()
             );
         }
-        cc_fs::write_string(&fan_manual_path, FAN_MANUAL_CONTROL.to_string())
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Unable to set Fan Manual value {FAN_MANUAL_CONTROL} for {} Reason: {err}",
-                    fan_min_path.display()
-                )
-            })
+        io.write_value(
+            &fan_manual_path,
+            FAN_MANUAL_CONTROL.to_string().into_bytes(),
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Unable to set Fan Manual value {FAN_MANUAL_CONTROL} for {} Reason: {err}",
+                fan_min_path.display()
+            )
+        })
     }
 
     async fn get_fan_min(base_path: &Path, channel_number: u8, log_error: bool) -> Option<RPM> {
@@ -488,18 +494,23 @@ impl AppleMacSMC {
         .and_then(|rpm| self.interpolate_duty_from_rpm(channel_number, rpm))
     }
 
-    pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty) -> Result<()> {
+    pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty, io: &DeviceIo) -> Result<()> {
         let rpm = self.interpolate_rpm_from_duty(channel_number, speed);
         if self.is_mac_smc {
-            Self::set_fan_target(&self.path, channel_number, rpm).await
+            Self::set_fan_target(&self.path, channel_number, rpm, io).await
         } else {
-            Self::set_fan_output(&self.path, channel_number, rpm).await
+            Self::set_fan_output(&self.path, channel_number, rpm, io).await
         }
     }
 
-    async fn set_fan_output(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
+    async fn set_fan_output(
+        path: &Path,
+        channel_number: u8,
+        rpm: RPM,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let fan_output_path = path.join(format_fan_output!(channel_number));
-        cc_fs::write_string(&fan_output_path, rpm.to_string())
+        io.write_value(&fan_output_path, rpm.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -509,9 +520,14 @@ impl AppleMacSMC {
             })
     }
 
-    async fn set_fan_target(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
+    async fn set_fan_target(
+        path: &Path,
+        channel_number: u8,
+        rpm: RPM,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let fan_target_path = path.join(format_fan_target!(channel_number));
-        cc_fs::write_string(&fan_target_path, rpm.to_string())
+        io.write_value(&fan_target_path, rpm.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1102,7 +1118,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_to_auto_control(1).await;
+            let result = apple_smc.set_to_auto_control(1, &DeviceIo::default()).await;
 
             // then:
             let fan_min = cc_fs::read_sysfs(test_base_path.join("fan1_min"))
@@ -1147,7 +1163,9 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_to_manual_control(1).await;
+            let result = apple_smc
+                .set_to_manual_control(1, &DeviceIo::default())
+                .await;
 
             // then:
             let fan_min = cc_fs::read_sysfs(test_base_path.join("fan1_min"))
@@ -1189,7 +1207,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_fan_duty(1, 50).await;
+            let result = apple_smc.set_fan_duty(1, 50, &DeviceIo::default()).await;
 
             // then:
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
@@ -1573,7 +1591,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::set_fan_output(test_base_path, 1, 3000).await;
+            let result =
+                AppleMacSMC::set_fan_output(test_base_path, 1, 3000, &DeviceIo::default()).await;
 
             // then:
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
@@ -1597,7 +1616,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::set_fan_target(test_base_path, 1, 3500).await;
+            let result =
+                AppleMacSMC::set_fan_target(test_base_path, 1, 3500, &DeviceIo::default()).await;
 
             // then:
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
@@ -1635,7 +1655,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_fan_duty(1, 50).await;
+            let result = apple_smc.set_fan_duty(1, 50, &DeviceIo::default()).await;
 
             // then:
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))

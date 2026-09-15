@@ -338,13 +338,14 @@ pub async fn apply_curve(
                 let interpolated_pwms = interpolate_kraken3_curve(speed_profile);
                 fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
                     .await?;
-                apply_kraken3_curve(base_path, fan_channel_info.number, interpolated_pwms).await?;
+                apply_kraken3_curve(base_path, fan_channel_info.number, interpolated_pwms, io)
+                    .await?;
             } else {
                 let normalized_curve =
                     normalize_speed_profile(speed_profile, *point_length as usize);
                 fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
                     .await?;
-                apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve).await?;
+                apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve, io).await?;
             }
             fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info, io).await
         }
@@ -362,7 +363,7 @@ pub async fn apply_curve(
             if is_temp_sel(base_path, fan_channel_info.number) {
                 fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
                     .await?;
-                apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve).await?;
+                apply_pwm_curve(base_path, fan_channel_info.number, normalized_curve, io).await?;
                 fans::set_pwm_enable(
                     PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
                     base_path,
@@ -373,11 +374,12 @@ pub async fn apply_curve(
             } else {
                 fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info, io)
                     .await?;
-                apply_temp_curve(base_path, temp_channel_info.number, normalized_curve).await?;
+                apply_temp_curve(base_path, temp_channel_info.number, normalized_curve, io).await?;
                 apply_temp_curve_to_pwm_channel(
                     base_path,
                     temp_channel_info.number,
                     fan_channel_info.number,
+                    io,
                 )
                 .await?;
                 fans::set_pwm_enable(PWM_ENABLE_AUTO_VALUE, base_path, fan_channel_info, io).await
@@ -460,11 +462,12 @@ async fn apply_pwm_curve(
     base_path: &Path,
     pwm_channel_number: u8,
     normalized_curve: Vec<(CurveTemp, CurvePWM)>,
+    io: &DeviceIo,
 ) -> Result<()> {
     for (index, (temp, pwm)) in normalized_curve.into_iter().enumerate() {
         let point = index + 1;
-        set_pwm_auto_point_pwm(base_path, pwm_channel_number, point, pwm).await?;
-        set_pwm_auto_point_temp(base_path, pwm_channel_number, point, temp).await?;
+        set_pwm_auto_point_pwm(base_path, pwm_channel_number, point, pwm, io).await?;
+        set_pwm_auto_point_temp(base_path, pwm_channel_number, point, temp, io).await?;
     }
     Ok(())
 }
@@ -474,10 +477,11 @@ async fn set_pwm_auto_point_pwm(
     pwm_channel_number: u8,
     point_number: usize,
     pwm: CurvePWM,
+    io: &DeviceIo,
 ) -> Result<()> {
     let auto_point_pwm_path =
         base_path.join(format_pwm_auto_point_pwm!(pwm_channel_number, point_number));
-    cc_fs::write_string(&auto_point_pwm_path, pwm.to_string())
+    io.write_value(&auto_point_pwm_path, pwm.to_string().into_bytes())
         .await
         .map_err(|err| {
             anyhow!(
@@ -492,12 +496,13 @@ async fn set_pwm_auto_point_temp(
     pwm_channel_number: u8,
     point_number: usize,
     temp: CurveTemp,
+    io: &DeviceIo,
 ) -> Result<()> {
     let auto_point_temp_path = base_path.join(format_pwm_auto_point_temp!(
         pwm_channel_number,
         point_number
     ));
-    cc_fs::write_string(&auto_point_temp_path, temp.to_string())
+    io.write_value(&auto_point_temp_path, temp.to_string().into_bytes())
         .await
         .map_err(|err| {
             anyhow!(
@@ -511,11 +516,12 @@ async fn apply_temp_curve(
     base_path: &Path,
     temp_channel_number: u8,
     normalized_curve: Vec<(CurveTemp, CurvePWM)>,
+    io: &DeviceIo,
 ) -> Result<()> {
     for (index, (temp, pwm)) in normalized_curve.into_iter().enumerate() {
         let point = index + 1;
-        set_temp_auto_point_pwm(base_path, temp_channel_number, point, pwm).await?;
-        set_temp_auto_point_temp(base_path, temp_channel_number, point, temp).await?;
+        set_temp_auto_point_pwm(base_path, temp_channel_number, point, pwm, io).await?;
+        set_temp_auto_point_temp(base_path, temp_channel_number, point, temp, io).await?;
     }
     Ok(())
 }
@@ -525,12 +531,13 @@ async fn set_temp_auto_point_pwm(
     temp_channel_number: u8,
     point_number: usize,
     pwm: CurvePWM,
+    io: &DeviceIo,
 ) -> Result<()> {
     let auto_point_pwm_path = base_path.join(format_temp_auto_point_pwm!(
         temp_channel_number,
         point_number
     ));
-    cc_fs::write_string(&auto_point_pwm_path, pwm.to_string())
+    io.write_value(&auto_point_pwm_path, pwm.to_string().into_bytes())
         .await
         .map_err(|err| {
             anyhow!(
@@ -545,12 +552,13 @@ async fn set_temp_auto_point_temp(
     temp_channel_number: u8,
     point_number: usize,
     temp: CurveTemp,
+    io: &DeviceIo,
 ) -> Result<()> {
     let auto_point_temp_path = base_path.join(format_temp_auto_point_temp!(
         temp_channel_number,
         point_number
     ));
-    cc_fs::write_string(&auto_point_temp_path, temp.to_string())
+    io.write_value(&auto_point_temp_path, temp.to_string().into_bytes())
         .await
         .map_err(|err| {
             anyhow!(
@@ -566,9 +574,10 @@ async fn apply_temp_curve_to_pwm_channel(
     base_path: &Path,
     temp_channel_number: u8,
     pwm_channel_number: u8,
+    io: &DeviceIo,
 ) -> Result<()> {
     let pwm_auto_channel_path = base_path.join(format_pwm_auto_channels_temp!(pwm_channel_number));
-    cc_fs::write_string(&pwm_auto_channel_path, temp_channel_number.to_string())
+    io.write_value(&pwm_auto_channel_path, temp_channel_number.to_string().into_bytes())
         .await
         .map_err(|err| {
             anyhow!(
@@ -699,6 +708,7 @@ async fn apply_kraken3_curve(
     base_path: &Path,
     pwm_channel_number: u8,
     interpolated_pwms: Vec<CurvePWM>,
+    io: &DeviceIo,
 ) -> Result<()> {
     if interpolated_pwms.len() != POINT_LENGTH_NZXT_KRAKEN3 as usize {
         return Err(anyhow!(
@@ -711,7 +721,7 @@ async fn apply_kraken3_curve(
     for (index, pwm) in interpolated_pwms.into_iter().enumerate() {
         let point = index + 1;
         // the kraken3 uses temp, since it has fixed temp values (doesn't make sense to me, but hey)
-        set_temp_auto_point_pwm(base_path, pwm_channel_number, point, pwm).await?;
+        set_temp_auto_point_pwm(base_path, pwm_channel_number, point, pwm, io).await?;
     }
     Ok(())
 }
@@ -1083,7 +1093,13 @@ mod tests {
             let curve = vec![(30_000u32, 100u8), (40_000u32, 120u8)];
 
             // when
-            let res = apply_pwm_curve(test_base_path, channel.number, curve.clone()).await;
+            let res = apply_pwm_curve(
+                test_base_path,
+                channel.number,
+                curve.clone(),
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then
             assert!(res.is_ok());
@@ -1128,8 +1144,13 @@ mod tests {
             let curve = vec![(25_000u32, 80u8)];
 
             // when
-            let res =
-                apply_temp_curve(test_base_path, temp_source_channel.number, curve.clone()).await;
+            let res = apply_temp_curve(
+                test_base_path,
+                temp_source_channel.number,
+                curve.clone(),
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then
             assert!(res.is_ok());
@@ -1163,6 +1184,7 @@ mod tests {
                 test_base_path,
                 temp_channel_number,
                 pwm_channel_number,
+                &DeviceIo::default(),
             )
             .await;
 
@@ -1197,7 +1219,13 @@ mod tests {
             let pwms = vec![128u8; POINT_LENGTH_NZXT_KRAKEN3 as usize];
 
             // when
-            let res = apply_kraken3_curve(test_base_path, channel.number, pwms.clone()).await;
+            let res = apply_kraken3_curve(
+                test_base_path,
+                channel.number,
+                pwms.clone(),
+                &DeviceIo::default(),
+            )
+            .await;
 
             // then
             assert!(res.is_ok());
@@ -1299,7 +1327,7 @@ mod tests {
                 .unwrap();
 
             // when
-            let res = set_pwm_auto_point_pwm(test_base_path, 2, 3, 150).await;
+            let res = set_pwm_auto_point_pwm(test_base_path, 2, 3, 150, &DeviceIo::default()).await;
 
             // then
             assert!(res.is_ok());
@@ -1323,7 +1351,8 @@ mod tests {
                 .unwrap();
 
             // when
-            let res = set_pwm_auto_point_temp(test_base_path, 3, 2, 45_000).await;
+            let res =
+                set_pwm_auto_point_temp(test_base_path, 3, 2, 45_000, &DeviceIo::default()).await;
 
             // then
             assert!(res.is_ok());
@@ -1347,7 +1376,8 @@ mod tests {
                 .unwrap();
 
             // when
-            let res = set_temp_auto_point_pwm(test_base_path, 2, 1, 200).await;
+            let res =
+                set_temp_auto_point_pwm(test_base_path, 2, 1, 200, &DeviceIo::default()).await;
 
             // then
             assert!(res.is_ok());
@@ -1371,7 +1401,8 @@ mod tests {
                 .unwrap();
 
             // when
-            let res = set_temp_auto_point_temp(test_base_path, 3, 4, 60_000).await;
+            let res =
+                set_temp_auto_point_temp(test_base_path, 3, 4, 60_000, &DeviceIo::default()).await;
 
             // then
             assert!(res.is_ok());

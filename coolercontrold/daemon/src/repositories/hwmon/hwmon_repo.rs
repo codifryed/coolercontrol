@@ -1881,7 +1881,7 @@ async fn apply_pwm_duty_write(
     } else if driver.apple_smc.detected {
         driver
             .apple_smc
-            .set_fan_duty(channel_info.number, target_duty)
+            .set_fan_duty(channel_info.number, target_duty, &driver.io)
             .await
     } else {
         fans::set_pwm_duty(&driver.path, channel_info, target_duty, &driver.io)
@@ -2302,7 +2302,7 @@ impl Repository for HwmonRepo {
         let result = if hwmon_driver.apple_smc.detected {
             hwmon_driver
                 .apple_smc
-                .set_to_auto_control(channel_info.number)
+                .set_to_auto_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
             fans::set_pwm_enable_to_default_or_auto(
@@ -2338,7 +2338,7 @@ impl Repository for HwmonRepo {
         let result = if hwmon_driver.apple_smc.detected {
             hwmon_driver
                 .apple_smc
-                .set_to_manual_control(channel_info.number)
+                .set_to_manual_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
             fans::set_pwm_enable(
