@@ -543,7 +543,7 @@ mod tests {
             };
 
             let (first_temps, _) = extract_temp_statuses(&driver_info).await;
-            let held_after_first_tick = driver_info.io.descriptor_count();
+            let held_after_first_tick = driver_info.io.descriptor_count().await;
             let (second_temps, _) = extract_temp_statuses(&driver_info).await;
             cc_fs::write(test_base_path.join("temp1_input"), b"55000".to_vec())
                 .await
@@ -558,7 +558,7 @@ mod tests {
             let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
             assert_eq!(
-                driver_info.io.descriptor_count(),
+                driver_info.io.descriptor_count().await,
                 expected_held,
                 "descriptors grew"
             );

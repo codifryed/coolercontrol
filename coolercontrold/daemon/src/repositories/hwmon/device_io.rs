@@ -324,17 +324,21 @@ impl DeviceIo {
         }
     }
 
-    /// Descriptors currently held open. Always 0 on the threaded path: the cache lives on the
-    /// worker thread, where the main thread cannot look at it without a round trip.
+    /// Descriptors currently held open, asked of the worker thread on the threaded path.
     ///
-    /// Only tests call this today, and they are what it exists for: the descriptor cache has no
-    /// observable effect other than not reopening, so a test has to count them to prove it.
-    #[allow(dead_code)]
-    #[must_use]
-    pub fn descriptor_count(&self) -> usize {
+    /// The descriptor cache has no observable effect other than not reopening, so a test has to
+    /// count them to prove it. The round trip is why this is test-only: it is the only reason the
+    /// main thread ever needs to see inside a worker's cache.
+    #[cfg(test)]
+    pub async fn descriptor_count(&self) -> usize {
         match self {
             Self::Inline(fds) => fds.len(),
-            Self::Threaded(_) => 0,
+            Self::Threaded(worker) => worker
+                .dispatch(Path::new("<descriptor-count>"), |reply| {
+                    Request::DescriptorCount { reply }
+                })
+                .await
+                .unwrap_or_default(),
         }
     }
 
@@ -521,6 +525,11 @@ pub enum Request {
         data: Vec<u8>,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// Counts the worker's own descriptor cache, so a test can prove it is not reopening.
+    #[cfg(test)]
+    DescriptorCount {
+        reply: oneshot::Sender<Result<usize>>,
+    },
     ClearDescriptors,
 }
 
@@ -550,6 +559,10 @@ async fn serve(mut rx: mpsc::Receiver<Request>) {
                     values.push(fds.read_value(path).await);
                 }
                 let _ = reply.send(Ok(values));
+            }
+            #[cfg(test)]
+            Request::DescriptorCount { reply } => {
+                let _ = reply.send(Ok(fds.len()));
             }
             Request::Write { path, data, reply } => {
                 let result = cc_fs::write(&path, data).await;
@@ -613,6 +626,38 @@ fn worker_gone(device_name: &str) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Goal: the descriptor cache is the reason a device thread is cheaper than a pool, but it
+    /// lives on the worker where nothing could see it, so the no-leak claim was only ever proven
+    /// for `Inline`. Method: batch the same paths twice on a real worker and count its cache.
+    #[test]
+    fn a_worker_holds_its_descriptors_across_batches() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let first = dir.path().join("temp1_input");
+            let second = dir.path().join("temp2_input");
+            std::fs::write(&first, "41000\n").unwrap();
+            std::fs::write(&second, "52000\n").unwrap();
+            let paths: Vec<Arc<Path>> = vec![first.into(), second.into()];
+
+            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            assert_eq!(
+                io.descriptor_count().await,
+                0,
+                "nothing open before the first read"
+            );
+
+            io.read_many(&paths).await;
+            assert_eq!(io.descriptor_count().await, 2);
+
+            io.read_many(&paths).await;
+            assert_eq!(
+                io.descriptor_count().await,
+                2,
+                "a second batch reopened instead of reusing the cache"
+            );
+        });
+    }
 
     // --- HealthState: the rules both workers share ---
 
