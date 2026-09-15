@@ -197,6 +197,17 @@ impl DeviceIo {
         }
     }
 
+    /// The path a slot was registered with, for tests that assert the mapping. `Inline` only: the
+    /// threaded table lives on the worker and reading it would cost a round trip per read.
+    #[cfg(test)]
+    #[must_use]
+    pub fn registered_path(&self, index: ReadIndex) -> Option<PathBuf> {
+        match self {
+            Self::Inline(fds) => fds.path_of(index),
+            Self::Threaded(_) => None,
+        }
+    }
+
     /// Debug-only check that a slot addresses the attribute the caller meant.
     ///
     /// Slots trade a loud failure for a quiet one: a wrong path fails `ENOENT`, but a wrong slot

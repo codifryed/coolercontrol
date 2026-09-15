@@ -2758,6 +2758,84 @@ mod preload_tests {
         }
     }
 
+    /// Goal: every per-tick attribute gets a slot, and each slot addresses the file the channel
+    /// actually means. A slot pointing at the wrong attribute is the one failure this design can
+    /// introduce that the old path-keyed cache could not, because it reads a real value from the
+    /// wrong sensor instead of failing.
+    ///
+    /// Method: one channel of each kind, including the AMD Load channel whose file lives outside
+    /// the hwmon directory, then read every slot back and compare it to the expected path.
+    #[test]
+    #[serial]
+    fn every_channel_kind_registers_a_slot_for_its_own_file() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from("/sys/class/hwmon/hwmon9");
+            let load_path = PathBuf::from("/sys/class/drm/card0/device/gpu_busy_percent");
+            let mut channels = vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    name: "fan1".to_string(),
+                    caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 2,
+                    name: "temp2".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    number: 1,
+                    name: "power1_average".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    number: 3,
+                    name: "freq3".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Load,
+                    number: 1,
+                    name: "load".to_string(),
+                    ..Default::default()
+                },
+            ];
+
+            let io = DeviceIo::default();
+            install_read_registry(&base, Some(&load_path), &mut channels, &io)
+                .await
+                .unwrap();
+
+            let slot_path = |slot: Option<ReadIndex>| {
+                io.registered_path(slot.expect("channel has a slot"))
+                    .expect("slot is registered")
+            };
+            assert_eq!(slot_path(channels[0].read_slot.pwm), base.join("pwm1"));
+            assert_eq!(
+                slot_path(channels[0].read_slot.rpm),
+                base.join("fan1_input")
+            );
+            assert_eq!(
+                slot_path(channels[1].read_slot.value),
+                base.join("temp2_input")
+            );
+            assert_eq!(
+                slot_path(channels[2].read_slot.value),
+                base.join("power1_average")
+            );
+            assert_eq!(
+                slot_path(channels[3].read_slot.value),
+                base.join("freq3_input")
+            );
+            // Outside the hwmon directory, which is why it is registered separately.
+            assert_eq!(slot_path(channels[4].read_slot.value), load_path);
+        });
+    }
+
     /// Goal: the reason this whole mechanism exists. A device that stops answering must not stop
     /// the daemon: it must leave the per-tick rotation rather than costing a timeout every tick,
     /// its channels must go stale and fall to the failsafe on the usual schedule, and a healthy

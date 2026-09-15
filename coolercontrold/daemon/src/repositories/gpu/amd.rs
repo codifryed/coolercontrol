@@ -749,12 +749,19 @@ impl GpuAMD {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
-            let result = driver
-                .hwmon
-                .io
-                .read_value(&driver.device_path.join("gpu_busy_percent"))
-                .await
-                .and_then(fans::check_parsing_8);
+            // `gpu_busy_percent` has a slot like every other per-tick attribute, so it keeps its
+            // descriptor across ticks. The path is only rebuilt if detection never registered one.
+            let raw = match channel.read_slot.value {
+                Some(slot) => driver.hwmon.io.read_many(&[slot]).await.remove(0),
+                None => {
+                    driver
+                        .hwmon
+                        .io
+                        .read_value(&driver.device_path.join("gpu_busy_percent"))
+                        .await
+                }
+            };
+            let result = raw.and_then(fans::check_parsing_8);
             if let Ok(load) = result {
                 channels.push(ChannelStatus {
                     name: channel.name.clone(),
