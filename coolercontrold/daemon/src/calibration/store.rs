@@ -10,6 +10,7 @@ use super::curve::Calibration;
 use super::ChannelKey;
 use crate::cc_fs;
 use crate::device::{ChannelName, DeviceUID, Duty, Temp, RPM};
+use crate::overrides::OverridesController;
 use crate::paths;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
@@ -18,6 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::ops::Not;
+use std::rc::Rc;
 
 /// On-disk shape of `/etc/coolercontrol/calibrations.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -39,23 +41,58 @@ pub fn validate(contents: &str) -> Result<()> {
         .map(|_| ())
 }
 
+/// Marks a field the failed entry did not carry at all.
+const UNKNOWN_JSON_FIELD: &str = "<unknown>";
+
+/// Upper bound on a raw field copied into a log line. A real UID is 64 hex characters, so
+/// nothing legitimate is cut; this only caps a corrupt or hand-edited file.
+const JSON_FIELD_LOG_CHARS_MAX: usize = 64;
+
+/// One string field of an entry that failed to parse. Untrusted: the file is hand-editable and
+/// can arrive from a restored backup, so the value is bounded before it reaches a log line.
+fn json_str_field(entry_json: &serde_json::Value, field: &str) -> String {
+    let raw = entry_json
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(UNKNOWN_JSON_FIELD);
+    let bounded: String = raw.chars().take(JSON_FIELD_LOG_CHARS_MAX).collect();
+    debug_assert!(bounded.chars().count() <= JSON_FIELD_LOG_CHARS_MAX);
+    bounded
+}
+
 pub struct CalibrationStore {
     calibrations: RefCell<IndexMap<ChannelKey, Calibration>>,
+    /// Resolves the device and channel names this store logs. A constructor argument rather
+    /// than a builder because the load itself logs, so a later attachment would arrive after
+    /// the lines it is meant to name.
+    overrides: Rc<OverridesController>,
 }
 
 impl CalibrationStore {
     /// Load from disk, creating an empty file on first run.
-    pub async fn init() -> Result<Self> {
-        let store = Self::empty();
+    pub async fn init(overrides: Rc<OverridesController>) -> Result<Self> {
+        let store = Self::with_overrides(overrides);
         store.load_from_disk().await?;
         Ok(store)
     }
 
-    /// In-memory only; no disk I/O. Used by tests.
+    /// In-memory only; no disk I/O. Names resolve to their raw form.
+    #[cfg(test)]
     pub fn empty() -> Self {
+        Self::with_overrides(Rc::new(OverridesController::empty()))
+    }
+
+    /// In-memory only, resolving names against `overrides`.
+    pub fn with_overrides(overrides: Rc<OverridesController>) -> Self {
         Self {
             calibrations: RefCell::new(IndexMap::new()),
+            overrides,
         }
+    }
+
+    /// Log display form of a channel this store holds a calibration for.
+    pub fn log_device_channel(&self, device_uid: &DeviceUID, channel_name: &str) -> String {
+        self.overrides.log_device_channel(device_uid, channel_name)
     }
 
     #[allow(dead_code)] // test-only currently; useful production API.
@@ -197,17 +234,10 @@ impl CalibrationStore {
             match serde_json::from_value::<CalibrationEntry>(entry_json.clone()) {
                 Ok(entry) => calibrations.push(entry),
                 Err(err) => {
-                    let key = entry_json
-                        .get("device_uid")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("<unknown>");
-                    let channel = entry_json
-                        .get("channel_name")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("<unknown>");
                     warn!(
-                        "Dropping incompatible calibration entry for {key}:{channel} - {err}. \
-                         Re-calibrate the channel from the UI to restore mapping."
+                        "Dropping incompatible calibration entry for {} - {err}. \
+                         Re-calibrate the channel from the UI to restore mapping.",
+                        self.dropped_entry_label(&entry_json)
                     );
                 }
             }
@@ -215,14 +245,22 @@ impl CalibrationStore {
         self.replace_cache(CalibrationConfigFile { calibrations });
         for ((device_uid, channel_name), calibration) in self.calibrations.borrow().iter() {
             info!(
-                "Calibration loaded for {device_uid}:{channel_name} (curve_kind={:?}, \
-                 rpm_max={}, warnings={})",
+                "Calibration loaded for {} (curve_kind={:?}, rpm_max={}, warnings={})",
+                self.log_device_channel(device_uid, channel_name),
                 calibration.curve_kind,
                 calibration.rpm_max,
                 calibration.warnings.len()
             );
         }
         Ok(())
+    }
+
+    /// Names an entry that failed to deserialize. Its fields never passed validation, so they
+    /// are bounded here and sanitized on the way to the log by the resolver.
+    fn dropped_entry_label(&self, entry_json: &serde_json::Value) -> String {
+        let device_uid = json_str_field(entry_json, "device_uid");
+        let channel_name = json_str_field(entry_json, "channel_name");
+        self.log_device_channel(&device_uid, &channel_name)
     }
 
     /// Build a sorted entries list for serialization. Sorting by key keeps
@@ -272,6 +310,79 @@ mod tests {
     use super::super::curve::{CurveKind, DutySample};
     use super::*;
     use chrono::Local;
+
+    #[test]
+    fn dropped_entry_label_marks_fields_the_entry_lacks() {
+        // Goal: an entry too broken to parse still names something, so the warning says which
+        // channel to re-calibrate instead of printing nothing.
+        let store = CalibrationStore::empty();
+        let label = store.dropped_entry_label(&serde_json::json!({}));
+        assert_eq!(label, "unknown device (<unknown>) | <unknown>");
+
+        let label = store.dropped_entry_label(&serde_json::json!({
+            "device_uid": "dev-a",
+            "channel_name": "fan1",
+        }));
+        assert_eq!(label, "unknown device (dev-a) | fan1");
+    }
+
+    #[test]
+    fn dropped_entry_label_bounds_an_untrusted_field() {
+        // Goal: the file is hand-editable and restorable from backup, so a field of any size
+        // cannot turn one dropped entry into an unbounded log line.
+        let store = CalibrationStore::empty();
+        let huge = "z".repeat(10_000);
+        let label = store.dropped_entry_label(&serde_json::json!({
+            "device_uid": "dev-a",
+            "channel_name": huge,
+        }));
+        assert!(label.contains(&huge).not());
+        assert!(label.chars().count() <= JSON_FIELD_LOG_CHARS_MAX * 2 + 32);
+    }
+
+    #[test]
+    fn loaded_entry_label_resolves_through_the_name_chain() {
+        // Goal: the startup line names the device and channel the way the rest of the daemon
+        // does, rather than the UID hash the calibration is keyed by.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let device = Rc::new(RefCell::new(crate::device::Device::new(
+                "nct6687".to_string(),
+                crate::device::DeviceType::Hwmon,
+                0,
+                None,
+                crate::device::DeviceInfo::default(),
+                None,
+                1.0,
+            )));
+            let uid = device.borrow().uid.clone();
+            let all_devices: crate::AllDevices =
+                Rc::new(std::collections::HashMap::from([(uid.clone(), device)]));
+            let config = Rc::new(crate::config::Config::init_default_config().unwrap());
+            config.create_device_list(&all_devices);
+            let overrides =
+                Rc::new(OverridesController::init_from(tmp.path().join("overrides.toml")).await);
+            overrides.set_device_context(&all_devices, config);
+            overrides
+                .set_channel_label(
+                    &uid,
+                    "hint",
+                    &"fan3".to_string(),
+                    None,
+                    Some("Rear Exhaust"),
+                )
+                .await
+                .unwrap();
+
+            let store = CalibrationStore::with_overrides(overrides);
+            assert_eq!(
+                store.log_device_channel(&uid, "fan3"),
+                "nct6687 | Rear Exhaust (fan3)"
+            );
+            // Negative space: the UID the calibration is keyed by never reaches the line.
+            assert!(store.log_device_channel(&uid, "fan3").contains(&uid).not());
+        });
+    }
 
     fn sample_calibration() -> Calibration {
         // Build a deterministic Calibration suitable for serde round-trips
