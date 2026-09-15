@@ -10,7 +10,7 @@ CARGO := $(shell command -v cargo || command -v cargo-1.91 || command -v cargo-1
 # Extra cargo feature flags for build/test/clippy, e.g. FEATURES=--features gated-tests
 FEATURES :=
 
-.PHONY: build sync-app test test-liqctld clippy ci-test dev-run openapi vendor clean clean-app install uninstall
+.PHONY: build sync-app test test-liqctld clippy clippy-tests ci-test dev-run openapi vendor clean clean-app install uninstall
 
 # Mirror the UI build into the embedded asset dir: include_dir! compiles the whole
 # directory in, so stale hashed assets must go first (the glob keeps .gitignore).
@@ -56,6 +56,19 @@ clippy: release += --release
 clippy:
 	@$(CARGO) clippy --locked $(release) $(FEATURES) -- -D clippy::pedantic
 
+# Lints test code, which `clippy` cannot: without --all-targets the held-across-await lints never
+# fire on the test modules, which is where a borrow held across an await is easiest to write by
+# accident, and where it costs a BorrowMutError panic on the single-threaded runtime.
+#
+# Named lints, and RUSTFLAGS cleared, so the gate means the same thing everywhere. CI sets a global
+# `-Dwarnings`, and the toolchain is not pinned: under an older clippy that makes `unknown_lints`
+# fatal, so a forward-looking `#[allow(clippy::..)]` the shipped toolchain does not know fails a job
+# nobody can reproduce locally. The MSRV job clears RUSTFLAGS for the same reason. Both lints below
+# predate the 1.95 MSRV, so they exist wherever this builds. Debug, to share artifacts with `test`.
+clippy-tests:
+	@RUSTFLAGS= $(CARGO) clippy --locked --all-targets $(FEATURES) -- \
+		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock
+
 # test execution is split from compilation so the timeout only bounds the run phase:
 # a hung test binary (wedged FIFO pairing class) otherwise burns the whole CI job budget.
 # JSON goes through a file so the junit report survives a kill and the exit status is kept.
@@ -64,6 +77,8 @@ ci-test: test-liqctld
 	@./target/debug/$(executable) --version
 	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
 	@RUSTC_BOOTSTRAP=1 timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
+	@RUSTFLAGS= $(CARGO) clippy --locked --all-targets $(FEATURES) -- \
+		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock
 	@$(CARGO) clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
 	@#$(CARGO) audit
 	@#$(CARGO) audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
