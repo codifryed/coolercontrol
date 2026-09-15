@@ -29,7 +29,7 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use anyhow::{anyhow, Context, Result};
 use log::{info, warn};
@@ -43,7 +43,6 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceName, DeviceUID};
 use crate::paths;
 use crate::repositories::hwmon::chip_name::ChipName;
-use crate::repositories::repository::DeviceLock;
 use crate::sensors_conf::SensorsConf;
 use crate::AllDevices;
 
@@ -68,22 +67,32 @@ pub struct OverridesController {
     /// renames, the custom sensor delete cascade) and a cycle spans await
     /// points, so unserialized writes could interleave and lose one.
     write_lock: tokio::sync::Mutex<()>,
-    /// The layers below lm-sensors, late-bound. See [`Self::set_device_context`].
-    devices: OnceCell<DeviceContext>,
+    /// The layers below lm-sensors, captured at startup. See [`Self::capture_detected_names`].
+    detected: OnceCell<DetectedNames>,
 }
 
-/// The detected layers of the chain, which only exist once devices have been detected.
-struct DeviceContext {
-    /// Carries the labels the drivers report, layer 3.
-    ///
-    /// Weak on purpose, and it must stay weak: a device owns its status augmenter, the
-    /// calibration augmenter owns the calibration store, and the store resolves names through
-    /// this controller. A strong reference here closes that loop and no device would ever drop.
-    /// `main` holds the map for the life of the process, so the upgrade always succeeds.
-    all_devices: Weak<HashMap<DeviceUID, DeviceLock>>,
-    /// The config device list, which is never pruned and so still names hardware that is no
-    /// longer present. Without it an absent device resolves to nothing but its UID.
-    config: Rc<Config>,
+/// The detected layers of the chain, copied once devices have been detected.
+///
+/// Values rather than a handle on the device map, because every layer below the user's
+/// overrides is fixed at detection: a device's name, the driver's channel labels, and the
+/// lm-sensors labels already folded into them. Copying buys two things a live handle cannot.
+/// It keeps this controller free of any reference back into a device, which would otherwise
+/// close a cycle: a device owns its status augmenter, the calibration augmenter owns the
+/// calibration store, and the store resolves names through here. And it keeps resolution off
+/// the device `RefCell`s, so a log line can never collide with a status update mid-borrow.
+///
+/// The one thing that does move afterwards is a custom sensor added or removed at runtime
+/// (`CustomSensorsRepo::update_device_info_temps`). Its label is the sensor id in title case,
+/// so a sensor missing from here logs `sensor9` instead of `Sensor 9 (sensor9)`, and a user
+/// override still names it either way.
+#[derive(Default)]
+struct DetectedNames {
+    /// Layer 3 for devices: the detected name, falling back to the config `devices` list, which
+    /// is never pruned and so still names hardware that is no longer present.
+    devices: HashMap<DeviceUID, DeviceName>,
+    /// Layer 3 for channels: the label the driver reports, with any lm-sensors label already
+    /// folded in by the repository that detected it.
+    channels: HashMap<DeviceUID, HashMap<ChannelName, String>>,
 }
 
 impl OverridesController {
@@ -117,7 +126,7 @@ impl OverridesController {
                     sensors_conf: Rc::new(SensorsConf::default()),
                     document: RefCell::new(document),
                     write_lock: tokio::sync::Mutex::new(()),
-                    devices: OnceCell::new(),
+                    detected: OnceCell::new(),
                 };
             }
         }
@@ -147,7 +156,7 @@ impl OverridesController {
             sensors_conf: Rc::new(SensorsConf::default()),
             document: RefCell::new(document),
             write_lock: tokio::sync::Mutex::new(()),
-            devices: OnceCell::new(),
+            detected: OnceCell::new(),
         }
     }
 
@@ -168,7 +177,7 @@ impl OverridesController {
             sensors_conf: Rc::new(SensorsConf::default()),
             document: RefCell::new(OverridesDocument::default()),
             write_lock: tokio::sync::Mutex::new(()),
-            devices: OnceCell::new(),
+            detected: OnceCell::new(),
         }
     }
 
@@ -225,43 +234,58 @@ impl OverridesController {
             .and_then(|channel| channel.label.clone())
     }
 
-    /// Binds the detected layers, which cannot be constructor arguments: the repositories
-    /// consume this controller to build the labels the device map holds, so the map does not
-    /// exist yet. Called once at startup, right after the map is created. Until then, and in
-    /// tests, resolution simply skips the layers it cannot see.
-    pub fn set_device_context(&self, all_devices: &AllDevices, config: Rc<Config>) {
-        let bound = self.devices.set(DeviceContext {
-            all_devices: Rc::downgrade(all_devices),
-            config,
-        });
-        debug_assert!(bound.is_ok(), "device context must be bound exactly once");
+    /// Copies the detected layers in. They cannot be constructor arguments: the repositories
+    /// consume this controller to build the very labels being copied, so nothing has been
+    /// detected yet when it is built. Called once at startup, right after the device map is
+    /// created. Until then, and in tests, resolution simply skips the layers it cannot see.
+    pub fn capture_detected_names(&self, all_devices: &AllDevices, config: &Config) {
+        let mut detected = DetectedNames::default();
+        // The config list first: it holds hardware that is no longer present, and the live
+        // devices below overwrite it for everything detected this boot.
+        for (device_uid, name) in config.device_names() {
+            detected.devices.insert(device_uid, name);
+        }
+        for (device_uid, device_lock) in all_devices.iter() {
+            let device = device_lock.borrow();
+            detected
+                .devices
+                .insert(device_uid.clone(), device.name.clone());
+            let mut labels = HashMap::new();
+            for (channel_name, channel) in &device.info.channels {
+                if let Some(label) = channel.label.clone() {
+                    labels.insert(channel_name.clone(), label);
+                }
+            }
+            // Temps last: they win the same name, matching `DeviceInfo::detected_channel_label`.
+            for (temp_name, temp) in &device.info.temps {
+                labels.insert(temp_name.clone(), temp.label.clone());
+            }
+            if labels.is_empty().not() {
+                detected.channels.insert(device_uid.clone(), labels);
+            }
+        }
+        let captured = self.detected.set(detected);
+        debug_assert!(
+            captured.is_ok(),
+            "detected names must be captured exactly once"
+        );
     }
 
-    /// The label the driver reports for a channel, layer 3. `None` when the device is absent or
+    /// The label the driver reports for a channel, layer 3. `None` when the device is unknown or
     /// reports no label for it.
     fn detected_channel_label(&self, device_uid: &DeviceUID, channel_name: &str) -> Option<String> {
-        self.devices
+        self.detected
             .get()?
-            .all_devices
-            .upgrade()?
+            .channels
             .get(device_uid)?
-            .borrow()
-            .info
-            .detected_channel_label(channel_name)
+            .get(channel_name)
+            .cloned()
     }
 
-    /// The device's detected name: the live device first, then the config device list, which is
-    /// never pruned and so still names hardware that is no longer detected.
+    /// The device's detected name, or the one the config list remembers for hardware that is no
+    /// longer present.
     fn detected_device_name(&self, device_uid: &DeviceUID) -> Option<DeviceName> {
-        let context = self.devices.get()?;
-        if let Some(device) = context
-            .all_devices
-            .upgrade()
-            .and_then(|all| all.get(device_uid).cloned())
-        {
-            return Some(device.borrow().name.clone());
-        }
-        context.config.device_name(device_uid)
+        self.detected.get()?.devices.get(device_uid).cloned()
     }
 
     /// The chain's answer for a device, or `None` when no layer names it: not overridden, not
@@ -962,7 +986,7 @@ mod tests {
             let (uid, all_devices, config) =
                 device_context("nct6798", &[("fan1", Some("CPU Fan")), ("fan2", None)]);
             let controller = OverridesController::init_from(overrides_path(&tmp)).await;
-            controller.set_device_context(&all_devices, config);
+            controller.capture_detected_names(&all_devices, &config);
 
             assert_eq!(controller.log_channel_name(&uid, "fan1"), "CPU Fan (fan1)");
             // Negative space: a channel the driver does not label stays the bare key rather
@@ -981,6 +1005,27 @@ mod tests {
     }
 
     #[test]
+    fn resolution_does_not_touch_a_borrowed_device() {
+        // Goal: names are copied at startup, not read live, so a log line emitted while a
+        // repository holds a device borrowed for a status update cannot panic the daemon.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let (uid, all_devices, config) =
+                device_context("nct6798", &[("fan1", Some("CPU Fan"))]);
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            controller.capture_detected_names(&all_devices, &config);
+
+            let device = all_devices.get(&uid).unwrap();
+            let borrowed = device.borrow_mut();
+            assert_eq!(
+                controller.log_device_channel(&uid, "fan1"),
+                "nct6798 | CPU Fan (fan1)"
+            );
+            drop(borrowed);
+        });
+    }
+
+    #[test]
     fn device_log_name_falls_back_to_the_persisted_list() {
         // Goal: a calibration or setting outlives its hardware, so a device absent at boot is
         // still named from the config device list, which is never pruned.
@@ -988,7 +1033,7 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let (uid, all_devices, config) = device_context("nct6798", &[("fan1", None)]);
             let controller = OverridesController::init_from(overrides_path(&tmp)).await;
-            controller.set_device_context(&all_devices, Rc::clone(&config));
+            controller.capture_detected_names(&all_devices, &config);
 
             assert_eq!(
                 controller.log_device_channel(&uid, "fan1"),
@@ -999,7 +1044,7 @@ mod tests {
             let absent: AllDevices = Rc::new(HashMap::new());
             let absent_controller =
                 OverridesController::init_from(overrides_path(&tmp).with_extension("two")).await;
-            absent_controller.set_device_context(&absent, config);
+            absent_controller.capture_detected_names(&absent, &config);
             assert_eq!(
                 absent_controller.log_device_channel(&uid, "fan1"),
                 "nct6798 | fan1"
@@ -1015,7 +1060,7 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let (_, all_devices, config) = device_context("nct6798", &[("fan1", None)]);
             let controller = OverridesController::init_from(overrides_path(&tmp)).await;
-            controller.set_device_context(&all_devices, config);
+            controller.capture_detected_names(&all_devices, &config);
 
             let stranger = CURRENT_UID.to_string();
             let logged = controller.log_device_channel(&stranger, "fan1");

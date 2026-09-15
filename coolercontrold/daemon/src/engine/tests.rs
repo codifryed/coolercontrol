@@ -1806,7 +1806,7 @@ mod engine_tests {
                 .await
                 .unwrap();
 
-            overrides.set_device_context(&all_devices, Rc::clone(&config));
+            overrides.capture_detected_names(&all_devices, &config);
             let engine = Engine::new(
                 Rc::clone(&all_devices),
                 &Rc::new(Repositories::default()),

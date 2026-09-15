@@ -362,7 +362,7 @@ mod tests {
             config.create_device_list(&all_devices);
             let overrides =
                 Rc::new(OverridesController::init_from(tmp.path().join("overrides.toml")).await);
-            overrides.set_device_context(&all_devices, config);
+            overrides.capture_detected_names(&all_devices, &config);
             overrides
                 .set_channel_label(
                     &uid,

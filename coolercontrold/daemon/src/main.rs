@@ -357,7 +357,7 @@ fn main() -> Result<()> {
             .await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        overrides_controller.set_device_context(&all_devices, Rc::clone(&config));
+        overrides_controller.capture_detected_names(&all_devices, &config);
         let calibration_store =
             Rc::new(calibration::CalibrationStore::init(Rc::clone(&overrides_controller)).await?);
         let fan_state_map = Rc::new(calibration::FanStateMap::new());

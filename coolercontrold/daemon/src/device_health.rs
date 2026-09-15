@@ -617,7 +617,7 @@ mod tests {
                 crate::overrides::OverridesController::init_from(tmp.path().join("overrides.toml"))
                     .await,
             );
-            overrides.set_device_context(&all_devices, Rc::clone(&config));
+            overrides.capture_detected_names(&all_devices, &config);
             let controller = DeviceHealthController::new(
                 Rc::clone(&all_devices),
                 config,

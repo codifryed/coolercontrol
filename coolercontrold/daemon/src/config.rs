@@ -262,6 +262,19 @@ impl Config {
             .map(str::to_owned)
     }
 
+    /// Every name in the `devices` list. Used to seed name resolution at startup, where the
+    /// whole list is wanted at once rather than one lookup at a time.
+    pub fn device_names(&self) -> Vec<(UID, String)> {
+        let document = self.document.borrow();
+        let Some(devices) = document.get("devices").and_then(Item::as_table) else {
+            return Vec::new();
+        };
+        devices
+            .iter()
+            .filter_map(|(uid, item)| Some((uid.to_owned(), item.as_str()?.to_owned())))
+            .collect()
+    }
+
     /// Moves LCD image settings off the single shared image file and onto per-channel paths.
     ///
     /// Earlier daemons wrote every channel's image to one `lcd_image.png` (or `.gif`), so a
