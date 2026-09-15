@@ -4925,40 +4925,43 @@ mod slow_device_tests {
 
             repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
 
-            let preloaded = repo.preloaded_statuses.borrow();
-            let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
-            let duty_of = |name: &str| {
-                channels
-                    .iter()
-                    .find(|c| c.name == name)
-                    .unwrap_or_else(|| panic!("{name} missing"))
-                    .duty
-            };
-            assert_eq!(
-                duty_of("fan1"),
-                Some(50.0),
-                "a channel whose verify is not due keeps its cached duty, so its pwm is not read"
-            );
-            assert_eq!(
-                duty_of("fan2"),
-                Some(100.0),
-                "a channel whose verify is due gets a real pwm read"
-            );
-            drop(preloaded);
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                let duty_of = |name: &str| {
+                    channels
+                        .iter()
+                        .find(|c| c.name == name)
+                        .unwrap_or_else(|| panic!("{name} missing"))
+                        .duty
+                };
+                assert_eq!(
+                    duty_of("fan1"),
+                    Some(50.0),
+                    "a channel whose verify is not due keeps its cached duty, so its pwm is not \
+                     read"
+                );
+                assert_eq!(
+                    duty_of("fan2"),
+                    Some(100.0),
+                    "a channel whose verify is due gets a real pwm read"
+                );
+            }
 
             // The due channel's verify must have been rescheduled, or it would read every tick.
-            let cache = repo.duty_cache.get(&TEST_TYPE_INDEX).unwrap().borrow();
-            assert_eq!(cache.get("fan2").unwrap().last_known, 100);
-            assert!(
-                cache.get("fan2").unwrap().next_verify_at > Instant::now(),
-                "a real read must push the next verify into the future"
-            );
-            assert_eq!(
-                cache.get("fan1").unwrap().last_known,
-                50,
-                "an unread channel's cache entry is left alone"
-            );
-            drop(cache);
+            {
+                let cache = repo.duty_cache.get(&TEST_TYPE_INDEX).unwrap().borrow();
+                assert_eq!(cache.get("fan2").unwrap().last_known, 100);
+                assert!(
+                    cache.get("fan2").unwrap().next_verify_at > Instant::now(),
+                    "a real read must push the next verify into the future"
+                );
+                assert_eq!(
+                    cache.get("fan1").unwrap().last_known,
+                    50,
+                    "an unread channel's cache entry is left alone"
+                );
+            }
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
