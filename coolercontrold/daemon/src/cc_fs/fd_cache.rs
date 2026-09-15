@@ -14,10 +14,15 @@ use std::path::Path;
 
 use super::SysfsValue;
 
-use super::SYSFS_VALUE_MAX_BYTES;
+use super::{
+    log_reissue, log_reissue_exhausted, reissue_backoff, should_reissue, INTERRUPTED_READ_ATTEMPTS,
+    SYSFS_VALUE_MAX_BYTES,
+};
+use crate::rt;
 use nix::libc;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -39,7 +44,7 @@ impl SysfsFdCache {
     pub async fn read_value(&self, path: &Path) -> Result<SysfsValue> {
         {
             if let Some(file) = self.held(path) {
-                return match Self::read_at_start(&file).await {
+                return match Self::read_at_start(path, &file).await {
                     Ok(value) => Ok(value),
                     Err(err) => {
                         if Self::is_dead_descriptor(&err) {
@@ -51,7 +56,7 @@ impl SysfsFdCache {
             }
             let file = compio::fs::File::open(path).await?;
             self.hold(path, &file);
-            Self::read_at_start(&file).await
+            Self::read_at_start(path, &file).await
         }
     }
 
@@ -100,14 +105,36 @@ impl SysfsFdCache {
     /// One read at offset 0. kernfs regenerates the whole attribute per read, so a second read
     /// only ever reports 0 bytes; a value that fills the buffer is rejected by
     /// `SysfsValue::parse` as possibly truncated, exactly as on the uncached path.
-    async fn read_at_start(file: &compio::fs::File) -> Result<SysfsValue> {
+    async fn read_at_start(path: &Path, file: &compio::fs::File) -> Result<SysfsValue> {
         use compio::buf::{IntoInner, IoBuf};
         use compio::io::AsyncReadAt;
-        let buf = [0u8; SYSFS_VALUE_MAX_BYTES];
-        let compio::BufResult(result, slice) = file.read_at(buf.slice(..), 0).await;
-        let len = result?;
-        debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
-        Ok(SysfsValue::from_read(slice.into_inner(), len))
+        let mut buf = [0u8; SYSFS_VALUE_MAX_BYTES];
+        let mut attempts = INTERRUPTED_READ_ATTEMPTS;
+        // Bounded by `attempts`, which drops by one per failure and returns the error at zero.
+        // See `INTERRUPTED_READ_ATTEMPTS` for why a read the kernel aborted is ours to re-issue.
+        let err = loop {
+            let compio::BufResult(result, slice) = file.read_at(buf.slice(..), 0).await;
+            buf = slice.into_inner();
+            match result {
+                Ok(len) => {
+                    debug_assert!(len <= SYSFS_VALUE_MAX_BYTES);
+                    return Ok(SysfsValue::from_read(buf, len));
+                }
+                Err(err) => {
+                    debug_assert!(attempts > 0);
+                    attempts -= 1;
+                    if should_reissue(attempts, &err).not() {
+                        if err.kind() == std::io::ErrorKind::Interrupted {
+                            log_reissue_exhausted(path);
+                        }
+                        break err;
+                    }
+                    log_reissue(path, attempts);
+                    rt::sleep(reissue_backoff(attempts)).await;
+                }
+            }
+        };
+        Err(err.into())
     }
 
     /// Errnos that mean the descriptor itself is dead: the device was unbound or removed, or the

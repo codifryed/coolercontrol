@@ -4,6 +4,7 @@
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
 use log::{debug, log_enabled, trace, warn};
 use regex::Regex;
@@ -160,17 +161,27 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
 
 /// Check if the power channel is usable
 async fn sensor_is_not_usable(base_path: &Path, file_name: &str) -> bool {
-    cc_fs::read_sysfs_value(base_path.join(file_name))
+    let power_path = base_path.join(file_name);
+    // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
+    // for the session. See `probe::until_readable`.
+    probe::until_readable(&power_path, async || read_power_watts(&power_path).await)
+        .await
+        .not()
+}
+
+/// One power read in watts, error intact. Detection needs the errno to tell a transient failure
+/// from a sensor that is simply not readable.
+async fn read_power_watts(power_path: &Path) -> Result<f64> {
+    cc_fs::read_sysfs_value(power_path)
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
         .inspect_err(|err| {
             warn!(
-                "Error reading power value from: {}/{file_name} - {err}",
-                base_path.display()
+                "Error reading power value from: {} - {err}",
+                power_path.display()
             );
         })
-        .is_err()
 }
 
 /// Converts microWatts to Watts

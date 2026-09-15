@@ -7,7 +7,7 @@ use crate::hardware_support::{self, ChannelDiagnosis, ChannelEvidence};
 use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
-use crate::repositories::hwmon::{auto_curve, devices};
+use crate::repositories::hwmon::{auto_curve, devices, probe};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, log_enabled, trace, warn};
@@ -22,6 +22,7 @@ const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
 pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
+
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
 macro_rules! format_pwm { ($($arg:tt)*) => {{ format!("pwm{}", $($arg)*) }}; }
@@ -122,15 +123,16 @@ async fn detect_pwm(
         .as_str()
         .parse()?;
     // Detection reads each attribute once, so this cache closes with the probe.
-    if get_pwm_duty(
-        &cc_fs::SysfsFdCache::default(),
-        base_path,
-        &channel_number,
-        None,
-        true,
-    )
-    .await
-    .is_none()
+    let fds = cc_fs::SysfsFdCache::default();
+    let pwm_path = base_path.join(format_pwm!(channel_number));
+    if probe::until_readable(&pwm_path, async || try_read_pwm_duty(&fds, &pwm_path).await)
+        .await
+        .not()
+        // Retries exhausted, or the failure was never transient. `get_pwm_duty` has the final
+        // say: it owns the auto-mode refusal fallback and the warning.
+        && get_pwm_duty(&fds, base_path, &channel_number, Some(&pwm_path), true)
+            .await
+            .is_none()
     {
         return Ok(()); // skip if pwm file isn't readable
     }
@@ -161,15 +163,16 @@ pub async fn detect_rpm(
         .as_str()
         .parse()?;
     // Detection reads each attribute once, so this cache closes with the probe.
-    if get_fan_rpm(
-        &cc_fs::SysfsFdCache::default(),
-        base_path,
-        &channel_number,
-        None,
-        true,
-    )
-    .await
-    .is_none()
+    let fds = cc_fs::SysfsFdCache::default();
+    let rpm_path = base_path.join(format_fan_input!(channel_number));
+    if probe::until_readable(&rpm_path, async || try_read_fan_rpm(&fds, &rpm_path).await)
+        .await
+        .not()
+        // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
+        // including the warning.
+        && get_fan_rpm(&fds, base_path, &channel_number, Some(&rpm_path), true)
+            .await
+            .is_none()
     {
         return Ok(()); // skip if rpm file isn't readable
     }
@@ -408,6 +411,44 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
     .await
 }
 
+/// One pwm read with the error intact.
+///
+/// `get_pwm_duty` adds the auto-mode refusal fallback and the logging on top; detection needs the
+/// errno itself, to tell a transient failure from an attribute that is simply not readable.
+async fn try_read_pwm_duty(fds: &cc_fs::SysfsFdCache, pwm_path: &Path) -> Result<f64> {
+    fds.read_value(pwm_path)
+        .await
+        .and_then(check_parsing_8)
+        .map(pwm_value_to_duty)
+}
+
+/// One rpm read with the error intact. See `try_read_pwm_duty`.
+async fn try_read_fan_rpm(fds: &cc_fs::SysfsFdCache, fan_input_path: &Path) -> Result<u32> {
+    fds.read_value(fan_input_path)
+        .await
+        .and_then(check_parsing_32)
+        // Edge case where on spin-up the output is max value until it begins moving
+        .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
+}
+
+/// Whether a failed pwmX read looks like a driver refusing the read in auto mode rather than a
+/// read that did not happen.
+///
+/// Known drivers that refuse pwmX reads in auto mode:
+///   - `gpd_fan`:  EOPNOTSUPP (`io::ErrorKind::Unsupported`)
+///   - `dell_smm`: ENODATA    (raw os error 61)
+///
+/// Subtractive, not an allowlist: there is no standard for what a driver returns here, so an
+/// unfamiliar errno keeps the fallback. We only rule out the errnos that provably mean "the read
+/// did not happen", which never mean "there is no readable pwm here". Without that, an `EINTR`
+/// from an interrupted sysfs read would be answered with a fabricated 100% duty.
+fn is_kernel_refusal(err: &anyhow::Error) -> bool {
+    cc_fs::is_transient(err).not()
+        && err.downcast_ref::<Error>().is_some_and(|io_err| {
+            io_err.raw_os_error().is_some() && io_err.kind() != ErrorKind::NotFound
+        })
+}
+
 async fn get_pwm_duty(
     fds: &cc_fs::SysfsFdCache,
     base_path: &Path,
@@ -419,24 +460,13 @@ async fn get_pwm_duty(
         Some(path) => path,
         None => &base_path.join(format_pwm!(channel_number)),
     };
-    match fds
-        .read_value(pwm_path)
-        .await
-        .and_then(check_parsing_8)
-        .map(pwm_value_to_duty)
-    {
+    match try_read_pwm_duty(fds, pwm_path).await {
         Ok(duty) => {
             debug!("hwmon read {}: {duty}% duty", pwm_path.display());
             Some(duty)
         }
         Err(err) => {
-            // Known drivers that refuse pwmX reads in auto mode:
-            //   - gpd_fan:  EOPNOTSUPP (io::ErrorKind::Unsupported)
-            //   - dell_smm: ENODATA    (raw os error 61)
-            let is_kernel_refusal = err.downcast_ref::<Error>().is_some_and(|io_err| {
-                io_err.raw_os_error().is_some() && io_err.kind() != ErrorKind::NotFound
-            });
-            if is_kernel_refusal {
+            if is_kernel_refusal(&err) {
                 if let Some(pwm_enable) = current_pwm_enable(base_path, *channel_number).await {
                     if pwm_enable >= PWM_ENABLE_AUTO_VALUE {
                         debug!(
@@ -470,11 +500,8 @@ pub async fn get_fan_rpm(
         Some(path) => path,
         None => &base_path.join(format_fan_input!(channel_number)),
     };
-    fds.read_value(fan_input_path)
+    try_read_fan_rpm(fds, fan_input_path)
         .await
-        .and_then(check_parsing_32)
-        // Edge case where on spin-up the output is max value until it begins moving
-        .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
         .inspect(|rpm| debug!("hwmon read {}: {rpm} RPM", fan_input_path.display()))
         .inspect_err(|err| {
             if log_error {
@@ -1295,6 +1322,48 @@ mod tests {
             teardown(&ctx).await;
             assert_eq!(result, None);
         });
+    }
+
+    /// Goal: a transient errno must never be answered with a fabricated 100% duty. Before this,
+    /// `is_kernel_refusal` accepted every errno but ENOENT, so an `EINTR` from an interrupted
+    /// sysfs read on a driver with `pwmN_enable >= 2` reported a full-speed fan that was never
+    /// read. Method: classify one error per errno; a real EINTR cannot be produced from a
+    /// regular file, so the predicate is exercised directly.
+    #[test]
+    fn transient_errnos_are_not_kernel_refusals() {
+        for errno in [
+            nix::libc::EINTR,
+            nix::libc::ETIMEDOUT,
+            nix::libc::EAGAIN,
+            nix::libc::EBUSY,
+        ] {
+            let err: anyhow::Error = Error::from_raw_os_error(errno).into();
+            assert!(
+                is_kernel_refusal(&err).not(),
+                "errno {errno} must not fabricate a duty"
+            );
+        }
+    }
+
+    /// Goal: the fallback the gpd_fan and dell_smm channels depend on must survive the change,
+    /// including for an errno we have never seen, since drivers agree on no standard here.
+    /// ENOENT stays excluded: a missing pwm file means no channel, not a refusal. Method:
+    /// classify one error per errno.
+    #[test]
+    fn refusal_errnos_still_reach_the_auto_mode_fallback() {
+        for errno in [
+            nix::libc::EOPNOTSUPP,
+            nix::libc::ENODATA,
+            nix::libc::EACCES,
+            nix::libc::EIO,
+        ] {
+            let err: anyhow::Error = Error::from_raw_os_error(errno).into();
+            assert!(is_kernel_refusal(&err), "errno {errno} lost the fallback");
+        }
+        let missing: anyhow::Error = Error::from_raw_os_error(nix::libc::ENOENT).into();
+        assert!(is_kernel_refusal(&missing).not());
+        let parse_err: anyhow::Error = anyhow::anyhow!("invalid digit found in string");
+        assert!(is_kernel_refusal(&parse_err).not());
     }
 
     #[test]

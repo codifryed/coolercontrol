@@ -7,6 +7,8 @@
 //! writes go through compio (completion-based). Directory and metadata helpers fall back to `std`
 //! where appropriate and should be used sparingly.
 
+mod errno;
+pub use self::errno::*;
 mod fd_cache;
 pub use self::fd_cache::*;
 mod metadata;

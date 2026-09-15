@@ -12,5 +12,6 @@ pub mod hwmon_repo;
 mod pci_ids;
 pub mod power;
 pub mod power_cap;
+mod probe;
 pub mod temps;
 mod thinkpad;

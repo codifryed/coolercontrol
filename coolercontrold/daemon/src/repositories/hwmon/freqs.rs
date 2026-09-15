@@ -4,6 +4,7 @@
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{info, trace};
@@ -112,17 +113,25 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
 }
 
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
-    cc_fs::read_sysfs_value(base_path.join(format!("freq{channel_number}_input")))
+    let freq_path = base_path.join(format!("freq{channel_number}_input"));
+    // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
+    // for the session. See `probe::until_readable`.
+    probe::until_readable(&freq_path, async || read_freq_megahertz(&freq_path).await).await
+}
+
+/// One frequency read in MHz, error intact. Detection needs the errno to tell a transient failure
+/// from a sensor that is simply not readable.
+async fn read_freq_megahertz(freq_path: &Path) -> Result<Mhz> {
+    cc_fs::read_sysfs_value(freq_path)
         .await
         .and_then(check_parsing_64)
         .map(hertz_to_megahertz)
         .inspect_err(|err| {
             info!(
-                "Error reading frequency value from: {}/freq{channel_number}_input - {err}",
-                base_path.display(),
+                "Error reading frequency value from: {} - {err}",
+                freq_path.display(),
             );
         })
-        .is_ok()
 }
 
 #[allow(clippy::cast_possible_truncation)]
