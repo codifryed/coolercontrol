@@ -614,6 +614,60 @@ fn worker_gone(device_name: &str) -> anyhow::Error {
 mod tests {
     use super::*;
 
+    // --- HealthState: the rules both workers share ---
+
+    /// Goal: a device is only given up on after the full budget, or one slow read would suspend
+    /// a working device. Method: count timeouts up to the threshold and check each verdict.
+    #[test]
+    fn health_degrades_before_it_gives_up() {
+        let state = HealthState::new("gpu0".to_owned());
+        assert_eq!(state.health(), DeviceHealth::Healthy);
+        for expected in 1..UNREACHABLE_AFTER_TIMEOUTS {
+            state.record_timeout(&"read");
+            assert_eq!(
+                state.health(),
+                DeviceHealth::Degraded {
+                    consecutive_timeouts: expected
+                }
+            );
+            assert!(state.dispatchable(), "a degraded device still gets work");
+        }
+        state.record_timeout(&"read");
+        assert_eq!(
+            state.health(),
+            DeviceHealth::Unreachable {
+                consecutive_timeouts: UNREACHABLE_AFTER_TIMEOUTS
+            }
+        );
+    }
+
+    /// Goal: an unreachable device must stop being dispatched to, or every tick queues work
+    /// nobody drains and pays a timeout to learn what it already knew.
+    #[test]
+    fn an_unreachable_device_is_not_dispatched_to_until_its_probe() {
+        let state = HealthState::new("gpu0".to_owned());
+        for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
+            state.record_timeout(&"read");
+        }
+        assert!(state.dispatchable().not(), "work must not be queued");
+
+        state.force_unreachable_at(UNREACHABLE_AFTER_TIMEOUTS, Instant::now());
+        assert!(state.dispatchable(), "the probe is due, let one through");
+    }
+
+    /// Goal: a device that answers again must clear completely, so a later blip starts from zero
+    /// rather than tipping it straight back to unreachable.
+    #[test]
+    fn answering_clears_the_whole_history() {
+        let state = HealthState::new("gpu0".to_owned());
+        for _ in 0..UNREACHABLE_AFTER_TIMEOUTS {
+            state.record_timeout(&"read");
+        }
+        state.record_answered();
+        assert_eq!(state.health(), DeviceHealth::Healthy);
+        assert!(state.dispatchable());
+    }
+
     /// Short enough that a wedge test finishes quickly, long enough that a real worker on a busy
     /// build machine answers well inside it.
     const TEST_TIMEOUT: Duration = Duration::from_millis(80);
