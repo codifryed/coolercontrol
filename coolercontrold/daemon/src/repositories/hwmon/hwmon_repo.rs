@@ -1039,21 +1039,10 @@ impl HwmonRepo {
         driver: &Rc<HwmonDriverInfo>,
         channels: &[&HwmonChannelInfo],
     ) {
-        let slow = self.slow_devices.contains(&type_index);
-        let cache = self.duty_cache.get(&type_index);
         let mut plan: Vec<(&HwmonChannelInfo, fans::FanRead)> = Vec::with_capacity(channels.len());
         let mut cached_duties: Vec<Option<Duty>> = Vec::with_capacity(channels.len());
         for channel in channels {
-            let cached = if slow {
-                cache.and_then(|c| {
-                    c.borrow()
-                        .get(&channel.name)
-                        .filter(|entry| Instant::now() < entry.next_verify_at)
-                        .map(|entry| entry.last_known)
-                })
-            } else {
-                None
-            };
+            let cached = self.reusable_duty(type_index, &channel.name);
             plan.push((
                 channel,
                 if cached.is_some() {
@@ -1097,31 +1086,12 @@ impl HwmonRepo {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         if self.slow_devices.contains(&type_index).not() {
-            return if driver.apple_smc.detected {
-                driver.apple_smc.read_one_fan_status(driver, channel).await
-            } else {
-                fans::read_one_fan_status(driver, channel).await
-            };
+            return read_one_fan_status_for(driver, channel).await;
         }
-        let cache = self.duty_cache.get(&type_index);
-        let cached_duty = cache.and_then(|c| {
-            c.borrow()
-                .get(&channel.name)
-                .filter(|entry| Instant::now() < entry.next_verify_at)
-                .map(|entry| entry.last_known)
-        });
-        if let Some(duty) = cached_duty {
-            let rpm_result = if driver.apple_smc.detected {
-                driver
-                    .apple_smc
-                    .read_one_fan_rpm_only(driver, channel)
-                    .await
-            } else {
-                fans::read_one_fan_rpm_only(driver, channel).await
-            };
+        if let Some(duty) = self.reusable_duty(type_index, &channel.name) {
             // Outer None: RPM read failed (omit so failsafe engages).
             // Inner None: no RPM cap.
-            let rpm = rpm_result?;
+            let rpm = read_one_fan_rpm_only_for(driver, channel).await?;
             return Some(ChannelStatus {
                 name: channel.name.clone(),
                 rpm,
@@ -1130,13 +1100,23 @@ impl HwmonRepo {
             });
         }
         // Verify due (or no cache entry yet): real read + refresh.
-        let status = if driver.apple_smc.detected {
-            driver.apple_smc.read_one_fan_status(driver, channel).await
-        } else {
-            fans::read_one_fan_status(driver, channel).await
-        }?;
+        let status = read_one_fan_status_for(driver, channel).await?;
         self.refresh_duty_cache(type_index, channel, status.duty);
         Some(status)
+    }
+
+    /// The duty a slow device's channel may reuse this tick, or `None` when a real read is due.
+    fn reusable_duty(&self, type_index: TypeIndex, channel_name: &str) -> Option<Duty> {
+        if self.slow_devices.contains(&type_index).not() {
+            return None;
+        }
+        self.duty_cache.get(&type_index).and_then(|cache| {
+            cache
+                .borrow()
+                .get(channel_name)
+                .filter(|entry| Instant::now() < entry.next_verify_at)
+                .map(|entry| entry.last_known)
+        })
     }
 
     /// Records a freshly read duty and schedules this channel's next verify.
@@ -1539,6 +1519,33 @@ struct WriterTask {
 /// fixed order will keep re-servicing the head channel while the
 /// tail starves; the counter ensures every channel rotates through
 /// the head over successive multi-entry waves.
+/// One fan channel's duty and rpm, through the Apple SMC driver when that is what this device is.
+async fn read_one_fan_status_for(
+    driver: &Rc<HwmonDriverInfo>,
+    channel: &HwmonChannelInfo,
+) -> Option<ChannelStatus> {
+    if driver.apple_smc.detected {
+        driver.apple_smc.read_one_fan_status(driver, channel).await
+    } else {
+        fans::read_one_fan_status(driver, channel).await
+    }
+}
+
+/// The rpm half of `read_one_fan_status_for`, for a channel whose duty is still cached.
+async fn read_one_fan_rpm_only_for(
+    driver: &Rc<HwmonDriverInfo>,
+    channel: &HwmonChannelInfo,
+) -> Option<Option<u32>> {
+    if driver.apple_smc.detected {
+        driver
+            .apple_smc
+            .read_one_fan_rpm_only(driver, channel)
+            .await
+    } else {
+        fans::read_one_fan_rpm_only(driver, channel).await
+    }
+}
+
 async fn run_writer_task(task: WriterTask) {
     let mut buffer: HashMap<ChannelName, PendingWrite> =
         HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
