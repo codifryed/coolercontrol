@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! compio backend for the runtime facade. See `super` for the facade contract.
-
 use std::future::{poll_fn, Future};
 use std::ops::Not;
 use std::pin::pin;
+use std::sync::OnceLock;
 use std::task::Poll;
 use std::time::Instant;
 
-use compio::driver::{DriverType, ProactorBuilder};
+use compio::driver::{AsyncifyPool, DriverType, ProactorBuilder};
 use compio::runtime::Runtime;
 use log::info;
 use nix::sys::signal::{SigSet, Signal};
@@ -46,6 +46,39 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     build_runtime(driver_override())
         .expect("compio runtime builds")
         .block_on(future)
+}
+
+/// One `AsyncifyPool` shared by every device worker runtime.
+///
+/// Each compio `Runtime` builds its own pool capped at 256 threads, so without sharing that cap
+/// is multiplied by the device count. `compio-dispatcher` reuses a single pool for the same reason.
+static WORKER_POOL: OnceLock<AsyncifyPool> = OnceLock::new();
+
+/// Proactor configuration for a device worker: the main runtime's driver choice, plus the shared
+/// blocking pool.
+fn worker_proactor() -> ProactorBuilder {
+    let pool = WORKER_POOL
+        .get_or_init(|| ProactorBuilder::new().create_or_get_thread_pool())
+        .clone();
+    let mut builder = ProactorBuilder::new();
+    if let Some(driver_type) = driver_override() {
+        builder.driver_type(driver_type);
+    }
+    builder.reuse_thread_pool(pool);
+    builder
+}
+
+/// Run `future` to completion on a runtime of its own, for one device's IO worker thread.
+///
+/// The point is that it is **not** the main one: a read that blocks in the driver parks this
+/// thread and leaves the main runtime free to keep polling, serving the API and running timers.
+///
+/// Errors only when the OS denies the reactor; the hwmon repo then falls back to inline IO.
+pub fn worker_runtime<F: Future>(future: F) -> std::io::Result<F::Output> {
+    let runtime = Runtime::builder()
+        .with_proactor(worker_proactor())
+        .build()?;
+    Ok(runtime.block_on(future))
 }
 
 /// Build the main runtime, forcing `driver` when one is given and letting compio probe otherwise.
@@ -406,13 +439,17 @@ mod tests {
                 .expect("read current signal mask");
 
             block_termination_signals();
-            let mut waiting = pin!(shutdown_signal());
-            let state = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
+            // Scoped, not dropped: `Pin<&mut F>` does not implement `Drop`, so `drop` on the pin
+            // released nothing and the future outlived the mask restore it has to precede.
+            let (state, masked) = {
+                let mut waiting = pin!(shutdown_signal());
+                let state = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx))).await;
 
-            let mut masked = SigSet::empty();
-            pthread_sigmask(SigmaskHow::SIG_SETMASK, None, Some(&mut masked))
-                .expect("read signal mask after the first poll");
-            drop(waiting);
+                let mut masked = SigSet::empty();
+                pthread_sigmask(SigmaskHow::SIG_SETMASK, None, Some(&mut masked))
+                    .expect("read signal mask after the first poll");
+                (state, masked)
+            };
             pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&original), None)
                 .expect("restore original signal mask");
 

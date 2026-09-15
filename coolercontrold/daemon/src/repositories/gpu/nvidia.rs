@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::borrow::Cow;
-use std::cell::{Cell, Ref, RefCell};
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::{Add, Not, RangeInclusive, Sub};
@@ -32,6 +32,8 @@ use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
 };
+use crate::repositories::gpu::nvml_io::{self, NvmlIo};
+use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
 use crate::repositories::utils::ShellCommand;
 use crate::repositories::utils::ShellCommandResult::{Error, Success};
@@ -65,7 +67,14 @@ pub struct GpuNVidia {
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
     pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
-    nvidia_nvml_devices: HashMap<GpuIndex, RefCell<nvml_wrapper::Device<'static>>>,
+    /// Owned handles, held only until `start_nvml_workers` moves each onto its own thread.
+    ///
+    /// **Empty once detection finishes.** Never test this to decide whether NVML is in play: it
+    /// says "workers not started yet", not "NVML unavailable". `nvml_io` is that answer.
+    nvml_handles_pending_workers: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
+    /// One worker per GPU. Owns the device, so NVML needs no lock and a hung call parks only
+    /// that GPU's thread.
+    nvml_io: HashMap<GpuIndex, NvmlIo>,
     xauthority_path: RefCell<Option<String>>,
     nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
     nvidia_nvml_load_enabled: Cell<bool>,
@@ -79,7 +88,8 @@ impl GpuNVidia {
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
-            nvidia_nvml_devices: HashMap::new(),
+            nvml_handles_pending_workers: HashMap::new(),
+            nvml_io: HashMap::new(),
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
             nvidia_nvml_load_enabled: Cell::new(false),
@@ -91,7 +101,7 @@ impl GpuNVidia {
         &mut self,
         starting_nvidia_index: GpuIndex,
     ) -> Result<HashMap<UID, DeviceLock>> {
-        let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
+        let nvidia_devices = if self.nvml_handles_pending_workers.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
             self.retrieve_nvml_devices(starting_nvidia_index)?
@@ -122,11 +132,14 @@ impl GpuNVidia {
         for device_lock in self.nvidia_devices.values() {
             let device_uid = device_lock.borrow().uid.clone();
             if let Some(nv_info) = self.nvidia_device_infos.get(&device_uid) {
-                if self.nvidia_nvml_devices.is_empty() {
+                if self.is_nvml_controlled(nv_info).not() {
                     self.reset_nvidia_settings_to_default(nv_info).await.ok();
                 } else {
-                    for channel_name in device_lock.borrow().info.channels.keys() {
-                        self.reset_nvml_device_to_default(nv_info, channel_name)
+                    let channel_names: Vec<String> =
+                        device_lock.borrow().info.channels.keys().cloned().collect();
+                    for channel_name in channel_names {
+                        self.reset_nvml_device_to_default(nv_info, &channel_name)
+                            .await
                             .ok();
                     }
                 }
@@ -138,10 +151,11 @@ impl GpuNVidia {
         let Some(nv_info) = self.nvidia_device_infos.get(device_uid) else {
             return Err(anyhow!("Device UID not found! {device_uid}"));
         };
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.is_nvml_controlled(nv_info).not() {
             self.reset_nvidia_settings_to_default(nv_info).await?;
         } else {
-            self.reset_nvml_device_to_default(nv_info, channel_name)?;
+            self.reset_nvml_device_to_default(nv_info, channel_name)
+                .await?;
         }
         Ok(())
     }
@@ -156,11 +170,12 @@ impl GpuNVidia {
             .nvidia_device_infos
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?;
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.is_nvml_controlled(nvidia_gpu_info).not() {
             self.set_nvidia_settings_fan_duty(nvidia_gpu_info, speed_fixed)
                 .await
         } else {
             self.set_nvml_fan_duty(nvidia_gpu_info, channel_name, speed_fixed)
+                .await
                 .map_err(|err| {
                     anyhow!(
                         "Error settings fan duty of {speed_fixed} on Nvidia GPU #{}:{channel_name} - {err}",
@@ -219,21 +234,21 @@ impl GpuNVidia {
             return NvmlInitResult::Unavailable;
         }
         self.populate_nvml_device_handles(device_count);
-        if self.nvidia_nvml_devices.is_empty() {
+        if self.nvml_handles_pending_workers.is_empty() {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             return NvmlInitResult::Unavailable;
         }
         let register_hotspot_buses = self.collect_register_hotspot_buses();
         self.nvapi = super::nvapi::NvApi::try_init(&register_hotspot_buses);
-        NvmlInitResult::Active(self.nvidia_nvml_devices.len() as u8)
+        NvmlInitResult::Active(self.nvml_handles_pending_workers.len() as u8)
     }
 
     /// PCI bus IDs of the GPUs whose architecture keeps hotspot out of the nvapi
     /// thermals array, so nvapi reads it from the aggregated hotspot register instead.
     fn collect_register_hotspot_buses(&self) -> HashSet<u32> {
-        let mut register_hotspot_buses = HashSet::with_capacity(self.nvidia_nvml_devices.len());
-        for nvml_device in self.nvidia_nvml_devices.values() {
-            let nvml_device = nvml_device.borrow();
+        let mut register_hotspot_buses =
+            HashSet::with_capacity(self.nvml_handles_pending_workers.len());
+        for nvml_device in self.nvml_handles_pending_workers.values() {
             if needs_hotspot_register(nvml_device.architecture()).not() {
                 continue;
             }
@@ -263,8 +278,8 @@ impl GpuNVidia {
             else {
                 continue;
             };
-            self.nvidia_nvml_devices
-                .insert(device_index as GpuIndex, RefCell::new(accessible_device));
+            self.nvml_handles_pending_workers
+                .insert(device_index as GpuIndex, accessible_device);
         }
     }
 
@@ -309,8 +324,7 @@ impl GpuNVidia {
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
-        for (gpu_index, device) in &self.nvidia_nvml_devices {
-            let device_lock = device.borrow();
+        for (gpu_index, device_lock) in &self.nvml_handles_pending_workers {
             let type_index = gpu_index + starting_nvidia_index;
             let (name, device_uid) = nvml_name_and_uid(device_lock.name().ok(), type_index);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
@@ -347,7 +361,7 @@ impl GpuNVidia {
             }
             let mem_temp_name = GPU_TEMP_MEMORY_NAME.to_string();
             if disabled_channels.contains(&mem_temp_name).not() {
-                if let Some(mem_temp) = Self::get_memory_temp(&device_lock) {
+                if let Some(mem_temp) = Self::get_memory_temp(device_lock) {
                     temp_infos.insert(
                         mem_temp_name.clone(),
                         TempInfo {
@@ -364,7 +378,7 @@ impl GpuNVidia {
             }
             let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
             if disabled_channels.contains(&hotspot_temp_name).not() {
-                if let Some(hotspot_temp) = self.get_hotspot_temp(&device_lock) {
+                if let Some(hotspot_temp) = self.get_hotspot_temp(device_lock) {
                     temp_infos.insert(
                         hotspot_temp_name.clone(),
                         TempInfo {
@@ -432,7 +446,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Graphics,
                     NVIDIA_CLOCK_GRAPHICS,
                     format!("{NVIDIA_FREQ_PREFIX} Graphics"),
@@ -440,7 +454,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Graphics,
                     NVIDIA_CLOCK_GRAPHICS,
                     &mut channel_status,
@@ -451,7 +465,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::SM,
                     NVIDIA_CLOCK_SM,
                     format!("{NVIDIA_FREQ_PREFIX} SM"),
@@ -459,7 +473,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::SM,
                     NVIDIA_CLOCK_SM,
                     &mut channel_status,
@@ -470,7 +484,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Memory,
                     NVIDIA_CLOCK_MEMORY,
                     format!("{NVIDIA_FREQ_PREFIX} Memory"),
@@ -478,7 +492,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Memory,
                     NVIDIA_CLOCK_MEMORY,
                     &mut channel_status,
@@ -489,7 +503,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Video,
                     NVIDIA_CLOCK_VIDEO,
                     format!("{NVIDIA_FREQ_PREFIX} Video"),
@@ -497,7 +511,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Video,
                     NVIDIA_CLOCK_VIDEO,
                     &mut channel_status,
@@ -591,11 +605,54 @@ impl GpuNVidia {
             );
             devices.insert(uid, device);
         }
+        self.start_nvml_workers(starting_nvidia_index, poll_rate);
         Ok(devices)
     }
 
+    /// Whether this GPU is driven through NVML rather than the `nvidia-settings` CLI.
+    ///
+    /// Per GPU, and read from the worker table: a card whose worker failed to start correctly
+    /// falls back on its own rather than dragging every other card with it.
+    fn is_nvml_controlled(&self, nv_info: &NvidiaDeviceInfo) -> bool {
+        self.nvml_io.contains_key(&nv_info.gpu_index)
+    }
+
+    /// This GPU's NVML worker, when it has one.
+    #[must_use]
+    pub fn nvml_worker(&self, gpu_index: GpuIndex) -> Option<&NvmlIo> {
+        self.nvml_io.get(&gpu_index)
+    }
+
+    /// Lets every GPU have one more attempt even if it is currently unreachable. Shutdown uses
+    /// this: handing fan control back to the firmware is worth a retry on a device that may
+    /// well answer now.
+    pub fn allow_nvml_probe_now(&self) {
+        for io in self.nvml_io.values() {
+            io.allow_probe_now();
+        }
+    }
+
+    /// Hands every NVML device to a thread of its own, once detection has finished with it.
+    ///
+    /// Detection reads the owned handles directly: it runs before the poll loop, so a hang there
+    /// delays startup rather than a running daemon, and there is nothing yet to isolate it from.
+    /// From here on the device is only reachable through its worker.
+    fn start_nvml_workers(&mut self, starting_nvidia_index: GpuIndex, poll_rate: f64) {
+        let reply_timeout = device_io::reply_timeout_for(poll_rate);
+        for (gpu_index, device) in std::mem::take(&mut self.nvml_handles_pending_workers) {
+            let type_index = gpu_index + starting_nvidia_index;
+            let (name, _) = nvml_name_and_uid(device.name().ok(), type_index);
+            match NvmlIo::spawn(name.clone(), device, reply_timeout) {
+                Ok(io) => {
+                    self.nvml_io.insert(gpu_index, io);
+                }
+                Err(err) => nvml_io::log_spawn_failure(&name, &err),
+            }
+        }
+    }
+
     fn add_nvml_clock_label(
-        nvml_device: &Ref<nvml_wrapper::Device>,
+        nvml_device: &nvml_wrapper::Device,
         clock_type: Clock,
         clock_name: &str,
         label: String,
@@ -615,7 +672,7 @@ impl GpuNVidia {
     }
 
     fn add_nvml_clock_status(
-        nvml_device: &Ref<nvml_wrapper::Device>,
+        nvml_device: &nvml_wrapper::Device,
         clock_type: Clock,
         clock_name: &str,
         channel_status: &mut Vec<ChannelStatus>,
@@ -633,14 +690,14 @@ impl GpuNVidia {
         f64::from(milli_watts / 1_000)
     }
 
-    fn get_hotspot_temp(&self, nvml_device: &Ref<nvml_wrapper::Device>) -> Option<f64> {
+    fn get_hotspot_temp(&self, nvml_device: &nvml_wrapper::Device) -> Option<f64> {
         let nvapi = self.nvapi.as_ref()?;
         let pci_bus = nvml_device.pci_info().ok()?.bus;
         nvapi.get_hotspot_temp(pci_bus)
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn get_memory_temp(nvml_device: &Ref<nvml_wrapper::Device>) -> Option<Temp> {
+    fn get_memory_temp(nvml_device: &nvml_wrapper::Device) -> Option<Temp> {
         let field_values = nvml_device
             .field_values_for(&[FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP)])
             .ok()?; // If not supported, will return here
@@ -659,178 +716,227 @@ impl GpuNVidia {
             .filter(|temp| *temp > 0.)
     }
 
-    pub fn request_nvml_status(&self, nv_info: &Rc<NvidiaDeviceInfo>) -> StatusNvidiaDeviceNvml {
-        let nvml_device_lock = self
-            .nvidia_nvml_devices
-            .get(&nv_info.gpu_index)
-            .expect("Device should exist")
-            .borrow();
-        let temp_status =
-            Self::get_nvml_temp_status(&nvml_device_lock, nv_info, self.nvapi.as_ref());
-        let mut channel_status = Vec::new();
-        for fan_index in &nv_info.fan_indices {
-            let fan_index_u32 = u32::from(*fan_index);
-            let Ok(fan_speed) = nvml_device_lock.fan_speed(fan_index_u32) else {
+    /// One GPU's per-tick NVML reads, gathered on a blocking thread in a single hop.
+    ///
+    /// Batched deliberately: a hop per call would cost a thread round trip per sensor, where one
+    /// hop per GPU per tick costs one. Every field is plain data so the whole pass crosses the
+    /// thread boundary by value.
+    fn read_nvml_readings(
+        device: &nvml_wrapper::Device<'static>,
+        plan: NvmlReadPlan,
+    ) -> NvmlReadings {
+        let mut readings = NvmlReadings::default();
+        for temp in plan.temps {
+            match temp {
+                NvmlTemp::Gpu => {
+                    readings.gpu_temp = device.temperature(TemperatureSensor::Gpu).ok();
+                }
+                NvmlTemp::Memory => readings.memory_temp = Self::get_memory_temp(device),
+            }
+        }
+        for fan_index in plan.fan_indices {
+            let fan_index_u32 = u32::from(fan_index);
+            let Ok(duty) = device.fan_speed(fan_index_u32) else {
                 continue;
             };
-            let fan_rpm = nvml_device_lock.fan_speed_rpm(fan_index_u32).ok();
-            channel_status.push(ChannelStatus {
+            readings
+                .fans
+                .push((fan_index, duty, device.fan_speed_rpm(fan_index_u32).ok()));
+        }
+        if plan.read_load {
+            readings.load = device.utilization_rates().ok().map(|rates| rates.gpu);
+        }
+        if plan.read_power {
+            readings.power_milliwatts = device.power_usage().ok();
+        }
+        for clock in plan.freqs {
+            if let Ok(frequency) = device.clock_info(clock) {
+                readings.freqs.push((clock, frequency));
+            }
+        }
+        readings
+    }
+
+    /// Runs one GPU's read pass on its own thread, bounded.
+    ///
+    /// NVML can block indefinitely when the GPU falls off the bus or hits an Xid error. The call
+    /// owns the device on that thread, so a hang parks it alone and the timeout can elapse.
+    async fn read_nvml_bounded(
+        &self,
+        gpu_index: GpuIndex,
+        plan: NvmlReadPlan,
+    ) -> Option<NvmlReadings> {
+        let io = self.nvml_io.get(&gpu_index)?;
+        io.call("read", move |device| Self::read_nvml_readings(device, plan))
+            .await
+            // Unactionable and recurring while the GPU is wedged, so not a warning. Its readings
+            // go stale until the driver answers again.
+            .inspect_err(|err| debug!("NVML read for GPU {gpu_index} failed: {err}"))
+            .ok()
+    }
+
+    /// Runs one NVML fan-control write on the GPU's own thread, bounded.
+    async fn write_nvml_bounded<F>(&self, gpu_index: GpuIndex, what: &str, call: F) -> Result<()>
+    where
+        F: FnOnce(&mut nvml_wrapper::Device<'static>) -> Result<(), NvmlError> + Send + 'static,
+    {
+        self.nvml_io
+            .get(&gpu_index)
+            .with_context(|| format!("NVML device {gpu_index} should exist"))?
+            .call(what, move |device| call(device))
+            .await?
+            .map_err(anyhow::Error::from)
+    }
+
+    pub async fn request_nvml_status(
+        &self,
+        nv_info: &Rc<NvidiaDeviceInfo>,
+    ) -> StatusNvidiaDeviceNvml {
+        // Two small allocations per GPU per tick, bounded by the device's channel count. Cheap
+        // next to the NVML calls themselves, and what lets the whole pass cross in one hop.
+        let temps: Vec<NvmlTemp> = nv_info
+            .temps
+            .iter()
+            .filter_map(|name| match name.as_str() {
+                GPU_TEMP_NAME => Some(NvmlTemp::Gpu),
+                GPU_TEMP_MEMORY_NAME => Some(NvmlTemp::Memory),
+                // Hotspot comes from nvapi and is filled in on this thread.
+                _ => None,
+            })
+            .collect();
+        let plan = NvmlReadPlan {
+            fan_indices: nv_info.fan_indices.clone().into_boxed_slice(),
+            temps: temps.into_boxed_slice(),
+            read_load: self.nvidia_nvml_load_enabled.get(),
+            read_power: nv_info.power,
+            freqs: nv_info.freqs.clone().into_boxed_slice(),
+        };
+        let Some(readings) = self.read_nvml_bounded(nv_info.gpu_index, plan).await else {
+            // The device did not answer. Reporting nothing leaves the last-known-good values in
+            // place and lets the usual staleness and failsafe path take over.
+            return StatusNvidiaDeviceNvml::default();
+        };
+        StatusNvidiaDeviceNvml {
+            temps: self.assemble_temps(nv_info, &readings),
+            channels: Self::assemble_channels(&readings),
+        }
+    }
+
+    /// Rebuilds the temp list in the device's own order. Hotspot comes from nvapi rather than
+    /// NVML, so it is filled in here on the main thread; interleaving it by name keeps the order
+    /// the same as when every temp came from one place.
+    fn assemble_temps(
+        &self,
+        nv_info: &Rc<NvidiaDeviceInfo>,
+        readings: &NvmlReadings,
+    ) -> Vec<TempStatus> {
+        let mut temps = Vec::with_capacity(nv_info.temps.len());
+        for name in &nv_info.temps {
+            let temp = match name.as_str() {
+                GPU_TEMP_NAME => readings.gpu_temp.map(f64::from),
+                GPU_TEMP_MEMORY_NAME => readings.memory_temp,
+                GPU_TEMP_HOTSPOT_NAME => nv_info.pci_bus.and_then(|bus| {
+                    self.nvapi
+                        .as_ref()
+                        .and_then(|api| api.get_hotspot_temp(bus))
+                }),
+                other => {
+                    error!("Unexpected Nvidia temp name: {other}");
+                    None
+                }
+            };
+            if let Some(temp) = temp {
+                temps.push(TempStatus {
+                    name: name.clone(),
+                    temp,
+                });
+            }
+        }
+        temps
+    }
+
+    fn assemble_channels(readings: &NvmlReadings) -> Vec<ChannelStatus> {
+        let mut channels = Vec::with_capacity(readings.fans.len() + readings.freqs.len() + 2);
+        for (fan_index, duty, rpm) in &readings.fans {
+            channels.push(ChannelStatus {
                 name: format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1),
-                duty: Some(f64::from(fan_speed)),
-                rpm: fan_rpm,
+                duty: Some(f64::from(*duty)),
+                rpm: *rpm,
                 ..Default::default()
             });
         }
-        if self.nvidia_nvml_load_enabled.get() {
-            if let Ok(util_rates) = nvml_device_lock.utilization_rates() {
-                channel_status.push(ChannelStatus {
-                    name: GPU_LOAD_NAME.to_string(),
-                    duty: Some(f64::from(util_rates.gpu)),
-                    ..Default::default()
-                });
-            }
+        if let Some(load) = readings.load {
+            channels.push(ChannelStatus {
+                name: GPU_LOAD_NAME.to_string(),
+                duty: Some(f64::from(load)),
+                ..Default::default()
+            });
         }
-        if nv_info.power {
-            if let Ok(milli_watts) = nvml_device_lock.power_usage() {
-                channel_status.push(ChannelStatus {
-                    name: GPU_POWER_NAME.to_string(),
-                    watts: Some(Self::convert_milliwatts_to_watts(milli_watts)),
-                    ..Default::default()
-                });
-            }
+        if let Some(milli_watts) = readings.power_milliwatts {
+            channels.push(ChannelStatus {
+                name: GPU_POWER_NAME.to_string(),
+                watts: Some(Self::convert_milliwatts_to_watts(milli_watts)),
+                ..Default::default()
+            });
         }
-        Self::get_nvml_freq_status(&nvml_device_lock, nv_info, &mut channel_status);
-        StatusNvidiaDeviceNvml {
-            temps: temp_status,
-            channels: channel_status,
+        for (clock, frequency) in &readings.freqs {
+            let name = match clock {
+                Clock::Graphics => NVIDIA_CLOCK_GRAPHICS,
+                Clock::SM => NVIDIA_CLOCK_SM,
+                Clock::Memory => NVIDIA_CLOCK_MEMORY,
+                Clock::Video => NVIDIA_CLOCK_VIDEO,
+            };
+            channels.push(ChannelStatus {
+                name: name.to_string(),
+                freq: Some(*frequency),
+                ..Default::default()
+            });
         }
-    }
-
-    fn get_nvml_temp_status(
-        nvml_device: &Ref<nvml_wrapper::Device>,
-        nv_info: &Rc<NvidiaDeviceInfo>,
-        nvapi: Option<&super::nvapi::NvApi>,
-    ) -> Vec<TempStatus> {
-        let mut temp_status = Vec::new();
-        for nvidia_temp_name in &nv_info.temps {
-            match nvidia_temp_name.as_str() {
-                GPU_TEMP_NAME => {
-                    if let Ok(temp) = nvml_device.temperature(TemperatureSensor::Gpu) {
-                        temp_status.push(TempStatus {
-                            name: GPU_TEMP_NAME.to_string(),
-                            temp: f64::from(temp),
-                        });
-                    }
-                }
-                GPU_TEMP_MEMORY_NAME => {
-                    if let Some(mem_temp) = Self::get_memory_temp(nvml_device) {
-                        temp_status.push(TempStatus {
-                            name: GPU_TEMP_MEMORY_NAME.to_string(),
-                            temp: mem_temp,
-                        });
-                    }
-                }
-                GPU_TEMP_HOTSPOT_NAME => {
-                    if let Some(temp) = nv_info
-                        .pci_bus
-                        .and_then(|bus| nvapi.and_then(|api| api.get_hotspot_temp(bus)))
-                    {
-                        temp_status.push(TempStatus {
-                            name: GPU_TEMP_HOTSPOT_NAME.to_string(),
-                            temp,
-                        });
-                    }
-                }
-                _ => {
-                    error!("Unexpected Nvidia temp name: {nvidia_temp_name}");
-                }
-            }
-        }
-        temp_status
-    }
-
-    fn get_nvml_freq_status(
-        nvml_device: &Ref<nvml_wrapper::Device>,
-        nv_info: &Rc<NvidiaDeviceInfo>,
-        channel_status: &mut Vec<ChannelStatus>,
-    ) {
-        for nvml_clock_type in &nv_info.freqs {
-            match nvml_clock_type {
-                Clock::Graphics => Self::add_nvml_clock_status(
-                    nvml_device,
-                    Clock::Graphics,
-                    NVIDIA_CLOCK_GRAPHICS,
-                    channel_status,
-                ),
-                Clock::SM => Self::add_nvml_clock_status(
-                    nvml_device,
-                    Clock::SM,
-                    NVIDIA_CLOCK_SM,
-                    channel_status,
-                ),
-                Clock::Memory => Self::add_nvml_clock_status(
-                    nvml_device,
-                    Clock::Memory,
-                    NVIDIA_CLOCK_MEMORY,
-                    channel_status,
-                ),
-                Clock::Video => Self::add_nvml_clock_status(
-                    nvml_device,
-                    Clock::Video,
-                    NVIDIA_CLOCK_VIDEO,
-                    channel_status,
-                ),
-            }
-        }
+        channels
     }
 
     /// resets the nvidia fan control back to automatic
-    fn reset_nvml_device_to_default(
+    async fn reset_nvml_device_to_default(
         &self,
         nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
     ) -> Result<()> {
-        let nvml_device = self
-            .nvidia_nvml_devices
-            .get(&nv_info.gpu_index)
-            .expect("Device should exist");
         let fan_index = Self::parse_fan_index(channel_name)?;
         Self::verify_fan_index(nv_info, fan_index)?;
-        nvml_device
-            .borrow_mut()
-            .set_default_fan_speed(u32::from(fan_index))?;
-        Ok(())
+        self.write_nvml_bounded(nv_info.gpu_index, "fan reset", move |device| {
+            device.set_default_fan_speed(u32::from(fan_index))
+        })
+        .await
     }
 
-    fn set_nvml_fan_duty(
+    async fn set_nvml_fan_duty(
         &self,
         nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
         fan_duty: Duty,
     ) -> Result<()> {
-        let nvml_device = self
-            .nvidia_nvml_devices
-            .get(&nv_info.gpu_index)
-            .expect("Device should exist");
+        // Every check stays on this thread: only the driver call itself is worth isolating, and
+        // the range's log-once guards are not shareable across threads.
         let fan_index = Self::parse_fan_index(channel_name)?;
         Self::verify_fan_index(nv_info, fan_index)?;
         let fan_range = nv_info.get_fan_range(fan_index)?;
         if fan_range.is_outside(fan_duty) {
             if fan_duty == 0 {
                 fan_range.log_zero_info_once();
-                nvml_device
-                    .borrow_mut()
-                    .set_default_fan_speed(u32::from(fan_index))?;
-                return Ok(());
+                return self
+                    .write_nvml_bounded(nv_info.gpu_index, "fan reset", move |device| {
+                        device.set_default_fan_speed(u32::from(fan_index))
+                    })
+                    .await;
             }
             // we set the fan speed anyway, as it doesn't appear to produce an error, and will
             // set the fan control policy to manual automatically.
             fan_range.log_outside_warning_once(fan_duty);
         }
-        nvml_device
-            .borrow_mut()
-            .set_fan_speed(u32::from(fan_index), u32::from(fan_duty))?;
-        Ok(())
+        self.write_nvml_bounded(nv_info.gpu_index, "fan duty", move |device| {
+            device.set_fan_speed(u32::from(fan_index), u32::from(fan_duty))
+        })
+        .await
     }
 
     fn parse_fan_index(channel_name: &str) -> Result<FanIndex> {
@@ -1328,6 +1434,36 @@ pub struct StatusNvidiaDeviceSMI {
 }
 
 #[derive(Debug, Clone)]
+/// What one GPU's read pass should gather, in a form that crosses to a blocking thread.
+struct NvmlReadPlan {
+    fan_indices: Box<[FanIndex]>,
+    /// Which NVML-backed temps to read. Hotspot is not here: it comes from nvapi, not NVML.
+    temps: Box<[NvmlTemp]>,
+    read_load: bool,
+    read_power: bool,
+    freqs: Box<[Clock]>,
+}
+
+/// The temps NVML itself can report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NvmlTemp {
+    Gpu,
+    Memory,
+}
+
+/// What it gathered. Plain data, so it crosses back by value.
+#[derive(Debug, Default)]
+struct NvmlReadings {
+    gpu_temp: Option<u32>,
+    memory_temp: Option<Temp>,
+    /// Fan index, duty percent, rpm when the device reports one.
+    fans: Vec<(FanIndex, u32, Option<u32>)>,
+    load: Option<u32>,
+    power_milliwatts: Option<u32>,
+    freqs: Vec<(Clock, u32)>,
+}
+
+#[derive(Debug, Default)]
 pub struct StatusNvidiaDeviceNvml {
     pub channels: Vec<ChannelStatus>,
     pub temps: Vec<TempStatus>,
@@ -1490,6 +1626,164 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 mod tests {
     use super::*;
     use crate::setting::CCDeviceSettings;
+
+    fn nv_info_for(gpu_index: GpuIndex) -> NvidiaDeviceInfo {
+        NvidiaDeviceInfo {
+            gpu_index,
+            display_id: 0,
+            fan_indices: vec![0],
+            fan_ranges: HashMap::new(),
+            temps: Vec::new(),
+            freqs: Vec::new(),
+            power: false,
+            pci_bus: None,
+        }
+    }
+
+    /// Goal: the handle map is drained into the workers at init, so it is empty for the whole life
+    /// of a running daemon. Deciding the control path from it therefore sends every NVML card down
+    /// the `nvidia-settings` branch, which returns `Ok(())` without doing anything when there is no
+    /// xauthority: fan speeds are silently never applied, with nothing in the log to say so.
+    ///
+    /// Method: a GPU with a worker and an empty handle map, which is exactly the running state.
+    #[test]
+    fn a_gpu_with_a_worker_is_nvml_controlled_though_the_handle_map_is_empty() {
+        let mut repo = repo_with_disabled(&[]);
+        let nv_info = nv_info_for(0);
+        assert!(
+            repo.is_nvml_controlled(&nv_info).not(),
+            "no worker yet, so the CLI is correct here"
+        );
+
+        let (io, _rx) = NvmlIo::for_test("test-gpu");
+        repo.nvml_io.insert(0, io);
+
+        assert!(
+            repo.nvml_handles_pending_workers.is_empty(),
+            "the running state: handles were moved into the workers"
+        );
+        assert!(
+            repo.is_nvml_controlled(&nv_info),
+            "a GPU with a worker must stay on NVML, or its fan writes go nowhere"
+        );
+    }
+
+    /// Goal: a card whose worker never started falls back on its own, rather than one bad card
+    /// deciding the path for every other.
+    #[test]
+    fn a_gpu_without_a_worker_falls_back_alone() {
+        let mut repo = repo_with_disabled(&[]);
+        let (io, _rx) = NvmlIo::for_test("test-gpu");
+        repo.nvml_io.insert(0, io);
+
+        assert!(repo.is_nvml_controlled(&nv_info_for(0)));
+        assert!(repo.is_nvml_controlled(&nv_info_for(1)).not());
+    }
+
+    /// Goal: moving the NVML reads to a blocking thread must not reorder what the device reports.
+    /// Temps are assembled on this thread from two sources now (NVML for gpu and memory, nvapi for
+    /// hotspot), so the device's own `temps` order is what has to be preserved.
+    ///
+    /// Method: ask for memory before gpu, supply both readings, and assert the output follows the
+    /// requested order rather than the order the worker happened to gather them in.
+    #[test]
+    fn assembled_temps_follow_the_devices_own_order() {
+        let repo = repo_with_disabled(&[]);
+        let nv_info = Rc::new(NvidiaDeviceInfo {
+            gpu_index: 0,
+            display_id: 0,
+            fan_indices: vec![],
+            fan_ranges: HashMap::new(),
+            temps: vec![GPU_TEMP_MEMORY_NAME.to_string(), GPU_TEMP_NAME.to_string()],
+            freqs: vec![],
+            power: false,
+            pci_bus: None,
+        });
+        let readings = NvmlReadings {
+            gpu_temp: Some(61),
+            memory_temp: Some(74.0),
+            ..Default::default()
+        };
+
+        let temps = repo.assemble_temps(&nv_info, &readings);
+
+        assert_eq!(temps.len(), 2);
+        assert_eq!(temps[0].name, GPU_TEMP_MEMORY_NAME);
+        assert_eq!(temps[0].temp, 74.0);
+        assert_eq!(temps[1].name, GPU_TEMP_NAME);
+        assert_eq!(temps[1].temp, 61.0);
+    }
+
+    /// Goal: a temp the device asked for but the driver did not answer must be omitted, not
+    /// reported as zero. A fabricated reading would drive a fan curve from a value the hardware
+    /// never produced.
+    #[test]
+    fn an_unanswered_temp_is_omitted_rather_than_zeroed() {
+        let repo = repo_with_disabled(&[]);
+        let nv_info = Rc::new(NvidiaDeviceInfo {
+            gpu_index: 0,
+            display_id: 0,
+            fan_indices: vec![],
+            fan_ranges: HashMap::new(),
+            temps: vec![GPU_TEMP_NAME.to_string(), GPU_TEMP_MEMORY_NAME.to_string()],
+            freqs: vec![],
+            power: false,
+            pci_bus: None,
+        });
+        // Memory temp unsupported on this card, so the worker reports nothing for it.
+        let readings = NvmlReadings {
+            gpu_temp: Some(55),
+            memory_temp: None,
+            ..Default::default()
+        };
+
+        let temps = repo.assemble_temps(&nv_info, &readings);
+
+        assert_eq!(temps.len(), 1, "only the answered temp is reported");
+        assert_eq!(temps[0].name, GPU_TEMP_NAME);
+        assert!(temps.iter().all(|temp| temp.name != GPU_TEMP_MEMORY_NAME));
+    }
+
+    /// Goal: the channel list must carry every reading the worker gathered, with fans first so the
+    /// order matches what the previous in-line implementation produced.
+    #[test]
+    fn assembled_channels_carry_every_reading() {
+        let readings = NvmlReadings {
+            fans: vec![(0, 42, Some(1200)), (1, 55, None)],
+            load: Some(37),
+            power_milliwatts: Some(150_000),
+            freqs: vec![(Clock::Graphics, 2100)],
+            ..Default::default()
+        };
+
+        let channels = GpuNVidia::assemble_channels(&readings);
+
+        let names: Vec<&str> = channels.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "fan1",
+                "fan2",
+                GPU_LOAD_NAME,
+                GPU_POWER_NAME,
+                NVIDIA_CLOCK_GRAPHICS
+            ]
+        );
+        assert_eq!(channels[0].duty, Some(42.0));
+        assert_eq!(channels[0].rpm, Some(1200));
+        assert_eq!(channels[1].rpm, None, "a fan with no rpm reports none");
+        assert_eq!(channels[3].watts, Some(150.0));
+        assert_eq!(channels[4].freq, Some(2100));
+    }
+
+    /// Goal: a GPU that answers nothing must produce an empty status, so the caller's cache keeps
+    /// its last-known-good values and the failsafe decides what to do. Regression guard on the
+    /// wedged-driver path, which is the reason these calls moved off the runtime thread.
+    #[test]
+    fn no_readings_produce_an_empty_status() {
+        let readings = NvmlReadings::default();
+        assert!(GpuNVidia::assemble_channels(&readings).is_empty());
+    }
 
     // Builds a GpuNVidia backed by a default config in which each given UID is marked
     // disabled, so the tests exercise the real get_cc_settings_for_device predicate (not a

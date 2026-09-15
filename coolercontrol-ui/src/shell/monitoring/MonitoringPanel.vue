@@ -56,6 +56,7 @@ import UiTooltip from '@/shell/ui/UiTooltip.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -171,16 +172,10 @@ const liveValue = (sensor: MonitoringSensor): string => {
     return ''
 }
 
-const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
-    const ref = settingsStore.healthFailsafe.find(
-        (entry) =>
-            entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
-    )
-    const base = t('views.appInfo.failsafeActive')
-    return ref?.reason ? `${base}: ${ref.reason}` : base
-}
+const { isDeviceUnreachable, healthTooltip } = useDeviceHealth()
 
 const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
+    isDeviceUnreachable(deviceUID) ||
     settingsStore.healthFailsafe.some(
         (ref) => ref.device_uid === deviceUID && ref.name === channelName,
     )
@@ -786,7 +781,7 @@ const isRouteActive = useRouteActive()
                             />
                             <UiTooltip
                                 v-if="isUnhealthy(sensor.deviceUID, sensor.channelName)"
-                                :text="failsafeTooltip(sensor.deviceUID, sensor.channelName)"
+                                :text="healthTooltip(sensor.deviceUID, sensor.channelName)"
                             >
                                 <svg-icon
                                     type="mdi"

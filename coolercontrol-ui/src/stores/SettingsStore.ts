@@ -67,6 +67,8 @@ import { Alert, AlertLog, AlertState, alertIsSilencedAt } from '@/models/Alert.t
 import {
     ChannelVerdictRef,
     DeviceHealthDTO,
+    UnreachableDelta,
+    UnreachableRef,
     FailsafeDelta,
     failsafeKey,
     FailsafeRef,
@@ -174,6 +176,7 @@ export const useSettingsStore = defineStore('settings', () => {
     watch(anyActiveUnsilencedAlert, () => pushTrayAlertState())
 
     const healthFailsafe: Ref<Array<FailsafeRef>> = ref([])
+    const healthUnreachable: Ref<Array<UnreachableRef>> = ref([])
     const healthMissing: Ref<Array<SourceRef>> = ref([])
     const healthStaleSource: Ref<Array<SourceRef>> = ref([])
     // Permanent hardware facts, kept apart from the fault lists above so a
@@ -1158,6 +1161,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     function applyDeviceHealthSnapshot(health: DeviceHealthDTO): void {
         healthFailsafe.value = health.failsafe
+        healthUnreachable.value = health.unreachable
         healthMissing.value = health.missing
         healthStaleSource.value = health.stale_source
         healthChannelCapabilities.value = health.channel_capabilities
@@ -1173,6 +1177,17 @@ export const useSettingsStore = defineStore('settings', () => {
             healthFailsafe.value.push(delta)
         } else if (delta.state === HealthState.Resolved && index > -1) {
             healthFailsafe.value.splice(index, 1)
+        }
+    }
+
+    function applyUnreachableDelta(delta: UnreachableDelta): void {
+        const index = healthUnreachable.value.findIndex(
+            (ref) => ref.device_uid === delta.device_uid,
+        )
+        if (delta.state === HealthState.Detected && index === -1) {
+            healthUnreachable.value.push(delta)
+        } else if (delta.state === HealthState.Resolved && index > -1) {
+            healthUnreachable.value.splice(index, 1)
         }
     }
 
@@ -1899,6 +1914,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setAlertEnabled,
         deleteAlert,
         healthFailsafe,
+        healthUnreachable,
         healthChannelCapabilities,
         healthFirmwareOverrides,
         healthSystemFindings,
@@ -1908,6 +1924,7 @@ export const useSettingsStore = defineStore('settings', () => {
         loadDeviceHealth,
         applyDeviceHealthSnapshot,
         applyFailsafeDelta,
+        applyUnreachableDelta,
         applyMissingDelta,
         applyStaleSourceDelta,
         applyThemeMode,

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use std::io::Error;
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::cc_fs;
+use crate::cc_fs::{self, SysfsValue};
 use crate::device::TempStatus;
 use crate::repositories::cpu::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::devices;
@@ -25,7 +25,11 @@ macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($
 static THINKPAD_GPU_ENXIO_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Initialize all applicable temp sensors
-pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_temps(
+    base_path: &Path,
+    device_name: &str,
+    io: &DeviceIo,
+) -> Result<Vec<HwmonChannelInfo>> {
     if temps_used_by_another_repo(device_name) {
         return Ok(vec![]);
     }
@@ -43,7 +47,7 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if sensor_is_usable(base_path, &channel_number, device_name)
+            if sensor_is_usable(base_path, &channel_number, device_name, io)
                 .await
                 .not()
             {
@@ -69,27 +73,50 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
     Ok(temps)
 }
 
-/// Streams temp statuses to `sink` one channel at a time as each
-/// read completes, returning whether any read failed. Failed reads
-/// are omitted so the upstream cache keeps the last-known-good value
-/// until the failsafe threshold merges in `MISSING_TEMP_FAILSAFE`.
-/// Fabricating a value on failure would lie to downstream controllers.
-/// Callers that want a buffered `Vec` should use `extract_temp_statuses`.
-pub async fn stream_temp_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
-where
-    F: FnMut(TempStatus),
-{
-    let mut any_failure = false;
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Temp {
-            continue;
-        }
-        match read_one_temp_status(driver, channel).await {
-            Some(status) => sink(status),
-            None => any_failure = true,
+/// Reads a set of temp channels in one hop.
+///
+/// The device permit is held across the whole pass anyway, so the reads were going to happen back
+/// to back; one round trip is cheaper than one per channel. Results are positional.
+pub async fn read_temp_statuses(
+    driver: &HwmonDriverInfo,
+    channels: &[&HwmonChannelInfo],
+) -> Vec<Option<TempStatus>> {
+    if channels.is_empty() {
+        return Vec::new();
+    }
+    // `slotted` keeps the reply aligned to the channels. Zipping the reply straight onto
+    // `channels` would silently pair a channel with another sensor's reading the moment one of
+    // them had no slot, and a temperature from the wrong sensor drives the wrong fan curve.
+    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every temp channel needs a read slot; was the registry installed?"
+    );
+    if cfg!(debug_assertions) {
+        for (channel, slot) in channels.iter().zip(&slots) {
+            driver
+                .io
+                .debug_assert_slot(*slot, &temp_path_for(driver, channel));
         }
     }
-    any_failure
+    let mut results = driver.io.read_many(&slots).await.into_iter();
+    channels
+        .iter()
+        .zip(slotted)
+        .map(|(channel, has_slot)| {
+            let result = has_slot.then(|| results.next()).flatten()?;
+            temp_status_from(driver, channel, result)
+        })
+        .collect()
+}
+
+/// Where one channel's temp value lives.
+fn temp_path_for(driver: &HwmonDriverInfo, channel: &HwmonChannelInfo) -> PathBuf {
+    channel
+        .temp_path
+        .clone()
+        .unwrap_or_else(|| driver.path.join(format_temp_input!(channel.number)))
 }
 
 /// Reads the temp file for one channel and returns the resulting
@@ -101,20 +128,31 @@ pub async fn read_one_temp_status(
     channel: &HwmonChannelInfo,
 ) -> Option<TempStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
-    let temp_path = match channel.temp_path.as_ref() {
-        Some(path) => path,
-        None => &driver.path.join(format_temp_input!(channel.number)),
-    };
-    match driver
-        .fds
-        .read_value(temp_path)
-        .await
+    let result = driver
+        .io
+        .read_one(channel.read_slot.value, &temp_path_for(driver, channel))
+        .await;
+    temp_status_from(driver, channel, result)
+}
+
+/// Turns one raw read into a `TempStatus`, or `None` when the channel has nothing usable to
+/// report. Shared by the batched pass and the single-channel path so both interpret a failure,
+/// and the `ThinkPad` powered-down carve-out, identically.
+fn temp_status_from(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+    result: Result<SysfsValue>,
+) -> Option<TempStatus> {
+    // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
+    // the per-tick pass never builds a path.
+    let temp_path = || temp_path_for(driver, channel);
+    match result
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)
     {
         Ok(temp) => {
-            debug!("hwmon read {}: {temp} C", temp_path.display());
+            debug!("hwmon read {}: {temp} C", temp_path().display());
             Some(TempStatus {
                 name: channel.name.clone(),
                 temp,
@@ -122,7 +160,11 @@ pub async fn read_one_temp_status(
         }
         Err(err) => {
             if is_thinkpad_gpu_powerdown(&driver.name, &err) {
-                log_thinkpad_gpu_powerdown_once(&channel.name, channel.label.as_deref(), temp_path);
+                log_thinkpad_gpu_powerdown_once(
+                    &channel.name,
+                    channel.label.as_deref(),
+                    &temp_path(),
+                );
                 return Some(TempStatus {
                     name: channel.name.clone(),
                     temp: 0.0,
@@ -131,7 +173,7 @@ pub async fn read_one_temp_status(
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read temp value at {} ; {err}",
-                    temp_path.display()
+                    temp_path().display()
                 );
             }
             None
@@ -139,16 +181,21 @@ pub async fn read_one_temp_status(
     }
 }
 
-/// Buffered wrapper over `stream_temp_statuses` for callers that want
-/// an owned `Vec<TempStatus>` (for example, the reinit path).
+/// Every temp channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
-    let temp_channel_count = driver
+    let channels: Vec<&HwmonChannelInfo> = driver
         .channels
         .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
-        .count();
-    let mut temps = Vec::with_capacity(temp_channel_count);
-    let any_failure = stream_temp_statuses(driver, |status| temps.push(status)).await;
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+        .collect();
+    let mut temps = Vec::with_capacity(channels.len());
+    let mut any_failure = false;
+    for status in read_temp_statuses(driver, &channels).await {
+        match status {
+            Some(status) => temps.push(status),
+            None => any_failure = true,
+        }
+    }
     (temps, any_failure)
 }
 
@@ -166,7 +213,7 @@ pub async fn extract_temp_statuses_concurrently(
             }
             let temp_task = scope.spawn(async {
                 let result = driver
-                    .fds
+                    .io
                     .read_value(&driver.path.join(format_temp_input!(channel.number)))
                     .await
                     .and_then(check_parsing_32)
@@ -200,11 +247,16 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 
 /// Returns whether the temperature sensor is returning valid and sane values
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &str) -> bool {
+async fn sensor_is_usable(
+    base_path: &Path,
+    channel_number: &u8,
+    driver_name: &str,
+    io: &DeviceIo,
+) -> bool {
     let temp_path = base_path.join(format_temp_input!(channel_number));
     // Re-probe a transient failure before giving the channel up for the session. The sanity-range
     // verdict below is not a read failure and is deliberately left as a single shot.
-    match probe::read_until_ok(&temp_path, async || read_temp_degrees(&temp_path).await).await {
+    match probe::read_until_ok(&temp_path, async || read_temp_degrees(io, &temp_path).await).await {
         Ok(degrees) => {
             let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
             if !has_sane_value {
@@ -236,8 +288,8 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8, driver_name: &s
 
 /// One temp read in degrees, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_temp_degrees(temp_path: &Path) -> Result<f64> {
-    cc_fs::read_sysfs_value(temp_path)
+async fn read_temp_degrees(io: &DeviceIo, temp_path: &Path) -> Result<f64> {
+    io.read_value(temp_path)
         .await
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
@@ -370,7 +422,8 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result = init_temps(&test_base_path, &device_name).await;
+            let temps_result =
+                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             assert!(temps_result.is_err());
@@ -402,7 +455,8 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result = init_temps(&test_base_path, &device_name).await;
+            let temps_result =
+                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             // println!("RESULT: {:?}", fans_result);
@@ -452,7 +506,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -501,10 +557,12 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             let (first_temps, _) = extract_temp_statuses(&driver_info).await;
-            let held_after_first_tick = driver_info.fds.len();
+            let held_after_first_tick = driver_info.io.descriptor_count().await;
             let (second_temps, _) = extract_temp_statuses(&driver_info).await;
             cc_fs::write(test_base_path.join("temp1_input"), b"55000".to_vec())
                 .await
@@ -518,7 +576,11 @@ mod tests {
             // Both temp files stay open in the fd cache across ticks.
             let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
-            assert_eq!(driver_info.fds.len(), expected_held, "descriptors grew");
+            assert_eq!(
+                driver_info.io.descriptor_count().await,
+                expected_held,
+                "descriptors grew"
+            );
             assert!((first_temps[0].temp - 35.0).abs() < f64::EPSILON);
             assert!((second_temps[1].temp - 42.0).abs() < f64::EPSILON);
             assert!((third_temps[0].temp - 55.0).abs() < f64::EPSILON);
@@ -545,7 +607,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -586,7 +650,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -626,7 +692,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
@@ -638,11 +706,10 @@ mod tests {
         });
     }
 
-    // --- stream_temp_statuses: sink contract ---
-
+    // --- extract_temp_statuses: ordering and failures ---
     #[test]
     #[serial]
-    fn stream_temp_statuses_invokes_sink_in_channel_order() {
+    fn extract_temp_statuses_preserves_channel_order() {
         // Verifies the streaming variant invokes the sink once per
         // successful temp channel in channel-number order.
         cc_fs::test_runtime(async {
@@ -679,12 +746,13 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_temp_statuses(&driver_info, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -695,7 +763,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_temp_statuses_skips_sink_on_failure() {
+    fn extract_temp_statuses_skips_failed_channels() {
         // Verifies the sink is not invoked for a temp channel whose
         // sysfs file is missing, and any_failure is set.
         cc_fs::test_runtime(async {
@@ -721,12 +789,13 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_temp_statuses(&driver_info, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -737,7 +806,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_temp_statuses_no_invocation_when_no_channels() {
+    fn extract_temp_statuses_empty_when_no_channels() {
         // Verifies the sink is never invoked when there are no temp
         // channels, and any_failure is false.
         cc_fs::test_runtime(async {
@@ -745,19 +814,19 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
-            let mut invocations: u32 = 0;
-            let any_failure = stream_temp_statuses(&driver_info, |_| invocations += 1).await;
+            let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
 
             teardown(&ctx).await;
-            assert_eq!(invocations, 0);
+            assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
     }
 
     // --- is_thinkpad_gpu_powerdown classifier ---
-
     #[test]
     fn is_thinkpad_gpu_powerdown_true_for_thinkpad_enxio() {
         // Verifies the canonical case: thinkpad driver name + io::Error
@@ -838,7 +907,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::device_health::UnreachableRef;
+use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -21,7 +23,9 @@ use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
 use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::hwmon::chip_name::{self, ChipName};
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
 use crate::repositories::hwmon::{devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -186,9 +190,9 @@ impl CpuRepo {
         }
     }
 
-    async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_cpu_temp(path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
-        temps::init_temps(path, include_all_devices).await
+        temps::init_temps(path, include_all_devices, io).await
     }
 
     /// Counts a driver's devices, and for `coretemp` checks whether any zone is offline.
@@ -436,7 +440,7 @@ impl CpuRepo {
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
                     let joule_count =
-                        power_cap::extract_power_joule_counter(&driver.fds, channel.number).await;
+                        power_cap::extract_power_joule_counter(&driver.io, channel).await;
                     let mut watts = self.power_watts_or_zero(physical_id, joule_count);
                     self.use_cached_value_if_zero(&mut watts, init, association, &channel.name);
                     status_channels.push(ChannelStatus {
@@ -709,16 +713,26 @@ impl CpuRepo {
             return None;
         }
         let mut channels = Vec::new();
-        match Self::init_cpu_temp(path).await {
+        // Before any value read, so detection is isolated too.
+        let io = DeviceIo::isolated_or_inline(
+            device_name,
+            device_io::reply_timeout_for(self.config.get_settings().map_or(1.0, |s| s.poll_rate)),
+        );
+        match Self::init_cpu_temp(path, &io).await {
             Ok(temps) => channels.extend(temps),
             Err(err) => error!("Error initializing CPU Temps: {err}"),
         }
         if let Some(physical_id) = association.physical_id() {
             channels.extend(self.init_socket_channels(physical_id, cpu_freqs).await);
         }
-        let channels = self
+        let mut channels = self
             .retain_visible_channels(channels, cc_device_setting.as_ref(), path)
             .await;
+        // Detection is done with this device's channel set, so the per-tick pass can address the
+        // worker's table by slot from here on.
+        if let Err(err) = install_read_registry(path, None, &mut channels, &io).await {
+            error!("Could not install the read table for {cpu_name}: {err}");
+        }
         let pci_device_names = devices::get_device_pci_names(path).await;
         let model = devices::get_device_model_name(path).await.or_else(|| {
             pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -730,6 +744,7 @@ impl CpuRepo {
             model,
             u_id,
             channels,
+            io,
             ..Default::default()
         })
     }
@@ -741,7 +756,7 @@ impl CpuRepo {
         for channel in driver.channels.iter().filter(|channel| {
             channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
         }) {
-            let joule_count = power_cap::extract_power_joule_counter(&driver.fds, channel.number)
+            let joule_count = power_cap::extract_power_joule_counter(&driver.io, channel)
                 .await
                 .unwrap_or(0.0);
             self.energy_counters
@@ -1004,6 +1019,24 @@ impl Repository for CpuRepo {
             cpu_device.device.borrow_mut().set_status(status);
         }
         Ok(())
+    }
+
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, cpu_device) in &self.devices {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = cpu_device.driver.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: cpu_device.driver.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        out
     }
 
     async fn shutdown(&self) -> Result<()> {

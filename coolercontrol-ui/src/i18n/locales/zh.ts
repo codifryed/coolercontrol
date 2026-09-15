@@ -610,6 +610,8 @@ export default {
             findingBlockedByNoDevPort: '/dev/port 不可用，硬件检测无法运行。',
             findingDetectionUnsupported: '此架构不支持硬件检测。',
             failsafeActive: '正在使用故障保护值',
+            deviceUnreachable: '设备无响应',
+            deviceUnreachableDetail: '驱动程序已停止响应，因此无法读取或控制此设备。正在定期重试。',
             missingTempSource: '缺少温度源',
             staleTempSource: '温度源正在使用故障保护值',
             stressTest: '热压力测试',

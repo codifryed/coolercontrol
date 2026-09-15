@@ -649,6 +649,9 @@ export default {
             findingDetectionUnsupported:
                 'La detección de hardware no es compatible con esta arquitectura.',
             failsafeActive: 'Valores de seguridad en uso',
+            deviceUnreachable: 'El dispositivo no responde',
+            deviceUnreachableDetail:
+                'El controlador dejó de responder, por lo que este dispositivo no se puede leer ni controlar. Se reintenta periódicamente.',
             missingTempSource: 'Fuente de temperatura faltante',
             staleTempSource: 'La fuente de temperatura usa valores de seguridad',
             stressTest: 'Pruebas de estrés térmico',

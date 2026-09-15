@@ -6,7 +6,9 @@ use crate::api::actor::{AlertHandle, DeviceHealthHandle, ModeHandle, StatusHandl
 use crate::api::modes::ActiveMode;
 use crate::api::status::StatusResponse;
 use crate::api::{AppState, CCError};
-use crate::device_health::{DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta};
+use crate::device_health::{
+    DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
+};
 use crate::logger::LogBufHandle;
 use crate::notifier::{DesktopNotification, NotificationHandle};
 use crate::system_event::{SystemEvent, SystemEventHandle};
@@ -61,6 +63,8 @@ pub enum SseEvent {
     StaleSource(Vec<SourceDelta>),
     /// Channels that entered or left failsafe this tick.
     Failsafe(Vec<FailsafeDelta>),
+    /// Devices that stopped or resumed answering this tick.
+    Unreachable(Vec<UnreachableDelta>),
     /// Full device-health snapshot, sent to a consumer that lagged the transitions.
     Health(DeviceHealthDto),
     /// One or more daemon log lines, pre-coalesced. Raw text, not JSON.
@@ -82,6 +86,7 @@ impl From<SseEvent> for Event {
             SseEvent::Missing(payload) => json_event("missing", &payload),
             SseEvent::StaleSource(payload) => json_event("stale-source", &payload),
             SseEvent::Failsafe(payload) => json_event("failsafe", &payload),
+            SseEvent::Unreachable(payload) => json_event("unreachable", &payload),
             SseEvent::Health(payload) => json_event("health", &payload),
             // The only payload that is not JSON.
             SseEvent::Log(line) => Event::default().event("log").data(line),
@@ -382,12 +387,13 @@ fn health_stream(device_health_handle: &DeviceHealthHandle) -> EventStream {
 }
 
 /// Maps one tick's device-health transition batch to its named SSE event
-/// (`missing`, `stale-source`, or `failsafe`).
+/// (`missing`, `stale-source`, `failsafe`, or `unreachable`).
 fn health_event_to_sse(event: HealthEvent) -> Event {
     match event {
         HealthEvent::Missing(deltas) => SseEvent::Missing(deltas).into(),
         HealthEvent::StaleSource(deltas) => SseEvent::StaleSource(deltas).into(),
         HealthEvent::Failsafe(deltas) => SseEvent::Failsafe(deltas).into(),
+        HealthEvent::Unreachable(deltas) => SseEvent::Unreachable(deltas).into(),
     }
 }
 
@@ -461,8 +467,10 @@ mod tests {
             SseEvent::Missing(Vec::new()),
             SseEvent::StaleSource(Vec::new()),
             SseEvent::Failsafe(Vec::new()),
+            SseEvent::Unreachable(Vec::new()),
             SseEvent::Health(DeviceHealthDto {
                 failsafe: Vec::new(),
+                unreachable: Vec::new(),
                 missing: Vec::new(),
                 stale_source: Vec::new(),
                 firmware_overrides: Vec::new(),
@@ -492,6 +500,7 @@ mod tests {
                 | SseEvent::Missing(_)
                 | SseEvent::StaleSource(_)
                 | SseEvent::Failsafe(_)
+                | SseEvent::Unreachable(_)
                 | SseEvent::Health(_)
                 | SseEvent::Log(_)
                 | SseEvent::Mode(_)
@@ -546,6 +555,7 @@ mod tests {
                 "missing",
                 "stale-source",
                 "failsafe",
+                "unreachable",
                 "health",
                 "log",
                 "mode",

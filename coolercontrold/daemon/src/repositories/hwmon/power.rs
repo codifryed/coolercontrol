@@ -3,6 +3,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
@@ -19,7 +20,7 @@ macro_rules! format_power_label { ($($arg:tt)*) => {{ format!("power{}_label", $
 /// This initializes the `powerN` hwmon sysfs files. These are used to
 /// measure power usage in microWatts.
 /// See [kernel docs](https://docs.kernel.org/gpu/amdgpu/thermal.html)
-pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_power(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut powers = vec![];
     let mut preferred_powers = HashMap::new();
     let mut power_inputs = vec![];
@@ -33,6 +34,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
             file_name,
             &mut preferred_powers,
             &mut power_inputs,
+            io,
         )
         .await?;
     }
@@ -65,6 +67,7 @@ async fn insert_power_metrics(
     file_name: &str,
     preferred_powers: &mut HashMap<u8, String>,
     power_inputs: &mut Vec<(u8, String)>,
+    io: &DeviceIo,
 ) -> Result<()> {
     let regex_power_file = Regex::new(PATTERN_POWER_FILE_NUMBER)?;
     if regex_power_file.is_match(file_name).not() {
@@ -77,7 +80,7 @@ async fn insert_power_metrics(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if sensor_is_not_usable(base_path, file_name).await {
+    if sensor_is_not_usable(base_path, file_name, io).await {
         return Ok(()); // skip if pwm file isn't readable
     }
     if file_name.ends_with(POWER_AVERAGE_SUFFIX) {
@@ -89,26 +92,68 @@ async fn insert_power_metrics(
     Ok(())
 }
 
-/// Streams power statuses to `sink` one channel at a time as each
-/// read completes, returning whether any read failed. Failed reads
-/// are omitted so the upstream cache keeps the last-known-good value
-/// until the failsafe threshold merges in the proper failsafe watts.
-/// Callers that want a buffered `Vec` should use `extract_power_status`.
-pub async fn stream_power_status<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
-where
-    F: FnMut(ChannelStatus),
-{
-    let mut any_failure = false;
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Power {
-            continue;
-        }
-        match read_one_power_status(driver, channel).await {
-            Some(status) => sink(status),
-            None => any_failure = true,
+/// Reads a set of power channels in one hop. See `temps::read_temp_statuses` for why the per-tick
+/// path batches.
+pub async fn read_power_statuses(
+    driver: &HwmonDriverInfo,
+    channels: &[&HwmonChannelInfo],
+) -> Vec<Option<ChannelStatus>> {
+    if channels.is_empty() {
+        return Vec::new();
+    }
+    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
+    let (slots, slotted) = slots_for(channels, |channel| channel.read_slot.value);
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every power channel needs a read slot; was the registry installed?"
+    );
+    if cfg!(debug_assertions) {
+        for (channel, slot) in channels.iter().zip(&slots) {
+            driver
+                .io
+                .debug_assert_slot(*slot, &driver.path.join(&channel.name));
         }
     }
-    any_failure
+    let mut results = driver.io.read_many(&slots).await.into_iter();
+    channels
+        .iter()
+        .zip(slotted)
+        .map(|(channel, has_slot)| {
+            let result = has_slot.then(|| results.next()).flatten()?;
+            power_status_from(driver, channel, result)
+        })
+        .collect()
+}
+
+/// Turns one raw power read into a `ChannelStatus`. Shared by the batched pass and the
+/// single-channel path so both log and discard failures identically.
+fn power_status_from(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+    result: Result<cc_fs::SysfsValue>,
+) -> Option<ChannelStatus> {
+    // Only the log arms need it, and `log::debug!` evaluates its arguments only when enabled, so
+    // the per-tick pass never builds a path.
+    let power_path = || driver.path.join(&channel.name);
+    result
+        .and_then(check_parsing_64)
+        .map(convert_micro_watts_to_watts)
+        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path().display()))
+        .inspect_err(|err| {
+            if log_enabled!(log::Level::Debug) {
+                warn!(
+                    "Could not read power value at {} ; {err}",
+                    power_path().display()
+                );
+            }
+        })
+        .ok()
+        .map(|watts| ChannelStatus {
+            name: channel.name.clone(),
+            watts: Some(watts),
+            ..Default::default()
+        })
 }
 
 /// Reads the power-input file for one channel and returns the
@@ -122,57 +167,47 @@ pub async fn read_one_power_status(
 ) -> Option<ChannelStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
     // In the Power case, channel.name is the real name of the sysfs file.
-    let power_path = driver.path.join(&channel.name);
-    driver
-        .fds
-        .read_value(&power_path)
-        .await
-        .and_then(check_parsing_64)
-        .map(convert_micro_watts_to_watts)
-        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path.display()))
-        .inspect_err(|err| {
-            if log_enabled!(log::Level::Debug) {
-                warn!(
-                    "Could not read power value at {} ; {err}",
-                    power_path.display()
-                );
-            }
-        })
-        .ok()
-        .map(|watts| ChannelStatus {
-            name: channel.name.clone(),
-            watts: Some(watts),
-            ..Default::default()
-        })
+    let result = driver
+        .io
+        .read_one(channel.read_slot.value, &driver.path.join(&channel.name))
+        .await;
+    power_status_from(driver, channel, result)
 }
 
-/// Buffered wrapper over `stream_power_status` for callers that want
-/// an owned `Vec<ChannelStatus>` (for example, the reinit path).
+/// Every power channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let power_channel_count = driver
+    let channels: Vec<&HwmonChannelInfo> = driver
         .channels
         .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Power)
-        .count();
-    let mut powers = Vec::with_capacity(power_channel_count);
-    let any_failure = stream_power_status(driver, |status| powers.push(status)).await;
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Power)
+        .collect();
+    let mut powers = Vec::with_capacity(channels.len());
+    let mut any_failure = false;
+    for status in read_power_statuses(driver, &channels).await {
+        match status {
+            Some(status) => powers.push(status),
+            None => any_failure = true,
+        }
+    }
     (powers, any_failure)
 }
 
 /// Check if the power channel is usable
-async fn sensor_is_not_usable(base_path: &Path, file_name: &str) -> bool {
+async fn sensor_is_not_usable(base_path: &Path, file_name: &str, io: &DeviceIo) -> bool {
     let power_path = base_path.join(file_name);
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
-    // for the session. See `probe::until_readable`.
-    probe::until_readable(&power_path, async || read_power_watts(&power_path).await)
-        .await
-        .not()
+    // for the session.
+    probe::read_until_ok(&power_path, async || {
+        read_power_watts(io, &power_path).await
+    })
+    .await
+    .is_err()
 }
 
 /// One power read in watts, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_power_watts(power_path: &Path) -> Result<f64> {
-    cc_fs::read_sysfs_value(power_path)
+async fn read_power_watts(io: &DeviceIo, power_path: &Path) -> Result<f64> {
+    io.read_value(power_path)
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
@@ -219,7 +254,7 @@ async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option
 mod tests {
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     use super::*;
@@ -250,7 +285,7 @@ mod tests {
             let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let power_result = init_power(&test_base_path).await;
+            let power_result = init_power(&test_base_path, &DeviceIo::default()).await;
 
             // then:
             assert!(power_result.is_err()); // does not currently error no matter what
@@ -278,7 +313,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -310,7 +345,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -339,7 +374,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -371,7 +406,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -413,7 +448,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let power_result = init_power(test_base_path).await;
+            let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -456,7 +491,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -490,7 +527,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -513,7 +552,9 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: test_base_path.to_owned(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -544,7 +585,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
@@ -556,11 +599,11 @@ mod tests {
         });
     }
 
-    // --- stream_power_status: sink contract ---
+    // --- extract_power_status: ordering and failures ---
 
     #[test]
     #[serial]
-    fn stream_power_status_invokes_sink_in_channel_order() {
+    fn extract_power_status_preserves_channel_order() {
         // Verifies the streaming variant invokes the sink once per
         // successful channel in the order channels are defined.
         cc_fs::test_runtime(async {
@@ -596,12 +639,13 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_power_status(&driver_info, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_power_status(&driver_info).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -615,7 +659,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_power_status_skips_sink_on_failure() {
+    fn extract_power_status_skips_failed_channels() {
         // Verifies the sink is not invoked for a channel whose sysfs
         // read fails; any_failure is set and the successful channel
         // alone is streamed.
@@ -641,12 +685,13 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_power_status(&driver_info, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_power_status(&driver_info).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -657,7 +702,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_power_status_no_invocation_when_no_channels() {
+    fn extract_power_status_empty_when_no_channels() {
         // Verifies the sink is never invoked for a driver with no
         // power channels, and any_failure is false.
         cc_fs::test_runtime(async {
@@ -665,13 +710,14 @@ mod tests {
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
-            let mut invocations: u32 = 0;
-            let any_failure = stream_power_status(&driver_info, |_| invocations += 1).await;
+            let (statuses, any_failure) = extract_power_status(&driver_info).await;
 
             teardown(&ctx).await;
-            assert_eq!(invocations, 0);
+            assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
     }
@@ -707,7 +753,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let (power_result, any_failure) = extract_power_status(&driver_info).await;

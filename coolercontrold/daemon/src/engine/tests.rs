@@ -2930,7 +2930,7 @@ mod lcd_shutdown_tests {
     use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
     use anyhow::Result;
     use async_trait::async_trait;
-    use mime;
+
     use serial_test::serial;
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -3000,10 +3000,12 @@ mod lcd_shutdown_tests {
 
     fn setup_lcd_engine() -> (Engine, Rc<Config>, DeviceUID, Rc<RefCell<Vec<LcdSettings>>>) {
         let applied = Rc::new(RefCell::new(Vec::new()));
-        let mut repos = Repositories::default();
-        repos.liquidctl = Some(Rc::new(LcdRecorder {
-            applied: Rc::clone(&applied),
-        }));
+        let repos = Repositories {
+            liquidctl: Some(Rc::new(LcdRecorder {
+                applied: Rc::clone(&applied),
+            })),
+            ..Default::default()
+        };
 
         let mut info = DeviceInfo::default();
         info.channels.insert(

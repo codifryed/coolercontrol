@@ -3,17 +3,19 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
+use crate::repositories::hwmon::device_io::{slots_for, DeviceIo};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::probe;
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
 use log::{info, trace};
 use regex::Regex;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
-pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_freqs(base_path: &PathBuf, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
     let mut freqs = vec![];
     let dir_entries = cc_fs::read_dir(base_path)?;
     let regex_freq_input = Regex::new(PATTERN_FREQ_INPUT_NUMBER)?;
@@ -28,7 +30,7 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if !sensor_is_usable(base_path, &channel_number).await {
+            if sensor_is_usable(base_path, &channel_number, io).await.not() {
                 continue;
             }
             let channel_name = get_freq_channel_name(channel_number);
@@ -60,17 +62,28 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         .filter(|c| c.hwmon_type == HwmonChannelType::Freq)
         .count();
     let mut freqs = Vec::with_capacity(freq_channel_count);
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Freq {
+    let channels: Vec<&HwmonChannelInfo> = driver
+        .channels
+        .iter()
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Freq)
+        .collect();
+    if channels.is_empty() {
+        return freqs;
+    }
+    // One hop for the device's whole frequency set.
+    // See `temps::read_temp_statuses` for why the reply is not zipped straight onto `channels`.
+    let (slots, slotted) = slots_for(&channels, |channel| channel.read_slot.value);
+    debug_assert_eq!(
+        slots.len(),
+        channels.len(),
+        "every freq channel needs a read slot; was the registry installed?"
+    );
+    let mut results = driver.io.read_many(&slots).await.into_iter();
+    for (channel, has_slot) in channels.iter().zip(slotted) {
+        let Some(result) = has_slot.then(|| results.next()).flatten() else {
             continue;
-        }
-        let result = driver
-            .fds
-            .read_value(&driver.path.join(format!("freq{}_input", channel.number)))
-            .await
-            .and_then(check_parsing_64)
-            .map(hertz_to_megahertz);
-        if let Ok(freq) = result {
+        };
+        if let Ok(freq) = result.and_then(check_parsing_64).map(hertz_to_megahertz) {
             freqs.push(ChannelStatus {
                 name: channel.name.clone(),
                 freq: Some(freq),
@@ -91,7 +104,7 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
             }
             let freq_task = scope.spawn(async {
                 let result = driver
-                    .fds
+                    .io
                     .read_value(&driver.path.join(format!("freq{}_input", channel.number)))
                     .await
                     .and_then(check_parsing_64)
@@ -112,17 +125,21 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
     .collect()
 }
 
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8, io: &DeviceIo) -> bool {
     let freq_path = base_path.join(format!("freq{channel_number}_input"));
     // Detection is one-shot, so a transient failure earns a re-read before the channel is lost
-    // for the session. See `probe::until_readable`.
-    probe::until_readable(&freq_path, async || read_freq_megahertz(&freq_path).await).await
+    // for the session.
+    probe::read_until_ok(&freq_path, async || {
+        read_freq_megahertz(io, &freq_path).await
+    })
+    .await
+    .is_ok()
 }
 
 /// One frequency read in MHz, error intact. Detection needs the errno to tell a transient failure
 /// from a sensor that is simply not readable.
-async fn read_freq_megahertz(freq_path: &Path) -> Result<Mhz> {
-    cc_fs::read_sysfs_value(freq_path)
+async fn read_freq_megahertz(io: &DeviceIo, freq_path: &Path) -> Result<Mhz> {
+    io.read_value(freq_path)
         .await
         .and_then(check_parsing_64)
         .map(hertz_to_megahertz)
@@ -171,7 +188,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::ops::Not;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
@@ -229,7 +246,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -262,7 +281,9 @@ mod tests {
                     ..Default::default()
                 }],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -305,7 +326,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;
@@ -347,7 +370,9 @@ mod tests {
                     },
                 ],
                 ..Default::default()
-            };
+            }
+            .with_read_registry()
+            .await;
 
             // when:
             let freqs = extract_freq_statuses(&driver_info).await;

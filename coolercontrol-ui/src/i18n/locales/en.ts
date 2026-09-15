@@ -638,6 +638,9 @@ export default {
             findingDetectionUnsupported:
                 'Hardware detection is not supported on this architecture.',
             failsafeActive: 'Failsafe values in use',
+            deviceUnreachable: 'Device is not responding',
+            deviceUnreachableDetail:
+                'The driver stopped answering, so this device cannot be read or controlled. Retrying periodically.',
             missingTempSource: 'Missing temp source',
             staleTempSource: 'Temp source using failsafe values',
             stressTest: 'Thermal Stress Tests',

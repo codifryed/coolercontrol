@@ -54,20 +54,21 @@
 //! Shutdown: `shutdown_token.cancel()` unblocks writer tasks and the
 //! preload entry guard; the per-channel reset-to-default loop then
 //! runs synchronously taking the permit directly.
-
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device,
     DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp,
     TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
-use crate::device_health::FailsafeRef;
+use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::chip_name::ChipName;
+use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
@@ -118,6 +119,13 @@ fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
+
+/// Cap on resetting one device's channels to their firmware defaults at shutdown.
+///
+/// Per device, so the worst case scales predictably with device count instead of letting one slow
+/// device starve the rest. Sized against `TimeoutStopSec=10`: healthy devices reset in
+/// milliseconds, so only a wedged one ever spends the budget.
+const SHUTDOWN_RESET_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[allow(clippy::cast_precision_loss)]
 fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
@@ -213,10 +221,41 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub auto_curve: AutoCurveInfo,
     pub caps: HwmonChannelCapabilities,
-    // Paths that are often used are saved to avoid cloning
+    // Cached at detection. The per-tick pass addresses the worker's table by slot instead, so
+    // these are for writes and one-shot reads.
     pub pwm_path: Option<PathBuf>,
     pub rpm_path: Option<PathBuf>,
     pub temp_path: Option<PathBuf>,
+    /// Slots in the device's read table. Assigned once, after detection settles the channel set.
+    pub read_slot: ChannelReadSlots,
+}
+
+/// Where a channel's per-tick attributes live in its device's read table.
+///
+/// `None` means the attribute is not read per tick, or the table has not been installed yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelReadSlots {
+    pub pwm: Option<ReadIndex>,
+    /// Read only when a driver refuses its `pwmN` in auto mode, but every tick on the drivers
+    /// that always do, so it is registered like any other per-tick attribute.
+    pub pwm_enable: Option<ReadIndex>,
+    pub rpm: Option<ReadIndex>,
+    /// Temp, power, freq, powercap or load: the channel's single value file.
+    pub value: Option<ReadIndex>,
+}
+
+impl HwmonDriverInfo {
+    /// Installs this driver's read table, for tests that build one by hand.
+    ///
+    /// Production installs it in the detection pass, once the channel set has settled.
+    #[cfg(test)]
+    pub async fn with_read_registry(mut self) -> Self {
+        let path = self.path.clone();
+        install_read_registry(&path, None, &mut self.channels, &self.io)
+            .await
+            .expect("test read table installs");
+        self
+    }
 }
 
 impl Default for HwmonChannelInfo {
@@ -232,6 +271,7 @@ impl Default for HwmonChannelInfo {
             pwm_path: None,
             rpm_path: None,
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         }
     }
 }
@@ -246,6 +286,84 @@ bitflags! {
         // Specialities
         const APPLE_SMC = 1 << 15;
     }
+}
+
+/// Assigns every per-tick attribute a slot and installs the device's read table.
+///
+/// Called once, after detection has settled the channel set. From here the per-tick pass addresses
+/// the table by slot, so no path crosses to the worker again and nothing is hashed.
+///
+/// `load_path` is the AMD GPU's `gpu_busy_percent`, which lives outside the hwmon directory; every
+/// other attribute hangs off `base_path`.
+///
+/// # Errors
+///
+/// When the device's worker is gone or does not answer.
+pub async fn install_read_registry(
+    base_path: &Path,
+    load_path: Option<&Path>,
+    channels: &mut [HwmonChannelInfo],
+    io: &DeviceIo,
+) -> Result<()> {
+    let mut paths: Vec<PathBuf> = Vec::with_capacity(channels.len() * 2);
+    let slot = |paths: &mut Vec<PathBuf>, path: PathBuf| -> Option<ReadIndex> {
+        let index = ReadIndex::try_from(paths.len()).ok()?;
+        paths.push(path);
+        Some(index)
+    };
+    for channel in channels.iter_mut() {
+        channel.read_slot = ChannelReadSlots::default();
+        match channel.hwmon_type {
+            HwmonChannelType::Fan => {
+                if channel.caps.has_pwm() {
+                    let path = channel
+                        .pwm_path
+                        .clone()
+                        .unwrap_or_else(|| base_path.join(format!("pwm{}", channel.number)));
+                    channel.read_slot.pwm = slot(&mut paths, path);
+                    let enable_path = base_path.join(format!("pwm{}_enable", channel.number));
+                    channel.read_slot.pwm_enable = slot(&mut paths, enable_path);
+                }
+                if channel.caps.has_rpm() {
+                    let path = channel
+                        .rpm_path
+                        .clone()
+                        .unwrap_or_else(|| base_path.join(format!("fan{}_input", channel.number)));
+                    channel.read_slot.rpm = slot(&mut paths, path);
+                }
+            }
+            HwmonChannelType::Temp => {
+                let path = channel
+                    .temp_path
+                    .clone()
+                    .unwrap_or_else(|| base_path.join(format!("temp{}_input", channel.number)));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            // In the Power case, `channel.name` is the sysfs file name.
+            HwmonChannelType::Power => {
+                let path = base_path.join(&channel.name);
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::Freq => {
+                let path = base_path.join(format!("freq{}_input", channel.number));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::PowerCap => {
+                let path = PathBuf::from(format!(
+                    "/sys/class/powercap/intel-rapl:{}/energy_uj",
+                    channel.number
+                ));
+                channel.read_slot.value = slot(&mut paths, path);
+            }
+            HwmonChannelType::Load => {
+                if let Some(load_path) = load_path {
+                    channel.read_slot.value = slot(&mut paths, load_path.to_path_buf());
+                }
+            }
+        }
+    }
+    debug_assert!(paths.len() <= device_io::READ_BATCH_MAX);
+    io.install_registry(paths).await
 }
 
 impl HwmonChannelCapabilities {
@@ -297,7 +415,7 @@ pub struct HwmonDriverInfo {
     /// driver's lifetime: dropping the driver info closes them, and the channel set detected with
     /// it bounds how many there can be.
     #[serde(skip)]
-    pub fds: cc_fs::SysfsFdCache,
+    pub io: DeviceIo,
 }
 
 /// Sized to fit a typical hwmon fan-channel set (1-8) without growth.
@@ -370,6 +488,10 @@ pub struct HwmonRepo {
     /// for the repo's lifetime.
     slow_devices: HashSet<TypeIndex>,
 
+    /// Budget for one `DeviceIo` operation before the device counts
+    /// as not answering.
+    device_io_reply_timeout: Duration,
+
     /// Per-slow-device PWM duty cache. `Rc<RefCell<...>>` so the
     /// writer task can also update `last_known` on successful writes.
     duty_cache: HashMap<TypeIndex, Rc<RefCell<HashMap<ChannelName, DutyCacheEntry>>>>,
@@ -410,6 +532,7 @@ impl HwmonRepo {
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         let slow_device_init_threshold = slow_device_init_threshold_for(poll_rate);
         let drivetemp_ioctl_timeout = drivetemp_ioctl_timeout_for(poll_rate);
+        let device_io_reply_timeout = device_io::reply_timeout_for(poll_rate);
         Self {
             config,
             overrides,
@@ -436,6 +559,7 @@ impl HwmonRepo {
             device_write_permit_timeout,
             slow_device_init_threshold,
             drivetemp_ioctl_timeout,
+            device_io_reply_timeout,
         }
     }
 
@@ -521,7 +645,9 @@ impl HwmonRepo {
                         if thinkpad_fan_control.is_some() && channel.number == 1 {
                             thinkpad_fan_control = Some(
                                 // verify if fan control for this ThinkPad is enabled or not:
-                                fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
+                                fans::set_pwm_enable(2, &driver.path, channel, &driver.io)
+                                    .await
+                                    .is_ok(),
                             );
                         }
                         let extension = match &channel.auto_curve {
@@ -695,14 +821,61 @@ impl HwmonRepo {
         hardware_support.record_excluded_channel(path, channel_name, reason);
     }
 
-    /// Publishes the passive verdict for every fan channel on a device, and
-    /// logs the ones we cannot drive. Init only, so the log lines are written
-    /// once per boot rather than once per hardware report.
+    /// Resets one device's fan channels to their firmware defaults, recording per-channel
+    /// failures. Continue-on-error: leaving later fans stuck in manual mode is worse than logging
+    /// each failure and reporting an aggregate.
+    async fn reset_device_for_shutdown(
+        &self,
+        device_uid: &UID,
+        type_index: TypeIndex,
+        hwmon_driver: &Rc<HwmonDriverInfo>,
+        failures: &mut Vec<String>,
+    ) {
+        for channel_info in &hwmon_driver.channels {
+            if channel_info.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            debug!(
+                "Applying HWMON device: {device_uid} channel: {}; \
+                Resetting to Original fan control mode",
+                channel_info.name
+            );
+            let device_permit = match self
+                .get_permit_with_write_timeout(type_index, &hwmon_driver.name, &channel_info.name)
+                .await
+            {
+                Ok(permit) => permit,
+                Err(err) => {
+                    error!(
+                        "Shutdown reset skipped for {}:{} - permit timeout: {err}",
+                        hwmon_driver.name, channel_info.name
+                    );
+                    failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+                    continue;
+                }
+            };
+            if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
+                &hwmon_driver.path,
+                channel_info,
+                &hwmon_driver.io,
+            )
+            .await
+            {
+                error!(
+                    "Shutdown reset failed for {}:{}: {err}",
+                    hwmon_driver.name, channel_info.name
+                );
+                failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+            }
+            drop(device_permit);
+        }
+    }
+
+    /// Publishes the passive verdict for every fan channel and logs the ones we cannot drive.
+    /// Init only, so each line is written once per boot.
     ///
-    /// `firmware_override_observed` is false here by construction: at init
-    /// nothing has attempted control yet, so there has been nothing to
-    /// reclaim. Nothing republishes a channel afterwards: only a duty-response
-    /// probe can observe a reclaim, and that is not part of this work.
+    /// `firmware_override_observed` is false here by construction: nothing has attempted control
+    /// yet, so there has been nothing to reclaim.
     fn publish_channel_verdicts(&self, device_uid: &UID, driver: &HwmonDriverInfo) {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Fan {
@@ -769,6 +942,14 @@ impl HwmonRepo {
         let _coalesce_guard = PreloadInFlightGuard {
             flag: Rc::clone(flag),
         };
+        // Left alone until its worker's probe is due: dispatching would spend a full reply budget
+        // per tick to learn what the last one established. Staleness still ticks, so the failsafe
+        // takes over on the usual schedule. Must stay below the coalesce guard, or
+        // `preload_in_flight` is left set with nothing to clear it.
+        if driver.io.is_unreachable() {
+            self.tick_staleness_and_log(type_index, &driver.name);
+            return;
+        }
 
         // `is_failsafed` and `stale_ticks` persist across preloads;
         // only the fresh-this-tick flags get cleared here.
@@ -800,7 +981,7 @@ impl HwmonRepo {
             HwmonChannelType::Temp,
             HwmonChannelType::Fan,
         ] {
-            let typed_channels: Vec<&HwmonChannelInfo> = driver
+            let mut typed_channels: Vec<&HwmonChannelInfo> = driver
                 .channels
                 .iter()
                 .filter(|c| c.hwmon_type == ch_type)
@@ -813,14 +994,37 @@ impl HwmonRepo {
             // small channel count.
             #[allow(clippy::cast_possible_truncation)]
             let start = (tick as usize) % channel_count;
-            for offset in 0..channel_count {
-                if self.shutdown_token.is_cancelled() {
-                    return;
-                }
-                let channel = typed_channels[(start + offset) % channel_count];
-                self.read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
-                    .await;
+            // Rotated so the upsert order still varies per tick, as it did when the pass was read
+            // one channel at a time.
+            typed_channels.rotate_left(start);
+            if self.shutdown_token.is_cancelled() {
+                return;
             }
+            // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
+            if driver.apple_smc.detected {
+                for &channel in &typed_channels {
+                    if self.shutdown_token.is_cancelled() {
+                        return;
+                    }
+                    self.read_one_channel(
+                        type_index,
+                        driver,
+                        channel,
+                        &ch_type,
+                        drivetemp_suspended,
+                    )
+                    .await;
+                }
+                continue;
+            }
+            self.read_channels_batched(
+                type_index,
+                driver,
+                &typed_channels,
+                &ch_type,
+                drivetemp_suspended,
+            )
+            .await;
         }
 
         // Drop before spawning the delay holder so any queued waiter
@@ -868,6 +1072,95 @@ impl HwmonRepo {
         }
     }
 
+    /// Reads one channel type's whole set for a device in a single hop.
+    ///
+    /// Same reads, order and decisions as the per-channel path; only the number of round trips to
+    /// the worker changes. It cannot be abandoned part-way, which is what the round-robin start
+    /// index exists to make fair.
+    async fn read_channels_batched(
+        &self,
+        type_index: TypeIndex,
+        driver: &Rc<HwmonDriverInfo>,
+        channels: &[&HwmonChannelInfo],
+        ch_type: &HwmonChannelType,
+        drivetemp_suspended: bool,
+    ) {
+        match ch_type {
+            HwmonChannelType::Power => {
+                for status in power::read_power_statuses(driver, channels).await {
+                    let Some(status) = status else { continue };
+                    self.mark_channel_fresh(type_index, &status.name);
+                    self.upsert_single_channel(type_index, status);
+                }
+            }
+            HwmonChannelType::Temp => {
+                // A suspended drive must not be read at all, so it never enters the batch.
+                let statuses = if drivetemp_suspended {
+                    channels
+                        .iter()
+                        .map(|channel| Some(drivetemp::default_suspended_temp_for(channel)))
+                        .collect()
+                } else {
+                    temps::read_temp_statuses(driver, channels).await
+                };
+                for status in statuses {
+                    let Some(status) = status else { continue };
+                    self.mark_temp_fresh(type_index, &status.name);
+                    self.upsert_single_temp(type_index, status);
+                }
+            }
+            HwmonChannelType::Fan => self.read_fan_channels(type_index, driver, channels).await,
+            _ => {}
+        }
+    }
+
+    /// Batched counterpart to `read_fan_channel`, keeping its per-channel decision intact.
+    ///
+    /// The decision is made first, for every channel, and only then are the chosen attributes
+    /// read. A slow device with a fresh cache therefore still pays rpm reads alone, and at most
+    /// one channel's pwm verify falls due per tick, exactly as before.
+    async fn read_fan_channels(
+        &self,
+        type_index: TypeIndex,
+        driver: &Rc<HwmonDriverInfo>,
+        channels: &[&HwmonChannelInfo],
+    ) {
+        let mut plan: Vec<(&HwmonChannelInfo, fans::FanRead)> = Vec::with_capacity(channels.len());
+        let mut cached_duties: Vec<Option<Duty>> = Vec::with_capacity(channels.len());
+        for channel in channels {
+            let cached = self.reusable_duty(type_index, &channel.name);
+            plan.push((
+                channel,
+                if cached.is_some() {
+                    fans::FanRead::RpmOnly
+                } else {
+                    fans::FanRead::Full
+                },
+            ));
+            cached_duties.push(cached);
+        }
+
+        let readings = fans::read_fan_statuses(driver, &plan).await;
+        debug_assert_eq!(readings.len(), channels.len());
+        for ((channel, cached_duty), reading) in channels.iter().zip(cached_duties).zip(readings) {
+            let status = match reading {
+                fans::FanReading::Failed => continue,
+                fans::FanReading::Rpm(rpm) => ChannelStatus {
+                    name: channel.name.clone(),
+                    rpm,
+                    duty: cached_duty.map(f64::from),
+                    ..Default::default()
+                },
+                fans::FanReading::Full(status) => {
+                    self.refresh_duty_cache(type_index, channel, status.duty);
+                    status
+                }
+            };
+            self.mark_channel_fresh(type_index, &status.name);
+            self.upsert_single_channel(type_index, status);
+        }
+    }
+
     /// Fast device: real PWM + RPM read. Slow device: cached duty +
     /// RPM-only until `next_verify_at`, then a real read that refreshes
     /// the cache.
@@ -879,31 +1172,12 @@ impl HwmonRepo {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         if self.slow_devices.contains(&type_index).not() {
-            return if driver.apple_smc.detected {
-                driver.apple_smc.read_one_fan_status(driver, channel).await
-            } else {
-                fans::read_one_fan_status(driver, channel).await
-            };
+            return read_one_fan_status_for(driver, channel).await;
         }
-        let cache = self.duty_cache.get(&type_index);
-        let cached_duty = cache.and_then(|c| {
-            c.borrow()
-                .get(&channel.name)
-                .filter(|entry| Instant::now() < entry.next_verify_at)
-                .map(|entry| entry.last_known)
-        });
-        if let Some(duty) = cached_duty {
-            let rpm_result = if driver.apple_smc.detected {
-                driver
-                    .apple_smc
-                    .read_one_fan_rpm_only(driver, channel)
-                    .await
-            } else {
-                fans::read_one_fan_rpm_only(driver, channel).await
-            };
+        if let Some(duty) = self.reusable_duty(type_index, &channel.name) {
             // Outer None: RPM read failed (omit so failsafe engages).
             // Inner None: no RPM cap.
-            let rpm = rpm_result?;
+            let rpm = read_one_fan_rpm_only_for(driver, channel).await?;
             return Some(ChannelStatus {
                 name: channel.name.clone(),
                 rpm,
@@ -912,25 +1186,49 @@ impl HwmonRepo {
             });
         }
         // Verify due (or no cache entry yet): real read + refresh.
-        let status = if driver.apple_smc.detected {
-            driver.apple_smc.read_one_fan_status(driver, channel).await
-        } else {
-            fans::read_one_fan_status(driver, channel).await
-        }?;
-        if let Some(duty_f64) = status.duty {
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let duty_u8 = duty_f64.round().clamp(0.0, 100.0) as Duty;
-            if let Some(cache) = cache {
-                cache.borrow_mut().insert(
-                    channel.name.clone(),
-                    DutyCacheEntry {
-                        last_known: duty_u8,
-                        next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
-                    },
-                );
-            }
-        }
+        let status = read_one_fan_status_for(driver, channel).await?;
+        self.refresh_duty_cache(type_index, channel, status.duty);
         Some(status)
+    }
+
+    /// The duty a slow device's channel may reuse this tick, or `None` when a real read is due.
+    fn reusable_duty(&self, type_index: TypeIndex, channel_name: &str) -> Option<Duty> {
+        if self.slow_devices.contains(&type_index).not() {
+            return None;
+        }
+        self.duty_cache.get(&type_index).and_then(|cache| {
+            cache
+                .borrow()
+                .get(channel_name)
+                .filter(|entry| Instant::now() < entry.next_verify_at)
+                .map(|entry| entry.last_known)
+        })
+    }
+
+    /// Records a freshly read duty and schedules this channel's next verify.
+    ///
+    /// Only devices flagged slow at init have a cache, so this is a no-op everywhere else. Each
+    /// channel carries its own `next_verify_at`, which is what staggers the expensive pwm reads
+    /// across ticks instead of bunching them into one long pass.
+    fn refresh_duty_cache(
+        &self,
+        type_index: TypeIndex,
+        channel: &HwmonChannelInfo,
+        duty: Option<f64>,
+    ) {
+        let Some(duty_f64) = duty else { return };
+        let Some(cache) = self.duty_cache.get(&type_index) else {
+            return;
+        };
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        let duty_u8 = duty_f64.round().clamp(0.0, 100.0) as Duty;
+        cache.borrow_mut().insert(
+            channel.name.clone(),
+            DutyCacheEntry {
+                last_known: duty_u8,
+                next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+            },
+        );
     }
 
     fn reset_fresh_this_tick(&self, type_index: TypeIndex) {
@@ -1307,6 +1605,33 @@ struct WriterTask {
 /// fixed order will keep re-servicing the head channel while the
 /// tail starves; the counter ensures every channel rotates through
 /// the head over successive multi-entry waves.
+/// One fan channel's duty and rpm, through the Apple SMC driver when that is what this device is.
+async fn read_one_fan_status_for(
+    driver: &Rc<HwmonDriverInfo>,
+    channel: &HwmonChannelInfo,
+) -> Option<ChannelStatus> {
+    if driver.apple_smc.detected {
+        driver.apple_smc.read_one_fan_status(driver, channel).await
+    } else {
+        fans::read_one_fan_status(driver, channel).await
+    }
+}
+
+/// The rpm half of `read_one_fan_status_for`, for a channel whose duty is still cached.
+async fn read_one_fan_rpm_only_for(
+    driver: &Rc<HwmonDriverInfo>,
+    channel: &HwmonChannelInfo,
+) -> Option<Option<u32>> {
+    if driver.apple_smc.detected {
+        driver
+            .apple_smc
+            .read_one_fan_rpm_only(driver, channel)
+            .await
+    } else {
+        fans::read_one_fan_rpm_only(driver, channel).await
+    }
+}
+
 async fn run_writer_task(task: WriterTask) {
     let mut buffer: HashMap<ChannelName, PendingWrite> =
         HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
@@ -1637,10 +1962,10 @@ async fn apply_pwm_duty_write(
     } else if driver.apple_smc.detected {
         driver
             .apple_smc
-            .set_fan_duty(channel_info.number, target_duty)
+            .set_fan_duty(channel_info.number, target_duty, &driver.io)
             .await
     } else {
-        fans::set_pwm_duty(&driver.path, channel_info, target_duty)
+        fans::set_pwm_duty(&driver.path, channel_info, target_duty, &driver.io)
             .await
             .map_err(|err| {
                 anyhow!(
@@ -1655,6 +1980,24 @@ async fn apply_pwm_duty_write(
 impl Repository for HwmonRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Hwmon
+    }
+
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, (_, driver)) in &self.devices {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = driver.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: driver.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        out
     }
 
     fn failsafing(&self) -> Vec<FailsafeRef> {
@@ -1755,11 +2098,14 @@ impl Repository for HwmonRepo {
             // The chip identity the lm-sensors configuration names, needed here to apply its
             // `ignore` statements, and reused below for the labels and the summary log.
             let chip = chip_name::derive(&path).await;
+            // Before any value read: detection is exactly where a driver that sleeps inside its
+            // sysfs read first bites (issue 609), so it belongs on the device's own thread.
+            let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
             let fans = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::init_fans(&path).await
+                AppleMacSMC::init_fans(&path, &io).await
             } else {
-                fans::init_fans(&path, &device_name)
+                fans::init_fans(&path, &device_name, &io)
                     .await
                     .unwrap_or_else(|err| {
                         error!("Error initializing Hwmon Fans: {err}");
@@ -1777,7 +2123,7 @@ impl Repository for HwmonRepo {
                 fans.into_iter()
                     .filter(|fan| disabled_channels.contains(&fan.name).not()),
             );
-            match temps::init_temps(&path, &device_name).await {
+            match temps::init_temps(&path, &device_name, &io).await {
                 Ok(temps) => channels.extend(
                     temps
                         .into_iter()
@@ -1786,7 +2132,7 @@ impl Repository for HwmonRepo {
                 ),
                 Err(err) => error!("Error initializing Hwmon Temps: {err}"),
             }
-            match power::init_power(&path).await {
+            match power::init_power(&path, &io).await {
                 Ok(power) => channels.extend(
                     power
                         .into_iter()
@@ -1839,6 +2185,11 @@ impl Repository for HwmonRepo {
             } else {
                 AppleMacSMC::not_applicable()
             };
+            // Detection is done with this device's channel set, so the per-tick pass can stop
+            // sending paths and address the worker's table by slot from here on.
+            if let Err(err) = install_read_registry(&path, None, &mut channels, &io).await {
+                error!("Could not install the read table for {device_name}: {err}");
+            }
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -1852,7 +2203,7 @@ impl Repository for HwmonRepo {
                 channels,
                 drivetemp,
                 apple_smc,
-                fds: cc_fs::SysfsFdCache::default(),
+                io,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -1995,43 +2346,20 @@ impl Repository for HwmonRepo {
         let mut failures: Vec<String> = Vec::new();
         for (device_uid, (device_lock, hwmon_driver)) in &self.devices {
             let type_index = device_lock.borrow().type_index;
-            for channel_info in &hwmon_driver.channels {
-                if channel_info.hwmon_type != HwmonChannelType::Fan {
-                    continue;
-                }
-                debug!(
-                    "Applying HWMON device: {device_uid} channel: {}; \
-                    Resetting to Original fan control mode",
-                    channel_info.name
+            // A device that stopped answering during the session may answer now, and this is the
+            // most safety-relevant write the daemon makes, so it earns one attempt regardless.
+            hwmon_driver.io.allow_probe_now();
+            let reset =
+                self.reset_device_for_shutdown(device_uid, type_index, hwmon_driver, &mut failures);
+            if rt::timeout(SHUTDOWN_RESET_TIMEOUT, reset).await.is_err() {
+                // Actionable: an un-reset device keeps the duty the daemon last set instead of
+                // returning to firmware control, so name it.
+                warn!(
+                    "Shutdown reset for HWMon device {} exceeded {:?} and was skipped. Its fans \
+                     stay at the last duty set until the firmware takes over.",
+                    hwmon_driver.name, SHUTDOWN_RESET_TIMEOUT
                 );
-                let device_permit = match self
-                    .get_permit_with_write_timeout(
-                        type_index,
-                        &hwmon_driver.name,
-                        &channel_info.name,
-                    )
-                    .await
-                {
-                    Ok(permit) => permit,
-                    Err(err) => {
-                        error!(
-                            "Shutdown reset skipped for {}:{} - permit timeout: {err}",
-                            hwmon_driver.name, channel_info.name
-                        );
-                        failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
-                        continue;
-                    }
-                };
-                if let Err(err) =
-                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
-                {
-                    error!(
-                        "Shutdown reset failed for {}:{}: {err}",
-                        hwmon_driver.name, channel_info.name
-                    );
-                    failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
-                }
-                drop(device_permit);
+                failures.push(format!("{} (timed out)", hwmon_driver.name));
             }
         }
         if failures.is_empty() {
@@ -2060,10 +2388,15 @@ impl Repository for HwmonRepo {
         let result = if hwmon_driver.apple_smc.detected {
             hwmon_driver
                 .apple_smc
-                .set_to_auto_control(channel_info.number)
+                .set_to_auto_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
-            fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+            fans::set_pwm_enable_to_default_or_auto(
+                &hwmon_driver.path,
+                channel_info,
+                &hwmon_driver.io,
+            )
+            .await
         };
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -2091,13 +2424,14 @@ impl Repository for HwmonRepo {
         let result = if hwmon_driver.apple_smc.detected {
             hwmon_driver
                 .apple_smc
-                .set_to_manual_control(channel_info.number)
+                .set_to_manual_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
             fans::set_pwm_enable(
                 fans::PWM_ENABLE_MANUAL_VALUE,
                 &hwmon_driver.path,
                 channel_info,
+                &hwmon_driver.io,
             )
             .await
             .map_err(|err| {
@@ -2216,6 +2550,7 @@ impl Repository for HwmonRepo {
             speed_profile,
             temp_channel_info,
             &hwmon_driver.name,
+            &hwmon_driver.io,
         )
         .await
         .map_err(|err| {
@@ -2266,7 +2601,7 @@ impl Repository for HwmonRepo {
         // and recover on its own, but dropping them here means the first tick back never spends a
         // read finding that out.
         for (_device_lock, hwmon_driver) in self.devices.values() {
-            hwmon_driver.fds.clear();
+            hwmon_driver.io.clear_descriptors();
         }
         // Tight systemd-sleep window (1-3 s). No permit taken:
         // ThinkPad EC tolerates concurrent ops with preload, and
@@ -2290,6 +2625,7 @@ impl Repository for HwmonRepo {
                     fans::PWM_ENABLE_AUTO_VALUE,
                     &hwmon_driver.path,
                     channel_info,
+                    &hwmon_driver.io,
                 );
                 match rt::timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
                     Ok(Ok(())) => {}
@@ -2328,6 +2664,8 @@ mod preload_tests {
     use uuid::Uuid;
 
     const TEST_TYPE_INDEX: TypeIndex = 1;
+    /// A second registered device, for tests that must keep two devices genuinely apart.
+    const TEST_TYPE_INDEX_B: TypeIndex = 2;
 
     struct PreloadContext {
         test_base_path: PathBuf,
@@ -2356,11 +2694,13 @@ mod preload_tests {
         // Per-device-map invariant: one entry per registered
         // type_index across device_permits, preload_in_flight, and
         // delay_logged.
-        repo.device_permits
-            .insert(TEST_TYPE_INDEX, Rc::new(Semaphore::new(1)));
-        repo.preload_in_flight
-            .insert(TEST_TYPE_INDEX, Rc::new(Cell::new(false)));
-        repo.delay_logged.insert(TEST_TYPE_INDEX, Cell::new(0));
+        for type_index in [TEST_TYPE_INDEX, TEST_TYPE_INDEX_B] {
+            repo.device_permits
+                .insert(type_index, Rc::new(Semaphore::new(1)));
+            repo.preload_in_flight
+                .insert(type_index, Rc::new(Cell::new(false)));
+            repo.delay_logged.insert(type_index, Cell::new(0));
+        }
         repo
     }
 
@@ -2376,23 +2716,36 @@ mod preload_tests {
             pwm_path: Some(base_path.join(format!("pwm{number}"))),
             rpm_path: Some(base_path.join(format!("fan{number}_input"))),
             temp_path: None,
+            read_slot: ChannelReadSlots::default(),
         }
     }
 
-    fn driver_with_channels(
+    async fn driver_with_channels(
         base_path: &Path,
         channels: Vec<HwmonChannelInfo>,
     ) -> Rc<HwmonDriverInfo> {
-        Rc::new(HwmonDriverInfo {
-            name: "test_driver".to_string(),
-            path: base_path.to_path_buf(),
-            model: None,
-            u_id: String::new(),
-            channels,
-            drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
-            fds: cc_fs::SysfsFdCache::default(),
-        })
+        driver_with_io(base_path, channels, DeviceIo::default()).await
+    }
+
+    async fn driver_with_io(
+        base_path: &Path,
+        channels: Vec<HwmonChannelInfo>,
+        io: DeviceIo,
+    ) -> Rc<HwmonDriverInfo> {
+        Rc::new(
+            HwmonDriverInfo {
+                name: "test_driver".to_string(),
+                path: base_path.to_path_buf(),
+                model: None,
+                u_id: String::new(),
+                channels,
+                drivetemp: DrivetempState::default(),
+                apple_smc: AppleMacSMC::default(),
+                io,
+            }
+            .with_read_registry()
+            .await,
+        )
     }
 
     /// Seeds the failsafe map for `type_index` using initial statuses
@@ -2410,6 +2763,189 @@ mod preload_tests {
         }
     }
 
+    /// Goal: every per-tick attribute gets a slot, and each slot addresses the file the channel
+    /// actually means. A slot pointing at the wrong attribute is the one failure this design can
+    /// introduce that the old path-keyed cache could not, because it reads a real value from the
+    /// wrong sensor instead of failing.
+    ///
+    /// Method: one channel of each kind, including the AMD Load channel whose file lives outside
+    /// the hwmon directory, then read every slot back and compare it to the expected path.
+    #[test]
+    #[serial]
+    fn every_channel_kind_registers_a_slot_for_its_own_file() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from("/sys/class/hwmon/hwmon9");
+            let load_path = PathBuf::from("/sys/class/drm/card0/device/gpu_busy_percent");
+            let mut channels = vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    name: "fan1".to_string(),
+                    caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 2,
+                    name: "temp2".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    number: 1,
+                    name: "power1_average".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    number: 3,
+                    name: "freq3".to_string(),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Load,
+                    number: 1,
+                    name: "load".to_string(),
+                    ..Default::default()
+                },
+            ];
+
+            let io = DeviceIo::default();
+            install_read_registry(&base, Some(&load_path), &mut channels, &io)
+                .await
+                .unwrap();
+
+            let slot_path = |slot: Option<ReadIndex>| {
+                io.registered_path(slot.expect("channel has a slot"))
+                    .expect("slot is registered")
+            };
+            assert_eq!(slot_path(channels[0].read_slot.pwm), base.join("pwm1"));
+            // Read only on the auto-mode refusal fallback, but every tick on the drivers that
+            // always refuse, so it is registered rather than read straight off the main runtime.
+            assert_eq!(
+                slot_path(channels[0].read_slot.pwm_enable),
+                base.join("pwm1_enable")
+            );
+            assert_eq!(
+                slot_path(channels[0].read_slot.rpm),
+                base.join("fan1_input")
+            );
+            assert_eq!(
+                slot_path(channels[1].read_slot.value),
+                base.join("temp2_input")
+            );
+            assert_eq!(
+                slot_path(channels[2].read_slot.value),
+                base.join("power1_average")
+            );
+            assert_eq!(
+                slot_path(channels[3].read_slot.value),
+                base.join("freq3_input")
+            );
+            // Outside the hwmon directory, which is why it is registered separately.
+            assert_eq!(slot_path(channels[4].read_slot.value), load_path);
+        });
+    }
+
+    /// Goal: the reason this whole mechanism exists. A device that stops answering must not stop
+    /// the daemon: it must leave the per-tick rotation rather than costing a timeout every tick,
+    /// its channels must go stale and fall to the failsafe on the usual schedule, and a healthy
+    /// device sharing the repo must be untouched by any of it.
+    ///
+    /// Method: give one device a worker nobody drains and a second device ordinary inline IO, on
+    /// two separate type indexes so neither can borrow the other's state. Preload the wedged one
+    /// past both thresholds, then assert all four properties.
+    #[test]
+    #[serial]
+    fn a_wedged_device_does_not_stop_a_healthy_one() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let channels = vec![fan_channel_with_paths(1, "fan1", base)];
+
+            // Short budget so the test does not spend the real per-device timeout eight times.
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
+            let wedged = driver_with_io(base, channels.clone(), wedged_io).await;
+            let healthy = driver_with_channels(base, channels).await;
+
+            let repo = new_test_repo();
+            // Seeded as if both had preloaded once at init, so their channels have failsafe state
+            // to go stale from. Without this there is nothing for staleness to tick.
+            let seed = ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                ..Default::default()
+            };
+            seed_failsafe(&repo, TEST_TYPE_INDEX, std::slice::from_ref(&seed), &[]);
+            seed_failsafe(&repo, TEST_TYPE_INDEX_B, &[seed], &[]);
+
+            // when: the wedged device is polled past the unreachable threshold, and then past the
+            // failsafe's staleness threshold while it stays unreachable.
+            for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            }
+            assert!(wedged.io.is_unreachable());
+            for _ in 0..=MISSING_STATUS_THRESHOLD {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            }
+
+            // then: skipping it is cheap, so it costs nothing per tick.
+            let started = Instant::now();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &wedged).await;
+            assert!(
+                started.elapsed() < Duration::from_millis(20),
+                "skipping an unreachable device still dispatched: {:?}",
+                started.elapsed()
+            );
+
+            // and: leaving the rotation did not stop its channels going stale and failsafing.
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map
+                    .get(&TEST_TYPE_INDEX)
+                    .expect("the wedged device has failsafe state");
+                let fan1 = &fsd.channel_state["fan1"];
+                assert!(
+                    (fan1.stale_ticks as usize) > MISSING_STATUS_THRESHOLD,
+                    "staleness must keep ticking while the device is unreachable"
+                );
+                assert!(fan1.is_failsafed, "the failsafe must take the channel over");
+                assert!(fsd.was_failsafing);
+            }
+
+            // and: a healthy device on the same repo is unaffected.
+            assert!(healthy.io.is_unreachable().not());
+            repo.preload_device_statuses(TEST_TYPE_INDEX_B, &healthy)
+                .await;
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded
+                    .get(&TEST_TYPE_INDEX_B)
+                    .expect("healthy device produced a status");
+                assert_eq!(channels.len(), 1);
+                assert_eq!(channels[0].name, "fan1");
+                assert_eq!(channels[0].rpm, Some(1200));
+            }
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map.get(&TEST_TYPE_INDEX_B).unwrap();
+                assert_eq!(
+                    fsd.channel_state["fan1"].stale_ticks, 0,
+                    "the healthy device must not inherit the wedged one's staleness"
+                );
+                assert!(fsd.channel_state["fan1"].is_failsafed.not());
+            }
+            teardown(&ctx).await;
+        });
+    }
+
     #[test]
     #[serial]
     fn preload_upserts_fresh_channel_in_place() {
@@ -2424,7 +2960,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2475,7 +3012,8 @@ mod preload_tests {
                     fan_channel_with_paths(1, "fan1", base),
                     fan_channel_with_paths(2, "fan2", base),
                 ],
-            );
+            )
+            .await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2517,7 +3055,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
 
             // given: initial successful read to seed cache + failsafe data.
@@ -2572,7 +3111,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             let seed_status = ChannelStatus {
                 name: "fan1".to_string(),
@@ -2780,7 +3320,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             let seed_fan = ChannelStatus {
                 name: "fan1".to_string(),
@@ -2833,7 +3374,8 @@ mod preload_tests {
                     fan_channel_with_paths(1, "fan1", base),
                     fan_channel_with_paths(2, "fan2", base),
                 ],
-            );
+            )
+            .await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2892,7 +3434,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2940,7 +3483,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -2999,7 +3543,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let mut repo = new_test_repo();
             // Shorten the read permit timeout so the test does not
             // wait the full poll_rate * MISSING_STATUS_THRESHOLD (8 s
@@ -3097,7 +3642,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3138,7 +3684,8 @@ mod preload_tests {
             cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
                 .await
                 .unwrap();
-            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let driver =
+                driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]).await;
             let repo = new_test_repo();
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
 
@@ -3438,7 +3985,7 @@ mod coalescer_tests {
     /// Registers a fake device with permit + writer mailbox in the
     /// repo, then spawns the writer task. Returns the device UID so
     /// tests can call `apply_setting_speed_fixed` on it.
-    fn install_device_and_spawn_writer(
+    async fn install_device_and_spawn_writer(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
         name: &str,
@@ -3454,7 +4001,9 @@ mod coalescer_tests {
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
-        };
+        }
+        .with_read_registry()
+        .await;
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -3542,7 +4091,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -3594,7 +4144,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -3669,7 +4220,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -3726,7 +4278,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 0,
-            );
+            )
+            .await;
 
             let h1 = repo.apply_setting_speed_fixed(&uid, "fan1", 50);
             let h2 = repo.apply_setting_speed_fixed(&uid, "fan2", 75);
@@ -3764,7 +4317,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 DELAY_MS,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
@@ -3808,7 +4362,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 DELAY_MS,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             // First write: spawn so it actually progresses to rx.await
@@ -3857,7 +4412,8 @@ mod coalescer_tests {
                 dir_a.clone(),
                 vec![fan_channel(1, "fan1", &dir_a)],
                 0,
-            );
+            )
+            .await;
             let uid_b = install_device_and_spawn_writer(
                 &mut repo,
                 2,
@@ -3865,7 +4421,8 @@ mod coalescer_tests {
                 dir_b.clone(),
                 vec![fan_channel(1, "fan1", &dir_b)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
 
             let permit_a_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
@@ -3913,7 +4470,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -3982,7 +4540,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4124,7 +4683,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
             let repo = Rc::new(repo);
             let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
             let permit_hold = permit_sem.acquire().await.unwrap();
@@ -4177,7 +4737,8 @@ mod coalescer_tests {
                 dir.clone(),
                 vec![fan_channel(1, "fan1", &dir)],
                 0,
-            );
+            )
+            .await;
 
             let mut best = Duration::MAX;
             for _ in 0..ATTEMPTS {
@@ -4262,7 +4823,7 @@ mod slow_device_tests {
     /// + duty cache. Spawns the writer task. Returns the device UID.
     /// `slow == true` populates `slow_devices` and seeds `duty_cache`
     /// with the supplied cached entries; `slow == false` skips both.
-    fn install_device(
+    async fn install_device(
         repo: &mut HwmonRepo,
         type_index: TypeIndex,
         name: &str,
@@ -4279,7 +4840,9 @@ mod slow_device_tests {
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
-        };
+        }
+        .with_read_registry()
+        .await;
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -4386,7 +4949,8 @@ mod slow_device_tests {
                 ],
                 false,
                 vec![],
-            );
+            )
+            .await;
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
             let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
 
@@ -4417,6 +4981,82 @@ mod slow_device_tests {
         });
     }
 
+    /// Goal: batching a device's fan set must still decide per channel, or a slow device's pass
+    /// stretches from a few hundred milliseconds to seconds and any queued fan write waits behind
+    /// it.
+    ///
+    /// Method: two fan channels on a slow device, one cached with a future verify and one already
+    /// due. Cached and real duties are deliberately distinguishable.
+    #[test]
+    #[serial]
+    fn batched_fan_read_honours_each_channels_verify_deadline() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            // Both pwm files say 255 (100%). A cached channel must not show 100.
+            seed_fan_files(&dir, &[1, 2], 255).await;
+
+            let mut repo = empty_repo();
+            let fresh = Instant::now() + Duration::from_secs(60);
+            let due = Instant::now() - Duration::from_secs(1);
+            let _uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
+                true,
+                vec![("fan1", 50, fresh), ("fan2", 10, due)],
+            )
+            .await;
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+            let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                let duty_of = |name: &str| {
+                    channels
+                        .iter()
+                        .find(|c| c.name == name)
+                        .unwrap_or_else(|| panic!("{name} missing"))
+                        .duty
+                };
+                assert_eq!(
+                    duty_of("fan1"),
+                    Some(50.0),
+                    "a channel whose verify is not due keeps its cached duty, so its pwm is not \
+                     read"
+                );
+                assert_eq!(
+                    duty_of("fan2"),
+                    Some(100.0),
+                    "a channel whose verify is due gets a real pwm read"
+                );
+            }
+
+            // The due channel's verify must have been rescheduled, or it would read every tick.
+            {
+                let cache = repo.duty_cache.get(&TEST_TYPE_INDEX).unwrap().borrow();
+                assert_eq!(cache.get("fan2").unwrap().last_known, 100);
+                assert!(
+                    cache.get("fan2").unwrap().next_verify_at > Instant::now(),
+                    "a real read must push the next verify into the future"
+                );
+                assert_eq!(
+                    cache.get("fan1").unwrap().last_known,
+                    50,
+                    "an unread channel's cache entry is left alone"
+                );
+            }
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
     #[test]
     #[serial]
     fn slow_device_preload_uses_cached_duty_until_verify_due() {
@@ -4440,7 +5080,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 50, future_verify)],
-            );
+            )
+            .await;
             seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
             let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
 
@@ -4509,7 +5150,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
-            );
+            )
+            .await;
             assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
 
             repo.apply_setting_manual_control(&uid, "fan1")
@@ -4551,7 +5193,8 @@ mod slow_device_tests {
                 vec![channel],
                 true,
                 vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
-            );
+            )
+            .await;
             assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
 
             repo.apply_setting_reset(&uid, "fan1").await.unwrap();
@@ -4595,7 +5238,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             // Seed preloaded_statuses with duty 50 for fan1.
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
@@ -4657,7 +5301,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -4737,7 +5382,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -4816,7 +5462,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -4897,7 +5544,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             repo.preloaded_statuses.borrow_mut().insert(
                 TEST_TYPE_INDEX,
                 (
@@ -4945,7 +5593,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 false,
                 vec![],
-            );
+            )
+            .await;
             // Intentionally do NOT seed preloaded_statuses.
             let repo = Rc::new(repo);
 
@@ -4983,7 +5632,8 @@ mod slow_device_tests {
                 vec![fan_channel(1, "fan1", &dir)],
                 true,
                 vec![("fan1", 30, future_verify)],
-            );
+            )
+            .await;
             // preloaded_statuses says 30 (matches cache); ensure
             // target differs so the write goes through.
             repo.preloaded_statuses.borrow_mut().insert(
@@ -5269,6 +5919,24 @@ mod shutdown_tests {
         driver_path: PathBuf,
         channels: Vec<HwmonChannelInfo>,
     ) {
+        insert_device_with_io(
+            repo,
+            type_index,
+            driver_name,
+            driver_path,
+            channels,
+            DeviceIo::default(),
+        );
+    }
+
+    fn insert_device_with_io(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver_name: &str,
+        driver_path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+        io: DeviceIo,
+    ) {
         let driver = HwmonDriverInfo {
             name: driver_name.to_string(),
             path: driver_path,
@@ -5276,6 +5944,7 @@ mod shutdown_tests {
             u_id: format!("test-uid-{driver_name}-{type_index}"),
             drivetemp: DrivetempState::default(),
             apple_smc: AppleMacSMC::default(),
+            io,
             ..Default::default()
         };
         let device = Device::new(
@@ -5366,6 +6035,126 @@ mod shutdown_tests {
             assert_eq!(b_after.trim(), "2", "dev_b should have been reset");
 
             drop(permit_a);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: shutdown must stay inside its budget when a device has stopped answering, and must
+    /// still reset every device that can be reset. Systemd gives the daemon `TimeoutStopSec=10`;
+    /// exceeding it means SIGKILL with fans left wherever the daemon last put them.
+    ///
+    /// Method: one device whose worker never answers, one ordinary device. Assert shutdown spends
+    /// the wedged device's budget, names it in the error, and still resets the healthy one.
+    #[test]
+    #[serial]
+    fn shutdown_bounds_a_wedged_device_and_still_resets_the_others() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_wedged = base.join("dev_wedged");
+            let dir_healthy = base.join("dev_healthy");
+            seed_pwm_dir(&dir_wedged, b"1").await;
+            seed_pwm_dir(&dir_healthy, b"1").await;
+
+            let mut repo = empty_repo();
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_secs(30));
+            insert_device_with_io(
+                &mut repo,
+                1,
+                "dev_wedged",
+                dir_wedged.clone(),
+                vec![fan_channel(1, "fan1", &dir_wedged, Some(2))],
+                wedged_io,
+            );
+            insert_device(
+                &mut repo,
+                2,
+                "dev_healthy",
+                dir_healthy.clone(),
+                vec![fan_channel(1, "fan1", &dir_healthy, Some(2))],
+            );
+
+            let started = Instant::now();
+            let result = repo.shutdown().await;
+            let elapsed = started.elapsed();
+
+            // The wedged device's reply budget is 30 s; the shutdown cap is what must bound this.
+            assert!(
+                elapsed >= SHUTDOWN_RESET_TIMEOUT,
+                "shutdown should have spent the wedged device's budget: {elapsed:?}"
+            );
+            assert!(
+                elapsed < SHUTDOWN_RESET_TIMEOUT * 3,
+                "shutdown ran past its per-device cap: {elapsed:?}"
+            );
+
+            let err_msg = result
+                .expect_err("shutdown reports the wedged device")
+                .to_string();
+            assert!(
+                err_msg.contains("dev_wedged"),
+                "error should name the un-reset device: {err_msg}"
+            );
+
+            // The healthy device was reset regardless of the wedged one.
+            let healthy_after = cc_fs::read_sysfs(&dir_healthy.join("pwm1_enable"))
+                .await
+                .unwrap();
+            assert_eq!(healthy_after.trim(), "2", "healthy device should be reset");
+
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: a device that stops answering must be reportable as its own health state, distinct
+    /// from failsafe. Failsafe means the device is alive with stale readings and safe values
+    /// substituted; unreachable means nothing can be read from or written to it at all, and the UI
+    /// must be able to tell a user which of those is happening.
+    ///
+    /// Method: wedge one device past the threshold, leave a second healthy, and assert only the
+    /// wedged one is reported, carrying the timeout count that condemned it.
+    #[test]
+    #[serial]
+    fn unreachable_devices_reports_only_the_wedged_one() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_wedged = base.join("dev_wedged");
+            let dir_healthy = base.join("dev_healthy");
+            seed_pwm_dir(&dir_wedged, b"1").await;
+            seed_pwm_dir(&dir_healthy, b"1").await;
+
+            let mut repo = empty_repo();
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
+            insert_device_with_io(
+                &mut repo,
+                1,
+                "dev_wedged",
+                dir_wedged.clone(),
+                vec![fan_channel(1, "fan1", &dir_wedged, Some(2))],
+                wedged_io.clone(),
+            );
+            insert_device(
+                &mut repo,
+                2,
+                "dev_healthy",
+                dir_healthy.clone(),
+                vec![fan_channel(1, "fan1", &dir_healthy, Some(2))],
+            );
+
+            // Nothing is wrong yet, so nothing is reported.
+            assert!(repo.unreachable_devices().is_empty());
+
+            for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
+                let _ = wedged_io.read_value(&dir_wedged.join("pwm1")).await;
+            }
+
+            let reported = repo.unreachable_devices();
+            assert_eq!(reported.len(), 1, "only the wedged device is unreachable");
+            assert_eq!(reported[0].device_name, "dev_wedged");
+            assert_eq!(
+                reported[0].consecutive_timeouts,
+                device_io::UNREACHABLE_AFTER_TIMEOUTS
+            );
+
             let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
@@ -5518,7 +6307,7 @@ mod init_timeout_tests {
         }
     }
 
-    fn driver_for_test(
+    async fn driver_for_test(
         name: &str,
         base: &Path,
         channels: Vec<HwmonChannelInfo>,
@@ -5531,6 +6320,8 @@ mod init_timeout_tests {
             apple_smc: AppleMacSMC::default(),
             ..Default::default()
         }
+        .with_read_registry()
+        .await
     }
 
     fn empty_repo() -> HwmonRepo {
@@ -5557,7 +6348,8 @@ mod init_timeout_tests {
                 "test_ok",
                 &base,
                 vec![temp_channel(1, "temp1", base.join("temp1_input"))],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let result = repo
@@ -5601,7 +6393,8 @@ mod init_timeout_tests {
                 "test_slow",
                 &base,
                 vec![temp_channel(1, "temp1", fifo_path.clone())],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let start = Instant::now();
@@ -5681,7 +6474,8 @@ mod init_timeout_tests {
                 "test_no_files",
                 &base,
                 vec![fan_channel_no_files("fan1", &base)],
-            );
+            )
+            .await;
 
             let mut repo = empty_repo();
             let result = repo

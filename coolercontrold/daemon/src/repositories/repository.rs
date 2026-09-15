@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::device::{DeviceType, Duty, UID};
-use crate::device_health::FailsafeRef;
+use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::Result;
@@ -103,6 +103,15 @@ pub trait Repository {
     /// values for. Default empty: only repositories with a failsafe layer
     /// override this.
     fn failsafing(&self) -> Vec<FailsafeRef> {
+        Vec::new()
+    }
+
+    /// Devices of this repository whose driver has stopped answering, so neither reads nor writes
+    /// reach them. Distinct from failsafing, which describes a live device with stale readings.
+    ///
+    /// Only repositories that isolate their device IO can report this; the rest cannot tell a
+    /// wedged device from a slow one, so they report nothing.
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
         Vec::new()
     }
 

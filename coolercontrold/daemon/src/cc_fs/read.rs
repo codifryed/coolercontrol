@@ -18,34 +18,17 @@ pub const SYSFS_VALUE_MAX_BYTES: usize = 64;
 
 /// Attempts at a read the kernel aborted before it produced anything.
 ///
-/// `io_uring` converts the kernel's internal `-ERESTARTSYS` into `EINTR` instead of restarting the
-/// read the way a plain `read(2)` does (`io_uring/rw.c:io_fixup_restart_res`: "We can't just
-/// restart the syscall, since previously submitted sqes may already be in progress. Just fail this
-/// IO with EINTR."), so the restart is ours to make. Drivers that sleep interruptibly inside their
-/// sysfs read hit this; see `cc_fs::is_transient`.
-///
-/// compio already re-issues for us inside `read_to_end_at`, `read_exact_at` and `write_all_at`, so
-/// `read_txt` and every `cc_fs::write` are covered. The fixed-buffer readers here issue a bare
-/// `read_at` and have to do it themselves. Only `EINTR` is retried: this is the per-tick path, and
-/// a slow device must not pay a doubled read every tick.
+/// `io_uring` turns the kernel's `-ERESTARTSYS` into `EINTR` rather than restarting the read
+/// (`io_uring/rw.c:io_fixup_restart_res`), so the restart is ours to make. compio already
+/// re-issues inside `read_to_end_at` and friends; the fixed-buffer readers here do not.
 pub const INTERRUPTED_READ_ATTEMPTS: u8 = 3;
 const _: () = assert!(INTERRUPTED_READ_ATTEMPTS > 0);
 
 /// Base pause before re-issuing an interrupted read, multiplied by the attempts already spent.
 ///
-/// An immediate re-issue mostly fails again, because the interrupting condition is not a one-off.
-/// `io_uring` issues these reads inline on the ring thread (kernfs advertises a `.poll`, so
-/// `io_file_supports_nowait` says yes and the read is never punted to `io_wq`), and it re-arms
-/// `TIF_NOTIFY_SIGNAL` on that same thread for every completion carrying `task_work`. A tick that
-/// reads several devices therefore keeps the flag set for as long as the other reads take to
-/// drain, and every re-issue inside that window aborts again. Observed on a Ryujin II with six
-/// hwmon devices: the first three reads of the device failed on all attempts across about 5 ms,
-/// then every later read in the same tick succeeded, once the other devices had finished.
-///
-/// Awaiting here is what fixes it rather than merely delaying: the sleep yields the runtime
-/// instead of parking it, so the very completions that clear the flag get to run. It also stops
-/// us spending a USB round trip per doomed attempt, since the driver sends its request before
-/// waiting.
+/// An immediate re-issue mostly fails again: the interrupting condition persists for as long as
+/// the tick's other reads take to drain. Awaiting fixes it rather than merely delaying, since the
+/// sleep yields the runtime so the completions that clear the flag get to run.
 pub const INTERRUPTED_READ_BACKOFF: Duration = Duration::from_millis(2);
 
 /// Whether a failed read should be re-issued, given the attempts left after this one.

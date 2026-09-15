@@ -632,6 +632,9 @@ export default {
                 '/dev/port를 사용할 수 없어 하드웨어 탐지를 실행할 수 없습니다.',
             findingDetectionUnsupported: '이 아키텍처에서는 하드웨어 탐지가 지원되지 않습니다.',
             failsafeActive: '페일세이프 값 사용 중',
+            deviceUnreachable: '장치가 응답하지 않음',
+            deviceUnreachableDetail:
+                '드라이버가 응답을 멈춰 이 장치를 읽거나 제어할 수 없습니다. 주기적으로 다시 시도합니다.',
             missingTempSource: '온도 소스 누락',
             staleTempSource: '온도 소스가 페일세이프 값 사용 중',
             stressTest: '열 스트레스 테스트',

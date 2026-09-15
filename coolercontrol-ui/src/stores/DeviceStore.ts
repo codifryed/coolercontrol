@@ -20,7 +20,12 @@ import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { showLoadingOverlay } from '@/components/loadingOverlay.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, alertToast, AlertState } from '@/models/Alert.ts'
-import { DeviceHealthDTO, FailsafeDelta, SourceDelta } from '@/models/DeviceHealth.ts'
+import {
+    DeviceHealthDTO,
+    FailsafeDelta,
+    SourceDelta,
+    UnreachableDelta,
+} from '@/models/DeviceHealth.ts'
 import { SystemEventDTO } from '@/models/PowerProfile.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
@@ -961,6 +966,14 @@ export const useDeviceStore = defineStore('device', () => {
                         JSON.parse(data) as Array<object>,
                     )) {
                         settingsStore.applyFailsafeDelta(delta)
+                    }
+                    return
+                case 'unreachable':
+                    for (const delta of plainToInstance(
+                        UnreachableDelta,
+                        JSON.parse(data) as Array<object>,
+                    )) {
+                        settingsStore.applyUnreachableDelta(delta)
                     }
                     return
                 // Full-state resync the daemon sends when this client lagged the

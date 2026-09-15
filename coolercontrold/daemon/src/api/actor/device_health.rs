@@ -92,6 +92,7 @@ impl DeviceHealthHandle {
         let msg = DeviceHealthMessage::GetAll { respond_to: tx };
         if self.sender.send(msg).await.is_err() {
             return DeviceHealthDto {
+                unreachable: Vec::new(),
                 failsafe: Vec::new(),
                 missing: Vec::new(),
                 stale_source: Vec::new(),
@@ -101,6 +102,7 @@ impl DeviceHealthHandle {
             };
         }
         rx.await.unwrap_or(DeviceHealthDto {
+            unreachable: Vec::new(),
             failsafe: Vec::new(),
             missing: Vec::new(),
             stale_source: Vec::new(),

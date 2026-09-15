@@ -645,6 +645,9 @@ export default {
             findingDetectionUnsupported:
                 'このアーキテクチャではハードウェア検出はサポートされていません。',
             failsafeActive: 'フェイルセーフ値を使用中',
+            deviceUnreachable: 'デバイスが応答していません',
+            deviceUnreachableDetail:
+                'ドライバーが応答しなくなったため、このデバイスの読み取りも制御もできません。定期的に再試行しています。',
             missingTempSource: '温度ソースが見つかりません',
             staleTempSource: '温度ソースはフェイルセーフ値を使用中',
             stressTest: '熱ストレステスト',
