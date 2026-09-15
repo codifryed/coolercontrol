@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::ops::{Add, Not, RangeInclusive, Sub};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::repositories::utils::find_xauthority_path;
@@ -24,14 +23,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use tokio::sync::OnceCell;
 
-/// Cap on one NVML driver call.
-///
-/// NVML is a closed-source call that can block indefinitely when a GPU falls off the bus or hits
-/// an Xid error. Generous, because a healthy call returns in microseconds and the only cost of
-/// waiting is how soon a wedged GPU's readings are noticed as stale; the daemon itself keeps
-/// running either way now that the call is off the runtime thread.
-const NVML_CALL_TIMEOUT: Duration = Duration::from_secs(2);
-
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
@@ -41,6 +32,8 @@ use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
 };
+use crate::repositories::gpu::nvml_io::{self, NvmlIo};
+use crate::repositories::hwmon::device_io;
 use crate::repositories::repository::DeviceLock;
 use crate::repositories::utils::ShellCommand;
 use crate::repositories::utils::ShellCommandResult::{Error, Success};
@@ -74,11 +67,12 @@ pub struct GpuNVidia {
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
     pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
-    /// `Arc<Mutex<..>>` rather than `RefCell`: every NVML call runs on a blocking thread so a
-    /// hung driver cannot freeze the runtime, and the setters need `&mut Device`. The mutex is
-    /// per device and uncontended in practice, since the poll tick and the writer never overlap
-    /// for one GPU.
-    nvidia_nvml_devices: HashMap<GpuIndex, Arc<Mutex<nvml_wrapper::Device<'static>>>>,
+    /// Owned handles, held only until `start_nvml_workers` moves each onto its own thread.
+    /// Empty from then on; `nvml_io` is what the running daemon talks to.
+    nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
+    /// One worker per GPU. Owns the device, so NVML needs no lock and a hung call parks only
+    /// that GPU's thread.
+    nvml_io: HashMap<GpuIndex, NvmlIo>,
     xauthority_path: RefCell<Option<String>>,
     nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
     nvidia_nvml_load_enabled: Cell<bool>,
@@ -93,6 +87,7 @@ impl GpuNVidia {
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
             nvidia_nvml_devices: HashMap::new(),
+            nvml_io: HashMap::new(),
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
             nvidia_nvml_load_enabled: Cell::new(false),
@@ -251,9 +246,6 @@ impl GpuNVidia {
     fn collect_register_hotspot_buses(&self) -> HashSet<u32> {
         let mut register_hotspot_buses = HashSet::with_capacity(self.nvidia_nvml_devices.len());
         for nvml_device in self.nvidia_nvml_devices.values() {
-            let Ok(nvml_device) = nvml_device.lock() else {
-                continue;
-            };
             if needs_hotspot_register(nvml_device.architecture()).not() {
                 continue;
             }
@@ -283,10 +275,8 @@ impl GpuNVidia {
             else {
                 continue;
             };
-            self.nvidia_nvml_devices.insert(
-                device_index as GpuIndex,
-                Arc::new(Mutex::new(accessible_device)),
-            );
+            self.nvidia_nvml_devices
+                .insert(device_index as GpuIndex, accessible_device);
         }
     }
 
@@ -331,10 +321,7 @@ impl GpuNVidia {
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
-        for (gpu_index, device) in &self.nvidia_nvml_devices {
-            let Ok(device_lock) = device.lock() else {
-                continue;
-            };
+        for (gpu_index, device_lock) in &self.nvidia_nvml_devices {
             let type_index = gpu_index + starting_nvidia_index;
             let (name, device_uid) = nvml_name_and_uid(device_lock.name().ok(), type_index);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
@@ -371,7 +358,7 @@ impl GpuNVidia {
             }
             let mem_temp_name = GPU_TEMP_MEMORY_NAME.to_string();
             if disabled_channels.contains(&mem_temp_name).not() {
-                if let Some(mem_temp) = Self::get_memory_temp(&device_lock) {
+                if let Some(mem_temp) = Self::get_memory_temp(device_lock) {
                     temp_infos.insert(
                         mem_temp_name.clone(),
                         TempInfo {
@@ -388,7 +375,7 @@ impl GpuNVidia {
             }
             let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
             if disabled_channels.contains(&hotspot_temp_name).not() {
-                if let Some(hotspot_temp) = self.get_hotspot_temp(&device_lock) {
+                if let Some(hotspot_temp) = self.get_hotspot_temp(device_lock) {
                     temp_infos.insert(
                         hotspot_temp_name.clone(),
                         TempInfo {
@@ -456,7 +443,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Graphics,
                     NVIDIA_CLOCK_GRAPHICS,
                     format!("{NVIDIA_FREQ_PREFIX} Graphics"),
@@ -464,7 +451,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Graphics,
                     NVIDIA_CLOCK_GRAPHICS,
                     &mut channel_status,
@@ -475,7 +462,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::SM,
                     NVIDIA_CLOCK_SM,
                     format!("{NVIDIA_FREQ_PREFIX} SM"),
@@ -483,7 +470,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::SM,
                     NVIDIA_CLOCK_SM,
                     &mut channel_status,
@@ -494,7 +481,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Memory,
                     NVIDIA_CLOCK_MEMORY,
                     format!("{NVIDIA_FREQ_PREFIX} Memory"),
@@ -502,7 +489,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Memory,
                     NVIDIA_CLOCK_MEMORY,
                     &mut channel_status,
@@ -513,7 +500,7 @@ impl GpuNVidia {
                 .not()
             {
                 Self::add_nvml_clock_label(
-                    &device_lock,
+                    device_lock,
                     Clock::Video,
                     NVIDIA_CLOCK_VIDEO,
                     format!("{NVIDIA_FREQ_PREFIX} Video"),
@@ -521,7 +508,7 @@ impl GpuNVidia {
                     &mut nvidia_freq_infos,
                 );
                 Self::add_nvml_clock_status(
-                    &device_lock,
+                    device_lock,
                     Clock::Video,
                     NVIDIA_CLOCK_VIDEO,
                     &mut channel_status,
@@ -615,7 +602,42 @@ impl GpuNVidia {
             );
             devices.insert(uid, device);
         }
+        self.start_nvml_workers(starting_nvidia_index, poll_rate);
         Ok(devices)
+    }
+
+    /// This GPU's NVML worker, when it has one.
+    #[must_use]
+    pub fn nvml_worker(&self, gpu_index: GpuIndex) -> Option<&NvmlIo> {
+        self.nvml_io.get(&gpu_index)
+    }
+
+    /// Lets every GPU have one more attempt even if it is currently unreachable. Shutdown uses
+    /// this: handing fan control back to the firmware is worth a retry on a device that may
+    /// well answer now.
+    pub fn allow_nvml_probe_now(&self) {
+        for io in self.nvml_io.values() {
+            io.allow_probe_now();
+        }
+    }
+
+    /// Hands every NVML device to a thread of its own, once detection has finished with it.
+    ///
+    /// Detection reads the owned handles directly: it runs before the poll loop, so a hang there
+    /// delays startup rather than a running daemon, and there is nothing yet to isolate it from.
+    /// From here on the device is only reachable through its worker.
+    fn start_nvml_workers(&mut self, starting_nvidia_index: GpuIndex, poll_rate: f64) {
+        let reply_timeout = device_io::reply_timeout_for(poll_rate);
+        for (gpu_index, device) in std::mem::take(&mut self.nvidia_nvml_devices) {
+            let type_index = gpu_index + starting_nvidia_index;
+            let (name, _) = nvml_name_and_uid(device.name().ok(), type_index);
+            match NvmlIo::spawn(name.clone(), device, reply_timeout) {
+                Ok(io) => {
+                    self.nvml_io.insert(gpu_index, io);
+                }
+                Err(err) => nvml_io::log_spawn_failure(&name, &err),
+            }
+        }
     }
 
     fn add_nvml_clock_label(
@@ -689,21 +711,16 @@ impl GpuNVidia {
     /// hop per GPU per tick costs one. Every field is plain data so the whole pass crosses the
     /// thread boundary by value.
     fn read_nvml_readings(
-        device: &Arc<Mutex<nvml_wrapper::Device<'static>>>,
+        device: &nvml_wrapper::Device<'static>,
         plan: NvmlReadPlan,
     ) -> NvmlReadings {
-        let Ok(device) = device.lock() else {
-            // Poisoned only if a previous call panicked inside NVML. Nothing here can recover it,
-            // and reporting no readings lets the usual staleness path take over.
-            return NvmlReadings::default();
-        };
         let mut readings = NvmlReadings::default();
         for temp in plan.temps {
             match temp {
                 NvmlTemp::Gpu => {
                     readings.gpu_temp = device.temperature(TemperatureSensor::Gpu).ok();
                 }
-                NvmlTemp::Memory => readings.memory_temp = Self::get_memory_temp(&device),
+                NvmlTemp::Memory => readings.memory_temp = Self::get_memory_temp(device),
             }
         }
         for fan_index in plan.fan_indices {
@@ -729,59 +746,35 @@ impl GpuNVidia {
         readings
     }
 
-    /// Runs one GPU's read pass off the main thread, bounded.
+    /// Runs one GPU's read pass on its own thread, bounded.
     ///
-    /// NVML is a closed-source driver call that can block indefinitely when the GPU falls off the
-    /// bus or hits an Xid error. Before this, that froze the whole daemon, because the call ran
-    /// synchronously on the runtime thread and no timer could fire to notice. `spawn_blocking`
-    /// puts it on the shared pool the daemon already uses for wedge-prone FFI
-    /// (see `amd.rs` libdrm and `drivetemp`), so the timeout can actually elapse.
+    /// NVML can block indefinitely when the GPU falls off the bus or hits an Xid error. The call
+    /// owns the device on that thread, so a hang parks it alone and the timeout can elapse.
     async fn read_nvml_bounded(
         &self,
         gpu_index: GpuIndex,
         plan: NvmlReadPlan,
     ) -> Option<NvmlReadings> {
-        let device = Arc::clone(self.nvidia_nvml_devices.get(&gpu_index)?);
-        let call = rt::spawn_blocking(move || Self::read_nvml_readings(&device, plan));
-        match rt::timeout(NVML_CALL_TIMEOUT, call).await {
-            Ok(Ok(readings)) => Some(readings),
-            Ok(Err(err)) => {
-                error!("NVML read panicked for GPU {gpu_index}: {err}");
-                None
-            }
-            Err(_elapsed) => {
-                // Unactionable and recurring while the GPU is wedged, so not a warning.
-                debug!(
-                    "NVML read for GPU {gpu_index} exceeded {NVML_CALL_TIMEOUT:?}; \
-                     its readings go stale until the driver answers again"
-                );
-                None
-            }
-        }
+        let io = self.nvml_io.get(&gpu_index)?;
+        io.call("read", move |device| Self::read_nvml_readings(device, plan))
+            .await
+            // Unactionable and recurring while the GPU is wedged, so not a warning. Its readings
+            // go stale until the driver answers again.
+            .inspect_err(|err| debug!("NVML read for GPU {gpu_index} failed: {err}"))
+            .ok()
     }
 
-    /// Runs one NVML fan-control write off the main thread, bounded. Same reasoning as the read
-    /// path: a hung write used to take the daemon with it.
+    /// Runs one NVML fan-control write on the GPU's own thread, bounded.
     async fn write_nvml_bounded<F>(&self, gpu_index: GpuIndex, what: &str, call: F) -> Result<()>
     where
         F: FnOnce(&mut nvml_wrapper::Device<'static>) -> Result<(), NvmlError> + Send + 'static,
     {
-        let device = Arc::clone(
-            self.nvidia_nvml_devices
-                .get(&gpu_index)
-                .with_context(|| format!("NVML device {gpu_index} should exist"))?,
-        );
-        let write = rt::spawn_blocking(move || match device.lock() {
-            Ok(mut device) => call(&mut device).map_err(anyhow::Error::from),
-            Err(err) => Err(anyhow!("NVML device mutex is poisoned: {err}")),
-        });
-        match rt::timeout(NVML_CALL_TIMEOUT, write).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(err)) => Err(anyhow!("NVML {what} panicked for GPU {gpu_index}: {err}")),
-            Err(_elapsed) => Err(anyhow!(
-                "NVML {what} for GPU {gpu_index} did not complete within {NVML_CALL_TIMEOUT:?}"
-            )),
-        }
+        self.nvml_io
+            .get(&gpu_index)
+            .with_context(|| format!("NVML device {gpu_index} should exist"))?
+            .call(what, move |device| call(device))
+            .await?
+            .map_err(anyhow::Error::from)
     }
 
     pub async fn request_nvml_status(
