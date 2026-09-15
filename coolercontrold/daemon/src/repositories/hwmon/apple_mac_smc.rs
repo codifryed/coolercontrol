@@ -305,29 +305,6 @@ impl AppleMacSMC {
         Ok(fans)
     }
 
-    /// Streams Apple SMC fan statuses to `sink` one channel at a time
-    /// as each read completes, returning whether any expected field
-    /// read failed. Production now uses `read_one_fan_status` per
-    /// channel under the device permit (see `preload_device_statuses`),
-    /// so this and `extract_fan_statuses` are kept for tests only.
-    #[cfg(test)]
-    pub async fn stream_fan_statuses<F>(&self, driver: &Rc<HwmonDriverInfo>, mut sink: F) -> bool
-    where
-        F: FnMut(ChannelStatus),
-    {
-        let mut any_failure = false;
-        for channel in &driver.channels {
-            if channel.hwmon_type != HwmonChannelType::Fan {
-                continue;
-            }
-            match self.read_one_fan_status(driver, channel).await {
-                Some(status) => sink(status),
-                None => any_failure = true,
-            }
-        }
-        any_failure
-    }
-
     /// Reads the Apple SMC duty + rpm for one channel and returns
     /// the resulting `ChannelStatus`, or `None` if any expected
     /// field failed. Mirror of `fans::read_one_fan_status` for the
@@ -362,7 +339,7 @@ impl AppleMacSMC {
         if expected_duty_failed || expected_rpm_failed {
             // Omit the entry so the upstream failsafe overlay can
             // substitute safe values. See the comment on
-            // `fans::stream_fan_statuses` for the rationale.
+            // `fans::read_fan_statuses` for the rationale.
             return None;
         }
         Some(ChannelStatus {
@@ -396,25 +373,27 @@ impl AppleMacSMC {
         Some(Some(fan_rpm))
     }
 
-    /// Buffered wrapper over `stream_fan_statuses`, kept for tests.
-    /// Production callers use `stream_fan_statuses` directly so fresh
-    /// readings upsert into the preloaded cache per channel.
+    /// Every Apple SMC fan channel, buffered. Test-only: production reads one channel at a time
+    /// under the device permit so each fresh reading upserts into the preloaded cache.
     #[cfg(test)]
     pub async fn extract_fan_statuses(
         &self,
         driver: &Rc<HwmonDriverInfo>,
     ) -> (Vec<ChannelStatus>, bool) {
-        let fan_channel_count = driver
-            .channels
-            .iter()
-            .filter(|c| c.hwmon_type == HwmonChannelType::Fan)
-            .count();
-        let mut fans = Vec::with_capacity(fan_channel_count);
-        let any_failure = self
-            .stream_fan_statuses(driver, |status| fans.push(status))
-            .await;
+        let mut fans = Vec::new();
+        let mut any_failure = false;
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            match self.read_one_fan_status(driver, channel).await {
+                Some(status) => fans.push(status),
+                None => any_failure = true,
+            }
+        }
         (fans, any_failure)
     }
+
     pub async fn set_to_auto_control(&self, channel_number: u8) -> Result<()> {
         let fan_min_default = self
             .fans
@@ -1975,11 +1954,11 @@ mod tests {
         });
     }
 
-    // --- stream_fan_statuses: sink contract ---
+    // --- extract_fan_statuses: ordering and failures ---
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_invokes_sink_in_channel_order() {
+    fn extract_fan_statuses_preserves_channel_order() {
         // Verifies the streaming variant invokes the sink once per
         // successful channel in channel-definition order.
         cc_fs::test_runtime(async {
@@ -2053,10 +2032,8 @@ mod tests {
             });
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |status| received.push(status.name))
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -2067,7 +2044,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_skips_sink_on_failure() {
+    fn extract_fan_statuses_skips_failed_channels() {
         // Verifies the sink is not invoked for a channel whose RPM
         // read fails, and any_failure is set.
         cc_fs::test_runtime(async {
@@ -2139,10 +2116,8 @@ mod tests {
             });
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |status| received.push(status.name))
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -2153,7 +2128,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_no_invocation_when_no_channels() {
+    fn extract_fan_statuses_empty_when_no_channels() {
         // Verifies the sink is never invoked for a driver with no
         // fan channels, and any_failure is false.
         cc_fs::test_runtime(async {
@@ -2176,13 +2151,10 @@ mod tests {
                 io: DeviceIo::default(),
             });
 
-            let mut invocations: u32 = 0;
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |_| invocations += 1)
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
 
             teardown(&ctx).await;
-            assert_eq!(invocations, 0);
+            assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
     }

@@ -229,84 +229,6 @@ async fn caps_to_hwmon_fans(
     Ok(fans)
 }
 
-/// Streams fan statuses to `sink` one channel at a time as each read
-/// completes, returning whether any expected field read failed.
-/// Failed reads for any expected field (pwm when `has_pwm`, rpm when
-/// `has_rpm`) omit the whole channel entry rather than pushing a
-/// partial status with `None`. Pushing a partial or all-`None` status
-/// would block `FailsafeStatusData::overwrite_missing` from
-/// substituting failsafe values, because the channel name would still
-/// appear in the fresh-names set. Below the threshold the cache keeps
-/// the last-known-good reading; above the threshold the overlay
-/// installs the failsafe values (rpm 0, duty 0).
-/// Callers that want a buffered `Vec` should use `extract_fan_statuses`.
-pub async fn stream_fan_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
-where
-    F: FnMut(ChannelStatus),
-{
-    let channels: Vec<&HwmonChannelInfo> = driver
-        .channels
-        .iter()
-        .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
-        .collect();
-    if channels.is_empty() {
-        return false;
-    }
-    // One hop for the device's whole fan set rather than two per channel. The device permit is
-    // already held across the entire pass, so batching changes nothing about who may interleave.
-    let mut paths: Vec<PathBuf> = Vec::with_capacity(channels.len() * 2);
-    let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(channels.len());
-    for channel in &channels {
-        let pwm = channel.caps.has_pwm().then(|| {
-            paths.push(pwm_path_for(driver, channel));
-            paths.len() - 1
-        });
-        let rpm = channel.caps.has_rpm().then(|| {
-            paths.push(rpm_path_for(driver, channel));
-            paths.len() - 1
-        });
-        slots.push((pwm, rpm));
-    }
-    let mut results = driver.io.read_many(&paths).await;
-    debug_assert_eq!(results.len(), paths.len());
-    debug_assert_eq!(slots.len(), channels.len());
-
-    let log_error = log_enabled!(log::Level::Debug);
-    let mut any_failure = false;
-    for (channel, (pwm_slot, rpm_slot)) in channels.iter().zip(slots) {
-        let fan_duty = match pwm_slot {
-            Some(index) => {
-                let raw = take_result(&mut results, index)
-                    .and_then(check_parsing_8)
-                    .map(pwm_value_to_duty);
-                interpret_pwm_duty(&driver.path, &channel.number, &paths[index], raw, log_error)
-                    .await
-            }
-            None => None,
-        };
-        let fan_rpm = match rpm_slot {
-            Some(index) => {
-                let raw = take_result(&mut results, index).and_then(check_parsing_32);
-                interpret_fan_rpm(&paths[index], raw, log_error)
-            }
-            None => None,
-        };
-        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
-        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
-        if expected_pwm_failed || expected_rpm_failed {
-            any_failure = true;
-            continue;
-        }
-        sink(ChannelStatus {
-            name: channel.name.clone(),
-            rpm: fan_rpm,
-            duty: fan_duty,
-            ..Default::default()
-        });
-    }
-    any_failure
-}
-
 /// What one fan channel needs read this tick.
 ///
 /// The choice is the caller's, because it depends on the duty cache, which lives with the
@@ -511,16 +433,24 @@ pub async fn read_one_fan_rpm_only(
     Some(Some(fan_rpm))
 }
 
-/// Buffered wrapper over `stream_fan_statuses` for callers that want
-/// an owned `Vec<ChannelStatus>` (for example, the reinit path).
+/// Every fan channel in one hop, for callers that want an owned `Vec` (the reinit path).
 pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let fan_channel_count = driver
+    let plan: Vec<(&HwmonChannelInfo, FanRead)> = driver
         .channels
         .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Fan)
-        .count();
-    let mut fans = Vec::with_capacity(fan_channel_count);
-    let any_failure = stream_fan_statuses(driver, |status| fans.push(status)).await;
+        .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
+        .map(|channel| (channel, FanRead::Full))
+        .collect();
+    let mut fans = Vec::with_capacity(plan.len());
+    let mut any_failure = false;
+    for reading in read_fan_statuses(driver, &plan).await {
+        if let FanReading::Full(status) = reading {
+            fans.push(status);
+        } else {
+            debug_assert!(matches!(reading, FanReading::Failed));
+            any_failure = true;
+        }
+    }
     (fans, any_failure)
 }
 
@@ -1865,11 +1795,11 @@ mod tests {
         });
     }
 
-    // --- stream_fan_statuses: sink contract ---
+    // --- extract_fan_statuses: ordering and failures ---
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_invokes_sink_in_channel_order() {
+    fn extract_fan_statuses_preserves_channel_order() {
         // Verifies the streaming variant invokes the sink once per
         // successful channel in channel-number order, matching the
         // buffered version's Vec order.
@@ -1901,9 +1831,8 @@ mod tests {
             );
 
             // when: collect invocations in order.
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_fan_statuses(&driver, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -1914,7 +1843,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_skips_sink_on_failure() {
+    fn extract_fan_statuses_skips_failed_channels() {
         // Verifies the sink is not invoked for a channel whose
         // expected read fails, and any_failure reflects it.
         cc_fs::test_runtime(async {
@@ -1937,9 +1866,8 @@ mod tests {
             );
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure =
-                stream_fan_statuses(&driver, |status| received.push(status.name)).await;
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -1950,18 +1878,17 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_no_invocation_when_no_channels() {
+    fn extract_fan_statuses_empty_when_no_channels() {
         // Verifies the sink is never invoked for a driver with no
         // fan channels, and any_failure is false.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             let driver = make_driver(&ctx.test_base_path, vec![]);
 
-            let mut invocations: u32 = 0;
-            let any_failure = stream_fan_statuses(&driver, |_| invocations += 1).await;
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             teardown(&ctx).await;
-            assert_eq!(invocations, 0);
+            assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
     }
