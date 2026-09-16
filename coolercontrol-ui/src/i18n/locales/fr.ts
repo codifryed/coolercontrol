@@ -593,6 +593,8 @@ export default {
             setAsHome: 'Définir comme Accueil',
             duplicateDashboard: 'Dupliquer le Tableau de Bord',
             openCooling: 'Ouvrir les contrôles de refroidissement',
+            editCustomSensor: 'Modifier le capteur personnalisé',
+            openCustomSensor: 'Ouvrir les paramètres du capteur personnalisé',
         },
         appInfo: {
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',

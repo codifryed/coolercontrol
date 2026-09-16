@@ -27,12 +27,12 @@ export function channelRoute(
     return { name: 'monitoring-sensor', params: { deviceUID, channelName } }
 }
 
-// Target for a channel listed by the Monitoring section itself. A fan stays on
-// its full chart here instead of being thrown over to Cooling, which keeps the
-// section and its panel in step; DashboardView carries the companion link to the
-// Cooling page. Everything else, custom sensors included, keeps the canonical
-// target, so their editor stays one click away. Shortcut surfaces (pinned rows,
-// the Home panel) stay on `channelRoute`.
+// Target for a channel listed by the Monitoring section itself. Fans and custom
+// sensors stay on their full chart here instead of being thrown over to Cooling
+// or Devices, which keeps the section and its panel in step; DashboardView
+// carries the companion link to their control page. Everything else keeps the
+// canonical target. Shortcut surfaces (pinned rows, the Home panel) stay on
+// `channelRoute`.
 export function monitoringChannelRoute(
     devices: Iterable<Device>,
     deviceUID: UID,
@@ -40,8 +40,10 @@ export function monitoringChannelRoute(
 ): RouteLocationRaw {
     for (const device of devices) {
         if (device.uid !== deviceUID) continue
-        if (device.type === DeviceType.CUSTOM_SENSORS) break
-        if (device.info?.channels.get(channelName)?.speed_options != null) {
+        if (
+            device.type === DeviceType.CUSTOM_SENSORS ||
+            device.info?.channels.get(channelName)?.speed_options != null
+        ) {
             return { name: 'monitoring-sensor', params: { deviceUID, channelName } }
         }
         break

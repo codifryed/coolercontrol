@@ -578,6 +578,8 @@ export default {
             setAsHome: 'ホームとして設定',
             duplicateDashboard: 'ダッシュボードを複製',
             openCooling: '冷却コントロールを開く',
+            editCustomSensor: 'カスタムセンサーを編集',
+            openCustomSensor: 'カスタムセンサー設定を開く',
         },
         appInfo: {
             noWarranty: 'このプログラムは絶対に保証がありません。',

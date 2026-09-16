@@ -588,6 +588,8 @@ export default {
             setAsHome: 'Als Startseite festlegen',
             duplicateDashboard: 'Dashboard duplizieren',
             openCooling: 'Kühlungssteuerung öffnen',
+            editCustomSensor: 'Benutzerdefinierten Sensor bearbeiten',
+            openCustomSensor: 'Einstellungen des benutzerdefinierten Sensors öffnen',
         },
         appInfo: {
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',

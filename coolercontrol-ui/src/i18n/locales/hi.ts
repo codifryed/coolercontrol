@@ -574,6 +574,8 @@ export default {
             setAsHome: 'होम के रूप में सेट करें',
             duplicateDashboard: 'डैशबोर्ड डुप्लिकेट करें',
             openCooling: 'कूलिंग नियंत्रण खोलें',
+            editCustomSensor: 'कस्टम सेंसर संपादित करें',
+            openCustomSensor: 'कस्टम सेंसर सेटिंग्स खोलें',
         },
         appInfo: {
             noWarranty: 'इस प्रोग्राम के साथ बिल्कुल कोई वारंटी नहीं है।',
