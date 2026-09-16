@@ -275,17 +275,11 @@ impl DeviceHealthController {
         self.config_generation_seen.set(Some(generation));
     }
 
-    /// Resolves the source device's display name: user override first, then
-    /// live devices, then the config `devices` list, which retains devices
-    /// no longer detected.
+    /// Resolves the source device's display name through the name chain: user override first,
+    /// then live devices, then the config `devices` list, which retains devices no longer
+    /// detected. `None` when no layer names it, which callers render as unknown.
     fn source_device_name(&self, device_uid: &DeviceUID) -> Option<String> {
-        if let Some(name) = self.overrides.device_name_override(device_uid) {
-            return Some(name);
-        }
-        if let Some(device) = self.all_devices.get(device_uid) {
-            return Some(device.borrow().name.clone());
-        }
-        self.config.device_name(device_uid)
+        self.overrides.known_device_name(device_uid)
     }
 
     /// The custom sensors virtual device UID, when registered.
@@ -623,6 +617,7 @@ mod tests {
                 crate::overrides::OverridesController::init_from(tmp.path().join("overrides.toml"))
                     .await,
             );
+            overrides.capture_detected_names(&all_devices, &config);
             let controller = DeviceHealthController::new(
                 Rc::clone(&all_devices),
                 config,

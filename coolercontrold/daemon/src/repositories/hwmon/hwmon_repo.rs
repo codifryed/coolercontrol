@@ -2466,7 +2466,10 @@ impl Repository for HwmonRepo {
         // caller's failure path does not log at error level for what
         // is just shutdown noise.
         if self.shutdown_token.is_cancelled() {
-            debug!("HWMon writer skipped during shutdown: {device_uid}:{channel_name}");
+            debug!(
+                "HWMon writer skipped during shutdown: {}",
+                self.overrides.log_device_channel(device_uid, channel_name)
+            );
             return Ok(());
         }
         let (hwmon_driver, _, type_index) = self.get_hwmon_info(device_uid, channel_name)?;

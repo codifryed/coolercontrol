@@ -1806,6 +1806,7 @@ mod engine_tests {
                 .await
                 .unwrap();
 
+            overrides.capture_detected_names(&all_devices, &config);
             let engine = Engine::new(
                 Rc::clone(&all_devices),
                 &Rc::new(Repositories::default()),
@@ -1823,10 +1824,12 @@ mod engine_tests {
                 engine.log_device_channel(&device_uid, "fan2"),
                 "Motherboard (nct6798) | fan2"
             );
+            // Negative space: no layer names the device, so the pair still reads as a device
+            // and a channel rather than leaking a bare UID.
             let unknown_uid = "unknown-uid".to_string();
             assert_eq!(
                 engine.log_device_channel(&unknown_uid, "fan1"),
-                "unknown-uid | fan1"
+                "unknown device (unknown-uid) | fan1"
             );
         });
     }
