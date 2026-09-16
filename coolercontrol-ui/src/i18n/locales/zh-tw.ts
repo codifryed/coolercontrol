@@ -1144,7 +1144,7 @@ export default {
                 warningOscillating:
                     '風扇在 {lower} % 與 {upper} % 工作週期之間擺盪（韌體控制的啟動衝擊）；在低工作週期下已停用對應',
                 warningImplausibleCurve:
-                    '量測到的曲線平坦、反向，或其下限超過一半工作週期（轉速讀數看起來不可靠）；對應已停用，請重新校正後重試',
+                    '量測到的曲線平坦、反向，或其下限沒有留下可用範圍（轉速讀數看起來不可靠）；對應已停用，請重新校正後重試',
                 stagePreflight: '預檢',
                 stageUpSweep: '上升掃掠',
                 stageDownSweep: '下降掃掠',

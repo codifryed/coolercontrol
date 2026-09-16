@@ -1196,7 +1196,7 @@ export default {
                 warningOscillating:
                     'fan oscillates between {lower}% and {upper}% duty (firmware-controlled kick-in); mapping disabled at low duty',
                 warningImplausibleCurve:
-                    'measured curve is flat, inverted, or its floor sits above half duty (RPM readings look unreliable); mapping disabled, re-calibrate to retry',
+                    'measured curve is flat, inverted, or its floor leaves no usable range (RPM readings look unreliable); mapping disabled, re-calibrate to retry',
                 stagePreflight: 'pre-flight',
                 stageUpSweep: 'up-sweep',
                 stageDownSweep: 'down-sweep',

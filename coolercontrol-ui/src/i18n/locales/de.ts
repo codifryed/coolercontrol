@@ -1234,7 +1234,7 @@ export default {
                 warningOscillating:
                     'Lüfter oszilliert zwischen {lower} % und {upper} % Tastgrad (firmware-gesteuerter Anlaufschub); Abbildung bei niedrigem Tastgrad deaktiviert',
                 warningImplausibleCurve:
-                    'gemessene Kurve ist flach, invertiert oder ihr Minimum liegt über halbem Tastgrad (Drehzahlwerte wirken unzuverlässig); Abbildung deaktiviert, zum erneuten Versuch neu kalibrieren',
+                    'gemessene Kurve ist flach, invertiert oder ihr Minimum lässt keinen nutzbaren Bereich (Drehzahlwerte wirken unzuverlässig); Abbildung deaktiviert, zum erneuten Versuch neu kalibrieren',
                 stagePreflight: 'Vorprüfung',
                 stageUpSweep: 'Aufwärts-Durchlauf',
                 stageDownSweep: 'Abwärts-Durchlauf',

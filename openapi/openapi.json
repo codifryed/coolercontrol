@@ -7412,7 +7412,7 @@
             ]
           },
           {
-            "description": "Derived model cannot describe a real fan: a duty floor at or above\n `MAX_PLAUSIBLE_FLOOR_DUTY`, or a responsive region that never\n rises. Both come from unreliable RPM reads during the sweep.\n Mapping disabled (forced Stepped); the user re-calibrates.",
+            "description": "Derived model leaves nothing to map: a duty floor high enough that\n every duty the map can write is already max speed, or a responsive\n region that never rises. Both come from unreliable RPM reads\n during the sweep. Mapping disabled (forced Stepped).",
             "type": "object",
             "properties": {
               "kind": {

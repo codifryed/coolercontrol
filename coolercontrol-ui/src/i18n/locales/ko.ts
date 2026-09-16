@@ -1188,7 +1188,7 @@ export default {
                 warningOscillating:
                     '팬이 {lower} %와 {upper} % 듀티 사이에서 진동함 (펌웨어 제어 시동 부스트); 낮은 듀티에서 매핑 비활성화',
                 warningImplausibleCurve:
-                    '측정된 곡선이 평탄하거나 반전되었거나 하한이 듀티의 절반을 넘습니다 (RPM 판독값이 불안정해 보임); 매핑 비활성화, 다시 보정해 재시도하세요',
+                    '측정된 곡선이 평탄하거나 반전되었거나 하한이 사용 가능한 범위를 남기지 않습니다 (RPM 판독값이 불안정해 보임); 매핑 비활성화, 다시 보정해 재시도하세요',
                 stagePreflight: '사전 점검',
                 stageUpSweep: '상승 스윕',
                 stageDownSweep: '하강 스윕',

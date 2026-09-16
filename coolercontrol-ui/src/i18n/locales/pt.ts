@@ -1222,7 +1222,7 @@ export default {
                 warningOscillating:
                     'o ventilador oscila entre {lower} % e {upper} % de ciclo (impulso controlado por firmware); mapeamento desativado em ciclo baixo',
                 warningImplausibleCurve:
-                    'a curva medida é plana, está invertida ou o seu mínimo ultrapassa metade do ciclo (as leituras de RPM parecem pouco fiáveis); mapeamento desativado, recalibre para tentar de novo',
+                    'a curva medida é plana, está invertida ou o seu mínimo não deixa um intervalo utilizável (as leituras de RPM parecem pouco fiáveis); mapeamento desativado, recalibre para tentar de novo',
                 stagePreflight: 'pré-verificação',
                 stageUpSweep: 'varredura ascendente',
                 stageDownSweep: 'varredura descendente',
