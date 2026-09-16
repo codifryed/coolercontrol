@@ -70,4 +70,9 @@ describe('monitoringSensors', () => {
         expect(groups[0].sensors.map((s) => s.channelName)).toEqual(['sensor1', 'sensor2'])
         expect(groups[0].sensors.every((s) => s.isTemp)).toBe(true)
     })
+
+    it('keeps the custom-sensor device without sensors, so new ones can be added', () => {
+        const custom = fakeDevice('c1', DeviceType.CUSTOM_SENSORS, [], {})
+        expect(monitoringSensors([custom])).toEqual([{ deviceUID: 'c1', sensors: [] }])
+    })
 })

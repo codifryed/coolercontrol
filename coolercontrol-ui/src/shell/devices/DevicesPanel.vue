@@ -218,7 +218,8 @@ const isRouteActive = useRouteActive()
                         </UiTooltip>
                     </RouterLink>
                     <div
-                        class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"
+                        class="ml-auto hidden items-center gap-0.5 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"
+                        :class="{ 'pr-1': device.type !== DeviceType.CUSTOM_SENSORS }"
                     >
                         <span class="flex w-6 shrink-0 justify-center">
                             <CCColorPicker
@@ -231,6 +232,15 @@ const isRouteActive = useRouteActive()
                             <svg-icon type="mdi" :path="mdiDragVertical" :size="16" />
                         </span>
                     </div>
+                    <!-- Always shown, like the add in the other panel headers. -->
+                    <RouterLink
+                        v-if="device.type === DeviceType.CUSTOM_SENSORS"
+                        :to="{ name: 'device-custom-sensor-new' }"
+                        class="ml-0.5 mr-1 rounded p-1 text-text-color-secondary outline-none hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
+                        v-tooltip.top="t('layout.menu.tooltips.addCustomSensor')"
+                    >
+                        <svg-icon type="mdi" :path="mdiPlus" :size="16" />
+                    </RouterLink>
                 </div>
                 <RouterLink
                     v-for="link in deviceChannelLinks(device)"
