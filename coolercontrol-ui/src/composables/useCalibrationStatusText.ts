@@ -34,6 +34,8 @@ export function useCalibrationStatusText() {
                     lower: warning.lower_duty,
                     upper: warning.upper_duty,
                 })
+            case 'implausible_curve':
+                return t('components.channelExtensionSettings.calibration.warningImplausibleCurve')
         }
     }
 

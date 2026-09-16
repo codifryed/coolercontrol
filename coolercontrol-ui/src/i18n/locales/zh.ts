@@ -1142,6 +1142,8 @@ export default {
                 warningLimitedRange: '转速范围有限（{span} RPM），映射分辨率较粗',
                 warningOscillating:
                     '风扇在 {lower} % 与 {upper} % 占空比之间振荡（固件控制的启动冲量）；在低占空比下已禁用映射',
+                warningImplausibleCurve:
+                    '测得的曲线平坦、反向，或其下限超过一半占空比（转速读数看起来不可靠）；映射已禁用，请重新校准后重试',
                 stagePreflight: '预检',
                 stageUpSweep: '上升扫掠',
                 stageDownSweep: '下降扫掠',

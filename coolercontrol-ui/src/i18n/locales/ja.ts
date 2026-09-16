@@ -1207,6 +1207,8 @@ export default {
                     'RPM レンジが限定的です ({span} RPM)。マッピング分解能は粗くなります',
                 warningOscillating:
                     'ファンが {lower} % と {upper} % のデューティの間で振動しています (ファームウェア制御のキック)。低デューティでマッピングは無効化されます',
+                warningImplausibleCurve:
+                    '測定されたカーブが平坦、反転、または下限がデューティの半分を超えています (回転数の読み取りが不安定に見えます)。マッピングは無効化されました。再調整してやり直してください',
                 stagePreflight: '事前チェック',
                 stageUpSweep: '上昇掃引',
                 stageDownSweep: '下降掃引',
