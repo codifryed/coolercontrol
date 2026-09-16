@@ -554,23 +554,6 @@ onUnmounted(() => {
                 />
             </template>
             <template #controls>
-                <UiButton
-                    v-if="hasCoolingPage"
-                    variant="outline"
-                    v-tooltip.top="t('views.dashboard.openCooling')"
-                    @click="
-                        router.push({
-                            name: 'cooling-channel',
-                            params: {
-                                deviceUID: props.deviceUID!,
-                                channelName: props.channelName!,
-                            },
-                        })
-                    "
-                >
-                    <svg-icon type="mdi" :path="mdiFan" :size="deviceStore.getREMSize(1.1)" />
-                    <span class="ml-1">{{ coolingLabel }}</span>
-                </UiButton>
                 <div
                     v-if="!sensorMode && settingsStore.tags.size > 0"
                     class="p-2 pr-0 flex flex-row"
@@ -646,6 +629,23 @@ onUnmounted(() => {
                 </div>
             </template>
             <template #actions>
+                <UiButton
+                    v-if="hasCoolingPage"
+                    variant="outline"
+                    v-tooltip.top="t('views.dashboard.openCooling')"
+                    @click="
+                        router.push({
+                            name: 'cooling-channel',
+                            params: {
+                                deviceUID: props.deviceUID!,
+                                channelName: props.channelName!,
+                            },
+                        })
+                    "
+                >
+                    <svg-icon type="mdi" :path="mdiFan" :size="deviceStore.getREMSize(1.1)" />
+                    <span class="ml-1">{{ coolingLabel }}</span>
+                </UiButton>
                 <UiButton
                     v-if="isCustomSensor"
                     variant="outline"
