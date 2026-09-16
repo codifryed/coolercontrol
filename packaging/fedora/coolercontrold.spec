@@ -32,9 +32,6 @@ your system quiet, cool, and stable.
 %prep
 %autosetup -n %{project}-%{version}/%{name} -a 0
 tar -xzf %{SOURCE1}
-# brotli 8.0.4 ships .rs files with the exec bit set, so brp-mangle-shebangs reads their
-# leading `#![allow(...)]` as a shebang that does not start with '/' and fails the build.
-find vendor -type f -name '*.rs' -exec chmod a-x {} +
 %{?cargo_prep:%cargo_prep -v vendor}
 
 %{?generate_buildrequires}
