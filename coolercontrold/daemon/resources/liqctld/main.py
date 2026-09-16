@@ -54,6 +54,8 @@ from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 from liquidctl.error import NotSupportedByDriver, Timeout
+from liquidctl.pmbus import CommandCode as CMD
+from liquidctl.pmbus import WriteBit
 from PIL import Image
 
 _ORIGINAL_KRAKENZ3_CONNECT = KrakenZ3.connect
@@ -77,6 +79,10 @@ DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 # behind it) until the call returns or the device is reconnected. Kept above the 9.5s job timeout so
 # a legitimately slow command is never mistaken for a wedge.
 WEDGE_THRESHOLD_SECS: float = DEVICE_TIMEOUT_SECS * 2
+# How long a cached status may stand in for a device that is failing its background refreshes.
+# Past this the read fails instead, so the daemon sees a missing status and its failsafe can latch.
+# Generous against the ~1-2s refresh interval of a device that is merely slow.
+STALE_STATUS_BUDGET_SECS: float = 10.0
 MAX_CONNECT_LIQUIDCTL_RETRIES: int = 5
 # Hard cap from the first shutdown signal to os._exit(). Best-effort device reset (which can include
 # an in-flight LCD write of 2+ seconds) runs within this window, then the process exits
@@ -451,6 +457,87 @@ def _send_frame_to_spare_bucket(self, data, bulk_info):
     # stale message instead of its own; believing a false negative would leave the rotation
     # pointed at the bucket that is now on screen, and the next frame would overwrite it.
     self._cc_active_bucket = target_bucket
+
+
+# The Corsair PSU's own report length and PMBus slave address, needed to rebuild the request
+# `_exec` sends. Both are stable parts of the protocol rather than liquidctl implementation detail.
+_CORSAIR_REPORT_LENGTH = 64
+_CORSAIR_SLAVE_ADDRESS = 0x02
+# How many reports to discard while hunting for the one that answers our command. A desync is one
+# or two reports deep in practice; a device answering nothing recognisable is a real fault.
+_CORSAIR_MAX_RESYNC_READS = 4
+# Reports queued behind a stale one are already in hand, so the hunt does not need the full 5s
+# default. This bounds a resync well inside liqctld's 9.5s per-job budget.
+_CORSAIR_RESYNC_READ_TIMEOUT_MS = 250
+
+_ORIGINAL_CORSAIR_PSU_EXEC = getattr(CorsairHidPsu, "_exec", None)
+
+
+def _exec_resyncing_reads(self, writebit, command, data=None):
+    """Runs a Corsair HID PSU command, skipping past reports that answer something else.
+
+    liquidctl writes a command and asserts that the very next report echoes it, which holds only
+    while this process is the device's only correspondent. Two things break that, and both are
+    ordinary on a working system.
+
+    The kernel's `corsair_psu` hwmon driver binds to the same device and issues its own HID
+    transactions. With `direct_access` enabled we set `_hwmon` to None so liquidctl talks to the
+    device rather than reading that driver's sysfs, which is the only way to control the fan, and
+    from then on both sides are writing commands to it. hidraw gives each opener its own queue, so
+    neither steals the other's reports, but every one of the driver's replies lands in ours looking
+    like an answer we did not ask for. Anything that makes the driver busy, such as another process
+    walking the whole hwmon tree, turns that from occasional into constant. liquidctl names this
+    exact case in its message: "possible conflict with another program".
+
+    `initialize` then adds a second way in, on its own. It writes a wake-up command and blind-reads
+    one report, so a single foreign report already queued makes that read take the wrong one and
+    leaves the wake-up's own reply in the stream for the next command to trip over. liquidctl
+    half-expects this and only warns about it in `_get_status_directly`; in `initialize` it raises,
+    which is what left the PSU failing every init retry after a resume, when the kernel driver is
+    re-reading the device at the same moment.
+
+    Draining cannot fix either. `clear_enqueued_reports` is non-blocking and discards only what has
+    already arrived, while the report that displaces ours is typically still in flight. Identifying
+    the right report is the only thing that works, so the reply is matched against the request and
+    anything else is discarded. Discarding is safe: a report that answers someone else's command is
+    a copy, and dropping our copy takes nothing from them.
+
+    Reimplemented rather than wrapped because the mismatch has to be caught between the write and
+    the read, which the original does back to back.
+    """
+    out = [_CORSAIR_SLAVE_ADDRESS | WriteBit(writebit), CMD(command)] + (data or [])
+    expected = list(out[0:2])
+    # Cheap first: clears a backlog that has already landed, so the hunt below rarely runs.
+    self.device.clear_enqueued_reports()
+    self._write(out)
+    reply = self._read()
+    for _ in range(_CORSAIR_MAX_RESYNC_READS):
+        if list(reply[0:2]) == expected:
+            return reply
+        log.debug(
+            "Corsair PSU answered %s to a %s request, discarding it and reading on",
+            list(reply[0:2]),
+            expected,
+        )
+        reply = self.device.read(
+            _CORSAIR_REPORT_LENGTH, timeout=_CORSAIR_RESYNC_READ_TIMEOUT_MS
+        )
+    if list(reply[0:2]) == expected:
+        return reply
+    raise LiquidctlException(
+        f"Corsair PSU did not answer a {expected} request after "
+        f"{_CORSAIR_MAX_RESYNC_READS} attempts; its report stream is out of step"
+    )
+
+
+def patch_corsair_psu_report_drain() -> bool:
+    """Installs the resynchronizing read above. See `_exec_resyncing_reads`."""
+    if _ORIGINAL_CORSAIR_PSU_EXEC is None:
+        log.warning("liquidctl CorsairHidPsu is missing _exec; report resync unpatched")
+        return False
+    CorsairHidPsu._exec = _exec_resyncing_reads
+    log.debug("Corsair PSU commands patched to resynchronize their reads")
+    return True
 
 
 def patch_kraken_lcd_transfer() -> bool:
@@ -1189,6 +1276,28 @@ def get_liquidctl_version() -> str:
         return getattr(liquidctl, "__version__", "unknown")
 
 
+class _StatusCacheHealth:
+    """Tracks whether a device's cached status is still fit to serve in place of a fresh read.
+
+    Serving the cache is correct for a device that is merely slow: every read blows the short
+    future timeout while the background refresh keeps the cache current behind it. It is wrong for
+    a device that has stopped answering, where the cache freezes at its last good value and the
+    daemon never learns the device is dead.
+
+    Age alone cannot separate the two. The background refresh is only submitted when the device's
+    queue is empty, so a device taking frequent writes (an LCD Kraken) can age its cache without
+    ever having failed a read, and an age-only rule would drive it into failsafe for nothing. Both
+    conditions together can: old *and* demonstrably failing its refreshes.
+    """
+
+    __slots__ = ("cached_at", "refresh_failed", "stale_logged")
+
+    def __init__(self, cached_at: float) -> None:
+        self.cached_at: float = cached_at
+        self.refresh_failed: bool = False
+        self.stale_logged: bool = False
+
+
 class DeviceService:
     """
     The Service which keeps track of devices and handles all communication
@@ -1204,6 +1313,9 @@ class DeviceService:
         self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
+        # Parallel to device_status_cache: when each entry was written and whether the device has
+        # since failed a background refresh. See `_StatusCacheHealth`.
+        self.device_status_health: Dict[int, _StatusCacheHealth] = {}
         self.liquidctl_version: str = get_liquidctl_version()
         # Guards shutdown(): the /quit handler and the signal handler can both call it, so the
         # actual device teardown must run at most once. Only the check-and-set is under the lock.
@@ -1320,12 +1432,16 @@ class DeviceService:
                 f"{[d.description for d in devices]}"
             )
             return devices
+        # A scan that blows up is not an empty bus, and the caller cannot tell the two apart from
+        # an empty list. It used to get one, which made the daemon report every known device as
+        # removed and fire a desktop notification telling the user to restart, for hardware that
+        # never left. Raising lets the daemon skip the comparison instead.
         except ValueError as ve:
             log.debug(f"ValueError when scanning for devices: {ve}")
-            return []
+            raise LiquidctlException(f"Device scan failed: {ve}") from ve
         except Exception as e:
             log.warning(f"Error scanning for liquidctl devices: {e}")
-            return []
+            raise LiquidctlException(f"Device scan failed: {e}") from e
 
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
@@ -1551,6 +1667,40 @@ class DeviceService:
             else []
         )
 
+    def reconnect_device(self, device_id: int) -> None:
+        """Releases and re-opens one device's USB handle, leaving every other device alone.
+
+        This is what restarting the service does to a device, minus the process teardown: closing
+        the handle releases the interface and hands it back to any kernel driver, and opening it
+        again claims it back. The driver object is kept, so a legacy690 flip and a forced direct
+        access both survive, which is exactly why this is cheaper than starting over. The caller
+        still has to re-initialize afterwards, as it would for a device that had just been found.
+
+        A device whose worker is wedged cannot be reconnected this way: the disconnect is refused
+        like any other submission, and the error sends the caller on to restarting the service,
+        which does not need the device to cooperate.
+        """
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        lc_device = self.devices[device_id]
+        log.info(f"Reconnecting to LC #{device_id} {lc_device.__class__.__name__}")
+        try:
+            self._disconnect_device(device_id, lc_device)
+            self._connect_device(device_id, lc_device)
+        except LiquidctlException:
+            raise
+        except BaseException as err:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error reconnecting device "
+                    f"#{device_id} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
+
     def force_direct_access(self, device_id: int) -> None:
         """
         Force a liquidctl device to use direct access mode.
@@ -1621,7 +1771,7 @@ class DeviceService:
                 f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
             )
             serialized_status = self._stringify_status(status)
-            self.device_status_cache[device_id] = serialized_status
+            self._cache_status(device_id, serialized_status)
             return serialized_status
         except concurrent.futures.TimeoutError as te:
             log.debug(
@@ -1629,6 +1779,9 @@ class DeviceService:
                 f"Reusing last status if possible."
             )
             cached_status = self.device_status_cache.get(device_id)
+            servable = cached_status is not None and self._cached_status_is_servable(
+                device_id
+            )
             if self.device_executor.device_queue_empty(
                 device_id
             ):  # if emtpy this was likely a device timeout with a single job
@@ -1636,10 +1789,17 @@ class DeviceService:
                 async_status_job = self.device_executor.submit(
                     device_id, self._long_async_status_request, dev_id=device_id
                 )
-                if cached_status is not None:
+                if servable:
                     # return the currently cached status immediately and
                     #  let the async request above refresh the cache in the background
                     return cached_status
+                if cached_status is not None:
+                    # The cache has gone stale on a device that is failing its refreshes. The
+                    # refresh submitted above is left running so the device can still recover, but
+                    # answering with a frozen value would hide the failure completely: the daemon
+                    # needs a missing status before its failsafe can latch.
+                    self._log_stale_status_once(device_id)
+                    raise te
                 # else rerun the status request with a very long timeout
                 #  and wait for the output so that the cache fills up at least once
                 try:
@@ -1659,10 +1819,13 @@ class DeviceService:
                 finally:
                     async_status_job.cancel()
             # otherwise, this was a future timeout with a job still running in the queue
+            if servable:
+                return cached_status
             if cached_status is None:
                 log.error(f"No Status Cache yet filled for device LC #{device_id}")
-                raise te
-            return cached_status
+            else:
+                self._log_stale_status_once(device_id)
+            raise te
         except BaseException as exc:
             log.debug(
                 f"Unexpected error getting status for device LC #{device_id}: {exc}"
@@ -1685,13 +1848,50 @@ class DeviceService:
                 f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() "
                 f"failed: {exc}"
             )
+            # This is the only place the device demonstrates that it is not answering, as opposed
+            # to merely being slower than the short read timeout. It is half of what lets a stale
+            # cache be refused without punishing a device that is simply slow.
+            health = self.device_status_health.get(dev_id)
+            if health is not None:
+                health.refresh_failed = True
             raise
         log.debug(
             f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
         )
         serialized_status = self._stringify_status(status)
-        self.device_status_cache[dev_id] = serialized_status
+        self._cache_status(dev_id, serialized_status)
         return serialized_status
+
+    def _cache_status(self, device_id: int, serialized_status: Statuses) -> None:
+        """Records a fresh status, ending any stale-serving episode for this device."""
+        previous = self.device_status_health.get(device_id)
+        if previous is not None and previous.stale_logged:
+            log.warning(f"Device LC #{device_id} is answering status requests again.")
+        self.device_status_cache[device_id] = serialized_status
+        self.device_status_health[device_id] = _StatusCacheHealth(time.monotonic())
+
+    def _cached_status_is_servable(self, device_id: int) -> bool:
+        """Whether the cache may still stand in for a fresh read. See `_StatusCacheHealth`."""
+        health = self.device_status_health.get(device_id)
+        if health is None:
+            return False
+        if health.refresh_failed is False:
+            return True
+        return time.monotonic() - health.cached_at <= STALE_STATUS_BUDGET_SECS
+
+    def _log_stale_status_once(self, device_id: int) -> None:
+        """One line per stale episode, not one per poll."""
+        health = self.device_status_health.get(device_id)
+        if health is None:
+            return
+        if health.stale_logged:
+            return
+        health.stale_logged = True
+        log.warning(
+            f"Device LC #{device_id} has not answered a status request in over "
+            f"{STALE_STATUS_BUDGET_SECS}s. Reporting it as unavailable so the daemon "
+            f"can apply its failsafe."
+        )
 
     def set_fixed_speed(
         self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]
@@ -1952,6 +2152,11 @@ class HTTPHandler(BaseHTTPRequestHandler):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
         self._send(HTTPStatus.OK, json.dumps(device.to_dict()))
 
+    # put("/devices/{device_id}/reconnect")
+    def reconnect_device(self, device_id: int):
+        self.device_service.reconnect_device(device_id)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     # put("/devices/{device_id}/direct-access")
     def force_direct_access(self, device_id: int):
         self.device_service.force_direct_access(device_id)
@@ -2070,6 +2275,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
             # put("/devices/{device_id}/legacy690")
             device_id = self._try_cast_int(path[1])
             self.set_device_as_legacy690(device_id)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "reconnect":
+            # put("/devices/{device_id}/reconnect")
+            device_id = self._try_cast_int(path[1])
+            self.reconnect_device(device_id)
         elif len(path) == 3 and path[0] == "devices" and path[2] == "direct-access":
             # put("/devices/{device_id}/direct-access")
             device_id = self._try_cast_int(path[1])
@@ -2286,6 +2495,7 @@ def main() -> None:
     log.info("liqctld service starting...")
     patch_kraken_lcd_packing()
     patch_kraken_lcd_transfer()
+    patch_corsair_psu_report_drain()
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.

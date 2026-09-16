@@ -65,6 +65,7 @@ use crate::device::{
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
+use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::chip_name::ChipName;
@@ -2229,42 +2230,12 @@ impl Repository for HwmonRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Hwmon Devices: {init_devices:?}, Chip Names: {device_chips:?}");
         } else {
-            let device_map: HashMap<_, _> = init_devices
-                .iter()
-                .map(|d| {
-                    (
-                        d.1 .0.name.clone(),
-                        HashMap::from([
-                            (
-                                "chip",
-                                vec![device_chips.get(d.0).cloned().unwrap_or_default()],
-                            ),
-                            (
-                                "driver name",
-                                vec![d.1 .0.info.driver_info.name.clone().unwrap_or_default()],
-                            ),
-                            (
-                                "driver version",
-                                vec![d.1 .0.info.driver_info.version.clone().unwrap_or_default()],
-                            ),
-                            ("locations", d.1 .0.info.driver_info.locations.clone()),
-                            ("channels", {
-                                let mut ch: Vec<_> = d.1 .0.info.channels.keys().cloned().collect();
-                                ch.sort();
-                                ch
-                            }),
-                            ("temps", {
-                                let mut t: Vec<_> = d.1 .0.info.temps.keys().cloned().collect();
-                                t.sort();
-                                t
-                            }),
-                        ]),
-                    )
-                })
-                .collect();
             info!(
                 "Initialized Hwmon Devices: {}",
-                serde_json::to_string(&device_map).unwrap_or_default()
+                device_summary::summarize_devices_with_chips(
+                    init_devices.values().map(|(device, _)| device),
+                    &device_chips
+                )
             );
         }
         trace!(

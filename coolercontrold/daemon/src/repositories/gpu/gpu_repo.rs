@@ -22,6 +22,7 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::config::Config;
 use crate::device::{DeviceType, Duty, UID};
+use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
 use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
@@ -352,38 +353,9 @@ impl Repository for GpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized GPU Devices: {init_devices:?}");
         } else {
-            let device_map: HashMap<_, _> = init_devices
-                .iter()
-                .map(|d| {
-                    (
-                        d.1.name.clone(),
-                        HashMap::from([
-                            (
-                                "driver name",
-                                vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
-                            ),
-                            (
-                                "driver version",
-                                vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
-                            ),
-                            ("locations", d.1.info.driver_info.locations.clone()),
-                            ("channels", {
-                                let mut ch: Vec<_> = d.1.info.channels.keys().cloned().collect();
-                                ch.sort();
-                                ch
-                            }),
-                            ("temps", {
-                                let mut t: Vec<_> = d.1.info.temps.keys().cloned().collect();
-                                t.sort();
-                                t
-                            }),
-                        ]),
-                    )
-                })
-                .collect();
             info!(
                 "Initialized GPU Devices: {}",
-                serde_json::to_string(&device_map).unwrap_or_default()
+                device_summary::summarize_devices(init_devices.values())
             );
         }
         trace!(
