@@ -570,6 +570,8 @@ export default {
             setAsHome: '홈으로 설정',
             duplicateDashboard: '대시보드 복제',
             openCooling: '냉각 제어 열기',
+            editCustomSensor: '커스텀 센서 편집',
+            openCustomSensor: '커스텀 센서 설정 열기',
         },
         appInfo: {
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',

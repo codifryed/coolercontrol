@@ -570,6 +570,8 @@ export default {
             setAsHome: 'تعيين كصفحة رئيسية',
             duplicateDashboard: 'تكرار لوحة المعلومات',
             openCooling: 'فتح عناصر تحكم التبريد',
+            editCustomSensor: 'تحرير المستشعر المخصص',
+            openCustomSensor: 'فتح إعدادات المستشعر المخصص',
         },
         appInfo: {
             noWarranty: 'يأتي هذا البرنامج بدون أي ضمان على الإطلاق.',

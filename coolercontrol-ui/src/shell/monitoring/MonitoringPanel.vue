@@ -27,7 +27,7 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import type { Color, Device, UID } from '@/models/Device.ts'
+import { type Color, type Device, DeviceType, type UID } from '@/models/Device.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { Alert, alertIsSilenced, getAlertStateClass, getAlertStateIcon } from '@/models/Alert.ts'
 import { ChannelMetric } from '@/models/ChannelSource.ts'
@@ -135,6 +135,8 @@ const devicesByUid = computed(() => {
     for (const device of deviceStore.allDevices()) map.set(device.uid, device)
     return map
 })
+const isCustomSensors = (deviceUID: UID): boolean =>
+    devicesByUid.value.get(deviceUID)?.type === DeviceType.CUSTOM_SENSORS
 const sensorValues = (sensor: MonitoringSensor) =>
     currentDeviceStatus.value.get(sensor.deviceUID)?.get(sensor.channelName)
 const sensorIcon = (sensor: MonitoringSensor): string =>
@@ -714,10 +716,14 @@ const isRouteActive = useRouteActive()
                     <!-- invisible, not hidden: the header must not change height on
                          hover. -mr-1 cancels the header's pr-2 down to the pr-1 the
                          rows below inset by, so the same p-1 handle puts the drag
-                         glyph on the same column. -->
+                         glyph on the same column. Custom Sensors gives that edge to
+                         its add button, in line with the other headers' add. -->
                     <span
-                        class="invisible -mr-1 flex items-center gap-0.5 group-hover/device:visible group-has-[:focus-visible]/device:visible"
-                        :class="{ '!visible': openColorDevice === group.deviceUID }"
+                        class="invisible flex items-center gap-0.5 group-hover/device:visible group-has-[:focus-visible]/device:visible"
+                        :class="{
+                            '!visible': openColorDevice === group.deviceUID,
+                            '-mr-1': !isCustomSensors(group.deviceUID),
+                        }"
                     >
                         <span class="flex w-6 shrink-0 justify-center">
                             <CCColorPicker
@@ -740,6 +746,15 @@ const isRouteActive = useRouteActive()
                             <svg-icon type="mdi" :path="mdiDragVertical" :size="16" />
                         </span>
                     </span>
+                    <button
+                        v-if="isCustomSensors(group.deviceUID)"
+                        type="button"
+                        class="ml-0.5 rounded p-0.5 text-text-color-secondary outline-none hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
+                        v-tooltip.top="t('layout.menu.tooltips.addCustomSensor')"
+                        @click="router.push({ name: 'device-custom-sensor-new' })"
+                    >
+                        <svg-icon type="mdi" :path="mdiPlus" :size="16" />
+                    </button>
                 </PanelHeader>
                 <VueDraggable
                     :force-auto-scroll-fallback="true"

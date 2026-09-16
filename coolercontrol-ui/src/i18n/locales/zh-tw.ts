@@ -552,6 +552,8 @@ export default {
             setAsHome: '設為首頁',
             duplicateDashboard: '複製儀表板',
             openCooling: '開啟冷卻控制',
+            editCustomSensor: '編輯自定義傳感器',
+            openCustomSensor: '開啟自定義傳感器設定',
         },
         appInfo: {
             noWarranty: '本程序不提供任何保證。',

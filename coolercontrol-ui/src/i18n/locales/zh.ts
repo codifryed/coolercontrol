@@ -551,6 +551,8 @@ export default {
             setAsHome: '设为主页',
             duplicateDashboard: '复制仪表盘',
             openCooling: '打开冷却控制',
+            editCustomSensor: '编辑自定义传感器',
+            openCustomSensor: '打开自定义传感器设置',
         },
         appInfo: {
             noWarranty: '本程序不提供任何保证。',

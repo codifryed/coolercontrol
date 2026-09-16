@@ -581,6 +581,8 @@ export default {
             setAsHome: 'Definir como Inicial',
             duplicateDashboard: 'Duplicar Painel',
             openCooling: 'Abrir controles de resfriamento',
+            editCustomSensor: 'Editar Sensor Personalizado',
+            openCustomSensor: 'Abrir configurações do sensor personalizado',
         },
         appInfo: {
             noWarranty: 'Este programa é fornecido sem absolutamente nenhuma garantia.',

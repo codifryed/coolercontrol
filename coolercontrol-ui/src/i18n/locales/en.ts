@@ -574,6 +574,8 @@ export default {
             setAsHome: 'Set as Home',
             duplicateDashboard: 'Duplicate Dashboard',
             openCooling: 'Open cooling controls',
+            editCustomSensor: 'Edit Custom Sensor',
+            openCustomSensor: 'Open custom sensor settings',
         },
         appInfo: {
             noWarranty: 'This program comes with absolutely no warranty.',

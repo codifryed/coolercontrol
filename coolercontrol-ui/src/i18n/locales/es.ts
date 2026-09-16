@@ -582,6 +582,8 @@ export default {
             setAsHome: 'Establecer como Inicio',
             duplicateDashboard: 'Duplicar Panel',
             openCooling: 'Abrir controles de refrigeración',
+            editCustomSensor: 'Editar sensor personalizado',
+            openCustomSensor: 'Abrir ajustes del sensor personalizado',
         },
         appInfo: {
             noWarranty: 'Este programa viene sin absolutamente ninguna garantía.',
