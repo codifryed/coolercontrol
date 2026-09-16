@@ -1221,6 +1221,8 @@ export default {
                     'rango de RPM limitado ({span} RPM); la resolución del mapeo es gruesa',
                 warningOscillating:
                     'el ventilador oscila entre {lower} % y {upper} % de ciclo (impulso controlado por firmware); mapeo desactivado a ciclo bajo',
+                warningImplausibleCurve:
+                    'la curva medida es plana, está invertida o su mínimo no deja un rango utilizable (las lecturas de RPM parecen poco fiables); mapeo desactivado, recalibra para reintentar',
                 stagePreflight: 'previo',
                 stageUpSweep: 'barrido ascendente',
                 stageDownSweep: 'barrido descendente',

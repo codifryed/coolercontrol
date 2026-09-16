@@ -7410,6 +7410,19 @@
               "lower_duty",
               "upper_duty"
             ]
+          },
+          {
+            "description": "Derived model leaves nothing to map: a duty floor high enough that\n every duty the map can write is already max speed, or a responsive\n region that never rises. Both come from unreliable RPM reads\n during the sweep. Mapping disabled (forced Stepped).",
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "implausible_curve"
+              }
+            },
+            "required": [
+              "kind"
+            ]
           }
         ]
       },

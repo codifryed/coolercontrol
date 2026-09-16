@@ -433,41 +433,10 @@ fn build_calibration(
     scalars: Option<DerivedScalars>,
     kick_duration_ms: u32,
 ) -> Calibration {
-    use crate::calibration::curve::{derive_min_stable_duty, derive_warnings, CalibrationWarning};
+    use crate::calibration::curve::CalibrationWarning;
     match scalars {
         Some(scalars) => {
-            let mut curve_kind =
-                classify_curve(&up_curve, scalars.rpm_max, scalars.min_sustain_duty);
-            let mut warnings = derive_warnings(&up_curve, scalars, &mut curve_kind);
-            let (min_stable_duty, band) = derive_min_stable_duty(
-                &down_curve,
-                down_stable,
-                scalars.rpm_max,
-                scalars.min_sustain_duty,
-            );
-            if let Some((lower_duty, upper_duty)) = band {
-                warnings.push(CalibrationWarning::Oscillating {
-                    lower_duty,
-                    upper_duty,
-                });
-            }
-            Calibration {
-                up_curve,
-                down_curve,
-                kick_duration_ms,
-                min_start_duty: scalars.min_start_duty,
-                min_sustain_duty: scalars.min_sustain_duty,
-                min_stable_duty,
-                max_eff_duty: scalars.max_eff_duty,
-                rpm_max: scalars.rpm_max,
-                curve_kind,
-                warnings,
-                was_rpm_only: false,
-                kick_boost_override: None,
-                kick_duration_override_ms: None,
-                walk_after_kick_override: None,
-                timestamp: Local::now(),
-            }
+            build_smooth_calibration(up_curve, down_curve, down_stable, scalars, kick_duration_ms)
         }
         None => Calibration {
             up_curve,
@@ -486,6 +455,57 @@ fn build_calibration(
             walk_after_kick_override: None,
             timestamp: Local::now(),
         },
+    }
+}
+
+/// Assembles the record for a sweep that produced usable scalars.
+///
+/// A record rejected by `derive_warnings` still persists, as `Stepped`
+/// carrying the warning, so the popover can explain why the channel is
+/// back to passthrough after a reload.
+fn build_smooth_calibration(
+    up_curve: Vec<DutySample>,
+    down_curve: Vec<DutySample>,
+    down_stable: &[bool],
+    scalars: DerivedScalars,
+    kick_duration_ms: u32,
+) -> Calibration {
+    use crate::calibration::curve::{derive_min_stable_duty, derive_warnings, CalibrationWarning};
+    let (min_stable_duty, band) = derive_min_stable_duty(
+        &down_curve,
+        down_stable,
+        scalars.rpm_max,
+        scalars.min_sustain_duty,
+    );
+    let mut curve_kind = classify_curve(&up_curve, scalars.rpm_max, scalars.min_sustain_duty);
+    let mut warnings = derive_warnings(&up_curve, scalars, min_stable_duty, &mut curve_kind);
+    // The band is read off the same stability flags the plausibility gate
+    // just rejected, so an oscillation range alongside would contradict it.
+    let trustworthy = warnings
+        .contains(&CalibrationWarning::ImplausibleCurve)
+        .not();
+    if let Some((lower_duty, upper_duty)) = band.filter(|_| trustworthy) {
+        warnings.push(CalibrationWarning::Oscillating {
+            lower_duty,
+            upper_duty,
+        });
+    }
+    Calibration {
+        up_curve,
+        down_curve,
+        kick_duration_ms,
+        min_start_duty: scalars.min_start_duty,
+        min_sustain_duty: scalars.min_sustain_duty,
+        min_stable_duty,
+        max_eff_duty: scalars.max_eff_duty,
+        rpm_max: scalars.rpm_max,
+        curve_kind,
+        warnings,
+        was_rpm_only: false,
+        kick_boost_override: None,
+        kick_duration_override_ms: None,
+        walk_after_kick_override: None,
+        timestamp: Local::now(),
     }
 }
 
@@ -1103,7 +1123,13 @@ mod tests {
         step_at_manual_control: Cell<Option<usize>>,
         fail_manual_control: Cell<bool>,
         // Lowest non-zero duty the sweep is told it can reach.
+        // Swings `current_rpm` by +/- `unstable_swing_rpm` on alternating
+        // reads while the written duty is below `unstable_below_duty`, so
+        // the settle window never agrees and the step is flagged unstable.
         duty_floor: Cell<Duty>,
+        unstable_below_duty: Cell<Duty>,
+        unstable_swing_rpm: Cell<RPM>,
+        read_counter: Cell<usize>,
     }
 
     impl MockHost {
@@ -1131,6 +1157,9 @@ mod tests {
                 step_at_manual_control: Cell::new(None),
                 fail_manual_control: Cell::new(false),
                 duty_floor: Cell::new(0),
+                unstable_below_duty: Cell::new(0),
+                unstable_swing_rpm: Cell::new(0),
+                read_counter: Cell::new(0),
             }
         }
 
@@ -1187,6 +1216,17 @@ mod tests {
             self
         }
 
+        /// Make every read below `below_duty` swing by `swing_rpm` around
+        /// the true value on alternating calls, so the settle window never
+        /// converges and the step returns `was_stable = false`. Models a
+        /// tach whose readings are unreliable, which is what
+        /// `derive_min_stable_duty` reads as an oscillating fan.
+        fn with_unstable_reads_below(self, below_duty: Duty, swing_rpm: RPM) -> Self {
+            self.unstable_below_duty.set(below_duty);
+            self.unstable_swing_rpm.set(swing_rpm);
+            self
+        }
+
         /// Configure the host as an unresponsive fan (RPM=0 at every
         /// duty). The diagnoser persists a passthrough calibration
         /// carrying `NoTachometer` in the warnings.
@@ -1206,10 +1246,19 @@ mod tests {
                 self.stale_reads_remaining.set(remaining - 1);
                 return Some(self.stale_rpm.get());
             }
-            self.rpm_for_duty
-                .borrow()
-                .get(&self.last_written_duty.get())
-                .copied()
+            let duty = self.last_written_duty.get();
+            let base = self.rpm_for_duty.borrow().get(&duty).copied()?;
+            let swing = self.unstable_swing_rpm.get();
+            if duty >= self.unstable_below_duty.get() || swing == 0 {
+                return Some(base);
+            }
+            let reads = self.read_counter.get().wrapping_add(1);
+            self.read_counter.set(reads);
+            if reads.is_multiple_of(2) {
+                Some(base.saturating_add(swing))
+            } else {
+                Some(base.saturating_sub(swing))
+            }
         }
 
         async fn latest_status_timestamp_ms(&self, _device_uid: &UID) -> Option<i64> {
@@ -1494,6 +1543,63 @@ mod tests {
                 calibration.curve_kind,
                 CurveKind::Stepped,
                 "NotControllable must force passthrough"
+            );
+        });
+    }
+
+    #[test]
+    fn unreliable_tach_disables_the_mapping_instead_of_pinning_full_duty() {
+        // Goal: end-to-end regression for the reported failure. When the
+        // tach reads unreliably, the down-sweep settle window misses on
+        // every step below the top few, so `derive_min_stable_duty` stops
+        // its walk near duty 100 and reports that as `min_stable_duty`
+        // with no warning at all. `true_to_device_smooth` clamps both kick
+        // and sustain to that floor, so the fan ran at ~full duty for
+        // every true-duty the user set. Method: an otherwise healthy
+        // linear fan whose reads swing +/- 400 RPM below duty 90; assert
+        // the record comes back as passthrough and says why, so nothing is
+        // written from the bad model. Without the gate this fixture
+        // produces `Smooth`, no warnings, a stable floor of 90, and
+        // `true_to_device` answering 90% at true-duty 1, 30 and 70 alike.
+        crate::rt::test_runtime(async {
+            use crate::calibration::CalibrationWarning;
+            let state = FanStateMap::new();
+            let store = CalibrationStore::empty();
+            let host = MockHost::new()
+                .with_smooth_fan()
+                .with_unstable_reads_below(90, 400);
+            let settings = DiagnosisSettings::default();
+
+            let calibration = run_diagnosis(
+                &state,
+                &store,
+                &host,
+                &settings,
+                "dev-a".to_string(),
+                "fan1".to_string(),
+                CancellationToken::new(),
+            )
+            .await
+            .expect("an unreliable tach persists with a warning, not an error");
+
+            assert!(
+                calibration.min_stable_duty >= 50,
+                "precondition: the flaky settle must pin the stable floor high, got {}",
+                calibration.min_stable_duty
+            );
+            assert_eq!(
+                calibration.warnings,
+                vec![CalibrationWarning::ImplausibleCurve],
+                "the implausible model must be the only finding reported"
+            );
+            assert_eq!(
+                calibration.curve_kind,
+                CurveKind::Stepped,
+                "an implausible model must force passthrough"
+            );
+            assert!(
+                calibration.true_to_device(50).is_none(),
+                "passthrough leaves the dispatcher writing the user's duty unchanged"
             );
         });
     }

@@ -1234,6 +1234,8 @@ export default {
                     'plage de RPM limitée ({span} RPM) ; résolution de mappage grossière',
                 warningOscillating:
                     'le ventilateur oscille entre {lower} % et {upper} % de rapport cyclique (impulsion contrôlée par le firmware) ; mappage désactivé à bas rapport cyclique',
+                warningImplausibleCurve:
+                    'la courbe mesurée est plate, inversée ou son minimum ne laisse aucune plage utilisable (les mesures de tr/min semblent peu fiables) ; mappage désactivé, recalibrez pour réessayer',
                 stagePreflight: 'pré-vol',
                 stageUpSweep: 'balayage montant',
                 stageDownSweep: 'balayage descendant',
