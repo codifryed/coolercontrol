@@ -7,7 +7,7 @@
 %global cargo_install_lib 0
 
 Name:           %{project}d
-Version:        5.0.1~rc1
+Version:        5.0.2~rc1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2

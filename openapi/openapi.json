@@ -12,7 +12,7 @@
       "name": "GPL3+",
       "identifier": "GPL3+"
     },
-    "version": "5.0.0"
+    "version": "5.0.1"
   },
   "paths": {
     "/handshake": {

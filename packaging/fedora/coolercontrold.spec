@@ -5,7 +5,7 @@
 %global cargo_install_lib 0
 
 Name:           %{project}d
-Version:        5.0.0
+Version:        5.0.1
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
@@ -77,6 +77,9 @@ popd
 %systemd_postun_with_restart %{name}.service
 
 %changelog
+* Wed Sep 16 2026 Guy Boldon <gb@guyboldon.com> - 5.0.1-1
+- 5.0.1 Release
+
 * Sun Sep 06 2026 Guy Boldon <gb@guyboldon.com> - 5.0.0-1
 - 5.0.0 Release
 
