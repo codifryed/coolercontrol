@@ -24,7 +24,8 @@ use crate::setting::{
     DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
     ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
-    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, STARTUP_DELAY_SECONDS_MAX,
+    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT,
+    STARTUP_DELAY_SECONDS_MAX,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -1331,7 +1332,9 @@ impl Config {
                 .with_context(|| "sensors_auto_detect should be a boolean value")?;
             let device_listener_enabled = settings
                 .get("device_listener_enabled")
-                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(
+                    DEVICE_LISTENER_ENABLED_DEFAULT,
+                ))))
                 .as_bool()
                 .with_context(|| "device_listener_enabled should be a boolean value")?;
             let sensors_conf_enabled = settings
@@ -3238,6 +3241,20 @@ mod tests {
         });
     }
 
+    // Goal: the device listener is off unless the config turns it on, and an
+    // explicit value is kept either way.
+    #[test]
+    fn device_listener_is_disabled_unless_set() {
+        for (document, expected) in [
+            ("[settings]\n", false),
+            ("[settings]\ndevice_listener_enabled = true\n", true),
+            ("[settings]\ndevice_listener_enabled = false\n", false),
+        ] {
+            let settings = config_from(document).get_settings().unwrap();
+            assert_eq!(settings.device_listener_enabled, expected, "{document}");
+        }
+    }
+
     // Goal: the startup delay accepts the full documented range and clamps
     // anything past it, so a hand-edited config cannot stall the daemon forever.
     #[test]
@@ -3289,6 +3306,10 @@ mod tests {
             assert!(
                 config.get_settings().is_ok(),
                 "CoolerControl general settings"
+            );
+            assert!(
+                config.get_settings().unwrap().device_listener_enabled.not(),
+                "Device listener disabled by default"
             );
             assert!(
                 config.get_all_devices_settings().is_ok(),

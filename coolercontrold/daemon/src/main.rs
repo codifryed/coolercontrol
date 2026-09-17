@@ -426,7 +426,9 @@ fn main() -> Result<()> {
                 engine.set_alert_gate(alert_controller.clone());
                 let device_listener_enabled = config
                     .get_settings()
-                    .map_or(true, |s| s.device_listener_enabled);
+                    .map_or(setting::DEVICE_LISTENER_ENABLED_DEFAULT, |s| {
+                        s.device_listener_enabled
+                    });
                 let _device_listener = device_listener::DeviceListener::new(
                     &config,
                     Rc::clone(&all_devices),

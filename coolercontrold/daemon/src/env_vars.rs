@@ -95,9 +95,10 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
     },
     EnvVarDoc {
         name: ENV_DEVICE_EVENTS,
-        description: "Device change listener, which watches netlink uevents for hotplug.",
+        description: "Device change listener, which watches netlink uevents for hotplug. \
+                      Can only turn the listener off.",
         values: TOGGLE_VALUES,
-        default: TOGGLE_DEFAULT,
+        default: "the config `device_listener_enabled` setting, otherwise off",
     },
     EnvVarDoc {
         name: SENSORS_DETECT_NAME,

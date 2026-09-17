@@ -260,6 +260,9 @@ impl Default for LcdCarouselSettings {
 /// long wait before their hardware answers, so this is generous.
 pub const STARTUP_DELAY_SECONDS_MAX: u16 = 120;
 
+/// `CoolerControlSettings::device_listener_enabled` when the config does not set it.
+pub const DEVICE_LISTENER_ENABLED_DEFAULT: bool = false;
+
 /// General Settings for `CoolerControl`
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
