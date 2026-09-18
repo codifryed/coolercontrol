@@ -61,7 +61,7 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::multipart::MultipartError;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{DefaultBodyLimit, Request};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -381,10 +381,6 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(
-        axum::http::header::X_FRAME_OPTIONS,
-        HeaderValue::from_static("SAMEORIGIN"),
-    );
-    headers.insert(
         HeaderName::from_static("referrer-policy"),
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
@@ -398,6 +394,40 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
             HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         );
     }
+    response
+}
+
+fn frame_ancestors_value(cors_origins: Vec<String>) -> String {
+    let exact_origins: Vec<String> = cors_origins
+        .into_iter()
+        .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
+        .collect();
+    if exact_origins.is_empty() {
+        "'none'".to_string()
+    } else {
+        exact_origins.join(" ")
+    }
+}
+
+async fn csp_frame_ancestors_middleware(
+    State(frame_ancestors): State<String>,
+    req: Request,
+    next: middleware::Next,
+) -> Response {
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    const CSP_KEY: HeaderName = HeaderName::from_static("content-security-policy");
+
+    let Some(csp) = headers.get(CSP_KEY) else {
+        return response;
+    };
+    let Ok(csp) = csp.to_str() else {
+        return response;
+    };
+    let Ok(csp) = HeaderValue::try_from(format!("{csp}; frame-ancestors {frame_ancestors}")) else {
+        return response;
+    };
+    headers.insert(CSP_KEY, csp);
     response
 }
 
@@ -431,7 +461,7 @@ async fn create_api_server(
         // 2MB is the default payload limit:
         .route_layer(DefaultBodyLimit::disable())
         .route_layer(session_layer)
-        .layer(cors_layer(ipv4, ipv6, cors_origins))
+        .layer(cors_layer(ipv4, ipv6, cors_origins.clone()))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer((
             TraceLayer::new_for_http(),
@@ -439,6 +469,10 @@ async fn create_api_server(
                 StatusCode::REQUEST_TIMEOUT,
                 Duration::from_secs(API_TIMEOUT_SECS),
             ),
+        ))
+        .layer(middleware::from_fn_with_state(
+            frame_ancestors_value(cors_origins),
+            csp_frame_ancestors_middleware,
         ));
 
     let listener = TcpListener::bind(addr).await?;
@@ -1788,10 +1822,6 @@ mod tests {
             "nosniff"
         );
         assert_eq!(
-            response.headers().get("x-frame-options").unwrap(),
-            "SAMEORIGIN"
-        );
-        assert_eq!(
             response.headers().get("referrer-policy").unwrap(),
             "strict-origin-when-cross-origin"
         );
@@ -1857,6 +1887,73 @@ mod tests {
             .headers()
             .get("strict-transport-security")
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_frame_origins_appended_to_csp() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route(
+                "/test",
+                get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
+            )
+            .layer(middleware::from_fn_with_state(
+                frame_ancestors_value(vec![
+                    "https://cockpit.example.com".to_string(),
+                    "http://localhost:9090".to_string(),
+                ]),
+                csp_frame_ancestors_middleware,
+            ));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("content-security-policy").unwrap(),
+            "default-src 'self'; frame-ancestors https://cockpit.example.com http://localhost:9090"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_frame_origins_appended_to_csp() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route(
+                "/test",
+                get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
+            )
+            .layer(middleware::from_fn_with_state(
+                frame_ancestors_value(vec![]),
+                csp_frame_ancestors_middleware,
+            ));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("content-security-policy").unwrap(),
+            "default-src 'self'; frame-ancestors 'none'"
+        );
     }
 
     #[test]
