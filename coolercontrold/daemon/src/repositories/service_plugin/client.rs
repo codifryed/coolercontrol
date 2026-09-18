@@ -28,12 +28,13 @@ use log::error;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::default::Default;
+use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tonic::metadata::{Ascii, MetadataValue};
-use tonic::Request;
+use tonic::{Code, Request, Status};
 
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 
@@ -46,6 +47,32 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate >= 0.5);
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
+
+/// Why the remote refused us, when a failed health check was a credential problem rather
+/// than a fault a retry could clear.
+///
+/// The connection loop retries health, and a refused credential is the one failure that
+/// retrying cannot fix: a wrong token is still wrong on the next attempt. Without this the
+/// loop exhausts its retries and reports a startup timeout, which sends the user looking
+/// for a plugin that is in fact running and answering.
+///
+/// The returned text is what the channel's `ExplainRefusals` layer already put in the
+/// status, so it names the plugin and the file to write.
+pub fn credential_refusal(err: &anyhow::Error) -> Option<String> {
+    let status = err.downcast_ref::<Status>()?;
+    let reason = match status.code() {
+        // A third-party remote can refuse with nothing to say, and `ExplainRefusals` only
+        // rewrites what our own daemon sends.
+        Code::Unauthenticated | Code::PermissionDenied if status.message().is_empty() => {
+            Some(status.code().to_string())
+        }
+        Code::Unauthenticated | Code::PermissionDenied => Some(status.message().to_string()),
+        _ => None,
+    };
+    // The caller logs this as the tail of a sentence, so an empty reason would trail off.
+    debug_assert!(reason.as_ref().is_none_or(|reason| reason.is_empty().not()));
+    reason
 }
 
 /// The generated client over the daemon's own channel. Named once so a change to the
@@ -266,6 +293,8 @@ impl DeviceServiceClient {
             .ok_or_else(|| anyhow!("Service Device {device_uid} ID not found"))
     }
 
+    /// Health is the gate the connection loop retries, so this one carries the `Status`
+    /// instead of stringifying it: see [`credential_refusal`].
     pub async fn health(&self) -> Result<HealthResponse> {
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
@@ -278,7 +307,7 @@ impl DeviceServiceClient {
                 let request = self.request(HealthRequest{});
                 service_client.health(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|status| anyhow!("Failed to get health status: {status}"))
+                .map_err(|status| anyhow::Error::new(status).context("Failed to get health status"))
             }
         }
     }
@@ -1017,5 +1046,70 @@ mod credential_tests {
             let plan = plan_for(&none).await;
             assert!(DeviceServiceClient::address_from_manifest(&none, &plan).is_err());
         });
+    }
+
+    /// The error exactly as `health` builds it, so these test the shape the connection
+    /// loop actually receives.
+    fn health_error(status: Status) -> anyhow::Error {
+        anyhow::Error::new(status).context("Failed to get health status")
+    }
+
+    /// Goal: a refusal is recognised through the `context` wrapper `health` adds. The
+    /// whole mechanism rests on that downcast reaching past the context, and a plain
+    /// `anyhow!("{status}")` would defeat it silently.
+    #[test]
+    fn a_refusal_is_recognised_through_the_context() {
+        let refused = health_error(Status::unauthenticated("put a token in the 'token' file"));
+        assert_eq!(
+            credential_refusal(&refused).as_deref(),
+            Some("put a token in the 'token' file")
+        );
+
+        let scope = health_error(Status::permission_denied("this token cannot read devices"));
+        assert_eq!(
+            credential_refusal(&scope).as_deref(),
+            Some("this token cannot read devices")
+        );
+
+        // The shape this replaced, kept to show what is at stake: a status formatted into
+        // a message carries no code, so nothing downstream can tell the two apart.
+        let stringified = anyhow!(
+            "Failed to get health status: {}",
+            Status::unauthenticated("x")
+        );
+        assert_eq!(credential_refusal(&stringified), None);
+    }
+
+    /// Goal: a refusal with nothing to say still reports something, since a third-party
+    /// remote never passes through our `ExplainRefusals` layer. An empty reason would log
+    /// a sentence that stops mid-air.
+    #[test]
+    fn a_silent_refusal_falls_back_to_the_code() {
+        let silent = health_error(Status::unauthenticated(""));
+        let reason = credential_refusal(&silent).expect("a refusal is still a refusal");
+        assert!(reason.is_empty().not(), "{reason}");
+        assert_eq!(reason, Code::Unauthenticated.to_string());
+    }
+
+    /// Goal: the negative space, which is what keeps a slow plugin working. Every other
+    /// failure has to stay retryable; classifying one of these as a refusal would drop a
+    /// plugin that is merely still starting up.
+    #[test]
+    fn other_failures_stay_retryable() {
+        for status in [
+            Status::unavailable("connection refused"),
+            Status::deadline_exceeded("timed out"),
+            Status::internal("it broke"),
+            Status::unimplemented("no such method"),
+            Status::resource_exhausted("too many attempts"),
+        ] {
+            let code = status.code();
+            let err = health_error(status);
+            assert_eq!(credential_refusal(&err), None, "{code} must be retryable");
+        }
+
+        // The timeout arm of `health` never sees a status at all.
+        let timeout = anyhow!("TIMEOUT Device Service Plugin test_service");
+        assert_eq!(credential_refusal(&timeout), None);
     }
 }

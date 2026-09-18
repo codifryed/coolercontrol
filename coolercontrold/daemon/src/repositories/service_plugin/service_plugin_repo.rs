@@ -13,6 +13,7 @@ use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
     secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
@@ -497,8 +498,19 @@ impl ServicePluginRepo {
                                 version = response.version;
                                 break 'health;
                             }
-                            Err(status) => {
-                                debug!("Health request returned status: {status}, retrying...");
+                            Err(err) => {
+                                // Retrying a refusal only buries it under the startup
+                                // timeout below, so this is reported and abandoned here.
+                                if let Some(reason) = client::credential_refusal(&err) {
+                                    error!(
+                                        "Plugin service {service_id} will not be used: {reason}"
+                                    );
+                                    if service_manifest.is_managed() {
+                                        let _ = service_manager.remove(&service_id).await;
+                                    }
+                                    return;
+                                }
+                                debug!("Health request returned status: {err:#}, retrying...");
                                 retries += 1;
                             }
                         }
