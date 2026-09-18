@@ -42,6 +42,10 @@ pub async fn connect(
     plan: &trust::LinkPlan,
     tls_strict: bool,
 ) -> Result<Channel> {
+    info!(
+        "{}",
+        describe_link(&manifest.id, &manifest.address, plan.encrypted())
+    );
     match &manifest.address {
         ConnectionType::Tcp(tcp_address) if plan.encrypted() => {
             connect_tls(manifest, address, tcp_address, tls_strict).await
@@ -53,6 +57,30 @@ pub async fn connect(
             .await
             .with_context(|| format!("Connecting to device service at {address}")),
         ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
+    }
+}
+
+/// How the link to a plugin is protected, for the log.
+///
+/// The pin message is the only other place TLS shows up, and it appears on first contact
+/// alone, so from the second start onwards nothing distinguishes an encrypted link from a
+/// plaintext one.
+fn describe_link(service_id: &str, address: &ConnectionType, encrypted: bool) -> String {
+    debug_assert!(service_id.is_empty().not());
+    match address {
+        ConnectionType::Uds(path) => format!(
+            "Connecting to device service '{service_id}' over the local socket {}",
+            path.display()
+        ),
+        ConnectionType::Tcp(tcp_address) if encrypted => {
+            format!("Connecting to device service '{service_id}' at {tcp_address} over TLS")
+        }
+        ConnectionType::Tcp(tcp_address) => {
+            format!("Connecting to device service '{service_id}' at {tcp_address} without TLS")
+        }
+        ConnectionType::None => {
+            format!("Device service '{service_id}' has no address to connect to")
+        }
     }
 }
 
@@ -259,6 +287,29 @@ mod tests {
         assert_eq!(host_of("[::1]:11987"), "::1");
         assert_eq!(host_of("[fe80::1]:11987"), "fe80::1");
         assert_eq!(host_of(" 127.0.0.1:11987 "), "127.0.0.1");
+    }
+
+    /// Goal: the connect line has to state whether the link is encrypted. Inferring it
+    /// from the pin message only works on first contact, and inferring it from a remote
+    /// address not at all.
+    #[test]
+    fn the_link_description_states_whether_it_is_encrypted() {
+        let remote = ConnectionType::Tcp("10.1.1.11:11987".into());
+
+        let encrypted = describe_link("Gerver", &remote, true);
+        assert!(encrypted.contains("Gerver"), "{encrypted}");
+        assert!(encrypted.contains("10.1.1.11:11987"), "{encrypted}");
+        assert!(encrypted.contains("over TLS"), "{encrypted}");
+        assert!(encrypted.contains("without TLS").not(), "{encrypted}");
+
+        let plain = describe_link("Gerver", &remote, false);
+        assert!(plain.contains("without TLS"), "{plain}");
+
+        let local = describe_link("local", &ConnectionType::Uds("/run/cc.sock".into()), false);
+        assert!(local.contains("/run/cc.sock"), "{local}");
+        // A Unix socket is scoped to this machine by the kernel, so naming the missing
+        // TLS would read as a problem to go and fix.
+        assert!(local.contains("TLS").not(), "{local}");
     }
 
     fn refusal_headers(status: &str) -> HeaderMap {
