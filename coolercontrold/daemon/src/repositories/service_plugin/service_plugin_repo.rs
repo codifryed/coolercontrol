@@ -49,6 +49,12 @@ pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
 const TIMEOUT_API_UP_SECONDS: u64 = 60; // We have a 30-second max startup delay
+/// Spacing between health attempts while a plugin comes up, so that
+/// `TIMEOUT_SERVICE_START_SECONDS` attempts really do span that many seconds.
+const HEALTH_RETRY_DELAY: Duration = Duration::from_secs(1);
+// The give-up message names seconds, so any other spacing puts it at odds with the
+// attempt count.
+const _: () = assert!(HEALTH_RETRY_DELAY.as_secs() == 1);
 
 #[derive(Debug)]
 struct DeviceServiceConnection {
@@ -512,6 +518,8 @@ impl ServicePluginRepo {
                                 }
                                 debug!("Health request returned status: {err:#}, retrying...");
                                 retries += 1;
+                                // Spaced so the count really is a count of seconds.
+                                sleep(HEALTH_RETRY_DELAY).await;
                             }
                         }
                     }
