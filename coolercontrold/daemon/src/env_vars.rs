@@ -14,7 +14,7 @@ use std::ops::Not;
 
 use crate::{
     ENV_CC_LOG, ENV_CERT_PATH, ENV_CONFIG_DIR, ENV_DATA_DIR, ENV_DBUS, ENV_DEVICE_EVENTS,
-    ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_NVML, ENV_PLUGINS_DIR, ENV_PORT,
+    ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_NVML, ENV_PLUGINS_DIR, ENV_PORT, ENV_SERVICE_DIR,
     ENV_SERVICE_MANAGER, ENV_TLS,
 };
 
@@ -146,6 +146,15 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
                       usually enough.",
         values: "a directory path",
         default: "the `plugins` directory under the data directory",
+    },
+    EnvVarDoc {
+        name: ENV_SERVICE_DIR,
+        description: "Directory the service manager's plugin unit/script files are written \
+                      to. For distros that mount /etc read only, point it at a writable \
+                      directory the manager also reads, such as /run/systemd/system. Must \
+                      be absolute; a relative path is ignored.",
+        values: "an absolute directory path",
+        default: "/etc/systemd/system (systemd) or /etc/init.d (OpenRC)",
     },
 ];
 

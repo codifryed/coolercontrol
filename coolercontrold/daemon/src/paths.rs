@@ -8,12 +8,13 @@
 //! be overridden at startup via the `CC_CONFIG_DIR` environment
 //! variable.
 
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use crate::ENV_PLUGINS_DIR;
 #[cfg(not(test))]
 use crate::{ENV_CONFIG_DIR, ENV_DATA_DIR};
+use crate::{ENV_PLUGINS_DIR, ENV_SERVICE_DIR};
 
 // -- config dir (independent of data_dir) --
 const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -54,6 +55,18 @@ fn test_sandbox_dir(kind: &str) -> PathBuf {
 static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     std::env::var(ENV_PLUGINS_DIR).map_or_else(|_| data_dir().join("plugins"), PathBuf::from)
 });
+
+// -- service manager unit/script dir (overridable via CC_SERVICE_DIR) --
+// Unset leaves each service manager on its own default, so only distros that need it pay
+// any attention to this.
+#[cfg(not(test))]
+static SERVICE_DIR: LazyLock<Option<PathBuf>> =
+    LazyLock::new(|| parse_service_dir_override(std::env::var(ENV_SERVICE_DIR).ok()));
+// Same sandbox rule as CONFIG_DIR: the env override is ignored so a developer or packager
+// with CC_SERVICE_DIR exported cannot change what the suite sees. The parsing itself is
+// tested directly through `parse_service_dir_override`.
+#[cfg(test)]
+static SERVICE_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| None);
 
 // -- config --
 static CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("config.toml"));
@@ -99,6 +112,40 @@ pub fn config_dir() -> &'static Path {
 /// Runtime state directory (`/var/lib/coolercontrol`).
 pub fn data_dir() -> &'static Path {
     &DATA_DIR
+}
+
+/// The directory a service manager writes its plugin unit/script files to: the
+/// `CC_SERVICE_DIR` override when one is set, otherwise `manager_default`.
+pub fn service_dir(manager_default: &Path) -> PathBuf {
+    debug_assert!(manager_default.is_absolute());
+    SERVICE_DIR
+        .as_deref()
+        .map_or_else(|| manager_default.to_path_buf(), Path::to_path_buf)
+}
+
+/// Validates the raw `CC_SERVICE_DIR` value, extracted for testability.
+///
+/// Only an absolute path is accepted. The daemon runs as root and writes service
+/// definitions here, so a relative path would resolve against whatever working directory
+/// the service manager happened to start it in. A rejected value falls back to the
+/// manager default rather than failing startup, since plugins are optional.
+fn parse_service_dir_override(raw: Option<String>) -> Option<PathBuf> {
+    use log::warn;
+    let raw = raw?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        warn!("{ENV_SERVICE_DIR} is empty, using the service manager default");
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute().not() {
+        warn!(
+            "{ENV_SERVICE_DIR} must be an absolute path, ignoring '{trimmed}' \
+             and using the service manager default"
+        );
+        return None;
+    }
+    Some(path)
 }
 
 pub fn config_file() -> &'static Path {
@@ -365,6 +412,64 @@ fn migrate_legacy_plugin_entries(canonical: &Path, legacy: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn service_dir_override_accepts_an_absolute_path() {
+        // Goal: the value NixOS sets is taken as-is. Method: feed the writable runtime
+        // directory systemd also reads and pin the parsed result.
+        assert_eq!(
+            parse_service_dir_override(Some("/run/systemd/system".to_string())),
+            Some(PathBuf::from("/run/systemd/system"))
+        );
+    }
+
+    #[test]
+    fn service_dir_override_trims_surrounding_whitespace() {
+        // Goal: a value that picked up padding from a unit file still resolves. Method:
+        // pad both ends and assert the path is unpadded.
+        assert_eq!(
+            parse_service_dir_override(Some("  /run/systemd/system \n".to_string())),
+            Some(PathBuf::from("/run/systemd/system"))
+        );
+    }
+
+    #[test]
+    fn service_dir_override_rejects_unusable_values() {
+        // Goal: nothing that would put unit files somewhere unintended gets through. The
+        // daemon runs as root, so a relative path would resolve against whatever working
+        // directory the service manager started it in. Method: the negative space, unset
+        // and every malformed shape, all of which must fall back to the manager default.
+        assert_eq!(parse_service_dir_override(None), None);
+        assert_eq!(parse_service_dir_override(Some(String::new())), None);
+        assert_eq!(parse_service_dir_override(Some("   ".to_string())), None);
+        assert_eq!(
+            parse_service_dir_override(Some("run/systemd".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_service_dir_override(Some("./units".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_service_dir_override(Some("../units".to_string())),
+            None
+        );
+    }
+
+    #[test]
+    fn service_dir_falls_back_to_the_manager_default() {
+        // Goal: a daemon with no override left exactly where it was before. Method: the
+        // override static is sandboxed to None in test builds, so the accessor must hand
+        // back each manager's own directory unchanged.
+        assert_eq!(
+            service_dir(Path::new("/etc/systemd/system")),
+            PathBuf::from("/etc/systemd/system")
+        );
+        assert_eq!(
+            service_dir(Path::new("/etc/init.d")),
+            PathBuf::from("/etc/init.d")
+        );
+    }
 
     #[test]
     fn production_defaults_are_unchanged() {

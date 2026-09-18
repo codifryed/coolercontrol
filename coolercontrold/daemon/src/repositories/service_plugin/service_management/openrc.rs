@@ -3,6 +3,7 @@
 
 use super::{ensure_plugin_user, find_on_path, ServiceId, ServiceIdExt};
 use crate::cc_fs;
+use crate::paths;
 use crate::repositories::service_plugin::service_management::manager::{
     ServiceDefinition, ServiceManager, ServiceStatus,
 };
@@ -15,10 +16,13 @@ use std::fmt::Write;
 use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::Duration;
 
 const RC_SERVICE: &str = "rc-service";
+/// The directory the plugin init scripts are written to. `CC_SERVICE_DIR` overrides it, for
+/// distros that mount `/etc` read only.
+const DEFAULT_OPENRC_DIR: &str = "/etc/init.d";
 const RC_SERVICE_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o755;
 /// `rc-service stop` returns once it has signalled the supervisor, not once the supervised
@@ -71,7 +75,7 @@ impl OpenRcManager {
 
 impl ServiceManager for OpenRcManager {
     async fn add(&self, service_definition: ServiceDefinition) -> Result<()> {
-        let dir_path = service_dir_path();
+        let dir_path = paths::service_dir(Path::new(DEFAULT_OPENRC_DIR));
         cc_fs::create_dir_all(&dir_path).await?;
         let service_name = service_definition.service_id.to_service_name();
         let service_description = service_definition.service_id.to_description();
@@ -99,7 +103,8 @@ impl ServiceManager for OpenRcManager {
             return Ok(());
         }
         self.stop(service_id).await?;
-        let service_path = service_dir_path().join(service_id.to_service_name());
+        let service_path =
+            paths::service_dir(Path::new(DEFAULT_OPENRC_DIR)).join(service_id.to_service_name());
         cc_fs::remove_file(service_path).await
     }
 
@@ -161,11 +166,6 @@ impl ServiceManager for OpenRcManager {
             )),
         }
     }
-}
-
-#[inline]
-fn service_dir_path() -> PathBuf {
-    PathBuf::from("/etc/init.d")
 }
 
 fn create_service_file(
@@ -319,6 +319,7 @@ fn escape_dquoted(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::repositories::service_plugin::service_manifest::EnvVar;
+    use std::path::PathBuf;
 
     fn env(name: &str, value: &str) -> EnvVar {
         EnvVar::new(name, value).unwrap()
@@ -391,6 +392,17 @@ mod tests {
     /// Goal: an argument arrives at the plugin byte for byte, including every character
     /// the old allowlist deleted. This is the reported bug, checked through a real shell
     /// rather than against an expected string.
+    #[test]
+    fn init_scripts_default_to_openrcs_own_directory() {
+        // Goal: a daemon with no CC_SERVICE_DIR override writes where OpenRC has always
+        // read from. Method: the override is sandboxed off in test builds, so resolving
+        // this manager's default must give that directory back unchanged.
+        assert_eq!(
+            paths::service_dir(Path::new(DEFAULT_OPENRC_DIR)),
+            PathBuf::from("/etc/init.d")
+        );
+    }
+
     #[test]
     fn arguments_reach_the_plugin_unaltered() {
         let args: Vec<String> = [
