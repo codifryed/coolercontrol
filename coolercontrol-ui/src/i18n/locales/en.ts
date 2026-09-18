@@ -574,6 +574,8 @@ export default {
             setAsHome: 'Set as Home',
             duplicateDashboard: 'Duplicate Dashboard',
             openCooling: 'Open cooling controls',
+            editCustomSensor: 'Edit Custom Sensor',
+            openCustomSensor: 'Open custom sensor settings',
         },
         appInfo: {
             noWarranty: 'This program comes with absolutely no warranty.',
@@ -638,6 +640,9 @@ export default {
             findingDetectionUnsupported:
                 'Hardware detection is not supported on this architecture.',
             failsafeActive: 'Failsafe values in use',
+            deviceUnreachable: 'Device is not responding',
+            deviceUnreachableDetail:
+                'The driver stopped answering, so this device cannot be read or controlled. Retrying periodically.',
             missingTempSource: 'Missing temp source',
             staleTempSource: 'Temp source using failsafe values',
             stressTest: 'Thermal Stress Tests',
@@ -1192,6 +1197,8 @@ export default {
                 warningLimitedRange: 'limited RPM range ({span} RPM); mapping resolution is coarse',
                 warningOscillating:
                     'fan oscillates between {lower}% and {upper}% duty (firmware-controlled kick-in); mapping disabled at low duty',
+                warningImplausibleCurve:
+                    'measured curve is flat, inverted, or its floor leaves no usable range (RPM readings look unreliable); mapping disabled, re-calibrate to retry',
                 stagePreflight: 'pre-flight',
                 stageUpSweep: 'up-sweep',
                 stageDownSweep: 'down-sweep',

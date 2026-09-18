@@ -75,15 +75,15 @@ describe('monitoringChannelRoute', () => {
         })
     })
 
-    it('keeps custom sensors on their editor, so it stays one click away', () => {
+    it('keeps custom sensors on their monitoring chart', () => {
         const device = fakeDevice('cs', { sensor1: undefined }, DeviceType.CUSTOM_SENSORS)
         expect(monitoringChannelRoute([device], 'cs', 'sensor1')).toEqual({
-            name: 'device-custom-sensor',
-            params: { customSensorID: 'sensor1' },
+            name: 'monitoring-sensor',
+            params: { deviceUID: 'cs', channelName: 'sensor1' },
         })
     })
 
-    it('matches channelRoute for everything that is not a fan/pump', () => {
+    it('matches channelRoute for everything that is not a fan/pump or custom sensor', () => {
         const device = fakeDevice('d1', { load1: undefined, temp1: undefined })
         const noInfo = { uid: 'd2', type: DeviceType.HWMON, info: null } as unknown as Device
         for (const [devices, uid, channel] of [
@@ -98,10 +98,14 @@ describe('monitoringChannelRoute', () => {
         }
     })
 
-    it('differs from channelRoute only for fan/pump channels', () => {
+    it('differs from channelRoute only for fan/pump channels and custom sensors', () => {
         const device = fakeDevice('d1', { fan1: { fixed_enabled: true }, temp1: undefined })
+        const custom = fakeDevice('cs', { sensor1: undefined }, DeviceType.CUSTOM_SENSORS)
         expect(monitoringChannelRoute([device], 'd1', 'fan1')).not.toEqual(
             channelRoute([device], 'd1', 'fan1'),
+        )
+        expect(monitoringChannelRoute([custom], 'cs', 'sensor1')).not.toEqual(
+            channelRoute([custom], 'cs', 'sensor1'),
         )
         expect(monitoringChannelRoute([device], 'd1', 'temp1')).toEqual(
             channelRoute([device], 'd1', 'temp1'),

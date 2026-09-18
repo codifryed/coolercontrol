@@ -570,6 +570,8 @@ export default {
             setAsHome: '홈으로 설정',
             duplicateDashboard: '대시보드 복제',
             openCooling: '냉각 제어 열기',
+            editCustomSensor: '커스텀 센서 편집',
+            openCustomSensor: '커스텀 센서 설정 열기',
         },
         appInfo: {
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
@@ -632,6 +634,9 @@ export default {
                 '/dev/port를 사용할 수 없어 하드웨어 탐지를 실행할 수 없습니다.',
             findingDetectionUnsupported: '이 아키텍처에서는 하드웨어 탐지가 지원되지 않습니다.',
             failsafeActive: '페일세이프 값 사용 중',
+            deviceUnreachable: '장치가 응답하지 않음',
+            deviceUnreachableDetail:
+                '드라이버가 응답을 멈춰 이 장치를 읽거나 제어할 수 없습니다. 주기적으로 다시 시도합니다.',
             missingTempSource: '온도 소스 누락',
             staleTempSource: '온도 소스가 페일세이프 값 사용 중',
             stressTest: '열 스트레스 테스트',
@@ -1184,6 +1189,8 @@ export default {
                 warningLimitedRange: '제한된 RPM 범위 ({span} RPM); 매핑 해상도가 거칠어집니다',
                 warningOscillating:
                     '팬이 {lower} %와 {upper} % 듀티 사이에서 진동함 (펌웨어 제어 시동 부스트); 낮은 듀티에서 매핑 비활성화',
+                warningImplausibleCurve:
+                    '측정된 곡선이 평탄하거나 반전되었거나 하한이 사용 가능한 범위를 남기지 않습니다 (RPM 판독값이 불안정해 보임); 매핑 비활성화, 다시 보정해 재시도하세요',
                 stagePreflight: '사전 점검',
                 stageUpSweep: '상승 스윕',
                 stageDownSweep: '하강 스윕',

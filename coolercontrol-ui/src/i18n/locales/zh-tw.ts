@@ -552,6 +552,8 @@ export default {
             setAsHome: '設為首頁',
             duplicateDashboard: '複製儀表板',
             openCooling: '開啟冷卻控制',
+            editCustomSensor: '編輯自定義傳感器',
+            openCustomSensor: '開啟自定義傳感器設定',
         },
         appInfo: {
             noWarranty: '本程序不提供任何保證。',
@@ -611,6 +613,8 @@ export default {
             findingBlockedByNoDevPort: '/dev/port 無法使用，硬體偵測無法執行。',
             findingDetectionUnsupported: '此架構不支援硬體偵測。',
             failsafeActive: '正在使用故障保護值',
+            deviceUnreachable: '裝置無回應',
+            deviceUnreachableDetail: '驅動程式已停止回應，因此無法讀取或控制此裝置。正在定期重試。',
             missingTempSource: '缺少溫度來源',
             staleTempSource: '溫度來源正在使用故障保護值',
             stressTest: '熱壓力測試',
@@ -1141,6 +1145,8 @@ export default {
                 warningLimitedRange: '轉速範圍有限（{span} RPM），對應的解析度較粗',
                 warningOscillating:
                     '風扇在 {lower} % 與 {upper} % 工作週期之間擺盪（韌體控制的啟動衝擊）；在低工作週期下已停用對應',
+                warningImplausibleCurve:
+                    '量測到的曲線平坦、反向，或其下限沒有留下可用範圍（轉速讀數看起來不可靠）；對應已停用，請重新校正後重試',
                 stagePreflight: '預檢',
                 stageUpSweep: '上升掃掠',
                 stageDownSweep: '下降掃掠',

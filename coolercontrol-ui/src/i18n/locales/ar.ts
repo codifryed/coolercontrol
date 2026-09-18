@@ -570,6 +570,8 @@ export default {
             setAsHome: 'تعيين كصفحة رئيسية',
             duplicateDashboard: 'تكرار لوحة المعلومات',
             openCooling: 'فتح عناصر تحكم التبريد',
+            editCustomSensor: 'تحرير المستشعر المخصص',
+            openCustomSensor: 'فتح إعدادات المستشعر المخصص',
         },
         appInfo: {
             noWarranty: 'يأتي هذا البرنامج بدون أي ضمان على الإطلاق.',
@@ -631,6 +633,9 @@ export default {
             findingBlockedByNoDevPort: 'تعذّر تشغيل اكتشاف الأجهزة لأن ‎/dev/port غير متاح.',
             findingDetectionUnsupported: 'اكتشاف الأجهزة غير مدعوم على هذه البنية.',
             failsafeActive: 'قيم الأمان قيد الاستخدام',
+            deviceUnreachable: 'الجهاز لا يستجيب',
+            deviceUnreachableDetail:
+                'توقف المشغّل عن الاستجابة، لذا لا يمكن قراءة هذا الجهاز أو التحكم فيه. تجري إعادة المحاولة دوريًا.',
             missingTempSource: 'مصدر درجة الحرارة مفقود',
             staleTempSource: 'مصدر درجة الحرارة يستخدم قيم الأمان',
             stressTest: 'اختبارات الإجهاد الحراري',
@@ -1182,6 +1187,8 @@ export default {
                 warningLimitedRange: 'نطاق عدد اللفات محدود ({span} RPM)؛ دقة التحويل خشنة',
                 warningOscillating:
                     'تتذبذب المروحة بين {lower} % و {upper} % من دورة التشغيل (دفع بدء يديره البرنامج الثابت)؛ التحويل معطَّل عند دورة التشغيل المنخفضة',
+                warningImplausibleCurve:
+                    'المنحنى المقاس مسطَّح أو معكوس أو حدّه الأدنى لا يترك نطاقًا قابلًا للاستخدام (قراءات الدورات تبدو غير موثوقة)؛ التحويل معطَّل، أعد المعايرة للمحاولة مرة أخرى',
                 stagePreflight: 'فحص أولي',
                 stageUpSweep: 'مسح صاعد',
                 stageDownSweep: 'مسح هابط',

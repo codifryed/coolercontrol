@@ -38,6 +38,13 @@ const RPM_START_THRESHOLD_ABSOLUTE: RPM = 50;
 const RPM_START_THRESHOLD_FRACTION_PERCENT: u32 = 5;
 const RPM_JITTER_ABSOLUTE: RPM = 50;
 const RPM_JITTER_FRACTION_PERCENT: u32 = 3;
+/// Duty at which the sweep already treats a fan as saturated (mirrors
+/// `DiagnosisSettings::saturation_extreme_duty_min`). Backstops the
+/// floor check for a fan whose plateau sits at duty 100, where judging
+/// against `max_eff_duty` alone would only fire on a floor of exactly
+/// 100.
+const SATURATION_TAIL_DUTY: Duty = 90;
+
 /// Consecutive rising gaps that mark a sustained ramp in `classify_curve`
 /// (a 5+ sample climb). Distinguishes a hardware floor plus ramp (one
 /// long unbroken run) from a multi-plateau staircase (isolated single-gap
@@ -156,6 +163,11 @@ pub enum CalibrationWarning {
     /// fan). `min_stable_duty` undefined; dispatcher falls back to
     /// `min_sustain_duty`. The range marks the observed oscillation band.
     Oscillating { lower_duty: Duty, upper_duty: Duty },
+    /// Derived model leaves nothing to map: a duty floor high enough that
+    /// every duty the map can write is already max speed, or a responsive
+    /// region that never rises. Both come from unreliable RPM reads
+    /// during the sweep. Mapping disabled (forced Stepped).
+    ImplausibleCurve,
 }
 
 /// (kick, sustain) device duties from the forward true-duty map.
@@ -645,11 +657,18 @@ fn rpm_at_device_duty(curve: &[DutySample], device_duty: Duty) -> RPM {
     lo.rpm + delta * frac / span
 }
 
-/// Reliability warnings. Mutates `curve_kind` to `Stepped` when the
-/// fan looks BIOS-controlled (kills the mapping).
+/// Reliability warnings. Mutates `curve_kind` to `Stepped` when the fan
+/// looks BIOS-controlled, or when the derived model is too broken to map
+/// with (either kills the mapping).
+///
+/// Three disqualifying checks run in order, and the first to fire is the
+/// only one reported. Order matters: the two flatness checks come first
+/// because the floor check reads `max_eff_duty`, which is meaningless
+/// until the curve is known to rise.
 pub fn derive_warnings(
     up_curve: &[DutySample],
     scalars: DerivedScalars,
+    min_stable_duty: Duty,
     curve_kind: &mut CurveKind,
 ) -> Vec<CalibrationWarning> {
     let mut warnings = Vec::new();
@@ -660,6 +679,24 @@ pub fn derive_warnings(
         warnings.push(CalibrationWarning::NotControllable);
         *curve_kind = CurveKind::Stepped;
         // Skip LimitedRange: NotControllable already implies tiny range.
+        return warnings;
+    }
+    // `effective_span` measures against `rpm_max`, the maximum over BOTH
+    // sweeps, so a single spurious high sample inflates it past the check
+    // above on a curve that is flat or inverted end to end. Re-measure
+    // across the responsive region's own endpoints to catch that.
+    if responsive_rpm_rise(up_curve, scalars.min_start_duty) <= not_controllable_limit {
+        warnings.push(CalibrationWarning::ImplausibleCurve);
+        *curve_kind = CurveKind::Stepped;
+        return warnings;
+    }
+    // Last of the three, because it is the only one that needs a curve
+    // that demonstrably rises: `max_eff_duty` is the duty at which the fan
+    // reaches its plateau, and on a flat curve that is the very first
+    // sample, which would make the check fire on every BIOS-driven fan.
+    if floor_leaves_no_range(scalars, min_stable_duty) {
+        warnings.push(CalibrationWarning::ImplausibleCurve);
+        *curve_kind = CurveKind::Stepped;
         return warnings;
     }
     // LimitedRange fires regardless of curve_kind: stepped fans benefit
@@ -734,6 +771,47 @@ fn effective_rpm_span(up_curve: &[DutySample], scalars: DerivedScalars) -> RPM {
         .find(|s| s.duty == scalars.min_start_duty)
         .map_or(0, |s| s.rpm);
     scalars.rpm_max.saturating_sub(rpm_at_start)
+}
+
+/// Whether the derived floors leave any duty range worth mapping across.
+///
+/// Judged against the fan's OWN plateau first, not a fixed number: a
+/// server fan or pump that will not hold a steady speed below, say, 60%
+/// duty derives a floor there legitimately, and mapping true 0-100% onto
+/// device 60-100% is exactly the job. What disqualifies a floor is
+/// reaching `max_eff_duty`, where every duty the map can still write
+/// already produces `rpm_max`, so the map answers one speed for every
+/// request. At a floor of 100 that is literally true.
+fn floor_leaves_no_range(scalars: DerivedScalars, min_stable_duty: Duty) -> bool {
+    let limit = scalars.max_eff_duty.min(SATURATION_TAIL_DUTY);
+    highest_floor_duty(scalars, min_stable_duty) >= limit
+}
+
+/// Highest of the three derived duty floors. `true_to_device_smooth`
+/// clamps its writes to each of them, so the highest is what actually
+/// bounds the forward map from below.
+fn highest_floor_duty(scalars: DerivedScalars, min_stable_duty: Duty) -> Duty {
+    scalars
+        .min_start_duty
+        .max(scalars.min_sustain_duty)
+        .max(min_stable_duty)
+}
+
+/// RPM gained from the bottom to the top of the up-curve's responsive
+/// region. Zero when the region falls or holds flat, since the fan is
+/// then not tracking duty at all across the range we would map over.
+///
+/// The last sample is the top of the range: an up-sweep that aborts at
+/// `UNRESPONSIVE_ABORT_DUTY` saw nothing reach `start_rpm_min`, which is
+/// also the floor of `start_threshold`, so `derive_scalars` answers
+/// `None` for it and this is never reached with a partial curve.
+fn responsive_rpm_rise(up_curve: &[DutySample], min_start_duty: Duty) -> RPM {
+    let responsive = curve_above(up_curve, min_start_duty);
+    let Some(bottom) = responsive.first() else {
+        return 0;
+    };
+    let top = responsive[responsive.len() - 1];
+    top.rpm.saturating_sub(bottom.rpm)
 }
 
 /// Scalars derived from the raw sweep curves. `max_eff_duty` is
@@ -1380,7 +1458,7 @@ mod tests {
         let down = smooth_curve(2000);
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = classify_curve(&up, scalars.rpm_max, scalars.min_sustain_duty);
-        let warnings = derive_warnings(&up, scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, scalars.min_sustain_duty, &mut kind);
         assert!(
             warnings.is_empty(),
             "expected no warnings, got {warnings:?}"
@@ -1401,7 +1479,7 @@ mod tests {
         let down = up.clone();
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = CurveKind::Smooth; // pretend classify said smooth
-        let warnings = derive_warnings(&up, scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, scalars.min_sustain_duty, &mut kind);
         assert!(
             warnings.contains(&CalibrationWarning::NotControllable),
             "expected NotControllable in {warnings:?}"
@@ -1433,7 +1511,7 @@ mod tests {
         let down = up.clone();
         let scalars = derive_scalars(&up, &down).expect("derives");
         let mut kind = classify_curve(&up, scalars.rpm_max, scalars.min_sustain_duty);
-        let warnings = derive_warnings(&up, scalars, &mut kind);
+        let warnings = derive_warnings(&up, scalars, scalars.min_sustain_duty, &mut kind);
         let limited = warnings.iter().find_map(|w| match w {
             CalibrationWarning::LimitedRange { rpm_span, rpm_max } => Some((*rpm_span, *rpm_max)),
             _ => None,
@@ -2477,5 +2555,235 @@ mod tests {
             out.extension,
             Some(crate::device::ChannelExtensionNames::AmdRdnaGpu)
         );
+    }
+
+    // --- plausibility gate ------------------------------------------
+
+    /// Run `derive_warnings` the way `build_smooth_calibration` does.
+    /// Returns the findings plus the curve kind they left behind, so each
+    /// case can assert both the message and whether mapping survived.
+    fn warnings_for(
+        up_curve: &[DutySample],
+        scalars: DerivedScalars,
+        min_stable_duty: Duty,
+    ) -> (Vec<CalibrationWarning>, CurveKind) {
+        let mut kind = classify_curve(up_curve, scalars.rpm_max, scalars.min_sustain_duty);
+        let warnings = derive_warnings(up_curve, scalars, min_stable_duty, &mut kind);
+        (warnings, kind)
+    }
+
+    /// Scalars for a plausibility case. Built straight from the up-curve
+    /// so each test declares only the samples plus the floors under
+    /// examination, without standing up a matching down-sweep.
+    fn scalars_for(
+        up_curve: &[DutySample],
+        min_start_duty: Duty,
+        min_sustain_duty: Duty,
+    ) -> DerivedScalars {
+        let rpm_max = up_curve
+            .iter()
+            .map(|s| s.rpm)
+            .max()
+            .expect("non-empty curve");
+        DerivedScalars {
+            min_start_duty,
+            min_sustain_duty,
+            max_eff_duty: 100,
+            rpm_max,
+        }
+    }
+
+    #[test]
+    fn implausible_when_stable_floor_pins_the_map_near_full_duty() {
+        // Goal: the reported field failure. Unreliable RPM reads make the
+        // settle window miss on nearly every down-sweep step, so
+        // `derive_min_stable_duty` stops walking three samples from the
+        // top and reports `min_stable_duty = 90` with no warning at all.
+        // `true_to_device_smooth` clamps both kick and sustain to that
+        // floor, so every true-duty writes ~full duty. Method: a textbook
+        // linear curve (nothing wrong with the RPM shape) paired with the
+        // high stable floor, to pin that the floor alone disqualifies it.
+        let up = smooth_curve(2000);
+        let scalars = scalars_for(&up, 5, 5);
+        let (warnings, kind) = warnings_for(&up, scalars, 90);
+        assert_eq!(warnings, vec![CalibrationWarning::ImplausibleCurve]);
+        assert_eq!(
+            kind,
+            CurveKind::Stepped,
+            "a stable floor at 90% duty leaves no range to map across"
+        );
+    }
+
+    #[test]
+    fn implausible_when_curve_is_inverted() {
+        // Goal: an inverted sweep (RPM falling as duty rises) must never
+        // be mapped. Method: a strictly decreasing curve. Its only sample
+        // that is not above every later one is the last, so
+        // `first_monotonic_above_threshold` derives `min_start_duty = 100`
+        // and the responsive region collapses to a single point.
+        let up: Vec<DutySample> = (0..=20)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: 2000 - 90 * u32::try_from(i).expect("fits in u32"),
+            })
+            .collect();
+        let scalars = derive_scalars(&up, &up).expect("inverted curve still derives");
+        assert_eq!(
+            scalars.min_start_duty, 100,
+            "inverted: the start floor lands at the top of the range"
+        );
+        let (warnings, kind) = warnings_for(&up, scalars, scalars.min_sustain_duty);
+        assert_eq!(warnings, vec![CalibrationWarning::ImplausibleCurve]);
+        assert_eq!(kind, CurveKind::Stepped);
+    }
+
+    #[test]
+    fn implausible_when_flat_curve_carries_a_spurious_spike() {
+        // Goal: close the hole a single bad sample opens in the flat
+        // check. `effective_rpm_span` measures against `rpm_max`, the
+        // maximum over BOTH sweeps, so one spurious high read inflates the
+        // span and `NotControllable` never fires on a curve that is flat
+        // end to end. Method: a flat 900 RPM curve with one 4000 RPM
+        // spike; the span reads 3100, the region's own endpoints read 0.
+        let mut up: Vec<DutySample> = (0..=20)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: if i == 0 { 0 } else { 900 },
+            })
+            .collect();
+        up[6].rpm = 4000;
+        let scalars = scalars_for(&up, 5, 5);
+        assert!(
+            effective_rpm_span(&up, scalars) > jitter_threshold(scalars.rpm_max) * 2,
+            "precondition: the spike must hide the flat curve from the span check"
+        );
+        let (warnings, kind) = warnings_for(&up, scalars, 5);
+        assert_eq!(warnings, vec![CalibrationWarning::ImplausibleCurve]);
+        assert_eq!(kind, CurveKind::Stepped);
+    }
+
+    #[test]
+    fn flat_curve_still_reads_as_not_controllable() {
+        // Goal: the gate must not swallow the more specific diagnosis. A
+        // BIOS-driven fan holds one RPM at every duty, which is flat by
+        // both measures, and the user needs to hear "BIOS" rather than
+        // "bad readings". Method: a constant curve with healthy floors.
+        let up: Vec<DutySample> = (0..=20)
+            .map(|i| DutySample {
+                duty: u8::try_from(i).expect("fits in u8") * 5,
+                rpm: 1200,
+            })
+            .collect();
+        let scalars = scalars_for(&up, 0, 0);
+        let (warnings, kind) = warnings_for(&up, scalars, 0);
+        assert_eq!(warnings, vec![CalibrationWarning::NotControllable]);
+        assert_eq!(kind, CurveKind::Stepped);
+    }
+
+    #[test]
+    fn plausible_for_a_healthy_smooth_curve() {
+        // Goal: negative space. The gate must not touch an ordinary fan.
+        let up = smooth_curve(2000);
+        let scalars = derive_scalars(&up, &up).expect("smooth curve derives");
+        let (warnings, kind) = warnings_for(&up, scalars, scalars.min_sustain_duty);
+        assert!(
+            warnings.is_empty(),
+            "expected no findings, got {warnings:?}"
+        );
+        assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    #[test]
+    fn plausible_for_a_hardware_floor_pump() {
+        // Goal: negative space for the shape closest to the gate. This
+        // pump idles at ~1500 RPM through the first half of its duty range
+        // before climbing, which reads as a long flat band, but its floors
+        // stay low and the region does rise, so the mapping must survive.
+        let up = pump_high_floor_up_curve();
+        let scalars = derive_scalars(&up, &up).expect("pump curve derives");
+        let (warnings, kind) = warnings_for(&up, scalars, scalars.min_sustain_duty);
+        assert!(
+            warnings
+                .contains(&CalibrationWarning::ImplausibleCurve)
+                .not(),
+            "a real hardware-floor pump must stay mappable, got {warnings:?}"
+        );
+        assert_eq!(kind, CurveKind::Smooth);
+    }
+
+    #[test]
+    fn plausible_for_a_server_fan_that_only_holds_a_speed_high_up() {
+        // Goal: the case the threshold exists to protect. A server fan
+        // that will not sit at a steady speed below ~60% duty derives
+        // `min_stable_duty` there legitimately, and mapping true 0-100%
+        // onto device 60-100% is exactly what calibration is for. Method:
+        // walk the stable floor across the whole usable band; every one
+        // must stay mapped, right up to the saturation tail.
+        let up = smooth_curve(12000);
+        let scalars = scalars_for(&up, 5, 5);
+        for floor in [40, 55, 60, 75, SATURATION_TAIL_DUTY - 1] {
+            let (warnings, kind) = warnings_for(&up, scalars, floor);
+            assert!(
+                warnings.is_empty(),
+                "a stable floor of {floor}% is a usable band, got {warnings:?}"
+            );
+            assert_eq!(kind, CurveKind::Smooth);
+        }
+    }
+
+    #[test]
+    fn implausible_once_the_floor_reaches_the_saturation_tail() {
+        // Goal: the other side of that line. Inside the saturation tail
+        // every duty the map could still write is already max speed, so
+        // the map answers one speed for every request and passthrough
+        // beats it. Method: the first floor the fan cannot absorb.
+        let up = smooth_curve(12000);
+        let scalars = scalars_for(&up, 5, 5);
+        let (warnings, kind) = warnings_for(&up, scalars, SATURATION_TAIL_DUTY);
+        assert_eq!(warnings, vec![CalibrationWarning::ImplausibleCurve]);
+        assert_eq!(kind, CurveKind::Stepped);
+    }
+
+    #[test]
+    fn implausible_when_the_floor_reaches_an_early_plateau() {
+        // Goal: the limit follows the fan, not a fixed number. A fan that
+        // tops out at 70% duty has nothing left to map above 70 even
+        // though that is well under the saturation tail. Method: a curve
+        // that reaches `rpm_max` at duty 70, with a floor just past it.
+        let up: Vec<DutySample> = (0..=20)
+            .map(|i| {
+                let duty = u8::try_from(i).expect("fits in u8") * 5;
+                DutySample {
+                    duty,
+                    rpm: 2000 * u32::from(duty.min(70)) / 70,
+                }
+            })
+            .collect();
+        let scalars = derive_scalars(&up, &up).expect("early-plateau curve derives");
+        assert!(
+            scalars.max_eff_duty <= 70,
+            "precondition: the fan must plateau early, got {}",
+            scalars.max_eff_duty
+        );
+        let (warnings, kind) = warnings_for(&up, scalars, 75);
+        assert_eq!(warnings, vec![CalibrationWarning::ImplausibleCurve]);
+        assert_eq!(kind, CurveKind::Stepped);
+    }
+
+    #[test]
+    fn plausible_for_a_genuine_multi_plateau_staircase() {
+        // Goal: negative space against the rise check. A stepped fan is a
+        // real, correctly-measured result: the sweep is trustworthy and
+        // the record should keep reporting it as Stepped, not as bad data.
+        let up = stepped_curve(2000);
+        let scalars = derive_scalars(&up, &up).expect("stepped curve derives");
+        let (warnings, kind) = warnings_for(&up, scalars, scalars.min_sustain_duty);
+        assert!(
+            warnings
+                .contains(&CalibrationWarning::ImplausibleCurve)
+                .not(),
+            "a genuine staircase is measured data, not bad data: {warnings:?}"
+        );
+        assert_eq!(kind, CurveKind::Stepped);
     }
 }

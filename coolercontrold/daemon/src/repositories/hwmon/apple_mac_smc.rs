@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Duty, RPM};
+use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::DEVICE_NAME_MAC_SMC;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
+    HwmonDriverInfo,
 };
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, log_enabled, warn};
@@ -83,8 +86,8 @@ impl AppleMacSMC {
 
     /// Returns every detected fan, including ones the user has disabled. The
     /// caller drops those, so both hwmon branches record the same exclusions.
-    pub async fn init_fans(base_path: &Path) -> Vec<HwmonChannelInfo> {
-        Self::init_apple_fans(base_path)
+    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
+        Self::init_apple_fans(base_path, io)
             .await
             .unwrap_or_else(|err| {
                 error!("Error initializing Apple Mac SMC Fans: {err}");
@@ -92,14 +95,14 @@ impl AppleMacSMC {
             })
     }
 
-    async fn init_apple_fans(base_path: &Path) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_apple_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let dir_entries = cc_fs::read_dir(base_path)?;
         let mut fan_caps = HashMap::new();
         for entry in dir_entries {
             let os_file_name = entry?.file_name();
             let file_name = os_file_name.to_str().context("File Name should be a str")?;
             Self::detect_apple_smc_fans(base_path, file_name, &mut fan_caps).await?;
-            fans::detect_rpm(base_path, file_name, &mut fan_caps).await?;
+            fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
         }
         let mut fans = Self::caps_to_hwmon_fans(base_path, fan_caps).await?;
         fans.sort_by_key(|c| c.number);
@@ -151,9 +154,10 @@ impl AppleMacSMC {
         }
         // Detection reads each attribute once, so this cache closes with the probe.
         if fans::get_fan_rpm(
-            &cc_fs::SysfsFdCache::default(),
+            &DeviceIo::default(),
             base_path,
             &channel_number,
+            None,
             None,
             true,
         )
@@ -289,11 +293,9 @@ impl AppleMacSMC {
                     base_path.display()
                 );
             }
-            let rpm_path = if fan_cap.has_rpm() {
-                Some(base_path.join(format_fan_input!(channel_number)))
-            } else {
-                None
-            };
+            let rpm_path = fan_cap
+                .has_rpm()
+                .then(|| base_path.join(format_fan_input!(channel_number)));
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
@@ -305,32 +307,10 @@ impl AppleMacSMC {
                 pwm_path: None,
                 rpm_path,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             });
         }
         Ok(fans)
-    }
-
-    /// Streams Apple SMC fan statuses to `sink` one channel at a time
-    /// as each read completes, returning whether any expected field
-    /// read failed. Production now uses `read_one_fan_status` per
-    /// channel under the device permit (see `preload_device_statuses`),
-    /// so this and `extract_fan_statuses` are kept for tests only.
-    #[cfg(test)]
-    pub async fn stream_fan_statuses<F>(&self, driver: &Rc<HwmonDriverInfo>, mut sink: F) -> bool
-    where
-        F: FnMut(ChannelStatus),
-    {
-        let mut any_failure = false;
-        for channel in &driver.channels {
-            if channel.hwmon_type != HwmonChannelType::Fan {
-                continue;
-            }
-            match self.read_one_fan_status(driver, channel).await {
-                Some(status) => sink(status),
-                None => any_failure = true,
-            }
-        }
-        any_failure
     }
 
     /// Reads the Apple SMC duty + rpm for one channel and returns
@@ -345,17 +325,23 @@ impl AppleMacSMC {
     ) -> Option<ChannelStatus> {
         debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
         let fan_duty = if channel.caps.is_apple_smc() {
-            self.get_fan_duty(&driver.fds, channel.number, channel.rpm_path.as_ref())
-                .await
+            self.get_fan_duty(
+                &driver.io,
+                channel.number,
+                channel.rpm_path.as_deref(),
+                channel.read_slot.rpm,
+            )
+            .await
         } else {
             None
         };
         let fan_rpm = if channel.caps.has_rpm() {
             fans::get_fan_rpm(
-                &driver.fds,
+                &driver.io,
                 &driver.path,
                 &channel.number,
-                channel.rpm_path.as_ref(),
+                channel.rpm_path.as_deref(),
+                channel.read_slot.rpm,
                 log_enabled!(log::Level::Debug),
             )
             .await
@@ -367,7 +353,7 @@ impl AppleMacSMC {
         if expected_duty_failed || expected_rpm_failed {
             // Omit the entry so the upstream failsafe overlay can
             // substitute safe values. See the comment on
-            // `fans::stream_fan_statuses` for the rationale.
+            // `fans::read_fan_statuses` for the rationale.
             return None;
         }
         Some(ChannelStatus {
@@ -391,49 +377,55 @@ impl AppleMacSMC {
             return Some(None);
         }
         let fan_rpm = fans::get_fan_rpm(
-            &driver.fds,
+            &driver.io,
             &driver.path,
             &channel.number,
-            channel.rpm_path.as_ref(),
+            channel.rpm_path.as_deref(),
+            channel.read_slot.rpm,
             false,
         )
         .await?;
         Some(Some(fan_rpm))
     }
 
-    /// Buffered wrapper over `stream_fan_statuses`, kept for tests.
-    /// Production callers use `stream_fan_statuses` directly so fresh
-    /// readings upsert into the preloaded cache per channel.
+    /// Every Apple SMC fan channel, buffered. Test-only: production reads one channel at a time
+    /// under the device permit so each fresh reading upserts into the preloaded cache.
     #[cfg(test)]
     pub async fn extract_fan_statuses(
         &self,
         driver: &Rc<HwmonDriverInfo>,
     ) -> (Vec<ChannelStatus>, bool) {
-        let fan_channel_count = driver
-            .channels
-            .iter()
-            .filter(|c| c.hwmon_type == HwmonChannelType::Fan)
-            .count();
-        let mut fans = Vec::with_capacity(fan_channel_count);
-        let any_failure = self
-            .stream_fan_statuses(driver, |status| fans.push(status))
-            .await;
+        let mut fans = Vec::new();
+        let mut any_failure = false;
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            match self.read_one_fan_status(driver, channel).await {
+                Some(status) => fans.push(status),
+                None => any_failure = true,
+            }
+        }
         (fans, any_failure)
     }
-    pub async fn set_to_auto_control(&self, channel_number: u8) -> Result<()> {
+
+    pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let fan_min_default = self
             .fans
             .get(&channel_number)
             .map_or(DEFAULT_MIN_FAN_SPEED, |info| info.default_min_rpm);
         let fan_min_path = self.path.join(format_fan_min!(channel_number));
         let fan_manual_path = self.path.join(format_fan_manual!(channel_number));
-        if let Err(e) = cc_fs::write_string(&fan_min_path, fan_min_default.to_string()).await {
+        if let Err(e) = io
+            .write_value(&fan_min_path, fan_min_default.to_string().into_bytes())
+            .await
+        {
             warn!(
                 "Unable to set Fan Min value {fan_min_default} for {} Reason: {e}",
                 fan_min_path.display()
             );
         }
-        cc_fs::write_string(&fan_manual_path, FAN_AUTO_CONTROL.to_string())
+        io.write_value(&fan_manual_path, FAN_AUTO_CONTROL.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -443,23 +435,26 @@ impl AppleMacSMC {
             })
     }
 
-    pub async fn set_to_manual_control(&self, channel_number: u8) -> Result<()> {
+    pub async fn set_to_manual_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let fan_min_path = self.path.join(format_fan_min!(channel_number));
         let fan_manual_path = self.path.join(format_fan_manual!(channel_number));
-        if let Err(e) = cc_fs::write_string(&fan_min_path, "0".to_string()).await {
+        if let Err(e) = io.write_value(&fan_min_path, b"0".to_vec()).await {
             warn!(
                 "Unable to set Fan Min value 0 for {}. The driver will not allow you to set fan speeds to 0. Reason: {e}",
                 fan_min_path.display()
             );
         }
-        cc_fs::write_string(&fan_manual_path, FAN_MANUAL_CONTROL.to_string())
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Unable to set Fan Manual value {FAN_MANUAL_CONTROL} for {} Reason: {err}",
-                    fan_min_path.display()
-                )
-            })
+        io.write_value(
+            &fan_manual_path,
+            FAN_MANUAL_CONTROL.to_string().into_bytes(),
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Unable to set Fan Manual value {FAN_MANUAL_CONTROL} for {} Reason: {err}",
+                fan_min_path.display()
+            )
+        })
     }
 
     async fn get_fan_min(base_path: &Path, channel_number: u8, log_error: bool) -> Option<RPM> {
@@ -500,33 +495,40 @@ impl AppleMacSMC {
 
     pub async fn get_fan_duty(
         &self,
-        fds: &cc_fs::SysfsFdCache,
+        io: &DeviceIo,
         channel_number: u8,
-        rpm_path: Option<&PathBuf>,
+        rpm_path: Option<&Path>,
+        slot: Option<ReadIndex>,
     ) -> Option<f64> {
         fans::get_fan_rpm(
-            fds,
+            io,
             &self.path,
             &channel_number,
             rpm_path,
+            slot,
             log_enabled!(log::Level::Debug),
         )
         .await
         .and_then(|rpm| self.interpolate_duty_from_rpm(channel_number, rpm))
     }
 
-    pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty) -> Result<()> {
+    pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty, io: &DeviceIo) -> Result<()> {
         let rpm = self.interpolate_rpm_from_duty(channel_number, speed);
         if self.is_mac_smc {
-            Self::set_fan_target(&self.path, channel_number, rpm).await
+            Self::set_fan_target(&self.path, channel_number, rpm, io).await
         } else {
-            Self::set_fan_output(&self.path, channel_number, rpm).await
+            Self::set_fan_output(&self.path, channel_number, rpm, io).await
         }
     }
 
-    async fn set_fan_output(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
+    async fn set_fan_output(
+        path: &Path,
+        channel_number: u8,
+        rpm: RPM,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let fan_output_path = path.join(format_fan_output!(channel_number));
-        cc_fs::write_string(&fan_output_path, rpm.to_string())
+        io.write_value(&fan_output_path, rpm.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -536,9 +538,14 @@ impl AppleMacSMC {
             })
     }
 
-    async fn set_fan_target(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
+    async fn set_fan_target(
+        path: &Path,
+        channel_number: u8,
+        rpm: RPM,
+        io: &DeviceIo,
+    ) -> Result<()> {
         let fan_target_path = path.join(format_fan_target!(channel_number));
-        cc_fs::write_string(&fan_target_path, rpm.to_string())
+        io.write_value(&fan_target_path, rpm.to_string().into_bytes())
             .await
             .map_err(|err| {
                 anyhow!(
@@ -966,7 +973,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::init_apple_fans(test_base_path).await;
+            let result = AppleMacSMC::init_apple_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1005,7 +1012,7 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let channels = AppleMacSMC::init_fans(test_base_path).await;
+            let channels = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1129,7 +1136,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_to_auto_control(1).await;
+            let result = apple_smc.set_to_auto_control(1, &DeviceIo::default()).await;
 
             // then:
             let fan_min = cc_fs::read_sysfs(test_base_path.join("fan1_min"))
@@ -1174,7 +1181,9 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_to_manual_control(1).await;
+            let result = apple_smc
+                .set_to_manual_control(1, &DeviceIo::default())
+                .await;
 
             // then:
             let fan_min = cc_fs::read_sysfs(test_base_path.join("fan1_min"))
@@ -1216,7 +1225,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_fan_duty(1, 50).await;
+            let result = apple_smc.set_fan_duty(1, 50, &DeviceIo::default()).await;
 
             // then:
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
@@ -1255,7 +1264,7 @@ mod tests {
 
             // when:
             let result = apple_smc
-                .get_fan_duty(&cc_fs::SysfsFdCache::default(), 1, None)
+                .get_fan_duty(&DeviceIo::default(), 1, None, None)
                 .await;
 
             // then:
@@ -1312,6 +1321,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -1326,6 +1336,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1336,7 +1347,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -1381,6 +1392,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: Some(test_base_path.join("fan1_input")),
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1416,6 +1428,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: Some(test_base_path.join("fan1_input")),
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1602,7 +1615,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::set_fan_output(test_base_path, 1, 3000).await;
+            let result =
+                AppleMacSMC::set_fan_output(test_base_path, 1, 3000, &DeviceIo::default()).await;
 
             // then:
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
@@ -1626,7 +1640,8 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::set_fan_target(test_base_path, 1, 3500).await;
+            let result =
+                AppleMacSMC::set_fan_target(test_base_path, 1, 3500, &DeviceIo::default()).await;
 
             // then:
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
@@ -1664,7 +1679,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.set_fan_duty(1, 50).await;
+            let result = apple_smc.set_fan_duty(1, 50, &DeviceIo::default()).await;
 
             // then:
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
@@ -1799,6 +1814,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
 
             // when:
@@ -1831,6 +1847,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1843,6 +1860,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
 
@@ -1894,6 +1912,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1906,6 +1925,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: None,
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1916,7 +1936,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -1957,6 +1977,7 @@ mod tests {
                 pwm_path: None,
                 rpm_path: None,
                 temp_path: None,
+                read_slot: ChannelReadSlots::default(),
             }];
             let driver = Rc::new(HwmonDriverInfo {
                 name: "applesmc".to_string(),
@@ -1966,7 +1987,7 @@ mod tests {
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
@@ -1982,11 +2003,11 @@ mod tests {
         });
     }
 
-    // --- stream_fan_statuses: sink contract ---
+    // --- extract_fan_statuses: ordering and failures ---
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_invokes_sink_in_channel_order() {
+    fn extract_fan_statuses_preserves_channel_order() {
         // Verifies the streaming variant invokes the sink once per
         // successful channel in channel-definition order.
         cc_fs::test_runtime(async {
@@ -2034,6 +2055,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -2046,6 +2068,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -2056,14 +2079,12 @@ mod tests {
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |status| received.push(status.name))
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -2074,7 +2095,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_skips_sink_on_failure() {
+    fn extract_fan_statuses_skips_failed_channels() {
         // Verifies the sink is not invoked for a channel whose RPM
         // read fails, and any_failure is set.
         cc_fs::test_runtime(async {
@@ -2120,6 +2141,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan1_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -2132,6 +2154,7 @@ mod tests {
                     pwm_path: None,
                     rpm_path: Some(test_base_path.join("fan2_input")),
                     temp_path: None,
+                    read_slot: ChannelReadSlots::default(),
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -2142,14 +2165,12 @@ mod tests {
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
             // when:
-            let mut received: Vec<String> = Vec::new();
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |status| received.push(status.name))
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
+            let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
             teardown(&ctx).await;
@@ -2160,7 +2181,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn stream_fan_statuses_no_invocation_when_no_channels() {
+    fn extract_fan_statuses_empty_when_no_channels() {
         // Verifies the sink is never invoked for a driver with no
         // fan channels, and any_failure is false.
         cc_fs::test_runtime(async {
@@ -2180,16 +2201,13 @@ mod tests {
                 channels: vec![],
                 drivetemp: drivetemp::DrivetempState::default(),
                 apple_smc: AppleMacSMC::not_applicable(),
-                fds: cc_fs::SysfsFdCache::default(),
+                io: DeviceIo::default(),
             });
 
-            let mut invocations: u32 = 0;
-            let any_failure = apple_smc
-                .stream_fan_statuses(&driver, |_| invocations += 1)
-                .await;
+            let (statuses, any_failure) = apple_smc.extract_fan_statuses(&driver).await;
 
             teardown(&ctx).await;
-            assert_eq!(invocations, 0);
+            assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
     }

@@ -157,8 +157,8 @@ drivetemp_suspend = false
 
 # Whether to listen for kernel device add/remove events (e.g. USB hotplug) at startup.
 # When enabled, the daemon watches for hardware changes and notifies connected clients.
-# Disable this in containers or environments without netlink socket access.
-# device_listener_enabled = true
+# Requires netlink socket access, which containers may not have.
+# device_listener_enabled = false
 
 # Power profile to Mode mapping:
 # When the system power profile changes, CoolerControl activates the Mode mapped to the new

@@ -232,6 +232,7 @@ pr-check: validate-metadata
 	@git diff -z --name-only --diff-filter=d $(base)...HEAD | xargs -0 -r ./trunk check --ci
 	@$(MAKE) -C $(ui_dir) check
 	@$(MAKE) -C $(daemon_dir) clippy
+	@$(MAKE) -C $(daemon_dir) clippy-tests
 	@$(MAKE) -C $(daemon_dir) test
 	@$(MAKE) -C $(qt_dir) build
 

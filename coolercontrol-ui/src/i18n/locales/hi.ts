@@ -574,6 +574,8 @@ export default {
             setAsHome: 'होम के रूप में सेट करें',
             duplicateDashboard: 'डैशबोर्ड डुप्लिकेट करें',
             openCooling: 'कूलिंग नियंत्रण खोलें',
+            editCustomSensor: 'कस्टम सेंसर संपादित करें',
+            openCustomSensor: 'कस्टम सेंसर सेटिंग्स खोलें',
         },
         appInfo: {
             noWarranty: 'इस प्रोग्राम के साथ बिल्कुल कोई वारंटी नहीं है।',
@@ -638,6 +640,9 @@ export default {
                 '/dev/port उपलब्ध न होने के कारण हार्डवेयर पहचान नहीं चल सकी।',
             findingDetectionUnsupported: 'इस आर्किटेक्चर पर हार्डवेयर पहचान समर्थित नहीं है।',
             failsafeActive: 'फेलसेफ मान उपयोग में हैं',
+            deviceUnreachable: 'डिवाइस प्रतिक्रिया नहीं दे रहा है',
+            deviceUnreachableDetail:
+                'ड्राइवर ने जवाब देना बंद कर दिया है, इसलिए इस डिवाइस को न तो पढ़ा जा सकता है और न ही नियंत्रित किया जा सकता है। समय-समय पर पुनः प्रयास किया जा रहा है।',
             missingTempSource: 'तापमान स्रोत गायब है',
             staleTempSource: 'तापमान स्रोत फेलसेफ मान उपयोग कर रहा है',
             stressTest: 'थर्मल स्ट्रेस टेस्ट',
@@ -1195,6 +1200,8 @@ export default {
                 warningLimitedRange: 'सीमित RPM रेंज ({span} RPM); मैपिंग रिज़ॉल्यूशन मोटा है',
                 warningOscillating:
                     'पंखा {lower} % और {upper} % ड्यूटी के बीच दोलन कर रहा है (फर्मवेयर‑नियंत्रित किक‑इन); कम ड्यूटी पर मैपिंग बंद',
+                warningImplausibleCurve:
+                    'मापा गया वक्र सपाट है, उलटा है, या उसका न्यूनतम कोई उपयोगी परास नहीं छोड़ता (RPM रीडिंग अविश्वसनीय लगती हैं); मैपिंग बंद, पुनः कैलिब्रेट करके फिर से आज़माएँ',
                 stagePreflight: 'पूर्व‑जाँच',
                 stageUpSweep: 'ऊपर का स्वीप',
                 stageDownSweep: 'नीचे का स्वीप',

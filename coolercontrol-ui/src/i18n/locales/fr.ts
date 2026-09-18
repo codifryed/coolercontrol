@@ -593,6 +593,8 @@ export default {
             setAsHome: 'Définir comme Accueil',
             duplicateDashboard: 'Dupliquer le Tableau de Bord',
             openCooling: 'Ouvrir les contrôles de refroidissement',
+            editCustomSensor: 'Modifier le capteur personnalisé',
+            openCustomSensor: 'Ouvrir les paramètres du capteur personnalisé',
         },
         appInfo: {
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',
@@ -661,6 +663,9 @@ export default {
             findingDetectionUnsupported:
                 "La détection matérielle n'est pas prise en charge sur cette architecture.",
             failsafeActive: 'Valeurs de secours utilisées',
+            deviceUnreachable: 'Le périphérique ne répond pas',
+            deviceUnreachableDetail:
+                'Le pilote ne répond plus, ce périphérique ne peut donc être ni lu ni contrôlé. Nouvelle tentative périodique.',
             missingTempSource: 'Source de température manquante',
             staleTempSource: 'La source de température utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',
@@ -1231,6 +1236,8 @@ export default {
                     'plage de RPM limitée ({span} RPM) ; résolution de mappage grossière',
                 warningOscillating:
                     'le ventilateur oscille entre {lower} % et {upper} % de rapport cyclique (impulsion contrôlée par le firmware) ; mappage désactivé à bas rapport cyclique',
+                warningImplausibleCurve:
+                    'la courbe mesurée est plate, inversée ou son minimum ne laisse aucune plage utilisable (les mesures de tr/min semblent peu fiables) ; mappage désactivé, recalibrez pour réessayer',
                 stagePreflight: 'pré-vol',
                 stageUpSweep: 'balayage montant',
                 stageDownSweep: 'balayage descendant',

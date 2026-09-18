@@ -3,8 +3,8 @@
 
 //! File utilities that always run on Tokio, for the auth/session/token subsystem.
 //!
-//! Unlike the rest of `cc_fs` (which follows the active main-thread runtime, compio under
-//! `compio-rt`), these are unconditionally `tokio::fs` and therefore produce `Send` futures. They
+//! Unlike the rest of `cc_fs` (which runs on the main-thread compio runtime), these are
+//! unconditionally `tokio::fs` and therefore produce `Send` futures. They
 //! exist because that subsystem serves the REST API, which lives on the Tokio sidecar: tower-sessions
 //! requires `Send` futures, and the axum handlers run there. So these must only ever be awaited
 //! inside the Tokio runtime (the sidecar). Main-thread callers (a few startup paths) dispatch onto
@@ -49,9 +49,8 @@ pub async fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> Resul
 /// Initialize and run a Tokio runtime for tests of sidecar-resident code.
 ///
 /// The auth/session/token tests exercise code that uses these always-Tokio helpers, so they need a
-/// Tokio reactor regardless of the `compio-rt` feature (the shared `cc_fs::test_runtime` becomes a
-/// compio runtime under that feature, which has no Tokio reactor). As with the other runtimes,
-/// tests must run single-threaded (`serial_test`).
+/// Tokio reactor, which the shared `cc_fs::test_runtime` (a compio runtime) does not provide. As
+/// with the other runtimes, tests must run single-threaded (`serial_test`).
 #[allow(dead_code)]
 pub fn test_runtime<F: std::future::Future>(future: F) -> F::Output {
     let rt = tokio::runtime::Builder::new_current_thread()

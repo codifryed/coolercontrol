@@ -7,3 +7,4 @@ pub mod amd_overdrive;
 pub mod gpu_repo;
 mod nvapi;
 mod nvidia;
+pub mod nvml_io;

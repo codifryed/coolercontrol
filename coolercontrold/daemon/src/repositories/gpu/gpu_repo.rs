@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::device_health::UnreachableRef;
+use crate::repositories::hwmon::device_io::DeviceHealth;
 use std::collections::HashMap;
 use std::env;
 use std::ops::Not;
@@ -20,6 +22,7 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::config::Config;
 use crate::device::{DeviceType, Duty, UID};
+use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
 use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
@@ -276,7 +279,7 @@ impl GpuRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 scope.spawn(async move {
-                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info);
+                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
                     self.gpus_nvidia
                         .nvidia_preloaded_statuses
                         .borrow_mut()
@@ -350,38 +353,9 @@ impl Repository for GpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized GPU Devices: {init_devices:?}");
         } else {
-            let device_map: HashMap<_, _> = init_devices
-                .iter()
-                .map(|d| {
-                    (
-                        d.1.name.clone(),
-                        HashMap::from([
-                            (
-                                "driver name",
-                                vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
-                            ),
-                            (
-                                "driver version",
-                                vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
-                            ),
-                            ("locations", d.1.info.driver_info.locations.clone()),
-                            ("channels", {
-                                let mut ch: Vec<_> = d.1.info.channels.keys().cloned().collect();
-                                ch.sort();
-                                ch
-                            }),
-                            ("temps", {
-                                let mut t: Vec<_> = d.1.info.temps.keys().cloned().collect();
-                                t.sort();
-                                t
-                            }),
-                        ]),
-                    )
-                })
-                .collect();
             info!(
                 "Initialized GPU Devices: {}",
-                serde_json::to_string(&device_map).unwrap_or_default()
+                device_summary::summarize_devices(init_devices.values())
             );
         }
         trace!(
@@ -424,6 +398,40 @@ impl Repository for GpuRepo {
         Ok(())
     }
 
+    fn unreachable_devices(&self) -> Vec<UnreachableRef> {
+        let mut out = Vec::new();
+        for (device_uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = amd_driver.hwmon.io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: amd_driver.hwmon.name.clone(),
+                consecutive_timeouts,
+            });
+        }
+        for (device_uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
+            let Some(io) = self.gpus_nvidia.nvml_worker(nv_info.gpu_index) else {
+                continue;
+            };
+            let DeviceHealth::Unreachable {
+                consecutive_timeouts,
+            } = io.health()
+            else {
+                continue;
+            };
+            out.push(UnreachableRef {
+                device_uid: device_uid.clone(),
+                device_name: io.device_name().to_owned(),
+                consecutive_timeouts,
+            });
+        }
+        out
+    }
+
     async fn shutdown(&self) -> Result<()> {
         for (uid, device_lock) in &self.gpus_amd.amd_devices {
             let channel_names: Vec<String> =
@@ -440,6 +448,9 @@ impl Repository for GpuRepo {
                 }
             }
         }
+        // A GPU that stopped answering during the session may answer now, and handing fan
+        // control back is the most safety-relevant write here, so it earns one attempt.
+        self.gpus_nvidia.allow_nvml_probe_now();
         self.gpus_nvidia.reset_devices().await;
         info!("GPU Repository shutdown");
         Ok(())

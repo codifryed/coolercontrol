@@ -551,6 +551,8 @@ export default {
             setAsHome: '设为主页',
             duplicateDashboard: '复制仪表盘',
             openCooling: '打开冷却控制',
+            editCustomSensor: '编辑自定义传感器',
+            openCustomSensor: '打开自定义传感器设置',
         },
         appInfo: {
             noWarranty: '本程序不提供任何保证。',
@@ -610,6 +612,8 @@ export default {
             findingBlockedByNoDevPort: '/dev/port 不可用，硬件检测无法运行。',
             findingDetectionUnsupported: '此架构不支持硬件检测。',
             failsafeActive: '正在使用故障保护值',
+            deviceUnreachable: '设备无响应',
+            deviceUnreachableDetail: '驱动程序已停止响应，因此无法读取或控制此设备。正在定期重试。',
             missingTempSource: '缺少温度源',
             staleTempSource: '温度源正在使用故障保护值',
             stressTest: '热压力测试',
@@ -1140,6 +1144,8 @@ export default {
                 warningLimitedRange: '转速范围有限（{span} RPM），映射分辨率较粗',
                 warningOscillating:
                     '风扇在 {lower} % 与 {upper} % 占空比之间振荡（固件控制的启动冲量）；在低占空比下已禁用映射',
+                warningImplausibleCurve:
+                    '测得的曲线平坦、反向，或其下限没有留下可用范围（转速读数看起来不可靠）；映射已禁用，请重新校准后重试',
                 stagePreflight: '预检',
                 stageUpSweep: '上升扫掠',
                 stageDownSweep: '下降扫掠',

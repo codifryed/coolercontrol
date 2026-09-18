@@ -11,6 +11,13 @@ use std::time::{Duration, Instant};
 
 use log::{debug, warn};
 
+/// The shell is spawned by absolute path rather than looked up on `$PATH`. A service
+/// manager is free to hand the daemon a `PATH` that holds only its own directory, and on
+/// distros that manage `/etc` declaratively it does exactly that, so a bare `sh` fails to
+/// spawn. POSIX guarantees `/bin/sh`.
+///
+/// The daemon spawns its own shell from this same constant, for this same reason.
+pub const SHELL: &str = "/bin/sh";
 const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000;
 
 /// Result of a shell command execution.
@@ -41,7 +48,7 @@ impl ShellCommand {
     #[must_use]
     pub fn run(&self) -> ShellCommandResult {
         debug!("Running shell command: {}", self.command);
-        let mut child = match Command::new("sh")
+        let mut child = match Command::new(SHELL)
             .arg("-c")
             .arg(&self.command)
             .env("LC_ALL", "C")
@@ -116,6 +123,23 @@ fn limit_output_length(output: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_is_spawned_by_absolute_path() {
+        // Goal: the shell never depends on $PATH. A service manager may hand the daemon a
+        // PATH holding only its own directory, and a bare "sh" then fails to spawn. This
+        // is the only copy: the daemon spawns the same constant.
+        // Method: pin the constant as absolute, and require it to exist and be executable
+        // on the machine running the suite.
+        use std::os::unix::fs::PermissionsExt;
+        let shell = std::path::Path::new(SHELL);
+        assert!(shell.is_absolute(), "{SHELL} must be an absolute path");
+        let metadata = std::fs::metadata(shell).unwrap_or_else(|_| panic!("{SHELL} must exist"));
+        assert!(
+            metadata.permissions().mode() & 0o111 != 0,
+            "{SHELL} must be executable"
+        );
+    }
 
     #[test]
     fn test_successful_command() {

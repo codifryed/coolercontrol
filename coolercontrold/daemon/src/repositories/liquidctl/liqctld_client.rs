@@ -25,22 +25,12 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
-/// The connection-driver task handle. On Tokio it is abortable; under compio it cancels when
-/// dropped (compio's spawn cancels on handle drop). `SocketConnection::abort` unifies the two.
-#[cfg(not(feature = "compio-rt"))]
-type ConnDriver = tokio::task::JoinHandle<()>;
-#[cfg(feature = "compio-rt")]
+/// The connection-driver task handle. It cancels when dropped, since compio's spawn cancels on
+/// handle drop; `SocketConnection::abort` is the named way to do that.
 type ConnDriver = compio::runtime::JoinHandle<()>;
 
-/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive. Tokio uses `TokioIo`;
-/// compio uses `cyper_core::HyperStream` over a compio `UnixStream`.
-#[cfg(not(feature = "compio-rt"))]
-async fn connect_liqctld_io(
-) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
-    let unix_stream = tokio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
-    Ok(hyper_util::rt::TokioIo::new(unix_stream))
-}
-#[cfg(feature = "compio-rt")]
+/// Connects a UDS to liqctld and wraps it in an IO type hyper can drive, via
+/// `cyper_core::HyperStream` over a compio `UnixStream`.
 async fn connect_liqctld_io(
 ) -> std::io::Result<impl hyper::rt::Read + hyper::rt::Write + Unpin + 'static> {
     let unix_stream = compio::net::UnixStream::connect(LIQCTLD_SOCKET).await?;
@@ -49,11 +39,6 @@ async fn connect_liqctld_io(
 
 /// Spawns the hyper connection-driver future on the active runtime and returns its handle. The
 /// handle is held (not detached) so the connection can be aborted/cancelled later.
-#[cfg(not(feature = "compio-rt"))]
-fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
-    tokio::task::spawn_local(fut)
-}
-#[cfg(feature = "compio-rt")]
 fn spawn_conn_driver(fut: impl Future<Output = ()> + 'static) -> ConnDriver {
     compio::runtime::spawn(fut)
 }
@@ -77,6 +62,7 @@ const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
 const LIQCTLD_DIRECT_ACCESS: &str = "/devices/{}/direct-access";
+const LIQCTLD_RECONNECT: &str = "/devices/{}/reconnect";
 const LIQCTLD_INITIALIZE: &str = "/devices/{}/initialize";
 const LIQCTLD_STATUS: &str = "/devices/{}/status";
 const LIQCTLD_FIXED_SPEED: &str = "/devices/{}/speed/fixed";
@@ -86,7 +72,11 @@ const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_SCAN: &str = "/devices/scan";
 const LIQCTLD_QUIT: &str = "/quit";
-const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
+/// Total initialization attempts, the first plus its retries. Kept low because these retries are
+/// no longer the only recovery: the repository escalates a failure to reconnecting the device, and
+/// then to restarting liqctld, both of which actually reopen it. Retrying a dead handle four more
+/// times at 1s each just delays whichever of those works.
+const LIQCTLD_MAX_INIT_RETRIES: usize = 2;
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// A standard liquidctl status response (name, value, metric).
@@ -455,6 +445,24 @@ impl LiqctldClient {
     /// Returns:
     ///
     /// a Result object with a value of `DeviceResponse`.
+    /// Releases and re-opens one device's USB handle, leaving the others alone.
+    ///
+    /// The lighter half of recovery: it does to a single device what restarting liqctld does to
+    /// every device, and keeps the driver object, so a legacy690 flip and a forced direct access
+    /// survive it. The device still has to be re-initialized afterwards.
+    ///
+    /// Arguments:
+    ///
+    /// * `device_index`: the liqctld id of the device to reconnect.
+    pub async fn put_reconnect(&self, device_index: &u8) -> Result<()> {
+        let request = Self::request_builder()
+            .uri(LIQCTLD_RECONNECT.replace("{}", &device_index.to_string()))
+            .method("PUT")
+            .body(String::new())?;
+        self.make_request::<IgnoredAny>(&request).await?;
+        Ok(())
+    }
+
     pub async fn put_direct_access(&self, device_index: &u8) -> Result<()> {
         let request = Self::request_builder()
             .uri(LIQCTLD_DIRECT_ACCESS.replace("{}", &device_index.to_string()))
@@ -710,14 +718,11 @@ struct SocketConnection {
 }
 
 impl SocketConnection {
-    /// Tears down the connection's driver task. On Tokio it aborts the join handle; under compio
-    /// dropping `self` (and its handle) cancels the task, so this just consumes `self`.
+    /// Tears down the connection's driver task: dropping `self` (and its handle) cancels it, so
+    /// this just consumes `self`.
     #[allow(clippy::needless_pass_by_value)] // consumes self so the compio handle drops (cancels)
     fn abort(self) {
-        #[cfg(not(feature = "compio-rt"))]
-        self.connection_handle.abort();
         // Dropping a compio JoinHandle cancels its task; do so explicitly.
-        #[cfg(feature = "compio-rt")]
         drop(self.connection_handle);
     }
 }

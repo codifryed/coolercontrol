@@ -8,6 +8,7 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
     mdiAlert,
+    mdiLanDisconnect,
     mdiDragVertical,
     mdiLightbulbOutline,
     mdiPinOff,
@@ -39,6 +40,7 @@ import { pinId } from '@/shell/cooling/channels.ts'
 import { setDeviceChildrenSubset, setTopLevelOrder } from '@/shell/panelOrder.ts'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
@@ -107,23 +109,15 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
+const { isDeviceUnreachable, isDeviceUnhealthy: isUnhealthyUid, healthTooltip } = useDeviceHealth()
+
 const isDeviceUnhealthy = (device: Device): boolean =>
-    device.type !== DeviceType.CUSTOM_SENSORS &&
-    settingsStore.healthFailsafe.some((ref) => ref.device_uid === device.uid)
+    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthyUid(device.uid)
 
 const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
     settingsStore.healthFailsafe.some(
         (ref) => ref.device_uid === deviceUID && ref.name === channelName,
     )
-
-const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
-    const ref = settingsStore.healthFailsafe.find(
-        (entry) =>
-            entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
-    )
-    const base = t('views.appInfo.failsafeActive')
-    return ref?.reason ? `${base}: ${ref.reason}` : base
-}
 
 const setDeviceColor = (deviceUID: UID, newColor: Color): void => {
     const setting = settingsStore.allUIDeviceSettings.get(deviceUID)
@@ -211,18 +205,21 @@ const isRouteActive = useRouteActive()
                         </span>
                         <UiTooltip
                             v-if="isDeviceUnhealthy(device)"
-                            :text="failsafeTooltip(device.uid)"
+                            :text="healthTooltip(device.uid)"
                         >
                             <svg-icon
                                 type="mdi"
-                                :path="mdiAlert"
+                                :path="
+                                    isDeviceUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert
+                                "
                                 :size="14"
                                 class="shrink-0 text-error"
                             />
                         </UiTooltip>
                     </RouterLink>
                     <div
-                        class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"
+                        class="ml-auto hidden items-center gap-0.5 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"
+                        :class="{ 'pr-1': device.type !== DeviceType.CUSTOM_SENSORS }"
                     >
                         <span class="flex w-6 shrink-0 justify-center">
                             <CCColorPicker
@@ -235,6 +232,15 @@ const isRouteActive = useRouteActive()
                             <svg-icon type="mdi" :path="mdiDragVertical" :size="16" />
                         </span>
                     </div>
+                    <!-- Always shown, like the add in the other panel headers. -->
+                    <RouterLink
+                        v-if="device.type === DeviceType.CUSTOM_SENSORS"
+                        :to="{ name: 'device-custom-sensor-new' }"
+                        class="ml-0.5 mr-1 rounded p-1 text-text-color-secondary outline-none hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
+                        v-tooltip.top="t('layout.menu.tooltips.addCustomSensor')"
+                    >
+                        <svg-icon type="mdi" :path="mdiPlus" :size="16" />
+                    </RouterLink>
                 </div>
                 <RouterLink
                     v-for="link in deviceChannelLinks(device)"
@@ -295,7 +301,7 @@ const isRouteActive = useRouteActive()
                                 </span>
                                 <UiTooltip
                                     v-if="isChannelUnhealthy(device.uid, sensorName)"
-                                    :text="failsafeTooltip(device.uid, sensorName)"
+                                    :text="healthTooltip(device.uid, sensorName)"
                                 >
                                     <svg-icon
                                         type="mdi"

@@ -4,6 +4,7 @@
 pub mod apple_mac_smc;
 pub mod auto_curve;
 pub mod chip_name;
+pub mod device_io;
 pub mod devices;
 mod drivetemp;
 pub mod fans;
@@ -12,5 +13,6 @@ pub mod hwmon_repo;
 mod pci_ids;
 pub mod power;
 pub mod power_cap;
+mod probe;
 pub mod temps;
 mod thinkpad;

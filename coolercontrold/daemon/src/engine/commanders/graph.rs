@@ -21,8 +21,46 @@ use crate::engine::{
 use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error};
+use log::{debug, info, warn};
 use moro_local::Scope;
+
+/// Tracks which device channels are in a run of failing duty writes.
+///
+/// A device that stops answering fails every write on every tick. Ungated, that produced ~9,000
+/// identical lines in one user's journal, enough that pasting it into an issue truncated. Only the
+/// start and the end of a run are worth a line; the repository owns the escalation and the
+/// `error!` that goes with giving up. Bounded by the number of scheduled device channels.
+#[derive(Debug, Default)]
+struct WriteFailureLog {
+    failing_channels_by_device: HashMap<DeviceUID, HashSet<ChannelName>>,
+}
+
+impl WriteFailureLog {
+    /// Records a failed write. Returns `true` when this failure starts a new run and should be
+    /// logged, `false` while a run for this channel is already in progress.
+    fn record_failure(&mut self, device_uid: &UID, channel_name: &str) -> bool {
+        self.failing_channels_by_device
+            .entry(device_uid.clone())
+            .or_default()
+            .insert(channel_name.to_string())
+    }
+
+    /// Records a successful write. Returns `true` when this ends a run and recovery should be
+    /// logged, `false` when the channel was not failing.
+    ///
+    /// Borrowed lookups throughout: this runs on every successful write on every tick, so it must
+    /// not allocate a key to discover that nothing is wrong.
+    fn record_success(&mut self, device_uid: &UID, channel_name: &str) -> bool {
+        let Some(failing_channels) = self.failing_channels_by_device.get_mut(device_uid) else {
+            return false;
+        };
+        let was_failing = failing_channels.remove(channel_name);
+        if failing_channels.is_empty() {
+            self.failing_channels_by_device.remove(device_uid);
+        }
+        was_failing
+    }
+}
 
 struct ProcessorCollection {
     fun_safety_latch: FunctionSafetyLatchProcessor,
@@ -50,6 +88,7 @@ pub struct GraphProfileCommander {
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
     calibration_store: Rc<CalibrationStore>,
     fan_state_map: Rc<FanStateMap>,
+    write_failure_log: RefCell<WriteFailureLog>,
 }
 
 impl GraphProfileCommander {
@@ -80,6 +119,7 @@ impl GraphProfileCommander {
             process_output_cache: RefCell::new(HashMap::new()),
             calibration_store,
             fan_state_map,
+            write_failure_log: RefCell::new(WriteFailureLog::default()),
         }
     }
 
@@ -257,19 +297,47 @@ impl GraphProfileCommander {
             "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
             channel: {channel_name}; DUTY: {duty_to_set}"
         );
-        if let Some(writer) = self.duty_writers_by_type.get(&device_type) {
-            if let Err(err) = calibration::dispatch(
-                &self.fan_state_map,
-                &self.calibration_store,
-                writer,
-                device_uid.clone(),
-                channel_name.to_string(),
-                duty_to_set,
-            )
-            .await
-            {
-                error!("Error applying Graph/Mix Profile calculated duty - {err}");
+        let Some(writer) = self.duty_writers_by_type.get(&device_type) else {
+            return;
+        };
+        let write_result = calibration::dispatch(
+            &self.fan_state_map,
+            &self.calibration_store,
+            writer,
+            device_uid.clone(),
+            channel_name.to_string(),
+            duty_to_set,
+        )
+        .await;
+        self.log_write_outcome(device_uid, &device_name, channel_name, write_result.err());
+    }
+
+    /// Logs the start and the end of a run of failing duty writes for one device channel, and
+    /// nothing in between. The device and channel are named here because the error alone does not
+    /// carry them, which made the untargeted spam hard to attribute to a specific cooler.
+    fn log_write_outcome(
+        &self,
+        device_uid: &UID,
+        device_name: &str,
+        channel_name: &str,
+        write_error: Option<anyhow::Error>,
+    ) {
+        let mut write_failure_log = self.write_failure_log.borrow_mut();
+        let Some(err) = write_error else {
+            if write_failure_log.record_success(device_uid, channel_name) {
+                info!(
+                    "Applying duties to {device_name}:{device_uid} channel {channel_name} \
+                    is working again."
+                );
             }
+            return;
+        };
+        if write_failure_log.record_failure(device_uid, channel_name) {
+            warn!(
+                "Error applying Graph/Mix Profile calculated duty to \
+                {device_name}:{device_uid} channel {channel_name} - {err}. \
+                Further failures for this channel are suppressed until it recovers."
+            );
         }
     }
 
@@ -339,5 +407,89 @@ impl GraphProfileCommander {
 
     fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {
         self.config.get_function(function_uid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DEVICE: &str = "device-uid";
+    const OTHER_DEVICE: &str = "other-device-uid";
+    const FAN: &str = "fan1";
+    const PUMP: &str = "pump";
+
+    #[test]
+    fn a_run_of_failures_logs_once_and_recovery_logs_once() {
+        // Goal: the whole point of the gate. A device that stops answering fails every write on
+        // every tick; only the first failure and the recovery are worth a line.
+        // Method: many failures in a row, then a success, then more failures.
+        let mut write_failure_log = WriteFailureLog::default();
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), FAN));
+        for _ in 0..1_000 {
+            assert!(write_failure_log
+                .record_failure(&DEVICE.to_string(), FAN)
+                .not());
+        }
+        assert!(write_failure_log.record_success(&DEVICE.to_string(), FAN));
+        // A new run after a recovery is a new episode and logs again.
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), FAN));
+    }
+
+    #[test]
+    fn each_channel_gets_its_own_run() {
+        // Goal: one channel failing must not silence another. A single channel can fail on its
+        // own while the rest of the device is fine, and per-device gating would hide that.
+        // Method: two channels on one device, failing and recovering independently.
+        let mut write_failure_log = WriteFailureLog::default();
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), FAN));
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), PUMP));
+        assert!(write_failure_log.record_success(&DEVICE.to_string(), FAN));
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), FAN));
+        assert!(write_failure_log.record_success(&DEVICE.to_string(), PUMP));
+    }
+
+    #[test]
+    fn devices_do_not_share_channel_state() {
+        // Goal: two devices with identically named channels are tracked separately, which matters
+        // for the two identically named AIOs this gate was written for.
+        // Method: the same channel name failing on two different device UIDs.
+        let mut write_failure_log = WriteFailureLog::default();
+        assert!(write_failure_log.record_failure(&DEVICE.to_string(), FAN));
+        assert!(write_failure_log.record_failure(&OTHER_DEVICE.to_string(), FAN));
+        assert!(write_failure_log.record_success(&DEVICE.to_string(), FAN));
+        // The other device is still failing, so its recovery is still pending.
+        assert!(write_failure_log.record_success(&OTHER_DEVICE.to_string(), FAN));
+    }
+
+    #[test]
+    fn a_success_with_nothing_failing_logs_nothing() {
+        // Goal: the negative space and the hot path. Nearly every write succeeds with nothing
+        // failing, and that must report no recovery.
+        // Method: successes against an empty log, and against a device that never failed.
+        let mut write_failure_log = WriteFailureLog::default();
+        assert!(write_failure_log
+            .record_success(&DEVICE.to_string(), FAN)
+            .not());
+        write_failure_log.record_failure(&OTHER_DEVICE.to_string(), PUMP);
+        assert!(write_failure_log
+            .record_success(&DEVICE.to_string(), FAN)
+            .not());
+        assert!(write_failure_log
+            .record_success(&OTHER_DEVICE.to_string(), FAN)
+            .not());
+    }
+
+    #[test]
+    fn a_recovered_device_is_dropped_from_the_map() {
+        // Goal: the tracking map must not grow without bound over a long uptime; a device with no
+        // failing channels left carries no state. Method: fail then recover every channel.
+        let mut write_failure_log = WriteFailureLog::default();
+        write_failure_log.record_failure(&DEVICE.to_string(), FAN);
+        write_failure_log.record_failure(&DEVICE.to_string(), PUMP);
+        write_failure_log.record_success(&DEVICE.to_string(), FAN);
+        assert_eq!(write_failure_log.failing_channels_by_device.len(), 1);
+        write_failure_log.record_success(&DEVICE.to_string(), PUMP);
+        assert!(write_failure_log.failing_channels_by_device.is_empty());
     }
 }

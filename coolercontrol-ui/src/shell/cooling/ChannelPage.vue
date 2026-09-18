@@ -27,6 +27,7 @@ import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import HealthWarning from '@/components/HealthWarning.vue'
 import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
 import TimeChart from '@/components/TimeChart.vue'
+import { v4 as uuidV4 } from 'uuid'
 import { Dashboard, DashboardDeviceChannel } from '@/models/Dashboard.ts'
 import type { UID } from '@/models/Device.ts'
 import { DeviceType } from '@/models/Device.ts'
@@ -339,6 +340,8 @@ const channelDashboard = ref(uiSetting.value?.channelDashboard ?? createChannelD
 if (channelDashboard.value.dataTypes.length > 0) {
     channelDashboard.value.dataTypes = []
 }
+// A chart binds its lines to its series at mount, so a changed line set needs a new chart.
+const chartKey = ref<string>(uuidV4())
 </script>
 
 <template>
@@ -563,7 +566,11 @@ if (channelDashboard.value.dataTypes.length > 0) {
                     {{ t('layout.shell.coolingPage.fullChart') }}
                 </RouterLink>
             </div>
-            <TimeChart :dashboard="channelDashboard" />
+            <TimeChart
+                :key="chartKey"
+                :dashboard="channelDashboard"
+                @line-set-changed="chartKey = uuidV4()"
+            />
         </div>
     </div>
 </template>

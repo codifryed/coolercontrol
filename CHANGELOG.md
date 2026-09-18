@@ -10,6 +10,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [5.0.1] - 2026-09-16
+
+### Added
+
+- Resiliency: Each device's IO runs on its own thread, so a device that stops answering can no
+  longer affect other devices. It is marked unreachable and falls back to its failsafe while every
+  other device keeps running, and it returns on its own once it answers again (#609)
+- Unreachable is its own device health state in the UI, `/devices/health` and SSE, shown ahead of
+  the failsafe it causes
+- NVML calls run on a thread per GPU with a time limit, and an NVIDIA GPU that stops answering is
+  reported as unreachable
+- liquidctl devices that fail to come back after resume from sleep are reconnected, and if that
+  fails, recovered by restarting coolercontrol-liqctld with a backoff
+- `CC_RUNTIME_DRIVER=epoll` forces the epoll backend instead of io_uring (#606)
+- Custom sensors can be added from the Custom Sensors header in the Monitoring and Devices panels
+- Plugin manifests accept `args` as an array and `envs` as a table, for values containing whitespace
+
+### Changed
+
+- Custom sensors opened from Monitoring stay on their chart, with a button to edit the sensor, and
+  the Cooling button on a fan's chart moved to the name row
+- The shutdown reset is capped per device, so a wedged device cannot hold up the others
+- A failing duty write is logged when it starts failing and when it recovers, instead of every tick
+- The initialized devices log lines list each device with its UID, so two identical devices no
+  longer appear as one
+- compio was updated to 0.19, and the minimum supported Rust version is now 1.95
+
+### Fixed
+
+- System monitors could show one core at over 90% iowait, or over 90% IO pressure (PSI) for the
+  service, while the daemon was idle. This was a kernel reporting quirk, not real IO or load: since
+  kernel 6.5, a thread sleeping while it waits on io_uring is counted as iowait even though the core
+  is idle, and PSI derives IO pressure from that same flag. The daemon opts out of that accounting
+  on kernel 6.15 and newer. On older kernels the reading is harmless and can be ignored, or
+  `CC_RUNTIME_DRIVER=epoll` avoids it at the cost of more wakeups (#606)
+- Interrupted hwmon reads are re-issued instead of failing, and are no longer mistaken for a driver
+  refusing a pwm read (#609)
+- Some multi-socket systems, such as a dual-CPU Mac Pro 5,1, got no CPU devices. CPU temps are now
+  matched by coretemp zone and k10temp node, and a CPU that cannot be matched no longer fails CPU
+  initialization
+- CPU load is reported per socket again on multi-socket systems
+- CPU load, power, temp and frequency channels are no longer left out of a poll when a reading fails
+  or CPUs go offline
+- Changing a Function's response delay did not take effect on a profile shared by several channels
+  until the daemon restarted
+- Plugin manifest `args` values were mangled, losing characters such as the last one. Fields are now
+  validated and quoted for systemd and OpenRC, and a skipped manifest logs why
+- An inline `proxy = { ... }` table in a plugin manifest was ignored, and an unusable address, port
+  or `privileged` value now fails with a message naming the manifest
+- A plugin working directory containing spaces broke its systemd unit, and the daemon now warns when
+  OpenRC would split an argument containing whitespace
+- Corsair HID PSUs could read the reply to an earlier command after resume, failing their reads
+- liqctld no longer serves a frozen cached status for a device that has stopped answering, so the
+  failsafe can engage
+- PyUSB liquidctl devices logged a hidraw path warning at every startup
+- Charts could draw one channel's values under another channel's label, scale and color when the set
+  of lines changed
+- Unreliable RPM readings could give a calibration a duty floor near 100%, so every duty was written
+  at almost full speed. Flat, inverted and high-floor curves are now flagged as implausible, with a
+  warning, and fall back to a stepped map
+- Calibration, profile, alert and shutdown logs name devices and channels by their resolved names,
+  including detected and lm-sensors labels and devices that are no longer present
+
+### Security
+
+- NPM dependencies updated to clear advisories
+
 ## [5.0.0] - 2026-09-06
 
 ### Added

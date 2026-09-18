@@ -5,22 +5,14 @@
 //!
 //! Centralizes the runtime entry, task spawning, timers, and shutdown-signal handling behind one
 //! module so the underlying runtime can be swapped without touching call sites. The backend is
-//! chosen at compile time: Tokio by default, compio under the `compio-rt` feature. Both backends
-//! expose the same surface (`runtime`, `test_runtime`, `spawn`, `sleep`, `sleep_until`, `interval`,
-//! `timeout`, `shutdown_signal`, `log_active_backend`).
+//! compio (`runtime`, `test_runtime`, `spawn`, `sleep`, `sleep_until`, `interval`, `timeout`,
+//! `shutdown_signal`, `log_active_backend`).
 //!
 //! Only main-thread code goes through this facade; the sidecar thread uses its Tokio runtime
 //! directly. Channels (`tokio::sync`) and `CancellationToken` are reactor-agnostic and are used
 //! directly, not wrapped here.
 
-#[cfg(not(feature = "compio-rt"))]
-mod tokio_rt;
-#[cfg(not(feature = "compio-rt"))]
-pub use tokio_rt::*;
-
-#[cfg(feature = "compio-rt")]
 mod compio_rt;
-#[cfg(feature = "compio-rt")]
 pub use compio_rt::*;
 
 /// Runtime-agnostic blocking-join failure (the spawned closure panicked or the join was cancelled).

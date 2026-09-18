@@ -582,6 +582,8 @@ export default {
             setAsHome: 'Establecer como Inicio',
             duplicateDashboard: 'Duplicar Panel',
             openCooling: 'Abrir controles de refrigeración',
+            editCustomSensor: 'Editar sensor personalizado',
+            openCustomSensor: 'Abrir ajustes del sensor personalizado',
         },
         appInfo: {
             noWarranty: 'Este programa viene sin absolutamente ninguna garantía.',
@@ -649,6 +651,9 @@ export default {
             findingDetectionUnsupported:
                 'La detección de hardware no es compatible con esta arquitectura.',
             failsafeActive: 'Valores de seguridad en uso',
+            deviceUnreachable: 'El dispositivo no responde',
+            deviceUnreachableDetail:
+                'El controlador dejó de responder, por lo que este dispositivo no se puede leer ni controlar. Se reintenta periódicamente.',
             missingTempSource: 'Fuente de temperatura faltante',
             staleTempSource: 'La fuente de temperatura usa valores de seguridad',
             stressTest: 'Pruebas de estrés térmico',
@@ -1218,6 +1223,8 @@ export default {
                     'rango de RPM limitado ({span} RPM); la resolución del mapeo es gruesa',
                 warningOscillating:
                     'el ventilador oscila entre {lower} % y {upper} % de ciclo (impulso controlado por firmware); mapeo desactivado a ciclo bajo',
+                warningImplausibleCurve:
+                    'la curva medida es plana, está invertida o su mínimo no deja un rango utilizable (las lecturas de RPM parecen poco fiables); mapeo desactivado, recalibra para reintentar',
                 stagePreflight: 'previo',
                 stageUpSweep: 'barrido ascendente',
                 stageDownSweep: 'barrido descendente',

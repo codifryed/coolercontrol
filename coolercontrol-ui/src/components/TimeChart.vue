@@ -19,6 +19,7 @@ import {
     SCALE_KEY_WATTS,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
+import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { useI18n } from 'vue-i18n'
 
@@ -38,6 +39,17 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+// The chart is built once from the line set it finds at mount. When that set changes the
+// only honest repair is a fresh chart, which the parent gives us by remounting this
+// component, the same way it does for a dashboard settings change.
+const emit = defineEmits<{ (e: 'lineSetChanged'): void }>()
+let remountRequested: boolean = false
+const requestRemount = (): void => {
+    if (remountRequested) return
+    remountRequested = true
+    console.info('Chart line set changed, remounting the chart')
+    emit('lineSetChanged')
+}
 const includesTemps: boolean =
     props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.TEMP)
 const includedDuties: boolean =
@@ -77,7 +89,7 @@ const createLineName = (device: Device, statusName: string): string =>
  * Converts our internal Device objects and statuses into the format required by uPlot
  */
 const initUSeriesData = () => {
-    uSeriesData.length = 0
+    const builtLineNames = uLineNames.slice()
     uLineNames.length = 0
 
     const firstDevice: Device = deviceStore.allDevices().next().value
@@ -215,6 +227,19 @@ const initUSeriesData = () => {
         }
     }
 
+    // The chart's series carry the label, unit, scale and colour each line is drawn with,
+    // and they are matched to the data by position alone. Swapping in data for a different
+    // set of lines would draw one channel's values as another channel: an rpm reading
+    // under a duty's label and percent scale, say. Keep the data the chart was built for
+    // and let the remount rebuild both together.
+    if (chart != null && !lineSetMatches(builtLineNames, uLineNames)) {
+        uLineNames.length = 0
+        uLineNames.push(...builtLineNames)
+        requestRemount()
+        return
+    }
+
+    uSeriesData.length = 0
     for (const lineName of uLineNames) {
         // the uLineNames Array keeps our LineData arrays in order
         uSeriesData.push(uLineData.get(lineName)!)
@@ -239,6 +264,18 @@ const updateUSeriesData = () => {
     const newTimestamp = firstDevice.status.timestamp
     uSeriesData[0][currentStatusLength - 1] = new Date(newTimestamp).getTime() / 1000
 
+    // Writes the latest value of one line, and asks for a remount for a line the chart was
+    // not built with: a channel that has started reporting needs a series of its own before
+    // it can be drawn, and until then its value has nowhere to go.
+    const setLatest = (lineName: string, value: number): void => {
+        const dataIndex = lineDataIndex(uLineNames, lineName)
+        if (dataIndex == null) {
+            requestRemount()
+            return
+        }
+        uSeriesData[dataIndex][currentStatusLength - 1] = value
+    }
+
     for (const device of deviceStore.allDevices()) {
         if (!includesDevice(device.uid)) continue
         const newStatus = device.status
@@ -246,7 +283,7 @@ const updateUSeriesData = () => {
             if (!includesTemps) break
             if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
             const lineName = createLineName(device, tempStatus.name + '_temp')
-            uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
+            setLatest(lineName, tempStatus.temp)
         }
         for (const channelStatus of newStatus.channels) {
             if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
@@ -256,24 +293,20 @@ const updateUSeriesData = () => {
                 if (isLoadChannel || isFanDutyChannel) {
                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                     const lineName = createLineName(device, channelStatus.name + lineNameExt)
-                    uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                        channelStatus.duty
+                    setLatest(lineName, channelStatus.duty)
                 }
             }
             if (includesRPMs && channelStatus.rpm != null) {
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
-                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.rpm / settingsStore.frequencyPrecision
+                setLatest(lineName, channelStatus.rpm / settingsStore.frequencyPrecision)
             }
             if (includesFreqs && channelStatus.freq != null) {
                 const lineName = createLineName(device, channelStatus.name + '_freq')
-                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.freq / settingsStore.frequencyPrecision
+                setLatest(lineName, channelStatus.freq / settingsStore.frequencyPrecision)
             }
             if (includesWatts && channelStatus.watts != null) {
                 const lineName = createLineName(device, channelStatus.name + '_watts')
-                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.watts
+                setLatest(lineName, channelStatus.watts)
             }
         }
     }

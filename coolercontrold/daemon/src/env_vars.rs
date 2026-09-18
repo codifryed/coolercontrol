@@ -14,7 +14,7 @@ use std::ops::Not;
 
 use crate::{
     ENV_CC_LOG, ENV_CERT_PATH, ENV_CONFIG_DIR, ENV_DATA_DIR, ENV_DBUS, ENV_DEVICE_EVENTS,
-    ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_NVML, ENV_PLUGINS_DIR, ENV_PORT,
+    ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_NVML, ENV_PLUGINS_DIR, ENV_PORT, ENV_SERVICE_DIR,
     ENV_SERVICE_MANAGER, ENV_TLS,
 };
 
@@ -38,9 +38,8 @@ pub struct EnvVarDoc {
 /// printed reference and the source scan agree regardless of the build target.
 const SENSORS_DETECT_NAME: &str = "CC_SENSORS_DETECT";
 
-/// `CC_RUNTIME_DRIVER` is only read under the `compio-rt` feature, where the const is
-/// compiled. Named here the same way as `SENSORS_DETECT_NAME`, and for the same reason:
-/// the printed reference and the source scan must agree regardless of the build's features.
+/// Named here the same way as `SENSORS_DETECT_NAME`, and for the same reason: the printed
+/// reference and the source scan must agree regardless of the build target.
 const RUNTIME_DRIVER_NAME: &str = "CC_RUNTIME_DRIVER";
 
 pub const ENV_VARS: &[EnvVarDoc] = &[
@@ -96,9 +95,10 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
     },
     EnvVarDoc {
         name: ENV_DEVICE_EVENTS,
-        description: "Device change listener, which watches netlink uevents for hotplug.",
+        description: "Device change listener, which watches netlink uevents for hotplug. \
+                      Can only turn the listener off.",
         values: TOGGLE_VALUES,
-        default: TOGGLE_DEFAULT,
+        default: "the config `device_listener_enabled` setting, otherwise off",
     },
     EnvVarDoc {
         name: SENSORS_DETECT_NAME,
@@ -146,6 +146,15 @@ pub const ENV_VARS: &[EnvVarDoc] = &[
                       usually enough.",
         values: "a directory path",
         default: "the `plugins` directory under the data directory",
+    },
+    EnvVarDoc {
+        name: ENV_SERVICE_DIR,
+        description: "Directory the service manager's plugin unit/script files are written \
+                      to. For distros that mount /etc read only, point it at a writable \
+                      directory the manager also reads, such as /run/systemd/system. Must \
+                      be absolute; a relative path is ignored.",
+        values: "an absolute directory path",
+        default: "/etc/systemd/system (systemd) or /etc/init.d (OpenRC)",
     },
 ];
 

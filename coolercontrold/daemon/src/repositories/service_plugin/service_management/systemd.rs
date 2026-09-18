@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::paths;
 use crate::repositories::service_plugin::service_management::manager::{
     ServiceDefinition, ServiceManager, ServiceStatus,
 };
@@ -15,11 +16,15 @@ use anyhow::{anyhow, Result};
 use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::Duration;
 use strum::Display;
 
 const SYSTEMCTL: &str = "systemctl";
+/// The directory the plugin unit files are written to. `CC_SERVICE_DIR` overrides it, for
+/// distros that mount `/etc` read only: point it at a writable directory systemd also reads,
+/// such as `/run/systemd/system`.
+const DEFAULT_SYSTEMD_DIR: &str = "/etc/systemd/system";
 const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
 /// `systemctl stop` waits for the unit, but a unit that ignores its stop signal outlives it.
@@ -103,7 +108,7 @@ impl SystemdManager {
 
 impl ServiceManager for SystemdManager {
     async fn add(&self, service_definition: ServiceDefinition) -> Result<()> {
-        let dir_path = systemd_global_dir_path();
+        let dir_path = paths::service_dir(Path::new(DEFAULT_SYSTEMD_DIR));
         cc_fs::create_dir_all(&dir_path).await?;
         let service_name = service_definition.service_id.to_service_name();
         let service_path = dir_path.join(format!("{service_name}.service"));
@@ -137,7 +142,7 @@ impl ServiceManager for SystemdManager {
             return Ok(());
         }
         self.stop(service_id).await?;
-        let dir_path = systemd_global_dir_path();
+        let dir_path = paths::service_dir(Path::new(DEFAULT_SYSTEMD_DIR));
         let service_name = service_id.to_service_name();
         let service_path = dir_path.join(format!("{service_name}.service"));
         cc_fs::remove_file(service_path).await
@@ -188,11 +193,6 @@ impl ServiceManager for SystemdManager {
             _ => Err(anyhow!("Unexpected systemctl status exit code: {code}")),
         }
     }
-}
-
-#[inline]
-fn systemd_global_dir_path() -> PathBuf {
-    PathBuf::from("/etc/systemd/system")
 }
 
 fn create_unit_file(
@@ -371,6 +371,7 @@ pub enum SystemdServiceRestartType {
 mod tests {
     use super::*;
     use crate::repositories::service_plugin::service_manifest::EnvVar;
+    use std::path::PathBuf;
 
     fn env(name: &str, value: &str) -> EnvVar {
         EnvVar::new(name, value).unwrap()
@@ -405,6 +406,17 @@ mod tests {
     /// literal percent is doubled so specifier expansion leaves it alone, and a literal
     /// dollar is doubled so variable expansion does. Getting any of these wrong is how
     /// `--rate 50%` reached the plugin as `--rate 50`.
+    #[test]
+    fn unit_files_default_to_systemds_own_directory() {
+        // Goal: a daemon with no CC_SERVICE_DIR override writes where systemd has always
+        // read from. Method: the override is sandboxed off in test builds, so resolving
+        // this manager's default must give that directory back unchanged.
+        assert_eq!(
+            paths::service_dir(Path::new(DEFAULT_SYSTEMD_DIR)),
+            PathBuf::from("/etc/systemd/system")
+        );
+    }
+
     #[test]
     fn exec_start_escapes_each_argument_as_one_item() {
         assert_eq!(

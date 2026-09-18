@@ -19,7 +19,7 @@ export class CoolerControlSettingsDTO {
     poll_rate: number = 1.0
     drivetemp_suspend: boolean = false
     sensors_auto_detect: boolean = true
-    device_listener_enabled: boolean = true
+    device_listener_enabled: boolean = false
     sensors_conf_enabled: boolean = true
 }
 

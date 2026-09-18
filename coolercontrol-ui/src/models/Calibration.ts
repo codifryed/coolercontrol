@@ -123,6 +123,7 @@ export type CalibrationWarning =
     | { kind: 'not_controllable' }
     | { kind: 'limited_range'; rpm_span: number; rpm_max: number }
     | { kind: 'oscillating'; lower_duty: number; upper_duty: number }
+    | { kind: 'implausible_curve' }
 
 /**
  * The stage label embedded in an in-progress status. The values

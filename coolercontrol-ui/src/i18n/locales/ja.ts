@@ -578,6 +578,8 @@ export default {
             setAsHome: 'ホームとして設定',
             duplicateDashboard: 'ダッシュボードを複製',
             openCooling: '冷却コントロールを開く',
+            editCustomSensor: 'カスタムセンサーを編集',
+            openCustomSensor: 'カスタムセンサー設定を開く',
         },
         appInfo: {
             noWarranty: 'このプログラムは絶対に保証がありません。',
@@ -645,6 +647,9 @@ export default {
             findingDetectionUnsupported:
                 'このアーキテクチャではハードウェア検出はサポートされていません。',
             failsafeActive: 'フェイルセーフ値を使用中',
+            deviceUnreachable: 'デバイスが応答していません',
+            deviceUnreachableDetail:
+                'ドライバーが応答しなくなったため、このデバイスの読み取りも制御もできません。定期的に再試行しています。',
             missingTempSource: '温度ソースが見つかりません',
             staleTempSource: '温度ソースはフェイルセーフ値を使用中',
             stressTest: '熱ストレステスト',
@@ -1204,6 +1209,8 @@ export default {
                     'RPM レンジが限定的です ({span} RPM)。マッピング分解能は粗くなります',
                 warningOscillating:
                     'ファンが {lower} % と {upper} % のデューティの間で振動しています (ファームウェア制御のキック)。低デューティでマッピングは無効化されます',
+                warningImplausibleCurve:
+                    '測定されたカーブが平坦、反転、または下限が使用可能な範囲を残していません (回転数の読み取りが不安定に見えます)。マッピングは無効化されました。再調整してやり直してください',
                 stagePreflight: '事前チェック',
                 stageUpSweep: '上昇掃引',
                 stageDownSweep: '下降掃引',

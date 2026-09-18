@@ -193,7 +193,6 @@ const ENV_NVML: &str = "CC_NVML";
 /// ```
 /// CC_RUNTIME_DRIVER=epoll coolercontrold
 /// ```
-#[cfg(feature = "compio-rt")]
 const ENV_RUNTIME_DRIVER: &str = "CC_RUNTIME_DRIVER";
 
 /// Environment Variable: Override the configuration directory path
@@ -222,6 +221,19 @@ pub const ENV_PLUGINS_DIR: &str = "CC_PLUGINS_DIR";
 /// CC_DATA_DIR=/etc/coolercontrol coolercontrold
 /// ```
 pub const ENV_DATA_DIR: &str = "CC_DATA_DIR";
+
+/// Environment Variable: Override the directory the active service manager writes
+/// plugin unit/script files to. Takes an absolute directory path string. Defaults to
+/// the service manager's own directory: `/etc/systemd/system` or `/etc/init.d`.
+///
+/// Distros that manage `/etc` declaratively mount it read only (NixOS), so the default
+/// cannot be written. Point this at a writable directory the manager also reads.
+///
+/// # Example
+/// ```
+/// CC_SERVICE_DIR=/run/systemd/system coolercontrold
+/// ```
+pub const ENV_SERVICE_DIR: &str = "CC_SERVICE_DIR";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
@@ -358,7 +370,9 @@ fn main() -> Result<()> {
             .await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        let calibration_store = Rc::new(calibration::CalibrationStore::init().await?);
+        overrides_controller.capture_detected_names(&all_devices, &config);
+        let calibration_store =
+            Rc::new(calibration::CalibrationStore::init(Rc::clone(&overrides_controller)).await?);
         let fan_state_map = Rc::new(calibration::FanStateMap::new());
         let engine = Rc::new(Engine::new(
             Rc::clone(&all_devices),
@@ -425,7 +439,9 @@ fn main() -> Result<()> {
                 engine.set_alert_gate(alert_controller.clone());
                 let device_listener_enabled = config
                     .get_settings()
-                    .map_or(true, |s| s.device_listener_enabled);
+                    .map_or(setting::DEVICE_LISTENER_ENABLED_DEFAULT, |s| {
+                        s.device_listener_enabled
+                    });
                 let _device_listener = device_listener::DeviceListener::new(
                     &config,
                     Rc::clone(&all_devices),

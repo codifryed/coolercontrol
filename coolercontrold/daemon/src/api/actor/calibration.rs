@@ -258,12 +258,14 @@ impl CalibrationActor {
         let key: ChannelKey = (device_uid.clone(), channel_name.clone());
         if self.engine.is_calibration_in_progress(&key) {
             return Err(anyhow::anyhow!(
-                "calibration already in progress for {device_uid}:{channel_name}"
+                "calibration already in progress for {}",
+                self.engine.log_device_channel(&device_uid, &channel_name)
             ));
         }
         if let Some(alert_name) = self.engine.active_alert_blocking(&key) {
             return Err(anyhow::anyhow!(
-                "cannot calibrate {device_uid}:{channel_name}: alert '{alert_name}' is active"
+                "cannot calibrate {}: alert '{alert_name}' is active",
+                self.engine.log_device_channel(&device_uid, &channel_name)
             ));
         }
         let engine = Rc::clone(&self.engine);

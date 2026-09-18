@@ -153,12 +153,8 @@ impl Watchdog {
         };
         debug_assert!(ping_interval.is_zero().not());
         let deadline = Instant::now() + total;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            rt::sleep(remaining.min(ping_interval)).await;
+        while let Some(slice) = heartbeat_slice(deadline, ping_interval, Instant::now()) {
+            rt::sleep(slice).await;
             self.ping();
         }
     }
@@ -191,6 +187,21 @@ fn ping_interval_for(supervisor_interval: Duration) -> Duration {
     debug_assert!(ping_interval.is_zero().not());
     debug_assert!(ping_interval <= supervisor_interval.max(Duration::from_millis(1)));
     ping_interval
+}
+
+/// The next sleep slice, or `None` once the deadline has passed. Capping each
+/// slice at the ping interval is what keeps a long wait from reading as a hang.
+/// Split out, like `ping_is_due`, so the slicing is testable without a clock
+/// that has to advance in real time.
+fn heartbeat_slice(deadline: Instant, ping_interval: Duration, now: Instant) -> Option<Duration> {
+    debug_assert!(ping_interval.is_zero().not());
+    let remaining = deadline.saturating_duration_since(now);
+    let slice = remaining
+        .is_zero()
+        .not()
+        .then(|| remaining.min(ping_interval));
+    debug_assert!(slice.is_none_or(|slice| slice <= ping_interval));
+    slice
 }
 
 /// Split out so the rate limit is testable without a service manager or a
@@ -353,21 +364,55 @@ mod tests {
         });
     }
 
-    /// The whole point of the function: it must ping *throughout* the wait,
-    /// not once at either end. A single heartbeat across a wait many intervals
-    /// long still starves the service manager, so count them: 40ms at a 5ms
-    /// interval owes 8, and the floor leaves slack for a loaded machine.
+    /// The slicing itself, on a clock that does not have to advance: a wait
+    /// many intervals long must be cut into interval-sized sleeps rather than
+    /// taken in one, which is what leaves room for a heartbeat between them.
+    #[test]
+    fn heartbeat_slices_are_capped_at_the_ping_interval() {
+        let now = Instant::now();
+        let ping_interval = Duration::from_secs(15);
+
+        // The resume pause: 120s at a 15s interval is sliced, never slept whole.
+        let long_wait = now + Duration::from_secs(120);
+        assert_eq!(
+            heartbeat_slice(long_wait, ping_interval, now),
+            Some(ping_interval)
+        );
+
+        // A remainder shorter than the interval is not stretched to fill one.
+        let short_wait = now + Duration::from_secs(4);
+        assert_eq!(
+            heartbeat_slice(short_wait, ping_interval, now),
+            Some(Duration::from_secs(4))
+        );
+
+        // Reaching the deadline ends the loop, and overshooting it must not
+        // wrap into another slice.
+        assert_eq!(heartbeat_slice(now, ping_interval, now), None);
+        assert_eq!(
+            heartbeat_slice(now, ping_interval, now + Duration::from_secs(1)),
+            None
+        );
+    }
+
+    /// The whole point of the function: it must ping *throughout* the wait, not
+    /// once at either end. The count is real wall-clock work, and a loaded CI
+    /// runner oversleeps every timer, so the wait is 30 intervals long and the
+    /// floor is a small fraction of that. The slicing above pins the arithmetic;
+    /// this only has to catch a heartbeat that stops mid-wait.
     #[test]
     fn heartbeat_sleep_pings_throughout_the_wait() {
         rt::test_runtime(async {
-            let watchdog = Watchdog::with_supervisor_interval(Some(Duration::from_millis(10)));
+            let watchdog = Watchdog::with_supervisor_interval(Some(Duration::from_millis(20)));
+            let start = Instant::now();
             watchdog
-                .sleep_with_heartbeat(Duration::from_millis(40))
+                .sleep_with_heartbeat(Duration::from_millis(300))
                 .await;
             assert!(
-                watchdog.ping_count() >= 4,
-                "only {} heartbeat(s) across the wait",
-                watchdog.ping_count()
+                watchdog.ping_count() >= 3,
+                "only {} heartbeat(s) across a {:?} wait",
+                watchdog.ping_count(),
+                start.elapsed()
             );
         });
     }

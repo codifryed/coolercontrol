@@ -14,8 +14,9 @@
 //! The deferred path uses `tokio::task::spawn_local` rather than a
 //! `moro_local::Scope` because dispatch is called from inside an
 //! already-spawned scope task, and re-entering the scope panics with
-//! `RefCell already borrowed`. The `Rc::clone` cost is one per Off->Kicking
-//! transition (rare).
+//! `RefCell already borrowed`. The `Rc::clone` cost, plus the one name
+//! resolution the deferred task's log lines need, is paid once per
+//! Off->Kicking transition (rare).
 
 // `state` / `store` / `writer` / `writes` are well-established semantic
 // names in this module (the state map, the calibration store, the duty
@@ -126,10 +127,10 @@ enum DispatchOutcome {
 /// On a smooth-curve channel transitioning out of `Off`, the kick
 /// duty is written immediately and a deferred sustain-write task is
 /// spawned via `tokio::task::spawn_local`. The clone of `state` and
-/// `writer` into the spawned task only happens on this rare
-/// transition; the hot per-tick paths (mid-kick update, On-state
-/// write, passthrough for uncalibrated/stepped channels) do zero
-/// clones.
+/// `writer` into the spawned task, and the name resolution its log
+/// lines need, only happen on this rare transition; the hot per-tick
+/// paths (mid-kick update, On-state write, passthrough for
+/// uncalibrated/stepped channels) do zero clones and resolve no names.
 ///
 /// `moro_local::Scope::spawn` is intentionally not used here even
 /// though the main loop has a scope available: `dispatch` is called
@@ -158,6 +159,10 @@ pub async fn dispatch(
     {
         let state_owned = Rc::clone(state);
         let writer_owned = Rc::clone(writer);
+        // Resolved here, on the Off -> Kicking transition only: the deferred task outlives this
+        // borrow of the store, and resolving inside the error arms would repeat the work on
+        // every failing walk step.
+        let log_label = store.log_device_channel(&device_uid, &channel_name);
         rt::spawn(async move {
             rt::sleep(Duration::from_millis(u64::from(kick_duration_ms))).await;
             if walk_enabled {
@@ -167,6 +172,7 @@ pub async fn dispatch(
                     &key,
                     &device_uid,
                     &channel_name,
+                    &log_label,
                     kick_duty,
                     WALK_STEP_INTERVAL_MS,
                 )
@@ -178,6 +184,7 @@ pub async fn dispatch(
                     &key,
                     &device_uid,
                     &channel_name,
+                    &log_label,
                 )
                 .await;
             }
@@ -377,6 +384,7 @@ pub async fn complete_kick(
     key: &ChannelKey,
     device_uid: &UID,
     channel_name: &str,
+    log_label: &str,
 ) {
     let target = {
         let entry = state.entry(key);
@@ -400,7 +408,7 @@ pub async fn complete_kick(
             .write_device_duty(device_uid, channel_name, duty)
             .await
         {
-            warn!("Calibration sustain write failed for {device_uid}:{channel_name} - {err}");
+            warn!("Calibration sustain write failed for {log_label} - {err}");
         }
     }
 }
@@ -448,6 +456,7 @@ pub async fn complete_kick_with_walk(
     key: &ChannelKey,
     device_uid: &UID,
     channel_name: &str,
+    log_label: &str,
     kick_duty: Duty,
     step_interval_ms: u64,
 ) {
@@ -458,11 +467,11 @@ pub async fn complete_kick_with_walk(
         match next_walk_step(state.entry(key).state, walk_position) {
             WalkStep::Abort => return,
             WalkStep::Finalize => {
-                complete_kick(state, writer, key, device_uid, channel_name).await;
+                complete_kick(state, writer, key, device_uid, channel_name, log_label).await;
                 return;
             }
             WalkStep::Write(next) => {
-                write_walk_step(writer, device_uid, channel_name, next).await;
+                write_walk_step(writer, device_uid, channel_name, log_label, next).await;
                 walk_position = next;
                 steps_taken += 1;
                 rt::sleep(Duration::from_millis(step_interval_ms)).await;
@@ -477,13 +486,14 @@ async fn write_walk_step(
     writer: &Rc<dyn DutyWriter>,
     device_uid: &UID,
     channel_name: &str,
+    log_label: &str,
     duty: Duty,
 ) {
     if let Err(err) = writer
         .write_device_duty(device_uid, channel_name, duty)
         .await
     {
-        warn!("Calibration walk-down write failed for {device_uid}:{channel_name} - {err}");
+        warn!("Calibration walk-down write failed for {log_label} - {err}");
     }
 }
 
@@ -491,6 +501,9 @@ async fn write_walk_step(
 mod tests {
     use super::super::curve::{Calibration, CurveKind, DutySample};
     use super::*;
+
+    /// Stands in for the resolved name the production caller passes down.
+    const LABEL: &str = "dev-a | fan1";
     use crate::device::RPM;
     use chrono::Local;
     use std::cell::RefCell;
@@ -773,6 +786,7 @@ mod tests {
                         &k("dev-a", "fan1"),
                         &"dev-a".to_string(),
                         "fan1",
+                        LABEL,
                     )
                     .await;
                     assert_eq!(writes.borrow().len(), 2);
@@ -833,6 +847,7 @@ mod tests {
                         &k("dev-a", "fan1"),
                         &"dev-a".to_string(),
                         "fan1",
+                        LABEL,
                     )
                     .await;
                     assert_eq!(writes.borrow().len(), 2);
@@ -903,7 +918,7 @@ mod tests {
                 },
             );
             let (writer, writes) = MockWriter::make();
-            complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
+            complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1", LABEL).await;
             assert!(writes.borrow().is_empty());
             assert_eq!(state.entry(&key).state, FanState::Off);
         });
@@ -940,6 +955,7 @@ mod tests {
                 &key,
                 &"dev-a".to_string(),
                 "fan1",
+                LABEL,
                 20,
                 TEST_STEP_INTERVAL_MS,
             )
@@ -979,6 +995,7 @@ mod tests {
                 &key,
                 &"dev-a".to_string(),
                 "fan1",
+                LABEL,
                 50,
                 TEST_STEP_INTERVAL_MS,
             )
@@ -1052,6 +1069,7 @@ mod tests {
                 &key,
                 &"dev-a".to_string(),
                 "fan1",
+                LABEL,
                 30,
                 TEST_STEP_INTERVAL_MS,
             )
@@ -1145,7 +1163,7 @@ mod tests {
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 
                     // Finalize the kick so state moves to On.
-                    complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1").await;
+                    complete_kick(&state, &writer, &key, &"dev-a".to_string(), "fan1", LABEL).await;
                     assert_eq!(state.entry(&key).state, FanState::On);
                     assert_eq!(state.entry(&key).commanded_true_duty, Some(70));
 

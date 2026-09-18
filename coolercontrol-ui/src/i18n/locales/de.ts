@@ -588,6 +588,8 @@ export default {
             setAsHome: 'Als Startseite festlegen',
             duplicateDashboard: 'Dashboard duplizieren',
             openCooling: 'Kühlungssteuerung öffnen',
+            editCustomSensor: 'Benutzerdefinierten Sensor bearbeiten',
+            openCustomSensor: 'Einstellungen des benutzerdefinierten Sensors öffnen',
         },
         appInfo: {
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',
@@ -657,6 +659,9 @@ export default {
             findingDetectionUnsupported:
                 'Die Hardware-Erkennung wird auf dieser Architektur nicht unterstützt.',
             failsafeActive: 'Failsafe-Werte in Verwendung',
+            deviceUnreachable: 'Gerät antwortet nicht',
+            deviceUnreachableDetail:
+                'Der Treiber antwortet nicht mehr, daher kann dieses Gerät weder ausgelesen noch gesteuert werden. Es wird regelmäßig erneut versucht.',
             missingTempSource: 'Fehlende Temperaturquelle',
             staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',
@@ -1230,6 +1235,8 @@ export default {
                     'eingeschränkter Drehzahlbereich ({span} RPM); grobe Abbildungs-Auflösung',
                 warningOscillating:
                     'Lüfter oszilliert zwischen {lower} % und {upper} % Tastgrad (firmware-gesteuerter Anlaufschub); Abbildung bei niedrigem Tastgrad deaktiviert',
+                warningImplausibleCurve:
+                    'gemessene Kurve ist flach, invertiert oder ihr Minimum lässt keinen nutzbaren Bereich (Drehzahlwerte wirken unzuverlässig); Abbildung deaktiviert, zum erneuten Versuch neu kalibrieren',
                 stagePreflight: 'Vorprüfung',
                 stageUpSweep: 'Aufwärts-Durchlauf',
                 stageDownSweep: 'Abwärts-Durchlauf',
