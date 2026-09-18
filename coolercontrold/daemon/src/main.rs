@@ -222,6 +222,19 @@ pub const ENV_PLUGINS_DIR: &str = "CC_PLUGINS_DIR";
 /// ```
 pub const ENV_DATA_DIR: &str = "CC_DATA_DIR";
 
+/// Environment Variable: Override the directory the active service manager writes
+/// plugin unit/script files to. Takes an absolute directory path string. Defaults to
+/// the service manager's own directory: `/etc/systemd/system` or `/etc/init.d`.
+///
+/// Distros that manage `/etc` declaratively mount it read only (NixOS), so the default
+/// cannot be written. Point this at a writable directory the manager also reads.
+///
+/// # Example
+/// ```
+/// CC_SERVICE_DIR=/run/systemd/system coolercontrold
+/// ```
+pub const ENV_SERVICE_DIR: &str = "CC_SERVICE_DIR";
+
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 

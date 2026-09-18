@@ -13,6 +13,9 @@ use std::time::Duration;
 
 use crate::cc_fs;
 use anyhow::{anyhow, Result};
+// The daemon and the detection crate spawn the same shell for the same reason, so the
+// path and its rationale live in one place.
+use cc_detect::shell_command::SHELL;
 use log::{debug, error, info, warn};
 use nu_glob::{glob, Uninterruptible};
 use tokio::io::AsyncReadExt;
@@ -77,7 +80,7 @@ async fn run_shell_command(
     env: HashMap<String, String>,
     timeout: Duration,
 ) -> ShellCommandResult {
-    let mut shell_command = Command::new("sh");
+    let mut shell_command = Command::new(SHELL);
     shell_command
         .arg("-c")
         .arg(&command)
