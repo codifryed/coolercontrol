@@ -217,6 +217,7 @@ pub async fn start_server<'s>(
 
     // Extract proxy/cors settings for the API servers
     let cors_origins = settings.origins.clone();
+    let frame_ancestors = settings.frame_ancestors.clone();
     let allow_unencrypted = settings.allow_unencrypted;
     let protocol_header = settings.protocol_header.clone();
 
@@ -235,6 +236,7 @@ pub async fn start_server<'s>(
             tls_config,
             cancel_token,
             cors_origins,
+            frame_ancestors,
             allow_unencrypted,
             protocol_header,
         )
@@ -254,6 +256,7 @@ async fn run_all_api_servers(
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
+    frame_ancestors: Vec<String>,
     allow_unencrypted: bool,
     protocol_header: Option<String>,
 ) {
@@ -281,6 +284,7 @@ async fn run_all_api_servers(
             cors_origins.clone(),
             allow_unencrypted,
             protocol_header.clone(),
+            frame_ancestors.clone(),
         )));
     }
     if let Some(addr) = ipv6 {
@@ -296,6 +300,7 @@ async fn run_all_api_servers(
             cors_origins,
             allow_unencrypted,
             protocol_header,
+            frame_ancestors,
         )));
     }
 
@@ -397,15 +402,119 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
     response
 }
 
-fn frame_ancestors_value(cors_origins: Vec<String>) -> String {
-    let exact_origins: Vec<String> = cors_origins
+fn hostname_is_valid(hostname: &str) -> bool {
+    if hostname.len() < 1 || hostname.len() > 253 {
+        return false;
+    }
+    hostname.split('.').all(|label| {
+        if label.len() < 1 || label.len() > 63 {
+            return false;
+        }
+        if label.starts_with('-') {
+            return false;
+        }
+        if label.ends_with('-') {
+            return false;
+        }
+        label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
+}
+
+struct CspFrameAncestorParts<'a> {
+    scheme: &'a str,
+    host: &'a str,
+    port: Option<&'a str>,
+    path: Option<&'a str>,
+
+}
+
+fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>> {
+    let Some((scheme, after_scheme)) = ancestor.split_once("://") else {
+        return None;
+    };
+    let (origin, path) = after_scheme
+        .split_once('/')
+        .map(|(origin, path)| (origin, Some(path)))
+        .unwrap_or((after_scheme, None));
+    let Some((host, port)) = (if origin.starts_with('[') {
+        origin.find(']').and_then(|host_end_index| {
+            let host = &origin[0..host_end_index + 1];
+            let after_host = &origin[host_end_index + 1..];
+            match after_host {
+                s if s.starts_with(':') => Some((host, after_host.strip_prefix(':'))),
+                "" => Some((host, None)),
+                _ => None,
+            }
+        })
+    } else {
+        Some(
+            origin
+                .split_once(':')
+                .map(|(host, port)| (host, Some(port)))
+                .unwrap_or((origin, None)),
+        )
+    }) else {
+        return None;
+    };
+    Some(CspFrameAncestorParts {
+        scheme, host, port, path,
+    })
+}
+
+fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
+    let Some(parsed) = csp_frame_ancestor_parse(ancestor) else {
+        return false;
+    };
+    // validate scheme
+    if ["http", "https"].contains(&parsed.scheme).not() {
+        return false;
+    };
+    // validate host
+    let host_valid = parsed.host
+        .strip_circumfix('[', ']')
+        .map(|ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok())
+        .unwrap_or_else(|| parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host));
+    if host_valid.not() {
+        return false;
+    };
+    // validate port
+    if let Some(port) = parsed.port {
+        if port.parse::<u16>().is_err() {
+            return false;
+        }
+    }
+    // validate path
+    if let Some(path) = parsed.path {
+        // original path must have been absolute if earlier split_once succeeded
+        // check for double '/' (first '/' is already stripped away)
+        if path.contains("//") || path.starts_with('/') {
+            return false;
+        }
+        let path_valid = path
+            .strip_suffix('/')
+            .unwrap_or(path) // strip possible trailing slash
+            .split('/')
+            .all(|path_part| {
+                path_part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
+            });
+        if path_valid.not() {
+            return false;
+        }
+    }
+    true
+}
+
+fn csp_frame_ancestors_value(frame_ancestors: Vec<String>) -> String {
+    let exact_frame_ancestors: Vec<String> = frame_ancestors
         .into_iter()
-        .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
+        .filter(|a: &String| csp_frame_ancestor_is_valid(a))
         .collect();
-    if exact_origins.is_empty() {
+    if exact_frame_ancestors.is_empty() {
         "'none'".to_string()
     } else {
-        exact_origins.join(" ")
+        exact_frame_ancestors.join(" ")
     }
 }
 
@@ -443,6 +552,7 @@ async fn create_api_server(
     cors_origins: Vec<String>,
     allow_unencrypted: bool,
     protocol_header: Option<String>,
+    frame_ancestors: Vec<String>,
 ) -> Result<()> {
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
@@ -461,7 +571,7 @@ async fn create_api_server(
         // 2MB is the default payload limit:
         .route_layer(DefaultBodyLimit::disable())
         .route_layer(session_layer)
-        .layer(cors_layer(ipv4, ipv6, cors_origins.clone()))
+        .layer(cors_layer(ipv4, ipv6, cors_origins))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer((
             TraceLayer::new_for_http(),
@@ -471,7 +581,7 @@ async fn create_api_server(
             ),
         ))
         .layer(middleware::from_fn_with_state(
-            frame_ancestors_value(cors_origins),
+            csp_frame_ancestors_value(frame_ancestors),
             csp_frame_ancestors_middleware,
         ));
 
@@ -1694,6 +1804,87 @@ mod tests {
         assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
     }
 
+    #[test]
+    fn test_csp_frame_ancestor_is_valid() {
+        let valid_schemes = vec!["https://", "http://"];
+        let valid_hosts = vec![
+            "192.168.0.1",
+            "[2001:db8::1]",
+            "example.com",
+            "sub.example.com",
+        ];
+        let valid_ports = vec!["", ":9090", ":65535"];
+        let valid_paths = vec!["", "/", "/test", "/a/b/123/test_path/~/./", "/ABC"];
+
+        for scheme in &valid_schemes {
+            for host in &valid_hosts {
+                for port in &valid_ports {
+                    for path in &valid_paths {
+                        assert!(csp_frame_ancestor_is_valid(&format!(
+                            "{scheme}{host}{port}{path}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        let invalid_hosts = [
+            "",
+            "[2001:db8::1",
+            "[invalid]",
+            "example.com.",
+            "-example.com",
+            "example-.com",
+            "example..com",
+        ];
+        for host in invalid_hosts {
+            assert!(!csp_frame_ancestor_is_valid(&format!(
+                "https://{host}:9090/test"
+            )));
+        }
+
+        let invalid_ports = [":", ":abc", ":65536", ":-1", ":9090x"];
+        for port in invalid_ports {
+            assert!(!csp_frame_ancestor_is_valid(&format!(
+                "https://example.com{port}/test"
+            )));
+        }
+
+        let invalid_paths = ["//", "/test//", "/test//sdf", "/@#$%^", "/with space"];
+        for path in invalid_paths {
+            assert!(
+                !csp_frame_ancestor_is_valid(&format!("https://example.com:9090{path}")),
+                "failed on path {path}"
+            );
+        }
+
+        assert!(!csp_frame_ancestor_is_valid("https://[::1]junk"));
+    }
+
+    #[test]
+    fn test_csp_frame_ancestors_value() {
+        assert_eq!(csp_frame_ancestors_value(vec![]), "'none'");
+        assert_eq!(
+            csp_frame_ancestors_value(vec!["https://localhost:9090".to_string()]),
+            "https://localhost:9090"
+        );
+        assert_eq!(
+            csp_frame_ancestors_value(vec![
+                "https://localhost:9090".to_string(),
+                "http://192.168.2.1:1234".to_string(),
+            ]),
+            "https://localhost:9090 http://192.168.2.1:1234"
+        );
+        assert_eq!(
+            csp_frame_ancestors_value(vec![
+                "https://localhost:9090".to_string(),
+                "bad.value".to_string(),
+                "http://192.168.2.1:1234".to_string(),
+            ]),
+            "https://localhost:9090 http://192.168.2.1:1234"
+        );
+    }
+
     // validate_name_string tests
     #[test]
     fn test_validate_name_valid() {
@@ -1901,7 +2092,7 @@ mod tests {
                 get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
             )
             .layer(middleware::from_fn_with_state(
-                frame_ancestors_value(vec![
+                csp_frame_ancestors_value(vec![
                     "https://cockpit.example.com".to_string(),
                     "http://localhost:9090".to_string(),
                 ]),
@@ -1936,7 +2127,7 @@ mod tests {
                 get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
             )
             .layer(middleware::from_fn_with_state(
-                frame_ancestors_value(vec![]),
+                csp_frame_ancestors_value(vec![]),
                 csp_frame_ancestors_middleware,
             ));
 

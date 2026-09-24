@@ -1353,6 +1353,17 @@ impl Config {
             } else {
                 Vec::new()
             };
+            let frame_ancestors = if let Some(value) = settings.get("frame_ancestors") {
+                value
+                    .as_array()
+                    .with_context(|| "frame_ancestors should be an array")?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                Vec::new()
+            };
             let allow_unencrypted = settings
                 .get("allow_unencrypted")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
@@ -1411,6 +1422,7 @@ impl Config {
                 tls_cert_path,
                 tls_key_path,
                 origins,
+                frame_ancestors,
                 allow_unencrypted,
                 protocol_header,
                 sensors_auto_detect,
@@ -1529,6 +1541,14 @@ impl Config {
                 .map(|s| Value::String(Formatted::new(s.clone())))
                 .collect();
             base_settings["origins"] = Item::Value(Value::Array(origins_array));
+        }
+        if cc_settings.frame_ancestors.is_empty().not() {
+            let frame_ancestors_array: toml_edit::Array = cc_settings
+                .frame_ancestors
+                .iter()
+                .map(|s| Value::String(Formatted::new(s.clone())))
+                .collect();
+            base_settings["frame_ancestors"] = Item::Value(Value::Array(frame_ancestors_array));
         }
         base_settings["allow_unencrypted"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.allow_unencrypted,
