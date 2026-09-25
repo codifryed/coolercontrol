@@ -18,7 +18,7 @@ use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::trust::{self, PinnedCertVerifier};
 use anyhow::{anyhow, Context, Result};
-use axum::http::{HeaderMap, HeaderValue, Request, Response};
+use axum::http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use log::{error, info, warn};
 use rustls::pki_types::ServerName;
@@ -31,6 +31,7 @@ use std::task::{Context as TaskContext, Poll};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tonic::transport::{Channel, Endpoint, Uri};
+use tonic::Status;
 
 /// Builds a channel to the service described by `manifest`.
 ///
@@ -178,7 +179,7 @@ async fn build_channel(
         .with_context(|| format!("Connecting to device service at {address}"))
 }
 
-/// The channel a plugin client talks over: a `Channel` that explains credential refusals.
+/// The channel a plugin client talks over: a `Channel` that explains refusals.
 pub type PluginChannel = ExplainRefusals<Channel>;
 
 const GRPC_STATUS: &str = "grpc-status";
@@ -229,6 +230,51 @@ fn explain_refusal(headers: &mut HeaderMap, service_id: &str) {
     }
 }
 
+/// Whether the remote answered with a redirect to HTTPS.
+///
+/// That is how a `CoolerControl` daemon with TLS enabled answers an unencrypted request from
+/// another machine, before authentication ever runs.
+fn redirects_to_https<B>(response: &Response<B>) -> bool {
+    if response.status().is_redirection().not() {
+        return false;
+    }
+    response
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|location| location.get(.."https://".len()))
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+}
+
+/// Turns a redirect to HTTPS into a refusal the client reads and can act on.
+///
+/// gRPC cannot follow a redirect, so left alone it surfaces as an unexplained failure that
+/// the connection loop retries until it reports a startup timeout, for a remote that is up
+/// and answering.
+///
+/// Reported as `Unauthenticated` because off this machine a link is only unencrypted when
+/// it carries no token (see `trust::LinkPlan`), and, as with a refused token, no retry can
+/// fix it. Shaped as the trailers-only response a gRPC server sends for an error, so
+/// reading it does not depend on tonic checking `grpc-status` before the HTTP status.
+fn explain_unencrypted_refusal<B>(response: &mut Response<B>, service_id: &str) {
+    debug_assert!(response.status().is_redirection());
+    debug_assert!(service_id.is_empty().not());
+    let message = format!(
+        "device service '{service_id}' only accepts encrypted connections. Put an access token \
+         from that daemon into a '{}' file in this plugin's directory, which switches the \
+         connection to TLS, and remove 'tls = false' from its manifest if it is set.",
+        trust::TOKEN_FILE_NAME
+    );
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/grpc"),
+    );
+    let written = Status::unauthenticated(message).add_header(response.headers_mut());
+    // Percent-encoding makes any message a valid header value, so this cannot fail.
+    debug_assert!(written.is_ok());
+}
+
 impl<S, ReqBody, ResBody> tower::Service<Request<ReqBody>> for ExplainRefusals<S>
 where
     S: tower::Service<Request<ReqBody>, Response = Response<ResBody>>,
@@ -249,7 +295,13 @@ where
         let future = self.inner.call(request);
         Box::pin(async move {
             let mut response = future.await?;
-            explain_refusal(response.headers_mut(), &service_id);
+            // Exclusive: the rewritten redirect is itself an `Unauthenticated` status, and
+            // `explain_refusal` would replace its message with the wrong advice.
+            if redirects_to_https(&response) {
+                explain_unencrypted_refusal(&mut response, &service_id);
+            } else {
+                explain_refusal(response.headers_mut(), &service_id);
+            }
             Ok(response)
         })
     }
@@ -275,6 +327,8 @@ pub fn host_of(tcp_address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::service_plugin::client::credential_refusal;
+    use tonic::Code;
 
     /// Goal: the host is what the loopback exemption and the TLS server name are derived
     /// from, so splitting it off the port must handle IPv6 literals. Reading "::1" as a
@@ -377,6 +431,91 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(message.contains("my_plugin"), "{message}");
+    }
+
+    fn redirect_to(location: &str) -> Response<()> {
+        let mut response = Response::new(());
+        *response.status_mut() = StatusCode::MOVED_PERMANENTLY;
+        response
+            .headers_mut()
+            .insert(header::LOCATION, HeaderValue::from_str(location).unwrap());
+        response
+    }
+
+    /// Goal: a remote that insists on TLS is reported as a refusal the connection loop
+    /// gives up on at once, with advice that fixes it. Checked the way the client reads
+    /// it: tonic parses the status from the headers, then the loop classifies it through
+    /// `credential_refusal`. Left as a bare redirect, the loop retried it into a startup
+    /// timeout.
+    #[test]
+    fn an_https_redirect_becomes_an_explained_refusal() {
+        let mut response = redirect_to(
+            "https://10.1.1.11:11987/coolercontrol.device_service.v1.DeviceService/Health",
+        );
+        assert!(redirects_to_https(&response));
+
+        explain_unencrypted_refusal(&mut response, "my_plugin");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let status = Status::from_header_map(response.headers()).expect("a status tonic reads");
+        assert_eq!(status.code(), Code::Unauthenticated);
+        let message = status.message().to_string();
+        assert!(message.contains("my_plugin"), "{message}");
+        assert!(message.contains("encrypted"), "{message}");
+        assert!(message.contains(trust::TOKEN_FILE_NAME), "{message}");
+        assert!(message.contains("tls = false"), "{message}");
+        // A dropped line continuation leaves a run of spaces mid-sentence.
+        assert!(message.contains("  ").not(), "{message}");
+
+        let health_error = anyhow::Error::new(status).context("Failed to get health status");
+        assert_eq!(
+            credential_refusal(&health_error).as_deref(),
+            Some(message.as_str())
+        );
+    }
+
+    /// Goal: only a redirect to HTTPS is recognised. Any other redirect, or a response
+    /// that is no redirect at all, says nothing about encryption, and calling it one would
+    /// send the user to fix a token that is not the problem.
+    #[test]
+    fn only_a_redirect_to_https_is_recognised() {
+        assert!(redirects_to_https(&redirect_to("HTTPS://10.1.1.11:11987/")));
+
+        assert!(redirects_to_https(&redirect_to("http://10.1.1.11:11987/")).not());
+        assert!(redirects_to_https(&redirect_to("/relative/path")).not());
+        assert!(redirects_to_https(&redirect_to("https:")).not());
+
+        let mut not_a_redirect = redirect_to("https://10.1.1.11:11987/");
+        *not_a_redirect.status_mut() = StatusCode::OK;
+        assert!(redirects_to_https(&not_a_redirect).not());
+
+        let mut no_location = Response::new(());
+        *no_location.status_mut() = StatusCode::MOVED_PERMANENTLY;
+        assert!(redirects_to_https(&no_location).not());
+    }
+
+    /// Goal: the wrapper gives a redirect its own explanation, not the credentials one.
+    /// The rewritten redirect is an `Unauthenticated` status too, so running both would
+    /// replace the right advice with advice about a token the link never carried.
+    #[tokio::test]
+    async fn the_wrapper_explains_a_redirect_as_unencrypted() {
+        use tower::ServiceExt;
+
+        let inner = tower::service_fn(|_: Request<()>| async {
+            Ok::<_, std::convert::Infallible>(redirect_to("https://10.1.1.11:11987/"))
+        });
+        let service = ExplainRefusals::new(inner, "my_plugin".to_string());
+
+        let response = service.oneshot(Request::new(())).await.unwrap();
+
+        let status = Status::from_header_map(response.headers()).expect("a status tonic reads");
+        let message = status.message();
+        assert_eq!(status.code(), Code::Unauthenticated);
+        assert!(message.contains("encrypted"), "{message}");
+        assert!(
+            message.contains("refused our credentials").not(),
+            "{message}"
+        );
     }
 
     /// Goal: an address with no port, or a trailing colon that is not one, is not
