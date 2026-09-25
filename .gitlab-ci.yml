@@ -260,9 +260,9 @@ test_msrv:
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
 
 ####################################### Dependency audit
-# RustSec findings fail the job. The daily schedule also opens a lockfile-only fix MR, since
-# dependabot's GitHub advisory source can lag RustSec by weeks. Other pipelines run it only
-# when the lockfile or its ignores differ from main.
+# Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
+# findings fail the job and open a lockfile-only fix MR, since dependabot's GitHub advisory
+# source can lag RustSec by weeks.
 cargo_audit:
   stage: test
   needs: []
@@ -275,15 +275,6 @@ cargo_audit:
       policy: pull
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-      when: never
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - changes:
-        paths:
-          - coolercontrold/Cargo.lock
-          - coolercontrold/.cargo/audit.toml
-        compare_to: refs/heads/main
   script:
     - .gitlab/scripts/cargo-audit.sh
 
