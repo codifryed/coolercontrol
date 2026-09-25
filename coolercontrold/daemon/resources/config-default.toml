@@ -145,6 +145,18 @@ drivetemp_suspend = false
 # Note: This should only be used as a last resort and is not recommended.
 # allow_unencrypted = false
 
+# Whether a remote device-service plugin must present a TLS certificate whose fingerprint
+# you pinned in advance. When disabled (the default), the daemon trusts a remote the first
+# time it connects, records that certificate's fingerprint in a "tls_pin" file inside the
+# plugin's directory, and refuses the connection if it ever changes. Enable this to refuse
+# unknown remotes outright; you then have to write the expected fingerprint into that
+# "tls_pin" file yourself. A TLS connection to localhost is trusted without a pin while this
+# is disabled, but needs one like any other once it is enabled.
+# This only applies to connections that use TLS at all: a plugin reached over a Unix socket
+# or plain TCP has no certificate to pin. Placing a "token" file in a plugin's directory is
+# what switches its connection to TLS, unless its manifest sets "tls" explicitly.
+# tls_strict = false
+
 # Whether to auto-detect Super-I/O hardware sensors and load the appropriate kernel
 # modules at startup. This helps ensure all hwmon chips are available. (x86_64 only)
 # sensors_auto_detect = true
@@ -174,15 +186,3 @@ drivetemp_suspend = false
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true
-
-# Whether a remote device-service plugin must present a TLS certificate whose fingerprint
-# you pinned in advance. When disabled (the default), the daemon trusts a remote the first
-# time it connects, records that certificate's fingerprint in a "tls_pin" file inside the
-# plugin's directory, and refuses the connection if it ever changes. Enable this to refuse
-# unknown remotes outright; you then have to write the expected fingerprint into that
-# "tls_pin" file yourself. A TLS connection to localhost is trusted without a pin while this
-# is disabled, but needs one like any other once it is enabled.
-# This only applies to connections that use TLS at all: a plugin reached over a Unix socket
-# or plain TCP has no certificate to pin. Placing a "token" file in a plugin's directory is
-# what switches its connection to TLS, unless its manifest sets "tls" explicitly.
-# tls_strict = false
