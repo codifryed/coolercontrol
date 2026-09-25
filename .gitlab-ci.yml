@@ -289,7 +289,7 @@ npm_audit:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - /root/osv-scanner scan source --config coolercontrol-ui/osv-scanner.toml
+    - /osv-scanner scan source --config coolercontrol-ui/osv-scanner.toml
       --lockfile coolercontrol-ui/package-lock.json
 
 # dependabot-gitlab's npm job (config in .gitlab/dependabot.yml). The component gates it on a
