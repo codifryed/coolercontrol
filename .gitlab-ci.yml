@@ -278,7 +278,8 @@ cargo_audit:
   script:
     - .gitlab/scripts/cargo-audit.sh
 
-# OSV findings, dev dependencies included, fail the job. Fix MRs come from dependabot.
+# Daily schedule only, like cargo_audit. OSV findings, dev dependencies included, fail the job.
+# Fix MRs come from dependabot.
 npm_audit:
   stage: test
   image:
@@ -287,15 +288,6 @@ npm_audit:
   needs: []
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-      when: never
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - changes:
-        paths:
-          - coolercontrol-ui/package-lock.json
-          - coolercontrol-ui/osv-scanner.toml
-        compare_to: refs/heads/main
   script:
     - /root/osv-scanner scan source --config coolercontrol-ui/osv-scanner.toml
       --lockfile coolercontrol-ui/package-lock.json
