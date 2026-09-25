@@ -45,8 +45,9 @@ const RUNTIME_DRIVER_NAME: &str = "CC_RUNTIME_DRIVER";
 pub const ENV_VARS: &[EnvVarDoc] = &[
     EnvVarDoc {
         name: ENV_CC_LOG,
-        description: "Log level. The --debug flag overrides it. The older \
-                      COOLERCONTROL_LOG name is deprecated but still honored.",
+        description: "Log level. The --debug flag and the debug_logging setting raise it \
+                      to DEBUG but never lower it. The older COOLERCONTROL_LOG name is \
+                      deprecated but still honored.",
         values: "ERROR | WARN | INFO | DEBUG | TRACE",
         default: "INFO",
     },

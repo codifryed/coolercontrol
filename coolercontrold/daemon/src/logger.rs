@@ -7,10 +7,12 @@ use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::Logger;
-use log::{debug, info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use log::{debug, info, trace, Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::ops::Not;
 use std::path::PathBuf;
@@ -36,17 +38,21 @@ const LOG_MSG_CHANNEL_CAP: usize = 64;
 const _: () = assert!(LOG_TRUNCATION_MARKER.len() < LOG_ENTRY_MAX_BYTES);
 const _: () = assert!(LOG_ENTRY_MAX_BYTES <= LOG_BUFFER_MAX_BYTES);
 
-pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
-    let log_level = if cmd_args.debug {
-        LevelFilter::Debug
-    } else if let Ok(log_lvl) = std::env::var(ENV_CC_LOG).or_else(|_| std::env::var(ENV_LOG)) {
-        LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
-    } else {
-        LevelFilter::Info
+pub async fn setup_logging(
+    cmd_args: &Args,
+    debug_logging_setting: bool,
+    run_token: CancellationToken,
+) -> Result<LogBufHandle> {
+    let (level, source) = resolve_log_level(cmd_args.debug, env_log_level(), debug_logging_setting);
+    let level_info = LogLevelInfo {
+        level,
+        source,
+        journal: connected_to_journal(),
     };
-    let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
+    let (logger, log_buf_handle) = CCLogger::new(level_info, VERSION, run_token)?;
     logger.init()?;
     if cmd_args.wants_system_info_banner() {
+        info!("Log level: {level} ({})", source.description());
         log_system_info().await;
     }
     if cmd_args.system_info {
@@ -57,6 +63,92 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         exit_successfully();
     }
     Ok(log_buf_handle)
+}
+
+/// Where the effective log level came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevelSource {
+    /// Nothing requested a level, so INFO applies.
+    Default,
+    /// `CC_LOG`, or the deprecated `COOLERCONTROL_LOG`.
+    Env,
+    /// The `--debug` command line flag.
+    Flag,
+    /// The `debug_logging` setting.
+    Settings,
+}
+
+impl LogLevelSource {
+    fn description(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Env => "environment",
+            Self::Flag => "--debug flag",
+            Self::Settings => "debug logging setting",
+        }
+    }
+}
+
+/// The log level, fixed at startup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogLevelInfo {
+    pub level: LevelFilter,
+    pub source: LogLevelSource,
+    /// Whether log lines go to the systemd journal rather than stderr.
+    pub journal: bool,
+}
+
+impl Default for LogLevelInfo {
+    fn default() -> Self {
+        Self {
+            level: LevelFilter::Info,
+            source: LogLevelSource::Default,
+            journal: false,
+        }
+    }
+}
+
+/// The most verbose request wins, so the setting can raise the level but never lower it. On a
+/// tie the env var or flag is reported, since the UI setting cannot turn those off.
+fn resolve_log_level(
+    debug_flag: bool,
+    env_level: Option<LevelFilter>,
+    debug_setting: bool,
+) -> (LevelFilter, LogLevelSource) {
+    let mut level = LevelFilter::Info;
+    let mut source = LogLevelSource::Default;
+    if let Some(env_level) = env_level {
+        level = env_level;
+        source = LogLevelSource::Env;
+    }
+    if debug_flag && LevelFilter::Debug > level {
+        level = LevelFilter::Debug;
+        source = LogLevelSource::Flag;
+    }
+    if debug_setting && LevelFilter::Debug > level {
+        level = LevelFilter::Debug;
+        source = LogLevelSource::Settings;
+    }
+    if debug_flag {
+        assert!(level >= LevelFilter::Debug);
+    }
+    if debug_setting {
+        assert!(level >= LevelFilter::Debug);
+    }
+    if source == LogLevelSource::Default {
+        assert_eq!(level, LevelFilter::Info);
+    }
+    (level, source)
+}
+
+/// Reads `CC_LOG`, falling back to the deprecated `COOLERCONTROL_LOG`. An unparsable value
+/// counts as unset.
+fn env_log_level() -> Option<LevelFilter> {
+    let log_level = std::env::var(ENV_CC_LOG)
+        .or_else(|_| std::env::var(ENV_LOG))
+        .ok()?;
+    LevelFilter::from_str(&log_level).ok()
 }
 
 /// Logs the daemon/host banner (version, OS, board, BIOS, desktop) to the journal.
@@ -178,52 +270,18 @@ struct CCLogger {
 
 impl CCLogger {
     fn new(
-        max_level: LevelFilter,
+        level_info: LogLevelInfo,
         version: &str,
         run_token: CancellationToken,
     ) -> Result<(Self, LogBufHandle)> {
-        // set library logging levels to one level above the application's to keep chatter down
-        let lib_log_level = if max_level == LevelFilter::Trace {
-            LevelFilter::Debug
-        } else if max_level == LevelFilter::Debug {
-            LevelFilter::Info
-        } else {
-            LevelFilter::Warn
-        };
-        let lib_very_reduced_level = if max_level == LevelFilter::Trace {
-            LevelFilter::Info
-        } else if max_level == LevelFilter::Debug {
-            LevelFilter::Warn
-        } else {
-            LevelFilter::Error
-        };
-        let lib_disabled_level = if max_level >= LevelFilter::Debug {
-            LevelFilter::Warn
-        } else {
-            LevelFilter::Off
-        };
+        let max_level = level_info.level;
         let timestamp_precision = if max_level >= LevelFilter::Debug {
             env_logger::fmt::TimestampPrecision::Millis
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
-        let env_log_name = if std::env::var(ENV_CC_LOG).is_ok() {
-            ENV_CC_LOG
-        } else {
-            ENV_LOG
-        };
-        let log_filter = env_logger::Builder::from_env(env_log_name)
-            .filter_level(max_level)
-            .filter_module("zbus", lib_log_level)
-            .filter_module("tracing", lib_disabled_level)
-            .filter_module("aide", lib_disabled_level)
-            .filter_module("tower_http", lib_disabled_level)
-            // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
-            .filter_module("hyper", lib_log_level)
-            .filter_module("h2", lib_disabled_level) // h2::codec writes every frame
-            .filter_module("tower_sessions_core", lib_very_reduced_level)
-            .build();
-        let logger: Box<dyn Log> = if connected_to_journal() {
+        let log_filter = Self::build_log_filter(max_level);
+        let logger: Box<dyn Log> = if level_info.journal {
             Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
         } else {
             Box::new(
@@ -233,7 +291,7 @@ impl CCLogger {
                     .build(),
             )
         };
-        let log_buf_handle = LogBufHandle::new(run_token);
+        let log_buf_handle = LogBufHandle::new(run_token).with_level_info(level_info);
         // We use a 2nd logger here for now. It's not super efficient, but in normal circumstances
         // we rarely log anything anyway.
         let buf_logger = Box::new(
@@ -254,6 +312,45 @@ impl CCLogger {
         ))
     }
 
+    /// Library log levels sit one level above the application's to keep chatter down.
+    fn build_log_filter(max_level: LevelFilter) -> Logger {
+        let lib_log_level = if max_level == LevelFilter::Trace {
+            LevelFilter::Debug
+        } else if max_level == LevelFilter::Debug {
+            LevelFilter::Info
+        } else {
+            LevelFilter::Warn
+        };
+        let lib_very_reduced_level = if max_level == LevelFilter::Trace {
+            LevelFilter::Info
+        } else if max_level == LevelFilter::Debug {
+            LevelFilter::Warn
+        } else {
+            LevelFilter::Error
+        };
+        let lib_disabled_level = if max_level >= LevelFilter::Debug {
+            LevelFilter::Warn
+        } else {
+            LevelFilter::Off
+        };
+        let env_log_name = if std::env::var(ENV_CC_LOG).is_ok() {
+            ENV_CC_LOG
+        } else {
+            ENV_LOG
+        };
+        env_logger::Builder::from_env(env_log_name)
+            .filter_level(max_level)
+            .filter_module("zbus", lib_log_level)
+            .filter_module("tracing", lib_disabled_level)
+            .filter_module("aide", lib_disabled_level)
+            .filter_module("tower_http", lib_disabled_level)
+            // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
+            .filter_module("hyper", lib_log_level)
+            .filter_module("h2", lib_disabled_level) // h2::codec writes every frame
+            .filter_module("tower_sessions_core", lib_very_reduced_level)
+            .build()
+    }
+
     fn init(self) -> Result<(), SetLoggerError> {
         log::set_max_level(self.max_level);
         log::set_boxed_logger(Box::new(self))
@@ -270,7 +367,9 @@ impl Log for CCLogger {
     fn log(&self, record: &Record) {
         if self.log_filter.matches(record) {
             self.logger.log(record);
-            self.buf_logger.log(record);
+            if is_ui_buffered(record.level()) {
+                self.buf_logger.log(record);
+            }
         }
     }
 
@@ -278,6 +377,12 @@ impl Log for CCLogger {
     ///
     /// A no-op for this implementation.
     fn flush(&self) {}
+}
+
+/// DEBUG and TRACE stay out of the UI ring buffer and its SSE stream: their volume would evict
+/// warnings within seconds and flood every client. The journal or stderr sink keeps them.
+fn is_ui_buffered(level: Level) -> bool {
+    level <= Level::Info
 }
 
 pub struct CCLog {
@@ -425,6 +530,7 @@ pub struct LogBufHandle {
     msg_sender: mpsc::Sender<CCLogBufferMessage>,
     new_log_sender: broadcast::Sender<String>,
     cancel_token: CancellationToken,
+    level_info: LogLevelInfo,
 }
 
 impl LogBufHandle {
@@ -437,7 +543,13 @@ impl LogBufHandle {
             msg_sender,
             new_log_sender,
             cancel_token,
+            level_info: LogLevelInfo::default(),
         }
+    }
+
+    pub fn with_level_info(mut self, level_info: LogLevelInfo) -> Self {
+        self.level_info = level_info;
+        self
     }
 
     pub fn broadcaster(&self) -> &broadcast::Sender<String> {
@@ -446,6 +558,10 @@ impl LogBufHandle {
 
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
+    }
+
+    pub fn level_info(&self) -> LogLevelInfo {
+        self.level_info
     }
 
     #[allow(dead_code)]
@@ -619,6 +735,106 @@ mod tests {
                 rx.try_recv(),
                 Err(broadcast::error::TryRecvError::Empty)
             ));
+        });
+    }
+
+    // Goal: the most verbose request wins, the setting never lowers a level, and a tie
+    // reports the env var or flag. Methodology: table of every source combination that
+    // matters, including the packaged default of CC_LOG=INFO.
+    #[test]
+    fn resolve_log_level_most_verbose_wins() {
+        use LevelFilter::{Debug, Error, Info, Off, Trace, Warn};
+        use LogLevelSource::{Default, Env, Flag, Settings};
+        let cases = [
+            // (flag, env, setting) => (level, source)
+            ((false, None, false), (Info, Default)),
+            ((false, Some(Info), false), (Info, Env)),
+            ((false, Some(Error), false), (Error, Env)),
+            ((false, None, true), (Debug, Settings)),
+            ((false, Some(Info), true), (Debug, Settings)),
+            ((false, Some(Warn), true), (Debug, Settings)),
+            ((false, Some(Off), true), (Debug, Settings)),
+            ((false, Some(Debug), true), (Debug, Env)),
+            ((false, Some(Trace), true), (Trace, Env)),
+            ((true, None, false), (Debug, Flag)),
+            ((true, Some(Info), false), (Debug, Flag)),
+            ((true, Some(Trace), false), (Trace, Env)),
+            ((true, None, true), (Debug, Flag)),
+        ];
+        for ((flag, env, setting), expected) in cases {
+            assert_eq!(
+                resolve_log_level(flag, env, setting),
+                expected,
+                "flag={flag} env={env:?} setting={setting}"
+            );
+        }
+    }
+
+    // Goal: only ERROR, WARN and INFO reach the UI buffer; DEBUG and TRACE never do.
+    #[test]
+    fn ui_buffer_takes_info_and_above_only() {
+        assert!(is_ui_buffered(Level::Error));
+        assert!(is_ui_buffered(Level::Warn));
+        assert!(is_ui_buffered(Level::Info));
+        assert!(is_ui_buffered(Level::Debug).not());
+        assert!(is_ui_buffered(Level::Trace).not());
+    }
+
+    struct NullLog;
+
+    impl Log for NullLog {
+        fn enabled(&self, _metadata: &Metadata) -> bool {
+            true
+        }
+        fn log(&self, _record: &Record) {}
+        fn flush(&self) {}
+    }
+
+    // Goal: at DEBUG level, a debug record still skips the UI buffer while an info record
+    // lands in it, and the handle reports the level it was built with. Methodology: build
+    // the real logger, swap its journal/stderr sink for a no-op, log one of each, then read
+    // the buffer back.
+    #[test]
+    fn debug_records_skip_the_ui_buffer() {
+        crate::rt::test_runtime(async {
+            let level_info = LogLevelInfo {
+                level: LevelFilter::Debug,
+                source: LogLevelSource::Settings,
+                journal: false,
+            };
+            let (mut cc_logger, handle) =
+                CCLogger::new(level_info, VERSION, CancellationToken::new()).unwrap();
+            cc_logger.logger = Box::new(NullLog);
+            cc_logger.log(
+                &Record::builder()
+                    .level(Level::Info)
+                    .target("coolercontrold")
+                    .args(format_args!("info line"))
+                    .build(),
+            );
+            cc_logger.log(
+                &Record::builder()
+                    .level(Level::Debug)
+                    .target("coolercontrold")
+                    .args(format_args!("debug line"))
+                    .build(),
+            );
+            let logs = handle.get_logs().await;
+            assert!(logs.contains("info line"), "logs were: {logs:?}");
+            assert!(logs.contains("debug line").not(), "logs were: {logs:?}");
+            assert_eq!(handle.level_info(), level_info);
+        });
+    }
+
+    // Goal: a handle built without level info reports the INFO default, so tests and any
+    // caller that skips `with_level_info` never claim debug is on.
+    #[test]
+    fn handle_defaults_to_info_level() {
+        crate::rt::test_runtime(async {
+            let handle = LogBufHandle::new(CancellationToken::new());
+            assert_eq!(handle.level_info(), LogLevelInfo::default());
+            assert_eq!(handle.level_info().level, LevelFilter::Info);
+            assert_eq!(handle.level_info().source, LogLevelSource::Default);
         });
     }
 }

@@ -319,7 +319,10 @@ fn main() -> Result<()> {
         // auth/token/liqctld/service-plugin transports) can reach it without threading a handle.
         sidecar::install_global(sidecar.handle());
         handle_non_root_commands(&cmd_args)?;
-        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
+        // Read ahead of the full config load so the level applies from the first log line.
+        let debug_logging_setting = Config::read_debug_logging_setting().await;
+        let log_buf_handle =
+            logger::setup_logging(&cmd_args, debug_logging_setting, run_token.clone()).await?;
         verify_is_root()?;
         handle_detect_command(&cmd_args);
         // Backup/restore/check/list run before config load so they work even on a broken config.

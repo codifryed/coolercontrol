@@ -112,6 +112,26 @@ impl Config {
         Ok(config)
     }
 
+    /// Reads only `settings.debug_logging` from the config file. It runs before logging is set
+    /// up, so any failure reads as off and the full load reports it.
+    pub async fn read_debug_logging_setting() -> bool {
+        let Ok(content) = cc_fs::read_txt(crate::paths::config_file()).await else {
+            return false;
+        };
+        Self::debug_logging_from_str(&content)
+    }
+
+    fn debug_logging_from_str(content: &str) -> bool {
+        let Ok(document) = content.parse::<DocumentMut>() else {
+            return false;
+        };
+        document
+            .get("settings")
+            .and_then(|settings| settings.get("debug_logging"))
+            .and_then(Item::as_bool)
+            .unwrap_or(false)
+    }
+
     /// Runs every config getter to prove the parsed document is fully readable.
     /// A `config.toml` is valid exactly when this succeeds.
     async fn check_readable(&self) -> Result<()> {
@@ -1342,6 +1362,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
                 .with_context(|| "sensors_conf_enabled should be a boolean value")?;
+            let debug_logging = settings
+                .get("debug_logging")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "debug_logging should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1364,6 +1389,7 @@ impl Config {
                 sensors_auto_detect,
                 device_listener_enabled,
                 sensors_conf_enabled,
+                debug_logging,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1493,6 +1519,8 @@ impl Config {
         base_settings["sensors_conf_enabled"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_conf_enabled,
         )));
+        base_settings["debug_logging"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.debug_logging)));
     }
 
     /// Returns the list of disabled plugin IDs from config.
@@ -3255,6 +3283,64 @@ mod tests {
         }
     }
 
+    // Goal: debug logging is off unless the config turns it on, and a non-boolean
+    // value is a config error rather than a silent default.
+    #[test]
+    fn debug_logging_is_disabled_unless_set() {
+        for (document, expected) in [
+            ("[settings]\n", false),
+            ("[settings]\ndebug_logging = true\n", true),
+            ("[settings]\ndebug_logging = false\n", false),
+        ] {
+            let settings = config_from(document).get_settings().unwrap();
+            assert_eq!(settings.debug_logging, expected, "{document}");
+        }
+        let invalid = config_from("[settings]\ndebug_logging = \"yes\"\n");
+        assert!(invalid.get_settings().is_err());
+    }
+
+    // Goal: the pre-logging read of `debug_logging` agrees with the full settings read,
+    // and anything unreadable counts as off since no logger exists yet to report it.
+    #[test]
+    fn debug_logging_early_read_matches_full_read() {
+        for (document, expected) in [
+            ("[settings]\n", false),
+            ("[settings]\ndebug_logging = true\n", true),
+            ("[settings]\ndebug_logging = false\n", false),
+        ] {
+            assert_eq!(Config::debug_logging_from_str(document), expected);
+            let settings = config_from(document).get_settings().unwrap();
+            assert_eq!(settings.debug_logging, expected, "{document}");
+        }
+        for unreadable in [
+            "",
+            "debug_logging = true\n",
+            "[settings]\ndebug_logging = \"yes\"\n",
+            "[settings\ndebug_logging = true\n",
+        ] {
+            assert!(
+                Config::debug_logging_from_str(unreadable).not(),
+                "{unreadable:?}"
+            );
+        }
+    }
+
+    // Goal: a saved `debug_logging` is what both readers see afterwards, so the UI toggle
+    // takes effect on the next start. Methodology: write via set_settings, then read back
+    // through get_settings and the early reader on the serialized document.
+    #[test]
+    fn debug_logging_round_trips_through_set_settings() {
+        for enabled in [true, false] {
+            let config = config_from("[settings]\n");
+            let mut settings = config.get_settings().unwrap();
+            settings.debug_logging = enabled;
+            config.set_settings(&settings);
+            assert_eq!(config.get_settings().unwrap().debug_logging, enabled);
+            let serialized = config.document.borrow().to_string();
+            assert_eq!(Config::debug_logging_from_str(&serialized), enabled);
+        }
+    }
+
     // Goal: the startup delay accepts the full documented range and clamps
     // anything past it, so a hand-edited config cannot stall the daemon forever.
     #[test]
@@ -3310,6 +3396,10 @@ mod tests {
             assert!(
                 config.get_settings().unwrap().device_listener_enabled.not(),
                 "Device listener disabled by default"
+            );
+            assert!(
+                config.get_settings().unwrap().debug_logging.not(),
+                "Debug logging disabled by default"
             );
             assert!(
                 config.get_all_devices_settings().is_ok(),
