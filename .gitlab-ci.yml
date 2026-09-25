@@ -113,6 +113,11 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 include:
 - template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
+# Pinned exactly: the project is alpha and has broken setups between releases.
+- component: $CI_SERVER_FQDN/dependabot-gitlab/dependabot-standalone/template@7.10.0
+  inputs:
+    gitlab_access_token: $SECURITY_BOT_GITLAB_TOKEN
+    github_access_token: $SECURITY_BOT_GITHUB_TOKEN
 
 semgrep-sast:
   variables:
@@ -283,6 +288,14 @@ npm_audit:
   script:
     - /root/osv-scanner scan source --config coolercontrol-ui/osv-scanner.toml
       --lockfile coolercontrol-ui/package-lock.json
+
+# dependabot-gitlab's npm job (config in .gitlab/dependabot.yml). The component gates it on a
+# PACKAGE_MANAGER_SET schedule variable; replacing its rules lets the one daily schedule run it.
+npm:
+  variables:
+    DIRECTORY: /coolercontrol-ui
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
 
 ####################################### source tarball
 build_source_assets:
