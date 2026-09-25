@@ -39,6 +39,7 @@ const STARTUP = 'layout.settings.groups.startup'
 const PERFORMANCE = 'layout.settings.groups.performance'
 const DEVICES = 'layout.settings.groups.devices'
 const LIQUIDCTL = 'layout.settings.groups.liquidctl'
+const LOGGING = 'layout.settings.groups.logging'
 
 export const SETTINGS_ENTRIES: readonly SettingsEntry[] = Object.freeze([
     {
@@ -189,6 +190,13 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = Object.freeze([
         groupKey: LIQUIDCTL,
         labelKey: 'layout.settings.hideDuplicateDevices',
         keywords: ['duplicate', 'hwmon', 'twice', 'double'],
+    },
+    {
+        id: 'setting-debug-logging',
+        cardKey: DAEMON,
+        groupKey: LOGGING,
+        labelKey: 'layout.settings.debugLogging',
+        keywords: ['debug', 'logs', 'log level', 'journal', 'journalctl', 'support', 'verbose'],
     },
     {
         id: 'setting-start-in-tray',

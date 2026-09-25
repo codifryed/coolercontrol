@@ -153,6 +153,17 @@ export default {
                 noActiveMode: 'कोई सक्रिय मोड नहीं',
                 setUpCooling: 'कूलिंग सेट करें',
             },
+            logsPage: {
+                debugTitle: 'डीबग लॉगिंग चालू है',
+                debugJournal:
+                    'यह पेज केवल हाल की INFO, WARN और ERROR पंक्तियाँ दिखाता है। पूरा डीबग आउटपुट सिस्टम जर्नल में है। इसे फ़ाइल में सहेजने के लिए, डेमन होस्ट पर यह चलाएँ:',
+                debugNoJournal:
+                    'यह पेज केवल हाल की INFO, WARN और ERROR पंक्तियाँ दिखाता है। पूरा डीबग आउटपुट डेमन के मानक त्रुटि आउटपुट में जाता है।',
+                debugDocs: 'लॉग कैसे एकत्र करें',
+                debugTurnOff: 'डीबग लॉगिंग बंद करें',
+                copyCommand: 'कमांड कॉपी करें',
+                commandCopied: 'कमांड क्लिपबोर्ड पर कॉपी किया गया',
+            },
             devicesPage: {
                 landingHint: 'विवरण और सेटिंग्स देखने के लिए एक डिवाइस चुनें।',
                 temps: 'तापमान',
@@ -297,6 +308,8 @@ export default {
             settings: 'सेटिंग्स',
             openInBrowser: 'ब्राउज़र में खोलें',
             loginSuccessful: 'लॉगिन सफल',
+            debug: 'डीबग',
+            debugLoggingActive: 'डीबग लॉगिंग चालू है। काम पूरा होने पर इसे बंद करें।',
         },
         settings: {
             title: 'सेटिंग्स',
@@ -347,6 +360,7 @@ export default {
                 performance: 'प्रदर्शन',
                 devices: 'उपकरण और पहचान',
                 liquidctl: 'Liquidctl',
+                logging: 'लॉगिंग',
             },
             applySettingsOnStartup: 'स्टार्टअप पर सेटिंग्स लागू करें',
             deviceDelayAtStartup: 'स्टार्टअप पर उपकरण विलंब',
@@ -359,6 +373,9 @@ export default {
             sensorsAutoDetect: 'सेंसर स्वतः पहचान',
             sensorsConfig: 'lm-sensors कॉन्फ़िगरेशन',
             deviceListener: 'उपकरण परिवर्तन श्रोता',
+            debugLogging: 'डीबग लॉगिंग',
+            debugLoggingForcedEnv: 'CC_LOG एनवायरनमेंट वेरिएबल द्वारा सक्षम',
+            debugLoggingForcedFlag: '--debug फ़्लैग द्वारा सक्षम',
             customTheme: {
                 title: 'कस्टम थीम',
                 accent: 'एक्सेंट रंग',
@@ -421,6 +438,8 @@ export default {
                     'lm-sensors कॉन्फ़िगरेशन फ़ाइलों (/etc/sensors3.conf और /etc/sensors.d)\nके सेंसर नामों और छिपे हुए सेंसरों का उपयोग करें।\nCoolerControl में सेट किए गए नाम हमेशा प्राथमिकता लेते हैं।',
                 deviceListener:
                     'उपकरण जोड़ने/हटाने की घटनाओं (जैसे USB हॉटप्लग) की निगरानी करें\nऔर हार्डवेयर परिवर्तन पाए जाने पर सूचित करें।',
+                debugLogging:
+                    'समस्या निवारण के लिए विस्तृत DEBUG आउटपुट लॉग करें।\nआउटपुट बड़ा होता है, इसलिए लॉग एकत्र करने के बाद इसे बंद करें।\nलॉग पेज पर उन्हें एकत्र करने का तरीका दिखाया गया है।',
                 triggersDaemonRestart: 'स्वचालित डेमन पुनरारंभ को ट्रिगर करता है',
                 copyThemeCode:
                     'अपने वर्तमान कस्टम थीम का एक कॉम्पैक्ट कोड कॉपी करें।\nइसे चैट या फ़ोरम में साझा करें।',

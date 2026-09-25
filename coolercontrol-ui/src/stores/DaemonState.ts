@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { defineStore } from 'pinia'
-import { ref, Ref } from 'vue'
+import { computed, ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
@@ -13,6 +13,7 @@ import {
     formatDisconnectedFor,
     isConnectionLost,
 } from '@/shell/connectionWatchdog.ts'
+import { debugForcedBy, isDebugLogging } from '@/shell/debugLogging.ts'
 
 export enum DaemonStatus {
     OK = 'Ok',
@@ -34,6 +35,10 @@ export const useDaemonState = defineStore('daemonState', () => {
     // Kept here so views render it without their own blocking fetch. Falls back to
     // defaultHealthCheck's empty values until the first refresh lands.
     const healthCheck: Ref<HealthCheck> = ref(defaultHealthCheck())
+    // The level only changes on a daemon restart, which reloads the UI, so the
+    // health check fetched at boot stays accurate.
+    const debugLogging = computed(() => isDebugLogging(healthCheck.value.details))
+    const debugLoggingForcedBy = computed(() => debugForcedBy(healthCheck.value.details))
     // Connection liveness is measured from the last status tick rather than from
     // the SSE error edge: a stream that stays open but stops delivering leaves
     // `connected` true while the readings go stale.
@@ -158,6 +163,8 @@ export const useDaemonState = defineStore('daemonState', () => {
         noteStatusReceived,
         acknowledgeLogIssues,
         healthCheck,
+        debugLogging,
+        debugLoggingForcedBy,
         systemName,
         warnings,
         errors,

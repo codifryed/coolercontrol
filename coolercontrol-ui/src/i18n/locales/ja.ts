@@ -152,6 +152,17 @@ export default {
                 noActiveMode: 'アクティブなモードがありません',
                 setUpCooling: '冷却を設定',
             },
+            logsPage: {
+                debugTitle: 'デバッグログが有効です',
+                debugJournal:
+                    'このページには最近の INFO、WARN、ERROR 行のみが表示されます。完全なデバッグ出力はシステムジャーナルにあります。ファイルに保存するには、デーモンのホストで次を実行してください:',
+                debugNoJournal:
+                    'このページには最近の INFO、WARN、ERROR 行のみが表示されます。完全なデバッグ出力はデーモンの標準エラー出力に送られます。',
+                debugDocs: 'ログの収集方法',
+                debugTurnOff: 'デバッグログを無効にする',
+                copyCommand: 'コマンドをコピー',
+                commandCopied: 'コマンドをクリップボードにコピーしました',
+            },
             devicesPage: {
                 landingHint: 'デバイスを選択して詳細と設定を表示します。',
                 temps: '温度',
@@ -298,6 +309,8 @@ export default {
             settings: '設定',
             openInBrowser: 'ブラウザで開く',
             loginSuccessful: 'ログインに成功しました',
+            debug: 'デバッグ',
+            debugLoggingActive: 'デバッグログが有効です。終わったら無効にしてください。',
         },
         settings: {
             title: '設定',
@@ -348,6 +361,7 @@ export default {
                 performance: 'パフォーマンス',
                 devices: 'デバイスと検出',
                 liquidctl: 'Liquidctl',
+                logging: 'ログ',
             },
             applySettingsOnStartup: '起動時に設定を適用',
             deviceDelayAtStartup: '起動時のデバイス遅延',
@@ -360,6 +374,9 @@ export default {
             sensorsAutoDetect: 'センサー自動検出',
             sensorsConfig: 'lm-sensors 設定',
             deviceListener: 'デバイス変更リスナー',
+            debugLogging: 'デバッグログ',
+            debugLoggingForcedEnv: '環境変数 CC_LOG により有効',
+            debugLoggingForcedFlag: '--debug フラグにより有効',
             customTheme: {
                 title: 'カスタムテーマ',
                 accent: 'アクセントカラー',
@@ -423,6 +440,8 @@ export default {
                     'lm-sensors の設定ファイル (/etc/sensors3.conf と /etc/sensors.d) の\nセンサー名と非表示センサーを使用します。\nCoolerControl で設定した名前が常に優先されます。',
                 deviceListener:
                     'デバイスの追加/取り外しイベント（例：USBホットプラグ）を監視し、\nハードウェアの変更が検出された場合に通知します。',
+                debugLogging:
+                    'トラブルシューティング用に詳細な DEBUG 出力を記録します。\n出力が大きいため、ログを収集したら無効にしてください。\nログページに収集方法が表示されます。',
                 triggersDaemonRestart: '自動デーモン再起動をトリガーします',
                 copyThemeCode:
                     '現在のカスタムテーマを表すコンパクトなコードをコピーします。\nチャットやフォーラムで共有できます。',

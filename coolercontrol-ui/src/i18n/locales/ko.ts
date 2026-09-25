@@ -152,6 +152,17 @@ export default {
                 noActiveMode: '활성 모드 없음',
                 setUpCooling: '냉각 설정',
             },
+            logsPage: {
+                debugTitle: '디버그 로깅이 켜져 있습니다',
+                debugJournal:
+                    '이 페이지에는 최근 INFO, WARN, ERROR 줄만 표시됩니다. 전체 디버그 출력은 시스템 저널에 있습니다. 파일로 저장하려면 데몬 호스트에서 다음을 실행하세요:',
+                debugNoJournal:
+                    '이 페이지에는 최근 INFO, WARN, ERROR 줄만 표시됩니다. 전체 디버그 출력은 데몬의 표준 오류 출력으로 전송됩니다.',
+                debugDocs: '로그 수집 방법',
+                debugTurnOff: '디버그 로깅 끄기',
+                copyCommand: '명령어 복사',
+                commandCopied: '명령이 클립보드에 복사됨',
+            },
             devicesPage: {
                 landingHint: '장치를 선택하여 세부 정보와 설정을 확인하세요.',
                 temps: '온도',
@@ -295,6 +306,8 @@ export default {
             settings: '설정',
             openInBrowser: '브라우저에서 열기',
             loginSuccessful: '로그인 성공',
+            debug: '디버그',
+            debugLoggingActive: '디버그 로깅이 켜져 있습니다. 완료되면 꺼 주세요.',
         },
         settings: {
             title: '설정',
@@ -345,6 +358,7 @@ export default {
                 performance: '성능',
                 devices: '장치 및 감지',
                 liquidctl: 'Liquidctl',
+                logging: '로깅',
             },
             applySettingsOnStartup: '시작 시 설정 적용',
             deviceDelayAtStartup: '장치 시작 시 지연',
@@ -357,6 +371,9 @@ export default {
             sensorsAutoDetect: '센서 자동 감지',
             sensorsConfig: 'lm-sensors 구성',
             deviceListener: '장치 변경 리스너',
+            debugLogging: '디버그 로깅',
+            debugLoggingForcedEnv: 'CC_LOG 환경 변수로 활성화됨',
+            debugLoggingForcedFlag: '--debug 플래그로 활성화됨',
             customTheme: {
                 title: '커스텀 테마',
                 accent: '강조색',
@@ -418,6 +435,8 @@ export default {
                     'lm-sensors 구성 파일(/etc/sensors3.conf 및 /etc/sensors.d)의\n센서 이름과 숨겨진 센서를 사용합니다.\nCoolerControl에서 설정한 이름이 항상 우선합니다.',
                 deviceListener:
                     '장치 추가/제거 이벤트(예: USB 핫플러그)를 감지하고\n하드웨어 변경이 감지되면 알림을 보냅니다.',
+                debugLogging:
+                    '문제 해결을 위해 자세한 DEBUG 출력을 기록합니다.\n출력량이 많으므로 로그를 수집한 후에는 꺼 주세요.\n로그 페이지에서 수집 방법을 확인할 수 있습니다.',
                 triggersDaemonRestart: '자동 데몬 재시작 트리거',
                 copyThemeCode:
                     '현재 커스텀 테마를 나타내는 짧은 코드를 복사합니다.\n채팅이나 포럼에서 공유하세요.',

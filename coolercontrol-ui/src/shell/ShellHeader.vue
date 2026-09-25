@@ -13,6 +13,7 @@ import {
     mdiBookmarkCheck,
     mdiBookmarkMultipleOutline,
     mdiBookmarkOutline,
+    mdiBugOutline,
     mdiDockLeft,
     mdiDotsVertical,
     mdiTune,
@@ -26,6 +27,7 @@ import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { hasBrowserChrome } from '@/shell/displayMode.ts'
+import { DEBUG_LOGGING_SETTING_ROUTE } from '@/shell/debugLogging.ts'
 import { PLUGINS_SECTION } from '@/shell/sections.ts'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiDropdownMenu from '@/shell/ui/UiDropdownMenu.vue'
@@ -118,6 +120,19 @@ const isMobile = computed(() => width.value < 768)
                 <span class="text-base text-text-color-secondary">
                     {{ daemonState.systemName }}
                 </span>
+            </RouterLink>
+        </UiTooltip>
+        <!-- Debug logging should not be left on, so while it is, every page says so
+             and links to the setting that turns it off. -->
+        <UiTooltip v-if="daemonState.debugLogging" :text="t('layout.topbar.debugLoggingActive')">
+            <RouterLink
+                id="debug-logging-indicator"
+                :to="DEBUG_LOGGING_SETTING_ROUTE"
+                :aria-label="t('layout.topbar.debugLoggingActive')"
+                class="flex shrink-0 items-center gap-1 rounded-lg border border-warning px-1.5 py-0.5 text-sm text-warning outline-none hover:bg-warning/10 focus-visible:ring-2 focus-visible:ring-accent"
+            >
+                <svg-icon type="mdi" :path="mdiBugOutline" :size="deviceStore.getREMSize(1)" />
+                <span v-if="!isMobile">{{ t('layout.topbar.debug') }}</span>
             </RouterLink>
         </UiTooltip>
         <UiTooltip :text="t('layout.topbar.alerts')">
