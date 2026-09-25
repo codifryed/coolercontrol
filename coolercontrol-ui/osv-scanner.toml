@@ -1,0 +1,7 @@
+# Advisories the npm_audit CI job skips. Every entry needs a reason and an
+# ignoreUntil date, so an exception expires instead of hiding a finding forever.
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2026-12-31
+# reason = "Why it does not apply, or what blocks the fix."
