@@ -25,7 +25,6 @@ lint:
     - git-diff-check
     - isort@9.0.1
     - markdownlint@0.49.1
-    - osv-scanner@2.2.1
     - oxipng@9.1.5
     - prettier@3.9.6
     - ruff@0.16.5
@@ -45,6 +44,8 @@ lint:
     # Fetches a rego checks bundle at scan time and then fails to load it in CI
     # (a different check file is missing on each run; a cache clear did not help).
     - trivy
+    # Only scans changed lockfiles. The cargo_audit and npm_audit CI jobs cover it.
+    - osv-scanner
   files:
     - name: vue
       extensions:

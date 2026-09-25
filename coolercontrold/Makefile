@@ -80,8 +80,6 @@ ci-test: test-liqctld
 	@RUSTFLAGS= $(CARGO) clippy --locked --all-targets $(FEATURES) -- \
 		-D clippy::await_holding_refcell_ref -D clippy::await_holding_lock
 	@$(CARGO) clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
-	@#$(CARGO) audit
-	@#$(CARGO) audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
     
 dev-run: sync-app
 	@$(CARGO) build
