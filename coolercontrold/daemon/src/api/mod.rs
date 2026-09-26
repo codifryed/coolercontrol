@@ -16,6 +16,7 @@ mod functions;
 mod hardware_report;
 mod metrics;
 pub mod modes;
+mod peer;
 mod plugins;
 mod power_profiles;
 mod profile_generation;

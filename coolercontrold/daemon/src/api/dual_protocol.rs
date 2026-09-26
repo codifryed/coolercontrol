@@ -16,6 +16,7 @@
 //! This implementation can possibly be replaced with axum-server-dual-protocol in the future
 //! once they support the current axum version and will work with our custom logic.
 
+use crate::api::peer;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::uri::{Authority, PathAndQuery};
@@ -332,8 +333,7 @@ where
 
             // Check if request is from localhost - allow HTTP
             if let Some(connect_info) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
-                let client_ip = connect_info.0.ip();
-                if client_ip.is_loopback() {
+                if peer::is_loopback(connect_info.0.ip()) {
                     return inner.call(req).await;
                 }
             }
@@ -478,6 +478,50 @@ mod tests {
 
         let neither = request(None, "/x");
         assert_eq!(request_authority(&neither), None);
+    }
+
+    /// A redirect layer in front of a service that always answers 200.
+    async fn redirect_status(peer: &str) -> StatusCode {
+        let service = HttpsRedirectLayer {
+            port: 11987,
+            allow_unencrypted: false,
+            protocol_header: None,
+        }
+        .layer(tower::service_fn(|_request: Request<Body>| async {
+            Ok::<_, std::convert::Infallible>(Response::new(Body::empty()))
+        }));
+        let mut request = request(Some("cc.lan:11987"), "/devices");
+        let address: SocketAddr = peer.parse().unwrap();
+        request.extensions_mut().insert(ConnectInfo(address));
+        tower::ServiceExt::oneshot(service, request)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    /// Goal: a local IPv4 client seen through a dual-stack `::` listener keeps its plain HTTP
+    /// exemption. Its address arrives as `::ffff:127.0.0.1`, which `is_loopback` rejects.
+    #[tokio::test]
+    async fn mapped_loopback_is_not_redirected() {
+        assert_eq!(
+            redirect_status("[::ffff:127.0.0.1]:40000").await,
+            StatusCode::OK
+        );
+        assert_eq!(redirect_status("127.0.0.1:40000").await, StatusCode::OK);
+        assert_eq!(redirect_status("[::1]:40000").await, StatusCode::OK);
+    }
+
+    /// Goal: a remote plain HTTP client is still redirected, in either address form.
+    #[tokio::test]
+    async fn remote_plain_http_is_redirected() {
+        assert_eq!(
+            redirect_status("[::ffff:192.0.2.1]:40000").await,
+            StatusCode::MOVED_PERMANENTLY
+        );
+        assert_eq!(
+            redirect_status("192.0.2.1:40000").await,
+            StatusCode::MOVED_PERMANENTLY
+        );
     }
 
     #[test]

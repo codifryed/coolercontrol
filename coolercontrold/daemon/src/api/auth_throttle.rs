@@ -22,13 +22,14 @@
 //! clear their own streak between guesses. Only a layer that actually adjudicated the
 //! presented credentials marks the response, and only a marked response is counted.
 
+use crate::api::peer::PeerKey;
 use crate::api::CCError;
 use axum::extract::{ConnectInfo, Request};
 use axum::http::{header, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use std::collections::HashMap;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::ops::Not;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -70,7 +71,7 @@ struct PeerFailures {
 /// before every insert and leaves room for exactly one.
 #[derive(Debug)]
 pub struct AuthThrottle {
-    peers: Mutex<HashMap<IpAddr, PeerFailures>>,
+    peers: Mutex<HashMap<PeerKey, PeerFailures>>,
 }
 
 impl AuthThrottle {
@@ -84,7 +85,7 @@ impl AuthThrottle {
     ///
     /// A backoff that expires exactly at `now` counts as lapsed: reporting zero
     /// remaining would reject the request while telling the caller to retry immediately.
-    pub fn blocked_for(&self, peer: IpAddr, now: Instant) -> Option<Duration> {
+    pub fn blocked_for(&self, peer: PeerKey, now: Instant) -> Option<Duration> {
         let peers = self.lock();
         let entry = peers.get(&peer)?;
         let remaining = entry.blocked_until?.checked_duration_since(now)?;
@@ -94,7 +95,7 @@ impl AuthThrottle {
         Some(remaining)
     }
 
-    pub fn record_failure(&self, peer: IpAddr, now: Instant) {
+    pub fn record_failure(&self, peer: PeerKey, now: Instant) {
         let mut peers = self.lock();
         Self::evict(&mut peers, now);
         let entry = peers.entry(peer).or_insert(PeerFailures {
@@ -115,7 +116,7 @@ impl AuthThrottle {
         debug_assert!(peers.len() <= MAX_TRACKED_PEERS);
     }
 
-    pub fn record_success(&self, peer: IpAddr) {
+    pub fn record_success(&self, peer: PeerKey) {
         self.lock().remove(&peer);
     }
 
@@ -123,7 +124,7 @@ impl AuthThrottle {
     ///
     /// Expired entries are harmless until then: `blocked_for` already reads a lapsed
     /// backoff as unblocked, and `record_failure` resets a stale streak before counting.
-    fn evict(peers: &mut HashMap<IpAddr, PeerFailures>, now: Instant) {
+    fn evict(peers: &mut HashMap<PeerKey, PeerFailures>, now: Instant) {
         if peers.len() < MAX_TRACKED_PEERS {
             return;
         }
@@ -144,7 +145,7 @@ impl AuthThrottle {
     /// A poisoned throttle must not take authentication down with it. The map holds only
     /// failure counters, so continuing with whatever state survived is strictly better
     /// than rejecting every subsequent request.
-    fn lock(&self) -> MutexGuard<'_, HashMap<IpAddr, PeerFailures>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<PeerKey, PeerFailures>> {
         self.peers.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -169,17 +170,17 @@ fn backoff_for(count: u32) -> Option<Duration> {
     Some(backoff.min(MAX_BACKOFF))
 }
 
-/// The peer address as the kernel reports it.
+/// The peer as the kernel reports its address, keyed by network. See `PeerKey`.
 ///
 /// `X-Forwarded-For` is deliberately ignored: it is attacker-controlled unless every hop
 /// is trusted, and honouring it would let one peer spend another's budget. Behind a
 /// reverse proxy this collapses to the proxy's own address, throttling all proxied
 /// clients together, which is the safe direction to fail.
-fn peer_ip(request: &Request) -> Option<IpAddr> {
+fn peer_key(request: &Request) -> Option<PeerKey> {
     request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(address)| address.ip())
+        .map(|ConnectInfo(address)| PeerKey::from_ip(address.ip()))
 }
 
 fn presents_credentials(request: &Request) -> bool {
@@ -229,7 +230,7 @@ pub async fn credential_route_middleware(request: Request, next: Next) -> Respon
 }
 
 /// Applies a response's verdict, if it carries one, to the peer that produced it.
-fn record(throttle: &AuthThrottle, peer: IpAddr, response: &Response, now: Instant) {
+fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
     match response.extensions().get::<CredentialOutcome>() {
         Some(CredentialOutcome::Rejected) => throttle.record_failure(peer, now),
         Some(CredentialOutcome::Accepted) => throttle.record_success(peer),
@@ -243,7 +244,7 @@ pub async fn throttle_middleware(request: Request, next: Next) -> Response {
     if presents_credentials(&request).not() {
         return next.run(request).await;
     }
-    let Some(peer) = peer_ip(&request) else {
+    let Some(peer) = peer_key(&request) else {
         return next.run(request).await;
     };
     if let Some(remaining) = AUTH_THROTTLE.blocked_for(peer, Instant::now()) {
@@ -263,9 +264,16 @@ pub async fn throttle_middleware(request: Request, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::IpAddr;
 
-    fn peer(last_octet: u8) -> IpAddr {
-        IpAddr::from([127, 0, 0, last_octet])
+    /// TEST-NET-1 addresses: distinct keys, unlike 127/8, which is all one loopback key.
+    fn peer(last_octet: u8) -> PeerKey {
+        PeerKey::from_ip(IpAddr::from([192, 0, 2, last_octet]))
+    }
+
+    fn key_for(index: usize) -> PeerKey {
+        let octets = u32::try_from(index).unwrap().to_be_bytes();
+        PeerKey::from_ip(IpAddr::from(octets))
     }
 
     fn request_with(header_value: Option<&str>, connect_info: Option<SocketAddr>) -> Request {
@@ -295,13 +303,27 @@ mod tests {
     /// Goal: the peer key comes from the kernel-reported address, and is absent rather
     /// than guessed when the server was built without connect info.
     #[test]
-    fn peer_ip_reads_connect_info_only() {
+    fn peer_key_reads_connect_info_only() {
         let address = SocketAddr::from(([192, 168, 1, 50], 40000));
         assert_eq!(
-            peer_ip(&request_with(Some("Bearer cc_x"), Some(address))),
-            Some(IpAddr::from([192, 168, 1, 50]))
+            peer_key(&request_with(Some("Bearer cc_x"), Some(address))),
+            Some(PeerKey::from_ip(IpAddr::from([192, 168, 1, 50])))
         );
-        assert_eq!(peer_ip(&request_with(Some("Bearer cc_x"), None)), None);
+        assert_eq!(peer_key(&request_with(Some("Bearer cc_x"), None)), None);
+    }
+
+    /// Goal: two addresses in one IPv6 /64 spend one budget, so a host cannot dodge its
+    /// backoff by walking its own prefix.
+    #[test]
+    fn one_ipv6_network_shares_a_budget() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        let first = PeerKey::from_ip("2001:db8::1".parse().unwrap());
+        let second = PeerKey::from_ip("2001:db8::ffff".parse().unwrap());
+        for _ in 0..=FAILURE_THRESHOLD {
+            throttle.record_failure(first, now);
+        }
+        assert_eq!(throttle.blocked_for(second, now), Some(BASE_BACKOFF));
     }
 
     /// Goal: `X-Forwarded-For` must never become the key, since a peer could then spend
@@ -313,7 +335,10 @@ mod tests {
         request
             .headers_mut()
             .insert("x-forwarded-for", "203.0.113.9".parse().unwrap());
-        assert_eq!(peer_ip(&request), Some(IpAddr::from([10, 0, 0, 1])));
+        assert_eq!(
+            peer_key(&request),
+            Some(PeerKey::from_ip(IpAddr::from([10, 0, 0, 1])))
+        );
     }
 
     /// Goal: on a credential-consuming route, a rejection and an acceptance are both
@@ -472,8 +497,7 @@ mod tests {
         let throttle = AuthThrottle::new();
         let now = Instant::now();
         for index in 0..(MAX_TRACKED_PEERS * 2) {
-            let octets = u32::try_from(index).unwrap().to_be_bytes();
-            throttle.record_failure(IpAddr::from(octets), now);
+            throttle.record_failure(key_for(index), now);
         }
         assert!(throttle.lock().len() <= MAX_TRACKED_PEERS);
     }
@@ -485,14 +509,9 @@ mod tests {
         let throttle = AuthThrottle::new();
         let now = Instant::now();
         for index in 0..(MAX_TRACKED_PEERS * 2) {
-            let octets = u32::try_from(index).unwrap().to_be_bytes();
-            throttle.record_failure(IpAddr::from(octets), now);
+            throttle.record_failure(key_for(index), now);
         }
-        let last = IpAddr::from(
-            u32::try_from(MAX_TRACKED_PEERS * 2 - 1)
-                .unwrap()
-                .to_be_bytes(),
-        );
+        let last = key_for(MAX_TRACKED_PEERS * 2 - 1);
         assert!(throttle.lock().contains_key(&last));
     }
 
