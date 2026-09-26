@@ -115,9 +115,9 @@ async fn grpc_routes(app_state: &AppState) -> ApiRouter<AppState> {
         app_state.calibration_handle.clone(),
     );
     ApiRouter::new()
-        .route_service(grpc_api::DEVICE_SERVICE_PATH, device_service)
+        .route_service(&grpc_api::device_service_route(), device_service)
         .route_service(
-            grpc_api::HEALTH_SERVICE_PATH,
+            &grpc_api::health_service_route(),
             grpc_api::health_service().await,
         )
         // The whole served surface is read-only: every mutating RPC answers
@@ -1803,7 +1803,7 @@ mod tests {
     async fn serve(token_handle: TokenHandle) -> String {
         let router = axum::Router::new()
             .route_service(
-                grpc_api::HEALTH_SERVICE_PATH,
+                &grpc_api::health_service_route(),
                 grpc_api::health_service().await,
             )
             .layer(axum::middleware::from_fn(auth::auth_middleware))
