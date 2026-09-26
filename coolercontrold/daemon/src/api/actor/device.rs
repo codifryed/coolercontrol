@@ -145,6 +145,25 @@ impl DeviceActor {
             overrides,
         }
     }
+
+    /// Saves an applied setting and deactivates the current Mode, but only when it differs
+    /// from the saved setting. Re-applying the same setting keeps the Mode active.
+    async fn save_setting_if_changed(
+        &self,
+        device_uid: &DeviceUID,
+        setting: &Setting,
+    ) -> Result<()> {
+        if self
+            .config
+            .is_device_setting_changed(device_uid, setting)
+            .not()
+        {
+            return Ok(());
+        }
+        self.config.set_device_setting(device_uid, setting);
+        self.modes_controller.clear_active_modes().await;
+        self.config.save_config_file().await
+    }
 }
 
 impl ApiActor<DeviceMessage> for DeviceActor {
@@ -243,8 +262,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         channel_name,
                         kind: SettingKind::Lcd { lcd: lcd_settings },
                     };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_setting)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -270,10 +289,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         channel_name,
                         kind: SettingKind::SpeedFixed { speed_fixed: duty },
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_settings);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_settings)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -292,9 +309,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         channel_name,
                         kind: SettingKind::Profile { profile_uid },
                     };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_setting)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -314,9 +330,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         channel_name,
                         kind: SettingKind::Lcd { lcd: lcd_settings },
                     };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_setting)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -337,9 +352,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                             lighting: lighting_settings,
                         },
                     };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_setting)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);
@@ -385,9 +399,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                             reset_to_default: true,
                         },
                     };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                    self.save_setting_if_changed(&device_uid, &config_setting)
+                        .await
                 }
                 .await;
                 let _ = respond_to.send(result);

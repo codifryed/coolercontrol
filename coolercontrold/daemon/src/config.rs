@@ -683,6 +683,33 @@ impl Config {
         .into())
     }
 
+    /// Whether `set_device_setting` with this setting would change the saved settings.
+    /// Re-applying an identical setting is not a change, so it must not deactivate a Mode.
+    /// Unreadable saved settings count as a change, which keeps the previous always-save
+    /// behavior.
+    pub fn is_device_setting_changed(&self, device_uid: &str, setting: &Setting) -> bool {
+        let saved_settings = match self.get_device_settings(device_uid) {
+            Ok(saved_settings) => saved_settings,
+            Err(err) => {
+                warn!("Could not read saved settings for device: {device_uid}: {err}");
+                return true;
+            }
+        };
+        let saved_setting = saved_settings
+            .into_iter()
+            .find(|saved| saved.channel_name == setting.channel_name);
+        match &setting.kind {
+            // A reset removes the saved entry, so it only changes a channel that has one.
+            SettingKind::Reset {
+                reset_to_default: true,
+            } => saved_setting.is_some(),
+            SettingKind::Reset {
+                reset_to_default: false,
+            } => false,
+            _ => saved_setting.as_ref() != Some(setting),
+        }
+    }
+
     /// Retrieves the device settings from the config file to our Setting model.
     /// This has to be done defensively, as the user may change the config file.
     pub fn get_device_settings(&self, device_uid: &str) -> Result<Vec<Setting>> {
@@ -2879,6 +2906,10 @@ mod tests {
     use crate::cc_fs;
     use crate::config::{Config, POWER_PROFILE_MODES_KEY};
     use crate::paths;
+    use crate::setting::{
+        LcdCarouselSettings, LcdModeKind, LcdSettings, LightingSettings, Setting, SettingKind,
+        TempSource,
+    };
     use serial_test::serial;
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
@@ -4125,6 +4156,161 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], written);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    fn lcd_setting(channel_name: &str, brightness: u8, mode: LcdModeKind) -> Setting {
+        Setting {
+            channel_name: channel_name.to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    brightness: Some(brightness),
+                    orientation: Some(0),
+                    colors: Vec::new(),
+                    mode,
+                },
+            },
+        }
+    }
+
+    fn lcd_image_mode(path: &str) -> LcdModeKind {
+        LcdModeKind::Image {
+            image_file_processed: Some(path.to_string()),
+        }
+    }
+
+    /// Goal: re-applying a saved setting of any kind must not count as a change, or every
+    /// identical write (e.g. an external tool pushing the same LCD image) deactivates the Mode.
+    /// Methodology: each kind is a change while unsaved, then not a change once saved, which
+    /// also proves the saved form compares equal after the TOML round trip.
+    #[test]
+    #[serial]
+    fn setting_change_detection_ignores_identical_settings() {
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("change-identical").await;
+            let device_uid = "dev-change";
+            let lighting = LightingSettings {
+                mode: "fixed".to_string(),
+                speed: Some("medium".to_string()),
+                backward: Some(true),
+                colors: vec![(10, 20, 30)],
+            };
+            let temp_source = TempSource {
+                temp_name: "temp1".to_string(),
+                device_uid: "dev-temp".to_string(),
+            };
+            let carousel = LcdCarouselSettings {
+                images_path: Some("/tmp/carousel".to_string()),
+                interval: 10,
+            };
+            let settings = [
+                Setting {
+                    channel_name: "fan1".to_string(),
+                    kind: SettingKind::SpeedFixed { speed_fixed: 42 },
+                },
+                Setting {
+                    channel_name: "fan2".to_string(),
+                    kind: SettingKind::Profile {
+                        profile_uid: "profile-uid".to_string(),
+                    },
+                },
+                Setting {
+                    channel_name: "ring".to_string(),
+                    kind: SettingKind::Lighting { lighting },
+                },
+                lcd_setting("lcd-liquid", 80, LcdModeKind::Liquid),
+                lcd_setting("lcd-image", 80, lcd_image_mode("/tmp/img.png")),
+                lcd_setting(
+                    "lcd-temp",
+                    80,
+                    LcdModeKind::Temp {
+                        temp_source: Some(temp_source),
+                    },
+                ),
+                lcd_setting(
+                    "lcd-carousel",
+                    80,
+                    LcdModeKind::Carousel {
+                        carousel: Some(carousel),
+                    },
+                ),
+            ];
+            for setting in &settings {
+                assert!(config.is_device_setting_changed(device_uid, setting));
+                config.set_device_setting(device_uid, setting);
+                assert!(
+                    config.is_device_setting_changed(device_uid, setting).not(),
+                    "Saved setting must compare equal: {setting:?}"
+                );
+            }
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Goal: any real difference from the saved setting is a change, including an LCD mode
+    /// switch, brightness, image path, and the same setting on another channel or device.
+    /// Methodology: save one LCD image setting, then compare variations of it.
+    #[test]
+    #[serial]
+    fn setting_change_detection_sees_differences() {
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("change-differs").await;
+            let device_uid = "dev-change";
+            let saved = lcd_setting("lcd", 80, lcd_image_mode("/tmp/img.png"));
+            config.set_device_setting(device_uid, &saved);
+            assert!(config.is_device_setting_changed(device_uid, &saved).not());
+
+            let liquid = lcd_setting("lcd", 80, LcdModeKind::Liquid);
+            let dimmer = lcd_setting("lcd", 50, lcd_image_mode("/tmp/img.png"));
+            let other_image = lcd_setting("lcd", 80, lcd_image_mode("/tmp/img.gif"));
+            let other_channel = lcd_setting("lcd2", 80, lcd_image_mode("/tmp/img.png"));
+            assert!(config.is_device_setting_changed(device_uid, &liquid));
+            assert!(config.is_device_setting_changed(device_uid, &dimmer));
+            assert!(config.is_device_setting_changed(device_uid, &other_image));
+            assert!(config.is_device_setting_changed(device_uid, &other_channel));
+            assert!(config.is_device_setting_changed("dev-other", &saved));
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Goal: a reset only changes a channel that has a saved setting, since it removes the
+    /// entry, and the `false` no-op marker never changes anything.
+    /// Methodology: compare both reset variants before and after saving a setting.
+    #[test]
+    #[serial]
+    fn setting_change_detection_for_resets() {
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("change-reset").await;
+            let device_uid = "dev-change";
+            let reset = |reset_to_default| Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::Reset { reset_to_default },
+            };
+            assert!(config
+                .is_device_setting_changed(device_uid, &reset(true))
+                .not());
+            assert!(config
+                .is_device_setting_changed(device_uid, &reset(false))
+                .not());
+
+            let saved = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 50 },
+            };
+            config.set_device_setting(device_uid, &saved);
+            assert!(config.is_device_setting_changed(device_uid, &reset(true)));
+            assert!(config
+                .is_device_setting_changed(device_uid, &reset(false))
+                .not());
+
+            config.set_device_setting(device_uid, &reset(true));
+            assert!(config
+                .is_device_setting_changed(device_uid, &reset(true))
+                .not());
 
             cc_fs::remove_file(path).await.unwrap();
         });
