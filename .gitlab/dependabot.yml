@@ -1,0 +1,24 @@
+# dependabot-gitlab, standalone mode: the daily pipeline schedule runs it, so
+# schedule below only satisfies the schema. Security updates only. Crates are
+# handled by the cargo_audit job, since GitHub's advisory database lags RustSec.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /coolercontrol-ui
+    schedule:
+      interval: daily
+    target-branch: main
+    open-pull-requests-limit: 0
+    allow:
+      - dependency-type: all
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    commit-message:
+      prefix: fix(deps)
+    assignees:
+      - codifryed
+    labels:
+      - security
