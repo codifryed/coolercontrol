@@ -736,7 +736,7 @@ mod tests {
             let second = dir.path().join("temp2_input");
             std::fs::write(&first, "41000\n").unwrap();
             std::fs::write(&second, "52000\n").unwrap();
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.install_registry(vec![first, second]).await.unwrap();
             let slots = [0, 1];
             assert_eq!(
@@ -867,9 +867,11 @@ mod tests {
         assert!(state.dispatchable());
     }
 
-    /// Short enough that a wedge test finishes quickly, long enough that a real worker on a busy
-    /// build machine answers well inside it.
+    /// Short so a wedge test, which always waits it out, finishes quickly.
     const TEST_TIMEOUT: Duration = Duration::from_millis(80);
+
+    /// For real workers, which must never time out. A loaded CI runner can miss 80 ms.
+    const WORKER_TIMEOUT: Duration = Duration::from_secs(10);
 
     fn worker_of(io: &DeviceIo) -> &Rc<Worker> {
         match io {
@@ -892,7 +894,7 @@ mod tests {
             std::fs::write(&good, "41000\n").unwrap();
             std::fs::write(&other, "52000\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.install_registry(vec![good.clone(), absent.clone(), other.clone()])
                 .await
                 .unwrap();
@@ -971,7 +973,7 @@ mod tests {
                 .await
                 .unwrap();
             let inline = inline_io.read_many(&[0, 1]).await;
-            let threaded_io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let threaded_io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             threaded_io
                 .install_registry(vec![good, absent])
                 .await
@@ -1035,7 +1037,7 @@ mod tests {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("fan1_input");
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
 
             for expected in ["1200", "0", "2400"] {
                 std::fs::write(&path, format!("{expected}\n")).unwrap();
@@ -1056,7 +1058,7 @@ mod tests {
             let path = dir.path().join("pwm1");
             std::fs::write(&path, "0\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.write_value(&path, b"128".to_vec()).await.unwrap();
 
             let written = std::fs::read_to_string(&path).unwrap();
@@ -1073,7 +1075,7 @@ mod tests {
     fn an_io_error_does_not_count_against_health() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
 
             let result = io.read_value(&dir.path().join("absent_input")).await;
             assert!(result.is_err());
@@ -1182,7 +1184,7 @@ mod tests {
             let path = dir.path().join("temp1_input");
             std::fs::write(&path, "41000\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             let worker = worker_of(&io);
             worker
                 .state
@@ -1260,7 +1262,7 @@ mod tests {
         crate::rt::test_runtime(async {
             DeviceIo::default().clear_descriptors();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.clear_descriptors();
             assert_eq!(io.health(), DeviceHealth::Healthy);
 
