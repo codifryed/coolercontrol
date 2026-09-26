@@ -140,6 +140,12 @@ drivetemp_suspend = false
 # the HTTP-to-HTTPS redirect is skipped (the proxy handles TLS termination).
 # protocol_header = "X-Forwarded-Proto"
 
+# Reverse proxies whose X-Forwarded-For header names the real client, as addresses or CIDR
+# ranges. Login throttling then counts each client separately instead of lumping everyone
+# behind the proxy together. Only list proxies you run: any listed address can claim to be any
+# client. Listing 127.0.0.1 or ::1 extends that to every local user of this machine.
+# trusted_proxies = ["127.0.0.1", "::1"]
+
 # Allow unencrypted HTTP connections from non-localhost addresses. By default, non-localhost
 # HTTP requests are redirected to HTTPS when TLS is enabled. Set this to true to allow HTTP.
 # Note: This should only be used as a last resort and is not recommended.

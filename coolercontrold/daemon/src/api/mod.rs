@@ -18,7 +18,7 @@ mod functions;
 mod hardware_report;
 mod metrics;
 pub mod modes;
-mod peer;
+pub mod peer;
 mod plugins;
 mod power_profiles;
 mod profile_generation;
@@ -200,6 +200,7 @@ pub async fn start_server<'s>(
         .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
     // Extract proxy/cors settings for the API servers
+    let trusted_proxies = Arc::new(peer::TrustedProxies::from_config(&settings.trusted_proxies));
     let cors_origins = settings.origins.clone();
     let allow_unencrypted = settings.allow_unencrypted;
     let protocol_header = settings.protocol_header.clone();
@@ -214,6 +215,7 @@ pub async fn start_server<'s>(
             session_layer,
             expired_deletion_store,
             compression_layer,
+            trusted_proxies,
             tls_config,
             cancel_token,
             cors_origins,
@@ -231,6 +233,7 @@ async fn run_all_api_servers(
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     expired_deletion_store: FileSessionStore,
     compression_layer: Option<ApiCompressionLayer>,
+    trusted_proxies: Arc<peer::TrustedProxies>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
@@ -245,7 +248,7 @@ async fn run_all_api_servers(
     );
 
     // One limiter for both listeners, so a peer cannot double its share by using both.
-    let connection_limiter = connection::process_limiter();
+    let connection_limiter = connection::process_limiter(Arc::clone(&trusted_proxies));
 
     // REST API servers
     if let Some(addr) = ipv4 {
@@ -257,6 +260,7 @@ async fn run_all_api_servers(
             session_layer.clone(),
             compression_layer.clone(),
             Arc::clone(&connection_limiter),
+            Arc::clone(&trusted_proxies),
             tls_config.clone(),
             cancel_token.clone(),
             cors_origins.clone(),
@@ -273,6 +277,7 @@ async fn run_all_api_servers(
             session_layer,
             compression_layer,
             connection_limiter,
+            trusted_proxies,
             tls_config,
             cancel_token.clone(),
             cors_origins,
@@ -371,6 +376,7 @@ async fn create_api_server(
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     compression_layer: Option<ApiCompressionLayer>,
     connection_limiter: Arc<connection::ConnectionLimiter>,
+    trusted_proxies: Arc<peer::TrustedProxies>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
@@ -384,7 +390,12 @@ async fn create_api_server(
     let router = router::init(app_state)
         .await
         .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)));
+        .layer(Extension(Arc::new(open_api)))
+        // Outside the router, so the client is known before its auth throttle reads it.
+        .layer(middleware::from_fn_with_state(
+            trusted_proxies,
+            peer::client_addr_middleware,
+        ));
 
     // Build the base router with all layers
     // Layers are processed bottom to top: (last is first in the chain)

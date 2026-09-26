@@ -7,7 +7,7 @@
 //! separately, by `auth_breaker`.
 
 use crate::api::auth_breaker::{BreakerCharge, RemoteBreaker};
-use crate::api::peer::PeerKey;
+use crate::api::peer::{ClientAddr, PeerKey};
 use crate::api::CCError;
 use axum::extract::{ConnectInfo, Request};
 use axum::http::{header, StatusCode};
@@ -249,13 +249,16 @@ pub const fn max_attempts_within(window: Duration) -> u32 {
     attempts
 }
 
-/// The peer as the kernel reports its address, keyed by network. See `PeerKey`.
+/// The client, keyed by network. See `PeerKey`.
 ///
-/// `X-Forwarded-For` is deliberately ignored: it is attacker-controlled unless every hop
-/// is trusted, and honouring it would let one peer spend another's budget. Behind a
-/// reverse proxy this collapses to the proxy's own address, throttling all proxied
-/// clients together, which is the safe direction to fail.
+/// `X-Forwarded-For` is honoured only through `ClientAddr`, which reads it solely from a
+/// configured trusted proxy: from anyone else it is attacker-controlled, and would let one
+/// peer spend another's budget. Behind an unlisted proxy this collapses to the proxy's own
+/// address, throttling its clients together, which is the safe direction to fail.
 fn peer_key(request: &Request) -> Option<PeerKey> {
+    if let Some(ClientAddr(address)) = request.extensions().get::<ClientAddr>() {
+        return Some(PeerKey::from_ip(*address));
+    }
     request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -645,6 +648,17 @@ mod tests {
             Some(PeerKey::from_ip(IpAddr::from([192, 168, 1, 50])))
         );
         assert_eq!(peer_key(&request_with(Some("Bearer cc_x"), None)), None);
+    }
+
+    /// Goal: a client resolved behind a trusted proxy is the key, not the proxy the TCP
+    /// connection came from.
+    #[test]
+    fn resolved_client_address_is_the_key() {
+        let proxy = SocketAddr::from(([127, 0, 0, 1], 40000));
+        let mut request = request_with(Some("Bearer cc_x"), Some(proxy));
+        let client = IpAddr::from([203, 0, 113, 9]);
+        request.extensions_mut().insert(ClientAddr(client));
+        assert_eq!(peer_key(&request), Some(PeerKey::from_ip(client)));
     }
 
     /// Goal: two addresses in one IPv6 /64 spend one budget, so a host cannot dodge its

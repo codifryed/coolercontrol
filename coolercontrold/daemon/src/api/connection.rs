@@ -6,7 +6,7 @@
 //! Everything here runs for peers that have proven nothing, so each connection must end on
 //! its own if the peer stalls.
 
-use crate::api::peer::PeerKey;
+use crate::api::peer::{PeerKey, TrustedProxies};
 use axum_server::accept::Accept;
 use futures_util::future::BoxFuture;
 use hyper_util::rt::{TokioExecutor, TokioTimer};
@@ -94,7 +94,7 @@ fn server_with<A>(
 }
 
 /// The limiter every listener shares, sized to this process's open file limit.
-pub fn process_limiter() -> Arc<ConnectionLimiter> {
+pub fn process_limiter(trusted_proxies: Arc<TrustedProxies>) -> Arc<ConnectionLimiter> {
     let limits = ConnectionLimits::for_open_file_limit(crate::open_files::limit());
     if limits != ConnectionLimits::FULL {
         info!(
@@ -102,7 +102,7 @@ pub fn process_limiter() -> Arc<ConnectionLimiter> {
             limits.total()
         );
     }
-    ConnectionLimiter::new(limits)
+    ConnectionLimiter::new(limits, trusted_proxies)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,13 +157,17 @@ struct ConnectionCounts {
 #[derive(Debug)]
 pub struct ConnectionLimiter {
     limits: ConnectionLimits,
+    /// Exempt from the per-peer limit, since every client behind one shares its address.
+    /// Still counted in their pool.
+    trusted_proxies: Arc<TrustedProxies>,
     counts: Mutex<ConnectionCounts>,
 }
 
 impl ConnectionLimiter {
-    fn new(limits: ConnectionLimits) -> Arc<Self> {
+    fn new(limits: ConnectionLimits, trusted_proxies: Arc<TrustedProxies>) -> Arc<Self> {
         Arc::new(Self {
             limits,
+            trusted_proxies,
             counts: Mutex::new(ConnectionCounts {
                 remote_by_peer: HashMap::with_capacity(limits.remote),
                 remote: 0,
@@ -186,8 +190,13 @@ impl ConnectionLimiter {
         if counts.remote >= self.limits.remote {
             return None;
         }
+        let per_peer_limit = if self.trusted_proxies.contains(peer) {
+            self.limits.remote
+        } else {
+            self.limits.per_peer
+        };
         let per_peer = counts.remote_by_peer.entry(key).or_insert(0);
-        if *per_peer >= self.limits.per_peer {
+        if *per_peer >= per_peer_limit {
             return None;
         }
         *per_peer += 1;
@@ -431,7 +440,8 @@ mod tests {
 
     /// Serves `router` through the production server, the way `create_api_server` does.
     async fn serve(router: Router) -> SocketAddr {
-        serve_limited(router, ConnectionLimiter::new(ConnectionLimits::FULL)).await
+        let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
+        serve_limited(router, limiter).await
     }
 
     async fn serve_limited(router: Router, limiter: Arc<ConnectionLimiter>) -> SocketAddr {
@@ -466,7 +476,7 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DualProtocolAcceptor::new(config);
-        let limiter = ConnectionLimiter::new(ConnectionLimits::FULL);
+        let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
         let server = server_with(
             listener.into_std().unwrap(),
             acceptor,
@@ -607,11 +617,12 @@ mod tests {
     }
 
     fn limiter(per_peer: usize, remote: usize, loopback: usize) -> Arc<ConnectionLimiter> {
-        ConnectionLimiter::new(ConnectionLimits {
+        let limits = ConnectionLimits {
             per_peer,
             remote,
             loopback,
-        })
+        };
+        ConnectionLimiter::new(limits, Arc::default())
     }
 
     fn ip(address: &str) -> IpAddr {
@@ -651,6 +662,27 @@ mod tests {
         assert!(limiter.try_acquire(ip("2001:db8::3")).is_none());
         assert!(limiter.try_acquire(ip("192.0.2.1")).is_some());
         drop(held);
+    }
+
+    /// Goal: a trusted proxy carries many clients on one address, so the per-peer limit
+    /// does not apply to it, while the remote pool still does.
+    #[test]
+    fn trusted_proxy_is_exempt_from_the_per_peer_limit() {
+        let limits = ConnectionLimits {
+            per_peer: 1,
+            remote: 3,
+            loopback: 1,
+        };
+        let trusted = Arc::new(TrustedProxies::from_config(&["192.0.2.1".to_string()]));
+        let limiter = ConnectionLimiter::new(limits, trusted);
+        let held: Vec<_> = (0..3)
+            .map(|_| limiter.try_acquire(ip("192.0.2.1")).unwrap())
+            .collect();
+        assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
+        drop(held);
+        let untrusted = limiter.try_acquire(ip("192.0.2.2")).unwrap();
+        assert!(limiter.try_acquire(ip("192.0.2.2")).is_none());
+        drop(untrusted);
     }
 
     /// Goal: the remote pool caps all remote peers together, and loopback is admitted from

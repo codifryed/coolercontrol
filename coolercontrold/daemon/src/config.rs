@@ -13,7 +13,7 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, TableLike, Value};
 
-use crate::api::CCError;
+use crate::api::{peer, CCError};
 use crate::cc_fs;
 use crate::device::{ChannelName, Duty, Temp, UID};
 use crate::paths;
@@ -1352,6 +1352,22 @@ impl Config {
             } else {
                 None
             };
+            let trusted_proxies = if let Some(value) = settings.get("trusted_proxies") {
+                let entries = value
+                    .as_array()
+                    .with_context(|| "trusted_proxies should be an array")?
+                    .iter()
+                    .filter_map(|entry| {
+                        let text = entry.as_str();
+                        if text.is_none() {
+                            error!("Ignoring a trusted_proxies entry, not a string: {entry}");
+                        }
+                        text
+                    });
+                peer::trimmed_entries(entries)
+            } else {
+                Vec::new()
+            };
             let sensors_auto_detect = settings
                 .get("sensors_auto_detect")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
@@ -1393,6 +1409,7 @@ impl Config {
                 origins,
                 allow_unencrypted,
                 protocol_header,
+                trusted_proxies,
                 sensors_auto_detect,
                 device_listener_enabled,
                 sensors_conf_enabled,
@@ -1516,6 +1533,18 @@ impl Config {
         if let Some(ref header) = cc_settings.protocol_header {
             base_settings["protocol_header"] =
                 Item::Value(Value::String(Formatted::new(header.clone())));
+        }
+        if cc_settings.trusted_proxies.is_empty() {
+            if let Some(table) = base_settings.as_table_mut() {
+                table.remove("trusted_proxies");
+            }
+        } else {
+            let proxies: toml_edit::Array = cc_settings
+                .trusted_proxies
+                .iter()
+                .map(|s| Value::String(Formatted::new(s.clone())))
+                .collect();
+            base_settings["trusted_proxies"] = Item::Value(Value::Array(proxies));
         }
         base_settings["sensors_auto_detect"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_auto_detect,
@@ -3278,6 +3307,38 @@ mod tests {
             assert_eq!(moved, 0);
             assert_eq!(config.document.borrow().to_string(), before);
         });
+    }
+
+    // Goal: trusted proxies read back as written, trimmed, with blank and non-string entries
+    // dropped, and an absent key means none.
+    #[test]
+    fn trusted_proxies_are_read_from_settings() {
+        let settings = config_from("[settings]\n").get_settings().unwrap();
+        assert!(settings.trusted_proxies.is_empty());
+        let document =
+            "[settings]\ntrusted_proxies = [\" 127.0.0.1 \", \"\", 10, \"10.0.0.0/8\"]\n";
+        let settings = config_from(document).get_settings().unwrap();
+        assert_eq!(settings.trusted_proxies, ["127.0.0.1", "10.0.0.0/8"]);
+    }
+
+    // Goal: trusted proxies survive a write and read, and clearing them removes the key
+    // rather than leaving the old list in the file.
+    #[test]
+    fn trusted_proxies_round_trip_and_clear() {
+        let config = config_from("[settings]\n");
+        let mut settings = config.get_settings().unwrap();
+        settings.trusted_proxies = vec!["127.0.0.1".to_string(), "::1".to_string()];
+        config.set_settings(&settings);
+        assert_eq!(
+            config.get_settings().unwrap().trusted_proxies,
+            ["127.0.0.1", "::1"]
+        );
+        settings.trusted_proxies.clear();
+        config.set_settings(&settings);
+        assert!(config.get_settings().unwrap().trusted_proxies.is_empty());
+        assert!(config.document.borrow()["settings"]
+            .get("trusted_proxies")
+            .is_none());
     }
 
     // Goal: the device listener is off unless the config turns it on, and an
