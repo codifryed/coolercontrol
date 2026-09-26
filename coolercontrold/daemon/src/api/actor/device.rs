@@ -164,6 +164,20 @@ impl DeviceActor {
         self.modes_controller.clear_active_modes().await;
         self.config.save_config_file().await
     }
+
+    /// A `log=false` LCD write comes from an external tool pushing frames. It owns the screen
+    /// but is never saved, so the user's own setting survives and their Mode stays active.
+    async fn save_lcd_setting(
+        &self,
+        device_uid: &DeviceUID,
+        setting: &Setting,
+        log_success: bool,
+    ) -> Result<()> {
+        if log_success.not() {
+            return Ok(());
+        }
+        self.save_setting_if_changed(device_uid, setting).await
+    }
 }
 
 impl ApiActor<DeviceMessage> for DeviceActor {
@@ -330,7 +344,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         channel_name,
                         kind: SettingKind::Lcd { lcd: lcd_settings },
                     };
-                    self.save_setting_if_changed(&device_uid, &config_setting)
+                    self.save_lcd_setting(&device_uid, &config_setting, log_success)
                         .await
                 }
                 .await;
@@ -792,7 +806,141 @@ fn apply_name_overrides(overrides: &OverridesController, devices: &mut [DeviceDt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
+    use crate::power_profile_listener::PowerProfiles;
+    use crate::repositories::repository::Repositories;
+    use serial_test::serial;
+    use std::collections::HashMap;
+
+    const DEVICE_UID: &str = "dev-lcd";
+
+    /// A device actor with no devices and a freshly created, active Mode. Nothing reaches
+    /// hardware, so only the save path is exercised.
+    async fn actor_with_active_mode() -> (DeviceActor, Rc<Config>, Rc<ModeController>) {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let all_devices: AllDevices = Rc::new(HashMap::new());
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &Rc::new(Repositories::default()),
+            Rc::clone(&config),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+            Rc::new(OverridesController::empty()),
+        ));
+        let modes_controller = Rc::new(
+            ModeController::init(
+                Rc::clone(&config),
+                Rc::clone(&all_devices),
+                Rc::clone(&engine),
+                PowerProfiles::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        modes_controller
+            .create_mode("Test Mode".to_string())
+            .await
+            .unwrap();
+        assert!(is_mode_active(&modes_controller));
+        let (_sender, receiver) = mpsc::channel(1);
+        let actor = DeviceActor::new(
+            receiver,
+            all_devices,
+            engine,
+            Rc::clone(&modes_controller),
+            Rc::clone(&config),
+            Rc::new(OverridesController::empty()),
+        );
+        (actor, config, modes_controller)
+    }
+
+    fn is_mode_active(modes_controller: &ModeController) -> bool {
+        modes_controller
+            .get_active_modes()
+            .current_mode_uid
+            .is_some()
+    }
+
+    fn lcd_image_setting() -> Setting {
+        Setting {
+            channel_name: "lcd".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    brightness: Some(80),
+                    orientation: Some(0),
+                    colors: Vec::new(),
+                    mode: LcdModeKind::Image {
+                        image_file_processed: Some("/tmp/external.png".to_string()),
+                    },
+                },
+            },
+        }
+    }
+
+    /// Goal: an external tool's `log=false` LCD write must neither replace the user's saved
+    /// setting nor deactivate their Mode.
+    /// Methodology: save a temporary write with an active Mode, then check both are untouched.
+    #[test]
+    #[serial(modes_file)]
+    fn temporary_lcd_write_keeps_mode_and_saved_settings() {
+        crate::rt::test_runtime(async {
+            let (actor, config, modes_controller) = actor_with_active_mode().await;
+
+            actor
+                .save_lcd_setting(&DEVICE_UID.to_string(), &lcd_image_setting(), false)
+                .await
+                .unwrap();
+
+            assert!(is_mode_active(&modes_controller));
+            assert!(config.get_device_settings(DEVICE_UID).unwrap().is_empty());
+        });
+    }
+
+    /// Goal: the same LCD write from a user is a real settings change: saved, Mode cleared.
+    /// Methodology: the counterpart of the temporary write test with `log_success` set.
+    #[test]
+    #[serial(modes_file)]
+    fn user_lcd_write_saves_and_clears_mode() {
+        crate::rt::test_runtime(async {
+            let (actor, config, modes_controller) = actor_with_active_mode().await;
+            let setting = lcd_image_setting();
+
+            actor
+                .save_lcd_setting(&DEVICE_UID.to_string(), &setting, true)
+                .await
+                .unwrap();
+
+            assert!(is_mode_active(&modes_controller).not());
+            assert_eq!(
+                config.get_device_settings(DEVICE_UID).unwrap(),
+                vec![setting]
+            );
+        });
+    }
+
+    /// Goal: re-applying the saved setting is not a deviation, so the Mode stays active.
+    /// Methodology: pre-save the setting, then apply it again as a user write.
+    #[test]
+    #[serial(modes_file)]
+    fn identical_setting_write_keeps_mode() {
+        crate::rt::test_runtime(async {
+            let (actor, config, modes_controller) = actor_with_active_mode().await;
+            let setting = lcd_image_setting();
+            config.set_device_setting(DEVICE_UID, &setting);
+
+            actor
+                .save_setting_if_changed(&DEVICE_UID.to_string(), &setting)
+                .await
+                .unwrap();
+
+            assert!(is_mode_active(&modes_controller));
+            assert_eq!(
+                config.get_device_settings(DEVICE_UID).unwrap(),
+                vec![setting]
+            );
+        });
+    }
 
     #[test]
     fn overrides_replace_device_name_and_labels_in_dtos() {

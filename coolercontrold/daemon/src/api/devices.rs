@@ -153,7 +153,7 @@ async fn reject_when_calibrating(
 
 pub async fn device_setting_lcd_modify(
     Path(path): Path<DeviceChannelPath>,
-    Query(lcd_update_query): Query<LcdImageUpdateQuery>,
+    Query(lcd_update_query): Query<LcdUpdateQuery>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(lcd_settings): Json<LcdSettings>,
 ) -> Result<(), CCError> {
@@ -516,7 +516,17 @@ pub struct DeviceChannelPath {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct LcdUpdateQuery {
+    /// Set to false for frequent updates from an external program. The setting is applied
+    /// to the device only: it is not saved and does not deactivate the active Mode. Success
+    /// is logged at debug level.
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    log: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LcdImageUpdateQuery {
+    /// Set to false to log a successful apply at debug level.
     #[serde(default, deserialize_with = "empty_string_as_none")]
     log: Option<bool>,
 }
