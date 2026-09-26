@@ -142,6 +142,8 @@ hyper = { version = "1.11", default-features = false, features = [
 hyper-util = { version = "0.1", default-features = false, features = [
   "client",
   "http1",
+  # The API server's builder, configured directly for its connection timeouts.
+  "server-auto",
   "tokio",
 ] }
 http-body-util = "0.1"

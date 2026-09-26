@@ -8,6 +8,7 @@ mod auth_breaker;
 mod auth_throttle;
 mod base;
 mod calibration;
+mod connection;
 mod custom_sensors;
 mod detect;
 mod device_health;
@@ -426,7 +427,7 @@ async fn create_api_server(
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        axum_server::from_tcp(listener.into_std()?)?
+        connection::server(listener.into_std()?)?
             .acceptor(acceptor)
             .handle(handle)
             .serve(
@@ -442,7 +443,7 @@ async fn create_api_server(
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        axum_server::from_tcp(listener.into_std()?)?
+        connection::server(listener.into_std()?)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
