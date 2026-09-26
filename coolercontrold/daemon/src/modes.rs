@@ -210,8 +210,13 @@ impl ModeController {
         }
     }
 
+    /// Clears the active Modes. Nothing is saved or broadcast when none was active, since every
+    /// setting write lands here and each broadcast makes all UIs reload their device settings.
     pub async fn clear_active_modes(&self) {
-        self.active_modes.borrow_mut().clear();
+        let active_modes_changed = self.active_modes.borrow_mut().clear();
+        if active_modes_changed.not() {
+            return;
+        }
         if let Err(err) = self.save_modes_data().await {
             error!("Error saving mode data: {err}");
         }
@@ -748,20 +753,27 @@ impl ActiveModes {
         self.previous = self.current.replace(mode_uid);
     }
 
-    fn clear(&mut self) {
-        self.current = None;
-        self.previous = None;
+    /// Returns whether an active Mode was cleared.
+    fn clear(&mut self) -> bool {
+        let active_mode_changed = self.current.take().is_some();
+        let previous_mode_changed = self.previous.take().is_some();
+        debug_assert!(self.current.is_none());
+        debug_assert!(self.previous.is_none());
+        active_mode_changed || previous_mode_changed
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::modes::ActiveMode;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, SpeedOptions};
     use crate::overrides::OverridesController;
     use crate::repositories::repository::Repositories;
     use crate::setting::Setting;
+    use serial_test::serial;
+    use tokio_util::sync::CancellationToken;
 
     /// One Hwmon device offering exactly `channel_name`.
     fn devices_offering(channel_name: &str) -> (AllDevices, DeviceUID) {
@@ -814,6 +826,25 @@ mod tests {
         }
     }
 
+    /// Runs `clear_active_modes` with a subscribed `ModeHandle` and returns what it broadcast.
+    async fn clear_and_receive_broadcast(controller: &Rc<ModeController>) -> Option<ActiveMode> {
+        let cancel_token = CancellationToken::new();
+        let mut received = None;
+        moro_local::async_scope!(|scope| -> Result<()> {
+            let mode_handle = ModeHandle::new(Rc::clone(controller), cancel_token.clone(), scope);
+            // Subscribe first: the handle skips broadcasts that have no receivers.
+            let mut receiver = mode_handle.broadcaster().subscribe();
+            controller.clear_active_modes().await;
+            received = receiver.try_recv().ok();
+            // Stops the actor so the scope can finish.
+            cancel_token.cancel();
+            Ok(())
+        })
+        .await
+        .unwrap();
+        received
+    }
+
     fn fixed_speed(channel_name: &str) -> Setting {
         Setting {
             channel_name: channel_name.to_string(),
@@ -827,6 +858,7 @@ mod tests {
     /// Methodology: map two profiles, delete the Mode one of them points at, then read both the
     /// persisted mapping and the shared one back.
     #[test]
+    #[serial(modes_file)]
     fn deleting_a_mode_prunes_its_power_profile_mapping() {
         cc_fs::test_runtime(async {
             let (all_devices, _) = devices_offering("fan1");
@@ -878,6 +910,7 @@ mod tests {
     /// never rewrites the config.
     /// Methodology: delete a Mode no profile points at.
     #[test]
+    #[serial(modes_file)]
     fn deleting_an_unmapped_mode_leaves_the_mapping_alone() {
         cc_fs::test_runtime(async {
             let (all_devices, _) = devices_offering("fan1");
@@ -899,6 +932,79 @@ mod tests {
             controller.delete_mode(&unmapped).await.unwrap();
 
             assert_eq!(config.get_power_profile_modes(), mapping);
+        });
+    }
+
+    /// Goal: `ActiveModes::clear` reports whether it changed anything, so callers can skip
+    /// saving and broadcasting a no-op.
+    /// Methodology: clear an empty state, then states with only current, only previous, and
+    /// both set, checking the result and that both slots end up empty.
+    #[test]
+    fn active_modes_clear_reports_whether_anything_changed() {
+        let mut active_modes = ActiveModes::new();
+        assert!(active_modes.clear().not(), "An empty state is unchanged");
+        assert!(active_modes.current.is_none());
+        assert!(active_modes.previous.is_none());
+
+        let cases = [
+            (Some("current".to_string()), None),
+            (None, Some("previous".to_string())),
+            (Some("current".to_string()), Some("previous".to_string())),
+        ];
+        for (current, previous) in cases {
+            let mut active_modes = ActiveModes { current, previous };
+            assert!(active_modes.clear(), "A set Mode is a change");
+            assert!(active_modes.current.is_none());
+            assert!(active_modes.previous.is_none());
+            assert!(active_modes.clear().not(), "A second clear is a no-op");
+        }
+    }
+
+    /// Goal: clearing with no active Mode must neither broadcast nor rewrite the Modes file.
+    /// Every setting write clears the Modes, and each broadcast makes all UIs reload.
+    /// Methodology: seed the Modes file with a sentinel, clear with a subscribed handle, then
+    /// check nothing was received and the sentinel is intact.
+    #[test]
+    #[serial(modes_file)]
+    fn clearing_without_an_active_mode_is_silent() {
+        cc_fs::test_runtime(async {
+            let (all_devices, _) = devices_offering("fan1");
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = Rc::new(mode_controller(&all_devices, &config));
+            let sentinel = "sentinel: not written by the daemon";
+            std::fs::write(paths::mode_config_file(), sentinel).unwrap();
+
+            let received = clear_and_receive_broadcast(&controller).await;
+
+            assert!(received.is_none(), "No broadcast for a no-op clear");
+            let contents = std::fs::read_to_string(paths::mode_config_file()).unwrap();
+            assert_eq!(contents, sentinel, "The Modes file is not rewritten");
+        });
+    }
+
+    /// Goal: clearing an active Mode still saves and broadcasts the all-empty state.
+    /// Methodology: activate a Mode in memory, clear with a subscribed handle, then check the
+    /// broadcast and the saved file.
+    #[test]
+    #[serial(modes_file)]
+    fn clearing_an_active_mode_saves_and_broadcasts() {
+        cc_fs::test_runtime(async {
+            let (all_devices, _) = devices_offering("fan1");
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = Rc::new(mode_controller(&all_devices, &config));
+            controller.update_active_modes("active-mode".to_string());
+            std::fs::write(paths::mode_config_file(), "sentinel").unwrap();
+
+            let received = clear_and_receive_broadcast(&controller).await;
+
+            let active_mode = received.expect("Clearing an active Mode is broadcast");
+            assert!(active_mode.uid.is_none());
+            assert!(active_mode.name.is_none());
+            assert!(active_mode.previous_uid.is_none());
+            let contents = std::fs::read_to_string(paths::mode_config_file()).unwrap();
+            let saved: ModeConfigFile = serde_json::from_str(&contents).unwrap();
+            assert!(saved.current_active_mode.is_none());
+            assert!(saved.previous_active_mode.is_none());
         });
     }
 

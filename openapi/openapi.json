@@ -874,7 +874,9 @@
           {
             "in": "query",
             "name": "log",
+            "description": "Set to false for frequent updates from an external program. The setting is applied\n to the device only: it is not saved and does not deactivate the active Mode. Success\n is logged at debug level.",
             "schema": {
+              "description": "Set to false for frequent updates from an external program. The setting is applied\n to the device only: it is not saved and does not deactivate the active Mode. Success\n is logged at debug level.",
               "type": [
                 "boolean",
                 "null"
@@ -1018,7 +1020,9 @@
           {
             "in": "query",
             "name": "log",
+            "description": "Set to false to log a successful apply at debug level.",
             "schema": {
+              "description": "Set to false to log a successful apply at debug level.",
               "type": [
                 "boolean",
                 "null"
@@ -9385,6 +9389,7 @@
         "type": "object",
         "properties": {
           "log": {
+            "description": "Set to false to log a successful apply at debug level.",
             "type": [
               "boolean",
               "null"
@@ -9621,6 +9626,19 @@
             ]
           }
         ]
+      },
+      "LcdUpdateQuery": {
+        "type": "object",
+        "properties": {
+          "log": {
+            "description": "Set to false for frequent updates from an external program. The setting is applied\n to the device only: it is not saved and does not deactivate the active Mode. Success\n is logged at debug level.",
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          }
+        }
       },
       "LightingMode": {
         "type": "object",
