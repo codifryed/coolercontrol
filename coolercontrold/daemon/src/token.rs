@@ -12,6 +12,7 @@ use log::error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::Permissions;
+use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -34,7 +35,7 @@ pub struct StoredToken {
     /// `digest`, and only read on the legacy fallback path, but still written so a
     /// downgraded daemon can keep validating tokens minted here.
     pub hash: String,
-    /// SHA-256 of the raw token, absent on tokens minted before 5.0.0. `validate_token`
+    /// SHA-256 of the raw token, absent on tokens minted before 5.0.0. `TokenHandle::validate`
     /// upgrades those in place the first time they are presented.
     #[serde(default)]
     pub digest: Option<TokenDigest>,
@@ -145,10 +146,17 @@ pub struct TokenMatch {
     pub upgrade_digest: Option<TokenDigest>,
 }
 
-/// Two passes, cheapest first. The digest pass is a handful of 64-byte compares; the
-/// argon2 pass costs milliseconds each and runs only against tokens minted before
-/// 5.0.0, a set that empties itself as those tokens are used.
-pub fn validate_token(raw_token: &str, tokens: &[StoredToken]) -> Option<TokenMatch> {
+/// A token minted before 5.0.0, copied out of the store so its argon2 verify can run on a
+/// blocking thread without holding the store's lock.
+#[derive(Debug, Clone)]
+pub struct LegacyToken {
+    id: String,
+    write_access: bool,
+    hash: String,
+}
+
+/// The cheap pass: one constant-time 32-byte compare per stored digest.
+pub fn match_digest(raw_token: &str, tokens: &[StoredToken]) -> Option<TokenMatch> {
     let now = Local::now();
     let presented = digest_token(raw_token);
     for token in tokens {
@@ -166,22 +174,36 @@ pub fn validate_token(raw_token: &str, tokens: &[StoredToken]) -> Option<TokenMa
             });
         }
     }
-    for token in tokens {
-        if is_expired(token, now) {
-            continue;
-        }
-        if token.digest.is_some() {
-            continue;
-        }
-        if verify_token(raw_token, &token.hash) {
-            return Some(TokenMatch {
-                id: token.id.clone(),
-                write_access: token.write_access,
-                upgrade_digest: Some(presented),
-            });
-        }
-    }
     None
+}
+
+/// The unexpired tokens still without a digest: the only ones the argon2 pass can match. A
+/// set that empties itself as those tokens are used.
+pub fn legacy_tokens(tokens: &[StoredToken]) -> Vec<LegacyToken> {
+    let now = Local::now();
+    tokens
+        .iter()
+        .filter(|token| token.digest.is_none())
+        .filter(|token| is_expired(token, now).not())
+        .map(|token| LegacyToken {
+            id: token.id.clone(),
+            write_access: token.write_access,
+            hash: token.hash.clone(),
+        })
+        .collect()
+}
+
+/// The expensive pass: one argon2 verify, milliseconds and 19 MiB each, per legacy token.
+/// CPU-bound, so it belongs on a blocking thread, never the reactor.
+pub fn match_legacy(raw_token: &str, legacy: &[LegacyToken]) -> Option<TokenMatch> {
+    let token = legacy
+        .iter()
+        .find(|token| verify_token(raw_token, &token.hash))?;
+    Some(TokenMatch {
+        id: token.id.clone(),
+        write_access: token.write_access,
+        upgrade_digest: Some(digest_token(raw_token)),
+    })
 }
 
 #[cfg(test)]
@@ -278,69 +300,72 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_token_finds_match() {
+    fn test_match_digest_finds_match() {
         let raw = generate_token();
-        let result = validate_token(&raw, &[stored_token(&raw, false)]).unwrap();
+        let result = match_digest(&raw, &[stored_token(&raw, false)]).unwrap();
         assert_eq!(result.id, "test-id");
         assert!(result.write_access.not());
         assert_eq!(result.upgrade_digest, None);
     }
 
     #[test]
-    fn test_validate_token_finds_match_with_write_access() {
+    fn test_match_digest_finds_match_with_write_access() {
         let raw = generate_token();
-        let result = validate_token(&raw, &[stored_token(&raw, true)]).unwrap();
+        let result = match_digest(&raw, &[stored_token(&raw, true)]).unwrap();
         assert_eq!(result.id, "test-id");
         assert!(result.write_access);
         assert_eq!(result.upgrade_digest, None);
     }
 
+    /// Goal: an expired token matches in neither pass.
     #[test]
-    fn test_validate_token_rejects_expired() {
+    fn test_expired_token_matches_no_pass() {
         let raw = generate_token();
         let expired = StoredToken {
             expires_at: Some(Local::now() - chrono::Duration::hours(1)),
             ..stored_token(&raw, true)
         };
-        assert_eq!(validate_token(&raw, &[expired]), None);
+        assert_eq!(match_digest(&raw, std::slice::from_ref(&expired)), None);
+        assert!(legacy_tokens(&[expired]).is_empty());
     }
 
     /// Goal: expiry is enforced on the legacy path too, not just the digest path.
     #[test]
-    fn test_validate_token_rejects_expired_legacy() {
+    fn test_expired_legacy_token_is_not_a_candidate() {
         let raw = generate_token();
         let expired = StoredToken {
             expires_at: Some(Local::now() - chrono::Duration::hours(1)),
             ..legacy_token(&raw, true)
         };
-        assert_eq!(validate_token(&raw, &[expired]), None);
+        assert!(legacy_tokens(&[expired]).is_empty());
     }
 
     #[test]
-    fn test_validate_token_accepts_non_expired() {
+    fn test_match_digest_accepts_non_expired() {
         let raw = generate_token();
         let valid = StoredToken {
             expires_at: Some(Local::now() + chrono::Duration::hours(1)),
             ..stored_token(&raw, true)
         };
-        let result = validate_token(&raw, &[valid]).unwrap();
+        let result = match_digest(&raw, &[valid]).unwrap();
         assert_eq!(result.id, "test-id");
         assert!(result.write_access);
     }
 
     #[test]
-    fn test_validate_token_no_match() {
+    fn test_match_digest_no_match() {
         let raw = generate_token();
         let other = generate_token();
-        assert_eq!(validate_token(&raw, &[stored_token(&other, false)]), None);
+        assert_eq!(match_digest(&raw, &[stored_token(&other, false)]), None);
     }
 
-    /// Goal: a pre-5.0.0 token still authenticates, and hands back the digest the
-    /// caller must persist so it never pays argon2 again.
+    /// Goal: a pre-5.0.0 token still matches on the argon2 pass, and hands back the digest
+    /// the caller must persist so it never pays argon2 again.
     #[test]
-    fn test_validate_token_upgrades_legacy_token() {
+    fn test_match_legacy_upgrades_legacy_token() {
         let raw = generate_token();
-        let result = validate_token(&raw, &[legacy_token(&raw, true)]).unwrap();
+        let legacy = legacy_tokens(&[legacy_token(&raw, true)]);
+        let result = match_legacy(&raw, &legacy).unwrap();
         assert_eq!(result.id, "test-id");
         assert!(result.write_access);
         assert_eq!(result.upgrade_digest, Some(digest_token(&raw)));
@@ -349,9 +374,7 @@ mod tests {
     /// Goal: prove a token carrying a digest never reaches the argon2 pass.
     ///
     /// Method: store a token whose `digest` is of token A but whose `hash` is of
-    /// token B, then present B. A correct implementation skips digest-bearing tokens
-    /// in the legacy pass and returns None. An implementation that fell back to
-    /// argon2 for every token would match B's hash and return Some.
+    /// token B. It must not be a legacy candidate, or presenting B would match B's hash.
     #[test]
     fn test_digest_bearing_token_never_falls_back_to_argon2() {
         let token_a = generate_token();
@@ -361,13 +384,17 @@ mod tests {
             digest: Some(digest_token(&token_a)),
             ..stored_token(&token_a, true)
         };
-        assert_eq!(validate_token(&token_b, &[mismatched]), None);
+        assert_eq!(
+            match_digest(&token_b, std::slice::from_ref(&mismatched)),
+            None
+        );
+        assert!(legacy_tokens(&[mismatched]).is_empty());
     }
 
-    /// Goal: the digest pass wins even when an unrelated legacy token sits first in
-    /// the store, so a migrated token is never delayed by someone else's KDF.
+    /// Goal: the digest pass finds a migrated token even when an unrelated legacy token sits
+    /// first in the store, so a migrated token is never delayed by someone else's KDF.
     #[test]
-    fn test_digest_pass_precedes_legacy_pass() {
+    fn test_digest_pass_skips_legacy_tokens() {
         let legacy_raw = generate_token();
         let digest_raw = generate_token();
         let tokens = vec![
@@ -377,7 +404,7 @@ mod tests {
                 ..stored_token(&digest_raw, true)
             },
         ];
-        let result = validate_token(&digest_raw, &tokens).unwrap();
+        let result = match_digest(&digest_raw, &tokens).unwrap();
         assert_eq!(result.id, "digest-id");
         assert_eq!(result.upgrade_digest, None);
     }
