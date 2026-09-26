@@ -1,31 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Per-peer backoff for failed authentication attempts.
-//!
-//! The daemon has no general rate limiter by design: the single-threaded sidecar and the
-//! actor channels' backpressure already bound how fast external work reaches the main
-//! loop. Authentication is the exception, because it runs upstream of every channel.
-//! `AuthActor` already locks out password guessing, but globally rather than per peer.
-//!
-//! Passwords and bearer tokens are budgeted apart. With one budget, any valid token would
-//! wipe a password streak, since a success clears the peer, and a peer's password failures
-//! would refuse its valid token traffic, which is what the desktop app and plugins use.
-//!
-//! Only requests that actually present credentials are counted. A 401 from an expired
-//! session cookie is not a guessing attempt, costs no hashing, and counting it would let
-//! a UI with a stale session lock its own user out of logging back in.
-//!
-//! Blocked peers are rejected immediately rather than delayed. On a single-threaded
-//! reactor a sleeping request would stall every other client, handing an attacker the
-//! outage the throttle exists to prevent.
-//!
-//! A token outcome is never inferred from the response status. `/handshake` answers 200
-//! with or without an `Authorization` header, so a status-based reading would let an
-//! attacker clear their own streak between guesses. Only a layer that actually adjudicated
-//! the presented token marks the response, and only a marked response is counted. The
-//! password routes are the exception: their handlers adjudicate the password themselves,
-//! so their status is the verdict.
+//! Per-peer backoff for failed authentication attempts, the one rate limit the daemon has:
+//! authentication runs upstream of the actor channels whose backpressure bounds the rest.
+//! Only adjudicated credentials count. Guessing spread across many peers is capped
+//! separately, by `auth_breaker`.
 
 use crate::api::auth_breaker::{BreakerCharge, RemoteBreaker};
 use crate::api::peer::PeerKey;
@@ -56,15 +35,10 @@ const _: () = assert!(FAILURE_THRESHOLD > 0);
 const _: () = assert!(BASE_BACKOFF.as_nanos() > 0);
 const _: () = assert!(MAX_TRACKED_PEERS > 0);
 
-/// Process-wide throttles. The daemon presents one authentication surface no matter how
-/// many listeners serve it, so per-router state would let a peer double its budget by
-/// alternating between the IPv4 and IPv6 servers, which build their routers separately.
-///
-/// Deliberately statics rather than an actor handle, unlike `AuthActor` next door. These
-/// run in `from_fn` middleware that carries no state, upstream of every channel, and on
-/// the reject path must answer without awaiting anything. The counters are two integers
-/// and a timestamp behind an uncontended lock; a channel round trip to own them would put
-/// a queue in front of the very path the throttle exists to keep cheap.
+/// Process-wide, so a peer cannot double its budget across the IPv4 and IPv6 listeners.
+/// Statics, not an actor: the reject path must answer without awaiting a channel.
+/// Passwords and tokens are budgeted apart: with one budget a valid token would clear a
+/// password streak, and password failures would refuse the desktop app's token traffic.
 static TOKEN_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 static PASSWORD_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 static REMOTE_BREAKER: LazyLock<RemoteBreaker> = LazyLock::new(RemoteBreaker::new);
@@ -288,6 +262,8 @@ fn peer_key(request: &Request) -> Option<PeerKey> {
         .map(|ConnectInfo(address)| PeerKey::from_ip(address.ip()))
 }
 
+/// A 401 for a stale session cookie presented nothing, so it is not a guess, and counting
+/// it would lock a stale UI out of logging back in.
 fn presents_credentials(request: &Request) -> bool {
     request.headers().contains_key(header::AUTHORIZATION)
 }
@@ -319,14 +295,10 @@ pub fn mark(mut response: Response, outcome: CredentialOutcome) -> Response {
 }
 
 /// Verdict for a route whose handler consumes credentials directly rather than behind an
-/// auth layer, such as `/login`. A 4xx other than these, such as `/set-passwd` refusing
-/// the default password as the new one, says nothing about the password presented.
-///
-/// A 429 here is `AuthActor`'s global password lockout, never this middleware's own
-/// rejection: that one short-circuits above and never reaches a handler. Counting it
-/// keeps the per-peer backoff growing behind the global lockout instead of freezing.
+/// auth layer, such as `/login`. Any other status, such as `/set-passwd` refusing the
+/// default password as the new one, says nothing about the password presented.
 fn outcome_for(status: StatusCode) -> Option<CredentialOutcome> {
-    if status == StatusCode::UNAUTHORIZED || status == StatusCode::TOO_MANY_REQUESTS {
+    if status == StatusCode::UNAUTHORIZED {
         Some(CredentialOutcome::Rejected)
     } else if status.is_success() {
         Some(CredentialOutcome::Accepted)
@@ -450,7 +422,8 @@ pub fn password_failures(peer: std::net::IpAddr) -> Option<u32> {
     PASSWORD_THROTTLE.lock().get(&key).map(|entry| entry.count)
 }
 
-/// Applies a response's verdict, if it carries one, to the peer that produced it.
+/// Applies a response's verdict, if it carries one, to the peer that produced it. Never the
+/// status: `/handshake` answers 200 with any token, which would let a guesser clear its streak.
 fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
     match response.extensions().get::<CredentialOutcome>() {
         Some(CredentialOutcome::Rejected) => throttle.record_failure(peer, now),
@@ -459,6 +432,7 @@ fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Inst
     }
 }
 
+/// Refused at once, never delayed: a sleeping request would stall the single-threaded reactor.
 fn too_many_attempts(remaining: Duration) -> Response {
     debug_assert!(remaining.is_zero().not());
     CCError::TooManyAttempts {
@@ -721,14 +695,12 @@ mod tests {
         assert_eq!(outcome_for(StatusCode::INTERNAL_SERVER_ERROR), None);
     }
 
-    /// Goal: the global password lockout keeps the per-peer backoff growing. Its 429 is
-    /// the only 429 a handler can produce, since the throttle's own never reaches one.
+    /// Goal: a 429 is no verdict. No handler produces one any more, and one arriving from
+    /// elsewhere says nothing about the password.
     #[test]
-    fn global_lockout_still_counts_against_the_peer() {
-        assert_eq!(
-            outcome_for(StatusCode::TOO_MANY_REQUESTS),
-            Some(CredentialOutcome::Rejected)
-        );
+    fn too_many_requests_is_not_a_verdict() {
+        assert_eq!(outcome_for(StatusCode::TOO_MANY_REQUESTS), None);
+        assert_eq!(outcome_for(StatusCode::BAD_REQUEST), None);
     }
 
     /// Goal: an unmarked response never moves the counter. `/handshake` answers 200
