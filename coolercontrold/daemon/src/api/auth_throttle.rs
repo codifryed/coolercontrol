@@ -92,7 +92,61 @@ impl AuthThrottle {
     /// A backoff that expires exactly at `now` counts as lapsed: reporting zero
     /// remaining would reject the request while telling the caller to retry immediately.
     pub fn blocked_for(&self, peer: PeerKey, now: Instant) -> Option<Duration> {
-        let peers = self.lock();
+        Self::remaining(&self.lock(), peer, now)
+    }
+
+    /// Admits an attempt and charges it as a failure at once, or refuses it with the
+    /// backoff remaining.
+    ///
+    /// Charging on arrival rather than on the verdict closes two gaps. Concurrent requests
+    /// would all pass a check made before any of them finished, and a request whose future
+    /// is dropped, by a client reset or the timeout layer, never reaches a verdict at all
+    /// while its hash still runs. The returned `Attempt` settles the charge.
+    pub fn admit(&self, peer: PeerKey, now: Instant) -> Result<Attempt<'_>, Duration> {
+        let mut peers = self.lock();
+        if let Some(remaining) = Self::remaining(&peers, peer, now) {
+            return Err(remaining);
+        }
+        Self::charge(&mut peers, peer, now);
+        Ok(Attempt {
+            throttle: self,
+            peer,
+        })
+    }
+
+    pub fn record_failure(&self, peer: PeerKey, now: Instant) {
+        Self::charge(&mut self.lock(), peer, now);
+    }
+
+    pub fn record_success(&self, peer: PeerKey) {
+        self.lock().remove(&peer);
+    }
+
+    /// Takes back one charge for an attempt that reached no verdict.
+    ///
+    /// Never extends a block: the refunded charge may be the one that set it, and its
+    /// replacement deadline is measured from now rather than from the charge.
+    fn refund(&self, peer: PeerKey, now: Instant) {
+        let mut peers = self.lock();
+        // Absent when eviction reclaimed the entry while the attempt was in flight.
+        let Some(entry) = peers.get_mut(&peer) else {
+            return;
+        };
+        entry.count = entry.count.saturating_sub(1);
+        entry.blocked_until = match (entry.blocked_until, backoff_for(entry.count)) {
+            (Some(until), Some(backoff)) => Some(until.min(now + backoff)),
+            _ => None,
+        };
+        if entry.count == 0 {
+            peers.remove(&peer);
+        }
+    }
+
+    fn remaining(
+        peers: &HashMap<PeerKey, PeerFailures>,
+        peer: PeerKey,
+        now: Instant,
+    ) -> Option<Duration> {
         let entry = peers.get(&peer)?;
         let remaining = entry.blocked_until?.checked_duration_since(now)?;
         if remaining.is_zero() {
@@ -101,9 +155,8 @@ impl AuthThrottle {
         Some(remaining)
     }
 
-    pub fn record_failure(&self, peer: PeerKey, now: Instant) {
-        let mut peers = self.lock();
-        Self::evict(&mut peers, now);
+    fn charge(peers: &mut HashMap<PeerKey, PeerFailures>, peer: PeerKey, now: Instant) {
+        Self::evict(peers, now);
         let entry = peers.entry(peer).or_insert(PeerFailures {
             count: 0,
             blocked_until: None,
@@ -120,10 +173,6 @@ impl AuthThrottle {
         entry.blocked_until = backoff_for(entry.count).map(|backoff| now + backoff);
         debug_assert!(entry.count > 0);
         debug_assert!(peers.len() <= MAX_TRACKED_PEERS);
-    }
-
-    pub fn record_success(&self, peer: PeerKey) {
-        self.lock().remove(&peer);
     }
 
     /// Reclaims space only under capacity pressure, leaving room for one insert.
@@ -159,6 +208,27 @@ impl AuthThrottle {
 impl Default for AuthThrottle {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// A charged attempt, settled once its verdict is known. Dropping it unsettled keeps the
+/// charge: a request abandoned mid-flight still spent a hash.
+#[derive(Debug)]
+#[must_use]
+pub struct Attempt<'a> {
+    throttle: &'a AuthThrottle,
+    peer: PeerKey,
+}
+
+impl Attempt<'_> {
+    /// A rejection keeps the charge already taken, a success clears the streak, and no
+    /// verdict at all refunds it.
+    pub fn settle(self, outcome: Option<CredentialOutcome>, now: Instant) {
+        match outcome {
+            Some(CredentialOutcome::Rejected) => {}
+            Some(CredentialOutcome::Accepted) => self.throttle.record_success(self.peer),
+            None => self.throttle.refund(self.peer, now),
+        }
     }
 }
 
@@ -250,13 +320,12 @@ pub async fn password_throttle_middleware(request: Request, next: Next) -> Respo
     let Some(peer) = peer_key(&request) else {
         return next.run(request).await;
     };
-    if let Some(remaining) = PASSWORD_THROTTLE.blocked_for(peer, Instant::now()) {
-        return too_many_attempts(remaining);
-    }
+    let attempt = match PASSWORD_THROTTLE.admit(peer, Instant::now()) {
+        Ok(attempt) => attempt,
+        Err(remaining) => return too_many_attempts(remaining),
+    };
     let response = next.run(request).await;
-    if let Some(outcome) = outcome_for(response.status()) {
-        apply(&PASSWORD_THROTTLE, peer, outcome, Instant::now());
-    }
+    attempt.settle(outcome_for(response.status()), Instant::now());
     response
 }
 
@@ -286,15 +355,10 @@ pub fn password_failures(peer: std::net::IpAddr) -> Option<u32> {
 
 /// Applies a response's verdict, if it carries one, to the peer that produced it.
 fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
-    if let Some(outcome) = response.extensions().get::<CredentialOutcome>() {
-        apply(throttle, peer, *outcome, now);
-    }
-}
-
-fn apply(throttle: &AuthThrottle, peer: PeerKey, outcome: CredentialOutcome, now: Instant) {
-    match outcome {
-        CredentialOutcome::Rejected => throttle.record_failure(peer, now),
-        CredentialOutcome::Accepted => throttle.record_success(peer),
+    match response.extensions().get::<CredentialOutcome>() {
+        Some(CredentialOutcome::Rejected) => throttle.record_failure(peer, now),
+        Some(CredentialOutcome::Accepted) => throttle.record_success(peer),
+        None => {}
     }
 }
 
@@ -370,8 +434,13 @@ mod tests {
         axum::Router::new()
             .route(
                 "/login",
-                post(|| async { StatusCode::UNAUTHORIZED })
-                    .layer(from_fn(password_throttle_middleware)),
+                // Yields once, like a real hash, so concurrent calls are all in flight
+                // before any of them settles.
+                post(|| async {
+                    tokio::task::yield_now().await;
+                    StatusCode::UNAUTHORIZED
+                })
+                .layer(from_fn(password_throttle_middleware)),
             )
             .route(
                 "/token-ok",
@@ -756,6 +825,133 @@ mod tests {
             record(&throttle, peer(1), &response, now);
         }
         assert_eq!(throttle.blocked_for(peer(1), now), Some(BASE_BACKOFF));
+    }
+
+    /// Goal: concurrent attempts are charged as they arrive, so a burst gets exactly the
+    /// free allowance plus the one that trips the backoff, however many are in flight.
+    /// Method: admissions held unsettled, as they would be while their hashes run.
+    #[test]
+    fn unsettled_admissions_are_capped() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        let attempts: Vec<_> = (0..10).map(|_| throttle.admit(peer(1), now)).collect();
+        let admitted = attempts.iter().filter(|attempt| attempt.is_ok()).count();
+        assert_eq!(admitted, usize::try_from(FAILURE_THRESHOLD + 1).unwrap());
+        assert!(attempts.last().unwrap().is_err());
+    }
+
+    /// Goal: an attempt dropped before its verdict, as by a client reset or the timeout
+    /// layer, stays charged.
+    #[test]
+    fn dropped_attempt_stays_charged() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        drop(throttle.admit(peer(1), now).unwrap());
+        assert_eq!(
+            throttle.lock().get(&peer(1)).map(|entry| entry.count),
+            Some(1)
+        );
+    }
+
+    /// Goal: a rejection keeps its charge, so settled failures accumulate into a backoff
+    /// exactly as recorded failures do.
+    #[test]
+    fn rejected_attempts_build_the_backoff() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        for _ in 0..=FAILURE_THRESHOLD {
+            let attempt = throttle.admit(peer(1), now).unwrap();
+            attempt.settle(Some(CredentialOutcome::Rejected), now);
+        }
+        assert_eq!(throttle.blocked_for(peer(1), now), Some(BASE_BACKOFF));
+    }
+
+    /// Goal: an accepted attempt clears the streak, including charges still in flight.
+    #[test]
+    fn accepted_attempt_clears_the_streak() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        for _ in 0..3 {
+            throttle
+                .admit(peer(1), now)
+                .unwrap()
+                .settle(Some(CredentialOutcome::Rejected), now);
+        }
+        let in_flight = throttle.admit(peer(1), now).unwrap();
+        throttle
+            .admit(peer(1), now)
+            .unwrap()
+            .settle(Some(CredentialOutcome::Accepted), now);
+        assert!(throttle.lock().get(&peer(1)).is_none());
+        in_flight.settle(Some(CredentialOutcome::Rejected), now);
+        assert!(throttle.lock().get(&peer(1)).is_none());
+    }
+
+    /// Goal: an attempt with no verdict, such as an internal error, gives its charge back,
+    /// and the refund lifts a block that charge had set.
+    #[test]
+    fn refund_returns_the_charge() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        for _ in 0..FAILURE_THRESHOLD {
+            throttle.record_failure(peer(1), now);
+        }
+        let attempt = throttle.admit(peer(1), now).unwrap();
+        assert_eq!(throttle.blocked_for(peer(1), now), Some(BASE_BACKOFF));
+        attempt.settle(None, now);
+        assert_eq!(throttle.blocked_for(peer(1), now), None);
+        assert_eq!(
+            throttle.lock().get(&peer(1)).map(|entry| entry.count),
+            Some(FAILURE_THRESHOLD)
+        );
+    }
+
+    /// Goal: a refund never lengthens a block that is already running, even though its
+    /// deadline is recomputed from a later moment.
+    #[test]
+    fn refund_never_extends_a_block() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        for _ in 0..(FAILURE_THRESHOLD + 3) {
+            throttle.record_failure(peer(1), now);
+        }
+        let blocked = throttle.blocked_for(peer(1), now).unwrap();
+        let in_flight = throttle.admit(peer(1), now + blocked).unwrap();
+        in_flight.settle(None, now + blocked + BASE_BACKOFF * 100);
+        let until = throttle
+            .lock()
+            .get(&peer(1))
+            .unwrap()
+            .blocked_until
+            .unwrap();
+        assert!(until <= now + blocked + backoff_for(FAILURE_THRESHOLD + 4).unwrap());
+    }
+
+    /// Goal: a lone refund leaves nothing behind, so a peer that only ever hit internal
+    /// errors is not tracked at all.
+    #[test]
+    fn refunding_the_only_charge_forgets_the_peer() {
+        let throttle = AuthThrottle::new();
+        let now = Instant::now();
+        throttle.admit(peer(1), now).unwrap().settle(None, now);
+        assert!(throttle.lock().get(&peer(1)).is_none());
+    }
+
+    /// Goal: the check-then-record race is closed end to end. Concurrent `/login` requests
+    /// through the real middleware, all in flight at once, admit only the allowance.
+    #[tokio::test]
+    async fn concurrent_logins_are_capped_through_the_middleware() {
+        let peer = wired_peer(14);
+        let calls = (0..10).map(|_| call("POST", "/login", Some("Basic abc"), peer));
+        let statuses = futures_util::future::join_all(calls).await;
+        let refused = statuses
+            .iter()
+            .filter(|status| **status == StatusCode::TOO_MANY_REQUESTS)
+            .count();
+        assert_eq!(
+            refused,
+            10 - usize::try_from(FAILURE_THRESHOLD + 1).unwrap()
+        );
     }
 
     /// Goal: a poisoned mutex degrades to "throttle still works" rather than taking
