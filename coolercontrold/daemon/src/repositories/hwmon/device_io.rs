@@ -167,7 +167,7 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(&path.display(), |reply| Request::Read {
+                    .dispatch("reading", &path.display(), |reply| Request::Read {
                         path: path.to_path_buf(),
                         reply,
                     })
@@ -261,7 +261,7 @@ impl DeviceIo {
                 let batch = indices.to_vec();
                 let expected = batch.len();
                 let dispatched = worker
-                    .dispatch(&BatchLabel(indices[0], expected), |reply| {
+                    .dispatch("reading", &BatchLabel(indices[0], expected), |reply| {
                         Request::ReadMany {
                             indices: batch,
                             reply,
@@ -294,7 +294,7 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::write(path, data).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(&path.display(), |reply| Request::Write {
+                    .dispatch("writing", &path.display(), |reply| Request::Write {
                         path: path.to_path_buf(),
                         data,
                         reply,
@@ -371,8 +371,8 @@ impl DeviceIo {
         match self {
             Self::Inline(fds) => fds.len(),
             Self::Threaded(worker) => worker
-                .dispatch(&"descriptor-count", |reply| Request::DescriptorCount {
-                    reply,
+                .dispatch("sending", &"descriptor-count", |reply| {
+                    Request::DescriptorCount { reply }
                 })
                 .await
                 .unwrap_or_default(),
@@ -452,12 +452,7 @@ impl HealthState {
             .set(Some(Instant::now() + UNREACHABLE_PROBE_INTERVAL));
         // Once, on the way in. A device that stays wedged must not log every probe.
         if was_unreachable.not() {
-            warn!(
-                "Device {} stopped answering after {timeouts} timed out reads. Its readings and \
-                 fan control are suspended; retrying every {} seconds.",
-                self.device_name,
-                UNREACHABLE_PROBE_INTERVAL.as_secs()
-            );
+            warn!("{}", unreachable_warning(&self.device_name, timeouts));
         }
     }
 
@@ -534,7 +529,12 @@ impl Worker {
     ///
     /// Only a timeout counts against the device's health. An `io::Error` coming back means the
     /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(&self, what: &dyn Display, make_request: F) -> Result<T>
+    async fn dispatch<T, F>(
+        &self,
+        verb: &'static str,
+        what: &dyn Display,
+        make_request: F,
+    ) -> Result<T>
     where
         F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
     {
@@ -564,6 +564,7 @@ impl Worker {
                 self.state.record_timeout(what);
                 Err(timed_out(
                     self.state.device_name(),
+                    verb,
                     what,
                     self.reply_timeout,
                 ))
@@ -581,7 +582,10 @@ impl Worker {
             return;
         };
         if self
-            .dispatch(&"install", |reply| Request::Install { paths, reply })
+            .dispatch("sending", &"install", |reply| Request::Install {
+                paths,
+                reply,
+            })
             .await
             .is_ok()
         {
@@ -685,11 +689,24 @@ fn worker_thread_name(device_name: &str) -> String {
     name
 }
 
-fn timed_out(device_name: &str, what: &dyn Display, budget: Duration) -> anyhow::Error {
+fn unreachable_warning(device_name: &str, timeouts: u8) -> String {
+    format!(
+        "Device {device_name} stopped answering after {timeouts} timed out requests. Its readings \
+         and fan control are suspended; retrying every {} seconds.",
+        UNREACHABLE_PROBE_INTERVAL.as_secs()
+    )
+}
+
+fn timed_out(
+    device_name: &str,
+    verb: &'static str,
+    what: &dyn Display,
+    budget: Duration,
+) -> anyhow::Error {
     Error::new(
         ErrorKind::TimedOut,
         format!(
-            "device {device_name} did not answer within {} ms reading {what}",
+            "device {device_name} did not answer within {} ms {verb} {what}",
             budget.as_millis()
         ),
     )
@@ -736,7 +753,7 @@ mod tests {
             let second = dir.path().join("temp2_input");
             std::fs::write(&first, "41000\n").unwrap();
             std::fs::write(&second, "52000\n").unwrap();
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.install_registry(vec![first, second]).await.unwrap();
             let slots = [0, 1];
             assert_eq!(
@@ -867,9 +884,11 @@ mod tests {
         assert!(state.dispatchable());
     }
 
-    /// Short enough that a wedge test finishes quickly, long enough that a real worker on a busy
-    /// build machine answers well inside it.
+    /// Short so a wedge test, which always waits it out, finishes quickly.
     const TEST_TIMEOUT: Duration = Duration::from_millis(80);
+
+    /// For real workers, which must never time out. A loaded CI runner can miss 80 ms.
+    const WORKER_TIMEOUT: Duration = Duration::from_secs(10);
 
     fn worker_of(io: &DeviceIo) -> &Rc<Worker> {
         match io {
@@ -892,7 +911,7 @@ mod tests {
             std::fs::write(&good, "41000\n").unwrap();
             std::fs::write(&other, "52000\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.install_registry(vec![good.clone(), absent.clone(), other.clone()])
                 .await
                 .unwrap();
@@ -971,7 +990,7 @@ mod tests {
                 .await
                 .unwrap();
             let inline = inline_io.read_many(&[0, 1]).await;
-            let threaded_io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let threaded_io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             threaded_io
                 .install_registry(vec![good, absent])
                 .await
@@ -1035,7 +1054,7 @@ mod tests {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("fan1_input");
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
 
             for expected in ["1200", "0", "2400"] {
                 std::fs::write(&path, format!("{expected}\n")).unwrap();
@@ -1056,7 +1075,7 @@ mod tests {
             let path = dir.path().join("pwm1");
             std::fs::write(&path, "0\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.write_value(&path, b"128".to_vec()).await.unwrap();
 
             let written = std::fs::read_to_string(&path).unwrap();
@@ -1073,7 +1092,7 @@ mod tests {
     fn an_io_error_does_not_count_against_health() {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
 
             let result = io.read_value(&dir.path().join("absent_input")).await;
             assert!(result.is_err());
@@ -1114,6 +1133,38 @@ mod tests {
         });
     }
 
+    /// Goal: writes and control requests count toward the threshold too, so the warning must not
+    /// call every timeout a read. Method: render the warning and check its wording.
+    #[test]
+    fn the_unreachable_warning_counts_requests_not_reads() {
+        let warning = unreachable_warning("gpu0", UNREACHABLE_AFTER_TIMEOUTS);
+        assert!(
+            warning.contains(&format!("{UNREACHABLE_AFTER_TIMEOUTS} timed out requests")),
+            "got: {warning}"
+        );
+        assert!(warning.contains("reads").not(), "got: {warning}");
+    }
+
+    /// Goal: a timeout message must name the operation that stalled, so a wedged fan write is not
+    /// reported as a read. Method: time out a read and a write and check each message's verb.
+    #[test]
+    fn a_timeout_names_the_operation_that_stalled() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let path = Path::new("/sys/class/hwmon/hwmon0/pwm1");
+
+            let read = io.read_value(path).await.unwrap_err().to_string();
+            assert!(read.contains("ms reading /sys"), "got: {read}");
+
+            let write = io
+                .write_value(path, b"128".to_vec())
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(write.contains("ms writing /sys"), "got: {write}");
+        });
+    }
+
     /// Goal: a device that stays wedged must leave the per-tick rotation, or every tick pays a
     /// full timeout to learn what the last one already knew, and the queue grows without bound.
     /// Method: time out exactly the threshold number of times, then assert the next dispatch is
@@ -1135,18 +1186,13 @@ mod tests {
             );
             assert!(io.is_unreachable());
 
-            // The gate must be cheap: no dispatch, no timeout, no queue growth.
-            let started = Instant::now();
+            // Only the gate returns HostUnreachable, and it does so before dispatching, so this
+            // proves no timeout was paid without an upper-bound timing check.
             let result = io.read_value(path).await;
-            let elapsed = started.elapsed();
             assert!(result.is_err());
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::HostUnreachable);
-            assert!(
-                elapsed < TEST_TIMEOUT,
-                "gate took {elapsed:?}, so it dispatched"
-            );
         });
     }
 
@@ -1182,7 +1228,7 @@ mod tests {
             let path = dir.path().join("temp1_input");
             std::fs::write(&path, "41000\n").unwrap();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             let worker = worker_of(&io);
             worker
                 .state
@@ -1235,20 +1281,16 @@ mod tests {
             let (io, rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             drop(rx);
 
-            let started = Instant::now();
             let result = io
                 .read_value(Path::new("/sys/class/hwmon/hwmon0/temp1_input"))
                 .await;
-            let elapsed = started.elapsed();
 
+            // Waiting out the budget would have returned TimedOut, so BrokenPipe proves it did
+            // not wait, without an upper-bound timing check.
             assert!(result.is_err());
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::BrokenPipe);
-            assert!(
-                elapsed < TEST_TIMEOUT,
-                "took {elapsed:?}, so it waited on a dead worker"
-            );
         });
     }
 
@@ -1260,7 +1302,7 @@ mod tests {
         crate::rt::test_runtime(async {
             DeviceIo::default().clear_descriptors();
 
-            let io = DeviceIo::threaded("testdev", TEST_TIMEOUT).unwrap();
+            let io = DeviceIo::threaded("testdev", WORKER_TIMEOUT).unwrap();
             io.clear_descriptors();
             assert_eq!(io.health(), DeviceHealth::Healthy);
 
