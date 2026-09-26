@@ -70,6 +70,7 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
+use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
 use log::{debug, info, warn, Level};
 use moro_local::Scope;
@@ -427,8 +428,7 @@ async fn create_api_server(
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        connection::server(listener.into_std()?)?
-            .acceptor(acceptor)
+        connection::server(listener.into_std()?, acceptor)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -443,7 +443,7 @@ async fn create_api_server(
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        connection::server(listener.into_std()?)?
+        connection::server(listener.into_std()?, DefaultAcceptor::new())?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
