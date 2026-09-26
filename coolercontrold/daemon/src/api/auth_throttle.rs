@@ -360,12 +360,14 @@ pub async fn password_throttle_middleware(request: Request, next: Next) -> Respo
 }
 
 /// Everything a password attempt is charged to: its peer's budget, and the remote breaker
-/// unless it comes from this host.
+/// unless it comes from this host or from a key that recently proved the password.
 #[derive(Debug)]
 #[must_use]
 pub struct PasswordAdmission<'a> {
     attempt: Attempt<'a>,
+    breaker: &'a RemoteBreaker,
     breaker_charge: Option<BreakerCharge<'a>>,
+    peer: PeerKey,
 }
 
 impl<'a> PasswordAdmission<'a> {
@@ -379,16 +381,20 @@ impl<'a> PasswordAdmission<'a> {
         now: Instant,
     ) -> Result<Self, Duration> {
         let attempt = throttle.admit(peer, now)?;
-        if peer == PeerKey::Loopback {
+        if Self::skips_breaker(breaker, peer, now) {
             return Ok(Self {
                 attempt,
+                breaker,
                 breaker_charge: None,
+                peer,
             });
         }
         match breaker.admit(now) {
             Ok(charge) => Ok(Self {
                 attempt,
+                breaker,
                 breaker_charge: Some(charge),
+                peer,
             }),
             Err(remaining) => {
                 attempt.settle(None, now);
@@ -397,10 +403,25 @@ impl<'a> PasswordAdmission<'a> {
         }
     }
 
+    /// Loopback never enters the breaker, and a known-good key bypasses it.
+    fn skips_breaker(breaker: &RemoteBreaker, peer: PeerKey, now: Instant) -> bool {
+        if peer == PeerKey::Loopback {
+            return true;
+        }
+        breaker.is_known_good(peer, now)
+    }
+
+    /// A remote success also makes its key known-good.
     pub fn settle(self, outcome: Option<CredentialOutcome>, now: Instant) {
         self.attempt.settle(outcome, now);
         if let Some(charge) = self.breaker_charge {
             charge.settle(outcome);
+        }
+        if outcome == Some(CredentialOutcome::Accepted) {
+            // Loopback is always exempt, so it has nothing to be remembered for.
+            if self.peer != PeerKey::Loopback {
+                self.breaker.remember(self.peer, now);
+            }
         }
     }
 }
@@ -1079,6 +1100,53 @@ mod tests {
         trip(&throttle, &breaker, now);
         assert!(PasswordAdmission::admit(&throttle, &breaker, PeerKey::Loopback, now).is_ok());
         assert!(PasswordAdmission::admit(&throttle, &breaker, peer(200), now).is_err());
+    }
+
+    /// Goal: a remote key that proved the password is admitted while the breaker is
+    /// tripped, and a key that never did is not.
+    #[test]
+    fn known_good_key_is_admitted_while_the_breaker_is_tripped() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        PasswordAdmission::admit(&throttle, &breaker, peer(7), now)
+            .unwrap()
+            .settle(Some(CredentialOutcome::Accepted), now);
+        trip(&throttle, &breaker, now);
+        assert!(PasswordAdmission::admit(&throttle, &breaker, peer(7), now).is_ok());
+        assert!(PasswordAdmission::admit(&throttle, &breaker, peer(8), now).is_err());
+    }
+
+    /// Goal: only a password success makes a key known-good. A rejection or a non-verdict
+    /// does not, and loopback is never recorded since it never needs to be.
+    #[test]
+    fn only_a_remote_password_success_is_remembered() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        for (octet, outcome) in [(1, Some(CredentialOutcome::Rejected)), (2, None)] {
+            PasswordAdmission::admit(&throttle, &breaker, peer(octet), now)
+                .unwrap()
+                .settle(outcome, now);
+            assert!(breaker.is_known_good(peer(octet), now).not());
+        }
+        PasswordAdmission::admit(&throttle, &breaker, PeerKey::Loopback, now)
+            .unwrap()
+            .settle(Some(CredentialOutcome::Accepted), now);
+        assert!(breaker.is_known_good(PeerKey::Loopback, now).not());
+    }
+
+    /// Goal: a valid bearer token never makes its key known-good: tokens can belong to less
+    /// trusted clients than the admin. Method: a token success through the real middleware.
+    #[tokio::test]
+    async fn token_success_is_not_remembered() {
+        let peer = wired_peer(15);
+        assert_eq!(
+            call("GET", "/token-ok", Some("Bearer cc_x"), peer).await,
+            StatusCode::OK
+        );
+        let key = PeerKey::from_ip(peer.ip());
+        assert!(REMOTE_BREAKER.is_known_good(key, Instant::now()).not());
     }
 
     /// Goal: a breaker refusal does not count against the refused peer's own budget, since

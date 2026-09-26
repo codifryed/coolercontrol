@@ -1,22 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The remote password breaker: a backstop against guessing spread across many peers.
-//!
-//! The per-peer budget bounds each key, but an attacker holding many addresses gets a fresh
-//! budget per address. This caps password attempts from every remote peer together:
-//! - Its threshold sits well above what one throttled key can reach in a window, so
-//!   tripping it takes a distributed attack. One peer can no longer lock everyone out.
-//! - Loopback never enters it, so the local admin can always log in.
-//! - A success never resets it: the admin logging in must not reopen the gate mid-attack.
-//! - Tokens never touch it. They carry 122 random bits and cost a hash to check.
-//!
-//! Attempts are charged on arrival, as in the per-peer budget, so a burst of concurrent
-//! attempts cannot overshoot the threshold. That also bounds the hashes queued behind the
-//! auth actor at about `THRESHOLD` x 8 ms.
+//! The remote password breaker: caps password attempts from all remote peers together,
+//! against guessing spread across many addresses. Its threshold is well above one throttled
+//! key's reach, so only a distributed attack trips it. Loopback and recently proven keys
+//! bypass it, so the admin can still log in; tokens, 122 random bits, never touch it.
 
 use crate::api::auth_throttle::{self, CredentialOutcome};
+use crate::api::peer::PeerKey;
 use log::warn;
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -31,6 +24,15 @@ const _: () = assert!(THRESHOLD >= 4 * SINGLE_KEY_MAX_ATTEMPTS_PER_WINDOW);
 // A cooldown outlasts the window that tripped it, so the breaker reopens on a clean count.
 const _: () = assert!(COOLDOWN.as_secs() >= WINDOW.as_secs());
 
+/// Remote keys remembered after a password success. Bounded so the map cannot grow with
+/// traffic; only a correct password adds to it, so an attacker cannot fill it.
+const KNOWN_GOOD_CAPACITY: usize = 32;
+/// Session cookies last a year, so a fresh login is rare. A month covers the admin's
+/// usual networks without keeping a key that has since changed hands.
+const KNOWN_GOOD_TTL: Duration = Duration::from_hours(30 * 24);
+
+const _: () = assert!(KNOWN_GOOD_CAPACITY > 0);
+
 #[derive(Debug)]
 struct BreakerState {
     /// Start of the current counting window, `None` before the first attempt.
@@ -38,9 +40,13 @@ struct BreakerState {
     /// Attempts charged in the current window: failures, plus attempts still in flight.
     charged: u32,
     tripped_until: Option<Instant>,
+    /// Each known-good key and when it last proved the password. In memory only: a
+    /// restart forgets them, which only costs a remote admin a wait during an attack.
+    known_good: HashMap<PeerKey, Instant>,
 }
 
-/// Invariant: `charged` never exceeds `THRESHOLD`. The breaker trips instead of charging.
+/// Invariants: `charged` never exceeds `THRESHOLD`, as the breaker trips instead of
+/// charging, and `known_good` never holds more than `KNOWN_GOOD_CAPACITY` keys.
 #[derive(Debug)]
 pub struct RemoteBreaker {
     state: Mutex<BreakerState>,
@@ -53,12 +59,14 @@ impl RemoteBreaker {
                 window_start: None,
                 charged: 0,
                 tripped_until: None,
+                known_good: HashMap::with_capacity(KNOWN_GOOD_CAPACITY + 1),
             }),
         }
     }
 
     /// Charges a remote password attempt, or refuses it with the cooldown remaining.
-    /// In-flight attempts count toward the trip, so a concurrent burst trips it too.
+    /// Charged on arrival, so a concurrent burst trips it rather than overshooting, which
+    /// also bounds the hashes queued behind the auth actor.
     pub fn admit(&self, now: Instant) -> Result<BreakerCharge<'_>, Duration> {
         let mut state = self.lock();
         if let Some(remaining) = state.tripped_for(now) {
@@ -81,6 +89,40 @@ impl RemoteBreaker {
             COOLDOWN.as_secs() / 60
         );
         Err(COOLDOWN)
+    }
+
+    /// Whether `peer` proved the password recently enough to bypass the breaker.
+    pub fn is_known_good(&self, peer: PeerKey, now: Instant) -> bool {
+        self.lock()
+            .known_good
+            .get(&peer)
+            .is_some_and(|proved_at| now.duration_since(*proved_at) < KNOWN_GOOD_TTL)
+    }
+
+    /// Remembers a remote key that just proved the password. Expired keys go first, then
+    /// the least recently proven if the set is still full.
+    pub fn remember(&self, peer: PeerKey, now: Instant) {
+        debug_assert!(
+            peer != PeerKey::Loopback,
+            "loopback never enters the breaker"
+        );
+        let mut state = self.lock();
+        let known_good = &mut state.known_good;
+        known_good.insert(peer, now);
+        if known_good.len() > KNOWN_GOOD_CAPACITY {
+            known_good.retain(|_, proved_at| now.duration_since(*proved_at) < KNOWN_GOOD_TTL);
+        }
+        while known_good.len() > KNOWN_GOOD_CAPACITY {
+            let Some(oldest) = known_good
+                .iter()
+                .min_by_key(|(_, proved_at)| **proved_at)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            known_good.remove(&oldest);
+        }
+        assert!(known_good.len() <= KNOWN_GOOD_CAPACITY);
     }
 
     /// Takes back one charge. A charge from a window that has since rolled over is gone
@@ -140,7 +182,7 @@ pub struct BreakerCharge<'a> {
 
 impl BreakerCharge<'_> {
     /// A rejection keeps the charge. A success or a non-verdict gives back only this
-    /// attempt's own charge, never anyone else's.
+    /// attempt's own charge, never anyone else's: an admin login must not reopen the gate.
     pub fn settle(self, outcome: Option<CredentialOutcome>) {
         match outcome {
             Some(CredentialOutcome::Rejected) => {}
@@ -152,6 +194,7 @@ impl BreakerCharge<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     fn fail(breaker: &RemoteBreaker, times: u32, now: Instant) {
         for _ in 0..times {
@@ -255,6 +298,50 @@ mod tests {
         fail(&breaker, 3, later);
         old.settle(None);
         assert_eq!(breaker.lock().charged, 3);
+    }
+
+    fn remote(last_octet: u8) -> PeerKey {
+        PeerKey::from_ip(std::net::IpAddr::from([192, 0, 2, last_octet]))
+    }
+
+    /// Goal: a key is known-good after proving the password, and only until its entry
+    /// expires. Unknown keys never are.
+    #[test]
+    fn known_good_lasts_for_its_ttl() {
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        assert!(breaker.is_known_good(remote(1), now).not());
+        breaker.remember(remote(1), now);
+        assert!(breaker.is_known_good(remote(1), now + KNOWN_GOOD_TTL - Duration::from_secs(1)));
+        assert!(breaker.is_known_good(remote(1), now + KNOWN_GOOD_TTL).not());
+        assert!(breaker.is_known_good(remote(2), now).not());
+    }
+
+    /// Goal: the set stays bounded however many keys prove the password, and eviction takes
+    /// the least recently proven key, never the one just added.
+    #[test]
+    fn known_good_stays_bounded() {
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        for index in 0..100_u8 {
+            breaker.remember(remote(index), now + Duration::from_secs(u64::from(index)));
+        }
+        let last = now + Duration::from_secs(99);
+        assert!(breaker.lock().known_good.len() <= KNOWN_GOOD_CAPACITY);
+        assert!(breaker.is_known_good(remote(99), last));
+        assert!(breaker.is_known_good(remote(0), last).not());
+    }
+
+    /// Goal: proving the password again refreshes a key's entry rather than adding one.
+    #[test]
+    fn remembering_again_refreshes() {
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        breaker.remember(remote(1), now);
+        let later = now + KNOWN_GOOD_TTL - Duration::from_secs(1);
+        breaker.remember(remote(1), later);
+        assert!(breaker.is_known_good(remote(1), later + Duration::from_secs(60)));
+        assert_eq!(breaker.lock().known_good.len(), 1);
     }
 
     /// Goal: a poisoned lock degrades to "breaker still works".
