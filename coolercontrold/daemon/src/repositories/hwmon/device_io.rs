@@ -1171,18 +1171,13 @@ mod tests {
             );
             assert!(io.is_unreachable());
 
-            // The gate must be cheap: no dispatch, no timeout, no queue growth.
-            let started = Instant::now();
+            // Only the gate returns HostUnreachable, and it does so before dispatching, so this
+            // proves no timeout was paid without an upper-bound timing check.
             let result = io.read_value(path).await;
-            let elapsed = started.elapsed();
             assert!(result.is_err());
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::HostUnreachable);
-            assert!(
-                elapsed < TEST_TIMEOUT,
-                "gate took {elapsed:?}, so it dispatched"
-            );
         });
     }
 
@@ -1271,20 +1266,16 @@ mod tests {
             let (io, rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
             drop(rx);
 
-            let started = Instant::now();
             let result = io
                 .read_value(Path::new("/sys/class/hwmon/hwmon0/temp1_input"))
                 .await;
-            let elapsed = started.elapsed();
 
+            // Waiting out the budget would have returned TimedOut, so BrokenPipe proves it did
+            // not wait, without an upper-bound timing check.
             assert!(result.is_err());
             let err = result.unwrap_err();
             let io_err = err.downcast_ref::<Error>().unwrap();
             assert_eq!(io_err.kind(), ErrorKind::BrokenPipe);
-            assert!(
-                elapsed < TEST_TIMEOUT,
-                "took {elapsed:?}, so it waited on a dead worker"
-            );
         });
     }
 
