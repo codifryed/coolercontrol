@@ -180,6 +180,7 @@ nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "signal",
   "process",
+  "resource",
   "sched",
   "net",
 ] }
