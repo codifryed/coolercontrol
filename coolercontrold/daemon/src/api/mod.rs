@@ -4,6 +4,7 @@
 pub mod actor;
 mod alerts;
 mod auth;
+mod auth_breaker;
 mod auth_throttle;
 mod base;
 mod calibration;

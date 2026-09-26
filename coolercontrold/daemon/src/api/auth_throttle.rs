@@ -27,6 +27,7 @@
 //! password routes are the exception: their handlers adjudicate the password themselves,
 //! so their status is the verdict.
 
+use crate::api::auth_breaker::{BreakerCharge, RemoteBreaker};
 use crate::api::peer::PeerKey;
 use crate::api::CCError;
 use axum::extract::{ConnectInfo, Request};
@@ -51,6 +52,8 @@ const ENTRY_TTL: Duration = Duration::from_mins(15);
 const MAX_TRACKED_PEERS: usize = 1024;
 
 const _: () = assert!(FAILURE_THRESHOLD > 0);
+// `max_attempts_within` terminates only if each backoff past the threshold advances time.
+const _: () = assert!(BASE_BACKOFF.as_nanos() > 0);
 const _: () = assert!(MAX_TRACKED_PEERS > 0);
 
 /// Process-wide throttles. The daemon presents one authentication surface no matter how
@@ -64,6 +67,7 @@ const _: () = assert!(MAX_TRACKED_PEERS > 0);
 /// a queue in front of the very path the throttle exists to keep cheap.
 static TOKEN_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 static PASSWORD_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
+static REMOTE_BREAKER: LazyLock<RemoteBreaker> = LazyLock::new(RemoteBreaker::new);
 
 #[derive(Debug)]
 struct PeerFailures {
@@ -233,17 +237,42 @@ impl Attempt<'_> {
 }
 
 /// Backoff owed after `count` consecutive failures, or `None` while under the threshold.
-/// Doubles per failure past the threshold and saturates at `MAX_BACKOFF`.
-fn backoff_for(count: u32) -> Option<Duration> {
-    let over_threshold = count.checked_sub(FAILURE_THRESHOLD)?;
+/// Doubles per failure past the threshold and saturates at `MAX_BACKOFF`. `const` so the
+/// breaker can size its threshold against it at compile time.
+const fn backoff_for(count: u32) -> Option<Duration> {
+    let Some(over_threshold) = count.checked_sub(FAILURE_THRESHOLD) else {
+        return None;
+    };
     if over_threshold == 0 {
         return None;
     }
     // Cap the shift before it can overflow the multiplier. `MAX_BACKOFF` clamps the
     // result long before the cap is reachable in practice.
-    let shift = (over_threshold - 1).min(u32::BITS - 1);
+    let shift = if over_threshold - 1 < u32::BITS - 1 {
+        over_threshold - 1
+    } else {
+        u32::BITS - 1
+    };
     let backoff = BASE_BACKOFF.saturating_mul(1_u32 << shift);
-    Some(backoff.min(MAX_BACKOFF))
+    if backoff.as_nanos() < MAX_BACKOFF.as_nanos() {
+        Some(backoff)
+    } else {
+        Some(MAX_BACKOFF)
+    }
+}
+
+/// The most rejected attempts one key fits in `window`, retrying the moment each backoff
+/// lapses. Bounded: past the threshold every attempt adds at least `BASE_BACKOFF`.
+pub const fn max_attempts_within(window: Duration) -> u32 {
+    let mut elapsed = Duration::ZERO;
+    let mut attempts = 0_u32;
+    while elapsed.as_nanos() < window.as_nanos() {
+        attempts += 1;
+        if let Some(backoff) = backoff_for(attempts) {
+            elapsed = elapsed.saturating_add(backoff);
+        }
+    }
+    attempts
 }
 
 /// The peer as the kernel reports its address, keyed by network. See `PeerKey`.
@@ -320,13 +349,60 @@ pub async fn password_throttle_middleware(request: Request, next: Next) -> Respo
     let Some(peer) = peer_key(&request) else {
         return next.run(request).await;
     };
-    let attempt = match PASSWORD_THROTTLE.admit(peer, Instant::now()) {
-        Ok(attempt) => attempt,
-        Err(remaining) => return too_many_attempts(remaining),
-    };
+    let admission =
+        match PasswordAdmission::admit(&PASSWORD_THROTTLE, &REMOTE_BREAKER, peer, Instant::now()) {
+            Ok(admission) => admission,
+            Err(remaining) => return too_many_attempts(remaining),
+        };
     let response = next.run(request).await;
-    attempt.settle(outcome_for(response.status()), Instant::now());
+    admission.settle(outcome_for(response.status()), Instant::now());
     response
+}
+
+/// Everything a password attempt is charged to: its peer's budget, and the remote breaker
+/// unless it comes from this host.
+#[derive(Debug)]
+#[must_use]
+pub struct PasswordAdmission<'a> {
+    attempt: Attempt<'a>,
+    breaker_charge: Option<BreakerCharge<'a>>,
+}
+
+impl<'a> PasswordAdmission<'a> {
+    /// The peer's own budget is checked first, so a peer already in backoff is turned
+    /// away without spending the breaker. A breaker refusal reaches no verdict, so it
+    /// refunds the peer's charge rather than counting against the peer.
+    pub fn admit(
+        throttle: &'a AuthThrottle,
+        breaker: &'a RemoteBreaker,
+        peer: PeerKey,
+        now: Instant,
+    ) -> Result<Self, Duration> {
+        let attempt = throttle.admit(peer, now)?;
+        if peer == PeerKey::Loopback {
+            return Ok(Self {
+                attempt,
+                breaker_charge: None,
+            });
+        }
+        match breaker.admit(now) {
+            Ok(charge) => Ok(Self {
+                attempt,
+                breaker_charge: Some(charge),
+            }),
+            Err(remaining) => {
+                attempt.settle(None, now);
+                Err(remaining)
+            }
+        }
+    }
+
+    pub fn settle(self, outcome: Option<CredentialOutcome>, now: Instant) {
+        self.attempt.settle(outcome, now);
+        if let Some(charge) = self.breaker_charge {
+            charge.settle(outcome);
+        }
+    }
 }
 
 /// Rejects peers in token backoff before validation runs, then records the verdict the
@@ -376,6 +452,7 @@ fn too_many_attempts(remaining: Duration) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::auth_breaker;
     use std::net::IpAddr;
 
     /// TEST-NET-1 addresses: distinct keys, unlike 127/8, which is all one loopback key.
@@ -458,7 +535,9 @@ mod tests {
             .layer(from_fn(token_throttle_middleware))
     }
 
-    /// The statics are process-wide, so each wiring test owns one TEST-NET-2 address.
+    /// The statics are process-wide, so each wiring test owns one TEST-NET-2 address. The
+    /// remote breaker is shared too: wiring tests together must stay well under its
+    /// threshold, or they would start refusing each other.
     fn wired_peer(last_octet: u8) -> SocketAddr {
         SocketAddr::from(([198, 51, 100, last_octet], 40000))
     }
@@ -952,6 +1031,89 @@ mod tests {
             refused,
             10 - usize::try_from(FAILURE_THRESHOLD + 1).unwrap()
         );
+    }
+
+    /// Goal: `SINGLE_KEY_MAX_ATTEMPTS_PER_WINDOW` is what one key really reaches under this
+    /// backoff, so the breaker's threshold keeps a single attacker from tripping it.
+    /// Method: one key retries the moment each backoff lapses for a whole window, every
+    /// attempt rejected, charged to a breaker as the middleware charges it.
+    #[test]
+    fn one_key_through_its_backoff_never_trips_the_breaker() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let start = Instant::now();
+        let mut now = start;
+        let mut attempts = 0_u32;
+        while now.duration_since(start) < auth_breaker::WINDOW {
+            match PasswordAdmission::admit(&throttle, &breaker, peer(1), now) {
+                Ok(admission) => {
+                    admission.settle(Some(CredentialOutcome::Rejected), now);
+                    attempts += 1;
+                }
+                Err(remaining) => now += remaining,
+            }
+        }
+        assert_eq!(attempts, auth_breaker::SINGLE_KEY_MAX_ATTEMPTS_PER_WINDOW);
+        assert!(breaker.admit(now).is_ok());
+    }
+
+    /// Admissions from distinct remote keys until the breaker refuses one.
+    fn trip(throttle: &AuthThrottle, breaker: &RemoteBreaker, now: Instant) {
+        for index in 0..1000 {
+            let admitted = PasswordAdmission::admit(throttle, breaker, key_for(index + 1), now);
+            match admitted {
+                Ok(admission) => admission.settle(Some(CredentialOutcome::Rejected), now),
+                Err(_) => return,
+            }
+        }
+        panic!("the breaker never tripped");
+    }
+
+    /// Goal: while the breaker is tripped, this host can still log in and a fresh remote
+    /// key cannot.
+    #[test]
+    fn loopback_is_admitted_while_the_breaker_is_tripped() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        trip(&throttle, &breaker, now);
+        assert!(PasswordAdmission::admit(&throttle, &breaker, PeerKey::Loopback, now).is_ok());
+        assert!(PasswordAdmission::admit(&throttle, &breaker, peer(200), now).is_err());
+    }
+
+    /// Goal: a breaker refusal does not count against the refused peer's own budget, since
+    /// no password was checked.
+    #[test]
+    fn breaker_refusal_refunds_the_peer() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        trip(&throttle, &breaker, now);
+        for _ in 0..(FAILURE_THRESHOLD * 2) {
+            assert!(PasswordAdmission::admit(&throttle, &breaker, peer(200), now).is_err());
+        }
+        assert!(throttle.lock().get(&peer(200)).is_none());
+    }
+
+    /// Goal: a peer already in its own backoff is refused before it reaches the breaker,
+    /// so it cannot spend the shared budget.
+    #[test]
+    fn peer_backoff_is_checked_before_the_breaker() {
+        let throttle = AuthThrottle::new();
+        let breaker = RemoteBreaker::new();
+        let now = Instant::now();
+        for _ in 0..=FAILURE_THRESHOLD {
+            PasswordAdmission::admit(&throttle, &breaker, peer(1), now)
+                .unwrap()
+                .settle(Some(CredentialOutcome::Rejected), now);
+        }
+        for _ in 0..100 {
+            assert!(PasswordAdmission::admit(&throttle, &breaker, peer(1), now).is_err());
+        }
+        for index in 0..(auth_breaker::THRESHOLD - FAILURE_THRESHOLD - 1) {
+            let key = key_for(usize::try_from(index).unwrap() + 1);
+            assert!(PasswordAdmission::admit(&throttle, &breaker, key, now).is_ok());
+        }
     }
 
     /// Goal: a poisoned mutex degrades to "throttle still works" rather than taking
