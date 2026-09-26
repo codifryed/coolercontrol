@@ -210,6 +210,8 @@ serial_test = "=3.5"
 tokio = { version = "1.53", default-features = false, features = ["test-util"] }
 
 [build-dependencies]
+# Gzips the embedded UI at build time. Already in the tree through tower-http.
+flate2 = "1.1"
 tonic-prost-build = "0.14.6"
 tonic-build = "0.14.6"
 # Pure-Rust protobuf compiler: drops the protoc binary as a system build dependency. Pinned to 0.9.1
