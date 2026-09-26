@@ -452,12 +452,7 @@ impl HealthState {
             .set(Some(Instant::now() + UNREACHABLE_PROBE_INTERVAL));
         // Once, on the way in. A device that stays wedged must not log every probe.
         if was_unreachable.not() {
-            warn!(
-                "Device {} stopped answering after {timeouts} timed out reads. Its readings and \
-                 fan control are suspended; retrying every {} seconds.",
-                self.device_name,
-                UNREACHABLE_PROBE_INTERVAL.as_secs()
-            );
+            warn!("{}", unreachable_warning(&self.device_name, timeouts));
         }
     }
 
@@ -692,6 +687,14 @@ fn worker_thread_name(device_name: &str) -> String {
     debug_assert!(name.len() <= NAME_MAX_BYTES);
     debug_assert!(name.starts_with(PREFIX));
     name
+}
+
+fn unreachable_warning(device_name: &str, timeouts: u8) -> String {
+    format!(
+        "Device {device_name} stopped answering after {timeouts} timed out requests. Its readings \
+         and fan control are suspended; retrying every {} seconds.",
+        UNREACHABLE_PROBE_INTERVAL.as_secs()
+    )
 }
 
 fn timed_out(
@@ -1128,6 +1131,18 @@ mod tests {
                 }
             );
         });
+    }
+
+    /// Goal: writes and control requests count toward the threshold too, so the warning must not
+    /// call every timeout a read. Method: render the warning and check its wording.
+    #[test]
+    fn the_unreachable_warning_counts_requests_not_reads() {
+        let warning = unreachable_warning("gpu0", UNREACHABLE_AFTER_TIMEOUTS);
+        assert!(
+            warning.contains(&format!("{UNREACHABLE_AFTER_TIMEOUTS} timed out requests")),
+            "got: {warning}"
+        );
+        assert!(warning.contains("reads").not(), "got: {warning}");
     }
 
     /// Goal: a timeout message must name the operation that stalled, so a wedged fan write is not
