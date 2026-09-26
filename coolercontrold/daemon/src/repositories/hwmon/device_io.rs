@@ -167,7 +167,7 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::read_sysfs_value(path).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(&path.display(), |reply| Request::Read {
+                    .dispatch("reading", &path.display(), |reply| Request::Read {
                         path: path.to_path_buf(),
                         reply,
                     })
@@ -261,7 +261,7 @@ impl DeviceIo {
                 let batch = indices.to_vec();
                 let expected = batch.len();
                 let dispatched = worker
-                    .dispatch(&BatchLabel(indices[0], expected), |reply| {
+                    .dispatch("reading", &BatchLabel(indices[0], expected), |reply| {
                         Request::ReadMany {
                             indices: batch,
                             reply,
@@ -294,7 +294,7 @@ impl DeviceIo {
             Self::Inline(_) => cc_fs::write(path, data).await,
             Self::Threaded(worker) => {
                 worker
-                    .dispatch(&path.display(), |reply| Request::Write {
+                    .dispatch("writing", &path.display(), |reply| Request::Write {
                         path: path.to_path_buf(),
                         data,
                         reply,
@@ -371,8 +371,8 @@ impl DeviceIo {
         match self {
             Self::Inline(fds) => fds.len(),
             Self::Threaded(worker) => worker
-                .dispatch(&"descriptor-count", |reply| Request::DescriptorCount {
-                    reply,
+                .dispatch("sending", &"descriptor-count", |reply| {
+                    Request::DescriptorCount { reply }
                 })
                 .await
                 .unwrap_or_default(),
@@ -534,7 +534,12 @@ impl Worker {
     ///
     /// Only a timeout counts against the device's health. An `io::Error` coming back means the
     /// device answered and the answer was an error, which says nothing about whether it is wedged.
-    async fn dispatch<T, F>(&self, what: &dyn Display, make_request: F) -> Result<T>
+    async fn dispatch<T, F>(
+        &self,
+        verb: &'static str,
+        what: &dyn Display,
+        make_request: F,
+    ) -> Result<T>
     where
         F: FnOnce(oneshot::Sender<Result<T>>) -> Request,
     {
@@ -564,6 +569,7 @@ impl Worker {
                 self.state.record_timeout(what);
                 Err(timed_out(
                     self.state.device_name(),
+                    verb,
                     what,
                     self.reply_timeout,
                 ))
@@ -581,7 +587,10 @@ impl Worker {
             return;
         };
         if self
-            .dispatch(&"install", |reply| Request::Install { paths, reply })
+            .dispatch("sending", &"install", |reply| Request::Install {
+                paths,
+                reply,
+            })
             .await
             .is_ok()
         {
@@ -685,11 +694,16 @@ fn worker_thread_name(device_name: &str) -> String {
     name
 }
 
-fn timed_out(device_name: &str, what: &dyn Display, budget: Duration) -> anyhow::Error {
+fn timed_out(
+    device_name: &str,
+    verb: &'static str,
+    what: &dyn Display,
+    budget: Duration,
+) -> anyhow::Error {
     Error::new(
         ErrorKind::TimedOut,
         format!(
-            "device {device_name} did not answer within {} ms reading {what}",
+            "device {device_name} did not answer within {} ms {verb} {what}",
             budget.as_millis()
         ),
     )
@@ -1113,6 +1127,26 @@ mod tests {
                     consecutive_timeouts: 1
                 }
             );
+        });
+    }
+
+    /// Goal: a timeout message must name the operation that stalled, so a wedged fan write is not
+    /// reported as a read. Method: time out a read and a write and check each message's verb.
+    #[test]
+    fn a_timeout_names_the_operation_that_stalled() {
+        crate::rt::test_runtime(async {
+            let (io, _rx) = DeviceIo::wedged_for_test(TEST_TIMEOUT);
+            let path = Path::new("/sys/class/hwmon/hwmon0/pwm1");
+
+            let read = io.read_value(path).await.unwrap_err().to_string();
+            assert!(read.contains("ms reading /sys"), "got: {read}");
+
+            let write = io
+                .write_value(path, b"128".to_vec())
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(write.contains("ms writing /sys"), "got: {write}");
         });
     }
 
