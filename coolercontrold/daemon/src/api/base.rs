@@ -92,6 +92,14 @@ impl CachePolicy {
     }
 }
 
+/// Marks a response from the embedded web app, so the API's compression layer leaves it alone.
+///
+/// The fallback is reachable without credentials, and its bundles run to megabytes. Compressing
+/// them per request would let any client spend the sidecar thread's CPU at will, while hashed
+/// bundles are cached for a year and the rest revalidate for free.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StaticAsset;
+
 /// Only the fallback service is layered with this, so API and SSE requests never reach it.
 /// Everything is classified up front: `path` borrows `request`, which the next layer consumes.
 async fn cache_control_middleware(request: Request, next: Next) -> axum::response::Response {
@@ -121,6 +129,7 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
         CachePolicy::Pinned => CACHE_PINNED,
     };
     headers.insert(CACHE_CONTROL, cache_value);
+    response.extensions_mut().insert(StaticAsset);
     response
 }
 
@@ -398,6 +407,30 @@ mod tests {
         assert!(
             response.headers().contains_key("last-modified"),
             "the metadata feature must stay enabled, or revalidation costs a full body"
+        );
+    }
+
+    // Goal: every file the fallback serves carries the `StaticAsset` marker, which is what keeps
+    // the API compression layer off it. Method: a route behind the same middleware.
+    #[tokio::test]
+    async fn test_static_responses_carry_the_marker() {
+        let app = Router::new()
+            .route("/assets/app-abc123.js", get(|| async { "x" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/app-abc123.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.extensions().get::<StaticAsset>(),
+            Some(&StaticAsset)
         );
     }
 

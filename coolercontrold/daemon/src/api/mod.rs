@@ -83,9 +83,9 @@ use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
+use tower_http::compression::predicate::{And, DefaultPredicate, Predicate};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors;
-use tower_http::decompression::DecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -141,11 +141,7 @@ pub async fn start_server<'s>(
     let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port);
 
     let settings = config.get_settings()?;
-    let compression_layers = if settings.compress {
-        Some((CompressionLayer::new(), DecompressionLayer::new()))
-    } else {
-        None
-    };
+    let compression_layer = settings.compress.then(api_compression_layer);
     let app_state = create_app_state(
         all_devices,
         repos,
@@ -213,7 +209,7 @@ pub async fn start_server<'s>(
             app_state,
             session_layer,
             expired_deletion_store,
-            compression_layers,
+            compression_layer,
             tls_config,
             cancel_token,
             cors_origins,
@@ -230,7 +226,7 @@ async fn run_all_api_servers(
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     expired_deletion_store: FileSessionStore,
-    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
+    compression_layer: Option<ApiCompressionLayer>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
@@ -252,7 +248,7 @@ async fn run_all_api_servers(
             ipv6,
             app_state.clone(),
             session_layer.clone(),
-            compression_layers.clone(),
+            compression_layer.clone(),
             tls_config.clone(),
             cancel_token.clone(),
             cors_origins.clone(),
@@ -267,7 +263,7 @@ async fn run_all_api_servers(
             ipv6,
             app_state,
             session_layer,
-            compression_layers,
+            compression_layer,
             tls_config,
             cancel_token.clone(),
             cors_origins,
@@ -364,7 +360,7 @@ async fn create_api_server(
     ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
-    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
+    compression_layer: Option<ApiCompressionLayer>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
@@ -383,7 +379,7 @@ async fn create_api_server(
     // Build the base router with all layers
     // Layers are processed bottom to top: (last is first in the chain)
     // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
-    let base_router = optional_layers(compression_layers, router)
+    let base_router = optional_layers(compression_layer, router)
         // Limits the size of the payload in bytes: (Max 50MB for image files)
         .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
         // 2MB is the default payload limit:
@@ -712,14 +708,30 @@ async fn create_app_state<'s>(
     }
 }
 
-fn optional_layers(
-    compression_layer: Option<(CompressionLayer, DecompressionLayer)>,
-    router: Router,
-) -> Router {
+fn optional_layers(compression_layer: Option<ApiCompressionLayer>, router: Router) -> Router {
     if let Some(layer) = compression_layer {
-        router.layer(layer.0).layer(layer.1)
+        router.layer(layer)
     } else {
         router
+    }
+}
+
+type ApiCompressionLayer = CompressionLayer<And<DefaultPredicate, NotStaticAsset>>;
+
+/// Response compression for everything except the embedded web app. See `base::StaticAsset`.
+fn api_compression_layer() -> ApiCompressionLayer {
+    CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotStaticAsset))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NotStaticAsset;
+
+impl Predicate for NotStaticAsset {
+    fn should_compress<B>(&self, response: &Response<B>) -> bool
+    where
+        B: axum::body::HttpBody,
+    {
+        response.extensions().get::<base::StaticAsset>().is_none()
     }
 }
 
@@ -1287,6 +1299,61 @@ pub struct AppState {
 mod tests {
     use super::*;
     use tower::ServiceExt as _;
+
+    /// A JSON body comfortably above the compression predicate's 32 byte floor.
+    fn large_json() -> Json<Vec<u32>> {
+        Json((0..256).collect())
+    }
+
+    fn compressed_app() -> Router {
+        let router = Router::new()
+            .route("/json", axum::routing::get(|| async { large_json() }))
+            .route(
+                "/static",
+                axum::routing::get(|| async { (Extension(base::StaticAsset), large_json()) }),
+            );
+        optional_layers(Some(api_compression_layer()), router)
+    }
+
+    async fn content_encoding(accept_encoding: Option<&str>, uri: &str) -> Option<String> {
+        let mut builder = Request::builder().uri(uri);
+        if let Some(value) = accept_encoding {
+            builder = builder.header(axum::http::header::ACCEPT_ENCODING, value);
+        }
+        let response = compressed_app()
+            .oneshot(builder.body(axum::body::Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        response
+            .headers()
+            .get(axum::http::header::CONTENT_ENCODING)
+            .map(|value| value.to_str().unwrap().to_string())
+    }
+
+    /// Goal: a client that accepts gzip receives gzip on the wire. The old stack paired the
+    /// compressor with tower-http's client-side decompressor, which undid it on the way out.
+    #[tokio::test]
+    async fn api_responses_reach_the_client_compressed() {
+        assert_eq!(
+            content_encoding(Some("gzip"), "/json").await.as_deref(),
+            Some("gzip")
+        );
+    }
+
+    /// Goal: a client that offers no encoding gets identity, so compression stays negotiated
+    /// rather than imposed.
+    #[tokio::test]
+    async fn api_responses_stay_identity_without_accept_encoding() {
+        assert_eq!(content_encoding(None, "/json").await, None);
+    }
+
+    /// Goal: embedded web app files are never compressed per request, since any client can
+    /// fetch them without credentials. Method: a response carrying the `StaticAsset` marker.
+    #[tokio::test]
+    async fn static_assets_are_not_compressed() {
+        assert_eq!(content_encoding(Some("gzip, br"), "/static").await, None);
+    }
 
     /// Repo-root spec, relative to this crate. Absent in vendored/source-tarball builds,
     /// which ship only the crate, so the freshness test skips rather than fails there.

@@ -90,9 +90,6 @@ tower-http = { version = "0.7.0", features = [
   "compression-br",
   "compression-gzip",
   "compression-deflate",
-  "decompression-br",
-  "decompression-gzip",
-  "decompression-deflate",
   "fs",
 ] }
 tower-sessions = { version = "0.15.0", features = ["private"] }
