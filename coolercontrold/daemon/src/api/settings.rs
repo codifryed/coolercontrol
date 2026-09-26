@@ -150,6 +150,11 @@ pub struct CoolerControlSettingsDto {
     device_listener_enabled: Option<bool>,
     /// Whether to apply labels and ignores from the lm-sensors configuration
     sensors_conf_enabled: Option<bool>,
+    tls_strict: Option<bool>,
+    /// The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when
+    /// TLS is off. Report-only: it is derived from the certificate, so anything sent here
+    /// is ignored.
+    tls_fingerprint: Option<String>,
 }
 
 impl CoolerControlSettingsDto {
@@ -228,6 +233,7 @@ impl CoolerControlSettingsDto {
         let sensors_conf_enabled = self
             .sensors_conf_enabled
             .unwrap_or(current_settings.sensors_conf_enabled);
+        let tls_strict = self.tls_strict.unwrap_or(current_settings.tls_strict);
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -250,6 +256,7 @@ impl CoolerControlSettingsDto {
             sensors_auto_detect,
             device_listener_enabled,
             sensors_conf_enabled,
+            tls_strict,
         }
     }
 }
@@ -273,6 +280,8 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             sensors_auto_detect: Some(settings.sensors_auto_detect),
             device_listener_enabled: Some(settings.device_listener_enabled),
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
+            tls_strict: Some(settings.tls_strict),
+            tls_fingerprint: crate::api::tls::served_fingerprint().map(str::to_string),
         }
     }
 }
@@ -332,6 +341,8 @@ mod tests {
                 sensors_auto_detect: None,
                 device_listener_enabled: None,
                 sensors_conf_enabled: None,
+                tls_strict: None,
+                tls_fingerprint: None,
             }
         }
     }

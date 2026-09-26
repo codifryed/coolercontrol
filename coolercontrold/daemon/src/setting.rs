@@ -294,6 +294,9 @@ pub struct CoolerControlSettings {
     pub device_listener_enabled: bool,
     /// Whether to apply the `label` and `ignore` statements from the lm-sensors configuration
     pub sensors_conf_enabled: bool,
+    /// Whether outbound device-service TLS connections require a fingerprint the user
+    /// pinned in advance, instead of trusting the peer on first contact.
+    pub tls_strict: bool,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.

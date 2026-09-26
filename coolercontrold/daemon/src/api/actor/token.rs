@@ -81,6 +81,16 @@ impl TokenHandle {
         handle
     }
 
+    /// Builds a handle over a fixed token set, for tests that need a working
+    /// `TokenHandle` without the sidecar and on-disk store `new` requires.
+    #[cfg(test)]
+    pub fn with_tokens(tokens: Vec<StoredToken>) -> Self {
+        Self {
+            tokens: Arc::new(RwLock::new(tokens)),
+            last_used_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     pub async fn create(
         &self,
         label: String,
@@ -221,10 +231,7 @@ mod tests {
     }
 
     fn make_handle_with_tokens(tokens: Vec<StoredToken>) -> TokenHandle {
-        TokenHandle {
-            tokens: Arc::new(RwLock::new(tokens)),
-            last_used_cache: Arc::new(Mutex::new(HashMap::new())),
-        }
+        TokenHandle::with_tokens(tokens)
     }
 
     #[tokio::test]

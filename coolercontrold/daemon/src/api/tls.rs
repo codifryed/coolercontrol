@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::cc_fs;
+use crate::hashutil;
 use crate::paths;
 use anyhow::{anyhow, Context, Result};
 use log::info;
 use rcgen::{CertificateParams, CertifiedKey, DistinguishedName, DnType, KeyPair};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::CertificateDer;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 const DEFAULT_CERT_FILE: &str = "coolercontrol.crt";
 const DEFAULT_KEY_FILE: &str = "coolercontrol.key";
@@ -20,6 +24,37 @@ pub fn default_cert_path() -> PathBuf {
 
 pub fn default_key_path() -> PathBuf {
     paths::config_dir().join(DEFAULT_KEY_FILE)
+}
+
+/// The fingerprint of the certificate this daemon is serving, once TLS has been set up.
+///
+/// Read-mostly and fixed for the process' lifetime, since the certificate is loaded once
+/// at startup and never reloaded.
+static SERVED_FINGERPRINT: OnceLock<String> = OnceLock::new();
+
+/// Records the fingerprint being served, so the API can report it without re-reading and
+/// re-parsing the certificate on every settings request.
+pub fn set_served_fingerprint(fingerprint: String) {
+    let _ = SERVED_FINGERPRINT.set(fingerprint);
+}
+
+/// The fingerprint this daemon serves, or `None` when TLS is disabled.
+pub fn served_fingerprint() -> Option<&'static str> {
+    SERVED_FINGERPRINT.get().map(String::as_str)
+}
+
+/// The SHA-256 fingerprint of the certificate this daemon serves.
+///
+/// A remote daemon pins this value on first contact, and the desktop app shows the same
+/// value in the same format, so it has to be reachable by a user who wants to verify a
+/// pin. Nothing else in the daemon publishes it: a user on a headless server has only the
+/// log, which is exactly the case federation targets are deployed in.
+pub async fn certificate_fingerprint(cert_path: &Path) -> Option<String> {
+    let pem = cc_fs::read_txt(cert_path).await.ok()?;
+    let der = CertificateDer::pem_slice_iter(pem.as_bytes())
+        .next()?
+        .ok()?;
+    Some(hashutil::to_fingerprint(der.as_ref()))
 }
 
 pub async fn ensure_certificates(
@@ -125,5 +160,29 @@ mod tests {
             let key_permissions = std::fs::metadata(&result_key).unwrap().permissions();
             assert_eq!(key_permissions.mode() & 0o777, DEFAULT_PERMISSIONS);
         });
+    }
+
+    /// Goal: the TLS half of the claim that gRPC needs no transport of its own. gRPC
+    /// requires HTTP/2, so the listener must offer `h2` via ALPN; if it advertised only
+    /// `http/1.1`, every TLS gRPC client would fail to negotiate. The order matters too:
+    /// `h2` must be preferred, or a client that accepts either settles on HTTP/1.1 and
+    /// gRPC breaks on an otherwise working server.
+    #[test]
+    fn tls_config_advertises_http2_first() {
+        let CertifiedKey { cert, signing_key } = generate_self_signed_cert().unwrap();
+        // `from_pem` parses in memory, but is async, and the rustls config it builds is
+        // the same one `tls_config` hands the server.
+        let config = crate::cc_fs::sidecar_fs::test_runtime(async {
+            axum_server::tls_rustls::RustlsConfig::from_pem(
+                cert.pem().into_bytes(),
+                signing_key.serialize_pem().into_bytes(),
+            )
+            .await
+            .unwrap()
+        });
+
+        let alpn = &config.get_inner().alpn_protocols;
+        assert_eq!(alpn.first().map(Vec::as_slice), Some(b"h2".as_slice()));
+        assert!(alpn.iter().any(|protocol| protocol == b"http/1.1"));
     }
 }

@@ -20,18 +20,21 @@ use crate::grpc_api::models::v1::ChannelExtensionName;
 use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;
+use crate::repositories::service_plugin::transport::PluginChannel;
+use crate::repositories::service_plugin::{transport, trust};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
 use log::error;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::default::Default;
+use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use tonic::transport::Channel;
-use tonic::Request;
+use tonic::metadata::{Ascii, MetadataValue};
+use tonic::{Code, Request, Status};
 
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 
@@ -46,6 +49,36 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
+/// Why the remote refused us, when a failed health check was a credential problem rather
+/// than a fault a retry could clear.
+///
+/// The connection loop retries health, and a refused credential is the one failure that
+/// retrying cannot fix: a wrong token is still wrong on the next attempt. Without this the
+/// loop exhausts its retries and reports a startup timeout, which sends the user looking
+/// for a plugin that is in fact running and answering.
+///
+/// The returned text is what the channel's `ExplainRefusals` layer already put in the
+/// status, so it names the plugin and the file to write.
+pub fn credential_refusal(err: &anyhow::Error) -> Option<String> {
+    let status = err.downcast_ref::<Status>()?;
+    let reason = match status.code() {
+        // A third-party remote can refuse with nothing to say, and `ExplainRefusals` only
+        // rewrites what our own daemon sends.
+        Code::Unauthenticated | Code::PermissionDenied if status.message().is_empty() => {
+            Some(status.code().to_string())
+        }
+        Code::Unauthenticated | Code::PermissionDenied => Some(status.message().to_string()),
+        _ => None,
+    };
+    // The caller logs this as the tail of a sentence, so an empty reason would trail off.
+    debug_assert!(reason.as_ref().is_none_or(|reason| reason.is_empty().not()));
+    reason
+}
+
+/// The generated client over the daemon's own channel. Named once so a change to the
+/// channel stack does not ripple through every field and signature below.
+type PluginClient = device_service_client::DeviceServiceClient<PluginChannel>;
+
 /// Our client wrapper for Device Service plugins.
 /// This handles CC's device service contract by only allowing a single request at a time per device,
 /// handling the permit/locking system and timeouts. It also maps CC's models to the generated
@@ -53,6 +86,12 @@ fn service_wait_timeout_for(poll_rate: f64) -> Duration {
 #[derive(Debug)]
 pub struct DeviceServiceClient {
     service_id: ServiceId,
+
+    /// The `authorization` header value for the remote, parsed once at connect time so a
+    /// malformed token fails where it is read rather than on every request. Absent for a
+    /// plugin on a Unix socket, a remote that predates authentication, or a link that
+    /// cannot carry the token safely.
+    credentials: Option<MetadataValue<Ascii>>,
 
     /// Snapshot of the service-plugin wait timeout. `poll_rate` only
     /// changes on daemon restart, so this value is constant for the
@@ -62,7 +101,7 @@ pub struct DeviceServiceClient {
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
-    service_client: Mutex<device_service_client::DeviceServiceClient<Channel>>,
+    service_client: Mutex<PluginClient>,
 
     /// For each device present, we clone the client for it, so we can handle requests per device
     /// concurrently. Clone is a cheap operation for the tonic Client. Each per-device client sits
@@ -70,44 +109,141 @@ pub struct DeviceServiceClient {
     /// so a caller can clone the `Rc<Mutex>` out of the map and lock it without holding a `RefCell`
     /// borrow across the `.await`. The `RefCell` makes the map interior-mutable so `with_device_ids`
     /// can populate it once at setup while the client is shared (`Rc`) on the sidecar.
-    device_clients:
-        RefCell<HashMap<DeviceUID, Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>>>,
+    device_clients: RefCell<HashMap<DeviceUID, Rc<Mutex<PluginClient>>>>,
 
     /// Maps the device UID to the service device ID, so we can pass the correct ID to the device service.
     device_ids: RefCell<HashMap<DeviceUID, ServiceDeviceID>>,
 }
 
 impl DeviceServiceClient {
-    pub async fn connect(service_manifest: &ServiceManifest, poll_rate: f64) -> Result<Self> {
-        let address = Self::address_from_manifest(service_manifest)?;
-        let grpc_client =
-            device_service_client::DeviceServiceClient::connect(address.clone()).await?;
+    pub async fn connect(
+        service_manifest: &ServiceManifest,
+        plan: &trust::LinkPlan,
+        poll_rate: f64,
+        tls_strict: bool,
+    ) -> Result<Self> {
+        let address = Self::address_from_manifest(service_manifest, plan)?;
+        let credentials = Self::outbound_credentials(service_manifest, plan)?;
+        let channel = transport::connect(service_manifest, &address, plan, tls_strict).await?;
+        let channel = transport::ExplainRefusals::new(channel, service_manifest.id.clone());
+        let grpc_client = device_service_client::DeviceServiceClient::new(channel);
         Ok(Self::new(
             service_manifest.id.clone(),
             poll_rate,
             grpc_client,
+            credentials,
         ))
+    }
+
+    /// The parsed `authorization` value, or `None` when there is no token to send.
+    ///
+    /// Parsing here rather than per request means a token with characters illegal in a
+    /// header refuses the connection outright. Logging and sending the request anyway
+    /// would reach the user as the remote refusing credentials that were never sent.
+    fn outbound_credentials(
+        service_manifest: &ServiceManifest,
+        plan: &trust::LinkPlan,
+    ) -> Result<Option<MetadataValue<Ascii>>> {
+        let Some(token) = Self::outbound_token(service_manifest, plan) else {
+            return Ok(None);
+        };
+        let value = format!("Bearer {token}").parse().map_err(|err| {
+            anyhow!(
+                "Device service '{}' has an unusable access token: {err}. Rewrite the '{}' \
+                 file in that plugin's directory with the token exactly as the remote \
+                 daemon issued it.",
+                service_manifest.id,
+                trust::TOKEN_FILE_NAME
+            )
+        })?;
+        Ok(Some(value))
+    }
+
+    /// The token to send, withheld when the link would carry it in the clear off this
+    /// machine.
+    ///
+    /// `LinkPlan` already ties a token to TLS, but a plugin author can override
+    /// that with `tls = false` in their own manifest. Since the manifest is the plugin's
+    /// to write and the token is the user's, a plugin must not be able to turn the user's
+    /// credential into a plaintext broadcast.
+    fn outbound_token(
+        service_manifest: &ServiceManifest,
+        plan: &trust::LinkPlan,
+    ) -> Option<String> {
+        let token = plan.token()?;
+        if Self::link_protects_a_token(service_manifest, plan) {
+            return Some(token.to_string());
+        }
+        error!(
+            "Device service '{}' declares an unencrypted connection, so its access token \
+             will not be sent. Remove 'tls = false' from that plugin's manifest, or remove \
+             the '{}' file if the remote needs no token.",
+            service_manifest.id,
+            trust::TOKEN_FILE_NAME
+        );
+        None
+    }
+
+    /// Whether a token can travel this link safely: TLS encrypts it, and a link that
+    /// never leaves this machine has nothing to eavesdrop on.
+    fn link_protects_a_token(service_manifest: &ServiceManifest, plan: &trust::LinkPlan) -> bool {
+        if plan.encrypted() {
+            return true;
+        }
+        match &service_manifest.address {
+            ConnectionType::Uds(_) => true,
+            ConnectionType::Tcp(tcp_address) => {
+                trust::is_loopback_host(&transport::host_of(tcp_address))
+            }
+            ConnectionType::None => false,
+        }
     }
 
     /// Derives the gRPC connection address from a manifest. Shared by `connect` and the main-side
     /// proxy handle (which needs the address to map device locations without holding the client).
-    pub fn address_from_manifest(service_manifest: &ServiceManifest) -> Result<String> {
+    ///
+    /// A TCP address is `https` exactly when the link is encrypted, which `LinkPlan`
+    /// decides. Unix sockets stay plain, since the kernel already scopes them to this
+    /// machine.
+    pub fn address_from_manifest(
+        service_manifest: &ServiceManifest,
+        plan: &trust::LinkPlan,
+    ) -> Result<String> {
         match &service_manifest.address {
             ConnectionType::Uds(uds) => Ok(format!("unix://{}", uds.display())),
-            ConnectionType::Tcp(tcp_addr) => Ok(format!("http://{tcp_addr}")),
+            ConnectionType::Tcp(tcp_addr) => {
+                let scheme = if plan.encrypted() { "https" } else { "http" };
+                Ok(format!("{scheme}://{tcp_addr}"))
+            }
             ConnectionType::None => Err(anyhow!("Invalid Connection Type: NONE!")),
         }
+    }
+
+    /// Wraps a message in a request carrying this client's credentials.
+    ///
+    /// Every outbound call goes through here, so a new RPC cannot accidentally ship
+    /// without the token.
+    fn request<T>(&self, message: T) -> Request<T> {
+        let mut request = Request::new(message);
+        if let Some(credentials) = &self.credentials {
+            request
+                .metadata_mut()
+                .insert("authorization", credentials.clone());
+        }
+        request
     }
 
     fn new(
         service_id: ServiceId,
         poll_rate: f64,
-        client: device_service_client::DeviceServiceClient<Channel>,
+        client: PluginClient,
+        credentials: Option<MetadataValue<Ascii>>,
     ) -> Self {
         let service_client = Mutex::new(client);
         let service_wait_timeout = service_wait_timeout_for(poll_rate);
         Self {
             service_id,
+            credentials,
             service_wait_timeout,
             service_client,
             device_clients: RefCell::new(HashMap::new()),
@@ -141,10 +277,7 @@ impl DeviceServiceClient {
         }
     }
 
-    fn get_device_client(
-        &self,
-        device_uid: &DeviceUID,
-    ) -> Result<Rc<Mutex<device_service_client::DeviceServiceClient<Channel>>>> {
+    fn get_device_client(&self, device_uid: &DeviceUID) -> Result<Rc<Mutex<PluginClient>>> {
         self.device_clients
             .borrow()
             .get(device_uid)
@@ -160,6 +293,8 @@ impl DeviceServiceClient {
             .ok_or_else(|| anyhow!("Service Device {device_uid} ID not found"))
     }
 
+    /// Health is the gate the connection loop retries, so this one carries the `Status`
+    /// instead of stringifying it: see [`credential_refusal`].
     pub async fn health(&self) -> Result<HealthResponse> {
         tokio::select! {
             () = sleep(self.service_wait_timeout) => Err(anyhow!(
@@ -169,10 +304,10 @@ impl DeviceServiceClient {
             )),
             // Health endpoint need not wait for all clients:
             mut service_client = self.service_client.lock() => {
-                let request = Request::new(HealthRequest{});
+                let request = self.request(HealthRequest{});
                 service_client.health(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|s| anyhow!("Failed to get health status: {s}"))
+                .map_err(|status| anyhow::Error::new(status).context("Failed to get health status"))
             }
         }
     }
@@ -187,11 +322,11 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(ListDevicesRequest{});
+                let request = self.request(ListDevicesRequest{});
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
                 .map(tonic::Response::into_inner)
-                .map_err(|s| anyhow!("Failed to list devices: {s}"))
+                .map_err(|status| anyhow!("Failed to list devices: {status}"))
             }
         }
     }
@@ -204,7 +339,7 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(InitializeDeviceRequest{
+                let request = self.request(InitializeDeviceRequest{
                     device_id: self.get_service_device_id(device_uid)?
                 });
                 let mut service_client = self.service_client.lock().await;
@@ -223,7 +358,7 @@ impl DeviceServiceClient {
                 self.service_id
             )),
             () = self.wait_till_all_clients_are_free() => {
-                let request = Request::new(ShutdownRequest{});
+                let request = self.request(ShutdownRequest{});
                 let mut service_client = self.service_client.lock().await;
                 match service_client.shutdown(request).await {
                     Ok(_) => Ok(()),
@@ -396,7 +531,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(StatusRequest{
+                let request = self.request(StatusRequest{
                     device_id: self.get_service_device_id(device_uid)?
                 });
                 device_client.status(request).await
@@ -459,7 +594,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(ResetChannelRequest{
+                let request = self.request(ResetChannelRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
@@ -482,7 +617,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(EnableManualFanControlRequest{
+                let request = self.request(EnableManualFanControlRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                 });
@@ -506,7 +641,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut device_client = device_client.lock() => {
-                let request = Request::new(FixedDutyRequest{
+                let request = self.request(FixedDutyRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     duty: i32::from(duty),
@@ -539,7 +674,7 @@ impl DeviceServiceClient {
                         duty: u32::from(*duty),
                     });
                 }
-                let request = Request::new(SpeedProfileRequest{
+                let request = self.request(SpeedProfileRequest{
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     temp_source_id: Some(temp_source.temp_name.clone()),
@@ -580,7 +715,7 @@ impl DeviceServiceClient {
                     backward: lighting.backward,
                     colors,
                 };
-                let request = Request::new(LightingRequest {
+                let request = self.request(LightingRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     setting: Some(lighting_setting),
@@ -611,7 +746,7 @@ impl DeviceServiceClient {
                     orientation: lcd.orientation.map(u32::from),
                     image_path: lcd.image_file_processed().cloned(),
                 };
-                let request = Request::new(LcdRequest {
+                let request = self.request(LcdRequest {
                     device_id: self.get_service_device_id(device_uid)?,
                     channel_id: channel_name.to_owned(),
                     setting: Some(lcd_setting),
@@ -632,7 +767,7 @@ impl DeviceServiceClient {
                 self.service_id,
             )),
             mut service_client = self.service_client.lock() => {
-                let request = Request::new(CustomFunctionOneRequest{});
+                let request = self.request(CustomFunctionOneRequest{});
                 service_client.custom_function_one(request).await
                 .map(|_| ())
                 .map_err(|s| anyhow!("Failed to apply custom function: {s}"))
@@ -683,5 +818,298 @@ mod wait_timeout_tests {
         // being declared unresponsive.
         assert_eq!(service_wait_timeout_for(0.5), Duration::from_secs(4));
         assert_eq!(service_wait_timeout_for(5.0), Duration::from_secs(40));
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+    use crate::repositories::service_plugin::service_manifest::ServiceType;
+    use std::ops::Not;
+    use std::path::PathBuf;
+
+    fn manifest(address: ConnectionType) -> ServiceManifest {
+        manifest_in(
+            address,
+            PathBuf::from("/var/lib/coolercontrol/plugins/test_service"),
+        )
+    }
+
+    /// A manifest whose directory really exists, so the token file can be created or left
+    /// absent and `LinkPlan::resolve` reads the same thing the daemon would.
+    fn manifest_in(address: ConnectionType, path: PathBuf) -> ServiceManifest {
+        ServiceManifest {
+            id: "test_service".to_string(),
+            service_type: ServiceType::Device,
+            description: None,
+            version: None,
+            url: None,
+            executable: None,
+            args: Vec::new(),
+            envs: Vec::new(),
+            address,
+            tls: None,
+            privileged: false,
+            proxy: None,
+            path,
+        }
+    }
+
+    fn write_token(dir: &std::path::Path) {
+        std::fs::write(dir.join(trust::TOKEN_FILE_NAME), "cc_secret\n").unwrap();
+    }
+
+    /// The plan the daemon would resolve for this manifest, read from the real files.
+    async fn plan_for(manifest: &ServiceManifest) -> trust::LinkPlan {
+        trust::LinkPlan::resolve(manifest).await
+    }
+
+    const REMOTE: &str = "192.168.1.100:11987";
+
+    /// Goal: the compatibility rule. Without a token the link is plain `http`, so an
+    /// older daemon and every third-party plugin serving plain h2c on TCP keep working
+    /// after this daemon is upgraded.
+    #[test]
+    fn a_tcp_service_without_a_token_stays_plaintext() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            assert!(plan.encrypted().not());
+            assert_eq!(
+                DeviceServiceClient::address_from_manifest(&manifest, &plan).unwrap(),
+                format!("http://{REMOTE}")
+            );
+        });
+    }
+
+    /// Goal: the other half of the rule. Placing a token is the act that says the remote
+    /// is an upgraded daemon, so it switches the link to `https`. The token must never
+    /// cross a network in the clear, and this is what guarantees it.
+    #[test]
+    fn a_token_switches_the_link_to_tls() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            assert!(plan.encrypted());
+            assert_eq!(
+                DeviceServiceClient::address_from_manifest(&manifest, &plan).unwrap(),
+                format!("https://{REMOTE}")
+            );
+            assert!(DeviceServiceClient::outbound_token(&manifest, &plan).is_some());
+        });
+    }
+
+    /// Goal: the escape hatch, both ways. A plugin author knows whether their server
+    /// terminates TLS, so their declaration overrides the token-derived default. This is
+    /// what a remote with `tls_enabled = false` needs.
+    #[test]
+    fn the_manifest_tls_field_overrides_the_token() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let mut forced_on = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            forced_on.tls = Some(true);
+            let on_plan = plan_for(&forced_on).await;
+            assert!(on_plan.encrypted());
+            assert_eq!(
+                DeviceServiceClient::address_from_manifest(&forced_on, &on_plan).unwrap(),
+                format!("https://{REMOTE}")
+            );
+
+            write_token(dir.path());
+            let mut forced_off = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            forced_off.tls = Some(false);
+            let off_plan = plan_for(&forced_off).await;
+            assert!(off_plan.encrypted().not());
+            assert_eq!(
+                DeviceServiceClient::address_from_manifest(&forced_off, &off_plan).unwrap(),
+                format!("http://{REMOTE}")
+            );
+        });
+    }
+
+    /// Goal: the manifest is the plugin's to write and the token is the user's, so a
+    /// plugin declaring `tls = false` must not be able to turn that credential into a
+    /// plaintext broadcast. The token is withheld rather than sent.
+    #[test]
+    fn a_plaintext_remote_never_receives_the_token() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let mut manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            manifest.tls = Some(false);
+            let plan = plan_for(&manifest).await;
+            assert!(DeviceServiceClient::outbound_token(&manifest, &plan).is_none());
+        });
+    }
+
+    /// Goal: the withholding must not fire where there is nothing to eavesdrop on. A
+    /// loopback peer and a Unix socket never leave this machine, so a token declared
+    /// plaintext there is still sent, which is what a local plugin needs.
+    #[test]
+    fn a_local_plaintext_link_still_carries_the_token() {
+        for address in [
+            ConnectionType::Tcp("127.0.0.1:11987".to_string()),
+            ConnectionType::Tcp("[::1]:11987".to_string()),
+            ConnectionType::Tcp("localhost:11987".to_string()),
+            ConnectionType::Uds(PathBuf::from("/run/test.sock")),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let mut manifest = manifest_in(address.clone(), dir.path().to_path_buf());
+            manifest.tls = Some(false);
+            let plan = crate::rt::test_runtime(plan_for(&manifest));
+            assert!(
+                DeviceServiceClient::outbound_token(&manifest, &plan).is_some(),
+                "{address:?} should still carry the token"
+            );
+        }
+    }
+
+    /// Goal: a token that cannot become a header must fail the connection, not go out as
+    /// an anonymous request. Sending it unauthenticated earns an `Unauthenticated` from
+    /// the remote, which reads to the user as credentials being refused when in fact none
+    /// were sent, and it repeats on every single RPC instead of once.
+    #[test]
+    fn an_unusable_token_refuses_the_connection() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            // Survives the trim in `read_token`, but is illegal in a header value.
+            std::fs::write(dir.path().join(trust::TOKEN_FILE_NAME), "cc_\u{7f}bad\n").unwrap();
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            assert!(plan.token().is_some(), "the token must reach the parser");
+
+            let error = DeviceServiceClient::outbound_credentials(&manifest, &plan)
+                .expect_err("an unusable token must refuse the connection");
+            let message = error.to_string();
+            assert!(message.contains("test_service"), "{message}");
+            assert!(message.contains(trust::TOKEN_FILE_NAME), "{message}");
+        });
+    }
+
+    /// Goal: the ordinary case still yields a header, so the refusal above is not simply
+    /// rejecting everything.
+    #[test]
+    fn a_usable_token_becomes_a_bearer_header() {
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            write_token(dir.path());
+            let manifest = manifest_in(
+                ConnectionType::Tcp(REMOTE.to_string()),
+                dir.path().to_path_buf(),
+            );
+            let plan = plan_for(&manifest).await;
+            let credentials = DeviceServiceClient::outbound_credentials(&manifest, &plan)
+                .unwrap()
+                .expect("a token on a TLS link is sent");
+            assert_eq!(credentials.to_str().unwrap(), "Bearer cc_secret");
+        });
+    }
+
+    /// Goal: Unix sockets stay plain. The kernel already scopes them to this machine, so
+    /// TLS would add a certificate to manage for no gain.
+    #[test]
+    fn uds_services_stay_plaintext() {
+        crate::rt::test_runtime(async {
+            let uds = manifest(ConnectionType::Uds(PathBuf::from("/run/test.sock")));
+            let plan = plan_for(&uds).await;
+            let address = DeviceServiceClient::address_from_manifest(&uds, &plan).unwrap();
+            assert_eq!(address, "unix:///run/test.sock");
+        });
+    }
+
+    #[test]
+    fn missing_address_is_an_error() {
+        crate::rt::test_runtime(async {
+            let none = manifest(ConnectionType::None);
+            let plan = plan_for(&none).await;
+            assert!(DeviceServiceClient::address_from_manifest(&none, &plan).is_err());
+        });
+    }
+
+    /// The error exactly as `health` builds it, so these test the shape the connection
+    /// loop actually receives.
+    fn health_error(status: Status) -> anyhow::Error {
+        anyhow::Error::new(status).context("Failed to get health status")
+    }
+
+    /// Goal: a refusal is recognised through the `context` wrapper `health` adds. The
+    /// whole mechanism rests on that downcast reaching past the context, and a plain
+    /// `anyhow!("{status}")` would defeat it silently.
+    #[test]
+    fn a_refusal_is_recognised_through_the_context() {
+        let refused = health_error(Status::unauthenticated("put a token in the 'token' file"));
+        assert_eq!(
+            credential_refusal(&refused).as_deref(),
+            Some("put a token in the 'token' file")
+        );
+
+        let scope = health_error(Status::permission_denied("this token cannot read devices"));
+        assert_eq!(
+            credential_refusal(&scope).as_deref(),
+            Some("this token cannot read devices")
+        );
+
+        // The shape this replaced, kept to show what is at stake: a status formatted into
+        // a message carries no code, so nothing downstream can tell the two apart.
+        let stringified = anyhow!(
+            "Failed to get health status: {}",
+            Status::unauthenticated("x")
+        );
+        assert_eq!(credential_refusal(&stringified), None);
+    }
+
+    /// Goal: a refusal with nothing to say still reports something, since a third-party
+    /// remote never passes through our `ExplainRefusals` layer. An empty reason would log
+    /// a sentence that stops mid-air.
+    #[test]
+    fn a_silent_refusal_falls_back_to_the_code() {
+        let silent = health_error(Status::unauthenticated(""));
+        let reason = credential_refusal(&silent).expect("a refusal is still a refusal");
+        assert!(reason.is_empty().not(), "{reason}");
+        assert_eq!(reason, Code::Unauthenticated.to_string());
+    }
+
+    /// Goal: the negative space, which is what keeps a slow plugin working. Every other
+    /// failure has to stay retryable; classifying one of these as a refusal would drop a
+    /// plugin that is merely still starting up.
+    #[test]
+    fn other_failures_stay_retryable() {
+        for status in [
+            Status::unavailable("connection refused"),
+            Status::deadline_exceeded("timed out"),
+            Status::internal("it broke"),
+            Status::unimplemented("no such method"),
+            Status::resource_exhausted("too many attempts"),
+        ] {
+            let code = status.code();
+            let err = health_error(status);
+            assert_eq!(credential_refusal(&err), None, "{code} must be retryable");
+        }
+
+        // The timeout arm of `health` never sees a status at all.
+        let timeout = anyhow!("TIMEOUT Device Service Plugin test_service");
+        assert_eq!(credential_refusal(&timeout), None);
     }
 }

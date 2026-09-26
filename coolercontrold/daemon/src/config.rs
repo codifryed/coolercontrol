@@ -1342,6 +1342,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
                 .with_context(|| "sensors_conf_enabled should be a boolean value")?;
+            let tls_strict = settings
+                .get("tls_strict")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "tls_strict should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1364,6 +1369,7 @@ impl Config {
                 sensors_auto_detect,
                 device_listener_enabled,
                 sensors_conf_enabled,
+                tls_strict,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1493,6 +1499,8 @@ impl Config {
         base_settings["sensors_conf_enabled"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_conf_enabled,
         )));
+        base_settings["tls_strict"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.tls_strict)));
     }
 
     /// Returns the list of disabled plugin IDs from config.

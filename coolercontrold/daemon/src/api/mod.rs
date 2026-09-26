@@ -42,7 +42,6 @@ use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
 use crate::device_health::DeviceHealthController;
 use crate::engine::main::Engine;
-use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
@@ -99,7 +98,6 @@ use tower_sessions::{
 };
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
-const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
@@ -140,7 +138,7 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port)
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
-    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port, ApiServer::Rest);
+    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port);
 
     let settings = config.get_settings()?;
     let compression_layers = if settings.compress {
@@ -201,20 +199,6 @@ pub async fn start_server<'s>(
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
-    // GRPC API
-    // We use a separate socket because the purpose and scope is quite different comparatively
-    let grpc_port = env::var(ENV_PORT)
-        .ok()
-        .and_then(|p| p.parse::<u16>().map(|p| p + 1).ok())
-        .unwrap_or_else(|| {
-            config
-                .get_settings()
-                .ok()
-                .and_then(|settings| settings.port.map(|p| p + 1))
-                .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
-        });
-    let (grpc_ipv4, grpc_ipv6) = resolve_server_addresses(&config, grpc_port, ApiServer::Grpc);
-
     // Extract proxy/cors settings for the API servers
     let cors_origins = settings.origins.clone();
     let allow_unencrypted = settings.allow_unencrypted;
@@ -226,8 +210,6 @@ pub async fn start_server<'s>(
         run_all_api_servers(
             ipv4,
             ipv6,
-            grpc_ipv4,
-            grpc_ipv6,
             app_state,
             session_layer,
             expired_deletion_store,
@@ -245,8 +227,6 @@ pub async fn start_server<'s>(
 async fn run_all_api_servers(
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
-    grpc_ipv4: Option<SocketAddrV4>,
-    grpc_ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     expired_deletion_store: FileSessionStore,
@@ -258,9 +238,6 @@ async fn run_all_api_servers(
     protocol_header: Option<String>,
 ) {
     let mut handles = Vec::new();
-    let grpc_device_handle = app_state.device_handle.clone();
-    let grpc_status_handle = app_state.status_handle.clone();
-    let grpc_calibration_handle = app_state.calibration_handle.clone();
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
@@ -296,26 +273,6 @@ async fn run_all_api_servers(
             cors_origins,
             allow_unencrypted,
             protocol_header,
-        )));
-    }
-
-    // gRPC API servers
-    if let Some(ipv4) = grpc_ipv4 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv4),
-            grpc_device_handle.clone(),
-            grpc_status_handle.clone(),
-            grpc_calibration_handle.clone(),
-            cancel_token.clone(),
-        )));
-    }
-    if let Some(ipv6) = grpc_ipv6 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv6),
-            grpc_device_handle,
-            grpc_status_handle,
-            grpc_calibration_handle,
-            cancel_token,
         )));
     }
 
@@ -419,6 +376,7 @@ async fn create_api_server(
     });
     let mut open_api = OpenApi::default();
     let router = router::init(app_state)
+        .await
         .finish_api_with(&mut open_api, api_docs)
         .layer(Extension(Arc::new(open_api)));
 
@@ -439,7 +397,11 @@ async fn create_api_server(
                 StatusCode::REQUEST_TIMEOUT,
                 Duration::from_secs(API_TIMEOUT_SECS),
             ),
-        ));
+        ))
+        // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
+        // gRPC clients as statuses they can read. Inside the timeout layer it would never
+        // see a 408 at all.
+        .layer(middleware::from_fn(router::grpc_error_middleware));
 
     let listener = TcpListener::bind(addr).await?;
     let handle = axum_server::Handle::new();
@@ -453,7 +415,7 @@ async fn create_api_server(
         // Dual-protocol server: accepts both HTTP and HTTPS on the same port
         // HTTP requests from non-localhost are redirected to HTTPS (via middleware)
         // HTTP requests from localhost and to /health are allowed
-        info!("Serving HTTP and HTTPS API on {addr}");
+        info!("Serving HTTP, HTTPS and gRPC API on {addr}");
 
         // Add HTTPS redirect layer for non-localhost HTTP requests
         let redirect_layer = dual_protocol::HttpsRedirectLayer {
@@ -477,7 +439,7 @@ async fn create_api_server(
             .await?;
     } else {
         // Plain HTTP server (no redirect needed)
-        info!("Serving HTTP API on: {addr}");
+        info!("Serving HTTP and gRPC API on {addr}");
         let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(base_router);
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
@@ -850,6 +812,12 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             warn!("Failed to ensure TLS certificates: {err}");
         })
         .ok()?;
+    // Announce the fingerprint a remote daemon will pin. On a headless server this log
+    // line is the only way a user can check a pin against the certificate actually served.
+    if let Some(fingerprint) = tls::certificate_fingerprint(&cert_path).await {
+        info!("TLS certificate fingerprint (SHA-256): {fingerprint}");
+        tls::set_served_fingerprint(fingerprint);
+    }
     // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
     // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
     // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
@@ -1021,55 +989,30 @@ fn log_bind_outcome<A>(outcome: Result<Option<A>>, family: &str) -> Option<A> {
     outcome.ok().flatten()
 }
 
-/// The two API servers. They bind independently: neither one being off or unable to bind
-/// may stop the other, and neither stops the daemon, whose fan control needs no socket.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ApiServer {
-    Rest,
-    Grpc,
-}
+/// Stable log text: users grep these lines. gRPC shares the REST listener, so there is
+/// one socket to bind and one failure to report; neither family failing stops the daemon,
+/// whose fan control needs no socket at all.
+const API_SERVER_NAME: &str = "REST API";
+const API_SERVER_CONSEQUENCE: &str = "No API, UI, or gRPC connection available.";
 
-impl ApiServer {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Rest => "REST API",
-            Self::Grpc => "GRPC API",
-        }
-    }
-
-    /// Per-family log label, e.g. "IPv6 GRPC". Stable text: users grep these lines.
-    fn family_label(self, family: &str) -> String {
-        match self {
-            Self::Rest => family.to_string(),
-            Self::Grpc => format!("{family} GRPC"),
-        }
-    }
-
-    fn consequence(self) -> &'static str {
-        match self {
-            Self::Rest => "No API and UI connection available.",
-            Self::Grpc => "External Device services are unavailable.",
-        }
-    }
-}
-
-/// What to log when a server ends up with nothing to listen on. Both families switched off
-/// is a deliberate opt-out; anything else means we tried to bind and could not.
+/// What to log when the server ends up with nothing to listen on. Both families switched
+/// off is a deliberate opt-out; anything else means we tried to bind and could not.
 fn unavailable_log<A4, A6>(
     ipv4: &Result<Option<A4>>,
     ipv6: &Result<Option<A6>>,
-    server: ApiServer,
 ) -> Option<(Level, String)> {
     if matches!(ipv4, Ok(Some(_))) || matches!(ipv6, Ok(Some(_))) {
         return None;
     }
-    let (name, consequence) = (server.name(), server.consequence());
     if matches!(ipv4, Ok(None)) && matches!(ipv6, Ok(None)) {
-        return Some((Level::Info, format!("{name} disabled. {consequence}")));
+        return Some((
+            Level::Info,
+            format!("{API_SERVER_NAME} disabled. {API_SERVER_CONSEQUENCE}"),
+        ));
     }
     Some((
         Level::Error,
-        format!("Could not bind {name} to any address. {consequence}"),
+        format!("Could not bind {API_SERVER_NAME} to any address. {API_SERVER_CONSEQUENCE}"),
     ))
 }
 
@@ -1079,13 +1022,12 @@ fn unavailable_log<A4, A6>(
 fn resolve_server_addresses(
     config: &Rc<Config>,
     port: Port,
-    server: ApiServer,
 ) -> (Option<SocketAddrV4>, Option<SocketAddrV6>) {
     let ipv4_outcome = determine_ipv4_address(config, port);
     let ipv6_outcome = determine_ipv6_address(config, port);
-    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome, server);
-    let ipv4 = log_bind_outcome(ipv4_outcome, &server.family_label("IPv4"));
-    let ipv6 = log_bind_outcome(ipv6_outcome, &server.family_label("IPv6"));
+    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome);
+    let ipv4 = log_bind_outcome(ipv4_outcome, "IPv4");
+    let ipv6 = log_bind_outcome(ipv6_outcome, "IPv6");
     if let Some((level, message)) = unavailable {
         log::log!(level, "{message}");
     }
@@ -1454,9 +1396,9 @@ mod tests {
     #[test]
     fn test_server_with_one_family_is_not_reported() {
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        assert!(unavailable_log(&bound_v4(), &disabled, ApiServer::Rest).is_none());
+        assert!(unavailable_log(&bound_v4(), &disabled).is_none());
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
-        assert!(unavailable_log(&failed, &bound_v6(), ApiServer::Rest).is_none());
+        assert!(unavailable_log(&failed, &bound_v6()).is_none());
     }
 
     /// Turning both families off is a deliberate opt-out, so a server that is entirely
@@ -1465,12 +1407,11 @@ mod tests {
     fn test_server_fully_disabled_logs_info() {
         let v4: Result<Option<SocketAddrV4>> = Ok(None);
         let v6: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&v4, &v6, ApiServer::Rest).expect("no address is reported");
+        let (level, message) = unavailable_log(&v4, &v6).expect("no address is reported");
         assert_eq!(level, Level::Info);
         assert_eq!(
             message,
-            "REST API disabled. No API and UI connection available."
+            "REST API disabled. No API, UI, or gRPC connection available."
         );
     }
 
@@ -1480,22 +1421,12 @@ mod tests {
     fn test_server_unable_to_bind_logs_error() {
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&failed, &disabled, ApiServer::Grpc).expect("no address is reported");
+        let (level, message) = unavailable_log(&failed, &disabled).expect("no address is reported");
         assert_eq!(level, Level::Error);
         assert_eq!(
             message,
-            "Could not bind GRPC API to any address. External Device services are unavailable."
+            "Could not bind REST API to any address. No API, UI, or gRPC connection available."
         );
-    }
-
-    /// The per-family log labels are what users grep for, so keep them exact.
-    #[test]
-    fn test_family_labels_are_stable() {
-        assert_eq!(ApiServer::Rest.family_label("IPv4"), "IPv4");
-        assert_eq!(ApiServer::Rest.family_label("IPv6"), "IPv6");
-        assert_eq!(ApiServer::Grpc.family_label("IPv4"), "IPv4 GRPC");
-        assert_eq!(ApiServer::Grpc.family_label("IPv6"), "IPv6 GRPC");
     }
 
     fn default_allowed_hosts() -> Vec<String> {

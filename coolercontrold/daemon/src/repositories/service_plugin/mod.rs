@@ -7,3 +7,5 @@ pub mod plugin_controller;
 pub mod service_management;
 pub mod service_manifest;
 pub mod service_plugin_repo;
+pub mod transport;
+pub mod trust;

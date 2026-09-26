@@ -7943,6 +7943,19 @@
               "boolean",
               "null"
             ]
+          },
+          "tls_fingerprint": {
+            "description": "The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when\n TLS is off. Report-only: it is derived from the certificate, so anything sent here\n is ignored.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tls_strict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         }
       },
