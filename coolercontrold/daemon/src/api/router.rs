@@ -33,10 +33,10 @@ pub async fn init(app_state: AppState) -> ApiRouter {
         .with_state(app_state)
         // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
         .layer(Extension(token_handle))
-        // Outermost here, so a throttled peer is turned away before any credential work
+        // Outermost here, so a throttled peer is turned away before any token validation
         // runs. `grpc_error_middleware` wraps this whole router from `create_api_server`.
         .layer(axum::middleware::from_fn(
-            auth_throttle::throttle_middleware,
+            auth_throttle::token_throttle_middleware,
         ))
 }
 
@@ -222,11 +222,9 @@ fn auth_routes() -> ApiRouter<AppState> {
                     .tag("auth")
                     .security_requirement("BasicAuth")
             })
-            // The only unauthenticated route that adjudicates credentials in its handler,
-            // so it reports its own verdict to the throttle rather than being read off a
-            // status code the throttle cannot attribute.
+            // The handler checks the password itself, so its status is the verdict.
             .layer(axum::middleware::from_fn(
-                auth_throttle::credential_route_middleware,
+                auth_throttle::password_throttle_middleware,
             )),
         )
         .api_route(
@@ -248,6 +246,11 @@ fn auth_routes() -> ApiRouter<AppState> {
                     // both are required:
                     .security_requirement_multi(["CookieAuth", "BasicAuth"])
             })
+            // Inside the session check: a cookie-less 401 is not a password guess. Without
+            // this, a stolen session could brute-force `current_password` unthrottled.
+            .layer(axum::middleware::from_fn(
+                auth_throttle::password_throttle_middleware,
+            ))
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
@@ -1816,6 +1819,67 @@ mod tests {
             axum::serve(listener, router).await.unwrap();
         });
         format!("http://{address}")
+    }
+
+    /// Goal: `/set-passwd` counts a wrong current password against the peer's password
+    /// budget, but not a request refused for lacking a session, which guesses nothing.
+    /// Method: the route's two layers in the order `auth_routes` applies them, mirrored by
+    /// hand around a handler that always refuses the password, like the gRPC `serve` above.
+    #[tokio::test]
+    async fn set_passwd_throttle_sits_inside_the_session_check() {
+        use axum::extract::ConnectInfo;
+        use axum::routing::{get, post};
+        use std::net::SocketAddr;
+        use tower_sessions::Session;
+
+        let app = axum::Router::new()
+            .route(
+                "/grant",
+                get(|session: Session| async move { auth::grant_admin_session(&session).await }),
+            )
+            .route(
+                "/set-passwd",
+                post(|| async { StatusCode::UNAUTHORIZED })
+                    .layer(axum::middleware::from_fn(
+                        auth_throttle::password_throttle_middleware,
+                    ))
+                    .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+            )
+            .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
+        let peer = SocketAddr::from(([198, 51, 100, 20], 40000));
+        let set_passwd = |cookie: Option<&str>| {
+            let mut builder = Request::builder()
+                .method("POST")
+                .uri("/set-passwd")
+                .header(header::AUTHORIZATION, "Basic Q0NBZG1pbjpuZXc=");
+            if let Some(value) = cookie {
+                builder = builder.header(header::COOKIE, value);
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request.extensions_mut().insert(ConnectInfo(peer));
+            request
+        };
+
+        for _ in 0..10 {
+            let response = app.clone().oneshot(set_passwd(None)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        assert_eq!(auth_throttle::password_failures(peer.ip()), None);
+
+        let granted = app
+            .clone()
+            .oneshot(
+                Request::get("/grant")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let set_cookie = granted.headers()[header::SET_COOKIE].to_str().unwrap();
+        let cookie = set_cookie.split(';').next().unwrap();
+        let response = app.oneshot(set_passwd(Some(cookie))).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(auth_throttle::password_failures(peer.ip()), Some(1));
     }
 
     /// Goal: the load-bearing claim of the whole design. gRPC is served from the REST

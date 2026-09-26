@@ -6,8 +6,11 @@
 //! The daemon has no general rate limiter by design: the single-threaded sidecar and the
 //! actor channels' backpressure already bound how fast external work reaches the main
 //! loop. Authentication is the exception, because it runs upstream of every channel.
-//! `AuthActor` already locks out password guessing, but globally rather than per peer,
-//! and bearer-token failures were not throttled at all.
+//! `AuthActor` already locks out password guessing, but globally rather than per peer.
+//!
+//! Passwords and bearer tokens are budgeted apart. With one budget, any valid token would
+//! wipe a password streak, since a success clears the peer, and a peer's password failures
+//! would refuse its valid token traffic, which is what the desktop app and plugins use.
 //!
 //! Only requests that actually present credentials are counted. A 401 from an expired
 //! session cookie is not a guessing attempt, costs no hashing, and counting it would let
@@ -17,10 +20,12 @@
 //! reactor a sleeping request would stall every other client, handing an attacker the
 //! outage the throttle exists to prevent.
 //!
-//! The outcome is never inferred from the response status. `/handshake` answers 200 with
-//! or without an `Authorization` header, so a status-based reading would let an attacker
-//! clear their own streak between guesses. Only a layer that actually adjudicated the
-//! presented credentials marks the response, and only a marked response is counted.
+//! A token outcome is never inferred from the response status. `/handshake` answers 200
+//! with or without an `Authorization` header, so a status-based reading would let an
+//! attacker clear their own streak between guesses. Only a layer that actually adjudicated
+//! the presented token marks the response, and only a marked response is counted. The
+//! password routes are the exception: their handlers adjudicate the password themselves,
+//! so their status is the verdict.
 
 use crate::api::peer::PeerKey;
 use crate::api::CCError;
@@ -48,16 +53,17 @@ const MAX_TRACKED_PEERS: usize = 1024;
 const _: () = assert!(FAILURE_THRESHOLD > 0);
 const _: () = assert!(MAX_TRACKED_PEERS > 0);
 
-/// Process-wide throttle. The daemon presents one authentication surface no matter how
+/// Process-wide throttles. The daemon presents one authentication surface no matter how
 /// many listeners serve it, so per-router state would let a peer double its budget by
 /// alternating between the IPv4 and IPv6 servers, which build their routers separately.
 ///
-/// Deliberately a static rather than an actor handle, unlike `AuthActor` next door. This
-/// runs in a `from_fn` middleware that carries no state, upstream of every channel, and
-/// on the reject path it must answer without awaiting anything. The counters are two
-/// integers and a timestamp behind an uncontended lock; a channel round trip to own them
-/// would put a queue in front of the very path the throttle exists to keep cheap.
-static AUTH_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
+/// Deliberately statics rather than an actor handle, unlike `AuthActor` next door. These
+/// run in `from_fn` middleware that carries no state, upstream of every channel, and on
+/// the reject path must answer without awaiting anything. The counters are two integers
+/// and a timestamp behind an uncontended lock; a channel round trip to own them would put
+/// a queue in front of the very path the throttle exists to keep cheap.
+static TOKEN_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
+static PASSWORD_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 
 #[derive(Debug)]
 struct PeerFailures {
@@ -187,6 +193,15 @@ fn presents_credentials(request: &Request) -> bool {
     request.headers().contains_key(header::AUTHORIZATION)
 }
 
+/// Matches the scheme `auth::bearer_token` accepts, so the throttle gates exactly the
+/// requests that reach token validation.
+fn presents_bearer_token(request: &Request) -> bool {
+    request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .is_some_and(|value| value.as_bytes().starts_with(b"Bearer "))
+}
+
 /// A verdict on credentials a request actually presented, attached to the response by
 /// the layer that checked them. An unmarked response is not a guessing signal: it was
 /// produced without the credentials ever being adjudicated.
@@ -205,7 +220,8 @@ pub fn mark(mut response: Response, outcome: CredentialOutcome) -> Response {
 }
 
 /// Verdict for a route whose handler consumes credentials directly rather than behind an
-/// auth layer, such as `/login`.
+/// auth layer, such as `/login`. A 4xx other than these, such as `/set-passwd` refusing
+/// the default password as the new one, says nothing about the password presented.
 ///
 /// A 429 here is `AuthActor`'s global password lockout, never this middleware's own
 /// rejection: that one short-circuits above and never reaches a handler. Counting it
@@ -220,45 +236,77 @@ fn outcome_for(status: StatusCode) -> Option<CredentialOutcome> {
     }
 }
 
-/// Marks responses from a route that adjudicates credentials in its handler.
-pub async fn credential_route_middleware(request: Request, next: Next) -> Response {
-    let response = next.run(request).await;
-    match outcome_for(response.status()) {
-        Some(outcome) => mark(response, outcome),
-        None => response,
-    }
-}
-
-/// Applies a response's verdict, if it carries one, to the peer that produced it.
-fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
-    match response.extensions().get::<CredentialOutcome>() {
-        Some(CredentialOutcome::Rejected) => throttle.record_failure(peer, now),
-        Some(CredentialOutcome::Accepted) => throttle.record_success(peer),
-        None => {}
-    }
-}
-
-/// Rejects peers in backoff before any credential work runs, then records the outcome of
-/// everything downstream.
-pub async fn throttle_middleware(request: Request, next: Next) -> Response {
+/// Throttles a route whose handler checks the admin password: `/login`, and `/set-passwd`
+/// inside its session check.
+///
+/// Scoped to these routes rather than to the `Basic` scheme. A reverse proxy doing HTTP
+/// Basic auth forwards `Authorization: Basic` on every request, and none of those guess
+/// the daemon's password. A request with no `Authorization` at all is refused by the
+/// extractor before any hashing, so it is not an attempt either.
+pub async fn password_throttle_middleware(request: Request, next: Next) -> Response {
     if presents_credentials(&request).not() {
         return next.run(request).await;
     }
     let Some(peer) = peer_key(&request) else {
         return next.run(request).await;
     };
-    if let Some(remaining) = AUTH_THROTTLE.blocked_for(peer, Instant::now()) {
-        return CCError::TooManyAttempts {
-            msg: format!(
-                "Too many failed authentication attempts. Try again in {}s.",
-                remaining.as_secs().saturating_add(1)
-            ),
-        }
-        .into_response();
+    if let Some(remaining) = PASSWORD_THROTTLE.blocked_for(peer, Instant::now()) {
+        return too_many_attempts(remaining);
     }
     let response = next.run(request).await;
-    record(&AUTH_THROTTLE, peer, &response, Instant::now());
+    if let Some(outcome) = outcome_for(response.status()) {
+        apply(&PASSWORD_THROTTLE, peer, outcome, Instant::now());
+    }
     response
+}
+
+/// Rejects peers in token backoff before validation runs, then records the verdict the
+/// auth layers marked on the response.
+pub async fn token_throttle_middleware(request: Request, next: Next) -> Response {
+    if presents_bearer_token(&request).not() {
+        return next.run(request).await;
+    }
+    let Some(peer) = peer_key(&request) else {
+        return next.run(request).await;
+    };
+    if let Some(remaining) = TOKEN_THROTTLE.blocked_for(peer, Instant::now()) {
+        return too_many_attempts(remaining);
+    }
+    let response = next.run(request).await;
+    record(&TOKEN_THROTTLE, peer, &response, Instant::now());
+    response
+}
+
+/// Password failures on record for `peer`, for tests of the router's wiring.
+#[cfg(test)]
+pub fn password_failures(peer: std::net::IpAddr) -> Option<u32> {
+    let key = PeerKey::from_ip(peer);
+    PASSWORD_THROTTLE.lock().get(&key).map(|entry| entry.count)
+}
+
+/// Applies a response's verdict, if it carries one, to the peer that produced it.
+fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
+    if let Some(outcome) = response.extensions().get::<CredentialOutcome>() {
+        apply(throttle, peer, *outcome, now);
+    }
+}
+
+fn apply(throttle: &AuthThrottle, peer: PeerKey, outcome: CredentialOutcome, now: Instant) {
+    match outcome {
+        CredentialOutcome::Rejected => throttle.record_failure(peer, now),
+        CredentialOutcome::Accepted => throttle.record_success(peer),
+    }
+}
+
+fn too_many_attempts(remaining: Duration) -> Response {
+    debug_assert!(remaining.is_zero().not());
+    CCError::TooManyAttempts {
+        msg: format!(
+            "Too many failed authentication attempts. Try again in {}s.",
+            remaining.as_secs().saturating_add(1)
+        ),
+    }
+    .into_response()
 }
 
 #[cfg(test)]
@@ -298,6 +346,150 @@ mod tests {
         )));
         assert!(presents_credentials(&request_with(Some("Basic abc"), None)));
         assert!(presents_credentials(&request_with(None, None)).not());
+    }
+
+    /// Goal: the token budget gates exactly the requests that reach token validation. A
+    /// `Basic` header is not a token, whatever route it lands on.
+    #[test]
+    fn only_bearer_requests_are_token_throttled() {
+        assert!(presents_bearer_token(&request_with(
+            Some("Bearer cc_x"),
+            None
+        )));
+        assert!(presents_bearer_token(&request_with(Some("Basic abc"), None)).not());
+        assert!(presents_bearer_token(&request_with(Some("bearer cc_x"), None)).not());
+        assert!(presents_bearer_token(&request_with(None, None)).not());
+    }
+
+    /// Both middlewares wired as the router wires them, around stub handlers standing in for
+    /// a password route and for routes whose auth layer marks a token verdict.
+    fn wired_app() -> axum::Router {
+        use axum::middleware::from_fn;
+        use axum::routing::{get, post};
+        let token_verdict = |status: StatusCode, outcome| mark(status.into_response(), outcome);
+        axum::Router::new()
+            .route(
+                "/login",
+                post(|| async { StatusCode::UNAUTHORIZED })
+                    .layer(from_fn(password_throttle_middleware)),
+            )
+            .route(
+                "/token-ok",
+                get(move || async move {
+                    token_verdict(StatusCode::OK, CredentialOutcome::Accepted)
+                }),
+            )
+            .route(
+                "/token-bad",
+                get(move || async move {
+                    token_verdict(StatusCode::UNAUTHORIZED, CredentialOutcome::Rejected)
+                }),
+            )
+            .route("/other", get(|| async { StatusCode::UNAUTHORIZED }))
+            .layer(from_fn(token_throttle_middleware))
+    }
+
+    /// The statics are process-wide, so each wiring test owns one TEST-NET-2 address.
+    fn wired_peer(last_octet: u8) -> SocketAddr {
+        SocketAddr::from(([198, 51, 100, last_octet], 40000))
+    }
+
+    async fn call(
+        method: &str,
+        uri: &str,
+        authorization: Option<&str>,
+        peer: SocketAddr,
+    ) -> StatusCode {
+        let mut request = request_with(authorization, Some(peer));
+        *request.method_mut() = method.parse().unwrap();
+        *request.uri_mut() = uri.parse().unwrap();
+        tower::ServiceExt::oneshot(wired_app(), request)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    fn failures(throttle: &AuthThrottle, peer: SocketAddr) -> Option<u32> {
+        let key = PeerKey::from_ip(peer.ip());
+        throttle.lock().get(&key).map(|entry| entry.count)
+    }
+
+    /// Goal: password failures block further password attempts but never a valid token from
+    /// the same peer, and that token's success leaves the password streak intact.
+    #[tokio::test]
+    async fn password_failures_leave_token_requests_alone() {
+        let peer = wired_peer(10);
+        for _ in 0..=FAILURE_THRESHOLD {
+            assert_eq!(
+                call("POST", "/login", Some("Basic abc"), peer).await,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        assert_eq!(
+            call("POST", "/login", Some("Basic abc"), peer).await,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+
+        assert_eq!(
+            call("GET", "/token-ok", Some("Bearer cc_x"), peer).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            failures(&PASSWORD_THROTTLE, peer),
+            Some(FAILURE_THRESHOLD + 1)
+        );
+        assert_eq!(failures(&TOKEN_THROTTLE, peer), None);
+    }
+
+    /// Goal: token failures are throttled on their own budget, which leaves the peer free to
+    /// log in with a password.
+    #[tokio::test]
+    async fn token_failures_leave_password_attempts_alone() {
+        let peer = wired_peer(11);
+        for _ in 0..=FAILURE_THRESHOLD {
+            assert_eq!(
+                call("GET", "/token-bad", Some("Bearer cc_x"), peer).await,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        assert_eq!(
+            call("GET", "/token-bad", Some("Bearer cc_x"), peer).await,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            call("POST", "/login", Some("Basic abc"), peer).await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(failures(&PASSWORD_THROTTLE, peer), Some(1));
+    }
+
+    /// Goal: a `Basic` header on a route that checks no password is neither counted nor
+    /// blocked, so a proxy doing HTTP Basic auth cannot throttle the UI behind it.
+    #[tokio::test]
+    async fn basic_on_other_routes_is_not_a_password_attempt() {
+        let peer = wired_peer(12);
+        for _ in 0..(FAILURE_THRESHOLD * 2) {
+            assert_eq!(
+                call("GET", "/other", Some("Basic abc"), peer).await,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        assert_eq!(failures(&PASSWORD_THROTTLE, peer), None);
+        assert_eq!(failures(&TOKEN_THROTTLE, peer), None);
+    }
+
+    /// Goal: a password route called with no credentials at all is not an attempt, since the
+    /// extractor refuses it before any hashing.
+    #[tokio::test]
+    async fn password_route_without_credentials_is_not_counted() {
+        let peer = wired_peer(13);
+        for _ in 0..(FAILURE_THRESHOLD * 2) {
+            assert_eq!(
+                call("POST", "/login", None, peer).await,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        assert_eq!(failures(&PASSWORD_THROTTLE, peer), None);
     }
 
     /// Goal: the peer key comes from the kernel-reported address, and is absent rather

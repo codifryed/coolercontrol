@@ -225,6 +225,16 @@ async fn check_session_permission(
     }
 }
 
+/// Grants an admin session the way a successful `/login` does, for tests of the layers
+/// that sit behind the session check.
+#[cfg(test)]
+pub async fn grant_admin_session(session: &Session) {
+    session
+        .insert(SESSION_PERMISSIONS, Permission::Admin)
+        .await
+        .unwrap();
+}
+
 pub async fn login(
     NoApi(auth_header): NoApi<BasicAuth>,
     NoApi(session): NoApi<Session>,
