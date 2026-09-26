@@ -244,6 +244,9 @@ async fn run_all_api_servers(
         expired_deletion_store.continuously_delete_expired(Duration::from_secs(3600)),
     );
 
+    // One limiter for both listeners, so a peer cannot double its share by using both.
+    let connection_limiter = connection::process_limiter();
+
     // REST API servers
     if let Some(addr) = ipv4 {
         handles.push(tokio::task::spawn_local(create_api_server(
@@ -253,6 +256,7 @@ async fn run_all_api_servers(
             app_state.clone(),
             session_layer.clone(),
             compression_layer.clone(),
+            Arc::clone(&connection_limiter),
             tls_config.clone(),
             cancel_token.clone(),
             cors_origins.clone(),
@@ -268,6 +272,7 @@ async fn run_all_api_servers(
             app_state,
             session_layer,
             compression_layer,
+            connection_limiter,
             tls_config,
             cancel_token.clone(),
             cors_origins,
@@ -365,6 +370,7 @@ async fn create_api_server(
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     compression_layer: Option<ApiCompressionLayer>,
+    connection_limiter: Arc<connection::ConnectionLimiter>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
@@ -428,7 +434,7 @@ async fn create_api_server(
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        connection::server(listener.into_std()?, acceptor)?
+        connection::server(listener.into_std()?, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -443,14 +449,18 @@ async fn create_api_server(
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        connection::server(listener.into_std()?, DefaultAcceptor::new())?
-            .handle(handle)
-            .serve(
-                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
-                    normalized_router,
-                ),
-            )
-            .await?;
+        connection::server(
+            listener.into_std()?,
+            DefaultAcceptor::new(),
+            connection_limiter,
+        )?
+        .handle(handle)
+        .serve(
+            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                normalized_router,
+            ),
+        )
+        .await?;
     }
     Ok(())
 }

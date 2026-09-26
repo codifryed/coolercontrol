@@ -6,16 +6,20 @@
 //! Everything here runs for peers that have proven nothing, so each connection must end on
 //! its own if the peer stalls.
 
+use crate::api::peer::PeerKey;
 use axum_server::accept::Accept;
 use futures_util::future::BoxFuture;
 use hyper_util::rt::{TokioExecutor, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
+use log::{debug, info};
 use pin_project_lite::pin_project;
+use std::collections::HashMap;
 use std::future::Future;
 use std::io::{self, ErrorKind, IoSlice};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::ops::Not;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -25,6 +29,20 @@ use tokio::time::{Instant, Sleep};
 /// Plaintext bytes after which a connection has committed to a protocol: the length of the
 /// HTTP/2 preface, the most hyper-util's version sniff ever waits for.
 const FIRST_BYTES_COUNT: usize = 24;
+
+/// Concurrent connections one remote peer may hold. A browser opens at most six per host
+/// over HTTP/1.1, and a whole IPv6 /64 shares this, so it leaves room for a household.
+const PER_PEER_CONNECTIONS: usize = 64;
+/// Concurrent connections all remote peers may hold together.
+const REMOTE_CONNECTIONS: usize = 256;
+/// Connections from this host, pooled apart so a remote flood cannot lock out the local app.
+const LOOPBACK_CONNECTIONS: usize = 128;
+/// Connections may hold at most one part in this many of the open file limit. The rest is
+/// for the hardware, whose descriptor use grows with the number of devices.
+const OPEN_FILES_SHARE: u64 = 4;
+
+const _: () = assert!(PER_PEER_CONNECTIONS <= REMOTE_CONNECTIONS);
+const _: () = assert!(OPEN_FILES_SHARE > 1);
 
 #[derive(Debug, Clone, Copy)]
 struct ConnectionTimeouts {
@@ -49,26 +67,177 @@ const TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
 
 const _: () = assert!(TIMEOUTS.first_bytes.as_secs() <= TIMEOUTS.header_read.as_secs());
 
-/// The API server for `listener`, with every connection accepted through `acceptor` and
-/// then bounded by the guard. Taking the acceptor here keeps the guard on every listener.
+/// The API server for `listener`, with every connection admitted by `limiter`, accepted
+/// through `acceptor`, then bounded by the guard. Taking both here keeps the guard on every
+/// listener.
 pub fn server<A>(
     listener: std::net::TcpListener,
     acceptor: A,
+    limiter: Arc<ConnectionLimiter>,
 ) -> io::Result<axum_server::Server<SocketAddr, ConnectionGuardAcceptor<A>>> {
-    server_with(listener, acceptor, TIMEOUTS)
+    server_with(listener, acceptor, limiter, TIMEOUTS)
 }
 
 fn server_with<A>(
     listener: std::net::TcpListener,
     acceptor: A,
+    limiter: Arc<ConnectionLimiter>,
     timeouts: ConnectionTimeouts,
 ) -> io::Result<axum_server::Server<SocketAddr, ConnectionGuardAcceptor<A>>> {
     let mut server = axum_server::from_tcp(listener)?.acceptor(ConnectionGuardAcceptor {
         inner: acceptor,
+        limiter,
         first_bytes: timeouts.first_bytes,
     });
     configure_http(server.http_builder(), timeouts);
     Ok(server)
+}
+
+/// The limiter every listener shares, sized to this process's open file limit.
+pub fn process_limiter() -> Arc<ConnectionLimiter> {
+    let limits = ConnectionLimits::for_open_file_limit(crate::open_files::limit());
+    if limits != ConnectionLimits::FULL {
+        info!(
+            "API connections are limited to {} by the open file limit.",
+            limits.total()
+        );
+    }
+    ConnectionLimiter::new(limits)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConnectionLimits {
+    per_peer: usize,
+    remote: usize,
+    loopback: usize,
+}
+
+impl ConnectionLimits {
+    const FULL: Self = Self {
+        per_peer: PER_PEER_CONNECTIONS,
+        remote: REMOTE_CONNECTIONS,
+        loopback: LOOPBACK_CONNECTIONS,
+    };
+
+    /// The full limits, scaled down in proportion when they would hold more than their
+    /// share of `open_files`. Each pool keeps at least one connection.
+    fn for_open_file_limit(open_files: u64) -> Self {
+        let budget = usize::try_from(open_files / OPEN_FILES_SHARE).unwrap_or(usize::MAX);
+        let full_total = Self::FULL.total();
+        if budget >= full_total {
+            return Self::FULL;
+        }
+        let remote = (REMOTE_CONNECTIONS * budget / full_total).max(1);
+        let loopback = (LOOPBACK_CONNECTIONS * budget / full_total).max(1);
+        let limits = Self {
+            per_peer: PER_PEER_CONNECTIONS.min(remote),
+            remote,
+            loopback,
+        };
+        debug_assert!(limits.total() <= budget.max(2));
+        limits
+    }
+
+    fn total(self) -> usize {
+        self.remote + self.loopback
+    }
+}
+
+#[derive(Debug)]
+struct ConnectionCounts {
+    remote_by_peer: HashMap<PeerKey, usize>,
+    remote: usize,
+    loopback: usize,
+}
+
+/// Counts open connections against `ConnectionLimits`, shared by every listener.
+///
+/// Invariants: each count stays within its limit; `remote` is the sum of `remote_by_peer`,
+/// which holds no zero entries, so it never has more than `limits.remote` keys.
+#[derive(Debug)]
+pub struct ConnectionLimiter {
+    limits: ConnectionLimits,
+    counts: Mutex<ConnectionCounts>,
+}
+
+impl ConnectionLimiter {
+    fn new(limits: ConnectionLimits) -> Arc<Self> {
+        Arc::new(Self {
+            limits,
+            counts: Mutex::new(ConnectionCounts {
+                remote_by_peer: HashMap::with_capacity(limits.remote),
+                remote: 0,
+                loopback: 0,
+            }),
+        })
+    }
+
+    /// A permit for one more connection from `peer`, or `None` when a limit is reached.
+    pub fn try_acquire(self: &Arc<Self>, peer: IpAddr) -> Option<ConnectionPermit> {
+        let key = PeerKey::from_ip(peer);
+        let mut counts = self.lock();
+        if key == PeerKey::Loopback {
+            if counts.loopback < self.limits.loopback {
+                counts.loopback += 1;
+                return Some(self.permit(key));
+            }
+            return None;
+        }
+        if counts.remote >= self.limits.remote {
+            return None;
+        }
+        let per_peer = counts.remote_by_peer.entry(key).or_insert(0);
+        if *per_peer >= self.limits.per_peer {
+            return None;
+        }
+        *per_peer += 1;
+        counts.remote += 1;
+        debug_assert!(counts.remote_by_peer.len() <= self.limits.remote);
+        Some(self.permit(key))
+    }
+
+    fn permit(self: &Arc<Self>, key: PeerKey) -> ConnectionPermit {
+        ConnectionPermit {
+            limiter: Arc::clone(self),
+            key,
+        }
+    }
+
+    fn release(&self, key: PeerKey) {
+        let mut counts = self.lock();
+        if key == PeerKey::Loopback {
+            debug_assert!(counts.loopback > 0);
+            counts.loopback = counts.loopback.saturating_sub(1);
+            return;
+        }
+        debug_assert!(counts.remote > 0);
+        counts.remote = counts.remote.saturating_sub(1);
+        if let Some(per_peer) = counts.remote_by_peer.get_mut(&key) {
+            *per_peer = per_peer.saturating_sub(1);
+            if *per_peer == 0 {
+                counts.remote_by_peer.remove(&key);
+            }
+        }
+    }
+
+    /// A poisoned limiter must not refuse every connection from then on. The counts may be
+    /// off by the one update in flight when it poisoned, which is far better than an outage.
+    fn lock(&self) -> MutexGuard<'_, ConnectionCounts> {
+        self.counts.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// One admitted connection. Dropping it, when the connection ends, frees its slot.
+#[derive(Debug)]
+pub struct ConnectionPermit {
+    limiter: Arc<ConnectionLimiter>,
+    key: PeerKey,
+}
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        self.limiter.release(self.key);
+    }
 }
 
 /// axum-server builds hyper's builder without a timer, and hyper ignores a default timeout
@@ -90,10 +259,12 @@ fn configure_http(builder: &mut Builder<TokioExecutor>, timeouts: ConnectionTime
         .keep_alive_interval(timeouts.h2_keep_alive_interval);
 }
 
-/// Wraps the protocol acceptor with a deadline for the connection's first bytes.
+/// Wraps the protocol acceptor with the connection limits and a deadline for the
+/// connection's first bytes.
 #[derive(Debug, Clone)]
 pub struct ConnectionGuardAcceptor<A> {
     inner: A,
+    limiter: Arc<ConnectionLimiter>,
     first_bytes: Duration,
 }
 
@@ -108,7 +279,20 @@ where
     type Service = A::Service;
     type Future = BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
 
+    /// Over-limit connections are dropped here, before any TLS or HTTP work, which closes
+    /// them at once. The permit then travels with the stream, so the slot frees whenever the
+    /// connection ends, however it ends.
     fn accept(&self, stream: TcpStream, service: S) -> Self::Future {
+        let permit = stream
+            .peer_addr()
+            .ok()
+            .and_then(|address| self.limiter.try_acquire(address.ip()));
+        let Some(permit) = permit else {
+            debug!("Refused an API connection over the connection limit.");
+            return Box::pin(std::future::ready(Err(io::Error::other(
+                "over the connection limit",
+            ))));
+        };
         let deadline = Instant::now() + self.first_bytes;
         let accepting = self.inner.accept(stream, service);
         Box::pin(async move {
@@ -116,7 +300,7 @@ where
                 return Err(first_bytes_timeout());
             };
             let (stream, service) = accepted?;
-            Ok((GuardedStream::new(stream, deadline), service))
+            Ok((GuardedStream::new(stream, deadline, permit), service))
         })
     }
 }
@@ -142,15 +326,17 @@ pin_project! {
         // Dropped once the connection has committed to a protocol.
         deadline: Option<Pin<Box<Sleep>>>,
         bytes_read: usize,
+        permit: ConnectionPermit,
     }
 }
 
 impl<S> GuardedStream<S> {
-    fn new(inner: S, deadline: Instant) -> Self {
+    fn new(inner: S, deadline: Instant, permit: ConnectionPermit) -> Self {
         Self {
             inner,
             deadline: Some(Box::pin(tokio::time::sleep_until(deadline))),
             bytes_read: 0,
+            permit,
         }
     }
 }
@@ -245,10 +431,20 @@ mod tests {
 
     /// Serves `router` through the production server, the way `create_api_server` does.
     async fn serve(router: Router) -> SocketAddr {
+        serve_limited(router, ConnectionLimiter::new(ConnectionLimits::FULL)).await
+    }
+
+    async fn serve_limited(router: Router, limiter: Arc<ConnectionLimiter>) -> SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DefaultAcceptor::new();
-        let server = server_with(listener.into_std().unwrap(), acceptor, TEST_TIMEOUTS).unwrap();
+        let server = server_with(
+            listener.into_std().unwrap(),
+            acceptor,
+            limiter,
+            TEST_TIMEOUTS,
+        )
+        .unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
@@ -270,7 +466,14 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DualProtocolAcceptor::new(config);
-        let server = server_with(listener.into_std().unwrap(), acceptor, TEST_TIMEOUTS).unwrap();
+        let limiter = ConnectionLimiter::new(ConnectionLimits::FULL);
+        let server = server_with(
+            listener.into_std().unwrap(),
+            acceptor,
+            limiter,
+            TEST_TIMEOUTS,
+        )
+        .unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
@@ -401,6 +604,123 @@ mod tests {
             client.check(request()).await.unwrap().into_inner().status,
             1
         );
+    }
+
+    fn limiter(per_peer: usize, remote: usize, loopback: usize) -> Arc<ConnectionLimiter> {
+        ConnectionLimiter::new(ConnectionLimits {
+            per_peer,
+            remote,
+            loopback,
+        })
+    }
+
+    fn ip(address: &str) -> IpAddr {
+        address.parse().unwrap()
+    }
+
+    /// Goal: at a normal open file limit the full limits apply, and at a low one the pools
+    /// shrink in proportion to stay within their share, never below one each.
+    #[test]
+    fn limits_scale_with_the_open_file_limit() {
+        assert_eq!(
+            ConnectionLimits::for_open_file_limit(524_288),
+            ConnectionLimits::FULL
+        );
+        let tight = ConnectionLimits::for_open_file_limit(1024);
+        assert!(tight.total() <= 1024 / 4);
+        assert!(tight.remote > tight.loopback);
+        assert_eq!(tight.per_peer, PER_PEER_CONNECTIONS);
+        let tiny = ConnectionLimits::for_open_file_limit(40);
+        assert!(tiny.total() <= 10);
+        assert!(tiny.per_peer <= tiny.remote);
+        let starved = ConnectionLimits::for_open_file_limit(0);
+        assert_eq!(
+            (starved.remote, starved.loopback, starved.per_peer),
+            (1, 1, 1)
+        );
+    }
+
+    /// Goal: one peer is held to its own limit, and an IPv6 /64 counts as one peer.
+    #[test]
+    fn per_peer_limit_holds() {
+        let limiter = limiter(2, 10, 1);
+        let held = [
+            limiter.try_acquire(ip("2001:db8::1")).unwrap(),
+            limiter.try_acquire(ip("2001:db8::2")).unwrap(),
+        ];
+        assert!(limiter.try_acquire(ip("2001:db8::3")).is_none());
+        assert!(limiter.try_acquire(ip("192.0.2.1")).is_some());
+        drop(held);
+    }
+
+    /// Goal: the remote pool caps all remote peers together, and loopback is admitted from
+    /// its own pool even when the remote one is full.
+    #[test]
+    fn pools_are_independent() {
+        let limiter = limiter(1, 2, 1);
+        let remote = [
+            limiter.try_acquire(ip("192.0.2.1")).unwrap(),
+            limiter.try_acquire(ip("192.0.2.2")).unwrap(),
+        ];
+        assert!(limiter.try_acquire(ip("192.0.2.3")).is_none());
+        let local = limiter.try_acquire(ip("127.0.0.1")).unwrap();
+        assert!(limiter.try_acquire(ip("::1")).is_none());
+        drop(local);
+        assert!(limiter.try_acquire(ip("::ffff:127.0.0.1")).is_some());
+        drop(remote);
+    }
+
+    /// Goal: a slot frees when its connection ends, and nothing is left behind once every
+    /// connection has ended.
+    #[test]
+    fn permits_release_on_drop() {
+        let limiter = limiter(1, 4, 1);
+        let first = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
+        drop(first);
+        let again = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let local = limiter.try_acquire(ip("127.0.0.1")).unwrap();
+        drop(again);
+        drop(local);
+        let counts = limiter.lock();
+        assert_eq!((counts.remote, counts.loopback), (0, 0));
+        assert!(counts.remote_by_peer.is_empty());
+    }
+
+    /// Sends a request and returns whatever arrives before the server closes. A refused
+    /// connection may also be reset, which reads as nothing received.
+    async fn exchange(stream: &mut TcpStream) -> Vec<u8> {
+        let _ = stream
+            .write_all(b"GET / HTTP/1.1\r\nhost: cc.lan\r\nconnection: close\r\n\r\n")
+            .await;
+        let mut received = Vec::new();
+        let _ = timeout(NEVER, stream.read_to_end(&mut received))
+            .await
+            .expect("the connection must end");
+        received
+    }
+
+    /// Goal: through the real server, a connection over the limit is closed without being
+    /// served, and the slot is reusable once the holder disconnects. Method: a loopback pool
+    /// of one; the held connection sends nothing until the second has been refused.
+    #[tokio::test]
+    async fn over_limit_connection_is_refused_until_a_slot_frees() {
+        let address = serve_limited(app(), limiter(1, 1, 1)).await;
+        let mut held = TcpStream::connect(address).await.unwrap();
+        let mut refused = TcpStream::connect(address).await.unwrap();
+        assert!(exchange(&mut refused).await.is_empty());
+        assert!(String::from_utf8_lossy(&exchange(&mut held).await).starts_with("HTTP/1.1 200"));
+        drop(held);
+
+        let started = std::time::Instant::now();
+        loop {
+            let mut next = TcpStream::connect(address).await.unwrap();
+            if exchange(&mut next).await.is_empty().not() {
+                break;
+            }
+            assert!(started.elapsed() < NEVER, "the slot was never freed");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     /// Goal: the header timeout never cuts a response that is still streaming, which is what
