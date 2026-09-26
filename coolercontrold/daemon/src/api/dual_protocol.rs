@@ -18,6 +18,7 @@
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
+use axum::http::uri::{Authority, PathAndQuery};
 use axum::http::{header, Request, Response, StatusCode};
 use axum::middleware::AddExtension;
 use axum::Extension;
@@ -29,6 +30,7 @@ use pin_project_lite::pin_project;
 use std::future::Future;
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
+use std::ops::Not;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
@@ -353,27 +355,11 @@ where
                 return inner.call(req).await;
             }
 
-            // Redirect to HTTPS
-            let host = req
-                .headers()
-                .get(header::HOST)
-                .and_then(|h| h.to_str().ok())
-                .map_or("localhost", |h| {
-                    // Remove port from host if present
-                    h.split(':').next().unwrap_or(h)
-                });
-
-            let redirect_uri = if port == 443 {
-                format!(
-                    "https://{host}{}",
-                    req.uri().path_and_query().map_or("/", |pq| pq.as_str())
-                )
-            } else {
-                format!(
-                    "https://{host}:{port}{}",
-                    req.uri().path_and_query().map_or("/", |pq| pq.as_str())
-                )
-            };
+            let redirect_uri = redirect_location(
+                request_authority(&req).as_ref(),
+                port,
+                req.uri().path_and_query().map_or("/", PathAndQuery::as_str),
+            );
 
             let response = Response::builder()
                 .status(StatusCode::MOVED_PERMANENTLY)
@@ -386,9 +372,113 @@ where
     }
 }
 
+/// The authority the client addressed: `Host`, else the URI's own authority, which is where
+/// HTTP/2 carries it. An unparseable or host-less value counts as absent.
+fn request_authority(req: &Request<Body>) -> Option<Authority> {
+    let has_host = |authority: &Authority| authority.host().is_empty().not();
+    req.headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<Authority>().ok())
+        .filter(has_host)
+        .or_else(|| req.uri().authority().filter(|a| has_host(a)).cloned())
+}
+
+/// The HTTPS URL that serves the same resource.
+///
+/// The host is taken from a parsed authority rather than split on `:`, because an IPv6
+/// literal such as `[::1]:11987` is itself full of colons. `Authority::host` keeps the
+/// brackets, which the URL needs.
+fn redirect_location(authority: Option<&Authority>, port: u16, path_and_query: &str) -> String {
+    let host = authority.map_or("localhost", Authority::host);
+    debug_assert!(host.is_empty().not());
+    if port == 443 {
+        format!("https://{host}{path_and_query}")
+    } else {
+        format!("https://{host}:{port}{path_and_query}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn authority(value: &str) -> Authority {
+        value.parse().unwrap()
+    }
+
+    fn request(host_header: Option<&str>, uri: &str) -> Request<Body> {
+        let mut builder = Request::builder().uri(uri);
+        if let Some(value) = host_header {
+            builder = builder.header(header::HOST, value);
+        }
+        builder.body(Body::empty()).unwrap()
+    }
+
+    /// Goal: IPv6 literals keep their brackets and lose only the port. Splitting on the first
+    /// `:` used to turn `[::1]:11987` into `[`.
+    #[test]
+    fn redirect_keeps_ipv6_literal_hosts() {
+        assert_eq!(
+            redirect_location(Some(&authority("[::1]:11987")), 11987, "/devices"),
+            "https://[::1]:11987/devices"
+        );
+        assert_eq!(
+            redirect_location(Some(&authority("[fe80::1]")), 11987, "/"),
+            "https://[fe80::1]:11987/"
+        );
+    }
+
+    /// Goal: IPv4 and name hosts behave as before: the client's port is replaced by the
+    /// listener's, and the query survives.
+    #[test]
+    fn redirect_replaces_the_port_for_ipv4_and_names() {
+        assert_eq!(
+            redirect_location(Some(&authority("192.168.1.5:11987")), 11987, "/a?b=c"),
+            "https://192.168.1.5:11987/a?b=c"
+        );
+        assert_eq!(
+            redirect_location(Some(&authority("cc.lan")), 8443, "/"),
+            "https://cc.lan:8443/"
+        );
+    }
+
+    /// Goal: the default HTTPS port is left implicit, and a missing host falls back to
+    /// `localhost` rather than producing an empty authority.
+    #[test]
+    fn redirect_omits_443_and_defaults_the_host() {
+        assert_eq!(
+            redirect_location(Some(&authority("cc.lan:80")), 443, "/"),
+            "https://cc.lan/"
+        );
+        assert_eq!(
+            redirect_location(None, 11987, "/"),
+            "https://localhost:11987/"
+        );
+    }
+
+    /// Goal: `Host` wins, the URI authority covers HTTP/2 (which sends no `Host`), and an
+    /// unparseable or empty value counts as absent.
+    #[test]
+    fn request_authority_prefers_host_then_uri() {
+        let both = request(Some("[::1]:11987"), "http://other.lan/x");
+        assert_eq!(request_authority(&both), Some(authority("[::1]:11987")));
+
+        let uri_only = request(None, "http://[2001:db8::1]:11987/x");
+        assert_eq!(
+            request_authority(&uri_only),
+            Some(authority("[2001:db8::1]:11987"))
+        );
+
+        let invalid = request(Some("not a host"), "/x");
+        assert_eq!(request_authority(&invalid), None);
+
+        let empty = request(Some(""), "/x");
+        assert_eq!(request_authority(&empty), None);
+
+        let neither = request(None, "/x");
+        assert_eq!(request_authority(&neither), None);
+    }
 
     #[test]
     fn test_is_tls_handshake() {
