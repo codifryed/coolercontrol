@@ -152,6 +152,17 @@ export default {
                 noActiveMode: '无激活的模式',
                 setUpCooling: '设置冷却',
             },
+            logsPage: {
+                debugTitle: '调试日志已开启',
+                debugJournal:
+                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出位于系统日志（journal）中。要将其保存到文件，请在后台服务所在的主机上运行：',
+                debugNoJournal:
+                    '此页面仅显示最近的 INFO、WARN 和 ERROR 行。完整的调试输出会发送到后台服务的标准错误输出。',
+                debugDocs: '如何收集日志',
+                debugTurnOff: '关闭调试日志',
+                copyCommand: '复制命令',
+                commandCopied: '命令已复制到剪贴板',
+            },
             devicesPage: {
                 landingHint: '选择一个设备以查看其详情和设置。',
                 temps: '温度',
@@ -285,6 +296,8 @@ export default {
             settings: '设置',
             openInBrowser: '在浏览器中打开',
             loginSuccessful: '登录成功',
+            debug: '调试',
+            debugLoggingActive: '调试日志已开启。完成后请关闭。',
         },
         settings: {
             title: '设置',
@@ -334,6 +347,7 @@ export default {
                 performance: '性能',
                 devices: '设备与检测',
                 liquidctl: 'Liquidctl',
+                logging: '日志',
             },
             applySettingsOnStartup: '启动时应用设置',
             deviceDelayAtStartup: '启动时设备延迟',
@@ -346,6 +360,9 @@ export default {
             sensorsAutoDetect: '传感器自动检测',
             sensorsConfig: 'lm-sensors 配置',
             deviceListener: '设备变更监听器',
+            debugLogging: '调试日志',
+            debugLoggingForcedEnv: '由 CC_LOG 环境变量启用',
+            debugLoggingForcedFlag: '由 --debug 参数启用',
             customTheme: {
                 title: '自定义主题',
                 accent: '强调色',
@@ -403,6 +420,8 @@ export default {
                     '使用 lm-sensors 配置文件 (/etc/sensors3.conf 和 /etc/sensors.d)\n中的传感器名称和隐藏的传感器。\nCoolerControl 中设置的名称始终优先。',
                 deviceListener:
                     '监听设备添加/移除事件（例如USB热插拔）\n并在检测到硬件变更时发送通知。',
+                debugLogging:
+                    '记录详细的 DEBUG 输出以便排查问题。\n输出量很大，收集完日志后请关闭。\n日志页面会说明如何收集。',
                 triggersDaemonRestart: '触发自动后台服务重启',
                 copyThemeCode: '复制代表当前自定义主题的紧凑代码。\n可粘贴到聊天或论坛分享。',
                 pasteThemeCode: '通过他人分享的代码 (cct1:...) 应用自定义主题。',

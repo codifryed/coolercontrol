@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::api::{handle_error, AppState, CCError};
+use crate::logger::LogLevelSource;
 use aide::axum::IntoApiResponse;
 #[cfg(debug_assertions)]
 use aide::openapi::OpenApi;
@@ -138,7 +139,7 @@ pub async fn health(
 ) -> Result<Json<HealthCheck>, CCError> {
     let (warnings, errors) = log_buf_handle.warning_errors().await;
     health
-        .check(warnings, errors)
+        .check(warnings, errors, log_buf_handle.level_info())
         .await
         .map(Json)
         .map_err(handle_error)
@@ -182,6 +183,12 @@ pub struct HealthDetails {
     pub warnings: usize,
     pub errors: usize,
     pub liquidctl_connected: bool,
+    /// The log level the daemon started with, e.g. "INFO" or "DEBUG".
+    pub log_level: String,
+    /// Where the log level came from.
+    pub log_level_source: LogLevelSource,
+    /// Whether logs go to the systemd journal rather than stderr.
+    pub log_to_journal: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

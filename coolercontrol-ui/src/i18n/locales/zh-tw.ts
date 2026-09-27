@@ -152,6 +152,17 @@ export default {
                 noActiveMode: '無啟用中的模式',
                 setUpCooling: '設定冷卻',
             },
+            logsPage: {
+                debugTitle: '偵錯日誌已開啟',
+                debugJournal:
+                    '此頁面僅顯示最近的 INFO、WARN 和 ERROR 行。完整的偵錯輸出位於系統日誌（journal）中。若要將其儲存到檔案，請在守護程式所在的主機上執行：',
+                debugNoJournal:
+                    '此頁面僅顯示最近的 INFO、WARN 和 ERROR 行。完整的偵錯輸出會傳送到守護程式的標準錯誤輸出。',
+                debugDocs: '如何收集日誌',
+                debugTurnOff: '關閉偵錯日誌',
+                copyCommand: '複製命令',
+                commandCopied: '命令已複製到剪貼簿',
+            },
             devicesPage: {
                 landingHint: '選擇一個裝置以檢視其詳細資訊與設定。',
                 temps: '溫度',
@@ -285,6 +296,8 @@ export default {
             settings: '設定',
             openInBrowser: '在瀏覽器中開啟',
             loginSuccessful: '登入成功',
+            debug: '偵錯',
+            debugLoggingActive: '偵錯日誌已開啟。完成後請關閉。',
         },
         settings: {
             title: '設定',
@@ -334,6 +347,7 @@ export default {
                 performance: '效能',
                 devices: '裝置與偵測',
                 liquidctl: 'Liquidctl',
+                logging: '日誌',
             },
             applySettingsOnStartup: '啟動時應用設定',
             deviceDelayAtStartup: '啟動時裝置延遲',
@@ -346,6 +360,9 @@ export default {
             sensorsAutoDetect: '感測器自動偵測',
             sensorsConfig: 'lm-sensors 設定',
             deviceListener: '裝置變更監聽器',
+            debugLogging: '偵錯日誌',
+            debugLoggingForcedEnv: '由 CC_LOG 環境變數啟用',
+            debugLoggingForcedFlag: '由 --debug 參數啟用',
             customTheme: {
                 title: '自訂主題',
                 accent: '強調色',
@@ -403,6 +420,8 @@ export default {
                     '使用 lm-sensors 設定檔 (/etc/sensors3.conf 與 /etc/sensors.d)\n中的感測器名稱與隱藏的感測器。\nCoolerControl 中設定的名稱一律優先。',
                 deviceListener:
                     '監聽裝置新增/移除事件（例如USB熱插拔）\n並在偵測到硬體變更時發送通知。',
+                debugLogging:
+                    '記錄詳細的 DEBUG 輸出以便排查問題。\n輸出量很大，收集完日誌後請關閉。\n日誌頁面會說明如何收集。',
                 triggersDaemonRestart: '觸發自動守護程式重啟',
                 copyThemeCode: '複製代表目前自訂主題的精簡代碼。\n可貼到聊天或論壇分享。',
                 pasteThemeCode: '透過他人分享的代碼 (cct1:...) 套用自訂主題。',

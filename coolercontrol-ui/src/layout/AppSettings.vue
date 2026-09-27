@@ -20,6 +20,7 @@ import {
 } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { useDaemonState } from '@/stores/DaemonState.ts'
 import { useConfirm } from '@/shell/confirm'
 import { useRoute } from 'vue-router'
 import { useShortcutsDialog } from '@/composables/useShortcutsDialog.ts'
@@ -69,6 +70,7 @@ import UiSwitch from '@/shell/ui/UiSwitch.vue'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const daemonState = useDaemonState()
 const colorStore = useThemeColorsStore()
 const confirm = useConfirm()
 const { openShortcutsDialog } = useShortcutsDialog()
@@ -362,6 +364,23 @@ const interfaceFontOptions = computed<UiSelectOption[]>(() =>
 const liquidctlInit = computed({
     get: () => !settingsStore.ccSettings.no_init,
     set: (value: boolean) => (settingsStore.ccSettings.no_init = !value),
+})
+
+// The setting can only raise the level, so debug forced by the env var or flag
+// shows as on and locks the switch.
+const debugLogging = computed({
+    get: () => daemonState.debugLoggingForcedBy != null || settingsStore.ccSettings.debug_logging,
+    set: (value: boolean) => (settingsStore.ccSettings.debug_logging = value),
+})
+const debugLoggingForcedDescription = computed((): string => {
+    switch (daemonState.debugLoggingForcedBy) {
+        case 'env':
+            return t('layout.settings.debugLoggingForcedEnv')
+        case 'flag':
+            return t('layout.settings.debugLoggingForcedFlag')
+        default:
+            return ''
+    }
 })
 
 const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
@@ -1027,6 +1046,27 @@ onUnmounted(() => {
                             <UiSwitch
                                 v-model="settingsStore.ccSettings.hide_duplicate_devices"
                                 :disabled="!settingsStore.ccSettings.liquidctl_integration"
+                                @update:model-value="applyGenericDaemonChange"
+                            />
+                        </div>
+                    </UiSettingRow>
+                </UiSettingGroup>
+                <UiSettingGroup :title="t('layout.settings.groups.logging')">
+                    <UiSettingRow
+                        id="setting-debug-logging"
+                        :highlighted="highlightId === 'setting-debug-logging'"
+                        v-tooltip.top="{
+                            escape: false,
+                            value: t('layout.settings.tooltips.debugLogging'),
+                        }"
+                        :label="t('layout.settings.debugLogging')"
+                        :description="debugLoggingForcedDescription"
+                    >
+                        <div class="flex items-center gap-1">
+                            <UiRestartHint />
+                            <UiSwitch
+                                v-model="debugLogging"
+                                :disabled="daemonState.debugLoggingForcedBy != null"
                                 @update:model-value="applyGenericDaemonChange"
                             />
                         </div>

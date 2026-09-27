@@ -4,18 +4,48 @@
 -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiContentCopy } from '@mdi/js'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { useToast } from '@/shell/toast'
+import {
+    daemonStartedAt,
+    DEBUG_LOGGING_SETTING_ROUTE,
+    journalCommand,
+    LOGS_DOCS_URL,
+} from '@/shell/debugLogging.ts'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiToggleGroup from '@/shell/ui/UiToggleGroup.vue'
 
 const deviceStore = useDeviceStore()
 const daemonState = useDaemonState()
 const route = useRoute()
+const toast = useToast()
 const { t } = useI18n({ useScope: 'global' })
+
+// Debug lines never reach this page, so while debug is on it says where they went.
+const debugCommand = computed((): string => {
+    const health = daemonState.healthCheck
+    return journalCommand(daemonStartedAt(health.current_timestamp, health.details.uptime))
+})
+const copyDebugCommand = async (): Promise<void> => {
+    try {
+        await navigator.clipboard.writeText(debugCommand.value)
+        toast.add({
+            severity: 'success',
+            summary: t('layout.shell.logsPage.commandCopied'),
+            life: 1500,
+        })
+    } catch {
+        // The clipboard can refuse (insecure context, permissions); the command
+        // stays visible and selectable.
+    }
+}
 
 // Level filter; ?level=warn|error pre-selects (the status row deep-links to
 // warnings when the daemon status is degraded, and to everything when it is not).
@@ -104,6 +134,52 @@ onMounted(() => {
                         {{ t('views.appInfo.downloadCurrentLog') }}
                     </UiButton>
                 </a>
+            </span>
+        </div>
+        <div
+            v-if="daemonState.debugLogging"
+            id="debug-logging-notice"
+            class="mb-3 flex flex-col gap-2 rounded-lg border-l-4 border-warning bg-warning/10 p-3 text-sm text-text-color"
+        >
+            <span class="font-semibold">{{ t('layout.shell.logsPage.debugTitle') }}</span>
+            <template v-if="daemonState.healthCheck.details.log_to_journal">
+                <span class="text-text-color-secondary">
+                    {{ t('layout.shell.logsPage.debugJournal') }}
+                </span>
+                <div
+                    class="flex items-center gap-2 rounded border border-border-one bg-bg-two px-2 py-1"
+                >
+                    <code class="flex-1 select-all break-all font-mono text-sm">{{
+                        debugCommand
+                    }}</code>
+                    <UiButton
+                        variant="ghost"
+                        size="icon"
+                        :aria-label="t('layout.shell.logsPage.copyCommand')"
+                        v-tooltip.top="t('layout.shell.logsPage.copyCommand')"
+                        @click="copyDebugCommand"
+                    >
+                        <svg-icon type="mdi" :path="mdiContentCopy" :size="18" />
+                    </UiButton>
+                </div>
+            </template>
+            <span v-else class="text-text-color-secondary">
+                {{ t('layout.shell.logsPage.debugNoJournal') }}
+            </span>
+            <span class="flex flex-wrap gap-x-4 gap-y-1">
+                <a
+                    :href="LOGS_DOCS_URL"
+                    target="_blank"
+                    class="text-accent underline-offset-2 hover:underline"
+                >
+                    {{ t('layout.shell.logsPage.debugDocs') }}
+                </a>
+                <RouterLink
+                    :to="DEBUG_LOGGING_SETTING_ROUTE"
+                    class="text-accent underline-offset-2 hover:underline"
+                >
+                    {{ t('layout.shell.logsPage.debugTurnOff') }}
+                </RouterLink>
             </span>
         </div>
         <div

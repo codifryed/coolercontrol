@@ -152,6 +152,17 @@ export default {
                 noActiveMode: 'No active mode',
                 setUpCooling: 'Set up cooling',
             },
+            logsPage: {
+                debugTitle: 'Debug logging is on',
+                debugJournal:
+                    'This page shows only recent INFO, WARN and ERROR lines. The full debug output is in the system journal. To save it to a file, run this on the daemon host:',
+                debugNoJournal:
+                    "This page shows only recent INFO, WARN and ERROR lines. The full debug output goes to the daemon's standard error output.",
+                debugDocs: 'How to collect logs',
+                debugTurnOff: 'Turn off debug logging',
+                copyCommand: 'Copy command',
+                commandCopied: 'Command copied to clipboard',
+            },
             devicesPage: {
                 landingHint: 'Select a device to view its details and settings.',
                 temps: 'temps',
@@ -295,6 +306,8 @@ export default {
             settings: 'Settings',
             openInBrowser: 'Open in Browser',
             loginSuccessful: 'Login successful',
+            debug: 'Debug',
+            debugLoggingActive: 'Debug logging is on. Turn it off when finished.',
         },
         settings: {
             title: 'Settings',
@@ -345,6 +358,7 @@ export default {
                 performance: 'Performance',
                 devices: 'Devices & Detection',
                 liquidctl: 'Liquidctl',
+                logging: 'Logging',
             },
             applySettingsOnStartup: 'Apply Settings on Startup',
             deviceDelayAtStartup: 'Device Delay at Startup',
@@ -357,6 +371,9 @@ export default {
             sensorsAutoDetect: 'Sensors Auto-Detect',
             sensorsConfig: 'lm-sensors Configuration',
             deviceListener: 'Device Change Listener',
+            debugLogging: 'Debug Logging',
+            debugLoggingForcedEnv: 'Enabled by the CC_LOG environment variable',
+            debugLoggingForcedFlag: 'Enabled by the --debug flag',
             customTheme: {
                 title: 'Custom Theme',
                 accent: 'Accent Color',
@@ -420,6 +437,8 @@ export default {
                     'Use the sensor names and hidden sensors from the lm-sensors\nconfiguration files (/etc/sensors3.conf and /etc/sensors.d).\nNames set in CoolerControl always take precedence.',
                 deviceListener:
                     'Listen for device add/remove events (e.g. USB hotplug)\nand notify when hardware changes are detected.',
+                debugLogging:
+                    'Log detailed DEBUG output for troubleshooting.\nThe output is large, so turn this off once the logs are collected.\nThe Logs page shows how to collect them.',
                 triggersDaemonRestart: 'Triggers an automatic daemon restart',
                 copyThemeCode:
                     'Copy a compact code representing your current custom theme.\nShare it by pasting into chat or forums.',

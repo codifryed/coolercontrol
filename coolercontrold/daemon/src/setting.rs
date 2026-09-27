@@ -294,6 +294,8 @@ pub struct CoolerControlSettings {
     pub device_listener_enabled: bool,
     /// Whether to apply the `label` and `ignore` statements from the lm-sensors configuration
     pub sensors_conf_enabled: bool,
+    /// Whether to log at DEBUG level. Read at startup, so a change applies after a restart.
+    pub debug_logging: bool,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.

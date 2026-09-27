@@ -152,6 +152,17 @@ export default {
                 noActiveMode: 'لا يوجد وضع نشط',
                 setUpCooling: 'إعداد التبريد',
             },
+            logsPage: {
+                debugTitle: 'سجل التصحيح مفعّل',
+                debugJournal:
+                    'تعرض هذه الصفحة أحدث أسطر INFO وWARN وERROR فقط. مخرجات التصحيح الكاملة موجودة في سجل النظام (journal). لحفظها في ملف، شغّل هذا الأمر على جهاز الخدمة:',
+                debugNoJournal:
+                    'تعرض هذه الصفحة أحدث أسطر INFO وWARN وERROR فقط. تُرسل مخرجات التصحيح الكاملة إلى مخرج الأخطاء القياسي للخدمة.',
+                debugDocs: 'كيفية جمع السجلات',
+                debugTurnOff: 'إيقاف سجل التصحيح',
+                copyCommand: 'نسخ الأمر',
+                commandCopied: 'تم نسخ الأمر إلى الحافظة',
+            },
             devicesPage: {
                 landingHint: 'حدد جهازًا لعرض تفاصيله وإعداداته.',
                 temps: 'درجات الحرارة',
@@ -295,6 +306,8 @@ export default {
             settings: 'الإعدادات',
             openInBrowser: 'فتح في المتصفح',
             loginSuccessful: 'تم تسجيل الدخول بنجاح',
+            debug: 'تصحيح',
+            debugLoggingActive: 'سجل التصحيح مفعّل. أوقفه عند الانتهاء.',
         },
         settings: {
             title: 'الإعدادات',
@@ -345,6 +358,7 @@ export default {
                 performance: 'الأداء',
                 devices: 'الأجهزة والاكتشاف',
                 liquidctl: 'Liquidctl',
+                logging: 'التسجيل',
             },
             applySettingsOnStartup: 'تطبيق الإعدادات عند بدء التشغيل',
             deviceDelayAtStartup: 'تأخير الجهاز عند بدء التشغيل',
@@ -357,6 +371,9 @@ export default {
             sensorsAutoDetect: 'الكشف التلقائي عن المستشعرات',
             sensorsConfig: 'إعدادات lm-sensors',
             deviceListener: 'مراقب تغييرات الأجهزة',
+            debugLogging: 'سجل التصحيح',
+            debugLoggingForcedEnv: 'مفعّل بواسطة متغير البيئة CC_LOG',
+            debugLoggingForcedFlag: 'مفعّل بواسطة الخيار --debug',
             customTheme: {
                 title: 'سمة مخصصة',
                 accent: 'لون التمييز',
@@ -418,6 +435,8 @@ export default {
                     'استخدام أسماء المستشعرات والمستشعرات المخفية من ملفات\nإعداد lm-sensors (/etc/sensors3.conf و /etc/sensors.d).\nالأسماء المحددة في CoolerControl لها الأولوية دائمًا.',
                 deviceListener:
                     'مراقبة أحداث إضافة/إزالة الأجهزة (مثل توصيل USB)\nوالإشعار عند اكتشاف تغييرات في الأجهزة.',
+                debugLogging:
+                    'تسجيل مخرجات DEBUG مفصلة لاستكشاف الأخطاء وإصلاحها.\nالمخرجات كبيرة، لذا أوقف هذا الخيار بعد جمع السجلات.\nتوضح صفحة السجلات كيفية جمعها.',
                 triggersDaemonRestart: 'يؤدي إلى إعادة تشغيل الخدمة تلقائيًا',
                 copyThemeCode:
                     'انسخ رمزًا مضغوطًا يمثل سمتك المخصصة الحالية.\nشاركه في الدردشة أو المنتديات.',

@@ -3,6 +3,7 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::base::{HealthCheck, HealthDetails, SystemDetails};
+use crate::logger::LogLevelInfo;
 use crate::{Repos, VERSION};
 use anyhow::Result;
 use chrono::Local;
@@ -21,6 +22,7 @@ enum HealthMessage {
     Check {
         warnings: usize,
         errors: usize,
+        level_info: LogLevelInfo,
         respond_to: oneshot::Sender<Result<HealthCheck>>,
     },
 }
@@ -46,6 +48,7 @@ impl ApiActor<HealthMessage> for HealthActor {
             HealthMessage::Check {
                 warnings,
                 errors,
+                level_info,
                 respond_to,
             } => {
                 let response = async {
@@ -86,6 +89,9 @@ impl ApiActor<HealthMessage> for HealthActor {
                             warnings,
                             errors,
                             liquidctl_connected,
+                            log_level: level_info.level.to_string(),
+                            log_level_source: level_info.source,
+                            log_to_journal: level_info.journal,
                         },
                         system: SystemDetails { name: system_name },
                         links: HashMap::from([
@@ -124,11 +130,17 @@ impl HealthHandle {
         Self { sender }
     }
 
-    pub async fn check(&self, warnings: usize, errors: usize) -> Result<HealthCheck> {
+    pub async fn check(
+        &self,
+        warnings: usize,
+        errors: usize,
+        level_info: LogLevelInfo,
+    ) -> Result<HealthCheck> {
         let (tx, rx) = oneshot::channel();
         let msg = HealthMessage::Check {
             warnings,
             errors,
+            level_info,
             respond_to: tx,
         };
         let _ = self.sender.send(msg).await;

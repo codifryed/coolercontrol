@@ -160,6 +160,11 @@ drivetemp_suspend = false
 # Requires netlink socket access, which containers may not have.
 # device_listener_enabled = false
 
+# Whether to log at DEBUG level. Debug output is large and is kept out of the in-app log view,
+# so turn it off once the logs are collected. Read at startup; a change applies after a restart.
+# The CC_LOG environment variable or the --debug flag can also raise the level.
+# debug_logging = false
+
 # Power profile to Mode mapping:
 # When the system power profile changes, CoolerControl activates the Mode mapped to the new
 # profile. The profile is read over D-Bus from power-profiles-daemon or the tuned-ppd shim;

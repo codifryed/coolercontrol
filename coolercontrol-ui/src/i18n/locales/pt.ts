@@ -154,6 +154,17 @@ export default {
                 noActiveMode: 'Nenhum modo ativo',
                 setUpCooling: 'Configurar resfriamento',
             },
+            logsPage: {
+                debugTitle: 'O registro de depuração está ativado',
+                debugJournal:
+                    'Esta página mostra apenas as linhas INFO, WARN e ERROR recentes. A saída completa de depuração está no journal do sistema. Para salvá-la em um arquivo, execute isto no host do daemon:',
+                debugNoJournal:
+                    'Esta página mostra apenas as linhas INFO, WARN e ERROR recentes. A saída completa de depuração vai para a saída de erro padrão do daemon.',
+                debugDocs: 'Como coletar logs',
+                debugTurnOff: 'Desativar o registro de depuração',
+                copyCommand: 'Copiar comando',
+                commandCopied: 'Comando copiado para a área de transferência',
+            },
             devicesPage: {
                 landingHint: 'Selecione um dispositivo para ver seus detalhes e configurações.',
                 temps: 'temperaturas',
@@ -301,6 +312,8 @@ export default {
             settings: 'Configurações',
             openInBrowser: 'Abrir no navegador',
             loginSuccessful: 'Login bem-sucedido',
+            debug: 'Depuração',
+            debugLoggingActive: 'O registro de depuração está ativado. Desative-o ao terminar.',
         },
         settings: {
             title: 'Configurações',
@@ -351,6 +364,7 @@ export default {
                 performance: 'Desempenho',
                 devices: 'Dispositivos e detecção',
                 liquidctl: 'Liquidctl',
+                logging: 'Registro',
             },
             applySettingsOnStartup: 'Aplicar configurações na inicialização',
             deviceDelayAtStartup: 'Atraso do dispositivo na inicialização',
@@ -363,6 +377,9 @@ export default {
             sensorsAutoDetect: 'Deteção automática de sensores',
             sensorsConfig: 'Configuração do lm-sensors',
             deviceListener: 'Listener de alterações de dispositivos',
+            debugLogging: 'Registro de depuração',
+            debugLoggingForcedEnv: 'Ativado pela variável de ambiente CC_LOG',
+            debugLoggingForcedFlag: 'Ativado pela opção --debug',
             customTheme: {
                 title: 'Tema Personalizado',
                 accent: 'Cor de Destaque',
@@ -426,6 +443,8 @@ export default {
                     'Usar os nomes de sensores e os sensores ocultos dos arquivos de\nconfiguração do lm-sensors (/etc/sensors3.conf e /etc/sensors.d).\nOs nomes definidos no CoolerControl sempre têm prioridade.',
                 deviceListener:
                     'Escutar eventos de adição/remoção de dispositivos (ex. conexão USB a quente)\ne notificar quando forem detectadas alterações de hardware.',
+                debugLogging:
+                    'Registra saída DEBUG detalhada para solução de problemas.\nA saída é grande, então desative isto depois de coletar os logs.\nA página de Logs mostra como coletá-los.',
                 triggersDaemonRestart: 'Aciona uma reinicialização automática do daemon',
                 copyThemeCode:
                     'Copia um código compacto que representa o tema personalizado atual.\nCompartilhe em chats ou fóruns.',

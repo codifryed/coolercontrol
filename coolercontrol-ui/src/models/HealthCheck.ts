@@ -13,6 +13,9 @@ export interface HealthCheck {
     }
 }
 
+/** Where the daemon's log level came from. */
+export type LogLevelSource = 'default' | 'env' | 'flag' | 'settings'
+
 export interface HealthDetails {
     uptime: string
     version: string
@@ -21,6 +24,10 @@ export interface HealthDetails {
     warnings: number
     errors: number
     liquidctl_connected: boolean
+    /** The level the daemon started with, e.g. "INFO" or "DEBUG". */
+    log_level: string
+    log_level_source: LogLevelSource
+    log_to_journal: boolean
 }
 
 export interface SystemDetails {
@@ -40,6 +47,9 @@ export default function defaultHealthCheck(): HealthCheck {
             warnings: 0,
             errors: 0,
             liquidctl_connected: false,
+            log_level: 'INFO',
+            log_level_source: 'default',
+            log_to_journal: false,
         },
         system: {
             name: '',

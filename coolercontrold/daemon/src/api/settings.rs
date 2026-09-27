@@ -150,6 +150,8 @@ pub struct CoolerControlSettingsDto {
     device_listener_enabled: Option<bool>,
     /// Whether to apply labels and ignores from the lm-sensors configuration
     sensors_conf_enabled: Option<bool>,
+    /// Whether to log at DEBUG level. Applies after a daemon restart.
+    debug_logging: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -228,6 +230,7 @@ impl CoolerControlSettingsDto {
         let sensors_conf_enabled = self
             .sensors_conf_enabled
             .unwrap_or(current_settings.sensors_conf_enabled);
+        let debug_logging = self.debug_logging.unwrap_or(current_settings.debug_logging);
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -250,6 +253,7 @@ impl CoolerControlSettingsDto {
             sensors_auto_detect,
             device_listener_enabled,
             sensors_conf_enabled,
+            debug_logging,
         }
     }
 }
@@ -273,6 +277,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             sensors_auto_detect: Some(settings.sensors_auto_detect),
             device_listener_enabled: Some(settings.device_listener_enabled),
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
+            debug_logging: Some(settings.debug_logging),
         }
     }
 }
@@ -332,6 +337,7 @@ mod tests {
                 sensors_auto_detect: None,
                 device_listener_enabled: None,
                 sensors_conf_enabled: None,
+                debug_logging: None,
             }
         }
     }
@@ -398,5 +404,25 @@ mod tests {
         let dto = CoolerControlSettingsDto::from(settings);
         assert_eq!(dto.sensors_auto_detect, Some(true));
         assert_eq!(dto.device_listener_enabled, Some(false));
+    }
+
+    // Goal: a PATCH that omits debug_logging keeps the saved value in both states, and one
+    // that sets it replaces it, so saving an unrelated setting never flips debug logging.
+    #[test]
+    fn merge_debug_logging_only_when_set() {
+        for saved in [true, false] {
+            let current = CoolerControlSettings {
+                debug_logging: saved,
+                ..Default::default()
+            };
+            assert_eq!(empty_dto().merge(current.clone()).debug_logging, saved);
+            let mut dto = empty_dto();
+            dto.debug_logging = Some(saved.not());
+            assert_eq!(dto.merge(current.clone()).debug_logging, saved.not());
+            assert_eq!(
+                CoolerControlSettingsDto::from(current).debug_logging,
+                Some(saved)
+            );
+        }
     }
 }
