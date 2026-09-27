@@ -199,91 +199,63 @@ pub async fn start_server<'s>(
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
-    // Extract proxy/cors settings for the API servers
     let trusted_proxies = Arc::new(peer::TrustedProxies::from_config(&settings.trusted_proxies));
-    let cors_origins = settings.origins.clone();
-    let allow_unencrypted = settings.allow_unencrypted;
-    let protocol_header = settings.protocol_header.clone();
+    let server_config = ApiServerConfig {
+        ipv4,
+        ipv6,
+        app_state,
+        session_layer,
+        compression_layer,
+        // One limiter for both listeners, so a peer cannot double its share by using both.
+        connection_limiter: connection::process_limiter(Arc::clone(&trusted_proxies)),
+        trusted_proxies,
+        tls_config,
+        cancel_token,
+        cors_origins: settings.origins.clone(),
+        allow_unencrypted: settings.allow_unencrypted,
+        protocol_header: settings.protocol_header.clone(),
+    };
 
     // Run all API servers on the shared sidecar thread. The builder closure captures only `Send`
     // data and is invoked on the sidecar to construct the `!Send` server future.
-    crate::sidecar::handle().spawn(move || {
-        run_all_api_servers(
-            ipv4,
-            ipv6,
-            app_state,
-            session_layer,
-            expired_deletion_store,
-            compression_layer,
-            trusted_proxies,
-            tls_config,
-            cancel_token,
-            cors_origins,
-            allow_unencrypted,
-            protocol_header,
-        )
-    });
+    crate::sidecar::handle()
+        .spawn(move || run_all_api_servers(server_config, expired_deletion_store));
     Ok(())
 }
 
-async fn run_all_api_servers(
+/// What every listener's server is built from. Both listeners share one of each.
+#[derive(Clone)]
+struct ApiServerConfig {
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
-    expired_deletion_store: FileSessionStore,
     compression_layer: Option<ApiCompressionLayer>,
+    connection_limiter: Arc<connection::ConnectionLimiter>,
     trusted_proxies: Arc<peer::TrustedProxies>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
     allow_unencrypted: bool,
     protocol_header: Option<String>,
-) {
-    let mut handles = Vec::new();
+}
+
+async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: FileSessionStore) {
+    let mut handles = Vec::with_capacity(2);
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
         expired_deletion_store.continuously_delete_expired(Duration::from_secs(3600)),
     );
 
-    // One limiter for both listeners, so a peer cannot double its share by using both.
-    let connection_limiter = connection::process_limiter(Arc::clone(&trusted_proxies));
-
     // REST API servers
-    if let Some(addr) = ipv4 {
-        handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(addr),
-            ipv4,
-            ipv6,
-            app_state.clone(),
-            session_layer.clone(),
-            compression_layer.clone(),
-            Arc::clone(&connection_limiter),
-            Arc::clone(&trusted_proxies),
-            tls_config.clone(),
-            cancel_token.clone(),
-            cors_origins.clone(),
-            allow_unencrypted,
-            protocol_header.clone(),
-        )));
+    if let Some(addr) = config.ipv4 {
+        let server = create_api_server(SocketAddr::from(addr), config.clone());
+        handles.push(tokio::task::spawn_local(server));
     }
-    if let Some(addr) = ipv6 {
-        handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(addr),
-            ipv4,
-            ipv6,
-            app_state,
-            session_layer,
-            compression_layer,
-            connection_limiter,
-            trusted_proxies,
-            tls_config,
-            cancel_token.clone(),
-            cors_origins,
-            allow_unencrypted,
-            protocol_header,
-        )));
+    if let Some(addr) = config.ipv6 {
+        let server = create_api_server(SocketAddr::from(addr), config);
+        handles.push(tokio::task::spawn_local(server));
     }
 
     // Wait for all servers (they run until canceled)
@@ -368,67 +340,20 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
     response
 }
 
-async fn create_api_server(
-    addr: SocketAddr,
-    ipv4: Option<SocketAddrV4>,
-    ipv6: Option<SocketAddrV6>,
-    app_state: AppState,
-    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
-    compression_layer: Option<ApiCompressionLayer>,
-    connection_limiter: Arc<connection::ConnectionLimiter>,
-    trusted_proxies: Arc<peer::TrustedProxies>,
-    tls_config: Option<RustlsConfig>,
-    cancel_token: CancellationToken,
-    cors_origins: Vec<String>,
-    allow_unencrypted: bool,
-    protocol_header: Option<String>,
-) -> Result<()> {
-    aide::generate::on_error(|error| {
-        debug!("OpenApi Generation Error: {error}");
-    });
-    let mut open_api = OpenApi::default();
-    let router = router::init(app_state)
-        .await
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)))
-        // Outside the router, so the client is known before its auth throttle reads it.
-        .layer(middleware::from_fn_with_state(
-            trusted_proxies,
-            peer::client_addr_middleware,
-        ));
-
-    // Build the base router with all layers
-    // Layers are processed bottom to top: (last is first in the chain)
-    // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
-    let base_router = optional_layers(compression_layer, router)
-        // Limits the size of the payload in bytes: (Max 50MB for image files)
-        .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
-        // 2MB is the default payload limit:
-        .route_layer(DefaultBodyLimit::disable())
-        .route_layer(session_layer)
-        .layer(cors_layer(ipv4, ipv6, cors_origins))
-        .layer(middleware::from_fn(security_headers_middleware))
-        .layer((
-            TraceLayer::new_for_http(),
-            TimeoutLayer::with_status_code(
-                StatusCode::REQUEST_TIMEOUT,
-                Duration::from_secs(API_TIMEOUT_SECS),
-            ),
-        ))
-        // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
-        // gRPC clients as statuses they can read. Inside the timeout layer it would never
-        // see a 408 at all.
-        .layer(middleware::from_fn(router::grpc_error_middleware));
+async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<()> {
+    let router = api_router(config.app_state, config.trusted_proxies).await;
+    let base_router = with_base_layers(
+        router,
+        config.compression_layer,
+        config.session_layer,
+        cors_layer(config.ipv4, config.ipv6, config.cors_origins),
+    );
+    let connection_limiter = config.connection_limiter;
 
     let listener = TcpListener::bind(addr).await?;
-    let handle = axum_server::Handle::new();
-    let shutdown_handle = handle.clone();
-    tokio::task::spawn_local(async move {
-        cancel_token.cancelled().await;
-        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(API_SHUTDOWN_TIMEOUT_SECS)));
-    });
+    let handle = shutdown_handle(config.cancel_token);
 
-    if let Some(tls) = tls_config {
+    if let Some(tls) = config.tls_config {
         // Dual-protocol server: accepts both HTTP and HTTPS on the same port
         // HTTP requests from non-localhost are redirected to HTTPS (via middleware)
         // HTTP requests from localhost and to /health are allowed
@@ -437,8 +362,8 @@ async fn create_api_server(
         // Add HTTPS redirect layer for non-localhost HTTP requests
         let redirect_layer = dual_protocol::HttpsRedirectLayer {
             port: addr.port(),
-            allow_unencrypted,
-            protocol_header,
+            allow_unencrypted: config.allow_unencrypted,
+            protocol_header: config.protocol_header,
         };
         let router_with_redirect = base_router.layer(redirect_layer);
         let normalized_router =
@@ -474,6 +399,65 @@ async fn create_api_server(
         .await?;
     }
     Ok(())
+}
+
+/// A server handle that shuts down gracefully once `cancel_token` fires.
+fn shutdown_handle(cancel_token: CancellationToken) -> axum_server::Handle<SocketAddr> {
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::task::spawn_local(async move {
+        cancel_token.cancelled().await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(API_SHUTDOWN_TIMEOUT_SECS)));
+    });
+    handle
+}
+
+/// The API routes, with the client address resolved before anything reads it.
+async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
+    aide::generate::on_error(|error| {
+        debug!("OpenApi Generation Error: {error}");
+    });
+    let mut open_api = OpenApi::default();
+    router::init(app_state)
+        .await
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(Extension(Arc::new(open_api)))
+        // Outside the router, so the client is known before its auth throttle reads it.
+        .layer(middleware::from_fn_with_state(
+            trusted_proxies,
+            peer::client_addr_middleware,
+        ))
+}
+
+/// The layers every listener shares.
+///
+/// Layers are processed bottom to top: (last is first in the chain)
+/// See: <https://docs.rs/axum/latest/axum/middleware/index.html#ordering>
+fn with_base_layers(
+    router: Router,
+    compression_layer: Option<ApiCompressionLayer>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
+    cors_layer: cors::CorsLayer,
+) -> Router {
+    optional_layers(compression_layer, router)
+        // Limits the size of the payload in bytes: (Max 50MB for image files)
+        .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+        // 2MB is the default payload limit:
+        .route_layer(DefaultBodyLimit::disable())
+        .route_layer(session_layer)
+        .layer(cors_layer)
+        .layer(middleware::from_fn(security_headers_middleware))
+        .layer((
+            TraceLayer::new_for_http(),
+            TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::from_secs(API_TIMEOUT_SECS),
+            ),
+        ))
+        // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
+        // gRPC clients as statuses they can read. Inside the timeout layer it would never
+        // see a 408 at all.
+        .layer(middleware::from_fn(router::grpc_error_middleware))
 }
 
 /// The `OpenAPI` spec, built straight from the route table. Needs no `AppState`, no hardware and
