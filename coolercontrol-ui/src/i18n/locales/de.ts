@@ -1077,6 +1077,7 @@ export default {
             watts: 'Watt',
         },
         chartDisplayOptions: {
+            statsPanel: 'Statistik-Panel',
             title: 'Anzeigeoptionen',
             statsLegend: 'Statistik-Legende',
         },
@@ -1125,6 +1126,17 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: 'Sichtbar {duration}',
+            moveCorner: 'In die andere Ecke verschieben',
+            hide: 'Ausblenden',
+            sinceStart: 'Seit Start',
+            sinceStartHelp:
+                'Seit dem Start des Daemons oder seit dem letzten Zurücksetzen der Statistik in der Tabellenansicht.',
+            jitter: 'Schwankung',
+            jitterHelp:
+                'Durchschnittliche Änderung zwischen zwei aufeinanderfolgenden Messwerten in diesem Zeitraum. Bei einer Temperatur den Schwellenwert (Erweiterte Hysterese) des Profils über diesen Wert setzen, damit Lüfter Sensorrauschen ignorieren. Bei Auslastung oder U/min bedeutet ein hoher Wert, dass der Lüfter ständig seine Drehzahl ändert.',
         },
         sensorTable: {
             device: 'Gerät',

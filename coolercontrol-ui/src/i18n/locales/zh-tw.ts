@@ -1003,6 +1003,7 @@ export default {
             watts: '瓦特',
         },
         chartDisplayOptions: {
+            statsPanel: '統計面板',
             title: '顯示選項',
             statsLegend: '統計圖例',
         },
@@ -1051,6 +1052,16 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: '可見 {duration}',
+            moveCorner: '移到另一角',
+            hide: '隱藏',
+            sinceStart: '自啟動',
+            sinceStartHelp: '自服務程式啟動以來，或自上次在表格檢視中重設統計以來。',
+            jitter: '波動',
+            jitterHelp:
+                '此時間範圍內相鄰兩次讀數之間的平均變化量。對於溫度，請將設定檔的閾值（高級滯後）設為高於此值，讓風扇忽略感測器雜訊。對於風扇轉速或轉速，數值較高表示風扇在不斷改變速度。',
         },
         sensorTable: {
             device: '設備',

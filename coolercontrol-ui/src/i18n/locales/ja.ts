@@ -1055,6 +1055,7 @@ export default {
             watts: 'ワット',
         },
         chartDisplayOptions: {
+            statsPanel: '統計パネル',
             title: '表示オプション',
             statsLegend: '統計凡例',
         },
@@ -1103,6 +1104,17 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: '表示中 {duration}',
+            moveCorner: '反対側の隅に移動',
+            hide: '非表示',
+            sinceStart: '起動以降',
+            sinceStartHelp:
+                'デーモンの起動以降、またはテーブル表示で統計を最後にリセットして以降。',
+            jitter: 'ゆらぎ',
+            jitterHelp:
+                'この期間における連続する読み取り値間の平均変化量です。温度の場合、ファンがセンサーのノイズに反応しないよう、プロファイルのしきい値（高度なヒステリシス）をこの値より大きく設定してください。デューティや RPM で値が大きい場合は、ファンが速度を変え続けていることを意味します。',
         },
         sensorTable: {
             device: 'デバイス',

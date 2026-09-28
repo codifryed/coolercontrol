@@ -403,6 +403,8 @@ const computeWindowStats = (): void => {
                           max: toDisplay(stats.max, meta.dataType),
                           avg: toDisplay(stats.avg, meta.dataType),
                           count: stats.count,
+                          jitter:
+                              stats.jitter == null ? null : toDisplay(stats.jitter, meta.dataType),
                       },
         })
     }

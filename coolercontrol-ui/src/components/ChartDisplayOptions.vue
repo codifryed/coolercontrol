@@ -12,14 +12,18 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import UiSwitch from '@/shell/ui/UiSwitch.vue'
 
 interface Props {
     dashboard: Dashboard
+    // An individual channel chart: its options differ from a dashboard's.
+    sensorMode?: boolean
 }
 
 defineProps<Props>()
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const isPopupOpen = ref(false)
 </script>
@@ -52,10 +56,18 @@ const isPopupOpen = ref(false)
                             {{ t('components.chartDisplayOptions.title') }}
                         </div>
                         <label
+                            v-if="!sensorMode"
                             class="flex cursor-pointer items-center justify-between gap-6 rounded-md px-2 py-1.5 hover:bg-surface-hover"
                         >
                             <span>{{ t('components.chartDisplayOptions.statsLegend') }}</span>
                             <UiSwitch v-model="dashboard.showStatsLegend" />
+                        </label>
+                        <label
+                            v-if="sensorMode"
+                            class="flex cursor-pointer items-center justify-between gap-6 rounded-md px-2 py-1.5 hover:bg-surface-hover"
+                        >
+                            <span>{{ t('components.chartDisplayOptions.statsPanel') }}</span>
+                            <UiSwitch v-model="settingsStore.sensorStatsPanelVisible" />
                         </label>
                     </div>
                 </popover-content>

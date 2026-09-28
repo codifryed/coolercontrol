@@ -1002,6 +1002,7 @@ export default {
             watts: '瓦特',
         },
         chartDisplayOptions: {
+            statsPanel: '统计面板',
             title: '显示选项',
             statsLegend: '统计图例',
         },
@@ -1050,6 +1051,16 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: '可见 {duration}',
+            moveCorner: '移到另一角',
+            hide: '隐藏',
+            sinceStart: '自启动',
+            sinceStartHelp: '自守护进程启动以来，或自上次在表格视图中重置统计以来。',
+            jitter: '波动',
+            jitterHelp:
+                '此时间窗口内相邻两次读数之间的平均变化量。对于温度，请将配置文件的阈值（高级滞后）设置为高于此值，使风扇忽略传感器噪声。对于风扇转速或转速，数值较高表示风扇在不断改变速度。',
         },
         sensorTable: {
             device: '设备',

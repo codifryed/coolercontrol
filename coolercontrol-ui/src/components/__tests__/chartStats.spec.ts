@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
     chartValueToDisplay,
     emptyChannelStats,
+    formatJitterValue,
     formatSpan,
     lineDash,
     windowStats,
@@ -118,11 +119,13 @@ describe('windowStats', () => {
     const valid = Uint8Array.from([0, 1, 0, 1, 1])
 
     it('counts only real readings inside the window', () => {
+        // Jitter pairs only 60 and 50: the zero-fill between 40 and 60 breaks that pair.
         expect(windowStats(time, values, valid, 0, 200)).toEqual({
             min: 40,
             max: 60,
             avg: 50,
             count: 3,
+            jitter: 10,
         })
     })
 
@@ -132,9 +135,27 @@ describe('windowStats', () => {
             max: 60,
             avg: 55,
             count: 2,
+            jitter: 10,
         })
         expect(windowStats(time, values, valid, 105, 110)).toBeNull()
         expect(windowStats(time, values, new Uint8Array(5), 0, 200)).toBeNull()
+    })
+
+    it('measures jitter on a sensor that reports in whole steps', () => {
+        // A whole-degree sensor flipping between 40 and 41: the median change would be 0.
+        const steps = windowStats(
+            Float64Array.from([1, 2, 3, 4, 5]),
+            Float32Array.from([40, 40, 41, 40, 40]),
+            Uint8Array.from([1, 1, 1, 1, 1]),
+            0,
+            10,
+        )
+        expect(steps?.jitter).toBe(0.5)
+        // One reading has no neighbour to compare with.
+        expect(windowStats(time, values, valid, 101, 101)?.jitter).toBeNull()
+        expect(formatJitterValue(0.456, DataType.TEMP, 1)).toBe('0.46')
+        expect(formatJitterValue(12.4, DataType.RPM, 1)).toBe('12')
+        expect(formatJitterValue(1.26, DataType.DUTY, 1)).toBe('1.3')
     })
 
     it('converts only chart rpm back to raw units', () => {

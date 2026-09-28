@@ -1038,6 +1038,7 @@ export default {
             watts: 'واط',
         },
         chartDisplayOptions: {
+            statsPanel: 'لوحة الإحصاءات',
             title: 'خيارات العرض',
             statsLegend: 'مفتاح الإحصاءات',
         },
@@ -1086,6 +1087,16 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: 'المرئي {duration}',
+            moveCorner: 'النقل إلى الزاوية الأخرى',
+            hide: 'إخفاء',
+            sinceStart: 'منذ البدء',
+            sinceStartHelp: 'منذ بدء الخدمة، أو منذ آخر إعادة تعيين للإحصاءات من عرض الجدول.',
+            jitter: 'التذبذب',
+            jitterHelp:
+                'متوسط التغير بين قراءة والتي تليها في هذه النافذة. لدرجة الحرارة، اضبط العتبة (تخلف متقدم) في الملف الشخصي فوق هذه القيمة لتتجاهل المراوح ضوضاء المستشعر. للواجب أو السرعة، تعني القيمة المرتفعة أن المروحة تغير سرعتها باستمرار.',
         },
         sensorTable: {
             device: 'الجهاز',

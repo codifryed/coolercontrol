@@ -37,6 +37,8 @@ import {
 import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import TimeChartStatsLegend from '@/components/TimeChartStatsLegend.vue'
+import SensorStatsPanel from '@/components/SensorStatsPanel.vue'
+import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
 import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
@@ -470,6 +472,24 @@ const showLegend = computed(
         !sensorMode && dashboard.chartType === ChartType.TIME_CHART && dashboard.showStatsLegend,
 )
 const legendRef = ref<InstanceType<typeof TimeChartStatsLegend> | null>(null)
+const showPanel = computed(
+    (): boolean =>
+        sensorMode &&
+        dashboard.chartType === ChartType.TIME_CHART &&
+        settingsStore.sensorStatsPanelVisible,
+)
+
+// Read on page open and on request only: some values (a fan target, a chip's recorded extremes)
+// move, but polling them would cost a device read each time.
+const attributes = shallowRef<Array<ChannelAttribute>>([])
+const loadAttributes = async (): Promise<void> => {
+    if (!sensorMode) return
+    attributes.value = await deviceStore.daemonClient.getChannelAttributes(
+        props.deviceUID!,
+        props.channelName!,
+    )
+}
+loadAttributes()
 
 const addScrollEventListener = (): void => {
     // @ts-ignore
@@ -631,9 +651,9 @@ onUnmounted(() => {
                     />
                     <axis-options class="h-10 ml-3" :dashboard="dashboard" />
                     <chart-display-options
-                        v-if="!sensorMode"
                         class="h-10 ml-3"
                         :dashboard="dashboard"
+                        :sensor-mode="sensorMode"
                     />
                 </div>
                 <div
@@ -771,7 +791,7 @@ onUnmounted(() => {
             class="min-h-0 flex-1"
             :class="{ 'z-[1200]': fullPage }"
         >
-            <div class="h-full" :class="{ 'full-page-wrapper': fullPage }">
+            <div class="relative h-full" :class="{ 'full-page-wrapper': fullPage }">
                 <!-- pr-2 plus the w-10 box put the icon where the header's
                      full-page button sits, so it does not jump on toggle. -->
                 <div
@@ -796,9 +816,16 @@ onUnmounted(() => {
                     ref="timeChartRef"
                     :dashboard="viewDashboard"
                     :key="chartKey"
-                    :emit-window-stats="showLegend"
+                    :emit-window-stats="showLegend || showPanel"
                     @line-set-changed="chartKey = uuidV4()"
                     @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
+                />
+                <SensorStatsPanel
+                    v-if="showPanel"
+                    :payload="windowStats"
+                    :range-minutes="chartMinutes"
+                    :attributes="attributes"
+                    @refresh-attributes="loadAttributes"
                 />
                 <TimeChartStatsLegend
                     v-if="showLegend"

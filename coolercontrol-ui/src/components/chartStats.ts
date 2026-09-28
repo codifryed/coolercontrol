@@ -152,10 +152,15 @@ export interface WindowStats {
     max: number
     avg: number
     count: number
+    // Mean absolute change between consecutive readings: how noisy the line is. Null without a
+    // pair of adjacent readings. The mean, not the median: on sensors that report in whole
+    // steps most changes are 0, so a median would read 0 while the value keeps flipping.
+    jitter: number | null
 }
 
 // Stats over the samples inside [tMin, tMax] that hold a real reading (`valid[i] === 1`), or
 // null when there are none. The arrays are one chart line and its time row, index aligned.
+// Jitter only pairs neighbours that are both readings, so a gap never counts as a jump.
 export function windowStats(
     time: ArrayLike<number>,
     values: ArrayLike<number>,
@@ -167,18 +172,49 @@ export function windowStats(
     let max = Number.NEGATIVE_INFINITY
     let sum = 0
     let count = 0
+    let changeSum = 0
+    let changeCount = 0
+    let previous: number | null = null
     for (let i = 0; i < values.length; i++) {
-        if (valid[i] !== 1) continue
         const t = time[i]
-        if (t < tMin || t > tMax) continue
+        if (valid[i] !== 1 || t < tMin || t > tMax) {
+            previous = null
+            continue
+        }
         const value = values[i]
         if (value < min) min = value
         if (value > max) max = value
         sum += value
         count++
+        if (previous !== null) {
+            changeSum += Math.abs(value - previous)
+            changeCount++
+        }
+        previous = value
     }
     if (count === 0) return null
-    return { min, max, avg: sum / count, count }
+    return {
+        min,
+        max,
+        avg: sum / count,
+        count,
+        jitter: changeCount === 0 ? null : changeSum / changeCount,
+    }
+}
+
+// Jitter is usually a fraction of the value's own resolution, so it gets one more decimal.
+export function formatJitterValue(value: number, dataType: DataType, precision: number): string {
+    switch (dataType) {
+        case DataType.TEMP:
+        case DataType.WATTS:
+            return value.toFixed(2)
+        case DataType.FREQ:
+            return precision > 1 ? value.toFixed(3) : value.toFixed(1)
+        case DataType.RPM:
+            return value.toFixed(0)
+        default:
+            return value.toFixed(1)
+    }
 }
 
 // Time charts store rpm divided by the precision setting so it shares an axis with MHz or GHz.

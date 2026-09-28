@@ -260,6 +260,10 @@ export class UISettingsDTO {
     entityColors: Array<[string, string]> = []
     eyeCandy: boolean = false
     pointsOverlayTablePositions: Array<[UID, TablePosition]> = []
+    // The stats panel on individual channel charts. Global rather than per channel, so
+    // moving or hiding it never rebuilds the chart.
+    sensorStatsPanelVisible: boolean = true
+    sensorStatsPanelPosition: TablePosition = 'top-left'
     interfaceFont: InterfaceFont = InterfaceFont.BUNDLED
     // Undefined means the user has never chosen, and `system` means follow the
     // browser locale. Never a resolved code for a non-choice: that is what let

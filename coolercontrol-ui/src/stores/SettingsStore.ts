@@ -282,6 +282,8 @@ export const useSettingsStore = defineStore('settings', () => {
             [profileUID, position],
         ]
     }
+    const sensorStatsPanelVisible: Ref<boolean> = ref(true)
+    const sensorStatsPanelPosition: Ref<TablePosition> = ref('top-left')
     const interfaceFont: Ref<InterfaceFont> = ref(InterfaceFont.BUNDLED)
     // The chosen language, not the resolved one: `system` follows the browser.
     const language: Ref<string> = ref(SYSTEM_LANGUAGE)
@@ -428,6 +430,8 @@ export const useSettingsStore = defineStore('settings', () => {
         entityColors.value = uiSettings.entityColors
         eyeCandy.value = uiSettings.eyeCandy
         pointsOverlayTablePositions.value = uiSettings.pointsOverlayTablePositions ?? []
+        sensorStatsPanelVisible.value = uiSettings.sensorStatsPanelVisible ?? true
+        sensorStatsPanelPosition.value = uiSettings.sensorStatsPanelPosition ?? 'top-left'
         interfaceFont.value = uiSettings.interfaceFont ?? InterfaceFont.BUNDLED
         applyInterfaceFont()
         persistedLanguage = uiSettings.language
@@ -1361,6 +1365,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 entityColors.value,
                 eyeCandy,
                 pointsOverlayTablePositions,
+                sensorStatsPanelVisible,
+                sensorStatsPanelPosition,
                 interfaceFont,
                 language,
                 onboardingSeenVersion,
@@ -1422,6 +1428,8 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.entityColors = entityColors.value
                     uiSettings.eyeCandy = eyeCandy.value
                     uiSettings.pointsOverlayTablePositions = pointsOverlayTablePositions.value
+                    uiSettings.sensorStatsPanelVisible = sensorStatsPanelVisible.value
+                    uiSettings.sensorStatsPanelPosition = sensorStatsPanelPosition.value
                     uiSettings.interfaceFont = interfaceFont.value
                     uiSettings.language = language.value
                     uiSettings.showOnboarding = onboardingSeenVersion.value
@@ -1854,6 +1862,8 @@ export const useSettingsStore = defineStore('settings', () => {
         eyeCandy,
         pointsTablePosition,
         setPointsTablePosition,
+        sensorStatsPanelVisible,
+        sensorStatsPanelPosition,
         interfaceFont,
         language,
         showOnboarding,

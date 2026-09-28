@@ -1048,6 +1048,7 @@ export default {
             watts: 'वाट',
         },
         chartDisplayOptions: {
+            statsPanel: 'आँकड़े पैनल',
             title: 'प्रदर्शन विकल्प',
             statsLegend: 'आँकड़े लेजेंड',
         },
@@ -1096,6 +1097,17 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: 'दृश्य {duration}',
+            moveCorner: 'दूसरे कोने में ले जाएँ',
+            hide: 'छिपाएँ',
+            sinceStart: 'शुरुआत से',
+            sinceStartHelp:
+                'डेमन शुरू होने के बाद से, या तालिका दृश्य से आँकड़े पिछली बार रीसेट होने के बाद से।',
+            jitter: 'उतार-चढ़ाव',
+            jitterHelp:
+                'इस अवधि में एक रीडिंग से अगली रीडिंग तक का औसत बदलाव। तापमान के लिए, प्रोफ़ाइल का थ्रेशोल्ड (उन्नत हिस्टैरिसिस) इस मान से ऊपर रखें ताकि फ़ैन सेंसर के शोर पर प्रतिक्रिया न दें। ड्यूटी या RPM में ऊँचे मान का अर्थ है कि फ़ैन बार-बार अपनी गति बदल रहा है।',
         },
         sensorTable: {
             device: 'डिवाइस',

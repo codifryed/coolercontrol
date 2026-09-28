@@ -1067,6 +1067,7 @@ export default {
             watts: 'vatios',
         },
         chartDisplayOptions: {
+            statsPanel: 'Panel de estadísticas',
             title: 'Opciones de visualización',
             statsLegend: 'Leyenda de estadísticas',
         },
@@ -1115,6 +1116,17 @@ export default {
                 amdAmdsi: 'AMD AMDSI',
                 intelPeci: 'Intel PECI',
             },
+        },
+        statsPanel: {
+            visible: 'Visible {duration}',
+            moveCorner: 'Mover a la otra esquina',
+            hide: 'Ocultar',
+            sinceStart: 'Desde el inicio',
+            sinceStartHelp:
+                'Desde que se inició el daemon o desde el último reinicio de las estadísticas en la vista de tabla.',
+            jitter: 'Fluctuación',
+            jitterHelp:
+                'Cambio promedio entre una lectura y la siguiente en esta ventana. En una temperatura, configure el Umbral (Histéresis Avanzada) del perfil por encima de este valor para que los ventiladores ignoren el ruido del sensor. En ciclo o RPM, un valor alto significa que el ventilador cambia de velocidad constantemente.',
         },
         sensorTable: {
             device: 'Dispositivo',
