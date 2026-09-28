@@ -6,9 +6,9 @@ import { mdiMinus } from '@mdi/js'
 import type { Color } from '@/models/Device.ts'
 import { escapeHtml, safeColor } from '@/components/htmlEscaping.ts'
 
-export const SCALE_KEY_PERCENT: string = '%'
-export const SCALE_KEY_RPM: string = 'rpm'
-export const SCALE_KEY_WATTS: string = 'W'
+import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS } from '@/components/chartScales.ts'
+
+export { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS }
 
 export interface DeviceLineProperties {
     color: Color

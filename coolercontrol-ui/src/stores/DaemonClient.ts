@@ -6,6 +6,7 @@ import axiosRetry, { isNetworkError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { defaultStatsResponse, type StatsResponseDTO } from '@/models/Stats'
+import type { ChannelAttribute, ChannelAttributesResponse } from '@/models/ChannelAttributes'
 import { UISettingsDTO } from '@/models/UISettings'
 import type { NameOverrides } from '@/models/NameOverrides'
 import type { UID } from '@/models/Device'
@@ -385,6 +386,26 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return defaultStatsResponse()
+        }
+    }
+
+    /**
+     * Reads the extra attributes the driver reports for one channel (limits, fan target).
+     * Returns an empty list on failure, including daemons older than the endpoint.
+     */
+    async getChannelAttributes(
+        deviceUID: UID,
+        channelName: string,
+    ): Promise<Array<ChannelAttribute>> {
+        try {
+            const response = await this.getClient().get(
+                `/devices/${deviceUID}/channels/${channelName}/attributes`,
+            )
+            this.logDaemonResponse(response, 'Channel Attributes')
+            return (response.data as ChannelAttributesResponse).attributes ?? []
+        } catch (err) {
+            this.logError(err)
+            return []
         }
     }
 
