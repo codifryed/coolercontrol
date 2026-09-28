@@ -109,6 +109,67 @@ pub enum ChannelDataType {
     Watts,
 }
 
+/// Most attributes one channel can report: the temperature set is the larger one.
+pub const MAX_CHANNEL_ATTRIBUTES: usize = 14;
+
+/// A driver-reported channel attribute that is read on demand rather than polled: limits,
+/// targets and sensor details. Serialized upper-case so clients can pick the unit and decide
+/// which values to draw as limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[schemars(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ChannelAttributeKind {
+    /// °C
+    TempMax,
+    /// °C, an absolute temperature per the hwmon ABI, not a delta.
+    TempMaxHyst,
+    /// °C
+    TempCrit,
+    /// °C, absolute.
+    TempCritHyst,
+    /// °C
+    TempEmergency,
+    /// °C, absolute.
+    TempEmergencyHyst,
+    /// °C
+    TempMin,
+    /// °C, absolute.
+    TempMinHyst,
+    /// °C
+    TempLcrit,
+    /// °C, absolute.
+    TempLcritHyst,
+    /// °C, lowest reading since the driver loaded or was reset.
+    TempLowest,
+    /// °C, highest reading since the driver loaded or was reset.
+    TempHighest,
+    /// °C, added by the chip to the raw reading.
+    TempOffset,
+    /// Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,
+    /// Intel PECI).
+    TempType,
+    /// rpm
+    FanMin,
+    /// rpm
+    FanMax,
+    /// rpm
+    FanTarget,
+    /// Divisor, a plain number.
+    FanDiv,
+    /// Tachometer pulses per revolution, a plain number.
+    FanPulses,
+}
+
+/// One driver-reported attribute. `name` is the sysfs file name, so clients can show it as is:
+/// the same attribute means different things on different drivers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelAttribute {
+    pub name: String,
+    pub kind: ChannelAttributeKind,
+    /// °C for temperatures, rpm for fan speeds, a plain number otherwise.
+    pub value: f64,
+}
+
 /// Per-device running stats since daemon start. Populated lazily as
 /// channels/temps are observed. Reset via `Device::reset_stats`.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]

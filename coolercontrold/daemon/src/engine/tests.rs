@@ -7,11 +7,12 @@
 
 #[cfg(test)]
 mod engine_tests {
+    use crate::api::CCError;
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
         ChannelInfo, ChannelKind, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty,
-        SpeedOptions, Status, Temp, TempName, TempStatus, UID,
+        SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
@@ -469,6 +470,43 @@ mod engine_tests {
             temp: temp2,
         });
         device.borrow_mut().set_status(status);
+    }
+
+    fn is_not_found(result: &Result<Vec<crate::device::ChannelAttribute>>) -> bool {
+        matches!(
+            result.as_ref().map_err(|err| err.downcast_ref::<CCError>()),
+            Err(Some(CCError::NotFound { .. }))
+        )
+    }
+
+    #[test]
+    #[serial]
+    fn channel_attributes_not_found_for_unknown_device_or_channel() {
+        // Goal: a bad device or channel in the path is a NotFound (404), not a server fault,
+        // while a known channel reaches its repository. Method: one device with a temp, the
+        // mock repository's default (empty) attribute list, then an unknown uid and channel.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+            let device_uid = h.device.borrow().uid.clone();
+            h.device.borrow_mut().info.temps.insert(
+                "temp1".to_string(),
+                TempInfo {
+                    label: "Temp 1".to_string(),
+                    number: 1,
+                },
+            );
+
+            let known = h.engine.channel_attributes(&device_uid, "temp1").await;
+            let unknown_channel = h.engine.channel_attributes(&device_uid, "temp9").await;
+            let unknown_device = h
+                .engine
+                .channel_attributes(&"missing".to_string(), "temp1")
+                .await;
+
+            assert!(known.unwrap().is_empty());
+            assert!(is_not_found(&unknown_channel), "{unknown_channel:?}");
+            assert!(is_not_found(&unknown_device), "{unknown_device:?}");
+        });
     }
 
     #[test]

@@ -638,6 +638,76 @@
         ]
       }
     },
+    "/devices/{device_uid}/channels/{channel_name}/attributes": {
+      "get": {
+        "tags": [
+          "device"
+        ],
+        "summary": "Device Channel Attributes",
+        "description": "Returns the extra attributes the driver reports for a temperature or fan channel, such as its max, critical and emergency limits or fan target, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          },
+          {
+            "in": "path",
+            "name": "device_uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelAttributesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/devices/{device_uid}/settings": {
       "get": {
         "tags": [
@@ -7469,6 +7539,142 @@
           "device_uid",
           "channel_name",
           "profile_uid"
+        ]
+      },
+      "ChannelAttribute": {
+        "description": "One driver-reported attribute. `name` is the sysfs file name, so clients can show it as is:\n the same attribute means different things on different drivers.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ChannelAttributeKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "°C for temperatures, rpm for fan speeds, a plain number otherwise.",
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "value"
+        ]
+      },
+      "ChannelAttributeKind": {
+        "description": "A driver-reported channel attribute that is read on demand rather than polled: limits,\n targets and sensor details. Serialized upper-case so clients can pick the unit and decide\n which values to draw as limits.",
+        "oneOf": [
+          {
+            "description": "°C",
+            "type": "string",
+            "const": "TEMP_MAX"
+          },
+          {
+            "description": "°C, an absolute temperature per the hwmon ABI, not a delta.",
+            "type": "string",
+            "const": "TEMP_MAX_HYST"
+          },
+          {
+            "description": "°C",
+            "type": "string",
+            "const": "TEMP_CRIT"
+          },
+          {
+            "description": "°C, absolute.",
+            "type": "string",
+            "const": "TEMP_CRIT_HYST"
+          },
+          {
+            "description": "°C",
+            "type": "string",
+            "const": "TEMP_EMERGENCY"
+          },
+          {
+            "description": "°C, absolute.",
+            "type": "string",
+            "const": "TEMP_EMERGENCY_HYST"
+          },
+          {
+            "description": "°C",
+            "type": "string",
+            "const": "TEMP_MIN"
+          },
+          {
+            "description": "°C, absolute.",
+            "type": "string",
+            "const": "TEMP_MIN_HYST"
+          },
+          {
+            "description": "°C",
+            "type": "string",
+            "const": "TEMP_LCRIT"
+          },
+          {
+            "description": "°C, absolute.",
+            "type": "string",
+            "const": "TEMP_LCRIT_HYST"
+          },
+          {
+            "description": "°C, lowest reading since the driver loaded or was reset.",
+            "type": "string",
+            "const": "TEMP_LOWEST"
+          },
+          {
+            "description": "°C, highest reading since the driver loaded or was reset.",
+            "type": "string",
+            "const": "TEMP_HIGHEST"
+          },
+          {
+            "description": "°C, added by the chip to the raw reading.",
+            "type": "string",
+            "const": "TEMP_OFFSET"
+          },
+          {
+            "description": "Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,\n Intel PECI).",
+            "type": "string",
+            "const": "TEMP_TYPE"
+          },
+          {
+            "description": "rpm",
+            "type": "string",
+            "const": "FAN_MIN"
+          },
+          {
+            "description": "rpm",
+            "type": "string",
+            "const": "FAN_MAX"
+          },
+          {
+            "description": "rpm",
+            "type": "string",
+            "const": "FAN_TARGET"
+          },
+          {
+            "description": "Divisor, a plain number.",
+            "type": "string",
+            "const": "FAN_DIV"
+          },
+          {
+            "description": "Tachometer pulses per revolution, a plain number.",
+            "type": "string",
+            "const": "FAN_PULSES"
+          }
+        ]
+      },
+      "ChannelAttributesResponse": {
+        "type": "object",
+        "properties": {
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelAttribute"
+            }
+          }
+        },
+        "required": [
+          "attributes"
         ]
       },
       "ChannelEvidence": {

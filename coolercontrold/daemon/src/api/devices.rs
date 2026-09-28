@@ -4,7 +4,9 @@
 use crate::api::actor::CalibrationHandle;
 use crate::api::{handle_error, AppState, CCError};
 use crate::calibration::{effective_speed_options, Calibration, ChannelKey};
-use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
+use crate::device::{
+    ChannelAttribute, ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID,
+};
 use crate::engine::processors::image;
 use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
@@ -166,6 +168,18 @@ pub async fn device_setting_lcd_modify(
             log_success,
         )
         .await
+        .map_err(handle_error)
+}
+
+/// Returns the extra attributes the driver reports for one channel, read when requested.
+pub async fn device_channel_attributes_get(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<ChannelAttributesResponse>, CCError> {
+    device_handle
+        .device_channel_attributes_get(path.device_uid, path.channel_name)
+        .await
+        .map(|attributes| Json(ChannelAttributesResponse { attributes }))
         .map_err(handle_error)
 }
 
@@ -359,6 +373,11 @@ pub struct DevicesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SettingsResponse {
     settings: Vec<Setting>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelAttributesResponse {
+    attributes: Vec<ChannelAttribute>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

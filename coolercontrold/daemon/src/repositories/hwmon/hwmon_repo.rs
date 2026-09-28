@@ -58,9 +58,9 @@ use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device,
-    DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp,
-    TempInfo, TempName, TempStatus, TypeIndex, UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
+    Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
+    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
@@ -73,7 +73,7 @@ use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
-    auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
+    attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
@@ -2631,6 +2631,48 @@ impl Repository for HwmonRepo {
 
     async fn reinitialize_devices(&self) {
         error!("Reinitializing Devices is not supported for this Repository");
+    }
+
+    async fn channel_attributes(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let (device_lock, driver) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
+            return Ok(Vec::new());
+        };
+        if driver.io.is_unreachable() {
+            return Err(anyhow!("HWMon device {} is not responding", driver.name));
+        }
+        // Reading a sleeping drive's attributes would spin it up.
+        if drivetemp::is_suspended(&driver.drivetemp, self.drivetemp_ioctl_timeout).await {
+            return Ok(Vec::new());
+        }
+        let type_index = device_lock.borrow().type_index;
+        let semaphore = self.device_permits.get(&type_index).expect(
+            "invariant: device_permits entry exists for every registered device type_index",
+        );
+        let permit_timeout = self
+            .device_read_permit_timeout
+            .min(attributes::ATTRIBUTE_PERMIT_TIMEOUT_MAX);
+        // One hold for the whole pass: at most one read per attribute file this channel has.
+        let _permit = tokio::select! {
+            () = self.shutdown_token.cancelled() => return Ok(Vec::new()),
+            () = rt::sleep(permit_timeout) => {
+                return Err(anyhow!(
+                    "TIMEOUT HWMon device: {} channel: {channel_name}; waiting to read attributes",
+                    driver.name
+                ));
+            }
+            permit = semaphore.acquire() => permit.map_err(|err| anyhow!(err))?,
+        };
+        let channel_attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(channel_attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(channel_attributes)
     }
 }
 
@@ -6890,6 +6932,161 @@ mod uid_migration_tests {
                 1,
                 "our settings arrive under the new UID"
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod channel_attributes_tests {
+    use super::*;
+    use crate::cc_fs;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    const TYPE_INDEX: TypeIndex = 1;
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(
+            config,
+            vec![],
+            Rc::new(crate::overrides::OverridesController::empty()),
+        )
+    }
+
+    /// A temp1 with one real limit and one nvme-style placeholder.
+    async fn seeded_dir() -> PathBuf {
+        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+        cc_fs::create_dir_all(&base).await.unwrap();
+        for (name, contents) in [
+            ("temp1_input", "45000"),
+            ("temp1_crit", "100000"),
+            ("temp1_max", "65261850"),
+        ] {
+            cc_fs::write(base.join(name), contents.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        base
+    }
+
+    /// Registers one device with a single temp1 channel in `base`, skipping init.
+    fn insert_device(repo: &mut HwmonRepo, base: &Path, io: DeviceIo) -> UID {
+        let driver = HwmonDriverInfo {
+            name: "test_chip".to_string(),
+            path: base.to_path_buf(),
+            channels: vec![HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number: 1,
+                name: "temp1".to_string(),
+                temp_path: Some(base.join("temp1_input")),
+                ..Default::default()
+            }],
+            u_id: "test-uid-attributes".to_string(),
+            io,
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            TYPE_INDEX,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.device_permits
+            .insert(TYPE_INDEX, Rc::new(Semaphore::new(1)));
+        repo.devices.insert(
+            uid.clone(),
+            (Rc::new(RefCell::new(device)), Rc::new(driver)),
+        );
+        uid
+    }
+
+    #[test]
+    #[serial]
+    fn reads_attributes_for_a_known_channel() {
+        // Goal: the repository resolves the channel and returns its sanitized attributes.
+        // Method: a registered device whose temp1 has one real limit and one placeholder.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let uid = insert_device(&mut repo, &base, DeviceIo::default());
+
+            let attributes = repo.channel_attributes(&uid, "temp1").await.unwrap();
+
+            assert_eq!(attributes.len(), 1, "placeholder must be dropped");
+            assert_eq!(attributes[0].name, "temp1_crit");
+            assert_eq!(attributes[0].value, 100.0);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn unknown_channel_reports_nothing_and_unknown_device_errors() {
+        // Goal: a channel this driver does not have yields an empty list, while an unknown
+        // device is an error. Method: query both against one registered device.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let uid = insert_device(&mut repo, &base, DeviceIo::default());
+
+            let unknown_channel = repo.channel_attributes(&uid, "fan9").await.unwrap();
+            let unknown_device = repo.channel_attributes(&"nope".to_string(), "temp1").await;
+
+            assert!(unknown_channel.is_empty());
+            assert!(unknown_device.is_err());
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn held_permit_times_out_with_an_error() {
+        // Goal: a device busy past the permit timeout fails the request instead of blocking
+        // the API actor. Method: hold the permit and shorten the read permit timeout.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let uid = insert_device(&mut repo, &base, DeviceIo::default());
+            repo.device_read_permit_timeout = Duration::from_millis(100);
+            let sem = Rc::clone(repo.device_permits.get(&TYPE_INDEX).unwrap());
+            let _holder = sem.try_acquire().expect("permit must start free");
+
+            let started = Instant::now();
+            let result = repo.channel_attributes(&uid, "temp1").await;
+
+            let err = result.expect_err("held permit must time out");
+            assert!(err.to_string().contains("TIMEOUT"), "{err}");
+            assert!(started.elapsed() >= Duration::from_millis(100));
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn unreachable_device_errors_without_reading() {
+        // Goal: a device whose driver stopped answering is refused up front rather than
+        // spending a reply budget per attribute. Method: wedge its IO until it is marked
+        // unreachable, then ask for attributes.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
+            let uid = insert_device(&mut repo, &base, wedged_io.clone());
+            for _ in 0..device_io::UNREACHABLE_AFTER_TIMEOUTS {
+                let _ = wedged_io.read_value(&base.join("temp1_input")).await;
+            }
+            assert!(wedged_io.is_unreachable());
+
+            let result = repo.channel_attributes(&uid, "temp1").await;
+
+            let err = result.expect_err("unreachable device must error");
+            assert!(err.to_string().contains("not responding"), "{err}");
+            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
