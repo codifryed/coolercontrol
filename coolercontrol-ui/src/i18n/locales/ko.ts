@@ -1038,6 +1038,20 @@ export default {
             krpmGhz: 'krpm / GHz',
             watts: '와트',
         },
+        chartDisplayOptions: {
+            title: '표시 옵션',
+            statsLegend: '통계 범례',
+        },
+        chartStats: {
+            title: '통계',
+            series: '시리즈',
+            now: '현재',
+            min: '최소',
+            max: '최대',
+            avg: '평균',
+            lastMinutes: '최근 {minutes}분',
+            visibleRange: '표시 범위: {duration}',
+        },
         sensorTable: {
             device: '장치',
             channel: '채널',

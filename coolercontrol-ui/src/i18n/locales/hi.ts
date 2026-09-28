@@ -1047,6 +1047,20 @@ export default {
             krpmGhz: 'krpm / GHz',
             watts: 'वाट',
         },
+        chartDisplayOptions: {
+            title: 'प्रदर्शन विकल्प',
+            statsLegend: 'आँकड़े लेजेंड',
+        },
+        chartStats: {
+            title: 'आँकड़े',
+            series: 'श्रृंखला',
+            now: 'अभी',
+            min: 'न्यूनतम',
+            max: 'अधिकतम',
+            avg: 'औसत',
+            lastMinutes: 'पिछले {minutes} मिनट',
+            visibleRange: 'दृश्य सीमा: {duration}',
+        },
         sensorTable: {
             device: 'डिवाइस',
             channel: 'चैनल',

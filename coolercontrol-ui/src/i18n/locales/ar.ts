@@ -1037,6 +1037,20 @@ export default {
             krpmGhz: 'كيلو دورة/د / جيجاهرتز',
             watts: 'واط',
         },
+        chartDisplayOptions: {
+            title: 'خيارات العرض',
+            statsLegend: 'مفتاح الإحصاءات',
+        },
+        chartStats: {
+            title: 'الإحصاءات',
+            series: 'السلسلة',
+            now: 'الآن',
+            min: 'الأدنى',
+            max: 'الأقصى',
+            avg: 'المتوسط',
+            lastMinutes: 'آخر {minutes} دقيقة',
+            visibleRange: 'النطاق المرئي: {duration}',
+        },
         sensorTable: {
             device: 'الجهاز',
             channel: 'القناة',

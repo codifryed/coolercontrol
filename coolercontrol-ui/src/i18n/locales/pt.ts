@@ -1066,6 +1066,20 @@ export default {
             krpmGhz: 'krpm / GHz',
             watts: 'watts',
         },
+        chartDisplayOptions: {
+            title: 'Opções de exibição',
+            statsLegend: 'Legenda de estatísticas',
+        },
+        chartStats: {
+            title: 'Estatísticas',
+            series: 'Série',
+            now: 'Atual',
+            min: 'Mín',
+            max: 'Máx',
+            avg: 'Méd',
+            lastMinutes: 'Últimos {minutes} min',
+            visibleRange: 'Intervalo visível: {duration}',
+        },
         sensorTable: {
             device: 'Dispositivo',
             channel: 'Canal',

@@ -20,7 +20,16 @@ import {
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
 import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
+import {
+    chartValueToDisplay,
+    isSyntheticStatus,
+    lineDash,
+    windowStats,
+    type WindowLineStats,
+    type WindowStatsPayload,
+} from '@/components/chartStats.ts'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
+import type { SensorAndChannelSettings } from '@/models/UISettings.ts'
 import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
@@ -36,13 +45,19 @@ const uLineNames: Array<string> = []
 
 interface Props {
     dashboard: Dashboard
+    // Emit windowStats as the data or the visible range changes. Off unless a legend or panel
+    // shows them, so embedded charts do no extra work.
+    emitWindowStats?: boolean
 }
 
 const props = defineProps<Props>()
 // The chart is built once from the line set it finds at mount. When that set changes the
 // only honest repair is a fresh chart, which the parent gives us by remounting this
 // component, the same way it does for a dashboard settings change.
-const emit = defineEmits<{ (e: 'lineSetChanged'): void }>()
+const emit = defineEmits<{
+    (e: 'lineSetChanged'): void
+    (e: 'windowStats', payload: WindowStatsPayload): void
+}>()
 let remountRequested: boolean = false
 const requestRemount = (): void => {
     if (remountRequested) return
@@ -77,6 +92,17 @@ const timeRangeSeconds = props.dashboard.timeRangeSeconds
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
+interface LineMeta {
+    deviceUID: UID
+    channelName: string
+    dataType: DataType
+}
+const lineMeta = new Map<string, LineMeta>()
+// Parallel to uSeriesData's lines (uMasks[i] belongs to uSeriesData[i + 1]): 1 where the line
+// holds a real reading. The daemon's startup zero-fill and gaps in a channel's reporting are 0,
+// so window stats never count them.
+const uMasks: Array<Uint8Array> = []
+
 /**
  * Line Names should be unique for our Series Data.
  * @param device
@@ -104,6 +130,37 @@ const initUSeriesData = () => {
     // We need to use decimal values for at least temps, so Float32.
     // TypedArrays have a fixed length, so we need to manage this ourselves
     const uLineData = new Map<string, Float32Array>()
+    const uMaskData = new Map<string, Uint8Array>()
+    const record = (
+        lineName: string,
+        settings: SensorAndChannelSettings,
+        deviceUID: UID,
+        channelName: string,
+        dataType: DataType,
+        statusIndex: number,
+        value: number,
+        valid: boolean,
+    ): void => {
+        if (!uLineNames.includes(lineName)) {
+            uLineNames.push(lineName)
+        }
+        if (!allDevicesLineProperties.has(lineName)) {
+            allDevicesLineProperties.set(lineName, { color: settings.color, name: settings.name })
+        }
+        if (!lineMeta.has(lineName)) {
+            lineMeta.set(lineName, { deviceUID, channelName, dataType })
+        }
+        let floatArray = uLineData.get(lineName)
+        let mask = uMaskData.get(lineName)
+        if (floatArray == null || mask == null) {
+            floatArray = new Float32Array(currentStatusLength)
+            mask = new Uint8Array(currentStatusLength)
+            uLineData.set(lineName, floatArray)
+            uMaskData.set(lineName, mask)
+        }
+        floatArray[statusIndex] = value
+        mask[statusIndex] = valid ? 1 : 0
+    }
 
     for (const device of deviceStore.allDevices()) {
         if (!includesDevice(device.uid)) continue
@@ -111,117 +168,59 @@ const initUSeriesData = () => {
         for (const [statusIndex, status] of device.status_history
             .slice(-currentStatusLength)
             .entries()) {
+            const valid = !isSyntheticStatus(status)
             for (const tempStatus of status.temps) {
                 if (!includesTemps) break
                 if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
-                const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
-                const lineName = createLineName(device, tempStatus.name + '_temp')
-                if (!uLineNames.includes(lineName)) {
-                    uLineNames.push(lineName)
-                }
-                if (!allDevicesLineProperties.has(lineName)) {
-                    allDevicesLineProperties.set(lineName, {
-                        color: tempSettings.color,
-                        name: tempSettings.name,
-                    })
-                }
-                let floatArray = uLineData.get(lineName)
-                if (floatArray == null) {
-                    floatArray = new Float32Array(currentStatusLength)
-                    uLineData.set(lineName, floatArray)
-                }
-                floatArray[statusIndex] = tempStatus.temp
+                record(
+                    createLineName(device, tempStatus.name + '_temp'),
+                    deviceSettings.sensorsAndChannels.get(tempStatus.name)!,
+                    device.uid,
+                    tempStatus.name,
+                    DataType.TEMP,
+                    statusIndex,
+                    tempStatus.temp,
+                    valid,
+                )
             }
             for (const channelStatus of status.channels) {
                 if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
+                const channelRecord = (suffix: string, dataType: DataType, value: number): void =>
+                    record(
+                        createLineName(device, channelStatus.name + suffix),
+                        deviceSettings.sensorsAndChannels.get(channelStatus.name)!,
+                        device.uid,
+                        channelStatus.name,
+                        dataType,
+                        statusIndex,
+                        value,
+                        valid,
+                    )
                 if (channelStatus.duty != null) {
                     const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
                     const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
-                    if (isLoadChannel || isFanDutyChannel) {
-                        const channelSettings = deviceSettings.sensorsAndChannels.get(
-                            channelStatus.name,
-                        )!
-                        const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
-                        const lineName = createLineName(device, channelStatus.name + lineNameExt)
-                        if (!uLineNames.includes(lineName)) {
-                            uLineNames.push(lineName)
-                        }
-                        if (!allDevicesLineProperties.has(lineName)) {
-                            allDevicesLineProperties.set(lineName, {
-                                color: channelSettings.color,
-                                name: channelSettings.name,
-                            })
-                        }
-                        let floatArray = uLineData.get(lineName)
-                        if (floatArray == null) {
-                            floatArray = new Float32Array(currentStatusLength)
-                            uLineData.set(lineName, floatArray)
-                        }
-                        floatArray[statusIndex] = channelStatus.duty
+                    if (isLoadChannel) {
+                        channelRecord('_load', DataType.LOAD, channelStatus.duty)
+                    } else if (isFanDutyChannel) {
+                        channelRecord('_duty', DataType.DUTY, channelStatus.duty)
                     }
                 }
                 if (includesRPMs && channelStatus.rpm != null) {
-                    const channelSettings = deviceSettings.sensorsAndChannels.get(
-                        channelStatus.name,
-                    )!
-                    const lineName = createLineName(device, channelStatus.name + '_rpm')
-                    if (!uLineNames.includes(lineName)) {
-                        uLineNames.push(lineName)
-                    }
-                    if (!allDevicesLineProperties.has(lineName)) {
-                        allDevicesLineProperties.set(lineName, {
-                            color: channelSettings.color,
-                            name: channelSettings.name,
-                        })
-                    }
-                    let floatArray = uLineData.get(lineName)
-                    if (floatArray == null) {
-                        floatArray = new Float32Array(currentStatusLength)
-                        uLineData.set(lineName, floatArray)
-                    }
-                    floatArray[statusIndex] = channelStatus.rpm / settingsStore.frequencyPrecision
+                    channelRecord(
+                        '_rpm',
+                        DataType.RPM,
+                        channelStatus.rpm / settingsStore.frequencyPrecision,
+                    )
                 }
                 if (includesFreqs && channelStatus.freq != null) {
-                    const channelSettings = deviceSettings.sensorsAndChannels.get(
-                        channelStatus.name,
-                    )!
-                    const lineName = createLineName(device, channelStatus.name + '_freq')
-                    if (!uLineNames.includes(lineName)) {
-                        uLineNames.push(lineName)
-                    }
-                    if (!allDevicesLineProperties.has(lineName)) {
-                        allDevicesLineProperties.set(lineName, {
-                            color: channelSettings.color,
-                            name: channelSettings.name,
-                        })
-                    }
-                    let floatArray = uLineData.get(lineName)
-                    if (floatArray == null) {
-                        floatArray = new Float32Array(currentStatusLength)
-                        uLineData.set(lineName, floatArray)
-                    }
-                    floatArray[statusIndex] = channelStatus.freq / settingsStore.frequencyPrecision
+                    channelRecord(
+                        '_freq',
+                        DataType.FREQ,
+                        channelStatus.freq / settingsStore.frequencyPrecision,
+                    )
                 }
                 if (includesWatts && channelStatus.watts != null) {
-                    const channelSettings = deviceSettings.sensorsAndChannels.get(
-                        channelStatus.name,
-                    )!
-                    const lineName = createLineName(device, channelStatus.name + '_watts')
-                    if (!uLineNames.includes(lineName)) {
-                        uLineNames.push(lineName)
-                    }
-                    if (!allDevicesLineProperties.has(lineName)) {
-                        allDevicesLineProperties.set(lineName, {
-                            color: channelSettings.color,
-                            name: channelSettings.name,
-                        })
-                    }
-                    let floatArray = uLineData.get(lineName)
-                    if (floatArray == null) {
-                        floatArray = new Float32Array(currentStatusLength)
-                        uLineData.set(lineName, floatArray)
-                    }
-                    floatArray[statusIndex] = channelStatus.watts
+                    channelRecord('_watts', DataType.WATTS, channelStatus.watts)
                 }
             }
         }
@@ -240,9 +239,11 @@ const initUSeriesData = () => {
     }
 
     uSeriesData.length = 0
+    uMasks.length = 0
     for (const lineName of uLineNames) {
         // the uLineNames Array keeps our LineData arrays in order
         uSeriesData.push(uLineData.get(lineName)!)
+        uMasks.push(uMaskData.get(lineName)!)
     }
     uSeriesData.splice(0, 0, uTimeData) // 'inserts' time values as the first array, where uPlot expects it
     console.debug('Initialized uPlot Series Data')
@@ -254,6 +255,9 @@ const shiftSeriesData = (shiftLength: number) => {
             arr[i] = arr[i + shiftLength] // Shift left
         }
     }
+    for (const mask of uMasks) {
+        mask.copyWithin(0, shiftLength)
+    }
 }
 
 const updateUSeriesData = () => {
@@ -263,27 +267,33 @@ const updateUSeriesData = () => {
 
     const newTimestamp = firstDevice.status.timestamp
     uSeriesData[0][currentStatusLength - 1] = new Date(newTimestamp).getTime() / 1000
+    // A line the new status does not report keeps its shifted value, but not as a reading.
+    for (const mask of uMasks) {
+        mask[currentStatusLength - 1] = 0
+    }
 
     // Writes the latest value of one line, and asks for a remount for a line the chart was
     // not built with: a channel that has started reporting needs a series of its own before
     // it can be drawn, and until then its value has nowhere to go.
-    const setLatest = (lineName: string, value: number): void => {
+    const setLatest = (lineName: string, value: number, valid: boolean): void => {
         const dataIndex = lineDataIndex(uLineNames, lineName)
         if (dataIndex == null) {
             requestRemount()
             return
         }
         uSeriesData[dataIndex][currentStatusLength - 1] = value
+        uMasks[dataIndex - 1][currentStatusLength - 1] = valid ? 1 : 0
     }
 
     for (const device of deviceStore.allDevices()) {
         if (!includesDevice(device.uid)) continue
         const newStatus = device.status
+        const valid = !isSyntheticStatus(newStatus)
         for (const tempStatus of newStatus.temps) {
             if (!includesTemps) break
             if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
             const lineName = createLineName(device, tempStatus.name + '_temp')
-            setLatest(lineName, tempStatus.temp)
+            setLatest(lineName, tempStatus.temp, valid)
         }
         for (const channelStatus of newStatus.channels) {
             if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
@@ -293,20 +303,20 @@ const updateUSeriesData = () => {
                 if (isLoadChannel || isFanDutyChannel) {
                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                     const lineName = createLineName(device, channelStatus.name + lineNameExt)
-                    setLatest(lineName, channelStatus.duty)
+                    setLatest(lineName, channelStatus.duty, valid)
                 }
             }
             if (includesRPMs && channelStatus.rpm != null) {
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
-                setLatest(lineName, channelStatus.rpm / settingsStore.frequencyPrecision)
+                setLatest(lineName, channelStatus.rpm / settingsStore.frequencyPrecision, valid)
             }
             if (includesFreqs && channelStatus.freq != null) {
                 const lineName = createLineName(device, channelStatus.name + '_freq')
-                setLatest(lineName, channelStatus.freq / settingsStore.frequencyPrecision)
+                setLatest(lineName, channelStatus.freq / settingsStore.frequencyPrecision, valid)
             }
             if (includesWatts && channelStatus.watts != null) {
                 const lineName = createLineName(device, channelStatus.name + '_watts')
-                setLatest(lineName, channelStatus.watts)
+                setLatest(lineName, channelStatus.watts, valid)
             }
         }
     }
@@ -359,12 +369,73 @@ const stopRaf = () => {
     }
 }
 
+// Window stats cover whatever the x scale shows: the time range, or the zoomed-in part of it.
+const computeWindowStats = (): void => {
+    if (chart == null || uSeriesData.length === 0) return
+    const time = uSeriesData[0]
+    const dataStart = time[0]
+    const dataEnd = time[time.length - 1]
+    const xMin = chart.scales.x.min ?? dataStart
+    const xMax = chart.scales.x.max ?? dataEnd
+    const precision = settingsStore.frequencyPrecision
+    const toDisplay = (value: number, dataType: DataType): number =>
+        chartValueToDisplay(value, dataType, precision)
+    const lines: Array<WindowLineStats> = []
+    for (const [index, lineName] of uLineNames.entries()) {
+        const meta = lineMeta.get(lineName)
+        if (meta == null) continue
+        const values = uSeriesData[index + 1]
+        const mask = uMasks[index]
+        const stats = windowStats(time, values, mask, xMin, xMax)
+        const last = values.length - 1
+        lines.push({
+            lineName,
+            seriesIndex: index + 1,
+            ...meta,
+            color: allDevicesLineProperties.get(lineName)?.color ?? '',
+            label: allDevicesLineProperties.get(lineName)?.name ?? lineName,
+            latest: mask[last] === 1 ? toDisplay(values[last], meta.dataType) : null,
+            stats:
+                stats == null
+                    ? null
+                    : {
+                          min: toDisplay(stats.min, meta.dataType),
+                          max: toDisplay(stats.max, meta.dataType),
+                          avg: toDisplay(stats.avg, meta.dataType),
+                          count: stats.count,
+                      },
+        })
+    }
+    emit('windowStats', {
+        lines,
+        spanSeconds: xMax - xMin,
+        zoomed: xMax - xMin < (dataEnd - dataStart) * 0.99,
+    })
+}
+
+// Data updates and scale changes arrive in bursts (setData fires setScale); one pass per frame.
+let windowStatsRafId: number | null = null
+const scheduleWindowStats = (): void => {
+    if (!props.emitWindowStats || windowStatsRafId !== null) return
+    windowStatsRafId = requestAnimationFrame(() => {
+        windowStatsRafId = null
+        computeWindowStats()
+    })
+}
+
+// Highlights one line (dimming the rest), or restores all of them with null.
+const focusLine = (seriesIndex: number | null): void => {
+    chart?.setSeries(seriesIndex, { focus: true })
+}
+defineExpose({ focusLine })
+
 // chartKey remounts this component on any dashboard/device settings change, so anything
 // held past unmount is stranded for the life of the page. The observers are the retainers:
 // they keep the chart element reachable, which keeps its listener closures, the uPlot
 // instance and the series arrays alive.
 onUnmounted(() => {
     stopRaf()
+    if (windowStatsRafId !== null) cancelAnimationFrame(windowStatsRafId)
     visibilityObserver?.disconnect()
     visibilityObserver = null
     resizeObserver?.disconnect()
@@ -384,21 +455,6 @@ initUSeriesData()
 
 const uPlotSeries: Array<uPlot.Series> = [{}]
 
-const getLineStyle = (lineName: string): Array<number> => {
-    const lineLower = lineName.toLowerCase()
-    if (lineLower.endsWith('rpm') || lineLower.endsWith('freq')) {
-        return [1, 1]
-    } else if (lineLower.endsWith('load') || lineLower.includes('pump')) {
-        return [6, 3]
-    } else if (lineLower.endsWith('duty')) {
-        return [10, 3, 2, 3]
-    } else if (lineLower.endsWith('watts')) {
-        return [6, 3, 2, 6]
-    } else {
-        return []
-    }
-}
-
 let hasDegreeAxis: boolean = false
 let hasFrequencyAxis: boolean = false
 let hasWattsAxis: boolean = false
@@ -413,7 +469,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: getLineStyle(lineName),
+            dash: lineDash(lineName),
             spanGaps: true,
             width: settingsStore.chartLineScale,
             // min: 0,
@@ -436,7 +492,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: getLineStyle(lineName),
+            dash: lineDash(lineName),
             spanGaps: true,
             width: settingsStore.chartLineScale,
         })
@@ -450,7 +506,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: getLineStyle(lineName),
+            dash: lineDash(lineName),
             spanGaps: true,
             width: settingsStore.chartLineScale,
             // min: 0,
@@ -703,6 +759,10 @@ const uOptions: uPlot.Options = {
     legend: {
         show: false,
     },
+    // Only reached through focusLine: cursor proximity focus stays off (no cursor.focus.prox).
+    focus: {
+        alpha: 0.22,
+    },
     cursor: {
         show: true,
         x: false,
@@ -744,6 +804,9 @@ const uOptions: uPlot.Options = {
     hooks: {
         setScale: [
             (u: uPlot, key: string) => {
+                // The running scroll animation moves the scale every frame; status updates
+                // already schedule stats then.
+                if (key === 'x' && (rafId === null || rafPaused)) scheduleWindowStats()
                 // Only handle user-driven scale changes. Internal uPlot calls during init,
                 // data updates, and rAF-driven setScale are all silenced by the rafPaused guard.
                 if (key !== 'x' || !settingsStore.eyeCandy || !rafPaused) return
@@ -848,6 +911,7 @@ onMounted(async () => {
         initUSeriesData()
         chart!.setData(uSeriesData)
     }
+    scheduleWindowStats()
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
@@ -883,6 +947,7 @@ onMounted(async () => {
                     chart!.setData(uSeriesData, false)
                 }
                 // if rAF is running, it calls setData each frame
+                scheduleWindowStats()
             })
         }
     })

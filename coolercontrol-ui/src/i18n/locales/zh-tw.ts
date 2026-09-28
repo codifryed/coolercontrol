@@ -1002,6 +1002,20 @@ export default {
             krpmGhz: '千轉速 / 吉赫茲',
             watts: '瓦特',
         },
+        chartDisplayOptions: {
+            title: '顯示選項',
+            statsLegend: '統計圖例',
+        },
+        chartStats: {
+            title: '統計',
+            series: '系列',
+            now: '目前',
+            min: '最小',
+            max: '最大',
+            avg: '平均',
+            lastMinutes: '最近 {minutes} 分鐘',
+            visibleRange: '可見範圍：{duration}',
+        },
         sensorTable: {
             device: '設備',
             channel: '通道',

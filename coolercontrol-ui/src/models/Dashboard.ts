@@ -94,6 +94,9 @@ export class Dashboard {
     wattsMax: number = 800
     wattsMin: number = 0
 
+    // Time Chart only: a table of each line's now/min/max/avg under the chart.
+    showStatsLegend: boolean = false
+
     // Selected data types to filter by
     dataTypes: Array<DataType> = []
 

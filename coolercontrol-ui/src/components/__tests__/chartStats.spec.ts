@@ -5,7 +5,11 @@
 import 'reflect-metadata'
 import { describe, expect, it } from 'vitest'
 import {
+    chartValueToDisplay,
     emptyChannelStats,
+    formatSpan,
+    lineDash,
+    windowStats,
     foldChannelStats,
     foldStatusIntoStats,
     formatStatValue,
@@ -103,5 +107,47 @@ describe('display conversion and formatting', () => {
         expect(formatStatValue(1234.4, DataType.RPM, 1000)).toBe('1234')
         expect(formatStatValue(4.2567, DataType.FREQ, 1000)).toBe('4.26')
         expect(formatStatValue(4256.7, DataType.FREQ, 1)).toBe('4257')
+    })
+})
+
+describe('windowStats', () => {
+    // Five one-second samples; the first is the zero-padded slot of a short history.
+    const time = Float64Array.from([0, 101, 102, 103, 104])
+    const values = Float32Array.from([0, 40, 0, 60, 50])
+    // Index 2 is the daemon zero-fill, so it must not pull the minimum down to 0.
+    const valid = Uint8Array.from([0, 1, 0, 1, 1])
+
+    it('counts only real readings inside the window', () => {
+        expect(windowStats(time, values, valid, 0, 200)).toEqual({
+            min: 40,
+            max: 60,
+            avg: 50,
+            count: 3,
+        })
+    })
+
+    it('narrows to a zoomed range and reports an empty one as null', () => {
+        expect(windowStats(time, values, valid, 103, 104)).toEqual({
+            min: 50,
+            max: 60,
+            avg: 55,
+            count: 2,
+        })
+        expect(windowStats(time, values, valid, 105, 110)).toBeNull()
+        expect(windowStats(time, values, new Uint8Array(5), 0, 200)).toBeNull()
+    })
+
+    it('converts only chart rpm back to raw units', () => {
+        expect(chartValueToDisplay(1.2, DataType.RPM, 1000)).toBe(1200)
+        expect(chartValueToDisplay(1.2, DataType.FREQ, 1000)).toBe(1.2)
+        expect(chartValueToDisplay(45, DataType.TEMP, 1000)).toBe(45)
+    })
+
+    it('keeps the chart line dashes and a locale neutral span', () => {
+        expect(lineDash('Hwmon_1_fan1_rpm')).toEqual([1, 1])
+        expect(lineDash('Hwmon_1_fan1_duty')).toEqual([10, 3, 2, 3])
+        expect(lineDash('CPU_1_temp1_temp')).toEqual([])
+        expect(formatSpan(100)).toBe('1:40')
+        expect(formatSpan(9.6)).toBe('0:10')
     })
 })

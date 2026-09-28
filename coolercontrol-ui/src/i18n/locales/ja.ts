@@ -1054,6 +1054,20 @@ export default {
             krpmGhz: 'krpm / GHz',
             watts: 'ワット',
         },
+        chartDisplayOptions: {
+            title: '表示オプション',
+            statsLegend: '統計凡例',
+        },
+        chartStats: {
+            title: '統計',
+            series: '系列',
+            now: '現在',
+            min: '最小',
+            max: '最大',
+            avg: '平均',
+            lastMinutes: '直近 {minutes} 分',
+            visibleRange: '表示範囲: {duration}',
+        },
         sensorTable: {
             device: 'デバイス',
             channel: 'チャネル',

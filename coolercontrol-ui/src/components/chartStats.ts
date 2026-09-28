@@ -144,3 +144,88 @@ export function statUnitSuffix(
             return ` ${t('common.percentUnit')}`
     }
 }
+
+// ----- window stats: what a time chart currently shows -----
+
+export interface WindowStats {
+    min: number
+    max: number
+    avg: number
+    count: number
+}
+
+// Stats over the samples inside [tMin, tMax] that hold a real reading (`valid[i] === 1`), or
+// null when there are none. The arrays are one chart line and its time row, index aligned.
+export function windowStats(
+    time: ArrayLike<number>,
+    values: ArrayLike<number>,
+    valid: ArrayLike<number>,
+    tMin: number,
+    tMax: number,
+): WindowStats | null {
+    let min = Number.POSITIVE_INFINITY
+    let max = Number.NEGATIVE_INFINITY
+    let sum = 0
+    let count = 0
+    for (let i = 0; i < values.length; i++) {
+        if (valid[i] !== 1) continue
+        const t = time[i]
+        if (t < tMin || t > tMax) continue
+        const value = values[i]
+        if (value < min) min = value
+        if (value > max) max = value
+        sum += value
+        count++
+    }
+    if (count === 0) return null
+    return { min, max, avg: sum / count, count }
+}
+
+// Time charts store rpm divided by the precision setting so it shares an axis with MHz or GHz.
+// Stats are shown in Table view units, where rpm is always raw.
+export function chartValueToDisplay(value: number, dataType: DataType, precision: number): number {
+    return dataType === DataType.RPM ? value * precision : value
+}
+
+export interface WindowLineStats {
+    lineName: string
+    // The line's uPlot series index (1-based: 0 is the time row).
+    seriesIndex: number
+    deviceUID: UID
+    channelName: string
+    dataType: DataType
+    color: string
+    label: string
+    // Display units. Null when the newest sample is not a real reading.
+    latest: number | null
+    stats: WindowStats | null
+}
+
+export interface WindowStatsPayload {
+    lines: Array<WindowLineStats>
+    spanSeconds: number
+    // True when the user zoomed in, so the window is the visible range, not the time range.
+    zoomed: boolean
+}
+
+// The dash pattern a time chart line is drawn with, keyed off its line name suffix.
+export function lineDash(lineName: string): Array<number> {
+    const lineLower = lineName.toLowerCase()
+    if (lineLower.endsWith('rpm') || lineLower.endsWith('freq')) {
+        return [1, 1]
+    } else if (lineLower.endsWith('load') || lineLower.includes('pump')) {
+        return [6, 3]
+    } else if (lineLower.endsWith('duty')) {
+        return [10, 3, 2, 3]
+    } else if (lineLower.endsWith('watts')) {
+        return [6, 3, 2, 6]
+    }
+    return []
+}
+
+// A span as m:ss, locale neutral.
+export function formatSpan(seconds: number): string {
+    const whole = Math.max(0, Math.round(seconds))
+    const minutes = Math.floor(whole / 60)
+    return `${minutes}:${String(whole % 60).padStart(2, '0')}`
+}

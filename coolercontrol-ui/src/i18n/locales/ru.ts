@@ -1065,6 +1065,20 @@ export default {
             krpmGhz: 'тыс. об/мин / ГГц',
             watts: 'ватт',
         },
+        chartDisplayOptions: {
+            title: 'Параметры отображения',
+            statsLegend: 'Легенда статистики',
+        },
+        chartStats: {
+            title: 'Статистика',
+            series: 'Серия',
+            now: 'Сейчас',
+            min: 'Мин',
+            max: 'Макс',
+            avg: 'Сред',
+            lastMinutes: 'Последние {minutes} мин',
+            visibleRange: 'Видимый диапазон: {duration}',
+        },
         sensorTable: {
             device: 'Устройство',
             channel: 'Канал',
