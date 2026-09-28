@@ -512,3 +512,102 @@ export const mouseWheelZoomPlugin = () => {
         },
     }
 }
+
+export interface LimitLine {
+    value: number
+    scale: string
+    color: string
+    label: string
+}
+
+interface LabelBox {
+    x1: number
+    x2: number
+    y1: number
+    y2: number
+}
+
+// Dashed horizontal lines for driver-reported limits, labelled at the right edge. A line off
+// its scale's current range is not drawn. A label that would overlap another shifts left.
+export const limitLinesPlugin = (
+    getLines: () => Array<LimitLine>,
+    getLabelBackground: () => string,
+) => {
+    const drawLabels = (
+        u: uPlot,
+        visible: Array<{ line: LimitLine; y: number }>,
+        pxRatio: number,
+    ): void => {
+        const ctx = u.ctx
+        const { left, top, width } = u.bbox
+        const lineHeight = 13 * pxRatio
+        const pad = 4 * pxRatio
+        ctx.font = `${11 * pxRatio}px sans-serif`
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'bottom'
+        const background = getLabelBackground()
+        const placed: Array<LabelBox> = []
+        const overlapping = (box: LabelBox): LabelBox | undefined =>
+            placed.find((p) => box.x1 < p.x2 && box.x2 > p.x1 && box.y1 < p.y2 && box.y2 > p.y1)
+        for (const { line, y } of visible) {
+            const textWidth = ctx.measureText(line.label).width
+            // Below the line when there is no room above it.
+            const baseline = y - 3 * pxRatio - lineHeight < top ? y + lineHeight : y - 3 * pxRatio
+            let right = left + width - 6 * pxRatio
+            let box: LabelBox = { x1: 0, x2: 0, y1: 0, y2: 0 }
+            // Each shift clears one placed label, so this ends within placed.length + 1 tries.
+            for (let attempt = 0; attempt <= placed.length; attempt++) {
+                box = {
+                    x1: right - textWidth - pad,
+                    x2: right + pad,
+                    y1: baseline - lineHeight,
+                    y2: baseline + pxRatio,
+                }
+                const hit = overlapping(box)
+                if (hit == null) break
+                right = hit.x1 - 10 * pxRatio
+            }
+            placed.push(box)
+            ctx.fillStyle = background
+            ctx.fillRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1)
+            ctx.fillStyle = line.color
+            ctx.fillText(line.label, right, baseline)
+        }
+    }
+
+    return {
+        hooks: {
+            draw: [
+                (u: uPlot) => {
+                    const lines = getLines()
+                    if (lines.length === 0) return
+                    const ctx = u.ctx
+                    const { left, top, width, height } = u.bbox
+                    const pxRatio = uPlot.pxRatio
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.rect(left, top, width, height)
+                    ctx.clip()
+                    const visible: Array<{ line: LimitLine; y: number }> = []
+                    for (const line of [...lines].sort((a, b) => b.value - a.value)) {
+                        const scale = u.scales[line.scale]
+                        if (scale?.min == null || scale.max == null) continue
+                        if (line.value < scale.min || line.value > scale.max) continue
+                        const y = Math.round(u.valToPos(line.value, line.scale, true)) + 0.5
+                        ctx.strokeStyle = line.color
+                        ctx.lineWidth = pxRatio
+                        ctx.setLineDash([6 * pxRatio, 4 * pxRatio])
+                        ctx.beginPath()
+                        ctx.moveTo(left, y)
+                        ctx.lineTo(left + width, y)
+                        ctx.stroke()
+                        visible.push({ line, y })
+                    }
+                    ctx.setLineDash([])
+                    drawLabels(u, visible, pxRatio)
+                    ctx.restore()
+                },
+            ],
+        },
+    }
+}

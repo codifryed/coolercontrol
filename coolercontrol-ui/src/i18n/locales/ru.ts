@@ -1066,6 +1066,7 @@ export default {
             watts: 'ватт',
         },
         chartDisplayOptions: {
+            limitLines: 'Линии пределов',
             statsPanel: 'Панель статистики',
             title: 'Параметры отображения',
             statsLegend: 'Легенда статистики',

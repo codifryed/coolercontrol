@@ -242,6 +242,9 @@ export interface WindowStatsPayload {
     spanSeconds: number
     // True when the user zoomed in, so the window is the visible range, not the time range.
     zoomed: boolean
+    // Each y scale's current [min, max] in chart units, keyed by scale. Tells whether a limit
+    // line is on the chart.
+    scaleRanges: Record<string, [number, number]>
 }
 
 // The dash pattern a time chart line is drawn with, keyed off its line name suffix.

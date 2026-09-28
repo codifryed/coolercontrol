@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { Device, UID } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
@@ -17,8 +17,11 @@ import {
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
     SCALE_KEY_WATTS,
+    limitLinesPlugin,
+    type LimitLine,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
+import { limitColor, type ThresholdLine } from '@/components/channelAttributes.ts'
 import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
 import {
     chartValueToDisplay,
@@ -48,6 +51,8 @@ interface Props {
     // Emit windowStats as the data or the visible range changes. Off unless a legend or panel
     // shows them, so embedded charts do no extra work.
     emitWindowStats?: boolean
+    // Driver limits to draw as dashed lines; they arrive after mount and redraw in place.
+    thresholds?: Array<ThresholdLine>
 }
 
 const props = defineProps<Props>()
@@ -412,6 +417,7 @@ const computeWindowStats = (): void => {
         lines,
         spanSeconds: xMax - xMin,
         zoomed: xMax - xMin < (dataEnd - dataStart) * 0.99,
+        scaleRanges: currentScaleRanges(),
     })
 }
 
@@ -430,6 +436,37 @@ const focusLine = (seriesIndex: number | null): void => {
     chart?.setSeries(seriesIndex, { focus: true })
 }
 defineExpose({ focusLine })
+
+const currentScaleRanges = (): Record<string, [number, number]> => {
+    const ranges: Record<string, [number, number]> = {}
+    for (const key of [SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS]) {
+        const scale = chart?.scales[key]
+        if (scale?.min != null && scale.max != null) ranges[key] = [scale.min, scale.max]
+    }
+    return ranges
+}
+
+const currentLimitLines = (): Array<LimitLine> =>
+    (props.thresholds ?? []).map((threshold) => ({
+        value: threshold.value,
+        scale: threshold.scale,
+        color: limitColor(threshold.severity, colors.themeColors),
+        label: threshold.label,
+    }))
+
+// Auto-scaled rpm stretches to show the fan limits; a user-set range is left alone.
+const highestRpmLimit = (): number => {
+    let highest = 0
+    for (const threshold of props.thresholds ?? []) {
+        if (threshold.scale === SCALE_KEY_RPM) highest = Math.max(highest, threshold.value)
+    }
+    return highest
+}
+
+watch(
+    () => props.thresholds,
+    () => chart?.redraw(false, true),
+)
 
 // chartKey remounts this component on any dashboard/device settings change, so anything
 // held past unmount is stranded for the life of the page. The observers are the retainers:
@@ -729,7 +766,12 @@ const uOptions: uPlot.Options = {
             range: (_self, _dataMin, dataMax) => {
                 if (!hasFrequencyAxis) return [null, null]
                 return props.dashboard.autoScaleFrequency
-                    ? uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                    ? uPlot.rangeNum(
+                          0,
+                          Math.max(dataMax || 0, highestRpmLimit()) || 90.5,
+                          0.1,
+                          true,
+                      )
                     : [
                           props.dashboard.frequencyMin / settingsStore.frequencyPrecision,
                           props.dashboard.frequencyMax / settingsStore.frequencyPrecision,
@@ -802,6 +844,9 @@ const uOptions: uPlot.Options = {
         tooltipPlugin(allDevicesLineProperties, t, settingsStore.frequencyPrecision),
         columnHighlightPlugin(),
         mouseWheelZoomPlugin(),
+        limitLinesPlugin(currentLimitLines, () =>
+            colors.convertColorToRGBA(colors.themeColors.bg_one, 0.85),
+        ),
     ],
     hooks: {
         setScale: [

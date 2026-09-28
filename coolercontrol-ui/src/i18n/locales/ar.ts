@@ -1038,6 +1038,7 @@ export default {
             watts: 'واط',
         },
         chartDisplayOptions: {
+            limitLines: 'خطوط الحدود',
             statsPanel: 'لوحة الإحصاءات',
             title: 'خيارات العرض',
             statsLegend: 'مفتاح الإحصاءات',

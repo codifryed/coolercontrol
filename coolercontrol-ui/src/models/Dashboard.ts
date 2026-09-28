@@ -97,6 +97,9 @@ export class Dashboard {
     // Time Chart only: a table of each line's now/min/max/avg under the chart.
     showStatsLegend: boolean = false
 
+    // Individual channel charts: draw the driver's limits (max, critical, fan min/max).
+    showLimitLines: boolean = true
+
     // Selected data types to filter by
     dataTypes: Array<DataType> = []
 

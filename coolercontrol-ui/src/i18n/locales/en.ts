@@ -1048,6 +1048,7 @@ export default {
             watts: 'watts',
         },
         chartDisplayOptions: {
+            limitLines: 'Limit Lines',
             statsPanel: 'Stats Panel',
             title: 'Display Options',
             statsLegend: 'Stats Legend',

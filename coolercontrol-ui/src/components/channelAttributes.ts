@@ -60,6 +60,24 @@ export interface ThresholdLine {
     label: string
 }
 
+export interface LimitPalette {
+    red: string
+    yellow: string
+    text_color_secondary: string
+}
+
+// One place for the line and swatch colours, so a panel row matches the line it names.
+export const limitColor = (severity: LimitSeverity, palette: LimitPalette): string => {
+    switch (severity) {
+        case 'critical':
+            return palette.red
+        case 'warning':
+            return palette.yellow
+        default:
+            return palette.text_color_secondary
+    }
+}
+
 const isTemperature = (kind: ChannelAttributeKind): boolean =>
     kind.startsWith('TEMP_') && kind !== 'TEMP_TYPE'
 

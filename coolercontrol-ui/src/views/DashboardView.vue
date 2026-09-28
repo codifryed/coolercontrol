@@ -39,6 +39,7 @@ import TimeChart from '@/components/TimeChart.vue'
 import TimeChartStatsLegend from '@/components/TimeChartStatsLegend.vue'
 import SensorStatsPanel from '@/components/SensorStatsPanel.vue'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
+import { thresholdLinesFrom, type ThresholdLine } from '@/components/channelAttributes.ts'
 import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
@@ -202,6 +203,7 @@ const duplicateDashboard = (): void => {
     copy.wattsMax = dashboard.wattsMax
     copy.wattsMin = dashboard.wattsMin
     copy.showStatsLegend = dashboard.showStatsLegend
+    copy.showLimitLines = dashboard.showLimitLines
     copy.dataTypes = [...dashboard.dataTypes]
     copy.selectedTags = [...dashboard.selectedTags]
     copy.deviceChannelNames = dashboard.deviceChannelNames.map(
@@ -490,6 +492,12 @@ const loadAttributes = async (): Promise<void> => {
     )
 }
 loadAttributes()
+const drawableLimits = computed((): Array<ThresholdLine> =>
+    thresholdLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
+)
+const limitLines = computed((): Array<ThresholdLine> =>
+    sensorMode && dashboard.showLimitLines ? drawableLimits.value : [],
+)
 
 const addScrollEventListener = (): void => {
     // @ts-ignore
@@ -654,6 +662,7 @@ onUnmounted(() => {
                         class="h-10 ml-3"
                         :dashboard="dashboard"
                         :sensor-mode="sensorMode"
+                        :has-limit-lines="drawableLimits.length > 0"
                     />
                 </div>
                 <div
@@ -817,6 +826,7 @@ onUnmounted(() => {
                     :dashboard="viewDashboard"
                     :key="chartKey"
                     :emit-window-stats="showLegend || showPanel"
+                    :thresholds="limitLines"
                     @line-set-changed="chartKey = uuidV4()"
                     @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
                 />
@@ -825,6 +835,7 @@ onUnmounted(() => {
                     :payload="windowStats"
                     :range-minutes="chartMinutes"
                     :attributes="attributes"
+                    :limit-lines="limitLines"
                     @refresh-attributes="loadAttributes"
                 />
                 <TimeChartStatsLegend

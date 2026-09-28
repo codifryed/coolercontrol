@@ -1039,6 +1039,7 @@ export default {
             watts: '와트',
         },
         chartDisplayOptions: {
+            limitLines: '한계선',
             statsPanel: '통계 패널',
             title: '표시 옵션',
             statsLegend: '통계 범례',

@@ -1048,6 +1048,7 @@ export default {
             watts: 'वाट',
         },
         chartDisplayOptions: {
+            limitLines: 'सीमा रेखाएँ',
             statsPanel: 'आँकड़े पैनल',
             title: 'प्रदर्शन विकल्प',
             statsLegend: 'आँकड़े लेजेंड',

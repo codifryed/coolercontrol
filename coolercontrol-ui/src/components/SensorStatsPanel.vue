@@ -25,7 +25,13 @@ import {
     type WindowLineStats,
     type WindowStatsPayload,
 } from '@/components/chartStats.ts'
-import { attributeLabel, formatAttributeValue } from '@/components/channelAttributes.ts'
+import {
+    attributeLabel,
+    formatAttributeValue,
+    limitColor,
+    type ThresholdLine,
+} from '@/components/channelAttributes.ts'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 
@@ -33,6 +39,8 @@ interface Props {
     payload: WindowStatsPayload | null
     rangeMinutes: number
     attributes: Array<ChannelAttribute>
+    // The limits drawn on the chart, matched to their rows by sysfs name.
+    limitLines: Array<ThresholdLine>
 }
 
 const props = defineProps<Props>()
@@ -43,6 +51,26 @@ const { t } = useI18n()
 const { stats: lifetime } = useLifetimeStats()
 
 const lines = computed((): Array<WindowLineStats> => props.payload?.lines ?? [])
+const colors = useThemeColorsStore()
+
+interface AttributeMark {
+    // The line colour when the attribute is drawn and on the chart.
+    color: string | null
+    // Drawn, but outside the scale's current range (a 110 °C limit on a 0 to 100 axis).
+    offChart: boolean
+}
+const attributeMarks = computed((): Map<string, AttributeMark> => {
+    const marks = new Map<string, AttributeMark>()
+    for (const line of props.limitLines) {
+        const range = props.payload?.scaleRanges[line.scale]
+        const offChart = range != null && (line.value < range[0] || line.value > range[1])
+        marks.set(line.name, {
+            color: offChart ? null : limitColor(line.severity, colors.themeColors),
+            offChart,
+        })
+    }
+    return marks
+})
 const positionClasses = computed((): string =>
     settingsStore.sensorStatsPanelPosition === 'top-left'
         ? 'top-4 left-[4.5rem]'
@@ -195,14 +223,28 @@ const movePanel = (): void => {
             <table v-if="attributes.length > 0" class="mb-1.5 w-full tabular-nums">
                 <tbody>
                     <tr v-for="attribute in attributes" :key="attribute.name">
-                        <th class="px-3 py-0.5 text-left font-normal">
-                            <span class="mr-1.5">{{ attributeLabel(attribute.kind, t) }}</span>
+                        <th class="px-3 py-0.5 text-left align-top font-normal leading-tight">
+                            <div>{{ attributeLabel(attribute.kind, t) }}</div>
                             <code class="text-xs text-text-color-secondary">{{
                                 attribute.name
                             }}</code>
                         </th>
-                        <td class="whitespace-nowrap px-3 py-0.5 text-right">
-                            {{ formatAttributeValue(attribute, t) }}
+                        <td class="px-3 py-0.5 text-right align-top leading-tight">
+                            <div class="whitespace-nowrap">
+                                <span
+                                    v-if="attributeMarks.get(attribute.name)?.color"
+                                    class="mr-1.5 inline-block w-3.5 border-t-2 border-dashed align-middle"
+                                    :style="{
+                                        borderColor: attributeMarks.get(attribute.name)!.color!,
+                                    }"
+                                ></span>
+                                {{ formatAttributeValue(attribute, t) }}
+                            </div>
+                            <span
+                                v-if="attributeMarks.get(attribute.name)?.offChart"
+                                class="rounded border border-border-one px-1 text-xs text-text-color-secondary"
+                                >{{ t('components.channelAttributes.offChart') }}</span
+                            >
                         </td>
                     </tr>
                 </tbody>

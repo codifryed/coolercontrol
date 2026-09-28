@@ -19,6 +19,8 @@ interface Props {
     dashboard: Dashboard
     // An individual channel chart: its options differ from a dashboard's.
     sensorMode?: boolean
+    // Whether the channel reports any limit worth drawing.
+    hasLimitLines?: boolean
 }
 
 defineProps<Props>()
@@ -68,6 +70,13 @@ const isPopupOpen = ref(false)
                         >
                             <span>{{ t('components.chartDisplayOptions.statsPanel') }}</span>
                             <UiSwitch v-model="settingsStore.sensorStatsPanelVisible" />
+                        </label>
+                        <label
+                            v-if="sensorMode && hasLimitLines"
+                            class="flex cursor-pointer items-center justify-between gap-6 rounded-md px-2 py-1.5 hover:bg-surface-hover"
+                        >
+                            <span>{{ t('components.chartDisplayOptions.limitLines') }}</span>
+                            <UiSwitch v-model="dashboard.showLimitLines" />
                         </label>
                     </div>
                 </popover-content>

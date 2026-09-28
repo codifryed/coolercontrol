@@ -1002,6 +1002,7 @@ export default {
             watts: '瓦特',
         },
         chartDisplayOptions: {
+            limitLines: '限值线',
             statsPanel: '统计面板',
             title: '显示选项',
             statsLegend: '统计图例',

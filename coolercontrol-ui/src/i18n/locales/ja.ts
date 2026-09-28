@@ -1055,6 +1055,7 @@ export default {
             watts: 'ワット',
         },
         chartDisplayOptions: {
+            limitLines: '限界線',
             statsPanel: '統計パネル',
             title: '表示オプション',
             statsLegend: '統計凡例',

@@ -6,6 +6,7 @@ import {
     attributeLabel,
     formatAttributeNumber,
     formatAttributeValue,
+    limitColor,
     thresholdLinesFrom,
 } from '@/components/channelAttributes.ts'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
@@ -45,6 +46,15 @@ describe('thresholdLinesFrom', () => {
         expect(nct[0]).toMatchObject({ scale: 'rpm', severity: 'fan' })
         // fan1_min=0 sits on the axis; the target is only listed, not drawn.
         expect(thresholdLinesFrom(amdgpuFan, 1, t).map((line) => line.name)).toEqual(['fan1_max'])
+    })
+})
+
+describe('limitColor', () => {
+    it('gives lines and panel swatches one colour per severity', () => {
+        const palette = { red: 'rgb(1 0 0)', yellow: 'rgb(0 1 0)', text_color_secondary: 'grey' }
+        expect(limitColor('critical', palette)).toBe('rgb(1 0 0)')
+        expect(limitColor('warning', palette)).toBe('rgb(0 1 0)')
+        expect(limitColor('fan', palette)).toBe('grey')
     })
 })
 
