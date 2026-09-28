@@ -3,23 +3,24 @@
 
 //! The process's open file limit. systemd's soft 1024 exists only for `select()` users, and
 //! the daemon's descriptors grow with hardware: one per cached sysfs attribute and one per
-//! API connection. So it raises the soft limit to the hard one, as systemd advises.
+//! API connection. So it raises a low soft limit toward the hard one, as systemd advises.
 
-use log::{info, warn};
-use nix::sys::resource::{getrlimit, rlim_t, setrlimit, Resource, RLIM_INFINITY};
+use log::{debug, warn};
+use nix::sys::resource::{getrlimit, rlim_t, setrlimit, Resource};
 
-/// The kernel refuses a soft limit above `fs.nr_open`, and this is its default. An unlimited
-/// hard limit is clamped to it rather than making the raise fail.
-const NR_OPEN_DEFAULT: u64 = 1 << 20;
+/// Far more than the daemon can use: a few hundred sysfs attributes and at most a few hundred
+/// API connections. A soft limit already this high is left alone, and a raise stops here.
+const SUFFICIENT_OPEN_FILES: u64 = 65_536;
 /// Below this, a system with a lot of hardware may run short of descriptors.
 const COMFORTABLE_OPEN_FILES: u64 = 4096;
 /// What to assume when the limit cannot be read: the traditional soft default.
 const ASSUMED_OPEN_FILES: u64 = 1024;
 
 const _: () = assert!(ASSUMED_OPEN_FILES < COMFORTABLE_OPEN_FILES);
-const _: () = assert!(COMFORTABLE_OPEN_FILES < NR_OPEN_DEFAULT);
+const _: () = assert!(COMFORTABLE_OPEN_FILES < SUFFICIENT_OPEN_FILES);
 
-/// Raises the soft limit as far as the hard limit allows, and warns if what remains is low.
+/// Raises a low soft limit as far as the hard limit and `SUFFICIENT_OPEN_FILES` allow, and
+/// warns if what remains is low.
 /// Children inherit it, which only matters to one using `select()` past 1024 files.
 pub fn raise_limit() {
     let Ok((soft, hard)) = getrlimit(Resource::RLIMIT_NOFILE) else {
@@ -36,7 +37,7 @@ pub fn raise_limit() {
 }
 
 /// Raises `soft` toward `hard` through `apply`, and returns the soft limit left in force.
-/// A failed raise is only INFO: when what remains is low, the caller WARNs with the remedy.
+/// Both outcomes log at DEBUG: when what remains is low, the caller WARNs with the remedy.
 fn raise_soft_limit(soft: u64, hard: u64, apply: impl FnOnce(u64, u64) -> nix::Result<()>) -> u64 {
     let target = target_soft_limit(soft, hard);
     debug_assert!(target >= soft);
@@ -45,11 +46,11 @@ fn raise_soft_limit(soft: u64, hard: u64, apply: impl FnOnce(u64, u64) -> nix::R
     }
     match apply(target, hard) {
         Ok(()) => {
-            info!("Raised the open file limit from {soft} to {target}.");
+            debug!("Raised the open file limit from {soft} to {target}.");
             target
         }
         Err(err) => {
-            info!("Could not raise the open file limit from {soft}: {err}");
+            debug!("Could not raise the open file limit from {soft}: {err}");
             soft
         }
     }
@@ -60,15 +61,11 @@ pub fn limit() -> u64 {
     getrlimit(Resource::RLIMIT_NOFILE).map_or(ASSUMED_OPEN_FILES, |(soft, _)| widen(soft))
 }
 
-/// The soft limit to ask for: the hard limit, or the kernel's default ceiling when the hard
-/// limit is unlimited. Never lower than the current soft limit.
+/// The soft limit to ask for: `SUFFICIENT_OPEN_FILES`, or the hard limit if that is lower.
+/// Never lower than the current soft limit. An unlimited hard limit is `u64::MAX` here, so it
+/// needs no special case, and the target stays far below the kernel's `fs.nr_open`.
 fn target_soft_limit(soft: u64, hard: u64) -> u64 {
-    let ceiling = if hard == widen(RLIM_INFINITY) {
-        NR_OPEN_DEFAULT
-    } else {
-        hard
-    };
-    soft.max(ceiling)
+    soft.max(hard.min(SUFFICIENT_OPEN_FILES))
 }
 
 /// `rlim_t` is 32 bits wide on some targets, such as 32-bit glibc, and 64 on the rest.
@@ -78,7 +75,7 @@ fn widen(value: rlim_t) -> u64 {
 }
 
 fn apply_soft_limit(soft: u64, hard: u64) -> nix::Result<()> {
-    // Values came from `getrlimit` or are at most `NR_OPEN_DEFAULT`, so both fit `rlim_t`.
+    // Values came from `getrlimit` or are at most `SUFFICIENT_OPEN_FILES`, so both fit `rlim_t`.
     let soft = rlim_t::try_from(soft).map_err(|_| nix::Error::EINVAL)?;
     let hard = rlim_t::try_from(hard).map_err(|_| nix::Error::EINVAL)?;
     setrlimit(Resource::RLIMIT_NOFILE, soft, hard)
@@ -87,32 +84,35 @@ fn apply_soft_limit(soft: u64, hard: u64) -> nix::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::sys::resource::RLIM_INFINITY;
 
-    /// Goal: a finite hard limit is the target, which is systemd's common 1024 / 524288 case.
+    /// Goal: systemd's 1024 soft limit is raised to the sufficient level, not all the way to a
+    /// large hard limit, and to the hard limit when that is lower.
     #[test]
-    fn target_is_the_hard_limit() {
-        assert_eq!(target_soft_limit(1024, 524_288), 524_288);
+    fn low_limit_is_raised_to_sufficient() {
+        assert_eq!(target_soft_limit(1024, 524_288), SUFFICIENT_OPEN_FILES);
+        assert_eq!(target_soft_limit(1024, 4096), 4096);
         assert_eq!(target_soft_limit(4096, 4096), 4096);
     }
 
-    /// Goal: an unlimited hard limit is clamped to the kernel's default ceiling, since the
-    /// kernel refuses an unlimited soft limit for open files.
+    /// Goal: an unlimited hard limit needs no special case; the target is still sufficient.
     #[test]
-    fn unlimited_hard_limit_is_clamped() {
+    fn unlimited_hard_limit_targets_sufficient() {
         assert_eq!(
             target_soft_limit(1024, widen(RLIM_INFINITY)),
-            NR_OPEN_DEFAULT
+            SUFFICIENT_OPEN_FILES
         );
     }
 
-    /// Goal: the target never lowers a soft limit that is already higher.
+    /// Goal: a soft limit already at or above sufficient is left alone, so 65536 is not pushed
+    /// on to 524288, and the target never lowers a limit.
     #[test]
-    fn target_never_lowers_the_limit() {
+    fn sufficient_limit_is_left_alone() {
+        assert_eq!(target_soft_limit(65_536, 524_288), 65_536);
+        assert_eq!(target_soft_limit(524_288, 524_288), 524_288);
         assert_eq!(target_soft_limit(8192, 4096), 8192);
-        assert_eq!(
-            target_soft_limit(NR_OPEN_DEFAULT * 2, widen(RLIM_INFINITY)),
-            NR_OPEN_DEFAULT * 2
-        );
+        let unchanged = raise_soft_limit(65_536, 524_288, |_, _| panic!("already sufficient"));
+        assert_eq!(unchanged, 65_536);
     }
 
     /// Goal: a successful raise reports the target as the limit in force. Method: a stub
@@ -124,8 +124,8 @@ mod tests {
             applied = Some((soft, hard));
             Ok(())
         });
-        assert_eq!(effective, 524_288);
-        assert_eq!(applied, Some((524_288, 524_288)));
+        assert_eq!(effective, SUFFICIENT_OPEN_FILES);
+        assert_eq!(applied, Some((SUFFICIENT_OPEN_FILES, 524_288)));
     }
 
     /// Goal: a refused raise keeps the soft limit, and a limit already at its target is
