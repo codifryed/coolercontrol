@@ -1122,7 +1122,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: 'Видимо {duration}',
             moveCorner: 'Переместить в другой угол',
             hide: 'Скрыть',
             jitter: 'Колебания',

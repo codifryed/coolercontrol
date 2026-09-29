@@ -1104,7 +1104,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: 'दृश्य {duration}',
             moveCorner: 'दूसरे कोने में ले जाएँ',
             hide: 'छिपाएँ',
             jitter: 'उतार-चढ़ाव',

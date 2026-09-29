@@ -1095,7 +1095,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: '표시 {duration}',
             moveCorner: '반대쪽 모서리로 이동',
             hide: '숨기기',
             jitter: '변동',

@@ -1111,7 +1111,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: '表示中 {duration}',
             moveCorner: '反対側の隅に移動',
             hide: '非表示',
             jitter: 'ゆらぎ',

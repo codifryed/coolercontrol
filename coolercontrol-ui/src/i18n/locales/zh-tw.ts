@@ -1058,7 +1058,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: '可見 {duration}',
             moveCorner: '移到另一角',
             hide: '隱藏',
             jitter: '波動',

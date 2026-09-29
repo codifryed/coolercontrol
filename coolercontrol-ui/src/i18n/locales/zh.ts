@@ -1057,7 +1057,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: '可见 {duration}',
             moveCorner: '移到另一角',
             hide: '隐藏',
             jitter: '波动',

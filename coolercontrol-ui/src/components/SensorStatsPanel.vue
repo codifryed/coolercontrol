@@ -90,7 +90,9 @@ const positionClasses = computed((): string =>
 )
 const windowLabel = computed((): string =>
     props.payload?.zoomed
-        ? t('components.statsPanel.visible', { duration: formatSpan(props.payload.spanSeconds) })
+        ? t('components.chartStats.visibleRange', {
+              duration: formatSpan(props.payload.spanSeconds),
+          })
         : t('components.chartStats.lastMinutes', { minutes: props.rangeMinutes }),
 )
 

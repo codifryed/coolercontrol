@@ -1136,7 +1136,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: 'Visible {duration}',
             moveCorner: "Déplacer dans l'autre coin",
             hide: 'Masquer',
             jitter: 'Fluctuation',

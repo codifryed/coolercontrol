@@ -1123,7 +1123,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: 'Visible {duration}',
             moveCorner: 'Mover a la otra esquina',
             hide: 'Ocultar',
             jitter: 'Fluctuación',

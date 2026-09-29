@@ -1093,7 +1093,6 @@ export default {
             },
         },
         statsPanel: {
-            visible: 'المرئي {duration}',
             moveCorner: 'النقل إلى الزاوية الأخرى',
             hide: 'إخفاء',
             jitter: 'التذبذب',
