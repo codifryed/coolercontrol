@@ -386,6 +386,10 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(
+        axum::http::header::X_FRAME_OPTIONS,
+        HeaderValue::from_static("SAMEORIGIN"),
+    );
+    headers.insert(
         HeaderName::from_static("referrer-policy"),
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
@@ -421,11 +425,13 @@ fn hostname_is_valid(hostname: &str) -> bool {
 }
 
 struct CspFrameAncestorParts<'a> {
+    /// "http://", "https://", etc.
     scheme: &'a str,
     host: &'a str,
+    /// port, not including ':'
     port: Option<&'a str>,
+    /// path after host (and port), not including leading '/'
     path: Option<&'a str>,
-
 }
 
 fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>> {
@@ -471,7 +477,7 @@ fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
     };
     // validate host
     let host_valid = parsed.host
-        .strip_circumfix('[', ']')
+        .strip_prefix('[').and_then(|h| h.strip_suffix(']'))
         .map(|ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok())
         .unwrap_or_else(|| parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host));
     if host_valid.not() {
@@ -485,21 +491,8 @@ fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
     }
     // validate path
     if let Some(path) = parsed.path {
-        // original path must have been absolute if earlier split_once succeeded
-        // check for double '/' (first '/' is already stripped away)
-        if path.contains("//") || path.starts_with('/') {
-            return false;
-        }
-        let path_valid = path
-            .strip_suffix('/')
-            .unwrap_or(path) // strip possible trailing slash
-            .split('/')
-            .all(|path_part| {
-                path_part
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
-            });
-        if path_valid.not() {
+        // only allow no path or bare /
+        if path.len() > 0 {
             return false;
         }
     }
@@ -1814,7 +1807,7 @@ mod tests {
             "sub.example.com",
         ];
         let valid_ports = vec!["", ":9090", ":65535"];
-        let valid_paths = vec!["", "/", "/test", "/a/b/123/test_path/~/./", "/ABC"];
+        let valid_paths = vec!["", "/"];
 
         for scheme in &valid_schemes {
             for host in &valid_hosts {
@@ -1850,7 +1843,9 @@ mod tests {
             )));
         }
 
-        let invalid_paths = ["//", "/test//", "/test//sdf", "/@#$%^", "/with space"];
+        let invalid_paths = [
+            "/test", "/a/b/123/test_path/~/./", "/ABC", "//", "/test//", "/test//sdf", "/@#$%^", "/with space"
+        ];
         for path in invalid_paths {
             assert!(
                 !csp_frame_ancestor_is_valid(&format!("https://example.com:9090{path}")),
@@ -2011,6 +2006,10 @@ mod tests {
         assert_eq!(
             response.headers().get("x-content-type-options").unwrap(),
             "nosniff"
+        );
+        assert_eq!(
+            response.headers().get("x-frame-options").unwrap(),
+            "SAMEORIGIN"
         );
         assert_eq!(
             response.headers().get("referrer-policy").unwrap(),
