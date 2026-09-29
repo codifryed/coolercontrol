@@ -198,9 +198,18 @@ describe('windowStats', () => {
     })
 
     it('keeps the chart line dashes and a locale neutral span', () => {
-        expect(lineDash('Hwmon_1_fan1_rpm')).toEqual([1, 1])
-        expect(lineDash('Hwmon_1_fan1_duty')).toEqual([10, 3, 2, 3])
-        expect(lineDash('CPU_1_temp1_temp')).toEqual([])
+        const line = (channelName: string, dataType: DataType) => ({
+            deviceUID: 'dev1',
+            channelName,
+            dataType,
+        })
+        expect(lineDash(line('fan1', DataType.RPM))).toEqual([1, 1])
+        expect(lineDash(line('fan1', DataType.DUTY))).toEqual([10, 3, 2, 3])
+        expect(lineDash(line('temp1', DataType.TEMP))).toEqual([])
+        expect(lineDash(line('CPU Load', DataType.LOAD))).toEqual([6, 3])
+        expect(lineDash(line('pump', DataType.DUTY))).toEqual([6, 3])
+        expect(lineDash(line('Pump Temp', DataType.TEMP))).toEqual([6, 3])
+        expect(lineDash(line('pump', DataType.RPM))).toEqual([1, 1])
         expect(formatSpan(100)).toBe('1:40')
         expect(formatSpan(9.6)).toBe('0:10')
     })

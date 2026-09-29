@@ -492,6 +492,8 @@ let hasDegreeAxis: boolean = false
 let hasFrequencyAxis: boolean = false
 let hasWattsAxis: boolean = false
 for (const lineName of uLineNames) {
+    const key = lineKeys.get(lineName)
+    const dash = key == null ? [] : lineDash(key)
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
         hasFrequencyAxis = true
         uPlotSeries.push({
@@ -502,7 +504,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: lineDash(lineName),
+            dash,
             spanGaps: true,
             width: settingsStore.chartLineScale,
             // min: 0,
@@ -525,7 +527,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: lineDash(lineName),
+            dash,
             spanGaps: true,
             width: settingsStore.chartLineScale,
         })
@@ -539,7 +541,7 @@ for (const lineName of uLineNames) {
             points: {
                 show: false,
             },
-            dash: lineDash(lineName),
+            dash,
             spanGaps: true,
             width: settingsStore.chartLineScale,
             // min: 0,

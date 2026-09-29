@@ -267,19 +267,23 @@ export interface WindowStatsPayload {
     scaleRanges: Record<string, [number, number]>
 }
 
-// The dash pattern a time chart line is drawn with, keyed off its line name suffix.
-export function lineDash(lineName: string): Array<number> {
-    const lineLower = lineName.toLowerCase()
-    if (lineLower.endsWith('rpm') || lineLower.endsWith('freq')) {
-        return [1, 1]
-    } else if (lineLower.endsWith('load') || lineLower.includes('pump')) {
-        return [6, 3]
-    } else if (lineLower.endsWith('duty')) {
-        return [10, 3, 2, 3]
-    } else if (lineLower.endsWith('watts')) {
-        return [6, 3, 2, 6]
+const LINE_DASH: Record<DataType, Array<number>> = {
+    [DataType.TEMP]: [],
+    [DataType.DUTY]: [10, 3, 2, 3],
+    [DataType.LOAD]: [6, 3],
+    [DataType.RPM]: [1, 1],
+    [DataType.FREQ]: [1, 1],
+    [DataType.WATTS]: [6, 3, 2, 6],
+}
+
+// The dash pattern a time chart line is drawn with. A pump's lines other than its speed are
+// dashed like a load.
+export function lineDash(line: LineKey): Array<number> {
+    const isSpeed = line.dataType === DataType.RPM || line.dataType === DataType.FREQ
+    if (!isSpeed && line.channelName.toLowerCase().includes('pump')) {
+        return LINE_DASH[DataType.LOAD]
     }
-    return []
+    return LINE_DASH[line.dataType]
 }
 
 // A span as m:ss, locale neutral.

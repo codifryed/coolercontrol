@@ -103,7 +103,7 @@ const deviceName = (deviceUID: UID): string =>
                                         y2="4"
                                         :stroke="line.color"
                                         stroke-width="2"
-                                        :stroke-dasharray="lineDash(line.lineName).join(' ')"
+                                        :stroke-dasharray="lineDash(line).join(' ')"
                                     />
                                 </svg>
                                 <span class="truncate">{{ line.label }}</span>
