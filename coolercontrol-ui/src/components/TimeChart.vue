@@ -415,6 +415,8 @@ const computeWindowStats = (): void => {
     }
     emit('windowStats', {
         lines,
+        windowStart: xMin,
+        windowEnd: xMax,
         spanSeconds: xMax - xMin,
         zoomed: xMax - xMin < (dataEnd - dataStart) * 0.99,
         scaleRanges: currentScaleRanges(),

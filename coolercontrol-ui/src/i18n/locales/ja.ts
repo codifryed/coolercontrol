@@ -1116,6 +1116,24 @@ export default {
             jitter: 'ゆらぎ',
             jitterHelp:
                 'この期間における連続する読み取り値間の平均変化量です。温度の場合、ファンがセンサーのノイズに反応しないよう、プロファイルのしきい値（高度なヒステリシス）をこの値より大きく設定してください。デューティや RPM で値が大きい場合は、ファンが速度を変え続けていることを意味します。',
+            directionChanges: '方向転換',
+            directionChangesHelp:
+                'この期間にデューティが上昇から下降、またはその逆に転じた回数です。頻繁に変わる場合はファンが速度を変え続けており、音で分かります。機能の高度なヒステリシスでしきい値や遅延を大きくすると落ち着きます。',
+            changesValue: '{count} ({rate}/分)',
+            stopped: '停止',
+            stoppedHelp: '期間のうち 0 RPM だった割合です。ゼロ RPM モードのファンでは正常です。',
+            stalls: 'ストール',
+            stallsHelp:
+                'デューティが {duty}% 以上なのにファンが {polls} 回以上連続で 0 RPM を示した回数と、その合計時間です。故障または未接続のファン、または低すぎる最小デューティがここに表れます。',
+            stallsNone: 'なし',
+            stallsValue: '{count} ({duration})',
+            timeInRange: '範囲内の時間',
+            timeInRangeHelp:
+                'この期間にこのラインが最も長く留まった 5 つの区間と、それ以外のすべての区間の割合です。区間の幅は変動幅の約 10 分の 1 で、1、2、5 刻みです。',
+            timeInRangeLine: 'ライン',
+            band: '{from} から {to}',
+            otherBands: 'その他の区間',
+            noReadings: 'この期間にはまだ読み取り値がありません。',
         },
         sensorTable: {
             device: 'デバイス',

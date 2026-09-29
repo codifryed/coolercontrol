@@ -239,6 +239,9 @@ export interface WindowLineStats {
 
 export interface WindowStatsPayload {
     lines: Array<WindowLineStats>
+    // The window in seconds: the x scale's current range.
+    windowStart: number
+    windowEnd: number
     spanSeconds: number
     // True when the user zoomed in, so the window is the visible range, not the time range.
     zoomed: boolean

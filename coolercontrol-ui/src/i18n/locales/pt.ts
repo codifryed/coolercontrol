@@ -1128,6 +1128,24 @@ export default {
             jitter: 'Oscilação',
             jitterHelp:
                 'Variação média entre uma leitura e a seguinte nesta janela. Em uma temperatura, defina o Limite (Histerese Avançada) do perfil acima deste valor para que as ventoinhas ignorem o ruído do sensor. Em ciclo ou RPM, um valor alto significa que a ventoinha muda de velocidade constantemente.',
+            directionChanges: 'Mudanças de Direção',
+            directionChangesHelp:
+                'Quantas vezes o ciclo passou de subir para descer ou o contrário nesta janela. Mudanças frequentes significam que a ventoinha muda de velocidade constantemente, o que se ouve. Um Limite ou um Atraso maior na Histerese Avançada da Função a acalma.',
+            changesValue: '{count} ({rate}/min)',
+            stopped: 'Parada',
+            stoppedHelp: 'Parcela da janela a 0 RPM. Normal para ventoinhas com modo de zero RPM.',
+            stalls: 'Travamentos',
+            stallsHelp:
+                'Vezes em que a ventoinha marcou 0 RPM por {polls} leituras ou mais enquanto seu ciclo era de {duty}% ou mais, com o tempo total. Uma ventoinha com defeito ou desconectada, ou um ciclo mínimo baixo demais, aparece aqui.',
+            stallsNone: 'Nenhum',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Tempo por Faixa',
+            timeInRangeHelp:
+                'As cinco faixas em que esta linha passou mais tempo durante a janela, e a parcela de todas as outras. Cada faixa tem cerca de um décimo da variação, em passos de 1, 2 ou 5.',
+            timeInRangeLine: 'Linha',
+            band: '{from} a {to}',
+            otherBands: 'Outras Faixas',
+            noReadings: 'Ainda não há leituras nesta janela.',
         },
         sensorTable: {
             device: 'Dispositivo',

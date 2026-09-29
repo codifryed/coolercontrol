@@ -1062,6 +1062,24 @@ export default {
             jitter: '波动',
             jitterHelp:
                 '此时间窗口内相邻两次读数之间的平均变化量。对于温度，请将配置文件的阈值（高级滞后）设置为高于此值，使风扇忽略传感器噪声。对于风扇转速或转速，数值较高表示风扇在不断改变速度。',
+            directionChanges: '方向变化',
+            directionChangesHelp:
+                '此时间窗口内风扇转速由上升转为下降或反之的次数。变化频繁表示风扇在不断改变速度，可以听得到。在功能的高级滞后中增大阈值或延迟可使其平稳。',
+            changesValue: '{count}（{rate}/分钟）',
+            stopped: '停转',
+            stoppedHelp: '时间窗口内转速为 0 RPM 的比例。对于具有零转速模式的风扇属正常现象。',
+            stalls: '堵转',
+            stallsHelp:
+                '风扇转速设定为 {duty}% 或更高时，连续 {polls} 次或更多轮询读数为 0 RPM 的次数及总时长。故障或未连接的风扇，或设得过低的最低转速会显示在这里。',
+            stallsNone: '无',
+            stallsValue: '{count}（{duration}）',
+            timeInRange: '区间时长',
+            timeInRangeHelp:
+                '此线在时间窗口内停留时间最长的五个区间，以及其余所有区间的占比。区间宽度约为波动范围的十分之一，步长为 1、2 或 5。',
+            timeInRangeLine: '线条',
+            band: '{from} 至 {to}',
+            otherBands: '其他区间',
+            noReadings: '此时间窗口内尚无读数。',
         },
         sensorTable: {
             device: '设备',

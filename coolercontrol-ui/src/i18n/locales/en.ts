@@ -1109,6 +1109,24 @@ export default {
             jitter: 'Jitter',
             jitterHelp:
                 "Average change between one reading and the next in this window. On a temperature, set the profile's hysteresis Threshold (Advanced Hysteresis) above this value so fans ignore sensor noise. On duty or speed, a high value means the fan keeps changing speed.",
+            directionChanges: 'Direction Changes',
+            directionChangesHelp:
+                "How often the duty turned from rising to falling or back in this window. Frequent changes mean the fan keeps changing speed, which you can hear. A larger Threshold or Delay in the Function's Advanced Hysteresis calms it.",
+            changesValue: '{count} ({rate}/min)',
+            stopped: 'Stopped',
+            stoppedHelp: 'Share of the window at 0 rpm. Expected for fans with a zero RPM mode.',
+            stalls: 'Stalls',
+            stallsHelp:
+                'Times the fan read 0 rpm for {polls} polls or more while its duty was {duty}% or higher, with their total time. A dead or unplugged fan, or a minimum duty set too low, shows up here.',
+            stallsNone: 'None',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Time in Range',
+            timeInRangeHelp:
+                'The five bands this line spent the most time in during the window, and the share of all other bands. Bands are about a tenth of the spread wide, in steps of 1, 2 or 5.',
+            timeInRangeLine: 'Line',
+            band: '{from} to {to}',
+            otherBands: 'Other Bands',
+            noReadings: 'No readings in this window yet.',
         },
         sensorTable: {
             device: 'Device',

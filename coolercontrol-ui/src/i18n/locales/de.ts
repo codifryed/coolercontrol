@@ -1138,6 +1138,24 @@ export default {
             jitter: 'Schwankung',
             jitterHelp:
                 'Durchschnittliche Änderung zwischen zwei aufeinanderfolgenden Messwerten in diesem Zeitraum. Bei einer Temperatur den Schwellenwert (Erweiterte Hysterese) des Profils über diesen Wert setzen, damit Lüfter Sensorrauschen ignorieren. Bei Auslastung oder U/min bedeutet ein hoher Wert, dass der Lüfter ständig seine Drehzahl ändert.',
+            directionChanges: 'Richtungswechsel',
+            directionChangesHelp:
+                'Wie oft die Auslastung in diesem Zeitraum von steigend auf fallend oder zurück wechselte. Häufige Wechsel bedeuten, dass der Lüfter ständig seine Drehzahl ändert, was man hört. Ein größerer Schwellenwert oder eine Verzögerung in der Erweiterten Hysterese der Funktion beruhigt ihn.',
+            changesValue: '{count} ({rate}/Min.)',
+            stopped: 'Gestoppt',
+            stoppedHelp: 'Anteil des Zeitraums bei 0 U/min. Normal für Lüfter mit Zero-RPM-Modus.',
+            stalls: 'Stillstände',
+            stallsHelp:
+                'Wie oft der Lüfter {polls} Abfragen oder länger 0 U/min meldete, während seine Auslastung {duty}% oder mehr betrug, mit der Gesamtdauer. Ein defekter oder nicht angeschlossener Lüfter oder eine zu niedrig eingestellte Mindestauslastung zeigt sich hier.',
+            stallsNone: 'Keine',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Zeit im Bereich',
+            timeInRangeHelp:
+                'Die fünf Bänder, in denen diese Linie im Zeitraum die meiste Zeit verbrachte, und der Anteil aller übrigen Bänder. Ein Band ist etwa ein Zehntel der Spanne breit, in Schritten von 1, 2 oder 5.',
+            timeInRangeLine: 'Linie',
+            band: '{from} bis {to}',
+            otherBands: 'Übrige Bänder',
+            noReadings: 'Noch keine Messwerte in diesem Zeitraum.',
         },
         sensorTable: {
             device: 'Gerät',

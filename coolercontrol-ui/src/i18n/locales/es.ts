@@ -1128,6 +1128,25 @@ export default {
             jitter: 'Fluctuación',
             jitterHelp:
                 'Cambio promedio entre una lectura y la siguiente en esta ventana. En una temperatura, configure el Umbral (Histéresis Avanzada) del perfil por encima de este valor para que los ventiladores ignoren el ruido del sensor. En ciclo o RPM, un valor alto significa que el ventilador cambia de velocidad constantemente.',
+            directionChanges: 'Cambios de Dirección',
+            directionChangesHelp:
+                'Cuántas veces el ciclo pasó de subir a bajar o al revés en esta ventana. Los cambios frecuentes significan que el ventilador cambia de velocidad constantemente, algo que se oye. Un Umbral o un Retraso mayores en la Histéresis Avanzada de la Función lo calman.',
+            changesValue: '{count} ({rate}/min)',
+            stopped: 'Detenido',
+            stoppedHelp:
+                'Proporción de la ventana a 0 RPM. Es normal en ventiladores con modo de cero RPM.',
+            stalls: 'Bloqueos',
+            stallsHelp:
+                'Veces que el ventilador marcó 0 RPM durante {polls} lecturas o más mientras su ciclo era del {duty}% o superior, con su tiempo total. Aquí aparece un ventilador averiado o desconectado, o un ciclo mínimo demasiado bajo.',
+            stallsNone: 'Ninguno',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Tiempo en Rango',
+            timeInRangeHelp:
+                'Las cinco bandas en las que esta línea pasó más tiempo durante la ventana, y la proporción de todas las demás. Cada banda mide cerca de una décima parte del rango, en pasos de 1, 2 o 5.',
+            timeInRangeLine: 'Línea',
+            band: '{from} a {to}',
+            otherBands: 'Otras Bandas',
+            noReadings: 'Aún no hay lecturas en esta ventana.',
         },
         sensorTable: {
             device: 'Dispositivo',

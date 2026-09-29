@@ -7,13 +7,15 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiArrowTopRightBottomLeft, mdiClose, mdiRefresh } from '@mdi/js'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DataType, getLocalizedDataType } from '@/models/Dashboard.ts'
+import type { UID } from '@/models/Device.ts'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
 import type { ChannelStats } from '@/models/Stats.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import {
     formatJitterValue,
@@ -31,9 +33,19 @@ import {
     limitColor,
     type ThresholdLine,
 } from '@/components/channelAttributes.ts'
+import {
+    channelDetail,
+    edgeDecimals,
+    STALL_POLLS_MIN,
+    stallDutyMinOf,
+    type LineDetail,
+    type TimeInRange,
+    type TimeInRangeBand,
+} from '@/components/windowDetail.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
+import UiToggleGroup, { type UiToggleOption } from '@/shell/ui/UiToggleGroup.vue'
 
 interface Props {
     payload: WindowStatsPayload | null
@@ -106,6 +118,103 @@ const statRows = [
     { key: 'avg', label: 'components.chartStats.avg' },
 ] as const
 
+const calibrationStore = useCalibrationStore()
+const stallDutyMin = (deviceUID: UID, channelName: string): number => {
+    const status = calibrationStore.statusFor(deviceUID, channelName)
+    return stallDutyMinOf(status?.phase === 'completed' ? status.calibration : undefined)
+}
+
+// The behaviour rows, keyed by line name. They read the device's status history over the same
+// window as the other stats, so they follow the time range and zoom.
+const details = computed((): Map<string, LineDetail> => {
+    const result = new Map<string, LineDetail>()
+    const payload = props.payload
+    if (payload == null) return result
+    const channels = new Map<string, Array<WindowLineStats>>()
+    for (const line of payload.lines) {
+        const key = `${line.deviceUID}::${line.channelName}`
+        const channelLines = channels.get(key)
+        if (channelLines == null) {
+            channels.set(key, [line])
+        } else {
+            channelLines.push(line)
+        }
+    }
+    const devices = [...deviceStore.allDevices()]
+    for (const channelLines of channels.values()) {
+        const { deviceUID, channelName } = channelLines[0]
+        const device = devices.find((d) => d.uid === deviceUID)
+        if (device == null) continue
+        const byType = channelDetail(
+            device.status_history,
+            channelName,
+            channelLines.map((line) => line.dataType),
+            payload.windowStart,
+            payload.windowEnd,
+            {
+                precision: settingsStore.frequencyPrecision,
+                pollSeconds: settingsStore.ccSettings.poll_rate,
+                stallDutyMin: stallDutyMin(deviceUID, channelName),
+            },
+        )
+        for (const line of channelLines) {
+            const detail = byType.get(line.dataType)
+            if (detail != null) result.set(line.lineName, detail)
+        }
+    }
+    return result
+})
+
+const formatShare = (share: number | null | undefined): string => {
+    if (share == null) return '-'
+    const percent = Math.round(share * 100)
+    const unit = t('common.percentUnit')
+    return percent === 0 && share > 0 ? `<1${unit}` : `${percent}${unit}`
+}
+const formatChanges = (detail: LineDetail | undefined): string => {
+    if (detail?.directionChanges == null) return '-'
+    if (detail.directionChangesPerMinute == null) return String(detail.directionChanges)
+    return t('components.statsPanel.changesValue', {
+        count: detail.directionChanges,
+        rate: detail.directionChangesPerMinute.toFixed(1),
+    })
+}
+const formatStalls = (detail: LineDetail | undefined): string => {
+    const stalls = detail?.stalls
+    if (stalls == null) return '-'
+    if (stalls.count === 0) return t('components.statsPanel.stallsNone')
+    return t('components.statsPanel.stallsValue', {
+        count: stalls.count,
+        duration: formatSpan(stalls.seconds),
+    })
+}
+
+// Time in Range shows one line at a time; fans start on their speed.
+const selectedTirLine = ref<string>('')
+const tirLine = computed(
+    (): WindowLineStats | undefined =>
+        lines.value.find((line) => line.lineName === selectedTirLine.value) ??
+        lines.value.find((line) => line.dataType === DataType.RPM) ??
+        lines.value[0],
+)
+const tirOptions = computed((): Array<UiToggleOption> =>
+    lines.value.map((line) => ({
+        label: getLocalizedDataType(line.dataType),
+        value: line.lineName,
+    })),
+)
+const tir = computed((): TimeInRange | null =>
+    tirLine.value == null ? null : (details.value.get(tirLine.value.lineName)?.timeInRange ?? null),
+)
+const formatBand = (band: TimeInRangeBand, width: number, dataType: DataType): string => {
+    const decimals = edgeDecimals(width)
+    const range = t('components.statsPanel.band', {
+        from: band.from.toFixed(decimals),
+        to: band.to.toFixed(decimals),
+    })
+    return range + statUnitSuffix(dataType, settingsStore.frequencyPrecision, t)
+}
+
 const movePanel = (): void => {
     settingsStore.sensorStatsPanelPosition =
         settingsStore.sensorStatsPanelPosition === 'top-left' ? 'bottom-right' : 'top-left'
@@ -114,7 +223,7 @@ const movePanel = (): void => {
 
 <template>
     <div
-        class="absolute z-10 max-h-[calc(100%-2rem)] w-72 max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two/90 text-sm shadow-lg"
+        class="absolute z-10 max-h-[calc(100%-2rem)] w-80 max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two/90 text-sm shadow-lg"
         :class="positionClasses"
     >
         <div
@@ -202,8 +311,114 @@ const movePanel = (): void => {
                     </td>
                     <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
                 </tr>
+                <tr v-if="line.dataType === DataType.DUTY">
+                    <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                        <span class="inline-flex items-center gap-1">
+                            {{ t('components.statsPanel.directionChanges') }}
+                            <HelpIcon
+                                :text="t('components.statsPanel.directionChangesHelp')"
+                                :size="0.9"
+                            />
+                        </span>
+                    </th>
+                    <td class="whitespace-nowrap px-3 py-0.5 text-right">
+                        {{ formatChanges(details.get(line.lineName)) }}
+                    </td>
+                    <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                </tr>
+                <template v-if="line.dataType === DataType.RPM">
+                    <tr>
+                        <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                            <span class="inline-flex items-center gap-1">
+                                {{ t('components.statsPanel.stopped') }}
+                                <HelpIcon
+                                    :text="t('components.statsPanel.stoppedHelp')"
+                                    :size="0.9"
+                                />
+                            </span>
+                        </th>
+                        <td class="px-3 py-0.5 text-right">
+                            {{ formatShare(details.get(line.lineName)?.stoppedShare) }}
+                        </td>
+                        <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                    </tr>
+                    <tr v-if="details.get(line.lineName)?.stalls != null">
+                        <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                            <span class="inline-flex items-center gap-1">
+                                {{ t('components.statsPanel.stalls') }}
+                                <HelpIcon
+                                    :text="
+                                        t('components.statsPanel.stallsHelp', {
+                                            polls: STALL_POLLS_MIN,
+                                            duty: stallDutyMin(line.deviceUID, line.channelName),
+                                        })
+                                    "
+                                    :size="0.9"
+                                />
+                            </span>
+                        </th>
+                        <td
+                            class="whitespace-nowrap px-3 py-0.5 text-right"
+                            :class="{
+                                'font-semibold text-warning':
+                                    (details.get(line.lineName)?.stalls?.count ?? 0) > 0,
+                            }"
+                        >
+                            {{ formatStalls(details.get(line.lineName)) }}
+                        </td>
+                        <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                    </tr>
+                </template>
             </tbody>
         </table>
+        <div v-if="tirLine != null" class="mt-1 border-t border-border-one">
+            <div class="flex min-h-9 items-center gap-1 py-1 pl-3 pr-1">
+                <span class="font-semibold">{{ t('components.statsPanel.timeInRange') }}</span>
+                <HelpIcon :text="t('components.statsPanel.timeInRangeHelp')" :size="0.9" />
+                <span class="flex-1"></span>
+                <UiToggleGroup
+                    v-if="tirOptions.length > 1"
+                    size="sm"
+                    :aria-label="t('components.statsPanel.timeInRangeLine')"
+                    :model-value="tirLine.lineName"
+                    :options="tirOptions"
+                    @update:model-value="selectedTirLine = $event"
+                />
+            </div>
+            <div
+                v-if="tir != null"
+                class="grid grid-cols-[max-content_1fr_max-content] items-center gap-x-2 gap-y-0.5 px-3 pb-2 tabular-nums"
+            >
+                <template v-for="band in tir.bands" :key="band.from">
+                    <span class="whitespace-nowrap" :class="{ 'font-semibold': band.current }">
+                        {{ formatBand(band, tir.width, tirLine.dataType) }}
+                    </span>
+                    <span
+                        class="h-2 min-w-0.5 rounded-r-sm"
+                        :style="{
+                            width: `${(band.share / tir.bands[0].share) * 100}%`,
+                            backgroundColor: tirLine.color,
+                            opacity: band.current ? 1 : 0.45,
+                        }"
+                    ></span>
+                    <span class="text-right" :class="{ 'font-semibold': band.current }">
+                        {{ formatShare(band.share) }}
+                    </span>
+                </template>
+                <template v-if="tir.rest >= 0.005">
+                    <span class="text-text-color-secondary">
+                        {{ t('components.statsPanel.otherBands') }}
+                    </span>
+                    <span></span>
+                    <span class="text-right text-text-color-secondary">
+                        {{ formatShare(tir.rest) }}
+                    </span>
+                </template>
+            </div>
+            <p v-else class="px-3 pb-2 text-text-color-secondary">
+                {{ t('components.statsPanel.noReadings') }}
+            </p>
+        </div>
         <div class="mt-1 border-t border-border-one">
             <div class="flex items-center gap-1 py-1 pl-3 pr-1">
                 <span class="font-semibold">{{ t('components.channelAttributes.title') }}</span>

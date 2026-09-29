@@ -1100,6 +1100,25 @@ export default {
             jitter: '변동',
             jitterHelp:
                 '이 구간에서 연속된 측정값 사이의 평균 변화량입니다. 온도의 경우 팬이 센서 노이즈에 반응하지 않도록 프로필의 임계값(고급 이력 현상)을 이 값보다 크게 설정하세요. 점유나 RPM에서 값이 크면 팬이 계속 속도를 바꾸고 있다는 뜻입니다.',
+            directionChanges: '방향 전환',
+            directionChangesHelp:
+                '이 구간에서 점유가 상승에서 하강으로, 또는 그 반대로 바뀐 횟수입니다. 자주 바뀌면 팬이 계속 속도를 바꾸고 있다는 뜻이며 소리로도 들립니다. 기능의 고급 이력 현상에서 임계값이나 지연을 늘리면 안정됩니다.',
+            changesValue: '{count} ({rate}/분)',
+            stopped: '정지',
+            stoppedHelp:
+                '구간 중 0 RPM이었던 비율입니다. 제로 RPM 모드가 있는 팬에서는 정상입니다.',
+            stalls: '멈춤',
+            stallsHelp:
+                '점유가 {duty}% 이상인데도 팬이 {polls}회 이상 연속으로 0 RPM을 보인 횟수와 그 총 시간입니다. 고장 났거나 연결되지 않은 팬, 또는 너무 낮게 설정된 최소 점유가 여기에 나타납니다.',
+            stallsNone: '없음',
+            stallsValue: '{count} ({duration})',
+            timeInRange: '범위별 시간',
+            timeInRangeHelp:
+                '이 구간에서 이 라인이 가장 오래 머문 5개 대역과 나머지 모든 대역의 비율입니다. 대역 폭은 변동 폭의 약 10분의 1이며 1, 2, 5 단위입니다.',
+            timeInRangeLine: '라인',
+            band: '{from} ~ {to}',
+            otherBands: '기타 대역',
+            noReadings: '이 구간에는 아직 측정값이 없습니다.',
         },
         sensorTable: {
             device: '장치',

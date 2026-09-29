@@ -1063,6 +1063,24 @@ export default {
             jitter: '波動',
             jitterHelp:
                 '此時間範圍內相鄰兩次讀數之間的平均變化量。對於溫度，請將設定檔的閾值（高級滯後）設為高於此值，讓風扇忽略感測器雜訊。對於風扇轉速或轉速，數值較高表示風扇在不斷改變速度。',
+            directionChanges: '方向變化',
+            directionChangesHelp:
+                '此時間範圍內風扇轉速由上升轉為下降或反之的次數。變化頻繁表示風扇在不斷改變速度，可以聽得到。在功能的高級滯後中增大閾值或延遲可使其平穩。',
+            changesValue: '{count}（{rate}/分鐘）',
+            stopped: '停轉',
+            stoppedHelp: '時間範圍內轉速為 0 RPM 的比例。對於具有零轉速模式的風扇屬正常現象。',
+            stalls: '堵轉',
+            stallsHelp:
+                '風扇轉速設定為 {duty}% 或更高時，連續 {polls} 次或更多輪詢讀數為 0 RPM 的次數及總時長。故障或未連接的風扇，或設得過低的最低轉速會顯示在這裡。',
+            stallsNone: '無',
+            stallsValue: '{count}（{duration}）',
+            timeInRange: '區間時長',
+            timeInRangeHelp:
+                '此線在時間範圍內停留時間最長的五個區間，以及其餘所有區間的占比。區間寬度約為波動範圍的十分之一，步長為 1、2 或 5。',
+            timeInRangeLine: '線條',
+            band: '{from} 至 {to}',
+            otherBands: '其他區間',
+            noReadings: '此時間範圍內尚無讀數。',
         },
         sensorTable: {
             device: '設備',

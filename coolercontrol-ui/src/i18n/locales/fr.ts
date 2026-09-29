@@ -1141,6 +1141,25 @@ export default {
             jitter: 'Fluctuation',
             jitterHelp:
                 'Variation moyenne entre une mesure et la suivante sur cette fenêtre. Pour une température, réglez le Seuil (Hystérésis Avancée) du profil au-dessus de cette valeur pour que les ventilateurs ignorent le bruit du capteur. Pour le cycle ou les tr/min, une valeur élevée signifie que le ventilateur change sans cesse de vitesse.',
+            directionChanges: 'Changements de Sens',
+            directionChangesHelp:
+                "Nombre de fois où le cycle est passé de la hausse à la baisse ou l'inverse sur cette fenêtre. Des changements fréquents signifient que le ventilateur change sans cesse de vitesse, ce qui s'entend. Un Seuil ou un Délai plus grand dans l'Hystérésis Avancée de la Fonction le calme.",
+            changesValue: '{count} ({rate}/min)',
+            stopped: 'Arrêté',
+            stoppedHelp:
+                'Part de la fenêtre à 0 tr/min. Normal pour les ventilateurs avec un mode zéro tr/min.',
+            stalls: 'Blocages',
+            stallsHelp:
+                "Nombre de fois où le ventilateur a indiqué 0 tr/min pendant {polls} relevés ou plus alors que son cycle était d'au moins {duty} %, avec leur durée totale. Un ventilateur défaillant ou débranché, ou un cycle minimal trop bas, apparaît ici.",
+            stallsNone: 'Aucun',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Temps par Plage',
+            timeInRangeHelp:
+                "Les cinq plages où cette ligne a passé le plus de temps sur la fenêtre, et la part de toutes les autres. Chaque plage fait environ un dixième de l'écart, par pas de 1, 2 ou 5.",
+            timeInRangeLine: 'Ligne',
+            band: '{from} à {to}',
+            otherBands: 'Autres Plages',
+            noReadings: "Aucune mesure sur cette fenêtre pour l'instant.",
         },
         sensorTable: {
             device: 'Appareil',
