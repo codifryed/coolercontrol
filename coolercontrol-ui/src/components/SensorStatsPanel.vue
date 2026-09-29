@@ -17,13 +17,11 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
+import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
-    formatJitterValue,
     formatSpan,
-    formatStatValue,
     lifetimeStatsOf,
     lifetimeToDisplay,
-    statUnitSuffix,
     type WindowLineStats,
     type WindowStatsPayload,
 } from '@/components/chartStats.ts'
@@ -61,6 +59,7 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
 const { stats: lifetime } = useLifetimeStats()
+const { formatStat, formatJitter, unitSuffix, windowLabelOf } = useStatFormat()
 
 const lines = computed((): Array<WindowLineStats> => props.payload?.lines ?? [])
 const colors = useThemeColorsStore()
@@ -88,13 +87,7 @@ const positionClasses = computed((): string =>
         ? 'top-4 left-[4.5rem]'
         : 'bottom-12 right-[6rem]',
 )
-const windowLabel = computed((): string =>
-    props.payload?.zoomed
-        ? t('components.chartStats.visibleRange', {
-              duration: formatSpan(props.payload.spanSeconds),
-          })
-        : t('components.chartStats.lastMinutes', { minutes: props.rangeMinutes }),
-)
+const windowLabel = computed((): string => windowLabelOf(props.payload, props.rangeMinutes))
 
 const lifetimeOf = (line: WindowLineStats): ChannelStats | null =>
     lifetimeToDisplay(
@@ -102,17 +95,6 @@ const lifetimeOf = (line: WindowLineStats): ChannelStats | null =>
         line.dataType,
         settingsStore.frequencyPrecision,
     )
-
-const format = (value: number | null | undefined, dataType: DataType): string => {
-    if (value == null) return '-'
-    const precision = settingsStore.frequencyPrecision
-    return formatStatValue(value, dataType, precision) + statUnitSuffix(dataType, precision, t)
-}
-const formatJitter = (value: number | null | undefined, dataType: DataType): string => {
-    if (value == null) return '-'
-    const precision = settingsStore.frequencyPrecision
-    return formatJitterValue(value, dataType, precision) + statUnitSuffix(dataType, precision, t)
-}
 
 const statRows = [
     { key: 'min', label: 'components.chartStats.min' },
@@ -219,7 +201,7 @@ const formatBand = (band: TimeInRangeBand, width: number, dataType: DataType): s
         from: band.from.toFixed(decimals),
         to: band.to.toFixed(decimals),
     })
-    return range + statUnitSuffix(dataType, settingsStore.frequencyPrecision, t)
+    return range + unitSuffix(dataType)
 }
 
 const movePanel = (): void => {
@@ -295,7 +277,7 @@ const movePanel = (): void => {
                         {{ t('components.chartStats.now') }}
                     </th>
                     <td colspan="2" class="px-3 py-0.5 text-center font-semibold">
-                        {{ format(line.latest, line.dataType) }}
+                        {{ formatStat(line.latest, line.dataType) }}
                     </td>
                 </tr>
                 <tr v-for="row in statRows" :key="row.key">
@@ -305,10 +287,10 @@ const movePanel = (): void => {
                         {{ t(row.label) }}
                     </th>
                     <td class="whitespace-nowrap px-2 py-0.5 text-right">
-                        {{ format(line.stats?.[row.key], line.dataType) }}
+                        {{ formatStat(line.stats?.[row.key], line.dataType) }}
                     </td>
                     <td class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right">
-                        {{ format(lifetimeOf(line)?.[row.key], line.dataType) }}
+                        {{ formatStat(lifetimeOf(line)?.[row.key], line.dataType) }}
                     </td>
                 </tr>
                 <tr>

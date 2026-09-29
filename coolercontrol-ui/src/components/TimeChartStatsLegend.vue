@@ -7,18 +7,15 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UID } from '@/models/Device.ts'
-import { DataType } from '@/models/Dashboard.ts'
 import type { StatsLegendScope } from '@/models/UISettings.ts'
 import type { ChannelStats } from '@/models/Stats.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
+import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
-    formatSpan,
-    formatStatValue,
     lifetimeStatsOf,
     lifetimeToDisplay,
     lineDash,
-    statUnitSuffix,
     type WindowLineStats,
     type WindowStats,
     type WindowStatsPayload,
@@ -36,13 +33,8 @@ const emit = defineEmits<{ (e: 'focusLine', seriesIndex: number | null): void }>
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const windowLabel = computed((): string =>
-    props.payload?.zoomed
-        ? t('components.chartStats.visibleRange', {
-              duration: formatSpan(props.payload.spanSeconds),
-          })
-        : t('components.chartStats.lastMinutes', { minutes: props.rangeMinutes }),
-)
+const { formatStat, windowLabelOf } = useStatFormat()
+const windowLabel = computed((): string => windowLabelOf(props.payload, props.rangeMinutes))
 
 const { stats: lifetime } = useLifetimeStats()
 const scope = computed<string>({
@@ -79,12 +71,6 @@ const rows = computed((): Array<LegendRow> =>
 
 const deviceName = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.name ?? ''
-
-const format = (value: number | null | undefined, dataType: DataType): string => {
-    if (value == null) return '-'
-    const precision = settingsStore.frequencyPrecision
-    return formatStatValue(value, dataType, precision) + statUnitSuffix(dataType, precision, t)
-}
 </script>
 
 <template>
@@ -141,11 +127,11 @@ const format = (value: number | null | undefined, dataType: DataType): string =>
                             </div>
                         </td>
                         <td class="legend-cell font-semibold">
-                            {{ format(line.latest, line.dataType) }}
+                            {{ formatStat(line.latest, line.dataType) }}
                         </td>
-                        <td class="legend-cell">{{ format(stats?.min, line.dataType) }}</td>
-                        <td class="legend-cell">{{ format(stats?.max, line.dataType) }}</td>
-                        <td class="legend-cell">{{ format(stats?.avg, line.dataType) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.min, line.dataType) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.max, line.dataType) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.avg, line.dataType) }}</td>
                     </tr>
                 </tbody>
             </table>
