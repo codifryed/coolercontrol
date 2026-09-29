@@ -230,11 +230,11 @@ const movePanel = (): void => {
 
 <template>
     <div
-        class="absolute z-10 max-h-[calc(100%-2rem)] w-[21rem] max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two/90 text-sm shadow-lg"
+        class="absolute z-10 max-h-[calc(100%-2rem)] w-[21rem] max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two text-sm shadow-lg"
         :class="positionClasses"
     >
         <div
-            class="sticky top-0 z-10 flex items-center gap-1 border-b border-border-one bg-bg-two/95 py-1 pl-3 pr-1"
+            class="sticky top-0 z-10 flex items-center gap-1 border-b border-border-one bg-bg-two py-1 pl-3 pr-1"
         >
             <span class="flex-1 font-semibold">{{ t('components.chartStats.title') }}</span>
             <UiToggleGroup
