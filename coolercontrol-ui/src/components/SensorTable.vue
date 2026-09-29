@@ -188,8 +188,7 @@ const rebuildTableData = () => {
 
 // Exposed so parent views can wire a "Reset" button into their existing
 // control panel (where the chart-type Select and filter dropdowns live).
-const resetStats = (): Promise<void> => reset()
-defineExpose({ resetStats })
+defineExpose({ resetStats: reset })
 
 rebuildTableData()
 

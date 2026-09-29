@@ -14,13 +14,11 @@ import {
     columnHighlightPlugin,
     DeviceLineProperties,
     mouseWheelZoomPlugin,
-    SCALE_KEY_PERCENT,
-    SCALE_KEY_RPM,
-    SCALE_KEY_WATTS,
     limitLinesPlugin,
     type DrawnLimitLine,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
+import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS } from '@/components/chartScales.ts'
 import { limitColor, type LimitLine } from '@/components/channelAttributes.ts'
 import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
 import {

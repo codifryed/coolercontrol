@@ -8,8 +8,6 @@ import { escapeHtml, safeColor } from '@/components/htmlEscaping.ts'
 
 import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS } from '@/components/chartScales.ts'
 
-export { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS }
-
 export interface DeviceLineProperties {
     color: Color
     name: string
