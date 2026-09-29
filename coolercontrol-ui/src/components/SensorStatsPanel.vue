@@ -189,22 +189,27 @@ const formatStalls = (detail: LineDetail | undefined): string => {
     })
 }
 
-// Time in Range shows one line at a time; fans start on their speed.
-const selectedTirLine = ref<string>('')
-const tirLine = computed(
+// The panel shows one line at a time, which keeps a fan's list short; fans start on their speed.
+const selectedLineName = ref<string>('')
+const activeLine = computed(
     (): WindowLineStats | undefined =>
-        lines.value.find((line) => line.lineName === selectedTirLine.value) ??
+        lines.value.find((line) => line.lineName === selectedLineName.value) ??
         lines.value.find((line) => line.dataType === DataType.RPM) ??
         lines.value[0],
 )
-const tirOptions = computed((): Array<UiToggleOption> =>
+const shownLines = computed((): Array<WindowLineStats> =>
+    activeLine.value == null ? [] : [activeLine.value],
+)
+const lineOptions = computed((): Array<UiToggleOption> =>
     lines.value.map((line) => ({
         label: getLocalizedDataType(line.dataType),
         value: line.lineName,
     })),
 )
 const tir = computed((): TimeInRange | null =>
-    tirLine.value == null ? null : (details.value.get(tirLine.value.lineName)?.timeInRange ?? null),
+    activeLine.value == null
+        ? null
+        : (details.value.get(activeLine.value.lineName)?.timeInRange ?? null),
 )
 const formatBand = (band: TimeInRangeBand, width: number, dataType: DataType): string => {
     const decimals = edgeDecimals(width)
@@ -230,6 +235,15 @@ const movePanel = (): void => {
             class="sticky top-0 z-10 flex items-center gap-1 border-b border-border-one bg-bg-two/95 py-1 pl-3 pr-1"
         >
             <span class="flex-1 font-semibold">{{ t('components.chartStats.title') }}</span>
+            <UiToggleGroup
+                v-if="activeLine != null && lineOptions.length > 1"
+                size="sm"
+                class="mr-1"
+                :aria-label="t('components.statsPanel.line')"
+                :model-value="activeLine.lineName"
+                :options="lineOptions"
+                @update:model-value="selectedLineName = $event"
+            />
             <UiButton
                 variant="ghost"
                 size="icon"
@@ -271,15 +285,7 @@ const movePanel = (): void => {
                     </th>
                 </tr>
             </thead>
-            <tbody v-for="line in lines" :key="line.lineName">
-                <tr v-if="lines.length > 1">
-                    <th
-                        colspan="3"
-                        class="px-3 pb-0.5 pt-2 text-left text-xs font-semibold uppercase tracking-wide text-text-color-secondary"
-                    >
-                        {{ getLocalizedDataType(line.dataType) }}
-                    </th>
-                </tr>
+            <tbody v-for="line in shownLines" :key="line.lineName">
                 <tr>
                     <th
                         class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
@@ -399,19 +405,10 @@ const movePanel = (): void => {
                 </template>
             </tbody>
         </table>
-        <div v-if="tirLine != null" class="mt-1 border-t border-border-one">
-            <div class="flex min-h-9 items-center gap-1 py-1 pl-3 pr-1">
+        <div v-if="activeLine != null" class="mt-1 border-t border-border-one">
+            <div class="flex items-center gap-1 py-1 pl-3 pr-1">
                 <span class="font-semibold">{{ t('components.statsPanel.timeInRange') }}</span>
                 <HelpIcon :text="t('components.statsPanel.timeInRangeHelp')" :size="0.9" />
-                <span class="flex-1"></span>
-                <UiToggleGroup
-                    v-if="tirOptions.length > 1"
-                    size="sm"
-                    :aria-label="t('components.statsPanel.timeInRangeLine')"
-                    :model-value="tirLine.lineName"
-                    :options="tirOptions"
-                    @update:model-value="selectedTirLine = $event"
-                />
             </div>
             <div
                 v-if="tir != null"
@@ -419,13 +416,13 @@ const movePanel = (): void => {
             >
                 <template v-for="band in tir.bands" :key="band.from">
                     <span class="whitespace-nowrap" :class="{ 'font-semibold': band.current }">
-                        {{ formatBand(band, tir.width, tirLine.dataType) }}
+                        {{ formatBand(band, tir.width, activeLine.dataType) }}
                     </span>
                     <span
                         class="h-2 min-w-0.5 rounded-r-sm"
                         :style="{
                             width: `${(band.share / tir.bands[0].share) * 100}%`,
-                            backgroundColor: tirLine.color,
+                            backgroundColor: activeLine.color,
                             opacity: band.current ? 1 : 0.45,
                         }"
                     ></span>

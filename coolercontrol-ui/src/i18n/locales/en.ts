@@ -1123,7 +1123,7 @@ export default {
             timeInRange: 'Time in Range',
             timeInRangeHelp:
                 'The five bands this line spent the most time in during the window, and the share of all other bands. Bands are about a tenth of the spread wide, in steps of 1, 2 or 5.',
-            timeInRangeLine: 'Line',
+            line: 'Line',
             band: '{from} to {to}',
             otherBands: 'Other Bands',
             noReadings: 'No readings in this window yet.',

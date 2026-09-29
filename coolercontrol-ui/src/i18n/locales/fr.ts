@@ -1156,7 +1156,7 @@ export default {
             timeInRange: 'Temps par Plage',
             timeInRangeHelp:
                 "Les cinq plages où cette ligne a passé le plus de temps sur la fenêtre, et la part de toutes les autres. Chaque plage fait environ un dixième de l'écart, par pas de 1, 2 ou 5.",
-            timeInRangeLine: 'Ligne',
+            line: 'Ligne',
             band: '{from} à {to}',
             otherBands: 'Autres Plages',
             noReadings: "Aucune mesure sur cette fenêtre pour l'instant.",

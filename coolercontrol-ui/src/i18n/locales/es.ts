@@ -1143,7 +1143,7 @@ export default {
             timeInRange: 'Tiempo en Rango',
             timeInRangeHelp:
                 'Las cinco bandas en las que esta línea pasó más tiempo durante la ventana, y la proporción de todas las demás. Cada banda mide cerca de una décima parte del rango, en pasos de 1, 2 o 5.',
-            timeInRangeLine: 'Línea',
+            line: 'Línea',
             band: '{from} a {to}',
             otherBands: 'Otras Bandas',
             noReadings: 'Aún no hay lecturas en esta ventana.',

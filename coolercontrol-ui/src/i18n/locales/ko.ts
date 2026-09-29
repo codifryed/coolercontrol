@@ -1115,7 +1115,7 @@ export default {
             timeInRange: '범위별 시간',
             timeInRangeHelp:
                 '이 구간에서 이 라인이 가장 오래 머문 5개 대역과 나머지 모든 대역의 비율입니다. 대역 폭은 변동 폭의 약 10분의 1이며 1, 2, 5 단위입니다.',
-            timeInRangeLine: '라인',
+            line: '라인',
             band: '{from} ~ {to}',
             otherBands: '기타 대역',
             noReadings: '이 구간에는 아직 측정값이 없습니다.',

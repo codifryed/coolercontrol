@@ -1142,7 +1142,7 @@ export default {
             timeInRange: 'Tempo por Faixa',
             timeInRangeHelp:
                 'As cinco faixas em que esta linha passou mais tempo durante a janela, e a parcela de todas as outras. Cada faixa tem cerca de um décimo da variação, em passos de 1, 2 ou 5.',
-            timeInRangeLine: 'Linha',
+            line: 'Linha',
             band: '{from} a {to}',
             otherBands: 'Outras Faixas',
             noReadings: 'Ainda não há leituras nesta janela.',

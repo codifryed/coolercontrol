@@ -1076,7 +1076,7 @@ export default {
             timeInRange: '区间时长',
             timeInRangeHelp:
                 '此线在时间窗口内停留时间最长的五个区间，以及其余所有区间的占比。区间宽度约为波动范围的十分之一，步长为 1、2 或 5。',
-            timeInRangeLine: '线条',
+            line: '线条',
             band: '{from} 至 {to}',
             otherBands: '其他区间',
             noReadings: '此时间窗口内尚无读数。',

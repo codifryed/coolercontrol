@@ -1077,7 +1077,7 @@ export default {
             timeInRange: '區間時長',
             timeInRangeHelp:
                 '此線在時間範圍內停留時間最長的五個區間，以及其餘所有區間的占比。區間寬度約為波動範圍的十分之一，步長為 1、2 或 5。',
-            timeInRangeLine: '線條',
+            line: '線條',
             band: '{from} 至 {to}',
             otherBands: '其他區間',
             noReadings: '此時間範圍內尚無讀數。',

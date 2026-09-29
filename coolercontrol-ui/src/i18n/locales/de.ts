@@ -1152,7 +1152,7 @@ export default {
             timeInRange: 'Zeit im Bereich',
             timeInRangeHelp:
                 'Die fünf Bänder, in denen diese Linie im Zeitraum die meiste Zeit verbrachte, und der Anteil aller übrigen Bänder. Ein Band ist etwa ein Zehntel der Spanne breit, in Schritten von 1, 2 oder 5.',
-            timeInRangeLine: 'Linie',
+            line: 'Linie',
             band: '{from} bis {to}',
             otherBands: 'Übrige Bänder',
             noReadings: 'Noch keine Messwerte in diesem Zeitraum.',

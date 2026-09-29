@@ -1130,7 +1130,7 @@ export default {
             timeInRange: '範囲内の時間',
             timeInRangeHelp:
                 'この期間にこのラインが最も長く留まった 5 つの区間と、それ以外のすべての区間の割合です。区間の幅は変動幅の約 10 分の 1 で、1、2、5 刻みです。',
-            timeInRangeLine: 'ライン',
+            line: 'ライン',
             band: '{from} から {to}',
             otherBands: 'その他の区間',
             noReadings: 'この期間にはまだ読み取り値がありません。',
