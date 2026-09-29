@@ -115,25 +115,15 @@ export function thresholdLinesFrom(
     for (const attribute of attributes) {
         const severity = LIMIT_SEVERITY[attribute.kind]
         if (severity == null) continue
-        const label = `${attribute.name} ${formatAttributeValue(attribute, t)}`
-        if (severity === 'fan') {
-            if (attribute.value <= 0) continue
-            lines.push({
-                name: attribute.name,
-                value: attribute.value / precision,
-                scale: SCALE_KEY_RPM,
-                severity,
-                label,
-            })
-        } else {
-            lines.push({
-                name: attribute.name,
-                value: attribute.value,
-                scale: SCALE_KEY_PERCENT,
-                severity,
-                label,
-            })
-        }
+        const isFan = severity === 'fan'
+        if (isFan && attribute.value <= 0) continue
+        lines.push({
+            name: attribute.name,
+            value: isFan ? attribute.value / precision : attribute.value,
+            scale: isFan ? SCALE_KEY_RPM : SCALE_KEY_PERCENT,
+            severity,
+            label: `${attribute.name} ${formatAttributeValue(attribute, t)}`,
+        })
     }
     return lines
 }
