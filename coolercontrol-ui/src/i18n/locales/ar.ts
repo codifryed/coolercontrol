@@ -1050,7 +1050,7 @@ export default {
             min: 'الأدنى',
             max: 'الأقصى',
             avg: 'المتوسط',
-            lastMinutes: 'آخر {minutes} دقيقة',
+            lastMinutes: 'آخر {minutes}\u00a0دقيقة',
             visibleRange: 'النطاق المرئي: {duration}',
         },
         channelAttributes: {

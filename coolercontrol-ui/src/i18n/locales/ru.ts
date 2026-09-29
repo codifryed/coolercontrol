@@ -1078,7 +1078,7 @@ export default {
             min: 'Мин',
             max: 'Макс',
             avg: 'Сред',
-            lastMinutes: 'Последние {minutes} мин',
+            lastMinutes: 'Последние {minutes}\u00a0мин',
             visibleRange: 'Видимый диапазон: {duration}',
         },
         channelAttributes: {

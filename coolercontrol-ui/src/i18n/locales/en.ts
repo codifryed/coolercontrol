@@ -1060,7 +1060,7 @@ export default {
             min: 'Min',
             max: 'Max',
             avg: 'Avg',
-            lastMinutes: 'Last {minutes} min',
+            lastMinutes: 'Last {minutes}\u00a0min',
             visibleRange: 'Visible range: {duration}',
         },
         channelAttributes: {

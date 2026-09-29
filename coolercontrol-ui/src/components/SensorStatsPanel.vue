@@ -223,7 +223,7 @@ const movePanel = (): void => {
 
 <template>
     <div
-        class="absolute z-10 max-h-[calc(100%-2rem)] w-80 max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two/90 text-sm shadow-lg"
+        class="absolute z-10 max-h-[calc(100%-2rem)] w-[21rem] max-w-[calc(100%-6rem)] overflow-y-auto rounded-lg border border-border-one bg-bg-two/90 text-sm shadow-lg"
         :class="positionClasses"
     >
         <div
@@ -258,9 +258,9 @@ const movePanel = (): void => {
         <table class="w-full tabular-nums">
             <thead>
                 <tr class="text-xs text-text-color-secondary">
-                    <th class="px-3 pb-0.5 pt-1.5"></th>
-                    <th class="px-3 pb-0.5 pt-1.5 text-right font-medium">{{ windowLabel }}</th>
-                    <th class="px-3 pb-0.5 pt-1.5 text-right font-medium">
+                    <th class="w-[40%] pb-0.5 pl-3 pr-2 pt-1.5"></th>
+                    <th class="px-2 pb-0.5 pt-1.5 text-right font-medium">{{ windowLabel }}</th>
+                    <th class="pl-2 pr-3 pb-0.5 pt-1.5 text-right font-medium">
                         <span class="inline-flex items-center gap-1">
                             {{ t('components.statsPanel.sinceStart') }}
                             <HelpIcon
@@ -281,7 +281,9 @@ const movePanel = (): void => {
                     </th>
                 </tr>
                 <tr>
-                    <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                    <th
+                        class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                    >
                         {{ t('components.chartStats.now') }}
                     </th>
                     <td colspan="2" class="px-3 py-0.5 text-center font-semibold">
@@ -289,30 +291,40 @@ const movePanel = (): void => {
                     </td>
                 </tr>
                 <tr v-for="row in statRows" :key="row.key">
-                    <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                    <th
+                        class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                    >
                         {{ t(row.label) }}
                     </th>
-                    <td class="px-3 py-0.5 text-right">
+                    <td class="whitespace-nowrap px-2 py-0.5 text-right">
                         {{ format(line.stats?.[row.key], line.dataType) }}
                     </td>
-                    <td class="px-3 py-0.5 text-right">
+                    <td class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right">
                         {{ format(lifetimeOf(line)?.[row.key], line.dataType) }}
                     </td>
                 </tr>
                 <tr>
-                    <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                    <th
+                        class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                    >
                         <span class="inline-flex items-center gap-1">
                             {{ t('components.statsPanel.jitter') }}
                             <HelpIcon :text="t('components.statsPanel.jitterHelp')" :size="0.9" />
                         </span>
                     </th>
-                    <td class="px-3 py-0.5 text-right">
+                    <td class="whitespace-nowrap px-2 py-0.5 text-right">
                         {{ formatJitter(line.stats?.jitter, line.dataType) }}
                     </td>
-                    <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                    <td
+                        class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
+                    >
+                        -
+                    </td>
                 </tr>
                 <tr v-if="line.dataType === DataType.DUTY">
-                    <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                    <th
+                        class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                    >
                         <span class="inline-flex items-center gap-1">
                             {{ t('components.statsPanel.directionChanges') }}
                             <HelpIcon
@@ -321,14 +333,20 @@ const movePanel = (): void => {
                             />
                         </span>
                     </th>
-                    <td class="whitespace-nowrap px-3 py-0.5 text-right">
+                    <td class="whitespace-nowrap px-2 py-0.5 text-right">
                         {{ formatChanges(details.get(line.lineName)) }}
                     </td>
-                    <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                    <td
+                        class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
+                    >
+                        -
+                    </td>
                 </tr>
                 <template v-if="line.dataType === DataType.RPM">
                     <tr>
-                        <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                        <th
+                            class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                        >
                             <span class="inline-flex items-center gap-1">
                                 {{ t('components.statsPanel.stopped') }}
                                 <HelpIcon
@@ -337,13 +355,19 @@ const movePanel = (): void => {
                                 />
                             </span>
                         </th>
-                        <td class="px-3 py-0.5 text-right">
+                        <td class="whitespace-nowrap px-2 py-0.5 text-right">
                             {{ formatShare(details.get(line.lineName)?.stoppedShare) }}
                         </td>
-                        <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                        <td
+                            class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
+                        >
+                            -
+                        </td>
                     </tr>
                     <tr v-if="details.get(line.lineName)?.stalls != null">
-                        <th class="px-3 py-0.5 text-left font-normal text-text-color-secondary">
+                        <th
+                            class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
+                        >
                             <span class="inline-flex items-center gap-1">
                                 {{ t('components.statsPanel.stalls') }}
                                 <HelpIcon
@@ -358,7 +382,7 @@ const movePanel = (): void => {
                             </span>
                         </th>
                         <td
-                            class="whitespace-nowrap px-3 py-0.5 text-right"
+                            class="whitespace-nowrap px-2 py-0.5 text-right"
                             :class="{
                                 'font-semibold text-warning':
                                     (details.get(line.lineName)?.stalls?.count ?? 0) > 0,
@@ -366,7 +390,11 @@ const movePanel = (): void => {
                         >
                             {{ formatStalls(details.get(line.lineName)) }}
                         </td>
-                        <td class="px-3 py-0.5 text-right text-text-color-secondary">-</td>
+                        <td
+                            class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
+                        >
+                            -
+                        </td>
                     </tr>
                 </template>
             </tbody>

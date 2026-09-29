@@ -1092,7 +1092,7 @@ export default {
             min: 'Min',
             max: 'Max',
             avg: 'Moy',
-            lastMinutes: 'Dernières {minutes} min',
+            lastMinutes: 'Dernières {minutes}\u00a0min',
             visibleRange: 'Plage visible : {duration}',
         },
         channelAttributes: {

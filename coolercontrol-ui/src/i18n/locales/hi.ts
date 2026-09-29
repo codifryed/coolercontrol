@@ -1060,7 +1060,7 @@ export default {
             min: 'न्यूनतम',
             max: 'अधिकतम',
             avg: 'औसत',
-            lastMinutes: 'पिछले {minutes} मिनट',
+            lastMinutes: 'पिछले {minutes}\u00a0मिनट',
             visibleRange: 'दृश्य सीमा: {duration}',
         },
         channelAttributes: {
