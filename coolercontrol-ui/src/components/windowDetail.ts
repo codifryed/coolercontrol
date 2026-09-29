@@ -4,7 +4,7 @@
 import type { Status } from '@/models/Status.ts'
 import type { Calibration } from '@/models/Calibration.ts'
 import { DataType } from '@/models/Dashboard.ts'
-import { isSyntheticStatus, toDisplayUnits } from '@/components/chartStats.ts'
+import { DATA_TYPE_STATS, isSyntheticStatus, toDisplayUnits } from '@/components/chartStats.ts'
 
 // The stats panel's measured behaviour rows: time in range for every line, direction changes
 // for duty, stopped time and stalls for speed. All of them cover the chart's current window.
@@ -77,23 +77,11 @@ export function statusesInWindow(
 }
 
 function valueOf(status: Status, channelName: string, dataType: DataType): number | undefined {
-    if (dataType === DataType.TEMP) {
+    const field = DATA_TYPE_STATS[dataType].statusField
+    if (field === 'temp') {
         return status.temps.find((temp) => temp.name === channelName)?.temp
     }
-    const channel = status.channels.find((c) => c.name === channelName)
-    switch (dataType) {
-        case DataType.DUTY:
-        case DataType.LOAD:
-            return channel?.duty
-        case DataType.RPM:
-            return channel?.rpm
-        case DataType.FREQ:
-            return channel?.freq
-        case DataType.WATTS:
-            return channel?.watts
-        default:
-            return undefined
-    }
+    return status.channels.find((c) => c.name === channelName)?.[field]
 }
 
 // One line's raw values across the statuses, NaN where there is no reading: the daemon's
@@ -202,17 +190,8 @@ export function stallDutyMinOf(calibration: Calibration | undefined): number {
     return Math.max(1, calibration.min_start_duty)
 }
 
-// The smallest band that still means something for a value in display units: finer than the
-// sensor reports only splits one reading across empty bands.
 export function minBandWidthFor(dataType: DataType, precision: number): number {
-    switch (dataType) {
-        case DataType.RPM:
-            return 10
-        case DataType.FREQ:
-            return precision > 1 ? 0.01 : 10
-        default:
-            return 1
-    }
+    return DATA_TYPE_STATS[dataType].minBandWidth(precision)
 }
 
 // The 1-2-5 step nearest to span / TARGET_BANDS, never below minWidth.

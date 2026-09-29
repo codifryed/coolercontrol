@@ -14,7 +14,12 @@ import { computed, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
 import type { ChannelStats } from '@/models/Stats'
-import { formatStatValue, statUnitSuffix, toDisplayUnits } from '@/components/chartStats.ts'
+import {
+    DATA_TYPE_STATS,
+    formatStatValue,
+    statUnitSuffix,
+    toDisplayUnits,
+} from '@/components/chartStats.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { useI18n } from 'vue-i18n'
@@ -190,24 +195,8 @@ rebuildTableData()
 
 const currentValue = (row: DeviceData): number => {
     const values = deviceStore.currentDeviceStatus.get(row.deviceUID)?.get(row.channelID)
-    switch (row.dataType) {
-        case DataType.TEMP:
-            return Number(values?.temp)
-        case DataType.DUTY:
-            return Number(values?.duty)
-        case DataType.RPM:
-            return Number(values?.rpm)
-        case DataType.FREQ:
-            return toDisplayUnits(
-                Number(values?.freq),
-                DataType.FREQ,
-                settingsStore.frequencyPrecision,
-            )
-        case DataType.WATTS:
-            return Number(values?.watts)
-        default:
-            return 0
-    }
+    const value = Number(values?.[DATA_TYPE_STATS[row.dataType].statusField])
+    return toDisplayUnits(value, row.dataType, settingsStore.frequencyPrecision)
 }
 
 interface RowValues {

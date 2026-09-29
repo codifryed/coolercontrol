@@ -48,21 +48,66 @@ export function foldChannelStats(stats: ChannelStats, value: number): void {
     stats.count = newCount
 }
 
-// Where a data type's lifetime stats live. Load is a duty on the wire; temps have their own map.
-export function statFieldOf(dataType: DataType): ChannelStatField | null {
-    switch (dataType) {
-        case DataType.DUTY:
-        case DataType.LOAD:
-            return 'DUTY'
-        case DataType.RPM:
-            return 'RPM'
-        case DataType.FREQ:
-            return 'FREQ'
-        case DataType.WATTS:
-            return 'WATTS'
-        default:
-            return null
-    }
+// Everything the stats code needs to know about a data type, so a new type is one entry. The
+// functions take the frequency precision setting: 1 for MHz, 1000 for GHz.
+interface DataTypeStats {
+    // The status field holding the value. Temps are in status.temps, the rest in its channels.
+    statusField: 'temp' | 'duty' | 'rpm' | 'freq' | 'watts'
+    // Where lifetime stats live. Load is a duty on the wire; temps have their own map.
+    statField: ChannelStatField | null
+    decimals: (precision: number) => number
+    // Jitter is usually a fraction of the value's own resolution, so it gets one more decimal.
+    jitterDecimals: (precision: number) => number
+    unitKey: (precision: number) => string
+    // The smallest band that still means something in display units: finer than the sensor
+    // reports only splits one reading across empty bands.
+    minBandWidth: (precision: number) => number
+}
+
+const PERCENT_STATS: DataTypeStats = {
+    statusField: 'duty',
+    statField: 'DUTY',
+    decimals: () => 0,
+    jitterDecimals: () => 1,
+    unitKey: () => 'common.percentUnit',
+    minBandWidth: () => 1,
+}
+
+export const DATA_TYPE_STATS: Record<DataType, DataTypeStats> = {
+    [DataType.TEMP]: {
+        statusField: 'temp',
+        statField: null,
+        decimals: () => 1,
+        jitterDecimals: () => 2,
+        unitKey: () => 'common.tempUnit',
+        minBandWidth: () => 1,
+    },
+    [DataType.DUTY]: PERCENT_STATS,
+    [DataType.LOAD]: PERCENT_STATS,
+    [DataType.RPM]: {
+        statusField: 'rpm',
+        statField: 'RPM',
+        decimals: () => 0,
+        jitterDecimals: () => 0,
+        unitKey: () => 'common.rpmAbbr',
+        minBandWidth: () => 10,
+    },
+    [DataType.FREQ]: {
+        statusField: 'freq',
+        statField: 'FREQ',
+        decimals: (precision) => (precision > 1 ? 2 : 0),
+        jitterDecimals: (precision) => (precision > 1 ? 3 : 1),
+        unitKey: (precision) => (precision === 1 ? 'common.mhzAbbr' : 'common.ghzAbbr'),
+        minBandWidth: (precision) => (precision > 1 ? 0.01 : 10),
+    },
+    [DataType.WATTS]: {
+        statusField: 'watts',
+        statField: 'WATTS',
+        decimals: () => 1,
+        jitterDecimals: () => 2,
+        unitKey: () => 'common.wattAbbr',
+        minBandWidth: () => 1,
+    },
 }
 
 // Folds one device status into the response, as the daemon's record_stats does each tick.
@@ -94,7 +139,7 @@ export function lifetimeStatsOf(dto: StatsResponseDTO, line: LineKey): ChannelSt
     const device = dto.devices.find((d) => d.uid === line.deviceUID)
     if (device == null) return undefined
     if (line.dataType === DataType.TEMP) return device.temps[line.channelName]
-    const field = statFieldOf(line.dataType)
+    const field = DATA_TYPE_STATS[line.dataType].statField
     return field == null ? undefined : device.channels[line.channelName]?.[field]
 }
 
@@ -120,12 +165,7 @@ export function lifetimeToDisplay(
 }
 
 export function formatStatValue(value: number, dataType: DataType, precision: number): string {
-    if (dataType === DataType.TEMP || dataType === DataType.WATTS) {
-        return value.toFixed(1)
-    } else if (dataType === DataType.FREQ && precision > 1) {
-        return value.toFixed(2)
-    }
-    return value.toFixed(0)
+    return value.toFixed(DATA_TYPE_STATS[dataType].decimals(precision))
 }
 
 export function statUnitSuffix(
@@ -133,18 +173,7 @@ export function statUnitSuffix(
     precision: number,
     t: (key: string) => string,
 ): string {
-    switch (dataType) {
-        case DataType.TEMP:
-            return ` ${t('common.tempUnit')}`
-        case DataType.RPM:
-            return ` ${t('common.rpmAbbr')}`
-        case DataType.FREQ:
-            return precision === 1 ? ` ${t('common.mhzAbbr')}` : ` ${t('common.ghzAbbr')}`
-        case DataType.WATTS:
-            return ` ${t('common.wattAbbr')}`
-        default:
-            return ` ${t('common.percentUnit')}`
-    }
+    return ` ${t(DATA_TYPE_STATS[dataType].unitKey(precision))}`
 }
 
 // ----- window stats: what a time chart currently shows -----
@@ -204,19 +233,8 @@ export function windowStats(
     }
 }
 
-// Jitter is usually a fraction of the value's own resolution, so it gets one more decimal.
 export function formatJitterValue(value: number, dataType: DataType, precision: number): string {
-    switch (dataType) {
-        case DataType.TEMP:
-        case DataType.WATTS:
-            return value.toFixed(2)
-        case DataType.FREQ:
-            return precision > 1 ? value.toFixed(3) : value.toFixed(1)
-        case DataType.RPM:
-            return value.toFixed(0)
-        default:
-            return value.toFixed(1)
-    }
+    return value.toFixed(DATA_TYPE_STATS[dataType].jitterDecimals(precision))
 }
 
 // Time charts store rpm divided by the precision setting so it shares an axis with MHz or GHz.
