@@ -1137,7 +1137,7 @@ export default {
             hide: 'Ausblenden',
             jitter: 'Schwankung',
             jitterHelp:
-                'Durchschnittliche Änderung zwischen zwei aufeinanderfolgenden Messwerten in diesem Zeitraum. Bei einer Temperatur den Schwellenwert (Erweiterte Hysterese) des Profils über diesen Wert setzen, damit Lüfter Sensorrauschen ignorieren. Bei Auslastung oder U/min bedeutet ein hoher Wert, dass der Lüfter ständig seine Drehzahl ändert.',
+                'Durchschnittliche Änderung zwischen zwei aufeinanderfolgenden Messwerten in diesem Zeitraum. Bei einer Temperatur den Schwellenwert in der Erweiterten Hysterese der Funktion über diesen Wert setzen, damit Lüfter Sensorrauschen ignorieren. Bei Auslastung oder U/min bedeutet ein hoher Wert, dass der Lüfter ständig seine Drehzahl ändert.',
             directionChanges: 'Richtungswechsel',
             directionChangesHelp:
                 'Wie oft die Auslastung in diesem Zeitraum von steigend auf fallend oder zurück wechselte. Häufige Wechsel bedeuten, dass der Lüfter ständig seine Drehzahl ändert, was man hört. Ein größerer Schwellenwert oder eine Verzögerung in der Erweiterten Hysterese der Funktion beruhigt ihn.',

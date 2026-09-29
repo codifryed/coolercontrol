@@ -1140,7 +1140,7 @@ export default {
             hide: 'Masquer',
             jitter: 'Fluctuation',
             jitterHelp:
-                'Variation moyenne entre une mesure et la suivante sur cette fenêtre. Pour une température, réglez le Seuil (Hystérésis Avancée) du profil au-dessus de cette valeur pour que les ventilateurs ignorent le bruit du capteur. Pour le cycle ou les tr/min, une valeur élevée signifie que le ventilateur change sans cesse de vitesse.',
+                'Variation moyenne entre une mesure et la suivante sur cette fenêtre. Pour une température, réglez le Seuil de la Fonction (Hystérésis Avancée) au-dessus de cette valeur pour que les ventilateurs ignorent le bruit du capteur. Pour le cycle ou les tr/min, une valeur élevée signifie que le ventilateur change sans cesse de vitesse.',
             directionChanges: 'Changements de Sens',
             directionChangesHelp:
                 "Nombre de fois où le cycle est passé de la hausse à la baisse ou l'inverse sur cette fenêtre. Des changements fréquents signifient que le ventilateur change sans cesse de vitesse, ce qui s'entend. Un Seuil ou un Délai plus grand dans l'Hystérésis Avancée de la Fonction le calme.",

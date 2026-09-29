@@ -1127,7 +1127,7 @@ export default {
             hide: 'Ocultar',
             jitter: 'Oscilação',
             jitterHelp:
-                'Variação média entre uma leitura e a seguinte nesta janela. Em uma temperatura, defina o Limite (Histerese Avançada) do perfil acima deste valor para que as ventoinhas ignorem o ruído do sensor. Em ciclo ou RPM, um valor alto significa que a ventoinha muda de velocidade constantemente.',
+                'Variação média entre uma leitura e a seguinte nesta janela. Em uma temperatura, defina o Limite da Histerese Avançada da Função acima deste valor para que as ventoinhas ignorem o ruído do sensor. Em ciclo ou RPM, um valor alto significa que a ventoinha muda de velocidade constantemente.',
             directionChanges: 'Mudanças de Direção',
             directionChangesHelp:
                 'Quantas vezes o ciclo passou de subir para descer ou o contrário nesta janela. Mudanças frequentes significam que a ventoinha muda de velocidade constantemente, o que se ouve. Um Limite ou um Atraso maior na Histerese Avançada da Função a acalma.',

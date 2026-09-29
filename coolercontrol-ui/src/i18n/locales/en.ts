@@ -1108,7 +1108,7 @@ export default {
             hide: 'Hide',
             jitter: 'Jitter',
             jitterHelp:
-                "Average change between one reading and the next in this window. On a temperature, set the profile's hysteresis Threshold (Advanced Hysteresis) above this value so fans ignore sensor noise. On duty or speed, a high value means the fan keeps changing speed.",
+                "Average change between one reading and the next in this window. On a temperature, set the Threshold in the Function's Advanced Hysteresis above this value so fans ignore sensor noise. On duty or speed, a high value means the fan keeps changing speed.",
             directionChanges: 'Direction Changes',
             directionChangesHelp:
                 "How often the duty turned from rising to falling or back in this window. Frequent changes mean the fan keeps changing speed, which you can hear. A larger Threshold or Delay in the Function's Advanced Hysteresis calms it.",

@@ -1127,7 +1127,7 @@ export default {
             hide: 'Ocultar',
             jitter: 'Fluctuación',
             jitterHelp:
-                'Cambio promedio entre una lectura y la siguiente en esta ventana. En una temperatura, configure el Umbral (Histéresis Avanzada) del perfil por encima de este valor para que los ventiladores ignoren el ruido del sensor. En ciclo o RPM, un valor alto significa que el ventilador cambia de velocidad constantemente.',
+                'Cambio promedio entre una lectura y la siguiente en esta ventana. En una temperatura, configure el Umbral de la Histéresis Avanzada de la Función por encima de este valor para que los ventiladores ignoren el ruido del sensor. En ciclo o RPM, un valor alto significa que el ventilador cambia de velocidad constantemente.',
             directionChanges: 'Cambios de Dirección',
             directionChangesHelp:
                 'Cuántas veces el ciclo pasó de subir a bajar o al revés en esta ventana. Los cambios frecuentes significan que el ventilador cambia de velocidad constantemente, algo que se oye. Un Umbral o un Retraso mayores en la Histéresis Avanzada de la Función lo calman.',
