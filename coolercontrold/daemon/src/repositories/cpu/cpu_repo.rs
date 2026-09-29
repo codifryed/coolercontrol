@@ -13,7 +13,7 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
+    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::association::{
@@ -1031,9 +1031,7 @@ impl Repository for CpuRepo {
             ));
         }
         // No permit to take: this repository has none. Its reads go through the same device IO.
-        let channel_attributes = attributes::read_channel_attributes(driver, channel).await;
-        debug_assert!(channel_attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
-        Ok(channel_attributes)
+        Ok(attributes::read_channel_attributes(driver, channel).await)
     }
 
     async fn shutdown(&self) -> Result<()> {

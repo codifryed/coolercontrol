@@ -60,7 +60,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
     Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
-    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
+    Temp, TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
@@ -2656,23 +2656,17 @@ impl Repository for HwmonRepo {
         let semaphore = self.device_permits.get(&type_index).expect(
             "invariant: device_permits entry exists for every registered device type_index",
         );
-        let permit_timeout = self
-            .device_read_permit_timeout
-            .min(attributes::ATTRIBUTE_PERMIT_TIMEOUT_MAX);
+        let device = format!("HWMon device: {} channel: {channel_name}", driver.name);
         // One hold for the whole pass: at most one read per attribute file this channel has.
         let _permit = tokio::select! {
             () = self.shutdown_token.cancelled() => return Ok(Vec::new()),
-            () = rt::sleep(permit_timeout) => {
-                return Err(anyhow!(
-                    "TIMEOUT HWMon device: {} channel: {channel_name}; waiting to read attributes",
-                    driver.name
-                ));
-            }
-            permit = semaphore.acquire() => permit.map_err(|err| anyhow!(err))?,
+            permit = attributes::acquire_permit(
+                semaphore,
+                self.device_read_permit_timeout,
+                &device,
+            ) => permit?,
         };
-        let channel_attributes = attributes::read_channel_attributes(driver, channel).await;
-        debug_assert!(channel_attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
-        Ok(channel_attributes)
+        Ok(attributes::read_channel_attributes(driver, channel).await)
     }
 }
 
