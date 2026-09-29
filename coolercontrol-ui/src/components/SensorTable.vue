@@ -227,7 +227,11 @@ const rowValues = computed<Array<RowValues>>(() =>
     deviceTableData.value.map((row) => ({
         current: currentValue(row),
         stats: lifetimeToDisplay(
-            lifetimeStatsOf(stats.value, row.deviceUID, row.channelID, row.dataType),
+            lifetimeStatsOf(stats.value, {
+                deviceUID: row.deviceUID,
+                channelName: row.channelID,
+                dataType: row.dataType,
+            }),
             row.dataType,
             settingsStore.frequencyPrecision,
         ),

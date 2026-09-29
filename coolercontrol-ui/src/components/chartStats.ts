@@ -21,6 +21,13 @@ export function isSyntheticStatus(status: Status): boolean {
     return true
 }
 
+// One chart or table line: a device channel read as one data type.
+export interface LineKey {
+    deviceUID: UID
+    channelName: string
+    dataType: DataType
+}
+
 export const emptyChannelStats = (): ChannelStats => ({ min: 0, max: 0, avg: 0, count: 0 })
 
 // Mirrors the daemon's ChannelStats::fold, so values folded here between /stats fetches match
@@ -83,17 +90,12 @@ export function foldStatusIntoStats(dto: StatsResponseDTO, deviceUID: UID, statu
 }
 
 // The daemon's raw lifetime stats for one line, or undefined when it has none yet.
-export function lifetimeStatsOf(
-    dto: StatsResponseDTO,
-    deviceUID: UID,
-    channelName: string,
-    dataType: DataType,
-): ChannelStats | undefined {
-    const device = dto.devices.find((d) => d.uid === deviceUID)
+export function lifetimeStatsOf(dto: StatsResponseDTO, line: LineKey): ChannelStats | undefined {
+    const device = dto.devices.find((d) => d.uid === line.deviceUID)
     if (device == null) return undefined
-    if (dataType === DataType.TEMP) return device.temps[channelName]
-    const field = statFieldOf(dataType)
-    return field == null ? undefined : device.channels[channelName]?.[field]
+    if (line.dataType === DataType.TEMP) return device.temps[line.channelName]
+    const field = statFieldOf(line.dataType)
+    return field == null ? undefined : device.channels[line.channelName]?.[field]
 }
 
 // Display units follow the Table view: frequencies scale with the precision setting (MHz or
@@ -223,13 +225,10 @@ export function chartValueToDisplay(value: number, dataType: DataType, precision
     return dataType === DataType.RPM ? value * precision : value
 }
 
-export interface WindowLineStats {
+export interface WindowLineStats extends LineKey {
     lineName: string
     // The line's uPlot series index (1-based: 0 is the time row).
     seriesIndex: number
-    deviceUID: UID
-    channelName: string
-    dataType: DataType
     color: string
     label: string
     // Display units. Null when the newest sample is not a real reading.

@@ -56,12 +56,7 @@ const rows = computed((): Array<LegendRow> =>
         stats:
             settingsStore.statsLegendScope === 'since-start'
                 ? lifetimeToDisplay(
-                      lifetimeStatsOf(
-                          lifetime.value,
-                          line.deviceUID,
-                          line.channelName,
-                          line.dataType,
-                      ),
+                      lifetimeStatsOf(lifetime.value, line),
                       line.dataType,
                       settingsStore.frequencyPrecision,
                   )

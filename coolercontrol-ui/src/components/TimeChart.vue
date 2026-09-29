@@ -28,6 +28,7 @@ import {
     isSyntheticStatus,
     lineDash,
     windowStats,
+    type LineKey,
     type WindowLineStats,
     type WindowStatsPayload,
 } from '@/components/chartStats.ts'
@@ -97,12 +98,7 @@ const timeRangeSeconds = props.dashboard.timeRangeSeconds
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
-interface LineMeta {
-    deviceUID: UID
-    channelName: string
-    dataType: DataType
-}
-const lineMeta = new Map<string, LineMeta>()
+const lineKeys = new Map<string, LineKey>()
 // Parallel to uSeriesData's lines (uMasks[i] belongs to uSeriesData[i + 1]): 1 where the line
 // holds a real reading. The daemon's startup zero-fill and gaps in a channel's reporting are 0,
 // so window stats never count them.
@@ -139,9 +135,7 @@ const initUSeriesData = () => {
     const record = (
         lineName: string,
         settings: SensorAndChannelSettings,
-        deviceUID: UID,
-        channelName: string,
-        dataType: DataType,
+        key: LineKey,
         statusIndex: number,
         value: number,
         valid: boolean,
@@ -152,8 +146,8 @@ const initUSeriesData = () => {
         if (!allDevicesLineProperties.has(lineName)) {
             allDevicesLineProperties.set(lineName, { color: settings.color, name: settings.name })
         }
-        if (!lineMeta.has(lineName)) {
-            lineMeta.set(lineName, { deviceUID, channelName, dataType })
+        if (!lineKeys.has(lineName)) {
+            lineKeys.set(lineName, key)
         }
         let floatArray = uLineData.get(lineName)
         let mask = uMaskData.get(lineName)
@@ -180,9 +174,11 @@ const initUSeriesData = () => {
                 record(
                     createLineName(device, tempStatus.name + '_temp'),
                     deviceSettings.sensorsAndChannels.get(tempStatus.name)!,
-                    device.uid,
-                    tempStatus.name,
-                    DataType.TEMP,
+                    {
+                        deviceUID: device.uid,
+                        channelName: tempStatus.name,
+                        dataType: DataType.TEMP,
+                    },
                     statusIndex,
                     tempStatus.temp,
                     valid,
@@ -194,9 +190,7 @@ const initUSeriesData = () => {
                     record(
                         createLineName(device, channelStatus.name + suffix),
                         deviceSettings.sensorsAndChannels.get(channelStatus.name)!,
-                        device.uid,
-                        channelStatus.name,
-                        dataType,
+                        { deviceUID: device.uid, channelName: channelStatus.name, dataType },
                         statusIndex,
                         value,
                         valid,
@@ -387,8 +381,8 @@ const computeWindowStats = (): void => {
         chartValueToDisplay(value, dataType, precision)
     const lines: Array<WindowLineStats> = []
     for (const [index, lineName] of uLineNames.entries()) {
-        const meta = lineMeta.get(lineName)
-        if (meta == null) continue
+        const key = lineKeys.get(lineName)
+        if (key == null) continue
         const values = uSeriesData[index + 1]
         const mask = uMasks[index]
         const stats = windowStats(time, values, mask, xMin, xMax)
@@ -396,20 +390,20 @@ const computeWindowStats = (): void => {
         lines.push({
             lineName,
             seriesIndex: index + 1,
-            ...meta,
+            ...key,
             color: allDevicesLineProperties.get(lineName)?.color ?? '',
             label: allDevicesLineProperties.get(lineName)?.name ?? lineName,
-            latest: mask[last] === 1 ? toDisplay(values[last], meta.dataType) : null,
+            latest: mask[last] === 1 ? toDisplay(values[last], key.dataType) : null,
             stats:
                 stats == null
                     ? null
                     : {
-                          min: toDisplay(stats.min, meta.dataType),
-                          max: toDisplay(stats.max, meta.dataType),
-                          avg: toDisplay(stats.avg, meta.dataType),
+                          min: toDisplay(stats.min, key.dataType),
+                          max: toDisplay(stats.max, key.dataType),
+                          avg: toDisplay(stats.avg, key.dataType),
                           count: stats.count,
                           jitter:
-                              stats.jitter == null ? null : toDisplay(stats.jitter, meta.dataType),
+                              stats.jitter == null ? null : toDisplay(stats.jitter, key.dataType),
                       },
         })
     }

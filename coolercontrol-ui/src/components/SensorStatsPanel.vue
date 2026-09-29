@@ -91,7 +91,7 @@ const windowLabel = computed((): string => windowLabelOf(props.payload, props.ra
 
 const lifetimeOf = (line: WindowLineStats): ChannelStats | null =>
     lifetimeToDisplay(
-        lifetimeStatsOf(lifetime.value, line.deviceUID, line.channelName, line.dataType),
+        lifetimeStatsOf(lifetime.value, line),
         line.dataType,
         settingsStore.frequencyPrecision,
     )

@@ -80,12 +80,45 @@ describe('foldStatusIntoStats and lifetimeStatsOf', () => {
             status([new TempStatus('temp1', 55)], [new ChannelStatus('fan1', 1100, 60)]),
         )
 
-        expect(lifetimeStatsOf(dto, 'dev1', 'temp1', DataType.TEMP)?.avg).toBe(50)
-        expect(lifetimeStatsOf(dto, 'dev1', 'fan1', DataType.RPM)?.max).toBe(1100)
-        expect(lifetimeStatsOf(dto, 'dev1', 'fan1', DataType.DUTY)?.min).toBe(40)
-        expect(lifetimeStatsOf(dto, 'dev1', 'CPU Load', DataType.LOAD)?.count).toBe(1)
-        expect(lifetimeStatsOf(dto, 'dev1', 'fan1', DataType.WATTS)).toBeUndefined()
-        expect(lifetimeStatsOf(dto, 'missing', 'temp1', DataType.TEMP)).toBeUndefined()
+        expect(
+            lifetimeStatsOf(dto, {
+                deviceUID: 'dev1',
+                channelName: 'temp1',
+                dataType: DataType.TEMP,
+            })?.avg,
+        ).toBe(50)
+        expect(
+            lifetimeStatsOf(dto, { deviceUID: 'dev1', channelName: 'fan1', dataType: DataType.RPM })
+                ?.max,
+        ).toBe(1100)
+        expect(
+            lifetimeStatsOf(dto, {
+                deviceUID: 'dev1',
+                channelName: 'fan1',
+                dataType: DataType.DUTY,
+            })?.min,
+        ).toBe(40)
+        expect(
+            lifetimeStatsOf(dto, {
+                deviceUID: 'dev1',
+                channelName: 'CPU Load',
+                dataType: DataType.LOAD,
+            })?.count,
+        ).toBe(1)
+        expect(
+            lifetimeStatsOf(dto, {
+                deviceUID: 'dev1',
+                channelName: 'fan1',
+                dataType: DataType.WATTS,
+            }),
+        ).toBeUndefined()
+        expect(
+            lifetimeStatsOf(dto, {
+                deviceUID: 'missing',
+                channelName: 'temp1',
+                dataType: DataType.TEMP,
+            }),
+        ).toBeUndefined()
     })
 })
 
