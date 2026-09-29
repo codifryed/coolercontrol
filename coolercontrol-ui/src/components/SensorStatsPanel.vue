@@ -12,7 +12,6 @@ import { useI18n } from 'vue-i18n'
 import { DataType, getLocalizedDataType } from '@/models/Dashboard.ts'
 import type { UID } from '@/models/Device.ts'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
-import type { ChannelStats } from '@/models/Stats.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useCalibrationStore } from '@/stores/CalibrationStore.ts'
@@ -20,8 +19,6 @@ import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
     formatSpan,
-    lifetimeStatsOf,
-    lifetimeToDisplay,
     type WindowLineStats,
     type WindowStatsPayload,
 } from '@/components/chartStats.ts'
@@ -58,7 +55,7 @@ const emit = defineEmits<{ (e: 'refreshAttributes'): void }>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
-const { stats: lifetime } = useLifetimeStats()
+const { displayOf } = useLifetimeStats()
 const { formatStat, formatJitter, unitSuffix, windowLabelOf } = useStatFormat()
 
 const lines = computed((): Array<WindowLineStats> => props.payload?.lines ?? [])
@@ -88,13 +85,6 @@ const positionClasses = computed((): string =>
         : 'bottom-12 right-[6rem]',
 )
 const windowLabel = computed((): string => windowLabelOf(props.payload, props.rangeMinutes))
-
-const lifetimeOf = (line: WindowLineStats): ChannelStats | null =>
-    lifetimeToDisplay(
-        lifetimeStatsOf(lifetime.value, line),
-        line.dataType,
-        settingsStore.frequencyPrecision,
-    )
 
 const statRows = [
     { key: 'min', label: 'components.chartStats.min' },
@@ -290,7 +280,7 @@ const movePanel = (): void => {
                         {{ formatStat(line.stats?.[row.key], line.dataType) }}
                     </td>
                     <td class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right">
-                        {{ formatStat(lifetimeOf(line)?.[row.key], line.dataType) }}
+                        {{ formatStat(displayOf(line)?.[row.key], line.dataType) }}
                     </td>
                 </tr>
                 <tr>

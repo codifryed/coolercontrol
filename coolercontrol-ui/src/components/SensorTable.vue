@@ -14,13 +14,7 @@ import { computed, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
 import type { ChannelStats } from '@/models/Stats'
-import {
-    formatStatValue,
-    lifetimeStatsOf,
-    lifetimeToDisplay,
-    statUnitSuffix,
-    toDisplayUnits,
-} from '@/components/chartStats.ts'
+import { formatStatValue, statUnitSuffix, toDisplayUnits } from '@/components/chartStats.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { useI18n } from 'vue-i18n'
@@ -28,7 +22,7 @@ import { useI18n } from 'vue-i18n'
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const { stats, reset } = useLifetimeStats()
+const { displayOf, reset } = useLifetimeStats()
 
 interface Props {
     dashboard: Dashboard
@@ -226,15 +220,11 @@ interface RowValues {
 const rowValues = computed<Array<RowValues>>(() =>
     deviceTableData.value.map((row) => ({
         current: currentValue(row),
-        stats: lifetimeToDisplay(
-            lifetimeStatsOf(stats.value, {
-                deviceUID: row.deviceUID,
-                channelName: row.channelID,
-                dataType: row.dataType,
-            }),
-            row.dataType,
-            settingsStore.frequencyPrecision,
-        ),
+        stats: displayOf({
+            deviceUID: row.deviceUID,
+            channelName: row.channelID,
+            dataType: row.dataType,
+        }),
     })),
 )
 

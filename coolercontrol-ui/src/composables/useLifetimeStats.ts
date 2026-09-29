@@ -3,11 +3,19 @@
 
 import { onBeforeUnmount, onMounted, shallowRef, triggerRef, type ShallowRef } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { defaultStatsResponse, type StatsResponseDTO } from '@/models/Stats.ts'
-import { foldStatusIntoStats } from '@/components/chartStats.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { defaultStatsResponse, type ChannelStats, type StatsResponseDTO } from '@/models/Stats.ts'
+import {
+    foldStatusIntoStats,
+    lifetimeStatsOf,
+    lifetimeToDisplay,
+    type LineKey,
+} from '@/components/chartStats.ts'
 
 export interface LifetimeStats {
     stats: ShallowRef<StatsResponseDTO>
+    // One line's stats in display units, or null when nothing has been observed.
+    displayOf: (line: LineKey) => ChannelStats | null
     refresh: () => Promise<void>
     reset: () => Promise<void>
 }
@@ -17,7 +25,15 @@ export interface LifetimeStats {
 // setup: the status subscription and the visibility listener end with the component.
 export function useLifetimeStats(): LifetimeStats {
     const deviceStore = useDeviceStore()
+    const settingsStore = useSettingsStore()
     const stats = shallowRef<StatsResponseDTO>(defaultStatsResponse())
+
+    const displayOf = (line: LineKey): ChannelStats | null =>
+        lifetimeToDisplay(
+            lifetimeStatsOf(stats.value, line),
+            line.dataType,
+            settingsStore.frequencyPrecision,
+        )
 
     const refresh = async (): Promise<void> => {
         stats.value = await deviceStore.daemonClient.getStats()
@@ -55,5 +71,5 @@ export function useLifetimeStats(): LifetimeStats {
         document.removeEventListener('visibilitychange', onVisibilityChange)
     })
 
-    return { stats, refresh, reset }
+    return { stats, displayOf, refresh, reset }
 }

@@ -13,8 +13,6 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
-    lifetimeStatsOf,
-    lifetimeToDisplay,
     lineDash,
     type WindowLineStats,
     type WindowStats,
@@ -36,7 +34,7 @@ const { t } = useI18n()
 const { formatStat, windowLabelOf } = useStatFormat()
 const windowLabel = computed((): string => windowLabelOf(props.payload, props.rangeMinutes))
 
-const { stats: lifetime } = useLifetimeStats()
+const { displayOf } = useLifetimeStats()
 const scope = computed<string>({
     get: () => settingsStore.statsLegendScope,
     set: (value) => (settingsStore.statsLegendScope = value as StatsLegendScope),
@@ -53,14 +51,7 @@ interface LegendRow {
 const rows = computed((): Array<LegendRow> =>
     (props.payload?.lines ?? []).map((line) => ({
         line,
-        stats:
-            settingsStore.statsLegendScope === 'since-start'
-                ? lifetimeToDisplay(
-                      lifetimeStatsOf(lifetime.value, line),
-                      line.dataType,
-                      settingsStore.frequencyPrecision,
-                  )
-                : line.stats,
+        stats: settingsStore.statsLegendScope === 'since-start' ? displayOf(line) : line.stats,
     })),
 )
 
