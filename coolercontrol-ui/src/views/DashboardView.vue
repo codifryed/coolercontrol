@@ -819,33 +819,34 @@ onUnmounted(() => {
                         />
                     </div>
                 </div>
-                <TimeChart
-                    v-if="dashboard.chartType == ChartType.TIME_CHART"
-                    ref="timeChartRef"
-                    :dashboard="viewDashboard"
-                    :key="chartKey"
-                    :emit-window-stats="showLegend || showPanel"
-                    :thresholds="limitLines"
-                    @line-set-changed="chartKey = uuidV4()"
-                    @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
-                />
-                <SensorStatsPanel
-                    v-if="showPanel"
-                    :payload="windowStats"
-                    :range-minutes="chartMinutes"
-                    :attributes="attributes"
-                    :limit-lines="limitLines"
-                    @refresh-attributes="loadAttributes"
-                />
-                <TimeChartStatsLegend
-                    v-if="showLegend"
-                    ref="legendRef"
-                    :payload="windowStats"
-                    :range-minutes="chartMinutes"
-                    @focus-line="
-                        (seriesIndex: number | null) => timeChartRef?.focusLine(seriesIndex)
-                    "
-                />
+                <template v-if="dashboard.chartType == ChartType.TIME_CHART">
+                    <TimeChart
+                        ref="timeChartRef"
+                        :dashboard="viewDashboard"
+                        :key="chartKey"
+                        :emit-window-stats="showLegend || showPanel"
+                        :thresholds="limitLines"
+                        @line-set-changed="chartKey = uuidV4()"
+                        @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
+                    />
+                    <SensorStatsPanel
+                        v-if="showPanel"
+                        :payload="windowStats"
+                        :range-minutes="chartMinutes"
+                        :attributes="attributes"
+                        :limit-lines="limitLines"
+                        @refresh-attributes="loadAttributes"
+                    />
+                    <TimeChartStatsLegend
+                        v-if="showLegend"
+                        ref="legendRef"
+                        :payload="windowStats"
+                        :range-minutes="chartMinutes"
+                        @focus-line="
+                            (seriesIndex: number | null) => timeChartRef?.focusLine(seriesIndex)
+                        "
+                    />
+                </template>
                 <SensorTable
                     v-else-if="dashboard.chartType == ChartType.TABLE"
                     ref="sensorTableRef"
