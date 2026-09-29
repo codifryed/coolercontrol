@@ -276,9 +276,9 @@ const movePanel = (): void => {
                     <th class="px-2 pb-0.5 pt-1.5 text-right font-medium">{{ windowLabel }}</th>
                     <th class="pl-2 pr-3 pb-0.5 pt-1.5 text-right font-medium">
                         <span class="inline-flex items-center gap-1">
-                            {{ t('components.statsPanel.sinceStart') }}
+                            {{ t('components.chartStats.sinceStart') }}
                             <HelpIcon
-                                :text="t('components.statsPanel.sinceStartHelp')"
+                                :text="t('components.chartStats.sinceStartHelp')"
                                 :size="0.9"
                             />
                         </span>

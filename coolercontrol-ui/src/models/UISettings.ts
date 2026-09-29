@@ -230,6 +230,8 @@ export const ONBOARDING_TOUR_VERSION = 3
 // where the table is out of the way depends on the shape of that profile's curve.
 export type TablePosition = 'top-left' | 'bottom-right'
 
+export type StatsLegendScope = 'window' | 'since-start'
+
 export class UISettingsDTO {
     devices?: Array<UID> = []
 
@@ -264,6 +266,8 @@ export class UISettingsDTO {
     // moving or hiding it never rebuilds the chart.
     sensorStatsPanelVisible: boolean = true
     sensorStatsPanelPosition: TablePosition = 'top-left'
+    // What the dashboard stats legend's min/max/avg cover. Global for the same reason.
+    statsLegendScope: StatsLegendScope = 'window'
     interfaceFont: InterfaceFont = InterfaceFont.BUNDLED
     // Undefined means the user has never chosen, and `system` means follow the
     // browser locale. Never a resolved code for a non-choice: that is what let

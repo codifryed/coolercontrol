@@ -8,14 +8,23 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UID } from '@/models/Device.ts'
 import { DataType } from '@/models/Dashboard.ts'
+import type { StatsLegendScope } from '@/models/UISettings.ts'
+import type { ChannelStats } from '@/models/Stats.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import {
     formatSpan,
     formatStatValue,
+    lifetimeStatsOf,
+    lifetimeToDisplay,
     lineDash,
     statUnitSuffix,
+    type WindowLineStats,
+    type WindowStats,
     type WindowStatsPayload,
 } from '@/components/chartStats.ts'
+import HelpIcon from '@/components/info/HelpIcon.vue'
+import UiToggleGroup, { type UiToggleOption } from '@/shell/ui/UiToggleGroup.vue'
 
 interface Props {
     payload: WindowStatsPayload | null
@@ -35,6 +44,39 @@ const windowLabel = computed((): string =>
         : t('components.chartStats.lastMinutes', { minutes: props.rangeMinutes }),
 )
 
+const { stats: lifetime } = useLifetimeStats()
+const scope = computed<string>({
+    get: () => settingsStore.statsLegendScope,
+    set: (value) => (settingsStore.statsLegendScope = value as StatsLegendScope),
+})
+const scopeOptions = computed((): Array<UiToggleOption> => [
+    { label: windowLabel.value, value: 'window' },
+    { label: t('components.chartStats.sinceStart'), value: 'since-start' },
+])
+
+interface LegendRow {
+    line: WindowLineStats
+    stats: WindowStats | ChannelStats | null
+}
+const rows = computed((): Array<LegendRow> =>
+    (props.payload?.lines ?? []).map((line) => ({
+        line,
+        stats:
+            settingsStore.statsLegendScope === 'since-start'
+                ? lifetimeToDisplay(
+                      lifetimeStatsOf(
+                          lifetime.value,
+                          line.deviceUID,
+                          line.channelName,
+                          line.dataType,
+                      ),
+                      line.dataType,
+                      settingsStore.frequencyPrecision,
+                  )
+                : line.stats,
+    })),
+)
+
 const deviceName = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.name ?? ''
 
@@ -47,13 +89,17 @@ const format = (value: number | null | undefined, dataType: DataType): string =>
 
 <template>
     <div id="time-chart-legend" class="border-t border-border-one">
-        <div class="flex flex-wrap items-baseline justify-between gap-x-3 px-4 pb-1 pt-2">
+        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-1 pt-2">
             <span class="font-semibold">{{ t('components.chartStats.title') }}</span>
-            <span
-                class="text-sm"
-                :class="payload?.zoomed ? 'text-accent' : 'text-text-color-secondary'"
-                >{{ windowLabel }}</span
-            >
+            <span class="inline-flex items-center gap-1.5">
+                <UiToggleGroup
+                    v-model="scope"
+                    size="sm"
+                    :aria-label="t('components.chartStats.scope')"
+                    :options="scopeOptions"
+                />
+                <HelpIcon :text="t('components.chartStats.sinceStartHelp')" :size="0.9" />
+            </span>
         </div>
         <div class="max-h-[35vh] overflow-auto px-2 pb-2">
             <table class="w-full min-w-[32rem] border-collapse text-sm tabular-nums">
@@ -70,7 +116,7 @@ const format = (value: number | null | undefined, dataType: DataType): string =>
                 </thead>
                 <tbody @mouseleave="emit('focusLine', null)">
                     <tr
-                        v-for="line in payload?.lines ?? []"
+                        v-for="{ line, stats } in rows"
                         :key="line.lineName"
                         class="hover:bg-surface-hover"
                         @mouseenter="emit('focusLine', line.seriesIndex)"
@@ -97,9 +143,9 @@ const format = (value: number | null | undefined, dataType: DataType): string =>
                         <td class="legend-cell font-semibold">
                             {{ format(line.latest, line.dataType) }}
                         </td>
-                        <td class="legend-cell">{{ format(line.stats?.min, line.dataType) }}</td>
-                        <td class="legend-cell">{{ format(line.stats?.max, line.dataType) }}</td>
-                        <td class="legend-cell">{{ format(line.stats?.avg, line.dataType) }}</td>
+                        <td class="legend-cell">{{ format(stats?.min, line.dataType) }}</td>
+                        <td class="legend-cell">{{ format(stats?.max, line.dataType) }}</td>
+                        <td class="legend-cell">{{ format(stats?.avg, line.dataType) }}</td>
                     </tr>
                 </tbody>
             </table>

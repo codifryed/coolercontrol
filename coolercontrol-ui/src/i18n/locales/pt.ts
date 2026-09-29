@@ -1081,6 +1081,10 @@ export default {
             avg: 'Méd',
             lastMinutes: 'Últimos {minutes}\u00a0min',
             visibleRange: 'Intervalo visível: {duration}',
+            sinceStart: 'Desde o início',
+            sinceStartHelp:
+                'Desde que o daemon iniciou, ou desde a última redefinição das estatísticas na visualização de tabela.',
+            scope: 'Período das estatísticas',
         },
         channelAttributes: {
             title: 'Atributos do driver',
@@ -1122,9 +1126,6 @@ export default {
             visible: 'Visível {duration}',
             moveCorner: 'Mover para o outro canto',
             hide: 'Ocultar',
-            sinceStart: 'Desde o início',
-            sinceStartHelp:
-                'Desde que o daemon iniciou, ou desde a última redefinição das estatísticas na visualização de tabela.',
             jitter: 'Oscilação',
             jitterHelp:
                 'Variação média entre uma leitura e a seguinte nesta janela. Em uma temperatura, defina o Limite (Histerese Avançada) do perfil acima deste valor para que as ventoinhas ignorem o ruído do sensor. Em ciclo ou RPM, um valor alto significa que a ventoinha muda de velocidade constantemente.',

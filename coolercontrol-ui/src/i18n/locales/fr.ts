@@ -1094,6 +1094,10 @@ export default {
             avg: 'Moy',
             lastMinutes: 'Dernières {minutes}\u00a0min',
             visibleRange: 'Plage visible : {duration}',
+            sinceStart: 'Depuis le démarrage',
+            sinceStartHelp:
+                'Depuis le démarrage du daemon, ou depuis la dernière réinitialisation des statistiques dans la vue Tableau.',
+            scope: 'Période des statistiques',
         },
         channelAttributes: {
             title: 'Attributs du pilote',
@@ -1135,9 +1139,6 @@ export default {
             visible: 'Visible {duration}',
             moveCorner: "Déplacer dans l'autre coin",
             hide: 'Masquer',
-            sinceStart: 'Depuis le démarrage',
-            sinceStartHelp:
-                'Depuis le démarrage du daemon, ou depuis la dernière réinitialisation des statistiques dans la vue Tableau.',
             jitter: 'Fluctuation',
             jitterHelp:
                 'Variation moyenne entre une mesure et la suivante sur cette fenêtre. Pour une température, réglez le Seuil (Hystérésis Avancée) du profil au-dessus de cette valeur pour que les ventilateurs ignorent le bruit du capteur. Pour le cycle ou les tr/min, une valeur élevée signifie que le ventilateur change sans cesse de vitesse.',

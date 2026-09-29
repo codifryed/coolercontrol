@@ -1062,6 +1062,10 @@ export default {
             avg: 'Avg',
             lastMinutes: 'Last {minutes}\u00a0min',
             visibleRange: 'Visible range: {duration}',
+            sinceStart: 'Since Start',
+            sinceStartHelp:
+                'Since the daemon started, or since the stats were last reset from the Table view.',
+            scope: 'Stats Period',
         },
         channelAttributes: {
             title: 'Driver Attributes',
@@ -1103,9 +1107,6 @@ export default {
             visible: 'Visible {duration}',
             moveCorner: 'Move to the Other Corner',
             hide: 'Hide',
-            sinceStart: 'Since Start',
-            sinceStartHelp:
-                'Since the daemon started, or since the stats were last reset from the Table view.',
             jitter: 'Jitter',
             jitterHelp:
                 "Average change between one reading and the next in this window. On a temperature, set the profile's hysteresis Threshold (Advanced Hysteresis) above this value so fans ignore sensor noise. On duty or speed, a high value means the fan keeps changing speed.",

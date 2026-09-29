@@ -18,6 +18,7 @@ import {
     ONBOARDING_TOUR_VERSION,
     SensorAndChannelSettings,
     StartupPage,
+    type StatsLegendScope,
     TagSettings,
     type TablePosition,
     ThemeMode,
@@ -284,6 +285,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     const sensorStatsPanelVisible: Ref<boolean> = ref(true)
     const sensorStatsPanelPosition: Ref<TablePosition> = ref('top-left')
+    const statsLegendScope: Ref<StatsLegendScope> = ref('window')
     const interfaceFont: Ref<InterfaceFont> = ref(InterfaceFont.BUNDLED)
     // The chosen language, not the resolved one: `system` follows the browser.
     const language: Ref<string> = ref(SYSTEM_LANGUAGE)
@@ -432,6 +434,7 @@ export const useSettingsStore = defineStore('settings', () => {
         pointsOverlayTablePositions.value = uiSettings.pointsOverlayTablePositions ?? []
         sensorStatsPanelVisible.value = uiSettings.sensorStatsPanelVisible ?? true
         sensorStatsPanelPosition.value = uiSettings.sensorStatsPanelPosition ?? 'top-left'
+        statsLegendScope.value = uiSettings.statsLegendScope ?? 'window'
         interfaceFont.value = uiSettings.interfaceFont ?? InterfaceFont.BUNDLED
         applyInterfaceFont()
         persistedLanguage = uiSettings.language
@@ -1367,6 +1370,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 pointsOverlayTablePositions,
                 sensorStatsPanelVisible,
                 sensorStatsPanelPosition,
+                statsLegendScope,
                 interfaceFont,
                 language,
                 onboardingSeenVersion,
@@ -1430,6 +1434,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.pointsOverlayTablePositions = pointsOverlayTablePositions.value
                     uiSettings.sensorStatsPanelVisible = sensorStatsPanelVisible.value
                     uiSettings.sensorStatsPanelPosition = sensorStatsPanelPosition.value
+                    uiSettings.statsLegendScope = statsLegendScope.value
                     uiSettings.interfaceFont = interfaceFont.value
                     uiSettings.language = language.value
                     uiSettings.showOnboarding = onboardingSeenVersion.value
@@ -1864,6 +1869,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setPointsTablePosition,
         sensorStatsPanelVisible,
         sensorStatsPanelPosition,
+        statsLegendScope,
         interfaceFont,
         language,
         showOnboarding,

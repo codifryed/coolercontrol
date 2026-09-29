@@ -1053,6 +1053,10 @@ export default {
             avg: '평균',
             lastMinutes: '최근 {minutes}분',
             visibleRange: '표시 범위: {duration}',
+            sinceStart: '시작 이후',
+            sinceStartHelp:
+                '데몬이 시작된 이후, 또는 표 보기에서 통계를 마지막으로 초기화한 이후입니다.',
+            scope: '통계 기간',
         },
         channelAttributes: {
             title: '드라이버 속성',
@@ -1094,9 +1098,6 @@ export default {
             visible: '표시 {duration}',
             moveCorner: '반대쪽 모서리로 이동',
             hide: '숨기기',
-            sinceStart: '시작 이후',
-            sinceStartHelp:
-                '데몬이 시작된 이후, 또는 표 보기에서 통계를 마지막으로 초기화한 이후입니다.',
             jitter: '변동',
             jitterHelp:
                 '이 구간에서 연속된 측정값 사이의 평균 변화량입니다. 온도의 경우 팬이 센서 노이즈에 반응하지 않도록 프로필의 임계값(고급 이력 현상)을 이 값보다 크게 설정하세요. 점유나 RPM에서 값이 크면 팬이 계속 속도를 바꾸고 있다는 뜻입니다.',
