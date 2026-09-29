@@ -284,7 +284,7 @@ pub struct CoolerControlSettings {
     pub tls_key_path: Option<String>,
     /// Custom origins to allow in CORS (for reverse proxy setups)
     pub origins: Vec<String>,
-    /// Custom parent sources that may embed the CoolerControl UI
+    /// Custom parent sources that may embed the `CoolerControl` UI
     pub frame_ancestors: Vec<String>,
     /// Allow unencrypted HTTP connections from non-localhost addresses
     pub allow_unencrypted: bool,

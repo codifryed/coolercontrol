@@ -407,11 +407,11 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
 }
 
 fn hostname_is_valid(hostname: &str) -> bool {
-    if hostname.len() < 1 || hostname.len() > 253 {
+    if hostname.is_empty() || hostname.len() > 253 {
         return false;
     }
     hostname.split('.').all(|label| {
-        if label.len() < 1 || label.len() > 63 {
+        if label.is_empty() || label.len() > 63 {
             return false;
         }
         if label.starts_with('-') {
@@ -435,16 +435,13 @@ struct CspFrameAncestorParts<'a> {
 }
 
 fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>> {
-    let Some((scheme, after_scheme)) = ancestor.split_once("://") else {
-        return None;
-    };
+    let (scheme, after_scheme) = ancestor.split_once("://")?;
     let (origin, path) = after_scheme
         .split_once('/')
-        .map(|(origin, path)| (origin, Some(path)))
-        .unwrap_or((after_scheme, None));
-    let Some((host, port)) = (if origin.starts_with('[') {
+        .map_or((after_scheme, None), |(origin, path)| (origin, Some(path)));
+    let (host, port) = (if origin.starts_with('[') {
         origin.find(']').and_then(|host_end_index| {
-            let host = &origin[0..host_end_index + 1];
+            let host = &origin[0..=host_end_index];
             let after_host = &origin[host_end_index + 1..];
             match after_host {
                 s if s.starts_with(':') => Some((host, after_host.strip_prefix(':'))),
@@ -456,14 +453,14 @@ fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>>
         Some(
             origin
                 .split_once(':')
-                .map(|(host, port)| (host, Some(port)))
-                .unwrap_or((origin, None)),
+                .map_or((origin, None), |(host, port)| (host, Some(port))),
         )
-    }) else {
-        return None;
-    };
+    })?;
     Some(CspFrameAncestorParts {
-        scheme, host, port, path,
+        scheme,
+        host,
+        port,
+        path,
     })
 }
 
@@ -474,15 +471,19 @@ fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
     // validate scheme
     if ["http", "https"].contains(&parsed.scheme).not() {
         return false;
-    };
+    }
     // validate host
-    let host_valid = parsed.host
-        .strip_prefix('[').and_then(|h| h.strip_suffix(']'))
-        .map(|ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok())
-        .unwrap_or_else(|| parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host));
+    let host_valid = parsed
+        .host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .map_or_else(
+            || parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host),
+            |ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok(),
+        );
     if host_valid.not() {
         return false;
-    };
+    }
     // validate port
     if let Some(port) = parsed.port {
         if port.parse::<u16>().is_err() {
@@ -492,7 +493,7 @@ fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
     // validate path
     if let Some(path) = parsed.path {
         // only allow no path or bare /
-        if path.len() > 0 {
+        if path.is_empty().not() {
             return false;
         }
     }
@@ -516,9 +517,9 @@ async fn csp_frame_ancestors_middleware(
     req: Request,
     next: middleware::Next,
 ) -> Response {
+    const CSP_KEY: HeaderName = HeaderName::from_static("content-security-policy");
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
-    const CSP_KEY: HeaderName = HeaderName::from_static("content-security-policy");
 
     let Some(csp) = headers.get(CSP_KEY) else {
         return response;
@@ -1844,7 +1845,14 @@ mod tests {
         }
 
         let invalid_paths = [
-            "/test", "/a/b/123/test_path/~/./", "/ABC", "//", "/test//", "/test//sdf", "/@#$%^", "/with space"
+            "/test",
+            "/a/b/123/test_path/~/./",
+            "/ABC",
+            "//",
+            "/test//",
+            "/test//sdf",
+            "/@#$%^",
+            "/with space",
         ];
         for path in invalid_paths {
             assert!(
