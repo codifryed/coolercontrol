@@ -140,8 +140,6 @@ pub struct CoolerControlSettingsDto {
     drivetemp_suspend: Option<bool>,
     /// Custom origins to allow in CORS (for reverse proxy setups)
     origins: Option<Vec<String>>,
-    /// Custom parent sources that may embed the CoolerControl UI
-    frame_ancestors: Option<Vec<String>>,
     /// Allow unencrypted HTTP connections from non-localhost addresses
     allow_unencrypted: Option<bool>,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
@@ -209,11 +207,6 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.origins
         };
-        let frame_ancestors = if let Some(ref frame_ancestors) = self.frame_ancestors {
-            frame_ancestors.clone()
-        } else {
-            current_settings.frame_ancestors
-        };
         let allow_unencrypted = if let Some(allow) = self.allow_unencrypted {
             allow
         } else {
@@ -255,7 +248,7 @@ impl CoolerControlSettingsDto {
             tls_cert_path: current_settings.tls_cert_path,
             tls_key_path: current_settings.tls_key_path,
             origins,
-            frame_ancestors,
+            frame_ancestors: current_settings.frame_ancestors,
             allow_unencrypted,
             protocol_header,
             sensors_auto_detect,
@@ -280,7 +273,6 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             poll_rate: Some(settings.poll_rate),
             drivetemp_suspend: Some(settings.drivetemp_suspend),
             origins: Some(settings.origins),
-            frame_ancestors: Some(settings.frame_ancestors),
             allow_unencrypted: Some(settings.allow_unencrypted),
             protocol_header: settings.protocol_header,
             sensors_auto_detect: Some(settings.sensors_auto_detect),
@@ -341,7 +333,6 @@ mod tests {
                 poll_rate: None,
                 drivetemp_suspend: None,
                 origins: None,
-                frame_ancestors: None,
                 allow_unencrypted: None,
                 protocol_header: None,
                 sensors_auto_detect: None,
