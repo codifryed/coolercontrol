@@ -1090,7 +1090,7 @@ export default {
             max: 'Max',
             avg: 'Mittel',
             lastMinutes: 'Letzte {minutes}\u00a0Min.',
-            visibleRange: 'Sichtbarer Bereich: {duration}',
+            visibleRange: 'Sichtbar {duration}',
             sinceStart: 'Seit Start',
             sinceStartHelp:
                 'Seit dem Start des Daemons oder seit dem letzten Zurücksetzen der Statistik in der Tabellenansicht.',

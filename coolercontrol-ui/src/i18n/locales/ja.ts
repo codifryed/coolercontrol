@@ -1068,7 +1068,7 @@ export default {
             max: '最大',
             avg: '平均',
             lastMinutes: '直近 {minutes} 分',
-            visibleRange: '表示範囲: {duration}',
+            visibleRange: '表示中 {duration}',
             sinceStart: '起動以降',
             sinceStartHelp:
                 'デーモンの起動以降、またはテーブル表示で統計を最後にリセットして以降。',

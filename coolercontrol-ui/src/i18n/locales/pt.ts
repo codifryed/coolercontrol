@@ -1080,7 +1080,7 @@ export default {
             max: 'Máx',
             avg: 'Méd',
             lastMinutes: 'Últimos {minutes}\u00a0min',
-            visibleRange: 'Intervalo visível: {duration}',
+            visibleRange: 'Visível {duration}',
             sinceStart: 'Desde o início',
             sinceStartHelp:
                 'Desde que o daemon iniciou, ou desde a última redefinição das estatísticas na visualização de tabela.',

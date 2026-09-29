@@ -1052,7 +1052,7 @@ export default {
             max: '최대',
             avg: '평균',
             lastMinutes: '최근 {minutes}분',
-            visibleRange: '표시 범위: {duration}',
+            visibleRange: '표시 {duration}',
             sinceStart: '시작 이후',
             sinceStartHelp:
                 '데몬이 시작된 이후, 또는 표 보기에서 통계를 마지막으로 초기화한 이후입니다.',

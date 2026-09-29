@@ -1051,7 +1051,7 @@ export default {
             max: 'الأقصى',
             avg: 'المتوسط',
             lastMinutes: 'آخر {minutes}\u00a0دقيقة',
-            visibleRange: 'النطاق المرئي: {duration}',
+            visibleRange: 'المرئي {duration}',
             sinceStart: 'منذ البدء',
             sinceStartHelp: 'منذ بدء الخدمة، أو منذ آخر إعادة تعيين للإحصاءات من عرض الجدول.',
             scope: 'فترة الإحصاءات',

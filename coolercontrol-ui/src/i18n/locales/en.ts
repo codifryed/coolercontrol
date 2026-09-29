@@ -1061,7 +1061,7 @@ export default {
             max: 'Max',
             avg: 'Avg',
             lastMinutes: 'Last {minutes}\u00a0min',
-            visibleRange: 'Visible range: {duration}',
+            visibleRange: 'Visible {duration}',
             sinceStart: 'Since Start',
             sinceStartHelp:
                 'Since the daemon started, or since the stats were last reset from the Table view.',

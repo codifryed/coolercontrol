@@ -1015,7 +1015,7 @@ export default {
             max: '最大',
             avg: '平均',
             lastMinutes: '最近 {minutes} 分钟',
-            visibleRange: '可见范围：{duration}',
+            visibleRange: '可见 {duration}',
             sinceStart: '自启动',
             sinceStartHelp: '自守护进程启动以来，或自上次在表格视图中重置统计以来。',
             scope: '统计时段',

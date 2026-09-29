@@ -1016,7 +1016,7 @@ export default {
             max: '最大',
             avg: '平均',
             lastMinutes: '最近 {minutes} 分鐘',
-            visibleRange: '可見範圍：{duration}',
+            visibleRange: '可見 {duration}',
             sinceStart: '自啟動',
             sinceStartHelp: '自服務程式啟動以來，或自上次在表格檢視中重設統計以來。',
             scope: '統計時段',

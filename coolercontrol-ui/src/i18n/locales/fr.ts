@@ -1093,7 +1093,7 @@ export default {
             max: 'Max',
             avg: 'Moy',
             lastMinutes: 'Dernières {minutes}\u00a0min',
-            visibleRange: 'Plage visible : {duration}',
+            visibleRange: 'Visible {duration}',
             sinceStart: 'Depuis le démarrage',
             sinceStartHelp:
                 'Depuis le démarrage du daemon, ou depuis la dernière réinitialisation des statistiques dans la vue Tableau.',

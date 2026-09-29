@@ -1061,7 +1061,7 @@ export default {
             max: 'अधिकतम',
             avg: 'औसत',
             lastMinutes: 'पिछले {minutes}\u00a0मिनट',
-            visibleRange: 'दृश्य सीमा: {duration}',
+            visibleRange: 'दृश्य {duration}',
             sinceStart: 'शुरुआत से',
             sinceStartHelp:
                 'डेमन शुरू होने के बाद से, या तालिका दृश्य से आँकड़े पिछली बार रीसेट होने के बाद से।',

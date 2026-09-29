@@ -1079,7 +1079,7 @@ export default {
             max: 'Макс',
             avg: 'Сред',
             lastMinutes: 'Последние {minutes}\u00a0мин',
-            visibleRange: 'Видимый диапазон: {duration}',
+            visibleRange: 'Видимо {duration}',
             sinceStart: 'С запуска',
             sinceStartHelp:
                 'С момента запуска демона или с последнего сброса статистики в представлении «Таблица».',
