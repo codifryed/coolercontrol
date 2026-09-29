@@ -513,7 +513,7 @@ export const mouseWheelZoomPlugin = () => {
     }
 }
 
-export interface LimitLine {
+export interface DrawnLimitLine {
     value: number
     scale: string
     color: string
@@ -530,12 +530,12 @@ interface LabelBox {
 // Dashed horizontal lines for driver-reported limits, labelled at the right edge. A line off
 // its scale's current range is not drawn. A label that would overlap another shifts left.
 export const limitLinesPlugin = (
-    getLines: () => Array<LimitLine>,
+    getLines: () => Array<DrawnLimitLine>,
     getLabelBackground: () => string,
 ) => {
     const drawLabels = (
         u: uPlot,
-        visible: Array<{ line: LimitLine; y: number }>,
+        visible: Array<{ line: DrawnLimitLine; y: number }>,
         pxRatio: number,
     ): void => {
         const ctx = u.ctx
@@ -588,7 +588,7 @@ export const limitLinesPlugin = (
                     ctx.beginPath()
                     ctx.rect(left, top, width, height)
                     ctx.clip()
-                    const visible: Array<{ line: LimitLine; y: number }> = []
+                    const visible: Array<{ line: DrawnLimitLine; y: number }> = []
                     for (const line of [...lines].sort((a, b) => b.value - a.value)) {
                         const scale = u.scales[line.scale]
                         if (scale?.min == null || scale.max == null) continue

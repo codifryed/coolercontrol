@@ -7,7 +7,7 @@ import {
     formatAttributeNumber,
     formatAttributeValue,
     limitColor,
-    thresholdLinesFrom,
+    limitLinesFrom,
 } from '@/components/channelAttributes.ts'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
 import en from '@/i18n/locales/en.ts'
@@ -32,20 +32,20 @@ const amdgpuFan: Array<ChannelAttribute> = [
     { name: 'fan1_target', kind: 'FAN_TARGET', value: 939 },
 ]
 
-describe('thresholdLinesFrom', () => {
+describe('limitLinesFrom', () => {
     it('draws upper temperature limits on the percent scale, never the lower ones', () => {
-        const lines = thresholdLinesFrom(nvme, 1, t)
+        const lines = limitLinesFrom(nvme, 1, t)
         expect(lines.map((line) => line.name)).toEqual(['temp1_max', 'temp1_crit'])
         expect(lines[0]).toMatchObject({ scale: '%', severity: 'warning', value: 89.85 })
         expect(lines[1]).toMatchObject({ severity: 'critical', label: 'temp1_crit 94.85 °C' })
     })
 
     it('draws fan limits on the rpm scale in chart units and skips a zero limit', () => {
-        const nct = thresholdLinesFrom(nct6687Fan, 1000, t)
+        const nct = limitLinesFrom(nct6687Fan, 1000, t)
         expect(nct.map((line) => line.value)).toEqual([0.402, 1.505])
         expect(nct[0]).toMatchObject({ scale: 'rpm', severity: 'fan' })
         // fan1_min=0 sits on the axis; the target is only listed, not drawn.
-        expect(thresholdLinesFrom(amdgpuFan, 1, t).map((line) => line.name)).toEqual(['fan1_max'])
+        expect(limitLinesFrom(amdgpuFan, 1, t).map((line) => line.name)).toEqual(['fan1_max'])
     })
 })
 

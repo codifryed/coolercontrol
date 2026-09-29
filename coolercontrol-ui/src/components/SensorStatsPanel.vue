@@ -26,7 +26,7 @@ import {
     attributeLabel,
     formatAttributeValue,
     limitColor,
-    type ThresholdLine,
+    type LimitLine,
 } from '@/components/channelAttributes.ts'
 import {
     channelDetail,
@@ -47,7 +47,7 @@ interface Props {
     rangeMinutes: number
     attributes: Array<ChannelAttribute>
     // The limits drawn on the chart, matched to their rows by sysfs name.
-    limitLines: Array<ThresholdLine>
+    limitLines: Array<LimitLine>
 }
 
 const props = defineProps<Props>()

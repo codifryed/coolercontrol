@@ -18,10 +18,10 @@ import {
     SCALE_KEY_RPM,
     SCALE_KEY_WATTS,
     limitLinesPlugin,
-    type LimitLine,
+    type DrawnLimitLine,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
-import { limitColor, type ThresholdLine } from '@/components/channelAttributes.ts'
+import { limitColor, type LimitLine } from '@/components/channelAttributes.ts'
 import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
 import {
     chartValueToDisplay,
@@ -53,7 +53,7 @@ interface Props {
     // shows them, so embedded charts do no extra work.
     emitWindowStats?: boolean
     // Driver limits to draw as dashed lines; they arrive after mount and redraw in place.
-    thresholds?: Array<ThresholdLine>
+    limitLines?: Array<LimitLine>
 }
 
 const props = defineProps<Props>()
@@ -442,25 +442,25 @@ const currentScaleRanges = (): Record<string, [number, number]> => {
     return ranges
 }
 
-const currentLimitLines = (): Array<LimitLine> =>
-    (props.thresholds ?? []).map((threshold) => ({
-        value: threshold.value,
-        scale: threshold.scale,
-        color: limitColor(threshold.severity, colors.themeColors),
-        label: threshold.label,
+const currentLimitLines = (): Array<DrawnLimitLine> =>
+    (props.limitLines ?? []).map((line) => ({
+        value: line.value,
+        scale: line.scale,
+        color: limitColor(line.severity, colors.themeColors),
+        label: line.label,
     }))
 
 // Auto-scaled rpm stretches to show the fan limits; a user-set range is left alone.
 const highestRpmLimit = (): number => {
     let highest = 0
-    for (const threshold of props.thresholds ?? []) {
-        if (threshold.scale === SCALE_KEY_RPM) highest = Math.max(highest, threshold.value)
+    for (const line of props.limitLines ?? []) {
+        if (line.scale === SCALE_KEY_RPM) highest = Math.max(highest, line.value)
     }
     return highest
 }
 
 watch(
-    () => props.thresholds,
+    () => props.limitLines,
     () => chart?.redraw(false, true),
 )
 

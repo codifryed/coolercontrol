@@ -40,7 +40,7 @@ import TimeChart from '@/components/TimeChart.vue'
 import TimeChartStatsLegend from '@/components/TimeChartStatsLegend.vue'
 import SensorStatsPanel from '@/components/SensorStatsPanel.vue'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
-import { thresholdLinesFrom, type ThresholdLine } from '@/components/channelAttributes.ts'
+import { limitLinesFrom, type LimitLine } from '@/components/channelAttributes.ts'
 import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
@@ -491,10 +491,10 @@ const loadAttributes = async (): Promise<void> => {
     )
 }
 loadAttributes()
-const drawableLimits = computed((): Array<ThresholdLine> =>
-    thresholdLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
+const drawableLimits = computed((): Array<LimitLine> =>
+    limitLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
 )
-const limitLines = computed((): Array<ThresholdLine> =>
+const limitLines = computed((): Array<LimitLine> =>
     sensorMode && dashboard.showLimitLines ? drawableLimits.value : [],
 )
 
@@ -825,7 +825,7 @@ onUnmounted(() => {
                         :dashboard="viewDashboard"
                         :key="chartKey"
                         :emit-window-stats="showLegend || showPanel"
-                        :thresholds="limitLines"
+                        :limit-lines="limitLines"
                         @line-set-changed="chartKey = uuidV4()"
                         @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
                     />

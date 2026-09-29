@@ -50,7 +50,7 @@ const LIMIT_SEVERITY: Partial<Record<ChannelAttributeKind, LimitSeverity>> = {
     FAN_MAX: 'fan',
 }
 
-export interface ThresholdLine {
+export interface LimitLine {
     // The attribute's sysfs name, which ties the line to its row in the stats panel.
     name: string
     // In chart units: rpm is divided by the precision setting like the chart's rpm lines.
@@ -106,12 +106,12 @@ export function formatAttributeValue(attribute: ChannelAttribute, t: Translate):
 
 // The attributes worth drawing on the chart. A fan limit of 0 is left off: it sits on the axis,
 // and on some chips it only means the fan never reported a speed.
-export function thresholdLinesFrom(
+export function limitLinesFrom(
     attributes: Array<ChannelAttribute>,
     precision: number,
     t: Translate,
-): Array<ThresholdLine> {
-    const lines: Array<ThresholdLine> = []
+): Array<LimitLine> {
+    const lines: Array<LimitLine> = []
     for (const attribute of attributes) {
         const severity = LIMIT_SEVERITY[attribute.kind]
         if (severity == null) continue
