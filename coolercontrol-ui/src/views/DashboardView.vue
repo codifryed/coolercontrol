@@ -14,6 +14,7 @@ import {
     DataType,
     getLocalizedChartType,
     getLocalizedDataType,
+    knownChartType,
 } from '@/models/Dashboard.ts'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -155,10 +156,8 @@ const dashboard: Dashboard = sensorMode
       ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ?? homeDashboard)
       : homeDashboard
 
-// Migrate removed Controls chart type to Time Chart
-if ((dashboard.chartType as string) === 'Controls') {
-    dashboard.chartType = ChartType.TIME_CHART
-}
+// Migrates removed chart types, such as Controls, to Time Chart.
+dashboard.chartType = knownChartType(dashboard.chartType)
 // A saved types filter on a channel dashboard would annoyingly hide some
 // metrics like i.e. RPMs.
 if (sensorMode && dashboard.dataTypes.length > 0) {
