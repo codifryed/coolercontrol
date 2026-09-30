@@ -2657,14 +2657,14 @@ impl Repository for HwmonRepo {
         let semaphore = self.device_permits.get(&type_index).expect(
             "invariant: device_permits entry exists for every registered device type_index",
         );
-        let device = format!("HWMon device: {} channel: {channel_name}", driver.name);
+        let device_label = format!("HWMon device: {} channel: {channel_name}", driver.name);
         // One hold for the whole pass: at most one read per attribute file this channel has.
         let _permit = tokio::select! {
             () = self.shutdown_token.cancelled() => return Ok(Vec::new()),
             permit = attributes::acquire_permit(
                 semaphore,
                 self.device_read_permit_timeout,
-                &device,
+                &device_label,
             ) => permit?,
         };
         let attributes = attributes::read_channel_attributes(driver, channel).await;

@@ -20,18 +20,19 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 const ATTRIBUTE_PERMIT_TIMEOUT_MAX: Duration = Duration::from_secs(2);
 
 /// Waits for the device permit, no longer than the device's read timeout or
-/// `ATTRIBUTE_PERMIT_TIMEOUT_MAX`. `device` names the device and channel in the timeout error.
+/// `ATTRIBUTE_PERMIT_TIMEOUT_MAX`. `device_label` names the device and channel in the timeout
+/// error.
 pub async fn acquire_permit<'a>(
     semaphore: &'a Semaphore,
     read_permit_timeout: Duration,
-    device: &str,
+    device_label: &str,
 ) -> Result<SemaphorePermit<'a>> {
     let permit_timeout = read_permit_timeout.min(ATTRIBUTE_PERMIT_TIMEOUT_MAX);
     debug_assert!(permit_timeout > Duration::ZERO);
     debug_assert!(permit_timeout <= ATTRIBUTE_PERMIT_TIMEOUT_MAX);
     tokio::select! {
         () = rt::sleep(permit_timeout) => {
-            Err(anyhow!("TIMEOUT {device}; waiting to read attributes"))
+            Err(anyhow!("TIMEOUT {device_label}; waiting to read attributes"))
         }
         permit = semaphore.acquire() => permit.map_err(|err| anyhow!(err)),
     }

@@ -624,9 +624,10 @@ impl Repository for GpuRepo {
             .device_permits
             .get(device_uid)
             .ok_or_else(|| anyhow!("No device permit found for AMD GPU: {device_uid}"))?;
-        let device = format!("AMD GPU device: {device_uid} channel: {channel_name}");
+        let device_label = format!("AMD GPU device: {device_uid} channel: {channel_name}");
         let _permit =
-            attributes::acquire_permit(semaphore, self.device_read_permit_timeout, &device).await?;
+            attributes::acquire_permit(semaphore, self.device_read_permit_timeout, &device_label)
+                .await?;
         let attributes = attributes::read_channel_attributes(driver, channel).await;
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         Ok(attributes)
