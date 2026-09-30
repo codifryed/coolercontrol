@@ -1352,22 +1352,7 @@ impl Config {
             } else {
                 None
             };
-            let trusted_proxies = if let Some(value) = settings.get("trusted_proxies") {
-                let entries = value
-                    .as_array()
-                    .with_context(|| "trusted_proxies should be an array")?
-                    .iter()
-                    .filter_map(|entry| {
-                        let text = entry.as_str();
-                        if text.is_none() {
-                            error!("Ignoring a trusted_proxies entry, not a string: {entry}");
-                        }
-                        text
-                    });
-                peer::trimmed_entries(entries)
-            } else {
-                Vec::new()
-            };
+            let trusted_proxies = read_trusted_proxies(settings)?;
             let sensors_auto_detect = settings
                 .get("sensors_auto_detect")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
@@ -1534,18 +1519,7 @@ impl Config {
             base_settings["protocol_header"] =
                 Item::Value(Value::String(Formatted::new(header.clone())));
         }
-        if cc_settings.trusted_proxies.is_empty() {
-            if let Some(table) = base_settings.as_table_mut() {
-                table.remove("trusted_proxies");
-            }
-        } else {
-            let proxies: toml_edit::Array = cc_settings
-                .trusted_proxies
-                .iter()
-                .map(|s| Value::String(Formatted::new(s.clone())))
-                .collect();
-            base_settings["trusted_proxies"] = Item::Value(Value::Array(proxies));
-        }
+        write_trusted_proxies(base_settings, &cc_settings.trusted_proxies);
         base_settings["sensors_auto_detect"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_auto_detect,
         )));
@@ -2936,6 +2910,41 @@ impl Config {
             sources_array.push(source_table);
         }
     }
+}
+
+/// Reads `trusted_proxies`, skipping non-string entries. An absent key means none.
+fn read_trusted_proxies(settings: &Table) -> Result<Vec<String>> {
+    let Some(value) = settings.get("trusted_proxies") else {
+        return Ok(Vec::new());
+    };
+    let entries = value
+        .as_array()
+        .with_context(|| "trusted_proxies should be an array")?
+        .iter()
+        .filter_map(|entry| {
+            let text = entry.as_str();
+            if text.is_none() {
+                error!("Ignoring a trusted_proxies entry, not a string: {entry}");
+            }
+            text
+        });
+    Ok(peer::trimmed_entries(entries))
+}
+
+/// Writes `trusted_proxies`, removing the key when there are none so no stale list remains.
+fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
+    if trusted_proxies.is_empty() {
+        if let Some(table) = base_settings.as_table_mut() {
+            table.remove("trusted_proxies");
+        }
+        return;
+    }
+    let proxies: toml_edit::Array = trusted_proxies
+        .iter()
+        .map(|s| Value::String(Formatted::new(s.clone())))
+        .collect();
+    debug_assert_eq!(proxies.len(), trusted_proxies.len());
+    base_settings["trusted_proxies"] = Item::Value(Value::Array(proxies));
 }
 
 #[cfg(test)]
