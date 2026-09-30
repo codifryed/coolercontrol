@@ -24,7 +24,7 @@ const _: () = assert!(COMFORTABLE_OPEN_FILES < SUFFICIENT_OPEN_FILES);
 /// Children inherit it, which only matters to one using `select()` past 1024 files.
 pub fn raise_limit() {
     let Ok((soft, hard)) = getrlimit(Resource::RLIMIT_NOFILE) else {
-        warn!("Could not read the open file limit; leaving it unchanged.");
+        debug!("Could not read the open file limit; leaving it unchanged.");
         return;
     };
     let effective = raise_soft_limit(widen(soft), widen(hard), apply_soft_limit);
