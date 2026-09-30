@@ -2252,6 +2252,52 @@ mod tests {
         });
     }
 
+    #[test]
+    #[serial]
+    fn read_one_fan_rpm_only_passes_labelled_non_rpm_values() {
+        // Goal: the slow-device rpm-only read keeps a labelled pressure intact.
+        // Method: read a Leakshield-sized pressure through `read_one_fan_rpm_only`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given:
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::NON_RPM_UNIT;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(rpm, Some(Some(438_300)));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_rpm_only_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the slow-device rpm-only read keeps the rpm guard.
+        // Method: read the spin-up value u16::MAX through `read_one_fan_rpm_only`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds the spin-up value.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(rpm, Some(Some(0)));
+        });
+    }
+
     /// Goal: an Apple SMC fan is driven through `fanN_output` and never has a
     /// `pwmN`, so the pwm-shaped evidence must not condemn it. Method: build
     /// the capability set `AppleMacSMC::detect_apple_smc_fans` produces and
