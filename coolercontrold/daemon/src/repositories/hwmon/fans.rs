@@ -291,7 +291,9 @@ pub async fn read_fan_statuses(
     for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(positions) {
         let fan_rpm = match rpm_slot {
             Some(index) => {
-                let raw = take_result(&mut results, index).and_then(check_parsing_32);
+                let raw = take_result(&mut results, index)
+                    .and_then(check_parsing_32)
+                    .map(guard_fan_rpm);
                 interpret_fan_rpm(&rpm_path_for(driver, channel), raw, log_error)
             }
             None => None,
@@ -559,8 +561,7 @@ async fn try_read_fan_rpm(
     io.read_one(slot, fan_input_path)
         .await
         .and_then(check_parsing_32)
-        // Edge case where on spin-up the output is max value until it begins moving
-        .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
+        .map(guard_fan_rpm)
 }
 
 /// Whether a failed pwmX read looks like a driver refusing the read in auto mode rather than a
@@ -717,6 +718,16 @@ pub fn check_parsing_8(value: cc_fs::SysfsValue) -> Result<u8> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn check_parsing_32(value: cc_fs::SysfsValue) -> Result<u32> {
     value.parse()
+}
+
+/// A fan input at or above `u16::MAX` is not a speed. 16-bit drivers report `u16::MAX` while a
+/// fan spins up, and period-counting drivers overflow far past it on a near-zero count.
+fn guard_fan_rpm(rpm: u32) -> u32 {
+    if rpm < u32::from(u16::MAX) {
+        rpm
+    } else {
+        0
+    }
 }
 
 /// If a `HWMon` driver has not set the writable bit on the sysfs file, then that
@@ -2013,6 +2024,67 @@ mod tests {
             teardown(&ctx).await;
             assert!(any_failure.not());
             assert!(statuses.is_empty());
+        });
+    }
+
+    // --- rpm guard ---
+
+    #[test]
+    fn guard_fan_rpm_zeroes_values_at_or_above_u16_max() {
+        // Goal: the guard passes real speeds and zeroes the spin-up value and overflow garbage.
+        // Method: check both sides of the u16::MAX boundary and a count-based overflow value.
+        assert_eq!(guard_fan_rpm(0), 0);
+        assert_eq!(guard_fan_rpm(1200), 1200);
+        assert_eq!(guard_fan_rpm(65_534), 65_534);
+        assert_eq!(guard_fan_rpm(65_535), 0);
+        assert_eq!(guard_fan_rpm(1_350_000), 0);
+    }
+
+    #[test]
+    #[serial]
+    fn extract_fan_statuses_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the per-tick batched read applies the same rpm guard as the single-channel read.
+        // Method: a fan input holding a count-based overflow value must come back as 0 rpm.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds 1350000, a value no fan can spin at.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"1350000".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].rpm, Some(0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_status_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the single-channel read keeps the rpm guard, matching the batched read.
+        // Method: read the spin-up value u16::MAX through `read_one_fan_status`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds the spin-up value.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let status = read_one_fan_status(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(status.and_then(|status| status.rpm), Some(0));
         });
     }
 
