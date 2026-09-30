@@ -85,7 +85,7 @@ const FAN_RPM_MAX: i64 = 40_000;
 /// The Leakshield reports pressure in µbar on fan1, with limits scaled from a u16 by 100.
 const LEAKSHIELD_DRIVER_NAME: &str = "leakshield";
 const LEAKSHIELD_PRESSURE_CHANNEL: u8 = 1;
-const LEAKSHIELD_PRESSURE_MAX: i64 = u16::MAX as i64 * 100;
+const LEAKSHIELD_PRESSURE_MICROBAR_MAX: i64 = u16::MAX as i64 * 100;
 const FAN_DIVISOR_MAX: i64 = 128;
 const FAN_PULSES_MAX: i64 = 4;
 const TEMP_TYPE_MAX: i64 = 6;
@@ -94,7 +94,7 @@ const TEMP_TYPE_MAX: i64 = 6;
 const _: () = assert!(MILLIDEGREES_MAX <= i32::MAX as i64);
 const _: () = assert!(MILLIDEGREES_ABSOLUTE_ZERO >= i32::MIN as i64);
 const _: () = assert!(FAN_RPM_MAX <= i32::MAX as i64);
-const _: () = assert!(LEAKSHIELD_PRESSURE_MAX <= i32::MAX as i64);
+const _: () = assert!(LEAKSHIELD_PRESSURE_MICROBAR_MAX <= i32::MAX as i64);
 
 /// Reads every attribute file the channel has. Absent files are skipped without driver IO;
 /// unreadable, unparseable and unset values are left out.
@@ -142,7 +142,7 @@ pub async fn read_channel_attributes(
 fn fan_limit_max(driver_name: &str, channel_number: u8) -> i64 {
     if driver_name == LEAKSHIELD_DRIVER_NAME {
         if channel_number == LEAKSHIELD_PRESSURE_CHANNEL {
-            return LEAKSHIELD_PRESSURE_MAX;
+            return LEAKSHIELD_PRESSURE_MICROBAR_MAX;
         }
     }
     FAN_RPM_MAX
