@@ -742,6 +742,10 @@ async fn empty_app_state<'s>(
         Rc::clone(&overrides),
     ));
     let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
+    if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+    }
     let modes = ModeController::init(
         Rc::clone(&config),
         Rc::clone(&all_devices),
