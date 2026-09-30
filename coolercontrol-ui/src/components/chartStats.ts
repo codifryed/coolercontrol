@@ -184,9 +184,7 @@ export interface WindowStats {
     max: number
     avg: number
     count: number
-    // Mean absolute change between consecutive readings: how noisy the line is. Null without a
-    // pair of adjacent readings. The mean, not the median: on sensors that report in whole
-    // steps most changes are 0, so a median would read 0 while the value keeps flipping.
+    // Mean absolute change between readings. Mean, not median: step sensors give a median of 0.
     jitter: number | null
 }
 

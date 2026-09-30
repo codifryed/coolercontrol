@@ -102,9 +102,7 @@ const timeRangeSeconds = props.dashboard.timeRangeSeconds
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
 const lineKeys = new Map<string, LineKey>()
-// Parallel to uSeriesData's lines (uMasks[i] belongs to uSeriesData[i + 1]): 1 where the line
-// holds a real reading. The daemon's startup zero-fill and gaps in a channel's reporting are 0,
-// so window stats never count them.
+// uMasks[i] is 1 where uSeriesData[i + 1] holds a real reading, 0 for zero-fill and gaps.
 const uMasks: Array<Uint8Array> = []
 
 /**

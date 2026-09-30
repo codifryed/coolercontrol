@@ -11,11 +11,9 @@ import { DATA_TYPE_STATS, isSyntheticStatus, toDisplayUnits } from '@/components
 
 export const TOP_BANDS = 5
 const TARGET_BANDS = 10
-// Rounding to the nearest 1-2-5 step can shrink a band to 1/1.5 of span / TARGET_BANDS, so a
-// window never needs more than 16 bands; this bounds a bad input all the same.
+// 1-2-5 rounding needs at most 16 bands; this bounds a bad input.
 const MAX_BANDS = 24
-// Band edges are multiples of a decimal step, which binary floats miss by a hair (0.7 / 0.1 is
-// 6.999...). Without the nudge a reading on an edge lands in the band below.
+// Keeps a reading on a band edge out of the band below (0.7 / 0.1 is 6.999...).
 const EDGE_EPSILON = 1e-9
 
 export const STALL_DUTY_MIN = 30
