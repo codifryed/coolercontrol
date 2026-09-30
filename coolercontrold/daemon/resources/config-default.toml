@@ -144,6 +144,8 @@ drivetemp_suspend = false
 # ranges. Login throttling then counts each client separately instead of lumping everyone
 # behind the proxy together. Only list proxies you run: any listed address can claim to be any
 # client. Listing 127.0.0.1 or ::1 extends that to every local user of this machine.
+# A proxy on this machine connects from loopback, so its clients share the local app's
+# connection budget.
 # trusted_proxies = ["127.0.0.1", "::1"]
 
 # Allow unencrypted HTTP connections from non-localhost addresses. By default, non-localhost
