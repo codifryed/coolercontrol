@@ -193,6 +193,15 @@ pub fn legacy_tokens(tokens: &[StoredToken]) -> Vec<LegacyToken> {
         .collect()
 }
 
+/// Whether the token `id` is still stored and unexpired. The argon2 pass matches against a
+/// snapshot, so its verdict must be confirmed against the live store.
+pub fn is_current(tokens: &[StoredToken], id: &str, now: DateTime<Local>) -> bool {
+    debug_assert!(id.is_empty().not());
+    tokens
+        .iter()
+        .any(|token| token.id == id && is_expired(token, now).not())
+}
+
 /// The expensive pass: one argon2 verify, milliseconds and 19 MiB each, per legacy token.
 /// CPU-bound, so it belongs on a blocking thread, never the reactor.
 pub fn match_legacy(raw_token: &str, legacy: &[LegacyToken]) -> Option<TokenMatch> {

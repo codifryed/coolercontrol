@@ -187,10 +187,16 @@ impl TokenHandle {
         legacy: Vec<LegacyToken>,
     ) -> Result<Option<token::TokenMatch>> {
         debug_assert!(legacy.is_empty().not());
-        let _permit = self.legacy_pass.acquire().await?;
+        let permit = self.legacy_pass.acquire().await?;
         let matched =
             tokio::task::spawn_blocking(move || token::match_legacy(&raw_token, &legacy)).await?;
-        Ok(matched)
+        drop(permit);
+        let Some(matched) = matched else {
+            return Ok(None);
+        };
+        // The pass ran on a snapshot: a token deleted or expired meanwhile must not validate.
+        let tokens = self.tokens.read().await;
+        Ok(token::is_current(&tokens, &matched.id, Local::now()).then_some(matched))
     }
 
     /// Records the digest of a token that just matched on the legacy argon2 path, so
@@ -306,6 +312,46 @@ mod tests {
         let result = handle.validate(raw).await.unwrap();
         assert_eq!(result, TokenValidation::ValidReadWrite);
         assert!(other_task_ran.load(Ordering::SeqCst).not());
+    }
+
+    /// Runs `validate` for a legacy token, applying `revoke` to the store while the request
+    /// waits for the argon2 pass, after it took its snapshot. Method: the test holds the
+    /// pass's only permit, so the spawned request snapshots, then parks on the semaphore.
+    async fn validate_revoked_mid_pass(revoke: fn(&mut Vec<StoredToken>)) -> TokenValidation {
+        let raw = token::generate_token();
+        let handle = make_handle_with_tokens(vec![make_legacy_token(&raw)]);
+        let permit = Arc::clone(&handle.legacy_pass)
+            .acquire_owned()
+            .await
+            .unwrap();
+        let validating = handle.clone();
+        let pending = tokio::spawn(async move { validating.validate(raw).await.unwrap() });
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert!(pending.is_finished().not());
+        revoke(&mut *handle.tokens.write().await);
+        drop(permit);
+        pending.await.unwrap()
+    }
+
+    /// Goal: a legacy token deleted while its request waits on the argon2 pass is refused,
+    /// though the pass matched it against the snapshot taken before the delete.
+    #[tokio::test]
+    async fn legacy_token_deleted_mid_pass_is_invalid() {
+        let result = validate_revoked_mid_pass(Vec::clear).await;
+        assert_eq!(result, TokenValidation::Invalid);
+    }
+
+    /// Goal: a legacy token that expires while its request waits on the argon2 pass is
+    /// refused, since expiry was checked only when the snapshot was taken.
+    #[tokio::test]
+    async fn legacy_token_expired_mid_pass_is_invalid() {
+        let result = validate_revoked_mid_pass(|tokens| {
+            tokens[0].expires_at = Some(Local::now() - chrono::Duration::seconds(1));
+        })
+        .await;
+        assert_eq!(result, TokenValidation::Invalid);
     }
 
     #[tokio::test]
