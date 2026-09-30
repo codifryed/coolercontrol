@@ -7,7 +7,8 @@
 //! its own if the peer stalls. A remote connection starts in a small pre-auth pool and moves
 //! to the larger remote pool once a request on it authenticates. A stream-less HTTP/2
 //! connection, or a response the peer never reads, can outlive every timeout, so peers that
-//! never authenticate can fill only the pre-auth pool, never lock out signed-in clients.
+//! never authenticate can fill only the pre-auth pool. Connections that already authenticated
+//! keep working while it is full, but a new one, even from a signed-in client, needs a slot.
 
 use crate::api::peer::{PeerKey, TrustedProxies};
 use axum::extract::Request;
@@ -50,7 +51,7 @@ const PER_PEER_PRE_AUTH_CONNECTIONS: usize = 16;
 /// Concurrent authenticated connections all remote peers may hold together.
 const REMOTE_CONNECTIONS: usize = 256;
 /// Concurrent remote connections on which no request has authenticated yet. Every new
-/// remote connection is admitted against this pool alone.
+/// remote connection, a signed-in client's included, is admitted against this pool alone.
 const REMOTE_PRE_AUTH_CONNECTIONS: usize = 64;
 /// Connections from this host, pooled apart so a remote flood cannot lock out the local app.
 /// No pre-auth pool: a local peer can already reach the hardware it would starve.
