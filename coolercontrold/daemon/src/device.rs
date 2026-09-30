@@ -148,11 +148,11 @@ pub enum ChannelAttributeKind {
     /// Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,
     /// Intel PECI).
     TempType,
-    /// Revolutions per minute.
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
     FanMin,
-    /// Revolutions per minute.
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
     FanMax,
-    /// Revolutions per minute.
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
     FanTarget,
     /// Divisor, a plain number.
     FanDiv,
@@ -166,7 +166,8 @@ pub enum ChannelAttributeKind {
 pub struct ChannelAttribute {
     pub name: String,
     pub kind: ChannelAttributeKind,
-    /// °C for temperatures, rpm for fan speeds, a plain number otherwise.
+    /// °C for temperatures, rpm for fan speeds, a plain number otherwise. Microbar for the fan
+    /// limits of a pressure channel such as the Leakshield's fan1.
     pub value: f64,
 }
 

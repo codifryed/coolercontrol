@@ -7552,7 +7552,7 @@
             "type": "string"
           },
           "value": {
-            "description": "°C for temperatures, rpm for fan speeds, a plain number otherwise.",
+            "description": "°C for temperatures, rpm for fan speeds, a plain number otherwise. Microbar for the fan\n limits of a pressure channel such as the Leakshield's fan1.",
             "type": "number",
             "format": "double"
           }
@@ -7637,17 +7637,17 @@
             "const": "TEMP_TYPE"
           },
           {
-            "description": "Revolutions per minute.",
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
             "type": "string",
             "const": "FAN_MIN"
           },
           {
-            "description": "Revolutions per minute.",
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
             "type": "string",
             "const": "FAN_MAX"
           },
           {
-            "description": "Revolutions per minute.",
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
             "type": "string",
             "const": "FAN_TARGET"
           },
