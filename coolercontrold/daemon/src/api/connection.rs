@@ -209,13 +209,17 @@ struct ConnectionCounts {
 }
 
 impl ConnectionCounts {
-    /// The `ConnectionLimiter` invariant. Walks the map, so for debug assertions only.
-    fn remote_is_peer_sum(&self) -> bool {
+    /// Asserts the `ConnectionLimiter` invariant. Walks the map, so debug builds only.
+    fn assert_consistent(&self) {
+        if cfg!(debug_assertions).not() {
+            return;
+        }
         let peers = self.remote_by_peer.values();
         let authenticated: usize = peers.clone().map(|held| held.authenticated).sum();
         let pre_auth: usize = peers.clone().map(|held| held.pre_auth).sum();
-        let no_empty_entries = peers.clone().all(|held| held.total() > 0);
-        self.remote == authenticated && self.remote_pre_auth == pre_auth && no_empty_entries
+        debug_assert_eq!(self.remote, authenticated);
+        debug_assert_eq!(self.remote_pre_auth, pre_auth);
+        debug_assert!(peers.clone().all(|held| held.total() > 0));
     }
 }
 
@@ -276,7 +280,7 @@ impl ConnectionLimiter {
         debug_assert!(
             counts.remote_by_peer.len() <= self.limits.remote + self.limits.remote_pre_auth
         );
-        debug_assert!(counts.remote_is_peer_sum());
+        counts.assert_consistent();
         Some(self.permit(key))
     }
 
@@ -312,7 +316,7 @@ impl ConnectionLimiter {
         counts.remote += 1;
         permit.authenticated.store(true, Ordering::Relaxed);
         debug_assert!(counts.remote <= self.limits.remote);
-        debug_assert!(counts.remote_is_peer_sum());
+        counts.assert_consistent();
     }
 
     fn release(&self, key: PeerKey, authenticated: bool) {
@@ -322,7 +326,7 @@ impl ConnectionLimiter {
             counts.loopback = counts.loopback.saturating_sub(1);
             return;
         }
-        debug_assert!(counts.remote_is_peer_sum());
+        counts.assert_consistent();
         if authenticated {
             debug_assert!(counts.remote > 0);
             counts.remote = counts.remote.saturating_sub(1);
@@ -340,7 +344,7 @@ impl ConnectionLimiter {
                 counts.remote_by_peer.remove(&key);
             }
         }
-        debug_assert!(counts.remote_is_peer_sum());
+        counts.assert_consistent();
     }
 
     /// A poisoned limiter must not refuse every connection from then on. The counts may be
