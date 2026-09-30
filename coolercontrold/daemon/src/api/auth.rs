@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::admin;
-use crate::api::actor::{TokenHandle, TokenValidation};
-use crate::api::auth_throttle::{mark, CredentialOutcome};
+use crate::api::actor::{TokenCheck, TokenHandle, TokenValidation};
+use crate::api::auth_throttle::{self, mark, CredentialOutcome};
+use crate::api::peer::PeerKey;
 use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
@@ -12,12 +13,13 @@ use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header;
 use axum::http::request::Parts;
 use axum::middleware::Next;
-use axum::response::IntoResponse as _;
+use axum::response::{IntoResponse as _, Response};
 use axum::{Extension, Json};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use strum::{Display, EnumString};
 use tower_sessions::Session;
 
@@ -126,19 +128,91 @@ fn bearer_token(request: &Request) -> Option<String> {
     value.strip_prefix("Bearer ").map(str::to_string)
 }
 
-/// Left unmarked: the token was never checked, so the refusal charges no budget.
+/// Left unmarked: the token was never checked, so its legacy charge is refunded.
 fn token_check_busy() -> CCError {
     CCError::TooManyAttempts {
         msg: "Too many token checks in progress. Try again shortly.".to_string(),
     }
 }
 
+fn invalid_token() -> Response {
+    CCError::InvalidCredentials {
+        msg: "Invalid or expired access token.".to_string(),
+    }
+    .into_response()
+}
+
+/// Who records a bearer verdict against the peer's token budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Recorded {
+    /// `token_throttle_middleware`, from the mark on the response.
+    ByMark,
+    /// Nobody further: the legacy check was charged on arrival and is already settled.
+    Settled,
+}
+
+/// Marks `response` for the token throttle unless its verdict is already settled, which
+/// would count it twice.
+fn mark_unsettled(response: Response, outcome: CredentialOutcome, recorded: Recorded) -> Response {
+    match recorded {
+        Recorded::ByMark => mark(response, outcome),
+        Recorded::Settled => response,
+    }
+}
+
+/// Runs the free digest pass, then, only if it misses, the legacy argon2 pass charged to
+/// `peer` on arrival. A request dropped mid-hash keeps its charge; `Busy` and an internal
+/// error refund it. `Err` means the peer is in backoff, or the pass failed.
+async fn validate_bearer(
+    token_handle: &TokenHandle,
+    raw_token: String,
+    peer: Option<PeerKey>,
+) -> Result<(TokenValidation, Recorded), CCError> {
+    let legacy = match token_handle.check_digest(raw_token).await {
+        TokenCheck::Done(validation) => {
+            debug_assert!(
+                validation != TokenValidation::Busy,
+                "only the legacy pass fills"
+            );
+            return Ok((validation, Recorded::ByMark));
+        }
+        TokenCheck::Legacy(legacy) => legacy,
+    };
+    let attempt = match peer {
+        Some(peer) => Some(auth_throttle::admit_legacy_token_check(
+            peer,
+            Instant::now(),
+        )?),
+        None => None,
+    };
+    let result = legacy.run().await;
+    if let Some(attempt) = attempt {
+        attempt.settle(legacy_outcome(&result), Instant::now());
+    }
+    match result {
+        Ok(validation) => Ok((validation, Recorded::Settled)),
+        Err(_) => Err(CCError::InternalError {
+            msg: "Token validation error.".to_string(),
+        }),
+    }
+}
+
+fn legacy_outcome(result: &Result<TokenValidation>) -> Option<CredentialOutcome> {
+    match result {
+        Ok(TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly) => {
+            Some(CredentialOutcome::Accepted)
+        }
+        Ok(TokenValidation::Invalid) => Some(CredentialOutcome::Rejected),
+        Ok(TokenValidation::Busy) | Err(_) => None,
+    }
+}
+
 /// Read-access middleware. Validates Bearer tokens (any valid token) or
 /// session cookies. Used for read-only routes.
 ///
-/// Every bearer outcome is marked for `auth_throttle`, which counts only responses whose
-/// credentials were actually adjudicated here. A dispatch failure is left unmarked: it
-/// says nothing about the token.
+/// Every bearer outcome is recorded for `auth_throttle`, which counts only credentials
+/// actually adjudicated here. A dispatch failure is left unmarked: it says nothing about
+/// the token.
 pub async fn auth_middleware(
     Extension(token_handle): Extension<TokenHandle>,
     session: Session,
@@ -146,21 +220,26 @@ pub async fn auth_middleware(
     next: Next,
 ) -> impl IntoApiResponse {
     if let Some(raw_token) = bearer_token(&request) {
-        return match token_handle.validate(raw_token).await {
-            Ok(TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly) => {
-                Ok(mark(next.run(request).await, CredentialOutcome::Accepted))
+        let peer = auth_throttle::peer_key(&request);
+        let (validation, recorded) = match validate_bearer(&token_handle, raw_token, peer).await {
+            Ok(checked) => checked,
+            Err(err) => return Err(err),
+        };
+        return match validation {
+            TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly => {
+                let response = next.run(request).await;
+                Ok(mark_unsettled(
+                    response,
+                    CredentialOutcome::Accepted,
+                    recorded,
+                ))
             }
-            Ok(TokenValidation::Invalid) => Ok(mark(
-                CCError::InvalidCredentials {
-                    msg: "Invalid or expired access token.".to_string(),
-                }
-                .into_response(),
+            TokenValidation::Invalid => Ok(mark_unsettled(
+                invalid_token(),
                 CredentialOutcome::Rejected,
+                recorded,
             )),
-            Ok(TokenValidation::Busy) => Err(token_check_busy()),
-            Err(_) => Err(CCError::InternalError {
-                msg: "Token validation error.".to_string(),
-            }),
+            TokenValidation::Busy => Err(token_check_busy()),
         };
     }
     check_session_permission(session, request, next).await
@@ -168,7 +247,7 @@ pub async fn auth_middleware(
 
 /// Write-access middleware. Validates Bearer tokens (requires write access)
 /// or session cookies. Used for write/mutating routes.
-/// An under-scoped token is marked `Accepted`: it authenticated, and only the
+/// An under-scoped token is recorded `Accepted`: it authenticated, and only the
 /// authorization check refused it. Counting it would throttle a client holding a
 /// perfectly valid credential.
 pub async fn auth_write_middleware(
@@ -178,28 +257,34 @@ pub async fn auth_write_middleware(
     next: Next,
 ) -> impl IntoApiResponse {
     if let Some(raw_token) = bearer_token(&request) {
-        return match token_handle.validate(raw_token).await {
-            Ok(TokenValidation::ValidReadWrite) => {
-                Ok(mark(next.run(request).await, CredentialOutcome::Accepted))
+        let peer = auth_throttle::peer_key(&request);
+        let (validation, recorded) = match validate_bearer(&token_handle, raw_token, peer).await {
+            Ok(checked) => checked,
+            Err(err) => return Err(err),
+        };
+        return match validation {
+            TokenValidation::ValidReadWrite => {
+                let response = next.run(request).await;
+                Ok(mark_unsettled(
+                    response,
+                    CredentialOutcome::Accepted,
+                    recorded,
+                ))
             }
-            Ok(TokenValidation::ValidReadOnly) => Ok(mark(
+            TokenValidation::ValidReadOnly => Ok(mark_unsettled(
                 CCError::InsufficientScope {
                     msg: "This token does not have write access.".to_string(),
                 }
                 .into_response(),
                 CredentialOutcome::Accepted,
+                recorded,
             )),
-            Ok(TokenValidation::Invalid) => Ok(mark(
-                CCError::InvalidCredentials {
-                    msg: "Invalid or expired access token.".to_string(),
-                }
-                .into_response(),
+            TokenValidation::Invalid => Ok(mark_unsettled(
+                invalid_token(),
                 CredentialOutcome::Rejected,
+                recorded,
             )),
-            Ok(TokenValidation::Busy) => Err(token_check_busy()),
-            Err(_) => Err(CCError::InternalError {
-                msg: "Token validation error.".to_string(),
-            }),
+            TokenValidation::Busy => Err(token_check_busy()),
         };
     }
     check_session_permission(session, request, next).await
@@ -358,6 +443,154 @@ mod tests {
         let response = token_check_busy().into_response();
         assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
         assert!(response.extensions().get::<CredentialOutcome>().is_none());
+    }
+
+    /// Both bearer layers wired as the router wires them, inside the token throttle.
+    fn token_app(token_handle: TokenHandle) -> axum::Router {
+        use crate::api::session_store::MemorySessionStore;
+        use axum::middleware::from_fn;
+        use axum::routing::get;
+        use tower_sessions::SessionManagerLayer;
+        let ok = || async { axum::http::StatusCode::OK };
+        axum::Router::new()
+            .route("/read", get(ok).layer(from_fn(auth_middleware)))
+            .route("/write", get(ok).layer(from_fn(auth_write_middleware)))
+            .layer(Extension(token_handle))
+            .layer(SessionManagerLayer::new(MemorySessionStore::new(4)))
+            .layer(from_fn(auth_throttle::token_throttle_middleware))
+    }
+
+    /// The throttle statics are process-wide, so each test owns one TEST-NET-2 address.
+    fn test_peer(last_octet: u8) -> std::net::SocketAddr {
+        std::net::SocketAddr::from(([198, 51, 100, last_octet], 40000))
+    }
+
+    async fn call(
+        app: &axum::Router,
+        uri: &str,
+        raw_token: &str,
+        peer: std::net::SocketAddr,
+    ) -> Response {
+        let mut request = Request::get(uri)
+            .header(header::AUTHORIZATION, format!("Bearer {raw_token}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(peer));
+        tower::ServiceExt::oneshot(app.clone(), request)
+            .await
+            .unwrap()
+    }
+
+    /// A token as stored since 5.0.0 (`digest`) or before it (`legacy`).
+    fn stored_token(raw: &str, digest: bool) -> crate::token::StoredToken {
+        crate::token::StoredToken {
+            id: uuid::Uuid::new_v4().to_string(),
+            label: "Test Token".to_string(),
+            hash: crate::token::hash_token(raw).unwrap(),
+            digest: digest.then(|| crate::token::digest_token(raw)),
+            created_at: chrono::Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: true,
+        }
+    }
+
+    fn legacy_app() -> (axum::Router, String) {
+        let raw = crate::token::generate_token();
+        let app = token_app(TokenHandle::with_tokens(vec![stored_token(&raw, false)]));
+        (app, raw)
+    }
+
+    fn unknown_token() -> String {
+        crate::token::generate_token()
+    }
+
+    /// Goal: a legacy check dropped mid-hash, as by a client reset, stays charged, so a
+    /// peer that keeps resetting them backs off instead of holding the shared pass free.
+    /// Method: each request is polled once, far enough to be charged and start its pass,
+    /// then dropped.
+    #[tokio::test]
+    async fn dropped_legacy_checks_stay_charged() {
+        use futures_util::FutureExt as _;
+        let peer = test_peer(40);
+        let (app, _) = legacy_app();
+        for _ in 0..=auth_throttle::FAILURE_THRESHOLD {
+            drop(call(&app, "/read", &unknown_token(), peer).now_or_never());
+        }
+        assert_eq!(
+            auth_throttle::token_failures(peer.ip()),
+            Some(auth_throttle::FAILURE_THRESHOLD + 1)
+        );
+        let response = call(&app, "/read", &unknown_token(), peer).await;
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    /// Goal: a burst of valid digest tokens from one peer, past the failure allowance, is
+    /// never refused or charged, even with legacy tokens stored.
+    #[tokio::test]
+    async fn valid_digest_burst_is_never_charged() {
+        let peer = test_peer(41);
+        let raw = crate::token::generate_token();
+        let tokens = vec![
+            stored_token(&unknown_token(), false),
+            stored_token(&raw, true),
+        ];
+        let app = token_app(TokenHandle::with_tokens(tokens));
+        let burst = (auth_throttle::FAILURE_THRESHOLD + 1) * 3;
+        let calls = (0..burst).map(|_| call(&app, "/read", &raw, peer));
+        let responses = futures_util::future::join_all(calls).await;
+        for response in responses {
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+        }
+        assert_eq!(auth_throttle::token_failures(peer.ip()), None);
+    }
+
+    /// Goal: a legacy check refused because the pass is full gives its charge back, since
+    /// the token was never checked. Method: one rejection first, so a kept charge would
+    /// show as a second failure; the pass is then filled by requests outside the throttle.
+    #[tokio::test]
+    async fn busy_legacy_check_refunds_its_charge() {
+        let peer = test_peer(42);
+        let handle = TokenHandle::with_tokens(vec![stored_token(&unknown_token(), false)]);
+        let app = token_app(handle.clone());
+        let rejected = call(&app, "/read", &unknown_token(), peer).await;
+        assert_eq!(rejected.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let (_permit, parked) = handle.fill_legacy_pass().await;
+        let busy = call(&app, "/read", &unknown_token(), peer).await;
+        assert_eq!(busy.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(auth_throttle::token_failures(peer.ip()), Some(1));
+        parked.iter().for_each(tokio::task::JoinHandle::abort);
+    }
+
+    /// Goal: a legacy token that matches clears the peer's streak through its settled
+    /// charge, and its response is left unmarked, so the throttle records it only once.
+    #[tokio::test]
+    async fn legacy_match_clears_the_streak_once() {
+        let peer = test_peer(43);
+        let (app, raw) = legacy_app();
+        for _ in 0..3 {
+            let rejected = call(&app, "/read", &unknown_token(), peer).await;
+            assert_eq!(rejected.status(), axum::http::StatusCode::UNAUTHORIZED);
+        }
+        assert_eq!(auth_throttle::token_failures(peer.ip()), Some(3));
+        let response = call(&app, "/read", &raw, peer).await;
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(response.extensions().get::<CredentialOutcome>().is_none());
+        assert_eq!(auth_throttle::token_failures(peer.ip()), None);
+    }
+
+    /// Goal: an invalid token on the legacy path is charged exactly once, on arrival, and
+    /// not again by the throttle reading a mark.
+    #[tokio::test]
+    async fn invalid_legacy_token_is_charged_once() {
+        let peer = test_peer(44);
+        let (app, _) = legacy_app();
+        let response = call(&app, "/write", &unknown_token(), peer).await;
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+        assert!(response.extensions().get::<CredentialOutcome>().is_none());
+        assert_eq!(auth_throttle::token_failures(peer.ip()), Some(1));
     }
 
     fn encode_basic(username: &str, password: &str) -> String {

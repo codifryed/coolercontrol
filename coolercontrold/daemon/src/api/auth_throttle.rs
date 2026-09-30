@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 /// Failures a peer may accumulate before backoff begins. Generous enough that a human
 /// mistyping a password never notices it.
-const FAILURE_THRESHOLD: u32 = 5;
+pub const FAILURE_THRESHOLD: u32 = 5;
 const BASE_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 /// A peer idle this long is forgotten, so an honest client always recovers on its own.
@@ -255,7 +255,7 @@ pub const fn max_attempts_within(window: Duration) -> u32 {
 /// configured trusted proxy: from anyone else it is attacker-controlled, and would let one
 /// peer spend another's budget. Behind an unlisted proxy this collapses to the proxy's own
 /// address, throttling its clients together, which is the safe direction to fail.
-fn peer_key(request: &Request) -> Option<PeerKey> {
+pub fn peer_key(request: &Request) -> Option<PeerKey> {
     if let Some(ClientAddr(address)) = request.extensions().get::<ClientAddr>() {
         return Some(PeerKey::from_ip(*address));
     }
@@ -407,8 +407,21 @@ impl<'a> PasswordAdmission<'a> {
     }
 }
 
+/// Charges a legacy token check to `peer` as it arrives, or refuses it while the peer is in
+/// token backoff.
+///
+/// Only the argon2 pass is charged up front. Its waiter slots are shared by every peer, so
+/// a request dropped mid-hash would otherwise hold one without ever reaching a verdict. The
+/// digest pass stays check-then-record, so a burst of valid tokens is never refused.
+pub fn admit_legacy_token_check(peer: PeerKey, now: Instant) -> Result<Attempt<'static>, CCError> {
+    TOKEN_THROTTLE
+        .admit(peer, now)
+        .map_err(too_many_attempts_error)
+}
+
 /// Rejects peers in token backoff before validation runs, then records the verdict the
-/// auth layers marked on the response.
+/// auth layers marked on the response. A legacy check is settled by the auth layer itself
+/// and left unmarked.
 pub async fn token_throttle_middleware(request: Request, next: Next) -> Response {
     if presents_bearer_token(&request).not() {
         return next.run(request).await;
@@ -431,6 +444,13 @@ pub fn password_failures(peer: std::net::IpAddr) -> Option<u32> {
     PASSWORD_THROTTLE.lock().get(&key).map(|entry| entry.count)
 }
 
+/// Token failures on record for `peer`, for tests of the auth layers.
+#[cfg(test)]
+pub fn token_failures(peer: std::net::IpAddr) -> Option<u32> {
+    let key = PeerKey::from_ip(peer);
+    TOKEN_THROTTLE.lock().get(&key).map(|entry| entry.count)
+}
+
 /// Applies a response's verdict, if it carries one, to the peer that produced it. Never the
 /// status: `/handshake` answers 200 with any token, which would let a guesser clear its streak.
 fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Instant) {
@@ -443,6 +463,10 @@ fn record(throttle: &AuthThrottle, peer: PeerKey, response: &Response, now: Inst
 
 /// Refused at once, never delayed: a sleeping request would stall the single-threaded reactor.
 fn too_many_attempts(remaining: Duration) -> Response {
+    too_many_attempts_error(remaining).into_response()
+}
+
+fn too_many_attempts_error(remaining: Duration) -> CCError {
     debug_assert!(remaining.is_zero().not());
     CCError::TooManyAttempts {
         msg: format!(
@@ -450,7 +474,6 @@ fn too_many_attempts(remaining: Duration) -> Response {
             remaining.as_secs().saturating_add(1)
         ),
     }
-    .into_response()
 }
 
 #[cfg(test)]

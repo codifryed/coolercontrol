@@ -110,6 +110,38 @@ impl TokenHandle {
         }
     }
 
+    /// Parks `LEGACY_PASS_MAX_WAITERS` unknown-token requests on the legacy pass, held shut
+    /// by the returned permit. Needs a legacy token stored. Method: the permit is taken
+    /// first, so each spawned request snapshots, takes a waiter slot, then parks.
+    #[cfg(test)]
+    pub async fn fill_legacy_pass(
+        &self,
+    ) -> (
+        tokio::sync::OwnedSemaphorePermit,
+        Vec<tokio::task::JoinHandle<TokenValidation>>,
+    ) {
+        let permit = Arc::clone(&self.legacy_pass).acquire_owned().await.unwrap();
+        let parked: Vec<_> = (0..LEGACY_PASS_MAX_WAITERS)
+            .map(|_| {
+                let parked_handle = self.clone();
+                tokio::spawn(async move {
+                    parked_handle
+                        .validate(token::generate_token())
+                        .await
+                        .unwrap()
+                })
+            })
+            .collect();
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            self.legacy_waiters.load(Ordering::Acquire),
+            LEGACY_PASS_MAX_WAITERS
+        );
+        (permit, parked)
+    }
+
     pub async fn create(
         &self,
         label: String,
@@ -161,7 +193,9 @@ impl TokenHandle {
         token::save_tokens(&tokens).await
     }
 
-    pub async fn validate(&self, raw_token: String) -> Result<TokenValidation> {
+    /// The digest pass, which is free. A token it does not match comes back as the legacy
+    /// argon2 pass it still needs, for the caller to charge before running it.
+    pub async fn check_digest(&self, raw_token: String) -> TokenCheck<'_> {
         let (digest_match, legacy) = {
             let tokens = self.tokens.read().await;
             let digest_match = token::match_digest(&raw_token, &tokens);
@@ -172,27 +206,38 @@ impl TokenHandle {
             };
             (digest_match, legacy)
         };
-        let matched = match digest_match {
-            Some(matched) => Some(matched),
-            None if legacy.is_empty() => None,
-            None => {
-                let Some(waiter) = LegacyWaiter::enter(&self.legacy_waiters) else {
-                    return Ok(TokenValidation::Busy);
-                };
-                self.match_legacy(raw_token, legacy, waiter).await?
-            }
-        };
-        let Some(matched) = matched else {
-            return Ok(TokenValidation::Invalid);
-        };
+        if let Some(matched) = digest_match {
+            debug_assert!(matched.upgrade_digest.is_none());
+            return TokenCheck::Done(self.accept(matched).await);
+        }
+        if legacy.is_empty() {
+            return TokenCheck::Done(TokenValidation::Invalid);
+        }
+        TokenCheck::Legacy(LegacyCheck {
+            handle: self,
+            raw_token,
+            legacy,
+        })
+    }
+
+    /// Both passes in turn, charging nothing.
+    #[cfg(test)]
+    pub async fn validate(&self, raw_token: String) -> Result<TokenValidation> {
+        match self.check_digest(raw_token).await {
+            TokenCheck::Done(validation) => Ok(validation),
+            TokenCheck::Legacy(legacy) => legacy.run().await,
+        }
+    }
+
+    async fn accept(&self, matched: token::TokenMatch) -> TokenValidation {
         self.cache().insert(matched.id.clone(), Local::now());
         if let Some(digest) = matched.upgrade_digest {
             self.persist_digest(&matched.id, digest).await;
         }
         if matched.write_access {
-            Ok(TokenValidation::ValidReadWrite)
+            TokenValidation::ValidReadWrite
         } else {
-            Ok(TokenValidation::ValidReadOnly)
+            TokenValidation::ValidReadOnly
         }
     }
 
@@ -255,6 +300,40 @@ impl TokenHandle {
             }
         }
         token::save_tokens(&tokens).await
+    }
+}
+
+/// A token's verdict from the digest pass, or the legacy pass it still needs.
+pub enum TokenCheck<'a> {
+    Done(TokenValidation),
+    Legacy(LegacyCheck<'a>),
+}
+
+/// A token no digest matched, while legacy tokens remain for it to match. Running it costs
+/// an argon2 pass.
+pub struct LegacyCheck<'a> {
+    handle: &'a TokenHandle,
+    raw_token: String,
+    legacy: Vec<LegacyToken>,
+}
+
+impl LegacyCheck<'_> {
+    /// `Busy` without checking the token when `LEGACY_PASS_MAX_WAITERS` requests already
+    /// hold the pass.
+    pub async fn run(self) -> Result<TokenValidation> {
+        let Self {
+            handle,
+            raw_token,
+            legacy,
+        } = self;
+        debug_assert!(legacy.is_empty().not());
+        let Some(waiter) = LegacyWaiter::enter(&handle.legacy_waiters) else {
+            return Ok(TokenValidation::Busy);
+        };
+        let Some(matched) = handle.match_legacy(raw_token, legacy, waiter).await? else {
+            return Ok(TokenValidation::Invalid);
+        };
+        Ok(handle.accept(matched).await)
     }
 }
 
@@ -399,39 +478,6 @@ mod tests {
         assert_eq!(result, TokenValidation::Invalid);
     }
 
-    /// Parks `LEGACY_PASS_MAX_WAITERS` unknown-token requests on the legacy pass, held shut
-    /// by the returned permit. Method: as in `validate_revoked_mid_pass`.
-    async fn fill_legacy_pass(
-        handle: &TokenHandle,
-    ) -> (
-        tokio::sync::OwnedSemaphorePermit,
-        Vec<tokio::task::JoinHandle<TokenValidation>>,
-    ) {
-        let permit = Arc::clone(&handle.legacy_pass)
-            .acquire_owned()
-            .await
-            .unwrap();
-        let parked: Vec<_> = (0..LEGACY_PASS_MAX_WAITERS)
-            .map(|_| {
-                let parked_handle = handle.clone();
-                tokio::spawn(async move {
-                    parked_handle
-                        .validate(token::generate_token())
-                        .await
-                        .unwrap()
-                })
-            })
-            .collect();
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
-        assert_eq!(
-            handle.legacy_waiters.load(Ordering::Acquire),
-            LEGACY_PASS_MAX_WAITERS
-        );
-        (permit, parked)
-    }
-
     /// Goal: a request past the waiter cap is refused before it queues or runs argon2.
     /// Method: with the pass full, the refused call must finish on its first poll, which
     /// neither queueing nor the blocking argon2 run could, and leave the waiter count alone.
@@ -439,7 +485,7 @@ mod tests {
     async fn full_legacy_pass_refuses_without_running_argon2() {
         use futures_util::FutureExt;
         let handle = make_handle_with_tokens(vec![make_legacy_token(&token::generate_token())]);
-        let (_permit, parked) = fill_legacy_pass(&handle).await;
+        let (_permit, parked) = handle.fill_legacy_pass().await;
         let result = handle.validate(token::generate_token()).now_or_never();
         assert_eq!(result.unwrap().unwrap(), TokenValidation::Busy);
         assert_eq!(
@@ -456,7 +502,7 @@ mod tests {
         let (stored, _) = make_stored_token(&raw);
         let legacy = make_legacy_token(&token::generate_token());
         let handle = make_handle_with_tokens(vec![legacy, stored]);
-        let (_permit, parked) = fill_legacy_pass(&handle).await;
+        let (_permit, parked) = handle.fill_legacy_pass().await;
         let result = handle.validate(raw).await.unwrap();
         assert_eq!(result, TokenValidation::ValidReadWrite);
         parked.iter().for_each(tokio::task::JoinHandle::abort);
@@ -468,7 +514,7 @@ mod tests {
     async fn legacy_waiters_are_released() {
         let raw = token::generate_token();
         let handle = make_handle_with_tokens(vec![make_legacy_token(&raw)]);
-        let (permit, parked) = fill_legacy_pass(&handle).await;
+        let (permit, parked) = handle.fill_legacy_pass().await;
         parked.iter().for_each(tokio::task::JoinHandle::abort);
         for task in parked {
             assert!(task.await.unwrap_err().is_cancelled());
