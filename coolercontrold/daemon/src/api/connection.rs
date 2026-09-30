@@ -872,6 +872,8 @@ mod tests {
     }
 
     /// Goal: one peer is held to its own pre-auth limit, and an IPv6 /64 counts as one peer.
+    /// Method: two addresses in one /64 reach a limit of two; a third is refused, while
+    /// another peer is admitted.
     #[test]
     fn per_peer_pre_auth_limit_holds() {
         let limiter = limiter(SMALL);
@@ -925,7 +927,8 @@ mod tests {
     }
 
     /// Goal: promotion moves a connection from the pre-auth pool to the remote pool once,
-    /// freeing its pre-auth slot, and a second promotion changes nothing.
+    /// freeing its pre-auth slot, and a second promotion changes nothing. Method: a pre-auth
+    /// pool of one refuses a second peer until the first is promoted, then again.
     #[test]
     fn promotion_moves_a_connection_once() {
         let limiter = limiter(ConnectionLimits {
@@ -943,7 +946,8 @@ mod tests {
     }
 
     /// Goal: promotion into a full remote pool leaves the connection pre-auth rather than
-    /// failing it, and a later promotion succeeds once the pool has room.
+    /// failing it, and a later promotion succeeds once the pool has room. Method: a remote
+    /// pool of one, filled by the first of two promotions, then freed by a drop.
     #[test]
     fn promotion_into_a_full_pool_stays_pre_auth() {
         let limiter = limiter(ConnectionLimits { remote: 1, ..SMALL });
@@ -961,7 +965,8 @@ mod tests {
     }
 
     /// Goal: loopback has no pre-auth distinction: promoting a local connection is a no-op,
-    /// and a full pre-auth pool never refuses one.
+    /// and a full pre-auth pool never refuses one. Method: a remote peer fills a pre-auth
+    /// pool of one, then a local connection is admitted and promoted.
     #[test]
     fn loopback_is_never_pre_auth() {
         let limiter = limiter(ConnectionLimits {
@@ -977,7 +982,8 @@ mod tests {
     }
 
     /// Goal: a trusted proxy carries many clients on one address, so neither per-peer limit
-    /// applies to it, in either pool, while both pools still do.
+    /// applies to it, in either pool, while both pools still do. Method: per-peer limits of
+    /// one; the proxy fills both pools alone, while an untrusted peer stops at one.
     #[test]
     fn trusted_proxy_is_exempt_from_the_per_peer_limits() {
         let limits = ConnectionLimits {
@@ -1007,7 +1013,8 @@ mod tests {
     }
 
     /// Goal: a slot frees from whichever pool its connection is in when it ends, and
-    /// nothing is left behind once every connection has ended.
+    /// nothing is left behind once every connection has ended. Method: one connection per
+    /// pool, dropped in turn, with the pools checked after each.
     #[test]
     fn permits_release_on_drop() {
         let limiter = limiter(SMALL);
@@ -1026,7 +1033,8 @@ mod tests {
     }
 
     /// Goal: `promote_connection` promotes the connection a request carries, and is a no-op
-    /// for a request that came through no guard.
+    /// for a request that came through no guard. Method: empty extensions, then extensions
+    /// holding a pre-auth permit.
     #[test]
     fn promote_connection_reads_the_request_extension() {
         let limiter = limiter(SMALL);
@@ -1224,7 +1232,8 @@ mod tests {
 
     /// Goal: through the real server, a connection that authenticates while the remote pool
     /// is full keeps being served from the pre-auth pool, and is promoted once a slot frees.
-    /// Slots free from either pool when their connections close.
+    /// Slots free from either pool when their connections close. Method: two connections
+    /// authenticate into a remote pool of one; the first closes and the second tries again.
     #[tokio::test]
     async fn promotion_waits_for_room_in_the_remote_pool() {
         let limiter = limiter(ConnectionLimits {
