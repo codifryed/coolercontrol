@@ -7960,16 +7960,6 @@
               "boolean",
               "null"
             ]
-          },
-          "trusted_proxies": {
-            "description": "Reverse proxies, as addresses or CIDR ranges, whose `X-Forwarded-For` names the\n client. Applies after a restart.",
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
           }
         }
       },

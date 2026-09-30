@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::devices::{DeviceChannelPath, DevicePath};
-use crate::api::peer;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
 use crate::overrides::OverridesDocument;
@@ -33,9 +32,6 @@ pub async fn update_cc(
     State(AppState { setting_handle, .. }): State<AppState>,
     Json(cc_settings_request): Json<CoolerControlSettingsDto>,
 ) -> Result<(), CCError> {
-    if let Some(ref proxies) = cc_settings_request.trusted_proxies {
-        peer::validate_trusted_proxies(proxies).map_err(|msg| CCError::UserError { msg })?;
-    }
     setting_handle
         .update_cc(cc_settings_request)
         .await
@@ -148,9 +144,6 @@ pub struct CoolerControlSettingsDto {
     allow_unencrypted: Option<bool>,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
     protocol_header: Option<String>,
-    /// Reverse proxies, as addresses or CIDR ranges, whose `X-Forwarded-For` names the
-    /// client. Applies after a restart.
-    trusted_proxies: Option<Vec<String>>,
     /// Whether to auto-detect Super-I/O sensors at startup (`x86_64` only)
     sensors_auto_detect: Option<bool>,
     /// Whether to listen for device add/remove events at startup
@@ -196,12 +189,8 @@ impl CoolerControlSettingsDto {
                 .protocol_header
                 .as_deref()
                 .map_or(current.protocol_header, non_empty),
-            trusted_proxies: self
-                .trusted_proxies
-                .as_deref()
-                .map_or(current.trusted_proxies, |proxies| {
-                    peer::trimmed_entries(proxies.iter().map(String::as_str))
-                }),
+            // config.toml only: the API neither shows nor changes it.
+            trusted_proxies: current.trusted_proxies,
             sensors_auto_detect: self
                 .sensors_auto_detect
                 .unwrap_or(current.sensors_auto_detect),
@@ -250,7 +239,6 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             origins: Some(settings.origins),
             allow_unencrypted: Some(settings.allow_unencrypted),
             protocol_header: settings.protocol_header,
-            trusted_proxies: Some(settings.trusted_proxies),
             sensors_auto_detect: Some(settings.sensors_auto_detect),
             device_listener_enabled: Some(settings.device_listener_enabled),
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
@@ -312,7 +300,6 @@ mod tests {
                 origins: None,
                 allow_unencrypted: None,
                 protocol_header: None,
-                trusted_proxies: None,
                 sensors_auto_detect: None,
                 device_listener_enabled: None,
                 sensors_conf_enabled: None,
@@ -373,20 +360,20 @@ mod tests {
         );
     }
 
-    /// Goal: trusted proxies are kept when a PATCH leaves them out, which is what the UI
-    /// sends, and replaced, trimmed, when it names them.
+    /// Goal: a settings PATCH never touches trusted proxies, which live in config.toml only.
+    /// Method: a PATCH that sets other fields keeps the configured list, and the list is not
+    /// part of what the API reports.
     #[test]
-    fn merge_keeps_trusted_proxies_unless_sent() {
+    fn trusted_proxies_are_config_file_only() {
         let current = CoolerControlSettings {
             trusted_proxies: vec!["127.0.0.1".to_string()],
             ..Default::default()
         };
-        let merged = empty_dto().merge(current.clone());
-        assert_eq!(merged.trusted_proxies, ["127.0.0.1"]);
-
         let mut dto = empty_dto();
-        dto.trusted_proxies = Some(vec![" 10.0.0.0/8 ".to_string(), String::new()]);
-        assert_eq!(dto.merge(current).trusted_proxies, ["10.0.0.0/8"]);
+        dto.apply_on_boot = Some(true);
+        assert_eq!(dto.merge(current.clone()).trusted_proxies, ["127.0.0.1"]);
+        let reported = serde_json::to_value(CoolerControlSettingsDto::from(current)).unwrap();
+        assert!(reported.get("trusted_proxies").is_none());
     }
 
     #[test]

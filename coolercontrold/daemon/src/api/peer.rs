@@ -176,19 +176,6 @@ pub fn trimmed_entries<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<St
         .collect()
 }
 
-/// Checks entries at the API boundary, so a typo is refused rather than silently skipped.
-pub fn validate_trusted_proxies(entries: &[String]) -> Result<(), String> {
-    if entries.len() > MAX_TRUSTED_PROXIES {
-        return Err(format!(
-            "At most {MAX_TRUSTED_PROXIES} trusted proxies may be configured."
-        ));
-    }
-    for entry in entries {
-        entry.parse::<IpNet>()?;
-    }
-    Ok(())
-}
-
 /// An address, or a range written as an address and a prefix length.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpNet {
@@ -403,19 +390,21 @@ mod tests {
         assert!(net("::1").contains(ip("127.0.0.1")).not());
     }
 
-    /// Goal: config parsing keeps the valid entries and drops the invalid ones, and the API
-    /// check refuses any invalid entry outright.
+    /// Goal: config parsing keeps the valid entries, drops the invalid ones, and uses no
+    /// more than `MAX_TRUSTED_PROXIES` of them.
     #[test]
     fn trusted_proxies_skip_invalid_config_entries() {
         let proxies = trusted(&["10.0.0.1", "not an address", "172.17.0.0/16"]);
         assert!(proxies.contains(ip("10.0.0.1")));
         assert!(proxies.contains(ip("172.17.0.9")));
         assert!(proxies.contains(ip("192.0.2.1")).not());
-        let entries = vec!["10.0.0.1".to_string(), "nope".to_string()];
-        assert!(validate_trusted_proxies(&entries).is_err());
-        assert!(validate_trusted_proxies(&entries[..1]).is_ok());
-        let too_many = vec!["10.0.0.1".to_string(); MAX_TRUSTED_PROXIES + 1];
-        assert!(validate_trusted_proxies(&too_many).is_err());
+        let mut entries: Vec<String> = (0..MAX_TRUSTED_PROXIES)
+            .map(|index| format!("10.0.{index}.1"))
+            .collect();
+        entries.push("192.0.2.1".to_string());
+        let capped = TrustedProxies::from_config(&entries);
+        assert!(capped.contains(ip("10.0.0.1")));
+        assert!(capped.contains(ip("192.0.2.1")).not());
     }
 
     /// Goal: a peer that is not a trusted proxy is its own client, whatever it forwards.
