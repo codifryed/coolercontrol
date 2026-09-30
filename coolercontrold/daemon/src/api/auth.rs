@@ -528,7 +528,8 @@ mod tests {
     }
 
     /// Goal: a burst of valid digest tokens from one peer, past the failure allowance, is
-    /// never refused or charged, even with legacy tokens stored.
+    /// never refused or charged, even with legacy tokens stored. Method: a concurrent
+    /// join_all of three times the allowance, with a legacy token stored beside the digest one.
     #[tokio::test]
     async fn valid_digest_burst_is_never_charged() {
         let peer = test_peer(41);
@@ -566,6 +567,7 @@ mod tests {
 
     /// Goal: a legacy token that matches clears the peer's streak through its settled
     /// charge, and its response is left unmarked, so the throttle records it only once.
+    /// Method: three rejections, then a match, checking the match carries no mark.
     #[tokio::test]
     async fn legacy_match_clears_the_streak_once() {
         let peer = test_peer(43);
@@ -582,7 +584,8 @@ mod tests {
     }
 
     /// Goal: an invalid token on the legacy path is charged exactly once, on arrival, and
-    /// not again by the throttle reading a mark.
+    /// not again by the throttle reading a mark. Method: one call through `/write`,
+    /// asserting its response carries no mark and the count is one.
     #[tokio::test]
     async fn invalid_legacy_token_is_charged_once() {
         let peer = test_peer(44);
