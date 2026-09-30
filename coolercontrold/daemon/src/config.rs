@@ -2929,10 +2929,7 @@ fn read_trusted_proxies(settings: &Table) -> Result<Vec<String>> {
             text
         });
     let trusted_proxies = trimmed_entries(entries);
-    for entry in &trusted_proxies {
-        debug_assert!(entry.is_empty().not());
-        debug_assert_eq!(entry.as_str(), entry.trim());
-    }
+    debug_assert_trimmed_entries(&trusted_proxies);
     Ok(trusted_proxies)
 }
 
@@ -2946,6 +2943,13 @@ fn trimmed_entries<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<String
         .collect()
 }
 
+fn debug_assert_trimmed_entries(entries: &[String]) {
+    for entry in entries {
+        debug_assert!(entry.is_empty().not());
+        debug_assert_eq!(entry.as_str(), entry.trim());
+    }
+}
+
 /// Writes `trusted_proxies`, removing the key when there are none so no stale list remains.
 fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
     if trusted_proxies.is_empty() {
@@ -2954,10 +2958,7 @@ fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
         }
         return;
     }
-    for entry in trusted_proxies {
-        debug_assert!(entry.is_empty().not());
-        debug_assert_eq!(entry.as_str(), entry.trim());
-    }
+    debug_assert_trimmed_entries(trusted_proxies);
     let proxies: toml_edit::Array = trusted_proxies
         .iter()
         .map(|s| Value::String(Formatted::new(s.clone())))
