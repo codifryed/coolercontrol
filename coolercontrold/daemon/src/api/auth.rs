@@ -126,6 +126,13 @@ fn bearer_token(request: &Request) -> Option<String> {
     value.strip_prefix("Bearer ").map(str::to_string)
 }
 
+/// Left unmarked: the token was never checked, so the refusal charges no budget.
+fn token_check_busy() -> CCError {
+    CCError::TooManyAttempts {
+        msg: "Too many token checks in progress. Try again shortly.".to_string(),
+    }
+}
+
 /// Read-access middleware. Validates Bearer tokens (any valid token) or
 /// session cookies. Used for read-only routes.
 ///
@@ -150,6 +157,7 @@ pub async fn auth_middleware(
                 .into_response(),
                 CredentialOutcome::Rejected,
             )),
+            Ok(TokenValidation::Busy) => Err(token_check_busy()),
             Err(_) => Err(CCError::InternalError {
                 msg: "Token validation error.".to_string(),
             }),
@@ -188,6 +196,7 @@ pub async fn auth_write_middleware(
                 .into_response(),
                 CredentialOutcome::Rejected,
             )),
+            Ok(TokenValidation::Busy) => Err(token_check_busy()),
             Err(_) => Err(CCError::InternalError {
                 msg: "Token validation error.".to_string(),
             }),
@@ -340,6 +349,15 @@ mod tests {
         }
         assert_eq!(Permission::Admin.to_string(), "Admin");
         assert_eq!(Permission::Guest.to_string(), "Guest");
+    }
+
+    /// Goal: a busy legacy pass answers 429 with no verdict, so the token throttle charges
+    /// nothing for a token it never checked.
+    #[test]
+    fn busy_token_check_is_an_unmarked_429() {
+        let response = token_check_busy().into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert!(response.extensions().get::<CredentialOutcome>().is_none());
     }
 
     fn encode_basic(username: &str, password: &str) -> String {
