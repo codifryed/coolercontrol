@@ -593,6 +593,42 @@ mod tests {
         assert_eq!(auth_throttle::token_failures(peer.ip()), Some(1));
     }
 
+    /// Goal: a valid legacy token's first concurrent burst loses at most the arrivals past
+    /// the threshold, and only once: the first match clears the streak and persists the
+    /// digest, so later requests take the free path. Method: join_all of the threshold plus
+    /// two calls, then one more, which must come back marked, as only the digest path marks.
+    #[tokio::test]
+    async fn legacy_token_burst_is_a_one_time_cost() {
+        use axum::http::StatusCode;
+        let peer = test_peer(45);
+        let raw = crate::token::generate_token();
+        let handle = TokenHandle::with_tokens(vec![stored_token(&raw, false)]);
+        let app = token_app(handle.clone());
+        let burst = auth_throttle::FAILURE_THRESHOLD + 2;
+        let calls = (0..burst).map(|_| call(&app, "/read", &raw, peer));
+        let responses = futures_util::future::join_all(calls).await;
+        let refused = responses
+            .iter()
+            .filter(|response| response.status() == StatusCode::TOO_MANY_REQUESTS)
+            .count();
+        let past_threshold = burst - (auth_throttle::FAILURE_THRESHOLD + 1);
+        assert!(refused <= usize::try_from(past_threshold).unwrap());
+        for response in &responses {
+            let status = response.status();
+            assert!(status == StatusCode::OK || status == StatusCode::TOO_MANY_REQUESTS);
+        }
+        assert_eq!(auth_throttle::token_failures(peer.ip()), None);
+        assert!(handle.list().await.unwrap()[0].digest.is_some());
+
+        let response = call(&app, "/read", &raw, peer).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.extensions().get::<CredentialOutcome>(),
+            Some(&CredentialOutcome::Accepted)
+        );
+        assert_eq!(auth_throttle::token_failures(peer.ip()), None);
+    }
+
     fn encode_basic(username: &str, password: &str) -> String {
         format!("Basic {}", BASE64.encode(format!("{username}:{password}")))
     }

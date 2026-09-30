@@ -413,6 +413,8 @@ impl<'a> PasswordAdmission<'a> {
 /// Only the argon2 pass is charged up front. Its waiter slots are shared by every peer, so
 /// a request dropped mid-hash would otherwise hold one without ever reaching a verdict. The
 /// digest pass stays check-then-record, so a burst of valid tokens is never refused.
+/// A valid legacy token's first burst may lose arrivals past the threshold until one check
+/// matches: a one-time migration cost, since the match persists its digest.
 pub fn admit_legacy_token_check(peer: PeerKey, now: Instant) -> Result<Attempt<'static>, CCError> {
     TOKEN_THROTTLE
         .admit(peer, now)
