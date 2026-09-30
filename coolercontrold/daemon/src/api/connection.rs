@@ -49,7 +49,7 @@ struct ConnectionTimeouts {
     /// How long a new connection has to finish any TLS handshake and send its first
     /// `FIRST_BYTES_COUNT` bytes. Covers what hyper's header timeout cannot reach: the TLS
     /// peek and hyper-util's version sniff, neither of which has a deadline of its own.
-    first_bytes: Duration,
+    first_bytes_timeout: Duration,
     /// How long hyper waits for a complete request head, and for the next one on an idle
     /// keep-alive connection.
     header_read: Duration,
@@ -60,12 +60,12 @@ struct ConnectionTimeouts {
 
 /// The header timeout is hyper's own default, which it silently drops without a timer.
 const TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
-    first_bytes: Duration::from_secs(10),
+    first_bytes_timeout: Duration::from_secs(10),
     header_read: Duration::from_secs(30),
     h2_keep_alive_interval: Duration::from_secs(20),
 };
 
-const _: () = assert!(TIMEOUTS.first_bytes.as_secs() <= TIMEOUTS.header_read.as_secs());
+const _: () = assert!(TIMEOUTS.first_bytes_timeout.as_secs() <= TIMEOUTS.header_read.as_secs());
 
 /// The API server for `listener`, with every connection admitted by `limiter`, accepted
 /// through `acceptor`, then bounded by the guard. Taking both here keeps the guard on every
@@ -87,7 +87,7 @@ fn server_with<A>(
     let mut server = axum_server::from_tcp(listener)?.acceptor(ConnectionGuardAcceptor {
         inner: acceptor,
         limiter,
-        first_bytes: timeouts.first_bytes,
+        first_bytes_timeout: timeouts.first_bytes_timeout,
     });
     configure_http(server.http_builder(), timeouts);
     Ok(server)
@@ -284,7 +284,7 @@ fn configure_http(builder: &mut Builder<TokioExecutor>, timeouts: ConnectionTime
 pub struct ConnectionGuardAcceptor<A> {
     inner: A,
     limiter: Arc<ConnectionLimiter>,
-    first_bytes: Duration,
+    first_bytes_timeout: Duration,
 }
 
 impl<A, S> Accept<TcpStream, S> for ConnectionGuardAcceptor<A>
@@ -312,7 +312,7 @@ where
                 "over the connection limit",
             ))));
         };
-        let deadline = Instant::now() + self.first_bytes;
+        let deadline = Instant::now() + self.first_bytes_timeout;
         let accepting = self.inner.accept(stream, service);
         Box::pin(async move {
             let Ok(accepted) = tokio::time::timeout_at(deadline, accepting).await else {
@@ -434,7 +434,7 @@ mod tests {
     /// Real time with short timeouts. A paused clock cannot measure these: it advances to
     /// the next timer before the runtime reads socket events, so a close is seen late.
     const TEST_TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
-        first_bytes: Duration::from_millis(300),
+        first_bytes_timeout: Duration::from_millis(300),
         header_read: Duration::from_millis(300),
         h2_keep_alive_interval: Duration::from_secs(20),
     };
@@ -513,7 +513,12 @@ mod tests {
         let _ = timeout(NEVER, stream.read_to_end(&mut received))
             .await
             .expect("the stalled connection must be closed");
-        assert!(started.elapsed() >= TEST_TIMEOUTS.first_bytes.min(TEST_TIMEOUTS.header_read));
+        assert!(
+            started.elapsed()
+                >= TEST_TIMEOUTS
+                    .first_bytes_timeout
+                    .min(TEST_TIMEOUTS.header_read)
+        );
     }
 
     fn app() -> Router {
@@ -619,7 +624,7 @@ mod tests {
             client.check(request()).await.unwrap().into_inner().status,
             1
         );
-        tokio::time::sleep(TEST_TIMEOUTS.first_bytes * 2).await;
+        tokio::time::sleep(TEST_TIMEOUTS.first_bytes_timeout * 2).await;
         assert_eq!(
             client.check(request()).await.unwrap().into_inner().status,
             1
