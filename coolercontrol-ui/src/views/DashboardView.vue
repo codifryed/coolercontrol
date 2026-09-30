@@ -98,25 +98,21 @@ const isCustomSensor = computed((): boolean => {
     return false
 })
 
-const channelLabel = ref(
-    sensorMode
-        ? (settingsStore.allUIDeviceSettings
-              .get(props.deviceUID!)
-              ?.sensorsAndChannels.get(props.channelName!)?.name ?? props.channelName!)
-        : '',
-)
+const channelSettings = sensorMode
+    ? settingsStore.allUIDeviceSettings
+          .get(props.deviceUID!)
+          ?.sensorsAndChannels.get(props.channelName!)
+    : undefined
+const channelLabel = ref(sensorMode ? (channelSettings?.name ?? props.channelName!) : '')
 const createChannelDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel.value)
     dash.timeRangeSeconds = 300
     // needed due to reduced default data type range:
     dash.dataTypes = []
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID!, props.channelName!))
-    const channelSettings = settingsStore.allUIDeviceSettings
-        .get(props.deviceUID!)!
-        .sensorsAndChannels.get(props.channelName!)!
-    channelSettings.channelDashboard = dash
+    channelSettings!.channelDashboard = dash
     // The raw object does not track edits; hand back the stored proxy.
-    return channelSettings.channelDashboard!
+    return channelSettings!.channelDashboard!
 }
 
 // Sensors fall back to their detected label; a dashboard keeps its own name.
@@ -151,9 +147,7 @@ const homeDashboard: Dashboard =
     settingsStore.dashboards.find((dashboard) => dashboard.uid === settingsStore.homeDashboard) ??
     settingsStore.dashboards[0] // show first dashboard if no Home Dashboard set
 const dashboard: Dashboard = sensorMode
-    ? (settingsStore.allUIDeviceSettings
-          .get(props.deviceUID!)!
-          .sensorsAndChannels.get(props.channelName!)!.channelDashboard ?? createChannelDashboard())
+    ? (channelSettings!.channelDashboard ?? createChannelDashboard())
     : props.dashboardUID != null
       ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ?? homeDashboard)
       : homeDashboard
