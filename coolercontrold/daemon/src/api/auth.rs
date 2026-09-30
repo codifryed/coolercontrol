@@ -460,7 +460,8 @@ mod tests {
             .layer(from_fn(auth_throttle::token_throttle_middleware))
     }
 
-    /// The throttle statics are process-wide, so each test owns one TEST-NET-2 address.
+    /// The throttle statics are process-wide, so each test owns one TEST-NET-2 address,
+    /// allotted beside them in `auth_throttle`.
     fn test_peer(last_octet: u8) -> std::net::SocketAddr {
         std::net::SocketAddr::from(([198, 51, 100, last_octet], 40000))
     }

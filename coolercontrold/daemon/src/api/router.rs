@@ -1846,6 +1846,7 @@ mod tests {
                     .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
             )
             .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
+        // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
         let peer = SocketAddr::from(([198, 51, 100, 20], 40000));
         let set_passwd = |cookie: Option<&str>| {
             let mut builder = Request::builder()

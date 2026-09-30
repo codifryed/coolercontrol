@@ -42,6 +42,9 @@ const _: () = assert!(MAX_TRACKED_PEERS > 0);
 static TOKEN_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 static PASSWORD_THROTTLE: LazyLock<AuthThrottle> = LazyLock::new(AuthThrottle::new);
 static REMOTE_BREAKER: LazyLock<RemoteBreaker> = LazyLock::new(RemoteBreaker::new);
+// Tests share these statics, so each file's tests keep to their own TEST-NET peers:
+// auth_throttle.rs 198.51.100.10-15, router.rs 198.51.100.20, mod.rs 198.51.100.30 and
+// 203.0.113.30-31, auth.rs 198.51.100.40-45.
 
 #[derive(Debug)]
 struct PeerFailures {
@@ -564,9 +567,9 @@ mod tests {
             .layer(from_fn(token_throttle_middleware))
     }
 
-    /// The statics are process-wide, so each wiring test owns one TEST-NET-2 address. The
-    /// remote breaker is shared too: wiring tests together must stay well under its
-    /// threshold, or they would start refusing each other.
+    /// The statics are process-wide, so each wiring test owns one TEST-NET-2 address,
+    /// allotted beside the statics. The remote breaker is shared too: wiring tests together
+    /// must stay well under its threshold, or they would start refusing each other.
     fn wired_peer(last_octet: u8) -> SocketAddr {
         SocketAddr::from(([198, 51, 100, last_octet], 40000))
     }

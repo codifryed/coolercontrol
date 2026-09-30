@@ -1314,7 +1314,8 @@ mod tests {
 
     /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
     /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
-    /// trusted proxy for two clients. TEST-NET addresses keep the process-wide statics apart.
+    /// trusted proxy for two clients. TEST-NET addresses keep the process-wide statics apart,
+    /// allotted beside them in `auth_throttle`.
     #[tokio::test]
     async fn auth_throttles_see_the_forwarded_client() {
         use axum::extract::ConnectInfo;
