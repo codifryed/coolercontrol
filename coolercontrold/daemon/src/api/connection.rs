@@ -150,6 +150,13 @@ struct ConnectionCounts {
     loopback: usize,
 }
 
+impl ConnectionCounts {
+    /// The `ConnectionLimiter` invariant. Walks the map, so for debug assertions only.
+    fn remote_is_peer_sum(&self) -> bool {
+        self.remote == self.remote_by_peer.values().sum::<usize>()
+    }
+}
+
 /// Counts open connections against `ConnectionLimits`, shared by every listener.
 ///
 /// Invariants: each count stays within its limit; `remote` is the sum of `remote_by_peer`,
@@ -202,6 +209,7 @@ impl ConnectionLimiter {
         *per_peer += 1;
         counts.remote += 1;
         debug_assert!(counts.remote_by_peer.len() <= self.limits.remote);
+        debug_assert!(counts.remote_is_peer_sum());
         Some(self.permit(key))
     }
 
@@ -220,6 +228,7 @@ impl ConnectionLimiter {
             return;
         }
         debug_assert!(counts.remote > 0);
+        debug_assert!(counts.remote_is_peer_sum());
         counts.remote = counts.remote.saturating_sub(1);
         if let Some(per_peer) = counts.remote_by_peer.get_mut(&key) {
             *per_peer = per_peer.saturating_sub(1);
@@ -227,6 +236,7 @@ impl ConnectionLimiter {
                 counts.remote_by_peer.remove(&key);
             }
         }
+        debug_assert!(counts.remote_is_peer_sum());
     }
 
     /// A poisoned limiter must not refuse every connection from then on. The counts may be

@@ -75,6 +75,7 @@ impl RemoteBreaker {
         let window_start = state.roll_window(now);
         if state.charged < THRESHOLD {
             state.charged += 1;
+            debug_assert!(state.charged <= THRESHOLD);
             return Ok(BreakerCharge {
                 breaker: self,
                 window_start,

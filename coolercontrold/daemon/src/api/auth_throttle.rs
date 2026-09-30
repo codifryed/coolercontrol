@@ -365,12 +365,15 @@ impl<'a> PasswordAdmission<'a> {
             });
         }
         match breaker.admit(now) {
-            Ok(charge) => Ok(Self {
-                attempt,
-                breaker,
-                breaker_charge: Some(charge),
-                peer,
-            }),
+            Ok(charge) => {
+                debug_assert!(peer != PeerKey::Loopback, "loopback skips the breaker");
+                Ok(Self {
+                    attempt,
+                    breaker,
+                    breaker_charge: Some(charge),
+                    peer,
+                })
+            }
             Err(remaining) => {
                 attempt.settle(None, now);
                 Err(remaining)
@@ -388,6 +391,9 @@ impl<'a> PasswordAdmission<'a> {
 
     /// A remote success also makes its key known-good.
     pub fn settle(self, outcome: Option<CredentialOutcome>, now: Instant) {
+        if self.breaker_charge.is_some() {
+            debug_assert!(self.peer != PeerKey::Loopback, "loopback skips the breaker");
+        }
         self.attempt.settle(outcome, now);
         if let Some(charge) = self.breaker_charge {
             charge.settle(outcome);
