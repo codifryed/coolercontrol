@@ -166,16 +166,6 @@ impl TrustedProxies {
     }
 }
 
-/// Entries trimmed, with blank ones dropped. The config file and the API both store them so.
-pub fn trimmed_entries<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<String> {
-    entries
-        .into_iter()
-        .map(str::trim)
-        .filter(|entry| entry.is_empty().not())
-        .map(str::to_string)
-        .collect()
-}
-
 /// An address, or a range written as an address and a prefix length.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpNet {

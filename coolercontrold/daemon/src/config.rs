@@ -13,7 +13,7 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, TableLike, Value};
 
-use crate::api::{peer, CCError};
+use crate::api::CCError;
 use crate::cc_fs;
 use crate::device::{ChannelName, Duty, Temp, UID};
 use crate::paths;
@@ -2928,7 +2928,17 @@ fn read_trusted_proxies(settings: &Table) -> Result<Vec<String>> {
             }
             text
         });
-    Ok(peer::trimmed_entries(entries))
+    Ok(trimmed_entries(entries))
+}
+
+/// Entries trimmed, with blank ones dropped, as config.toml stores them.
+fn trimmed_entries<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    entries
+        .into_iter()
+        .map(str::trim)
+        .filter(|entry| entry.is_empty().not())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Writes `trusted_proxies`, removing the key when there are none so no stale list remains.
