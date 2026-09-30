@@ -233,7 +233,7 @@ const detailRows = computed((): Array<DetailRow> => {
     }
     return rows
 })
-const tir = computed((): TimeInRange | null =>
+const activeTimeInRange = computed((): TimeInRange | null =>
     activeLine.value == null
         ? null
         : (details.value.get(activeLine.value.lineName)?.timeInRange ?? null),
@@ -365,17 +365,17 @@ const movePanel = (): void => {
                 <HelpIcon :text="t('components.statsPanel.timeInRangeHelp')" :size="0.9" />
             </div>
             <div
-                v-if="tir != null"
+                v-if="activeTimeInRange != null"
                 class="grid grid-cols-[max-content_1fr_max-content] items-center gap-x-2 gap-y-0.5 px-3 pb-2 tabular-nums"
             >
-                <template v-for="band in tir.bands" :key="band.from">
+                <template v-for="band in activeTimeInRange.bands" :key="band.from">
                     <span class="whitespace-nowrap" :class="{ 'font-semibold': band.current }">
-                        {{ formatBand(band, tir.width, activeLine.dataType) }}
+                        {{ formatBand(band, activeTimeInRange.width, activeLine.dataType) }}
                     </span>
                     <span
                         class="h-2 min-w-0.5 rounded-r-sm"
                         :style="{
-                            width: `${(band.share / tir.bands[0].share) * 100}%`,
+                            width: `${(band.share / activeTimeInRange.bands[0].share) * 100}%`,
                             backgroundColor: activeLine.color,
                             opacity: band.current ? 1 : 0.45,
                         }"
@@ -384,13 +384,13 @@ const movePanel = (): void => {
                         {{ formatShare(band.share) }}
                     </span>
                 </template>
-                <template v-if="tir.rest >= 0.005">
+                <template v-if="activeTimeInRange.rest >= 0.005">
                     <span class="text-text-color-secondary">
                         {{ t('components.statsPanel.otherBands') }}
                     </span>
                     <span></span>
                     <span class="text-right text-text-color-secondary">
-                        {{ formatShare(tir.rest) }}
+                        {{ formatShare(activeTimeInRange.rest) }}
                     </span>
                 </template>
             </div>
