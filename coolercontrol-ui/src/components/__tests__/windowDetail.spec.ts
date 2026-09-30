@@ -207,6 +207,19 @@ describe('channelDetail', () => {
         expect(temp.get(DataType.TEMP)?.timeInRange?.bands).toHaveLength(3)
     })
 
+    it('keeps readings stamped within half a poll of the window edges', () => {
+        const history = [
+            status(-0.4, 40, 50),
+            status(1, 40, 30),
+            status(2, 40, 40),
+            status(3.04, 40, 35),
+            status(3.6, 40, 50),
+        ]
+        const detail = channelDetail(history, 'fan1', [DataType.DUTY], T0, T0 + 3, options)
+        // 50, 30, 40, 35: the edge readings add both turns, the one past half a poll stays out.
+        expect(detail.get(DataType.DUTY)?.directionChanges).toBe(2)
+    })
+
     it('bins frequencies in display units', () => {
         const history = [4200, 4250, 4800].map(
             (freq, s) =>

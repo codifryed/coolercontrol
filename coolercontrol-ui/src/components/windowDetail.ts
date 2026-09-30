@@ -265,7 +265,9 @@ function currentValue(
     return valueOf(newest, channelName, dataType) ?? null
 }
 
-// The detail rows for each of one channel's lines over the window [tMin, tMax] (seconds).
+// The detail rows for each of one channel's lines over the window [tMin, tMax] (seconds). The
+// window comes from another device's timestamps, so half a poll of padding keeps this device's
+// readings at either edge.
 export function channelDetail(
     history: ReadonlyArray<Status>,
     channelName: string,
@@ -274,7 +276,8 @@ export function channelDetail(
     tMax: number,
     options: DetailOptions,
 ): Map<DataType, LineDetail> {
-    const statuses = statusesInWindow(history, tMin, tMax)
+    const pad = options.pollSeconds / 2
+    const statuses = statusesInWindow(history, tMin - pad, tMax + pad)
     const details = new Map<DataType, LineDetail>()
     for (const dataType of dataTypes) {
         const values = windowValues(statuses, channelName, dataType)
