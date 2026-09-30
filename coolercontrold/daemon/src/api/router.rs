@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::{
-    alerts, auth, auth_throttle, base, calibration, custom_sensors, detect, device_health,
-    functions, hardware_report, metrics, modes, plugins, power_profiles, profile_generation,
-    profiles, settings, sse, stats, status, stress_test, tokens,
+    alerts, auth, auth_throttle, base, calibration, connection, custom_sensors, detect,
+    device_health, functions, hardware_report, metrics, modes, plugins, power_profiles,
+    profile_generation, profiles, settings, sse, stats, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
 use crate::grpc_api;
@@ -223,6 +223,9 @@ fn auth_routes() -> ApiRouter<AppState> {
                     .security_requirement("BasicAuth")
             })
             // The handler checks the password itself, so its status is the verdict.
+            .layer(axum::middleware::from_fn(
+                connection::promote_on_success_middleware,
+            ))
             .layer(axum::middleware::from_fn(
                 auth_throttle::password_throttle_middleware,
             )),

@@ -4,6 +4,7 @@
 use crate::admin;
 use crate::api::actor::{TokenCheck, TokenHandle, TokenValidation};
 use crate::api::auth_throttle::{self, mark, CredentialOutcome};
+use crate::api::connection;
 use crate::api::peer::PeerKey;
 use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
@@ -207,6 +208,17 @@ fn legacy_outcome(result: &Result<TokenValidation>) -> Option<CredentialOutcome>
     }
 }
 
+/// A token that authenticated moves its connection out of the pre-auth pool, whatever its
+/// scope.
+fn promote_if_authenticated(validation: &TokenValidation, request: &Request) {
+    match validation {
+        TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly => {
+            connection::promote_connection(request.extensions());
+        }
+        TokenValidation::Invalid | TokenValidation::Busy => {}
+    }
+}
+
 /// Read-access middleware. Validates Bearer tokens (any valid token) or
 /// session cookies. Used for read-only routes.
 ///
@@ -225,6 +237,7 @@ pub async fn auth_middleware(
             Ok(checked) => checked,
             Err(err) => return Err(err),
         };
+        promote_if_authenticated(&validation, &request);
         return match validation {
             TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly => {
                 let response = next.run(request).await;
@@ -262,6 +275,7 @@ pub async fn auth_write_middleware(
             Ok(checked) => checked,
             Err(err) => return Err(err),
         };
+        promote_if_authenticated(&validation, &request);
         return match validation {
             TokenValidation::ValidReadWrite => {
                 let response = next.run(request).await;
@@ -312,7 +326,10 @@ async fn check_session_permission(
         .unwrap_or(Some(Permission::Guest))
         .unwrap_or(Permission::Guest);
     match permission {
-        Permission::Admin => Ok(next.run(request).await),
+        Permission::Admin => {
+            connection::promote_connection(request.extensions());
+            Ok(next.run(request).await)
+        }
         Permission::Guest => Err(CCError::InvalidCredentials {
             msg: "Invalid Credentials".to_string(),
         }),
@@ -466,12 +483,7 @@ mod tests {
         std::net::SocketAddr::from(([198, 51, 100, last_octet], 40000))
     }
 
-    async fn call(
-        app: &axum::Router,
-        uri: &str,
-        raw_token: &str,
-        peer: std::net::SocketAddr,
-    ) -> Response {
+    fn bearer_request(uri: &str, raw_token: &str, peer: std::net::SocketAddr) -> Request {
         let mut request = Request::get(uri)
             .header(header::AUTHORIZATION, format!("Bearer {raw_token}"))
             .body(axum::body::Body::empty())
@@ -479,9 +491,30 @@ mod tests {
         request
             .extensions_mut()
             .insert(axum::extract::ConnectInfo(peer));
+        request
+    }
+
+    async fn call(
+        app: &axum::Router,
+        uri: &str,
+        raw_token: &str,
+        peer: std::net::SocketAddr,
+    ) -> Response {
+        let request = bearer_request(uri, raw_token, peer);
         tower::ServiceExt::oneshot(app.clone(), request)
             .await
             .unwrap()
+    }
+
+    /// Sends `request` on a remote connection that has not authenticated yet, and returns
+    /// its status and whether the call promoted the connection.
+    async fn promotes(app: &axum::Router, mut request: Request) -> (axum::http::StatusCode, bool) {
+        let connection = connection::AdmittedConnection::remote_for_test();
+        request.extensions_mut().insert(connection.clone());
+        let response = tower::ServiceExt::oneshot(app.clone(), request)
+            .await
+            .unwrap();
+        (response.status(), connection.is_authenticated())
     }
 
     /// A token as stored since 5.0.0 (`digest`) or before it (`legacy`).
@@ -631,6 +664,74 @@ mod tests {
             Some(&CredentialOutcome::Accepted)
         );
         assert_eq!(auth_throttle::token_failures(peer.ip()), None);
+    }
+
+    /// Goal: a token that authenticates moves its connection out of the pre-auth pool, even
+    /// when its scope is refused, and one that does not leaves it there. Method: a valid
+    /// token on `/read`, a read-only one on `/write`, then an unknown one.
+    #[tokio::test]
+    async fn authenticated_tokens_promote_their_connection() {
+        use axum::http::StatusCode;
+        let peer = test_peer(46);
+        let read_write = crate::token::generate_token();
+        let read_only = crate::token::generate_token();
+        let tokens = vec![
+            stored_token(&read_write, true),
+            crate::token::StoredToken {
+                write_access: false,
+                ..stored_token(&read_only, true)
+            },
+        ];
+        let app = token_app(TokenHandle::with_tokens(tokens));
+        let valid = bearer_request("/read", &read_write, peer);
+        assert_eq!(promotes(&app, valid).await, (StatusCode::OK, true));
+        let under_scoped = bearer_request("/write", &read_only, peer);
+        assert_eq!(
+            promotes(&app, under_scoped).await,
+            (StatusCode::FORBIDDEN, true)
+        );
+        let unknown = bearer_request("/read", &unknown_token(), peer);
+        assert_eq!(
+            promotes(&app, unknown).await,
+            (StatusCode::UNAUTHORIZED, false)
+        );
+    }
+
+    /// Stands in for a successful `/login` earlier on the session.
+    async fn admin_session(session: Session, request: Request, next: Next) -> Response {
+        grant_admin_session(&session).await;
+        next.run(request).await
+    }
+
+    /// Goal: an admin session moves its connection out of the pre-auth pool, and a guest
+    /// one does not. Method: one route behind a granted session, one without.
+    #[tokio::test]
+    async fn admin_session_promotes_its_connection() {
+        use crate::api::session_store::MemorySessionStore;
+        use axum::http::StatusCode;
+        use axum::middleware::from_fn;
+        use axum::routing::get;
+        let ok = || async { StatusCode::OK };
+        let app = axum::Router::new()
+            .route(
+                "/admin",
+                get(ok)
+                    .layer(from_fn(session_auth_middleware))
+                    .layer(from_fn(admin_session)),
+            )
+            .route("/guest", get(ok).layer(from_fn(session_auth_middleware)))
+            .layer(tower_sessions::SessionManagerLayer::new(
+                MemorySessionStore::new(4),
+            ));
+        let request = |uri| Request::get(uri).body(axum::body::Body::empty()).unwrap();
+        assert_eq!(
+            promotes(&app, request("/guest")).await,
+            (StatusCode::UNAUTHORIZED, false)
+        );
+        assert_eq!(
+            promotes(&app, request("/admin")).await,
+            (StatusCode::OK, true)
+        );
     }
 
     fn encode_basic(username: &str, password: &str) -> String {

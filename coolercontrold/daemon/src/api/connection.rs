@@ -4,9 +4,17 @@
 //! Bounds on API connections before any request is authenticated.
 //!
 //! Everything here runs for peers that have proven nothing, so each connection must end on
-//! its own if the peer stalls.
+//! its own if the peer stalls. A remote connection starts in a small pre-auth pool and moves
+//! to the larger remote pool once a request on it authenticates. A stream-less HTTP/2
+//! connection, or a response the peer never reads, can outlive every timeout, so peers that
+//! never authenticate can fill only the pre-auth pool, never lock out signed-in clients.
 
 use crate::api::peer::{PeerKey, TrustedProxies};
+use axum::extract::Request;
+use axum::http::Extensions;
+use axum::middleware::{AddExtension, Next};
+use axum::response::Response;
+use axum::Extension;
 use axum_server::accept::Accept;
 use futures_util::future::BoxFuture;
 use hyper_util::rt::{TokioExecutor, TokioTimer};
@@ -19,29 +27,44 @@ use std::io::{self, ErrorKind, IoSlice};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Not;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::time::{Instant, Sleep};
+use tower::Layer;
 
 /// Plaintext bytes after which a connection has committed to a protocol: the length of the
 /// HTTP/2 preface, the most hyper-util's version sniff ever waits for.
 const FIRST_BYTES_COUNT: usize = 24;
 
-/// Concurrent connections one remote peer may hold. A browser opens at most six per host
-/// over HTTP/1.1, and a whole IPv6 /64 shares this, so it leaves room for a household.
+/// Concurrent connections one remote peer may hold across both remote pools. A browser
+/// opens at most six per host over HTTP/1.1, and a whole IPv6 /64 shares this, so it leaves
+/// room for a household.
 const PER_PEER_CONNECTIONS: usize = 64;
-/// Concurrent connections all remote peers may hold together.
+/// Of those, connections on which no request has authenticated yet: room for a few
+/// browsers loading the web app at once, while no one peer fills the pre-auth pool.
+const PER_PEER_PRE_AUTH_CONNECTIONS: usize = 16;
+/// Concurrent authenticated connections all remote peers may hold together.
 const REMOTE_CONNECTIONS: usize = 256;
+/// Concurrent remote connections on which no request has authenticated yet. Every new
+/// remote connection is admitted against this pool alone.
+const REMOTE_PRE_AUTH_CONNECTIONS: usize = 64;
 /// Connections from this host, pooled apart so a remote flood cannot lock out the local app.
+/// No pre-auth pool: a local peer can already reach the hardware it would starve.
 const LOOPBACK_CONNECTIONS: usize = 128;
 /// Connections may hold at most one part in this many of the open file limit. The rest is
 /// for the hardware, whose descriptor use grows with the number of devices.
 const OPEN_FILES_SHARE: u64 = 4;
+/// Pools that each keep at least one connection however low the open file limit is.
+const POOL_COUNT: usize = 3;
 
 const _: () = assert!(PER_PEER_CONNECTIONS <= REMOTE_CONNECTIONS);
+const _: () = assert!(PER_PEER_PRE_AUTH_CONNECTIONS <= PER_PEER_CONNECTIONS);
+const _: () = assert!(PER_PEER_PRE_AUTH_CONNECTIONS <= REMOTE_PRE_AUTH_CONNECTIONS);
+const _: () = assert!(REMOTE_PRE_AUTH_CONNECTIONS <= REMOTE_CONNECTIONS);
 const _: () = assert!(OPEN_FILES_SHARE > 1);
 
 #[derive(Debug, Clone, Copy)]
@@ -75,22 +98,31 @@ pub fn server<A>(
     acceptor: A,
     limiter: Arc<ConnectionLimiter>,
 ) -> io::Result<axum_server::Server<SocketAddr, ConnectionGuardAcceptor<A>>> {
-    server_with(listener, acceptor, limiter, TIMEOUTS)
+    server_with(listener, acceptor, limiter, TIMEOUTS, tcp_peer_ip)
 }
 
+/// `peer_ip` picks the address a connection is charged to. Tests substitute a remote one,
+/// since every test connection comes from loopback.
 fn server_with<A>(
     listener: std::net::TcpListener,
     acceptor: A,
     limiter: Arc<ConnectionLimiter>,
     timeouts: ConnectionTimeouts,
+    peer_ip: fn(SocketAddr) -> IpAddr,
 ) -> io::Result<axum_server::Server<SocketAddr, ConnectionGuardAcceptor<A>>> {
     let mut server = axum_server::from_tcp(listener)?.acceptor(ConnectionGuardAcceptor {
         inner: acceptor,
         limiter,
         first_bytes_timeout: timeouts.first_bytes_timeout,
+        peer_ip,
     });
     configure_http(server.http_builder(), timeouts);
     Ok(server)
+}
+
+/// The connection limits are properties of the connection, so they charge its TCP peer.
+fn tcp_peer_ip(address: SocketAddr) -> IpAddr {
+    address.ip()
 }
 
 /// The limiter every listener shares, sized to this process's open file limit.
@@ -108,14 +140,18 @@ pub fn process_limiter(trusted_proxies: Arc<TrustedProxies>) -> Arc<ConnectionLi
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ConnectionLimits {
     per_peer: usize,
+    per_peer_pre_auth: usize,
     remote: usize,
+    remote_pre_auth: usize,
     loopback: usize,
 }
 
 impl ConnectionLimits {
     const FULL: Self = Self {
         per_peer: PER_PEER_CONNECTIONS,
+        per_peer_pre_auth: PER_PEER_PRE_AUTH_CONNECTIONS,
         remote: REMOTE_CONNECTIONS,
+        remote_pre_auth: REMOTE_PRE_AUTH_CONNECTIONS,
         loopback: LOOPBACK_CONNECTIONS,
     };
 
@@ -127,44 +163,71 @@ impl ConnectionLimits {
         if budget >= full_total {
             return Self::FULL;
         }
-        let remote = (REMOTE_CONNECTIONS * budget / full_total).max(1);
-        let loopback = (LOOPBACK_CONNECTIONS * budget / full_total).max(1);
+        let scaled = |full: usize| (full * budget / full_total).max(1);
+        let remote = scaled(REMOTE_CONNECTIONS);
+        let remote_pre_auth = scaled(REMOTE_PRE_AUTH_CONNECTIONS);
+        let per_peer = PER_PEER_CONNECTIONS.min(remote);
         let limits = Self {
-            per_peer: PER_PEER_CONNECTIONS.min(remote),
+            per_peer,
+            per_peer_pre_auth: PER_PEER_PRE_AUTH_CONNECTIONS
+                .min(remote_pre_auth)
+                .min(per_peer),
             remote,
-            loopback,
+            remote_pre_auth,
+            loopback: scaled(LOOPBACK_CONNECTIONS),
         };
-        debug_assert!(limits.total() <= budget.max(2));
+        debug_assert!(limits.total() <= budget.max(POOL_COUNT));
+        debug_assert!(limits.per_peer_pre_auth <= limits.remote_pre_auth);
         limits
     }
 
     fn total(self) -> usize {
-        self.remote + self.loopback
+        self.remote + self.remote_pre_auth + self.loopback
+    }
+}
+
+/// One remote peer's connections, by pool.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PeerConnections {
+    pre_auth: usize,
+    authenticated: usize,
+}
+
+impl PeerConnections {
+    fn total(self) -> usize {
+        self.pre_auth + self.authenticated
     }
 }
 
 #[derive(Debug)]
 struct ConnectionCounts {
-    remote_by_peer: HashMap<PeerKey, usize>,
+    remote_by_peer: HashMap<PeerKey, PeerConnections>,
+    /// Authenticated remote connections.
     remote: usize,
+    remote_pre_auth: usize,
     loopback: usize,
 }
 
 impl ConnectionCounts {
     /// The `ConnectionLimiter` invariant. Walks the map, so for debug assertions only.
     fn remote_is_peer_sum(&self) -> bool {
-        self.remote == self.remote_by_peer.values().sum::<usize>()
+        let peers = self.remote_by_peer.values();
+        let authenticated: usize = peers.clone().map(|held| held.authenticated).sum();
+        let pre_auth: usize = peers.clone().map(|held| held.pre_auth).sum();
+        let no_empty_entries = peers.clone().all(|held| held.total() > 0);
+        self.remote == authenticated && self.remote_pre_auth == pre_auth && no_empty_entries
     }
 }
 
 /// Counts open connections against `ConnectionLimits`, shared by every listener.
 ///
-/// Invariants: each count stays within its limit; `remote` is the sum of `remote_by_peer`,
-/// which holds no zero entries, so it never has more than `limits.remote` keys.
+/// Invariants: each count stays within its limit; `remote` and `remote_pre_auth` are the
+/// sums of `remote_by_peer`, which holds no empty entries, so it never has more keys than
+/// the two remote pools hold connections.
 #[derive(Debug)]
 pub struct ConnectionLimiter {
     limits: ConnectionLimits,
-    /// Exempt from the per-peer limit, since every client behind one shares its address.
+    /// Exempt from the per-peer limits, since every client behind one shares its address.
     /// Still counted in their pool.
     trusted_proxies: Arc<TrustedProxies>,
     counts: Mutex<ConnectionCounts>,
@@ -176,14 +239,16 @@ impl ConnectionLimiter {
             limits,
             trusted_proxies,
             counts: Mutex::new(ConnectionCounts {
-                remote_by_peer: HashMap::with_capacity(limits.remote),
+                remote_by_peer: HashMap::with_capacity(limits.remote + limits.remote_pre_auth),
                 remote: 0,
+                remote_pre_auth: 0,
                 loopback: 0,
             }),
         })
     }
 
-    /// A permit for one more connection from `peer`, or `None` when a limit is reached.
+    /// A permit for one more connection from `peer`, or `None` when a limit is reached. A
+    /// remote connection is admitted into the pre-auth pool, and `promote` moves it on.
     pub fn try_acquire(self: &Arc<Self>, peer: IpAddr) -> Option<ConnectionPermit> {
         let key = PeerKey::from_ip(peer);
         let mut counts = self.lock();
@@ -194,21 +259,23 @@ impl ConnectionLimiter {
             }
             return None;
         }
-        if counts.remote >= self.limits.remote {
+        if counts.remote_pre_auth >= self.limits.remote_pre_auth {
             return None;
         }
-        let per_peer_limit = if self.trusted_proxies.contains(peer) {
-            self.limits.remote
-        } else {
-            self.limits.per_peer
-        };
-        let per_peer = counts.remote_by_peer.entry(key).or_insert(0);
-        if *per_peer >= per_peer_limit {
-            return None;
+        let held = counts.remote_by_peer.get(&key).copied().unwrap_or_default();
+        if self.trusted_proxies.contains(peer).not() {
+            if held.pre_auth >= self.limits.per_peer_pre_auth {
+                return None;
+            }
+            if held.total() >= self.limits.per_peer {
+                return None;
+            }
         }
-        *per_peer += 1;
-        counts.remote += 1;
-        debug_assert!(counts.remote_by_peer.len() <= self.limits.remote);
+        counts.remote_by_peer.entry(key).or_default().pre_auth += 1;
+        counts.remote_pre_auth += 1;
+        debug_assert!(
+            counts.remote_by_peer.len() <= self.limits.remote + self.limits.remote_pre_auth
+        );
         debug_assert!(counts.remote_is_peer_sum());
         Some(self.permit(key))
     }
@@ -217,22 +284,59 @@ impl ConnectionLimiter {
         ConnectionPermit {
             limiter: Arc::clone(self),
             key,
+            authenticated: AtomicBool::new(false),
         }
     }
 
-    fn release(&self, key: PeerKey) {
+    /// Moves `permit`'s connection from the pre-auth pool to the remote pool. A full remote
+    /// pool leaves it where it is: its request already authenticated, so refusing it
+    /// would only punish a client that did everything right.
+    fn promote(&self, permit: &ConnectionPermit) {
+        debug_assert_ne!(permit.key, PeerKey::Loopback);
+        let mut counts = self.lock();
+        // Re-read under the lock: another request on this connection may have won the race.
+        if permit.authenticated.load(Ordering::Relaxed) {
+            return;
+        }
+        if counts.remote >= self.limits.remote {
+            return;
+        }
+        let Some(held) = counts.remote_by_peer.get_mut(&permit.key) else {
+            // Only after a poisoned update lost this connection's entry.
+            return;
+        };
+        debug_assert!(held.pre_auth > 0);
+        held.pre_auth = held.pre_auth.saturating_sub(1);
+        held.authenticated += 1;
+        counts.remote_pre_auth = counts.remote_pre_auth.saturating_sub(1);
+        counts.remote += 1;
+        permit.authenticated.store(true, Ordering::Relaxed);
+        debug_assert!(counts.remote <= self.limits.remote);
+        debug_assert!(counts.remote_is_peer_sum());
+    }
+
+    fn release(&self, key: PeerKey, authenticated: bool) {
         let mut counts = self.lock();
         if key == PeerKey::Loopback {
             debug_assert!(counts.loopback > 0);
             counts.loopback = counts.loopback.saturating_sub(1);
             return;
         }
-        debug_assert!(counts.remote > 0);
         debug_assert!(counts.remote_is_peer_sum());
-        counts.remote = counts.remote.saturating_sub(1);
-        if let Some(per_peer) = counts.remote_by_peer.get_mut(&key) {
-            *per_peer = per_peer.saturating_sub(1);
-            if *per_peer == 0 {
+        if authenticated {
+            debug_assert!(counts.remote > 0);
+            counts.remote = counts.remote.saturating_sub(1);
+        } else {
+            debug_assert!(counts.remote_pre_auth > 0);
+            counts.remote_pre_auth = counts.remote_pre_auth.saturating_sub(1);
+        }
+        if let Some(held) = counts.remote_by_peer.get_mut(&key) {
+            if authenticated {
+                held.authenticated = held.authenticated.saturating_sub(1);
+            } else {
+                held.pre_auth = held.pre_auth.saturating_sub(1);
+            }
+            if held.total() == 0 {
                 counts.remote_by_peer.remove(&key);
             }
         }
@@ -246,17 +350,75 @@ impl ConnectionLimiter {
     }
 }
 
-/// One admitted connection. Dropping it, when the connection ends, frees its slot.
+/// One admitted connection. Dropping it, when the connection ends, frees its slot in
+/// whichever pool it is in.
 #[derive(Debug)]
 pub struct ConnectionPermit {
     limiter: Arc<ConnectionLimiter>,
     key: PeerKey,
+    /// One way: set, under the limiter's lock, when the connection moves to the remote pool.
+    authenticated: AtomicBool,
+}
+
+impl ConnectionPermit {
+    /// Counts this connection as authenticated from now on. Idempotent, and free once done,
+    /// since every authenticated request calls it.
+    fn promote(&self) {
+        if self.key == PeerKey::Loopback {
+            return;
+        }
+        if self.authenticated.load(Ordering::Relaxed) {
+            return;
+        }
+        self.limiter.promote(self);
+    }
 }
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
-        self.limiter.release(self.key);
+        let authenticated = *self.authenticated.get_mut();
+        self.limiter.release(self.key, authenticated);
     }
+}
+
+/// The permit of the connection a request arrived on, shared by every request on it.
+#[derive(Debug, Clone)]
+pub struct AdmittedConnection(Arc<ConnectionPermit>);
+
+#[cfg(test)]
+impl AdmittedConnection {
+    /// A remote connection with a limiter of its own, for tests of the layers that promote.
+    pub fn remote_for_test() -> Self {
+        let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
+        let permit = limiter.try_acquire(IpAddr::from([192, 0, 2, 60]));
+        Self(Arc::new(permit.expect("an empty limiter admits")))
+    }
+
+    pub fn is_authenticated(&self) -> bool {
+        self.0.authenticated.load(Ordering::Relaxed)
+    }
+}
+
+/// Records that a request on this connection authenticated, moving the connection out of
+/// the pre-auth pool. A request that came through no guard, as in tests, carries no
+/// connection, and nothing happens.
+pub fn promote_connection(extensions: &Extensions) {
+    if let Some(AdmittedConnection(permit)) = extensions.get::<AdmittedConnection>() {
+        permit.promote();
+    }
+}
+
+/// Promotes the connection of a request its handler authenticated itself, such as
+/// `/login`, whose success status is the verdict.
+pub async fn promote_on_success_middleware(request: Request, next: Next) -> Response {
+    let admitted = request.extensions().get::<AdmittedConnection>().cloned();
+    let response = next.run(request).await;
+    if response.status().is_success() {
+        if let Some(AdmittedConnection(permit)) = admitted {
+            permit.promote();
+        }
+    }
+    response
 }
 
 /// axum-server builds hyper's builder without a timer, and hyper ignores a default timeout
@@ -285,6 +447,7 @@ pub struct ConnectionGuardAcceptor<A> {
     inner: A,
     limiter: Arc<ConnectionLimiter>,
     first_bytes_timeout: Duration,
+    peer_ip: fn(SocketAddr) -> IpAddr,
 }
 
 impl<A, S> Accept<TcpStream, S> for ConnectionGuardAcceptor<A>
@@ -295,23 +458,24 @@ where
     A::Service: Send + 'static,
 {
     type Stream = GuardedStream<A::Stream>;
-    type Service = A::Service;
+    type Service = AddExtension<A::Service, AdmittedConnection>;
     type Future = BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
 
     /// Over-limit connections are dropped here, before any TLS or HTTP work, which closes
     /// them at once. The permit then travels with the stream, so the slot frees whenever the
-    /// connection ends, however it ends.
+    /// connection ends, however it ends, and with each request, so auth can promote it.
     fn accept(&self, stream: TcpStream, service: S) -> Self::Future {
         let permit = stream
             .peer_addr()
             .ok()
-            .and_then(|address| self.limiter.try_acquire(address.ip()));
+            .and_then(|address| self.limiter.try_acquire((self.peer_ip)(address)));
         let Some(permit) = permit else {
             debug!("Refused an API connection over the connection limit.");
             return Box::pin(std::future::ready(Err(io::Error::other(
                 "over the connection limit",
             ))));
         };
+        let permit = Arc::new(permit);
         let deadline = Instant::now() + self.first_bytes_timeout;
         let accepting = self.inner.accept(stream, service);
         Box::pin(async move {
@@ -319,6 +483,7 @@ where
                 return Err(first_bytes_timeout());
             };
             let (stream, service) = accepted?;
+            let service = Extension(AdmittedConnection(Arc::clone(&permit))).layer(service);
             Ok((GuardedStream::new(stream, deadline, permit), service))
         })
     }
@@ -345,12 +510,12 @@ pin_project! {
         // Dropped once the connection has committed to a protocol.
         deadline: Option<Pin<Box<Sleep>>>,
         bytes_read: usize,
-        permit: ConnectionPermit,
+        permit: Arc<ConnectionPermit>,
     }
 }
 
 impl<S> GuardedStream<S> {
-    fn new(inner: S, deadline: Instant, permit: ConnectionPermit) -> Self {
+    fn new(inner: S, deadline: Instant, permit: Arc<ConnectionPermit>) -> Self {
         Self {
             inner,
             deadline: Some(Box::pin(tokio::time::sleep_until(deadline))),
@@ -455,6 +620,16 @@ mod tests {
     }
 
     async fn serve_limited(router: Router, limiter: Arc<ConnectionLimiter>) -> SocketAddr {
+        serve_as(router, limiter, TEST_TIMEOUTS, tcp_peer_ip).await
+    }
+
+    /// Serves `router` with every connection charged to the address `peer_ip` picks.
+    async fn serve_as(
+        router: Router,
+        limiter: Arc<ConnectionLimiter>,
+        timeouts: ConnectionTimeouts,
+        peer_ip: fn(SocketAddr) -> IpAddr,
+    ) -> SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DefaultAcceptor::new();
@@ -462,7 +637,8 @@ mod tests {
             listener.into_std().unwrap(),
             acceptor,
             limiter,
-            TEST_TIMEOUTS,
+            timeouts,
+            peer_ip,
         )
         .unwrap();
         tokio::spawn(async move {
@@ -492,6 +668,7 @@ mod tests {
             acceptor,
             limiter,
             TEST_TIMEOUTS,
+            tcp_peer_ip,
         )
         .unwrap();
         tokio::spawn(async move {
@@ -631,45 +808,68 @@ mod tests {
         );
     }
 
-    fn limiter(per_peer: usize, remote: usize, loopback: usize) -> Arc<ConnectionLimiter> {
-        let limits = ConnectionLimits {
-            per_peer,
-            remote,
-            loopback,
-        };
+    fn limiter(limits: ConnectionLimits) -> Arc<ConnectionLimiter> {
         ConnectionLimiter::new(limits, Arc::default())
     }
+
+    /// Only the loopback pool is reachable from a test's own connections.
+    fn loopback_limiter(loopback: usize) -> Arc<ConnectionLimiter> {
+        limiter(ConnectionLimits { loopback, ..SMALL })
+    }
+
+    /// Limits small enough to reach in a test.
+    const SMALL: ConnectionLimits = ConnectionLimits {
+        per_peer: 3,
+        per_peer_pre_auth: 2,
+        remote: 4,
+        remote_pre_auth: 3,
+        loopback: 1,
+    };
 
     fn ip(address: &str) -> IpAddr {
         address.parse().unwrap()
     }
 
-    /// Goal: at a normal open file limit the full limits apply, and at a low one the pools
-    /// shrink in proportion to stay within their share, never below one each.
+    /// Open connections as (pre-auth, authenticated remote, loopback).
+    fn pools(limiter: &ConnectionLimiter) -> (usize, usize, usize) {
+        let counts = limiter.lock();
+        (counts.remote_pre_auth, counts.remote, counts.loopback)
+    }
+
+    /// Goal: at a normal open file limit the full limits apply, and at a low one every pool,
+    /// the pre-auth one included, shrinks in proportion to stay within its share, never
+    /// below one each. Method: limits just under what the full pools need must scale.
     #[test]
     fn limits_scale_with_the_open_file_limit() {
         assert_eq!(
             ConnectionLimits::for_open_file_limit(524_288),
             ConnectionLimits::FULL
         );
+        let full_total = ConnectionLimits::FULL.total();
+        let open_files = u64::try_from(full_total - 1).unwrap() * OPEN_FILES_SHARE;
+        assert!(ConnectionLimits::for_open_file_limit(open_files).total() < full_total);
         let tight = ConnectionLimits::for_open_file_limit(1024);
         assert!(tight.total() <= 1024 / 4);
+        assert!(tight.remote > tight.remote_pre_auth);
         assert!(tight.remote > tight.loopback);
         assert_eq!(tight.per_peer, PER_PEER_CONNECTIONS);
+        assert_eq!(tight.per_peer_pre_auth, PER_PEER_PRE_AUTH_CONNECTIONS);
         let tiny = ConnectionLimits::for_open_file_limit(40);
         assert!(tiny.total() <= 10);
         assert!(tiny.per_peer <= tiny.remote);
+        assert!(tiny.per_peer_pre_auth <= tiny.remote_pre_auth);
         let starved = ConnectionLimits::for_open_file_limit(0);
         assert_eq!(
-            (starved.remote, starved.loopback, starved.per_peer),
+            (starved.remote, starved.remote_pre_auth, starved.loopback),
             (1, 1, 1)
         );
+        assert_eq!((starved.per_peer, starved.per_peer_pre_auth), (1, 1));
     }
 
-    /// Goal: one peer is held to its own limit, and an IPv6 /64 counts as one peer.
+    /// Goal: one peer is held to its own pre-auth limit, and an IPv6 /64 counts as one peer.
     #[test]
-    fn per_peer_limit_holds() {
-        let limiter = limiter(2, 10, 1);
+    fn per_peer_pre_auth_limit_holds() {
+        let limiter = limiter(SMALL);
         let held = [
             limiter.try_acquire(ip("2001:db8::1")).unwrap(),
             limiter.try_acquire(ip("2001:db8::2")).unwrap(),
@@ -679,32 +879,32 @@ mod tests {
         drop(held);
     }
 
-    /// Goal: a trusted proxy carries many clients on one address, so the per-peer limit
-    /// does not apply to it, while the remote pool still does.
+    /// Goal: the per-peer limit counts a peer's connections in both pools, so promoting
+    /// connections never lets one peer exceed it. Method: two promoted and one pre-auth
+    /// connection reach a limit of three while the pre-auth limit still has room.
     #[test]
-    fn trusted_proxy_is_exempt_from_the_per_peer_limit() {
-        let limits = ConnectionLimits {
-            per_peer: 1,
-            remote: 3,
-            loopback: 1,
-        };
-        let trusted = Arc::new(TrustedProxies::from_config(&["192.0.2.1".to_string()]));
-        let limiter = ConnectionLimiter::new(limits, trusted);
-        let held: Vec<_> = (0..3)
-            .map(|_| limiter.try_acquire(ip("192.0.2.1")).unwrap())
-            .collect();
+    fn per_peer_limit_spans_both_pools() {
+        let limiter = limiter(SMALL);
+        let first = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let second = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        first.promote();
+        let third = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        second.promote();
+        assert_eq!(pools(&limiter), (1, 2, 0));
         assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
-        drop(held);
-        let untrusted = limiter.try_acquire(ip("192.0.2.2")).unwrap();
-        assert!(limiter.try_acquire(ip("192.0.2.2")).is_none());
-        drop(untrusted);
+        drop([first, second, third]);
     }
 
-    /// Goal: the remote pool caps all remote peers together, and loopback is admitted from
-    /// its own pool even when the remote one is full.
+    /// Goal: new remote connections are admitted against the pre-auth pool alone, which
+    /// caps all remote peers together, while loopback keeps its own pool. Method: two peers
+    /// fill a pre-auth pool of two; promoting one connection lets a third peer in.
     #[test]
-    fn pools_are_independent() {
-        let limiter = limiter(1, 2, 1);
+    fn pre_auth_pool_caps_all_remote_peers() {
+        let limiter = limiter(ConnectionLimits {
+            per_peer_pre_auth: 1,
+            remote_pre_auth: 2,
+            ..SMALL
+        });
         let remote = [
             limiter.try_acquire(ip("192.0.2.1")).unwrap(),
             limiter.try_acquire(ip("192.0.2.2")).unwrap(),
@@ -714,24 +914,149 @@ mod tests {
         assert!(limiter.try_acquire(ip("::1")).is_none());
         drop(local);
         assert!(limiter.try_acquire(ip("::ffff:127.0.0.1")).is_some());
+        remote[0].promote();
+        assert!(limiter.try_acquire(ip("192.0.2.3")).is_some());
         drop(remote);
     }
 
-    /// Goal: a slot frees when its connection ends, and nothing is left behind once every
-    /// connection has ended.
+    /// Goal: promotion moves a connection from the pre-auth pool to the remote pool once,
+    /// freeing its pre-auth slot, and a second promotion changes nothing.
+    #[test]
+    fn promotion_moves_a_connection_once() {
+        let limiter = limiter(ConnectionLimits {
+            remote_pre_auth: 1,
+            ..SMALL
+        });
+        let first = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        assert!(limiter.try_acquire(ip("192.0.2.2")).is_none());
+        first.promote();
+        assert_eq!(pools(&limiter), (0, 1, 0));
+        let second = limiter.try_acquire(ip("192.0.2.2")).unwrap();
+        first.promote();
+        assert_eq!(pools(&limiter), (1, 1, 0));
+        drop([first, second]);
+    }
+
+    /// Goal: promotion into a full remote pool leaves the connection pre-auth rather than
+    /// failing it, and a later promotion succeeds once the pool has room.
+    #[test]
+    fn promotion_into_a_full_pool_stays_pre_auth() {
+        let limiter = limiter(ConnectionLimits { remote: 1, ..SMALL });
+        let first = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let second = limiter.try_acquire(ip("192.0.2.2")).unwrap();
+        first.promote();
+        second.promote();
+        assert_eq!(pools(&limiter), (1, 1, 0));
+        assert!(second.authenticated.load(Ordering::Relaxed).not());
+        drop(first);
+        assert_eq!(pools(&limiter), (1, 0, 0));
+        second.promote();
+        assert_eq!(pools(&limiter), (0, 1, 0));
+        drop(second);
+    }
+
+    /// Goal: loopback has no pre-auth distinction: promoting a local connection is a no-op,
+    /// and a full pre-auth pool never refuses one.
+    #[test]
+    fn loopback_is_never_pre_auth() {
+        let limiter = limiter(ConnectionLimits {
+            per_peer_pre_auth: 1,
+            remote_pre_auth: 1,
+            ..SMALL
+        });
+        let remote = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let local = limiter.try_acquire(ip("127.0.0.1")).unwrap();
+        local.promote();
+        assert_eq!(pools(&limiter), (1, 0, 1));
+        drop([remote, local]);
+    }
+
+    /// Goal: a trusted proxy carries many clients on one address, so neither per-peer limit
+    /// applies to it, in either pool, while both pools still do.
+    #[test]
+    fn trusted_proxy_is_exempt_from_the_per_peer_limits() {
+        let limits = ConnectionLimits {
+            per_peer: 1,
+            per_peer_pre_auth: 1,
+            remote: 2,
+            remote_pre_auth: 3,
+            loopback: 1,
+        };
+        let trusted = Arc::new(TrustedProxies::from_config(&["192.0.2.1".to_string()]));
+        let limiter = ConnectionLimiter::new(limits, trusted);
+        let proxied: Vec<_> = (0..3)
+            .map(|_| limiter.try_acquire(ip("192.0.2.1")).unwrap())
+            .collect();
+        assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
+        proxied.iter().for_each(ConnectionPermit::promote);
+        assert_eq!(pools(&limiter), (1, 2, 0));
+        let more: Vec<_> = (0..2)
+            .map(|_| limiter.try_acquire(ip("192.0.2.1")).unwrap())
+            .collect();
+        assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
+        drop(more);
+        let untrusted = limiter.try_acquire(ip("192.0.2.2")).unwrap();
+        assert!(limiter.try_acquire(ip("192.0.2.2")).is_none());
+        drop(untrusted);
+        drop(proxied);
+    }
+
+    /// Goal: a slot frees from whichever pool its connection is in when it ends, and
+    /// nothing is left behind once every connection has ended.
     #[test]
     fn permits_release_on_drop() {
-        let limiter = limiter(1, 4, 1);
-        let first = limiter.try_acquire(ip("192.0.2.1")).unwrap();
-        assert!(limiter.try_acquire(ip("192.0.2.1")).is_none());
-        drop(first);
-        let again = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let limiter = limiter(SMALL);
+        let pre_auth = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        let promoted = limiter.try_acquire(ip("192.0.2.1")).unwrap();
+        promoted.promote();
         let local = limiter.try_acquire(ip("127.0.0.1")).unwrap();
-        drop(again);
+        assert_eq!(pools(&limiter), (1, 1, 1));
+        drop(promoted);
+        assert_eq!(pools(&limiter), (1, 0, 1));
+        drop(pre_auth);
+        assert_eq!(pools(&limiter), (0, 0, 1));
         drop(local);
-        let counts = limiter.lock();
-        assert_eq!((counts.remote, counts.loopback), (0, 0));
-        assert!(counts.remote_by_peer.is_empty());
+        assert_eq!(pools(&limiter), (0, 0, 0));
+        assert!(limiter.lock().remote_by_peer.is_empty());
+    }
+
+    /// Goal: `promote_connection` promotes the connection a request carries, and is a no-op
+    /// for a request that came through no guard.
+    #[test]
+    fn promote_connection_reads_the_request_extension() {
+        let limiter = limiter(SMALL);
+        promote_connection(&Extensions::new());
+        let mut extensions = Extensions::new();
+        let permit = Arc::new(limiter.try_acquire(ip("192.0.2.1")).unwrap());
+        extensions.insert(AdmittedConnection(Arc::clone(&permit)));
+        assert_eq!(pools(&limiter), (1, 0, 0));
+        promote_connection(&extensions);
+        assert_eq!(pools(&limiter), (0, 1, 0));
+        drop(extensions);
+        drop(permit);
+        assert_eq!(pools(&limiter), (0, 0, 0));
+    }
+
+    /// Goal: a route that authenticates in its handler promotes its connection only on
+    /// success. Method: `/login` stand-ins answering 401 then 200 on one connection.
+    #[tokio::test]
+    async fn only_a_successful_login_promotes() {
+        use axum::http::StatusCode;
+        use tower::ServiceExt as _;
+        let limiter = limiter(SMALL);
+        let permit = Arc::new(limiter.try_acquire(ip("192.0.2.1")).unwrap());
+        let app = Router::new()
+            .route("/rejected", get(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/accepted", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn(promote_on_success_middleware));
+        for (uri, pools_after) in [("/rejected", (1, 0, 0)), ("/accepted", (0, 1, 0))] {
+            let mut request = Request::get(uri).body(Body::empty()).unwrap();
+            request
+                .extensions_mut()
+                .insert(AdmittedConnection(Arc::clone(&permit)));
+            app.clone().oneshot(request).await.unwrap();
+            assert_eq!(pools(&limiter), pools_after);
+        }
     }
 
     /// Sends a request and returns whatever arrives before the server closes. A refused
@@ -752,7 +1077,7 @@ mod tests {
     /// of one; the held connection sends nothing until the second has been refused.
     #[tokio::test]
     async fn over_limit_connection_is_refused_until_a_slot_frees() {
-        let address = serve_limited(app(), limiter(1, 1, 1)).await;
+        let address = serve_limited(app(), loopback_limiter(1)).await;
         let mut held = TcpStream::connect(address).await.unwrap();
         let mut refused = TcpStream::connect(address).await.unwrap();
         assert!(exchange(&mut refused).await.is_empty());
@@ -793,5 +1118,130 @@ mod tests {
             received.extend_from_slice(&buffer[..read]);
         }
         assert!(started.elapsed() > TEST_TIMEOUTS.header_read * 2);
+    }
+
+    /// Long enough that an idle connection holds its slot for the whole test.
+    const HOLDING_TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
+        first_bytes_timeout: Duration::from_secs(5),
+        header_read: Duration::from_secs(5),
+        h2_keep_alive_interval: Duration::from_secs(20),
+    };
+
+    const _: () = assert!(HOLDING_TIMEOUTS.header_read.as_secs() < NEVER.as_secs());
+
+    /// Every connection in the remote tests comes from this one TEST-NET peer.
+    fn remote_peer(_: SocketAddr) -> IpAddr {
+        IpAddr::from([192, 0, 2, 50])
+    }
+
+    /// Serves `app()` through the production server with each connection charged to
+    /// `remote_peer`, plus `/auth`, which authenticates every request the way the auth
+    /// layers do.
+    async fn serve_remote(limiter: Arc<ConnectionLimiter>) -> SocketAddr {
+        let router = app().route(
+            "/auth",
+            get(|request: Request| async move {
+                promote_connection(request.extensions());
+                "ok"
+            }),
+        );
+        serve_as(router, limiter, HOLDING_TIMEOUTS, remote_peer).await
+    }
+
+    /// Sends an authenticated request on a kept-alive connection and returns its response.
+    async fn authenticate(stream: &mut TcpStream) -> String {
+        stream
+            .write_all(b"GET /auth HTTP/1.1\r\nhost: cc.lan\r\n\r\n")
+            .await
+            .unwrap();
+        let mut received = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        while String::from_utf8_lossy(&received)
+            .contains("\r\n\r\nok")
+            .not()
+        {
+            let read = timeout(NEVER, stream.read(&mut buffer))
+                .await
+                .expect("the response must arrive")
+                .unwrap();
+            assert!(read > 0, "the connection was closed");
+            received.extend_from_slice(&buffer[..read]);
+        }
+        String::from_utf8_lossy(&received).into_owned()
+    }
+
+    /// Waits for the server side of connect, close and promotion to reach the limiter.
+    async fn pools_reach(limiter: &ConnectionLimiter, expected: (usize, usize, usize)) {
+        let started = std::time::Instant::now();
+        while pools(limiter) != expected {
+            assert!(
+                started.elapsed() < NEVER,
+                "pools stayed at {:?}",
+                pools(limiter)
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Goal: through the real server, idle peers that never authenticate fill only the
+    /// pre-auth pool, while a connection that authenticated keeps being served. Method:
+    /// one connection authenticates, two idle ones fill a pre-auth pool of two, a third is
+    /// refused, then the first is served again.
+    #[tokio::test]
+    async fn authenticated_connection_outlives_a_full_pre_auth_pool() {
+        let limiter = limiter(ConnectionLimits {
+            per_peer: 8,
+            per_peer_pre_auth: 2,
+            remote: 2,
+            remote_pre_auth: 2,
+            loopback: 1,
+        });
+        let address = serve_remote(Arc::clone(&limiter)).await;
+        let mut signed_in = TcpStream::connect(address).await.unwrap();
+        assert!(authenticate(&mut signed_in)
+            .await
+            .starts_with("HTTP/1.1 200"));
+        pools_reach(&limiter, (0, 1, 0)).await;
+
+        let idle = [
+            TcpStream::connect(address).await.unwrap(),
+            TcpStream::connect(address).await.unwrap(),
+        ];
+        pools_reach(&limiter, (2, 1, 0)).await;
+        let mut refused = TcpStream::connect(address).await.unwrap();
+        assert!(exchange(&mut refused).await.is_empty());
+        assert!(authenticate(&mut signed_in)
+            .await
+            .starts_with("HTTP/1.1 200"));
+        assert_eq!(pools(&limiter), (2, 1, 0));
+        drop(idle);
+    }
+
+    /// Goal: through the real server, a connection that authenticates while the remote pool
+    /// is full keeps being served from the pre-auth pool, and is promoted once a slot frees.
+    /// Slots free from either pool when their connections close.
+    #[tokio::test]
+    async fn promotion_waits_for_room_in_the_remote_pool() {
+        let limiter = limiter(ConnectionLimits {
+            per_peer: 8,
+            per_peer_pre_auth: 4,
+            remote: 1,
+            remote_pre_auth: 4,
+            loopback: 1,
+        });
+        let address = serve_remote(Arc::clone(&limiter)).await;
+        let mut first = TcpStream::connect(address).await.unwrap();
+        assert!(authenticate(&mut first).await.starts_with("HTTP/1.1 200"));
+        let mut second = TcpStream::connect(address).await.unwrap();
+        assert!(authenticate(&mut second).await.starts_with("HTTP/1.1 200"));
+        pools_reach(&limiter, (1, 1, 0)).await;
+
+        drop(first);
+        pools_reach(&limiter, (1, 0, 0)).await;
+        assert!(authenticate(&mut second).await.starts_with("HTTP/1.1 200"));
+        assert_eq!(pools(&limiter), (0, 1, 0));
+        drop(second);
+        pools_reach(&limiter, (0, 0, 0)).await;
+        assert!(limiter.lock().remote_by_peer.is_empty());
     }
 }
