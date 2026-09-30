@@ -111,10 +111,12 @@ const createChannelDashboard = (): Dashboard => {
     // needed due to reduced default data type range:
     dash.dataTypes = []
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID!, props.channelName!))
-    settingsStore.allUIDeviceSettings
+    const channelSettings = settingsStore.allUIDeviceSettings
         .get(props.deviceUID!)!
-        .sensorsAndChannels.get(props.channelName!)!.channelDashboard = dash
-    return dash
+        .sensorsAndChannels.get(props.channelName!)!
+    channelSettings.channelDashboard = dash
+    // The raw object does not track edits; hand back the stored proxy.
+    return channelSettings.channelDashboard!
 }
 
 // Sensors fall back to their detected label; a dashboard keeps its own name.
