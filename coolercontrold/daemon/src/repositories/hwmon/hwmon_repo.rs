@@ -60,7 +60,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
     Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
-    Temp, TempInfo, TempName, TempStatus, TypeIndex, UID,
+    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
@@ -2645,6 +2645,7 @@ impl Repository for HwmonRepo {
         let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
             return Ok(Vec::new());
         };
+        debug_assert_eq!(channel.name, channel_name);
         if driver.io.is_unreachable() {
             return Err(anyhow!("HWMon device {} is not responding", driver.name));
         }
@@ -2666,7 +2667,9 @@ impl Repository for HwmonRepo {
                 &device,
             ) => permit?,
         };
-        Ok(attributes::read_channel_attributes(driver, channel).await)
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
     }
 }
 

@@ -21,7 +21,7 @@ use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::config::Config;
-use crate::device::{ChannelAttribute, DeviceType, Duty, UID};
+use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, UID};
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
@@ -616,6 +616,7 @@ impl Repository for GpuRepo {
         let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
             return Ok(Vec::new());
         };
+        debug_assert_eq!(channel.name, channel_name);
         if driver.io.is_unreachable() {
             return Err(anyhow!("AMD GPU device {} is not responding", driver.name));
         }
@@ -626,7 +627,9 @@ impl Repository for GpuRepo {
         let device = format!("AMD GPU device: {device_uid} channel: {channel_name}");
         let _permit =
             attributes::acquire_permit(semaphore, self.device_read_permit_timeout, &device).await?;
-        Ok(attributes::read_channel_attributes(driver, channel).await)
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
     }
 }
 

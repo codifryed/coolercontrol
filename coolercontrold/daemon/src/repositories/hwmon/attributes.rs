@@ -27,6 +27,8 @@ pub async fn acquire_permit<'a>(
     device: &str,
 ) -> Result<SemaphorePermit<'a>> {
     let permit_timeout = read_permit_timeout.min(ATTRIBUTE_PERMIT_TIMEOUT_MAX);
+    debug_assert!(permit_timeout > Duration::ZERO);
+    debug_assert!(permit_timeout <= ATTRIBUTE_PERMIT_TIMEOUT_MAX);
     tokio::select! {
         () = rt::sleep(permit_timeout) => {
             Err(anyhow!("TIMEOUT {device}; waiting to read attributes"))

@@ -1038,6 +1038,9 @@ impl Engine {
         let (_, repo) = self.get_device_repo(device_uid)?;
         let attributes = repo.channel_attributes(device_uid, channel_name).await?;
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        debug_assert!(attributes
+            .iter()
+            .all(|attribute| attribute.value.is_finite()));
         Ok(attributes)
     }
 

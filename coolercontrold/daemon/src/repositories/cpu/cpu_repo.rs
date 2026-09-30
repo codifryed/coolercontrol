@@ -13,7 +13,7 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, UID,
+    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::association::{
@@ -1024,6 +1024,7 @@ impl Repository for CpuRepo {
         let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
             return Ok(Vec::new());
         };
+        debug_assert_eq!(channel.name, channel_name);
         if driver.io.is_unreachable() {
             return Err(anyhow!(
                 "CPU sensor device {} is not responding",
@@ -1031,7 +1032,9 @@ impl Repository for CpuRepo {
             ));
         }
         // No permit to take: this repository has none. Its reads go through the same device IO.
-        Ok(attributes::read_channel_attributes(driver, channel).await)
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
     }
 
     async fn shutdown(&self) -> Result<()> {
