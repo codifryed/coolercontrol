@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ChannelAttribute, ChannelAttributeKind } from '@/models/ChannelAttributes.ts'
-import { SCALE_KEY_PERCENT, SCALE_KEY_RPM } from '@/components/chartScales.ts'
+import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, type ScaleKey } from '@/components/chartScales.ts'
 
 type Translate = (key: string) => string
 
@@ -55,7 +55,7 @@ export interface LimitLine {
     name: string
     // In chart units: rpm is divided by the precision setting like the chart's rpm lines.
     value: number
-    scale: string
+    scale: ScaleKey
     severity: LimitSeverity
     label: string
 }

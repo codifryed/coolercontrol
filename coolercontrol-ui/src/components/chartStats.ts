@@ -5,6 +5,7 @@ import type { UID } from '@/models/Device.ts'
 import type { Status } from '@/models/Status.ts'
 import type { ChannelStatField, ChannelStats, StatsResponseDTO } from '@/models/Stats.ts'
 import { DataType } from '@/models/Dashboard.ts'
+import type { ScaleKey } from '@/components/chartScales.ts'
 
 // The daemon pre-fills a device's history with all-zero statuses at startup and after wake, so
 // the charts start full width. They are not readings: every present value is exactly 0.
@@ -264,7 +265,7 @@ export interface WindowStatsPayload {
     zoomed: boolean
     // Each y scale's current [min, max] in chart units, keyed by scale. Tells whether a limit
     // line is on the chart.
-    scaleRanges: Record<string, [number, number]>
+    scaleRanges: Partial<Record<ScaleKey, [number, number]>>
 }
 
 const LINE_DASH: Record<DataType, Array<number>> = {

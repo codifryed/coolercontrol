@@ -18,7 +18,12 @@ import {
     type DrawnLimitLine,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
-import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS } from '@/components/chartScales.ts'
+import {
+    SCALE_KEY_PERCENT,
+    SCALE_KEY_RPM,
+    SCALE_KEY_WATTS,
+    type ScaleKey,
+} from '@/components/chartScales.ts'
 import { limitColor, type LimitLine } from '@/components/channelAttributes.ts'
 import { lineDataIndex, lineSetMatches } from '@/components/chartSeriesMapping.ts'
 import {
@@ -431,8 +436,8 @@ const focusLine = (seriesIndex: number | null): void => {
 }
 defineExpose({ focusLine })
 
-const currentScaleRanges = (): Record<string, [number, number]> => {
-    const ranges: Record<string, [number, number]> = {}
+const currentScaleRanges = (): Partial<Record<ScaleKey, [number, number]>> => {
+    const ranges: Partial<Record<ScaleKey, [number, number]>> = {}
     for (const key of [SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS]) {
         const scale = chart?.scales[key]
         if (scale?.min != null && scale.max != null) ranges[key] = [scale.min, scale.max]

@@ -6,7 +6,12 @@ import { mdiMinus } from '@mdi/js'
 import type { Color } from '@/models/Device.ts'
 import { escapeHtml, safeColor } from '@/components/htmlEscaping.ts'
 
-import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, SCALE_KEY_WATTS } from '@/components/chartScales.ts'
+import {
+    SCALE_KEY_PERCENT,
+    SCALE_KEY_RPM,
+    SCALE_KEY_WATTS,
+    type ScaleKey,
+} from '@/components/chartScales.ts'
 
 export interface DeviceLineProperties {
     color: Color
@@ -513,7 +518,7 @@ export const mouseWheelZoomPlugin = () => {
 
 export interface DrawnLimitLine {
     value: number
-    scale: string
+    scale: ScaleKey
     color: string
     label: string
 }
