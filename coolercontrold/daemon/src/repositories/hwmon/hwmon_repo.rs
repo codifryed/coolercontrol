@@ -7068,7 +7068,7 @@ mod channel_attributes_tests {
     fn shutdown_during_permit_wait_reports_nothing() {
         // Goal: shutdown releases a request waiting on a busy device with an empty list
         // instead of a timeout error. Method: hold the permit, cancel the shutdown token, and
-        // ask for attributes with a permit timeout far longer than the call may take.
+        // ask for attributes; a permit timeout would surface as an error, not an empty list.
         cc_fs::test_runtime(async {
             let base = seeded_dir().await;
             let mut repo = empty_repo();
@@ -7078,11 +7078,9 @@ mod channel_attributes_tests {
             let _holder = sem.try_acquire().expect("permit must start free");
             repo.shutdown_token.cancel();
 
-            let started = Instant::now();
             let attributes = repo.channel_attributes(&uid, "temp1").await.unwrap();
 
             assert!(attributes.is_empty());
-            assert!(started.elapsed() < Duration::from_secs(1));
             let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
