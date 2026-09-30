@@ -7567,67 +7567,67 @@
         "description": "A driver-reported channel attribute that is read on demand rather than polled: limits,\n targets and sensor details. Serialized upper-case so clients can pick the unit and decide\n which values to draw as limits.",
         "oneOf": [
           {
-            "description": "°C",
+            "description": "Degrees Celsius.",
             "type": "string",
             "const": "TEMP_MAX"
           },
           {
-            "description": "°C, an absolute temperature per the hwmon ABI, not a delta.",
+            "description": "Degrees Celsius, an absolute temperature per the hwmon ABI, not a delta.",
             "type": "string",
             "const": "TEMP_MAX_HYST"
           },
           {
-            "description": "°C",
+            "description": "Degrees Celsius.",
             "type": "string",
             "const": "TEMP_CRIT"
           },
           {
-            "description": "°C, absolute.",
+            "description": "Degrees Celsius, absolute.",
             "type": "string",
             "const": "TEMP_CRIT_HYST"
           },
           {
-            "description": "°C",
+            "description": "Degrees Celsius.",
             "type": "string",
             "const": "TEMP_EMERGENCY"
           },
           {
-            "description": "°C, absolute.",
+            "description": "Degrees Celsius, absolute.",
             "type": "string",
             "const": "TEMP_EMERGENCY_HYST"
           },
           {
-            "description": "°C",
+            "description": "Degrees Celsius.",
             "type": "string",
             "const": "TEMP_MIN"
           },
           {
-            "description": "°C, absolute.",
+            "description": "Degrees Celsius, absolute.",
             "type": "string",
             "const": "TEMP_MIN_HYST"
           },
           {
-            "description": "°C",
+            "description": "Degrees Celsius.",
             "type": "string",
             "const": "TEMP_LCRIT"
           },
           {
-            "description": "°C, absolute.",
+            "description": "Degrees Celsius, absolute.",
             "type": "string",
             "const": "TEMP_LCRIT_HYST"
           },
           {
-            "description": "°C, lowest reading since the driver loaded or was reset.",
+            "description": "Degrees Celsius, the lowest reading since the driver loaded or was reset.",
             "type": "string",
             "const": "TEMP_LOWEST"
           },
           {
-            "description": "°C, highest reading since the driver loaded or was reset.",
+            "description": "Degrees Celsius, the highest reading since the driver loaded or was reset.",
             "type": "string",
             "const": "TEMP_HIGHEST"
           },
           {
-            "description": "°C, added by the chip to the raw reading.",
+            "description": "Degrees Celsius, added by the chip to the raw reading.",
             "type": "string",
             "const": "TEMP_OFFSET"
           },
@@ -7637,17 +7637,17 @@
             "const": "TEMP_TYPE"
           },
           {
-            "description": "rpm",
+            "description": "Revolutions per minute.",
             "type": "string",
             "const": "FAN_MIN"
           },
           {
-            "description": "rpm",
+            "description": "Revolutions per minute.",
             "type": "string",
             "const": "FAN_MAX"
           },
           {
-            "description": "rpm",
+            "description": "Revolutions per minute.",
             "type": "string",
             "const": "FAN_TARGET"
           },

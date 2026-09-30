@@ -119,40 +119,40 @@ pub const MAX_CHANNEL_ATTRIBUTES: usize = 14;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[schemars(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ChannelAttributeKind {
-    /// °C
+    /// Degrees Celsius.
     TempMax,
-    /// °C, an absolute temperature per the hwmon ABI, not a delta.
+    /// Degrees Celsius, an absolute temperature per the hwmon ABI, not a delta.
     TempMaxHyst,
-    /// °C
+    /// Degrees Celsius.
     TempCrit,
-    /// °C, absolute.
+    /// Degrees Celsius, absolute.
     TempCritHyst,
-    /// °C
+    /// Degrees Celsius.
     TempEmergency,
-    /// °C, absolute.
+    /// Degrees Celsius, absolute.
     TempEmergencyHyst,
-    /// °C
+    /// Degrees Celsius.
     TempMin,
-    /// °C, absolute.
+    /// Degrees Celsius, absolute.
     TempMinHyst,
-    /// °C
+    /// Degrees Celsius.
     TempLcrit,
-    /// °C, absolute.
+    /// Degrees Celsius, absolute.
     TempLcritHyst,
-    /// °C, lowest reading since the driver loaded or was reset.
+    /// Degrees Celsius, the lowest reading since the driver loaded or was reset.
     TempLowest,
-    /// °C, highest reading since the driver loaded or was reset.
+    /// Degrees Celsius, the highest reading since the driver loaded or was reset.
     TempHighest,
-    /// °C, added by the chip to the raw reading.
+    /// Degrees Celsius, added by the chip to the raw reading.
     TempOffset,
     /// Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,
     /// Intel PECI).
     TempType,
-    /// rpm
+    /// Revolutions per minute.
     FanMin,
-    /// rpm
+    /// Revolutions per minute.
     FanMax,
-    /// rpm
+    /// Revolutions per minute.
     FanTarget,
     /// Divisor, a plain number.
     FanDiv,
