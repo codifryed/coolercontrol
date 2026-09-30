@@ -180,6 +180,59 @@ const lineOptions = computed((): Array<UiToggleOption> =>
         value: line.lineName,
     })),
 )
+interface DetailRow {
+    key: string
+    label: string
+    help: string
+    value: string
+    warn: boolean
+}
+// Window-only rows for the active line; their since-start cell stays empty.
+const detailRows = computed((): Array<DetailRow> => {
+    const line = activeLine.value
+    if (line == null) return []
+    const detail = details.value.get(line.lineName)
+    const rows: Array<DetailRow> = [
+        {
+            key: 'jitter',
+            label: t('components.statsPanel.jitter'),
+            help: t('components.statsPanel.jitterHelp'),
+            value: formatJitter(line.stats?.jitter, line.dataType),
+            warn: false,
+        },
+    ]
+    if (line.dataType === DataType.DUTY) {
+        rows.push({
+            key: 'directionChanges',
+            label: t('components.statsPanel.directionChanges'),
+            help: t('components.statsPanel.directionChangesHelp'),
+            value: formatChanges(detail),
+            warn: false,
+        })
+    }
+    if (line.dataType === DataType.RPM) {
+        rows.push({
+            key: 'stopped',
+            label: t('components.statsPanel.stopped'),
+            help: t('components.statsPanel.stoppedHelp'),
+            value: formatShare(detail?.stoppedShare),
+            warn: false,
+        })
+        if (detail?.stalls != null) {
+            rows.push({
+                key: 'stalls',
+                label: t('components.statsPanel.stalls'),
+                help: t('components.statsPanel.stallsHelp', {
+                    polls: STALL_POLLS_MIN,
+                    duty: stallDutyMin(line.deviceUID, line.channelName),
+                }),
+                value: formatStalls(detail),
+                warn: detail.stalls.count > 0,
+            })
+        }
+    }
+    return rows
+})
 const tir = computed((): TimeInRange | null =>
     activeLine.value == null
         ? null
@@ -283,17 +336,20 @@ const movePanel = (): void => {
                         {{ formatStat(displayOf(line)?.[row.key], line.dataType) }}
                     </td>
                 </tr>
-                <tr>
+                <tr v-for="row in detailRows" :key="row.key">
                     <th
                         class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
                     >
                         <span class="inline-flex items-center gap-1">
-                            {{ t('components.statsPanel.jitter') }}
-                            <HelpIcon :text="t('components.statsPanel.jitterHelp')" :size="0.9" />
+                            {{ row.label }}
+                            <HelpIcon :text="row.help" :size="0.9" />
                         </span>
                     </th>
-                    <td class="whitespace-nowrap px-2 py-0.5 text-right">
-                        {{ formatJitter(line.stats?.jitter, line.dataType) }}
+                    <td
+                        class="whitespace-nowrap px-2 py-0.5 text-right"
+                        :class="{ 'font-semibold text-warning': row.warn }"
+                    >
+                        {{ row.value }}
                     </td>
                     <td
                         class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
@@ -301,82 +357,6 @@ const movePanel = (): void => {
                         -
                     </td>
                 </tr>
-                <tr v-if="line.dataType === DataType.DUTY">
-                    <th
-                        class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
-                    >
-                        <span class="inline-flex items-center gap-1">
-                            {{ t('components.statsPanel.directionChanges') }}
-                            <HelpIcon
-                                :text="t('components.statsPanel.directionChangesHelp')"
-                                :size="0.9"
-                            />
-                        </span>
-                    </th>
-                    <td class="whitespace-nowrap px-2 py-0.5 text-right">
-                        {{ formatChanges(details.get(line.lineName)) }}
-                    </td>
-                    <td
-                        class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
-                    >
-                        -
-                    </td>
-                </tr>
-                <template v-if="line.dataType === DataType.RPM">
-                    <tr>
-                        <th
-                            class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
-                        >
-                            <span class="inline-flex items-center gap-1">
-                                {{ t('components.statsPanel.stopped') }}
-                                <HelpIcon
-                                    :text="t('components.statsPanel.stoppedHelp')"
-                                    :size="0.9"
-                                />
-                            </span>
-                        </th>
-                        <td class="whitespace-nowrap px-2 py-0.5 text-right">
-                            {{ formatShare(details.get(line.lineName)?.stoppedShare) }}
-                        </td>
-                        <td
-                            class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
-                        >
-                            -
-                        </td>
-                    </tr>
-                    <tr v-if="details.get(line.lineName)?.stalls != null">
-                        <th
-                            class="hyphens-auto pl-3 pr-2 py-0.5 text-left font-normal text-text-color-secondary"
-                        >
-                            <span class="inline-flex items-center gap-1">
-                                {{ t('components.statsPanel.stalls') }}
-                                <HelpIcon
-                                    :text="
-                                        t('components.statsPanel.stallsHelp', {
-                                            polls: STALL_POLLS_MIN,
-                                            duty: stallDutyMin(line.deviceUID, line.channelName),
-                                        })
-                                    "
-                                    :size="0.9"
-                                />
-                            </span>
-                        </th>
-                        <td
-                            class="whitespace-nowrap px-2 py-0.5 text-right"
-                            :class="{
-                                'font-semibold text-warning':
-                                    (details.get(line.lineName)?.stalls?.count ?? 0) > 0,
-                            }"
-                        >
-                            {{ formatStalls(details.get(line.lineName)) }}
-                        </td>
-                        <td
-                            class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right text-text-color-secondary"
-                        >
-                            -
-                        </td>
-                    </tr>
-                </template>
             </tbody>
         </table>
         <div v-if="activeLine != null" class="mt-1 border-t border-border-one">
