@@ -274,25 +274,9 @@ pub async fn read_fan_statuses(
     }
     // Two passes: gather the slots this tick actually needs, then map each channel to its
     // position in the reply. Only the attributes the caller asked for are read.
-    let mut batch: Vec<ReadIndex> = Vec::with_capacity(plan.len() * 2);
-    let mut positions: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
-    for (channel, want) in plan {
-        let pwm = (*want == FanRead::Full)
-            .then_some(channel.read_slot.pwm)
-            .flatten()
-            .map(|slot| {
-                batch.push(slot);
-                batch.len() - 1
-            });
-        let rpm = channel.read_slot.rpm.map(|slot| {
-            batch.push(slot);
-            batch.len() - 1
-        });
-        positions.push((pwm, rpm));
-    }
+    let (batch, positions) = batch_slots(plan);
     let mut results = driver.io.read_many(&batch).await;
     debug_assert_eq!(results.len(), batch.len());
-    debug_assert_eq!(positions.len(), plan.len());
 
     let log_error = log_enabled!(log::Level::Debug);
     let mut out = Vec::with_capacity(plan.len());
@@ -348,6 +332,31 @@ pub async fn read_fan_statuses(
     }
     debug_assert_eq!(out.len(), plan.len());
     out
+}
+
+/// Gathers the sysfs slots a plan reads, and each channel's (pwm, rpm) position in that batch.
+fn batch_slots(
+    plan: &[(&HwmonChannelInfo, FanRead)],
+) -> (Vec<ReadIndex>, Vec<(Option<usize>, Option<usize>)>) {
+    let mut batch: Vec<ReadIndex> = Vec::with_capacity(plan.len() * 2);
+    let mut positions: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
+    for (channel, want) in plan {
+        let pwm = (*want == FanRead::Full)
+            .then_some(channel.read_slot.pwm)
+            .flatten()
+            .map(|slot| {
+                batch.push(slot);
+                batch.len() - 1
+            });
+        let rpm = channel.read_slot.rpm.map(|slot| {
+            batch.push(slot);
+            batch.len() - 1
+        });
+        positions.push((pwm, rpm));
+    }
+    debug_assert_eq!(positions.len(), plan.len());
+    debug_assert!(batch.len() <= plan.len() * 2);
+    (batch, positions)
 }
 
 /// Takes one positional result out of a batch, leaving a placeholder behind. The batch is consumed
