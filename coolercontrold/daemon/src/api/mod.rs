@@ -418,15 +418,19 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
         debug!("OpenApi Generation Error: {error}");
     });
     let mut open_api = OpenApi::default();
-    router::init(app_state)
+    let router = router::init(app_state)
         .await
         .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)))
-        // Outside the router, so the client is known before its auth throttle reads it.
-        .layer(middleware::from_fn_with_state(
-            trusted_proxies,
-            peer::client_addr_middleware,
-        ))
+        .layer(Extension(Arc::new(open_api)));
+    with_client_addr(router, trusted_proxies)
+}
+
+/// Outside the router, so the client is known before its auth throttles read it.
+fn with_client_addr(router: Router, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
+    router.layer(middleware::from_fn_with_state(
+        trusted_proxies,
+        peer::client_addr_middleware,
+    ))
 }
 
 /// The layers every listener shares.
@@ -1307,6 +1311,39 @@ pub struct AppState {
 mod tests {
     use super::*;
     use tower::ServiceExt as _;
+
+    /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
+    /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
+    /// trusted proxy for two clients. TEST-NET addresses keep the process-wide statics apart.
+    #[tokio::test]
+    async fn auth_throttles_see_the_forwarded_client() {
+        use axum::extract::ConnectInfo;
+        let proxy = SocketAddr::from(([198, 51, 100, 30], 40000));
+        let clients = ["203.0.113.30", "203.0.113.31"];
+        let routes = Router::new().route(
+            "/login",
+            axum::routing::post(|| async { StatusCode::UNAUTHORIZED }).layer(middleware::from_fn(
+                auth_throttle::password_throttle_middleware,
+            )),
+        );
+        let trusted = peer::TrustedProxies::from_config(&[proxy.ip().to_string()]);
+        let app = with_client_addr(routes, Arc::new(trusted));
+        for client in clients {
+            let mut request = Request::post("/login")
+                .header(axum::http::header::AUTHORIZATION, "Basic Q0NBZG1pbjp4")
+                .header("x-forwarded-for", client)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request.extensions_mut().insert(ConnectInfo(proxy));
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        for client in clients {
+            let address: std::net::IpAddr = client.parse().unwrap();
+            assert_eq!(auth_throttle::password_failures(address), Some(1));
+        }
+        assert_eq!(auth_throttle::password_failures(proxy.ip()), None);
+    }
 
     /// A JSON body comfortably above the compression predicate's 32 byte floor.
     fn large_json() -> Json<Vec<u32>> {
