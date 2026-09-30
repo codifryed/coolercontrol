@@ -110,38 +110,6 @@ impl TokenHandle {
         }
     }
 
-    /// Parks `LEGACY_PASS_MAX_WAITERS` unknown-token requests on the legacy pass, held shut
-    /// by the returned permit. Needs a legacy token stored. Method: the permit is taken
-    /// first, so each spawned request snapshots, takes a waiter slot, then parks.
-    #[cfg(test)]
-    pub async fn fill_legacy_pass(
-        &self,
-    ) -> (
-        tokio::sync::OwnedSemaphorePermit,
-        Vec<tokio::task::JoinHandle<TokenValidation>>,
-    ) {
-        let permit = Arc::clone(&self.legacy_pass).acquire_owned().await.unwrap();
-        let parked: Vec<_> = (0..LEGACY_PASS_MAX_WAITERS)
-            .map(|_| {
-                let parked_handle = self.clone();
-                tokio::spawn(async move {
-                    parked_handle
-                        .validate(token::generate_token())
-                        .await
-                        .unwrap()
-                })
-            })
-            .collect();
-        for _ in 0..10 {
-            tokio::task::yield_now().await;
-        }
-        assert_eq!(
-            self.legacy_waiters.load(Ordering::Acquire),
-            LEGACY_PASS_MAX_WAITERS
-        );
-        (permit, parked)
-    }
-
     pub async fn create(
         &self,
         label: String,
@@ -220,15 +188,6 @@ impl TokenHandle {
         })
     }
 
-    /// Both passes in turn, charging nothing.
-    #[cfg(test)]
-    pub async fn validate(&self, raw_token: String) -> Result<TokenValidation> {
-        match self.check_digest(raw_token).await {
-            TokenCheck::Done(validation) => Ok(validation),
-            TokenCheck::Legacy(legacy) => legacy.run().await,
-        }
-    }
-
     async fn accept(&self, matched: token::TokenMatch) -> TokenValidation {
         self.cache().insert(matched.id.clone(), Local::now());
         if let Some(digest) = matched.upgrade_digest {
@@ -300,6 +259,47 @@ impl TokenHandle {
             }
         }
         token::save_tokens(&tokens).await
+    }
+
+    /// Both passes in turn, charging nothing.
+    #[cfg(test)]
+    pub async fn validate(&self, raw_token: String) -> Result<TokenValidation> {
+        match self.check_digest(raw_token).await {
+            TokenCheck::Done(validation) => Ok(validation),
+            TokenCheck::Legacy(legacy) => legacy.run().await,
+        }
+    }
+
+    /// Parks `LEGACY_PASS_MAX_WAITERS` unknown-token requests on the legacy pass, held shut
+    /// by the returned permit. Needs a legacy token stored. Method: the permit is taken
+    /// first, so each spawned request snapshots, takes a waiter slot, then parks.
+    #[cfg(test)]
+    pub async fn fill_legacy_pass(
+        &self,
+    ) -> (
+        tokio::sync::OwnedSemaphorePermit,
+        Vec<tokio::task::JoinHandle<TokenValidation>>,
+    ) {
+        let permit = Arc::clone(&self.legacy_pass).acquire_owned().await.unwrap();
+        let parked: Vec<_> = (0..LEGACY_PASS_MAX_WAITERS)
+            .map(|_| {
+                let parked_handle = self.clone();
+                tokio::spawn(async move {
+                    parked_handle
+                        .validate(token::generate_token())
+                        .await
+                        .unwrap()
+                })
+            })
+            .collect();
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            self.legacy_waiters.load(Ordering::Acquire),
+            LEGACY_PASS_MAX_WAITERS
+        );
+        (permit, parked)
     }
 }
 
