@@ -308,6 +308,8 @@ mod tests {
         assert!(short.matches(&digest).not());
     }
 
+    /// Goal: a stored digest matches its raw token, keeps the read-only scope, and asks for
+    /// no upgrade.
     #[test]
     fn test_match_digest_finds_match() {
         let raw = generate_token();
@@ -317,6 +319,7 @@ mod tests {
         assert_eq!(result.upgrade_digest, None);
     }
 
+    /// Goal: a digest match carries the stored write access through.
     #[test]
     fn test_match_digest_finds_match_with_write_access() {
         let raw = generate_token();
@@ -349,6 +352,8 @@ mod tests {
         assert!(legacy_tokens(&[expired]).is_empty());
     }
 
+    /// Goal: a token with an expiry still in the future matches, so expiry refuses only
+    /// lapsed tokens.
     #[test]
     fn test_match_digest_accepts_non_expired() {
         let raw = generate_token();
@@ -361,6 +366,7 @@ mod tests {
         assert!(result.write_access);
     }
 
+    /// Goal: a raw token matching no stored digest yields no match.
     #[test]
     fn test_match_digest_no_match() {
         let raw = generate_token();
