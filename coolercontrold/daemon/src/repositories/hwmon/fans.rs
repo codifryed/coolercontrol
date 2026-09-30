@@ -763,15 +763,11 @@ const LABEL_UNIT_CHARS_MAX: usize = 10;
 fn label_unit(label: &str) -> Option<&str> {
     let inner = label.trim_end().strip_suffix(']')?;
     let unit = &inner[inner.rfind('[')? + 1..];
-    let unit_chars = unit.chars().count();
-    if (1..=LABEL_UNIT_CHARS_MAX).contains(&unit_chars).not() {
-        return None;
-    }
-    if unit.chars().any(char::is_whitespace) {
-        return None;
-    }
+    let unit_char_count = unit.chars().count();
+    let length_ok = (1..=LABEL_UNIT_CHARS_MAX).contains(&unit_char_count);
+    let chars_ok = unit.chars().all(|c| c.is_whitespace().not() && c != ']');
     debug_assert!(unit.contains('[').not());
-    Some(unit)
+    (length_ok && chars_ok).then_some(unit)
 }
 
 /// Whether a driver label says its fan input is not a speed, as aquacomputer's flow and pressure
@@ -2115,6 +2111,7 @@ mod tests {
         assert_eq!(label_unit("Fan [toolongunit1]"), None);
         assert_eq!(label_unit("Fan []"), None);
         assert_eq!(label_unit("Fan ]"), None);
+        assert_eq!(label_unit("Fan [x]]"), None);
 
         assert!(label_names_non_rpm_unit("Pressure [ubar]"));
         assert!(label_names_non_rpm_unit("Water quality [%]"));
