@@ -140,11 +140,12 @@ pub async fn read_channel_attributes(
 
 /// The highest fan min, max or target the channel can really report.
 fn fan_limit_max(driver_name: &str, channel_number: u8) -> i64 {
-    if driver_name == LEAKSHIELD_DRIVER_NAME && channel_number == LEAKSHIELD_PRESSURE_CHANNEL {
-        LEAKSHIELD_PRESSURE_MAX
-    } else {
-        FAN_RPM_MAX
+    if driver_name == LEAKSHIELD_DRIVER_NAME {
+        if channel_number == LEAKSHIELD_PRESSURE_CHANNEL {
+            return LEAKSHIELD_PRESSURE_MAX;
+        }
     }
+    FAN_RPM_MAX
 }
 
 /// Converts a raw attribute to its unit, or `None` for a placeholder that means "not set".
