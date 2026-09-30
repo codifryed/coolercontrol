@@ -2928,7 +2928,12 @@ fn read_trusted_proxies(settings: &Table) -> Result<Vec<String>> {
             }
             text
         });
-    Ok(trimmed_entries(entries))
+    let trusted_proxies = trimmed_entries(entries);
+    for entry in &trusted_proxies {
+        debug_assert!(entry.is_empty().not());
+        debug_assert_eq!(entry.as_str(), entry.trim());
+    }
+    Ok(trusted_proxies)
 }
 
 /// Entries trimmed, with blank ones dropped, as config.toml stores them.
@@ -2949,11 +2954,14 @@ fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
         }
         return;
     }
+    for entry in trusted_proxies {
+        debug_assert!(entry.is_empty().not());
+        debug_assert_eq!(entry.as_str(), entry.trim());
+    }
     let proxies: toml_edit::Array = trusted_proxies
         .iter()
         .map(|s| Value::String(Formatted::new(s.clone())))
         .collect();
-    debug_assert_eq!(proxies.len(), trusted_proxies.len());
     base_settings["trusted_proxies"] = Item::Value(Value::Array(proxies));
 }
 
