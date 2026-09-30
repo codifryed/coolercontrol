@@ -720,6 +720,75 @@ async fn create_app_state<'s>(
     }
 }
 
+/// The real app state over no devices and the default config, for tests of the real routes.
+/// Its actors run in `main_scope` until `cancel_token` is cancelled.
+#[cfg(test)]
+async fn empty_app_state<'s>(
+    cancel_token: &CancellationToken,
+    main_scope: &'s Scope<'s, 's, Result<()>>,
+) -> AppState {
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    crate::sidecar::ensure_test_handle();
+    let config = Rc::new(Config::init_default_config().unwrap());
+    let all_devices: AllDevices = Rc::new(std::collections::HashMap::new());
+    let repos: Repos = Rc::default();
+    let overrides = Rc::new(OverridesController::empty());
+    let engine = Rc::new(Engine::new(
+        Rc::clone(&all_devices),
+        &repos,
+        Rc::clone(&config),
+        Rc::new(CalibrationStore::empty()),
+        Rc::new(FanStateMap::new()),
+        Rc::clone(&overrides),
+    ));
+    let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    let modes = ModeController::init(
+        Rc::clone(&config),
+        Rc::clone(&all_devices),
+        Rc::clone(&engine),
+        power_profiles.clone(),
+    );
+    let modes = Rc::new(modes.await.unwrap());
+    let alerts = AlertController::init(
+        Rc::clone(&all_devices),
+        Rc::clone(&overrides),
+        engine.diagnosis_registry(),
+    );
+    let alerts = Rc::new(alerts.await.unwrap());
+    let device_health = Rc::new(DeviceHealthController::new(
+        Rc::clone(&all_devices),
+        Rc::clone(&config),
+        Rc::clone(&repos),
+        Rc::clone(&overrides),
+    ));
+    let custom_sensors =
+        CustomSensorsRepo::new(Rc::clone(&config), Vec::new(), Rc::clone(&overrides));
+    let hardware_support = crate::hardware_support::HardwareSupportController::init(None, false);
+    let status_handle =
+        StatusHandle::new(Rc::clone(&all_devices), cancel_token.clone(), main_scope);
+    create_app_state(
+        all_devices,
+        repos,
+        &engine,
+        config,
+        &Rc::new(custom_sensors.unwrap()),
+        &modes,
+        &alerts,
+        &device_health,
+        Rc::new(hardware_support.await),
+        overrides,
+        Rc::new(PluginController::new_disabled()),
+        LogBufHandle::new(cancel_token.clone()),
+        status_handle,
+        crate::notifier::NotificationHandle::new(cancel_token.clone()),
+        crate::system_event::SystemEventHandle::new(cancel_token.clone()),
+        power_profiles,
+        cancel_token,
+        main_scope,
+    )
+    .await
+}
+
 fn optional_layers(compression_layer: Option<ApiCompressionLayer>, router: Router) -> Router {
     if let Some(layer) = compression_layer {
         router.layer(layer)

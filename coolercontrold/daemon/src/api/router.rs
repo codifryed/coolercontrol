@@ -1886,6 +1886,52 @@ mod tests {
         assert_eq!(auth_throttle::password_failures(peer.ip()), Some(1));
     }
 
+    /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
+    /// and whether it promoted the connection.
+    async fn login(app: &axum::Router, credentials: &str) -> (StatusCode, bool) {
+        use axum::extract::ConnectInfo;
+        // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
+        let peer = std::net::SocketAddr::from(([198, 51, 100, 21], 40000));
+        let connection = connection::AdmittedConnection::remote_for_test();
+        let mut request = Request::post("/login")
+            .header(header::AUTHORIZATION, format!("Basic {credentials}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        request.extensions_mut().insert(connection.clone());
+        let response = app.clone().oneshot(request).await.unwrap();
+        (response.status(), connection.is_authenticated())
+    }
+
+    /// Goal: the real `/login` promotes its connection out of the pre-auth pool, and only
+    /// when the password is right. Method: `auth_routes` over an empty app state, sent a
+    /// wrong password and then the default one.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn real_login_promotes_only_on_success() {
+        crate::rt::test_runtime(async {
+            let cancel_token = tokio_util::sync::CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = crate::api::empty_app_state(&cancel_token, main_scope).await;
+                let routes = axum::Router::from(auth_routes().with_state(state))
+                    .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
+                let app = crate::api::with_client_addr(routes, std::sync::Arc::default());
+                // "CCAdmin:x", then "CCAdmin:coolAdmin".
+                let (status, promoted) = login(&app, "Q0NBZG1pbjp4").await;
+                assert_eq!(status, StatusCode::UNAUTHORIZED);
+                assert!(promoted.not());
+                let (status, promoted) = login(&app, "Q0NBZG1pbjpjb29sQWRtaW4=").await;
+                assert_eq!(status, StatusCode::OK);
+                assert!(promoted);
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
     /// Goal: the load-bearing claim of the whole design. gRPC is served from the REST
     /// listener over plaintext h2c prior-knowledge, with no `tonic::transport::Server`
     /// and no second port. If hyper's auto builder ever stopped sniffing the HTTP/2
