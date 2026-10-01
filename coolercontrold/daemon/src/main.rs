@@ -53,6 +53,7 @@ mod logger;
 mod main_loop;
 mod modes;
 mod notifier;
+mod open_files;
 mod overrides;
 mod paths;
 mod power_profile_listener;
@@ -321,6 +322,7 @@ fn main() -> Result<()> {
         handle_non_root_commands(&cmd_args)?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
+        open_files::raise_limit();
         handle_detect_command(&cmd_args);
         // Backup/restore/check/list run before config load so they work even on a broken config.
         handle_config_commands(&cmd_args).await?;

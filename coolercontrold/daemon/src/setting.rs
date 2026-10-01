@@ -288,6 +288,8 @@ pub struct CoolerControlSettings {
     pub allow_unencrypted: bool,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
     pub protocol_header: Option<String>,
+    /// Reverse proxies, as addresses or CIDR ranges, whose `X-Forwarded-For` names the client
+    pub trusted_proxies: Vec<String>,
     /// Whether to auto-detect Super-I/O sensors and load kernel modules at startup
     pub sensors_auto_detect: bool,
     /// Whether to listen for kernel device add/remove events at startup
