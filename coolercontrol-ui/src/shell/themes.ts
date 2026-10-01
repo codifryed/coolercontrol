@@ -62,7 +62,7 @@ const PROJECT_FELT_THEME_TOKENS: Record<
         textColor: '#151515', // --pf-t--global--text--color--regular
         textColorSecondary: '#4d4d4d', // --pf-t--global--text--color--subtle
         success: '#3d7317', // --pf-t--global--text--color--status--success--default
-        warning: '#dca614', // --pf-t--global--text--color--status--warning--default
+        warning: '#ad830d', // --pf-t--global--text--color--status--warning--default nudged from #dca614
         error: '#b1380b', // --pf-t--global--text--color--status--danger--default
         info: '#5e40be', // --pf-t--global--text--color--status--info--default
     },
