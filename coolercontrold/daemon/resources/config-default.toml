@@ -135,6 +135,13 @@ drivetemp_suspend = false
 # origin URL (scheme + host + port if non-standard).
 # origins = ["https://coolercontrol.mydomain.com", "http://192.168.1.1:8080"]
 
+# Content-Security-Policy frame-ancestors Configuration:
+# Custom parent sources that may embed the CoolerControl UI. This is required to access CoolerControl
+# through an iframe from a different origin. Add the full origin URL (scheme + host + port if
+# non-standard). If not specified, or if the list is empty, the CSP frame-ancestors directive will
+# be set to 'none'.
+# frame_ancestors = ["https://coolercontrolparent.mydomain.com", "http://192.168.1.1:9090"]
+
 # Header to check for the client's original protocol when behind a reverse proxy. Common values
 # are "X-Forwarded-Proto" (nginx, Apache) or "X-Scheme". When this header indicates "https",
 # the HTTP-to-HTTPS redirect is skipped (the proxy handles TLS termination).

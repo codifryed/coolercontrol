@@ -248,6 +248,7 @@ impl CoolerControlSettingsDto {
             tls_cert_path: current_settings.tls_cert_path,
             tls_key_path: current_settings.tls_key_path,
             origins,
+            frame_ancestors: current_settings.frame_ancestors,
             allow_unencrypted,
             protocol_header,
             sensors_auto_detect,

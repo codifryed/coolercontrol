@@ -45,7 +45,6 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
     img-src 'self' blob: data:; \
     font-src 'self' data:; \
     connect-src 'self'; \
-    frame-ancestors 'none'; \
     object-src 'none'; \
     base-uri 'self'; \
     form-action 'self'";
@@ -230,7 +229,6 @@ mod tests {
         let csp_str = csp.to_str().unwrap();
         assert!(csp_str.contains("default-src 'self'"));
         assert!(csp_str.contains("script-src 'self' qrc:"));
-        assert!(csp_str.contains("frame-ancestors 'none'"));
     }
 
     #[tokio::test]
