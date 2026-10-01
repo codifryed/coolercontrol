@@ -24,6 +24,7 @@ import {
     UISettingsDTO,
 } from '@/models/UISettings'
 import {
+    getCockpitSystemPalette,
     hexToTriplet,
     installedTheme,
     parseSystemPalette,
@@ -406,6 +407,30 @@ export const useSettingsStore = defineStore('settings', () => {
                 })
             } catch (err: any) {
                 console.error('Failed to get desktop setting: ', err)
+            }
+        } else {
+            // browser UI
+            const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+            const contrastQuery = window.matchMedia('(prefers-contrast: more)')
+            colorSchemeQuery.addEventListener('change', applyThemeMode)
+            contrastQuery.addEventListener('change', applyThemeMode)
+            if (window.parent !== window) {
+                // embedded in frame/iframe
+                // set up cockpit system palette
+                const onMessage = (e: MessageEvent) => {
+                    if (e.data === 'setup-cockpit-system-palette') {
+                        window.removeEventListener('message', onMessage)
+                        function applyCockpitSystemPalette() {
+                            systemPalette.value = getCockpitSystemPalette()
+                            applyThemeMode()
+                        }
+                        colorSchemeQuery.addEventListener('change', applyCockpitSystemPalette)
+                        contrastQuery.addEventListener('change', applyCockpitSystemPalette)
+                        applyCockpitSystemPalette()
+                    }
+                }
+                window.addEventListener('message', onMessage)
+                window.parent.postMessage('ready-for-system-palette', '*')
             }
         }
         themeMode.value = uiSettings.themeMode
