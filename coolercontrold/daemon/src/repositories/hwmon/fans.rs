@@ -169,12 +169,16 @@ pub async fn detect_rpm(
         .as_str()
         .parse()?;
     let rpm_path = base_path.join(format_fan_input!(channel_number));
-    if probe::read_until_ok(&rpm_path, async || try_read_fan_rpm(io, None, &rpm_path).await)
-        .await
-        .is_err()
+    // Only readability matters here, so the guard's outcome does not.
+    let caps = HwmonChannelCapabilities::empty();
+    if probe::read_until_ok(&rpm_path, async || {
+        try_read_fan_rpm(io, None, &rpm_path, &caps).await
+    })
+    .await
+    .is_err()
         // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
         // including the warning.
-        && get_fan_rpm(io, base_path, &channel_number, Some(&rpm_path), None, true)
+        && get_fan_rpm(io, base_path, &channel_number, &caps, Some(&rpm_path), None, true)
             .await
             .is_none()
     {
@@ -195,11 +199,15 @@ async fn caps_to_hwmon_fans(
     io: &DeviceIo,
 ) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
-    for (channel_number, fan_cap) in fan_caps {
+    for (channel_number, mut fan_cap) in fan_caps {
         let pwm_enable_at_init = current_pwm_enable(io, base_path, channel_number, None).await;
         let pwm_enable_default = adjusted_pwm_default(pwm_enable_at_init, device_name);
         let channel_name = get_fan_channel_name(channel_number);
         let label = get_fan_channel_label(base_path, &channel_number).await;
+        // The raw driver label, so neither sensors.conf nor a user label can lift the rpm guard.
+        if label.as_deref().is_some_and(label_names_non_rpm_unit) {
+            fan_cap.insert(HwmonChannelCapabilities::NON_RPM_UNIT);
+        }
         // deprecated setting:
         // determine_pwm_mode_support(base_path, &channel_number).await;
         // Uncontrollable channels are reported by `log_channel_verdicts` once
@@ -266,32 +274,18 @@ pub async fn read_fan_statuses(
     }
     // Two passes: gather the slots this tick actually needs, then map each channel to its
     // position in the reply. Only the attributes the caller asked for are read.
-    let mut batch: Vec<ReadIndex> = Vec::with_capacity(plan.len() * 2);
-    let mut positions: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
-    for (channel, want) in plan {
-        let pwm = (*want == FanRead::Full)
-            .then_some(channel.read_slot.pwm)
-            .flatten()
-            .map(|slot| {
-                batch.push(slot);
-                batch.len() - 1
-            });
-        let rpm = channel.read_slot.rpm.map(|slot| {
-            batch.push(slot);
-            batch.len() - 1
-        });
-        positions.push((pwm, rpm));
-    }
+    let (batch, positions) = batch_slots(plan);
     let mut results = driver.io.read_many(&batch).await;
     debug_assert_eq!(results.len(), batch.len());
-    debug_assert_eq!(positions.len(), plan.len());
 
     let log_error = log_enabled!(log::Level::Debug);
     let mut out = Vec::with_capacity(plan.len());
     for ((channel, want), (pwm_slot, rpm_slot)) in plan.iter().zip(positions) {
         let fan_rpm = match rpm_slot {
             Some(index) => {
-                let raw = take_result(&mut results, index).and_then(check_parsing_32);
+                let raw = take_result(&mut results, index)
+                    .and_then(check_parsing_32)
+                    .map(|rpm| guard_fan_rpm(rpm, &channel.caps));
                 interpret_fan_rpm(&rpm_path_for(driver, channel), raw, log_error)
             }
             None => None,
@@ -338,6 +332,31 @@ pub async fn read_fan_statuses(
     }
     debug_assert_eq!(out.len(), plan.len());
     out
+}
+
+/// Gathers the sysfs slots a plan reads, and each channel's (pwm, rpm) position in that batch.
+fn batch_slots(
+    plan: &[(&HwmonChannelInfo, FanRead)],
+) -> (Vec<ReadIndex>, Vec<(Option<usize>, Option<usize>)>) {
+    let mut batch: Vec<ReadIndex> = Vec::with_capacity(plan.len() * 2);
+    let mut positions: Vec<(Option<usize>, Option<usize>)> = Vec::with_capacity(plan.len());
+    for (channel, want) in plan {
+        let pwm = (*want == FanRead::Full)
+            .then_some(channel.read_slot.pwm)
+            .flatten()
+            .map(|slot| {
+                batch.push(slot);
+                batch.len() - 1
+            });
+        let rpm = channel.read_slot.rpm.map(|slot| {
+            batch.push(slot);
+            batch.len() - 1
+        });
+        positions.push((pwm, rpm));
+    }
+    debug_assert_eq!(positions.len(), plan.len());
+    debug_assert!(batch.len() <= plan.len() * 2);
+    (batch, positions)
 }
 
 /// Takes one positional result out of a batch, leaving a placeholder behind. The batch is consumed
@@ -398,6 +417,7 @@ pub async fn read_one_fan_status(
             &driver.io,
             &driver.path,
             &channel.number,
+            &channel.caps,
             channel.rpm_path.as_deref(),
             channel.read_slot.rpm,
             log_enabled!(log::Level::Debug),
@@ -438,6 +458,7 @@ pub async fn read_one_fan_rpm_only(
         &driver.io,
         &driver.path,
         &channel.number,
+        &channel.caps,
         channel.rpm_path.as_deref(),
         channel.read_slot.rpm,
         log_enabled!(log::Level::Debug),
@@ -484,6 +505,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                                 &driver.io,
                                 &driver.path,
                                 &channel.number,
+                                &channel.caps,
                                 channel.rpm_path.as_deref(),
                                 channel.read_slot.rpm,
                                 false,
@@ -555,12 +577,12 @@ async fn try_read_fan_rpm(
     io: &DeviceIo,
     slot: Option<ReadIndex>,
     fan_input_path: &Path,
+    caps: &HwmonChannelCapabilities,
 ) -> Result<u32> {
     io.read_one(slot, fan_input_path)
         .await
         .and_then(check_parsing_32)
-        // Edge case where on spin-up the output is max value until it begins moving
-        .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
+        .map(|rpm| guard_fan_rpm(rpm, caps))
 }
 
 /// Whether a failed pwmX read looks like a driver refusing the read in auto mode rather than a
@@ -650,6 +672,7 @@ pub async fn get_fan_rpm(
     io: &DeviceIo,
     base_path: &Path,
     channel_number: &u8,
+    caps: &HwmonChannelCapabilities,
     rpm_path: Option<&Path>,
     slot: Option<ReadIndex>,
     log_error: bool,
@@ -658,7 +681,7 @@ pub async fn get_fan_rpm(
         Some(path) => path,
         None => &base_path.join(format_fan_input!(channel_number)),
     };
-    let result = try_read_fan_rpm(io, slot, fan_input_path).await;
+    let result = try_read_fan_rpm(io, slot, fan_input_path, caps).await;
     interpret_fan_rpm(fan_input_path, result, log_error)
 }
 
@@ -717,6 +740,40 @@ pub fn check_parsing_8(value: cc_fs::SysfsValue) -> Result<u8> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn check_parsing_32(value: cc_fs::SysfsValue) -> Result<u32> {
     value.parse()
+}
+
+/// A fan input at or above `u16::MAX` is not a speed. 16-bit drivers report `u16::MAX` while a
+/// fan spins up, and period-counting drivers overflow far past it on a near-zero count. An input
+/// whose driver label names another unit, such as a pressure, passes through.
+fn guard_fan_rpm(rpm: u32, caps: &HwmonChannelCapabilities) -> u32 {
+    if caps.has_non_rpm_unit() {
+        return rpm;
+    }
+    if rpm < u32::from(u16::MAX) {
+        rpm
+    } else {
+        0
+    }
+}
+
+/// `nS/cm` and `dL/h` fit with room to spare; longer bracket text is a description, not a unit.
+const LABEL_UNIT_CHARS_MAX: usize = 10;
+
+/// The unit a label names in its trailing brackets, e.g. `ubar` in `Pressure [ubar]`.
+fn label_unit(label: &str) -> Option<&str> {
+    let inner = label.trim_end().strip_suffix(']')?;
+    let unit = &inner[inner.rfind('[')? + 1..];
+    let unit_char_count = unit.chars().count();
+    let length_ok = (1..=LABEL_UNIT_CHARS_MAX).contains(&unit_char_count);
+    let chars_ok = unit.chars().all(|c| c.is_whitespace().not() && c != ']');
+    debug_assert!(unit.contains('[').not());
+    (length_ok && chars_ok).then_some(unit)
+}
+
+/// Whether a driver label says its fan input is not a speed, as aquacomputer's flow and pressure
+/// channels do.
+fn label_names_non_rpm_unit(label: &str) -> bool {
+    label_unit(label).is_some_and(|unit| unit.eq_ignore_ascii_case("rpm").not())
 }
 
 /// If a `HWMon` driver has not set the writable bit on the sysfs file, then that
@@ -2013,6 +2070,231 @@ mod tests {
             teardown(&ctx).await;
             assert!(any_failure.not());
             assert!(statuses.is_empty());
+        });
+    }
+
+    // --- rpm guard ---
+
+    #[test]
+    fn guard_fan_rpm_zeroes_values_at_or_above_u16_max() {
+        // Goal: the guard passes real speeds and zeroes the spin-up value and overflow garbage.
+        // Method: check both sides of the u16::MAX boundary and a count-based overflow value.
+        let caps = HwmonChannelCapabilities::RPM;
+        assert_eq!(guard_fan_rpm(0, &caps), 0);
+        assert_eq!(guard_fan_rpm(1200, &caps), 1200);
+        assert_eq!(guard_fan_rpm(65_534, &caps), 65_534);
+        assert_eq!(guard_fan_rpm(65_535, &caps), 0);
+        assert_eq!(guard_fan_rpm(1_350_000, &caps), 0);
+    }
+
+    #[test]
+    fn guard_fan_rpm_passes_labelled_non_rpm_units() {
+        // Goal: an input whose driver label names another unit is never zeroed.
+        // Method: Leakshield-sized pressures and the u16::MAX value pass through unchanged.
+        let caps = HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::NON_RPM_UNIT;
+        assert_eq!(guard_fan_rpm(438_300, &caps), 438_300);
+        assert_eq!(guard_fan_rpm(3_276_700, &caps), 3_276_700);
+        assert_eq!(guard_fan_rpm(65_535, &caps), 65_535);
+        assert_eq!(guard_fan_rpm(0, &caps), 0);
+    }
+
+    #[test]
+    fn label_unit_reads_short_trailing_brackets() {
+        // Goal: only a short, space-free trailing bracket is a unit.
+        // Method: aquacomputer labels, rpm in any case, plain labels and descriptive brackets.
+        assert_eq!(label_unit("Pressure [ubar]"), Some("ubar"));
+        assert_eq!(label_unit("Flow speed [dL/h]"), Some("dL/h"));
+        assert_eq!(label_unit("Conductivity [nS/cm] "), Some("nS/cm"));
+        assert_eq!(label_unit("Fan [RPM]"), Some("RPM"));
+        assert_eq!(label_unit("CPU Fan"), None);
+        assert_eq!(label_unit("Fan [Rear Exhaust]"), None);
+        assert_eq!(label_unit("Fan [toolongunit1]"), None);
+        assert_eq!(label_unit("Fan []"), None);
+        assert_eq!(label_unit("Fan ]"), None);
+        assert_eq!(label_unit("Fan [x]]"), None);
+
+        assert!(label_names_non_rpm_unit("Pressure [ubar]"));
+        assert!(label_names_non_rpm_unit("Water quality [%]"));
+        assert!(label_names_non_rpm_unit("Fan [RPM]").not());
+        assert!(label_names_non_rpm_unit("Fan [rpm]").not());
+        assert!(label_names_non_rpm_unit("Pump speed").not());
+    }
+
+    #[test]
+    #[serial]
+    fn find_fan_flags_non_rpm_unit_from_driver_label() {
+        // Goal: detection marks an input as non-rpm only when its driver label names a unit.
+        // Method: a Leakshield-style pressure channel next to a plainly labelled fan.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1 is a pressure in ubar, fan2 a real fan.
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("fan1_input"), b"438300".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_label"), b"Pressure [ubar]\n".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan2_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan2_label"), b"Pump speed\n".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let fans = init_fans(base, "leakshield", &DeviceIo::default()).await;
+
+            // then:
+            teardown(&ctx).await;
+            let fans = fans.unwrap();
+            assert_eq!(fans.len(), 2);
+            assert!(fans[0].caps.has_rpm());
+            assert!(fans[0].caps.has_non_rpm_unit());
+            assert!(fans[1].caps.has_rpm());
+            assert!(fans[1].caps.has_non_rpm_unit().not());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_fan_statuses_passes_labelled_non_rpm_values() {
+        // Goal: the batched read keeps a labelled pressure intact instead of zeroing it.
+        // Method: a NON_RPM_UNIT channel holding a Leakshield-sized pressure.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given:
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::NON_RPM_UNIT;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].rpm, Some(438_300));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_status_passes_labelled_non_rpm_values() {
+        // Goal: the single-channel read keeps a labelled pressure intact, matching the batch.
+        // Method: read a Leakshield-sized pressure through `read_one_fan_status`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given:
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::NON_RPM_UNIT;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let status = read_one_fan_status(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(status.and_then(|status| status.rpm), Some(438_300));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_fan_statuses_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the per-tick batched read applies the same rpm guard as the single-channel read.
+        // Method: a fan input holding a count-based overflow value must come back as 0 rpm.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds 1350000, a value no fan can spin at.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"1350000".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].rpm, Some(0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_status_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the single-channel read keeps the rpm guard, matching the batched read.
+        // Method: read the spin-up value u16::MAX through `read_one_fan_status`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds the spin-up value.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let status = read_one_fan_status(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(status.and_then(|status| status.rpm), Some(0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_rpm_only_passes_labelled_non_rpm_values() {
+        // Goal: the slow-device rpm-only read keeps a labelled pressure intact.
+        // Method: read a Leakshield-sized pressure through `read_one_fan_rpm_only`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given:
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::NON_RPM_UNIT;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(rpm, Some(Some(438_300)));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn read_one_fan_rpm_only_zeroes_rpm_at_or_above_u16_max() {
+        // Goal: the slow-device rpm-only read keeps the rpm guard.
+        // Method: read the spin-up value u16::MAX through `read_one_fan_rpm_only`.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1_input holds the spin-up value.
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
+                .await
+                .unwrap();
+            let caps = HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
+
+            // when:
+            let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(rpm, Some(Some(0)));
         });
     }
 
