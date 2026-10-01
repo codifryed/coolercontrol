@@ -128,6 +128,8 @@ include:
   inputs:
     gitlab_access_token: $SECURITY_BOT_GITLAB_TOKEN
     github_access_token: $SECURITY_BOT_GITHUB_TOKEN
+    # Hours. The default 24 lets a daily run reuse the previous day's advisories and miss new ones.
+    advisory_db_cache_ttl: '1'
 
 semgrep-sast:
   variables:

@@ -156,6 +156,17 @@ export default {
                 noActiveMode: 'Aucun mode actif',
                 setUpCooling: 'Configurer le refroidissement',
             },
+            logsPage: {
+                debugTitle: 'La journalisation de débogage est activée',
+                debugJournal:
+                    "Cette page n'affiche que les lignes INFO, WARN et ERROR récentes. La sortie de débogage complète se trouve dans le journal système. Pour l'enregistrer dans un fichier, exécutez ceci sur l'hôte du daemon :",
+                debugNoJournal:
+                    "Cette page n'affiche que les lignes INFO, WARN et ERROR récentes. La sortie de débogage complète est envoyée sur la sortie d'erreur standard du daemon.",
+                debugDocs: 'Comment collecter les journaux',
+                debugTurnOff: 'Désactiver la journalisation de débogage',
+                copyCommand: 'Copier la commande',
+                commandCopied: 'Commande copiée dans le presse-papiers',
+            },
             devicesPage: {
                 landingHint: 'Sélectionnez un appareil pour afficher ses détails et paramètres.',
                 temps: 'températures',
@@ -304,6 +315,9 @@ export default {
             settings: 'Paramètres',
             openInBrowser: 'Ouvrir dans le navigateur',
             loginSuccessful: 'Connexion réussie',
+            debug: 'Débogage',
+            debugLoggingActive:
+                'La journalisation de débogage est activée. Désactivez-la une fois terminé.',
         },
         settings: {
             title: 'Paramètres',
@@ -354,6 +368,7 @@ export default {
                 performance: 'Performances',
                 devices: 'Périphériques et détection',
                 liquidctl: 'Liquidctl',
+                logging: 'Journalisation',
             },
             applySettingsOnStartup: 'Appliquer les paramètres au démarrage',
             deviceDelayAtStartup:
@@ -371,6 +386,9 @@ export default {
             sensorsAutoDetect: 'Détection auto des capteurs',
             sensorsConfig: 'Configuration lm-sensors',
             deviceListener: "Surveillance des changements d'appareils",
+            debugLogging: 'Journalisation de débogage',
+            debugLoggingForcedEnv: "Activée par la variable d'environnement CC_LOG",
+            debugLoggingForcedFlag: "Activée par l'option --debug",
             customTheme: {
                 title: 'Thème Personnalisé',
                 accent: "Couleur d'Accent",
@@ -435,6 +453,8 @@ export default {
                     'Utiliser les noms de capteurs et les capteurs masqués des fichiers\nde configuration lm-sensors (/etc/sensors3.conf et /etc/sensors.d).\nLes noms définis dans CoolerControl sont toujours prioritaires.',
                 deviceListener:
                     "Surveiller les événements d'ajout/suppression d'appareils (ex. branchement USB)\net notifier lorsque des changements matériels sont détectés.",
+                debugLogging:
+                    'Journalise une sortie DEBUG détaillée pour le dépannage.\nLa sortie est volumineuse, désactivez-la une fois les journaux collectés.\nLa page Journaux indique comment les collecter.',
                 triggersDaemonRestart: 'Déclenche un redémarrage automatique du daemon',
                 copyThemeCode:
                     'Copier un code compact représentant votre thème personnalisé actuel.\nPartagez-le dans des chats ou forums.',

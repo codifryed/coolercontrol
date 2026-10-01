@@ -155,6 +155,8 @@ pub struct CoolerControlSettingsDto {
     /// TLS is off. Report-only: it is derived from the certificate, so anything sent here
     /// is ignored.
     tls_fingerprint: Option<String>,
+    /// Whether to log at DEBUG level. Applies after a daemon restart.
+    debug_logging: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -184,6 +186,8 @@ impl CoolerControlSettingsDto {
             tls_cert_path: current.tls_cert_path,
             tls_key_path: current.tls_key_path,
             origins: self.origins.clone().unwrap_or(current.origins),
+            // config.toml only: the API neither shows nor changes it.
+            frame_ancestors: current.frame_ancestors,
             allow_unencrypted: self.allow_unencrypted.unwrap_or(current.allow_unencrypted),
             protocol_header: self
                 .protocol_header
@@ -201,6 +205,7 @@ impl CoolerControlSettingsDto {
                 .sensors_conf_enabled
                 .unwrap_or(current.sensors_conf_enabled),
             tls_strict: self.tls_strict.unwrap_or(current.tls_strict),
+            debug_logging: self.debug_logging.unwrap_or(current.debug_logging),
         }
     }
 }
@@ -244,6 +249,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
             tls_strict: Some(settings.tls_strict),
             tls_fingerprint: crate::api::tls::served_fingerprint().map(str::to_string),
+            debug_logging: Some(settings.debug_logging),
         }
     }
 }
@@ -305,6 +311,7 @@ mod tests {
                 sensors_conf_enabled: None,
                 tls_strict: None,
                 tls_fingerprint: None,
+                debug_logging: None,
             }
         }
     }
@@ -387,5 +394,25 @@ mod tests {
         let dto = CoolerControlSettingsDto::from(settings);
         assert_eq!(dto.sensors_auto_detect, Some(true));
         assert_eq!(dto.device_listener_enabled, Some(false));
+    }
+
+    // Goal: a PATCH that omits debug_logging keeps the saved value in both states, and one
+    // that sets it replaces it, so saving an unrelated setting never flips debug logging.
+    #[test]
+    fn merge_debug_logging_only_when_set() {
+        for saved in [true, false] {
+            let current = CoolerControlSettings {
+                debug_logging: saved,
+                ..Default::default()
+            };
+            assert_eq!(empty_dto().merge(current.clone()).debug_logging, saved);
+            let mut dto = empty_dto();
+            dto.debug_logging = Some(saved.not());
+            assert_eq!(dto.merge(current.clone()).debug_logging, saved.not());
+            assert_eq!(
+                CoolerControlSettingsDto::from(current).debug_logging,
+                Some(saved)
+            );
+        }
     }
 }

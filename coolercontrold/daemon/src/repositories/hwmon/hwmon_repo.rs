@@ -284,6 +284,8 @@ bitflags! {
         const PWM = 1 << 1;
         const RPM = 1 << 2;
         const PWM_MODE = 1 << 3;
+        /// The driver's label names a unit other than rpm, e.g. `Pressure [ubar]`.
+        const NON_RPM_UNIT = 1 << 4;
         // Specialities
         const APPLE_SMC = 1 << 15;
     }
@@ -382,6 +384,10 @@ impl HwmonChannelCapabilities {
 
     pub fn has_pwm_mode(&self) -> bool {
         self.contains(HwmonChannelCapabilities::PWM_MODE)
+    }
+
+    pub fn has_non_rpm_unit(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::NON_RPM_UNIT)
     }
 
     pub fn is_apple_smc(&self) -> bool {

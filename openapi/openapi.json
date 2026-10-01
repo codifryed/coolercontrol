@@ -7864,6 +7864,13 @@
               "null"
             ]
           },
+          "debug_logging": {
+            "description": "Whether to log at DEBUG level. Applies after a daemon restart.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "device_listener_enabled": {
             "description": "Whether to listen for device add/remove events at startup",
             "type": [
@@ -9234,6 +9241,22 @@
           "liquidctl_connected": {
             "type": "boolean"
           },
+          "log_level": {
+            "description": "The log level the daemon started with, e.g. \"INFO\" or \"DEBUG\".",
+            "type": "string"
+          },
+          "log_level_source": {
+            "description": "Where the log level came from.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LogLevelSource"
+              }
+            ]
+          },
+          "log_to_journal": {
+            "description": "Whether logs go to the systemd journal rather than stderr.",
+            "type": "boolean"
+          },
           "memory_mb": {
             "type": "number",
             "format": "double"
@@ -9262,7 +9285,10 @@
           "memory_mb",
           "warnings",
           "errors",
-          "liquidctl_connected"
+          "liquidctl_connected",
+          "log_level",
+          "log_level_source",
+          "log_to_journal"
         ]
       },
       "HealthEntityType": {
@@ -9756,6 +9782,31 @@
         "required": [
           "mode",
           "colors"
+        ]
+      },
+      "LogLevelSource": {
+        "description": "Where the effective log level came from.",
+        "oneOf": [
+          {
+            "description": "Nothing requested a level, so INFO applies.",
+            "type": "string",
+            "const": "default"
+          },
+          {
+            "description": "`CC_LOG`, or the deprecated `COOLERCONTROL_LOG`.",
+            "type": "string",
+            "const": "env"
+          },
+          {
+            "description": "The `--debug` command line flag.",
+            "type": "string",
+            "const": "flag"
+          },
+          {
+            "description": "The `debug_logging` setting.",
+            "type": "string",
+            "const": "settings"
+          }
         ]
       },
       "MapDutiesRequest": {

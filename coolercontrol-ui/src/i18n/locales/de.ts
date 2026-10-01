@@ -155,6 +155,17 @@ export default {
                 noActiveMode: 'Kein aktiver Modus',
                 setUpCooling: 'Kühlung einrichten',
             },
+            logsPage: {
+                debugTitle: 'Debug-Logging ist aktiv',
+                debugJournal:
+                    'Diese Seite zeigt nur aktuelle INFO-, WARN- und ERROR-Zeilen. Die vollständige Debug-Ausgabe steht im System-Journal. Um sie in eine Datei zu speichern, führen Sie dies auf dem Daemon-Host aus:',
+                debugNoJournal:
+                    'Diese Seite zeigt nur aktuelle INFO-, WARN- und ERROR-Zeilen. Die vollständige Debug-Ausgabe geht an die Standardfehlerausgabe des Daemons.',
+                debugDocs: 'Anleitung zum Sammeln von Logs',
+                debugTurnOff: 'Debug-Logging ausschalten',
+                copyCommand: 'Befehl kopieren',
+                commandCopied: 'Befehl in die Zwischenablage kopiert',
+            },
             devicesPage: {
                 landingHint: 'Wählen Sie ein Gerät, um seine Details und Einstellungen anzuzeigen.',
                 temps: 'Temp.',
@@ -304,6 +315,8 @@ export default {
             settings: 'Einstellungen',
             openInBrowser: 'Im Browser öffnen',
             loginSuccessful: 'Anmeldung erfolgreich',
+            debug: 'Debug',
+            debugLoggingActive: 'Debug-Logging ist aktiv. Schalten Sie es nach Abschluss aus.',
         },
         settings: {
             title: 'Einstellungen',
@@ -354,6 +367,7 @@ export default {
                 performance: 'Leistung',
                 devices: 'Geräte & Erkennung',
                 liquidctl: 'Liquidctl',
+                logging: 'Logging',
             },
             applySettingsOnStartup: 'Einstellungen beim Start anwenden',
             deviceDelayAtStartup: 'Geräteverzögerung beim Start',
@@ -366,6 +380,9 @@ export default {
             sensorsAutoDetect: 'Sensoren automatisch erkennen',
             sensorsConfig: 'lm-sensors-Konfiguration',
             deviceListener: 'Geräteänderungs-Listener',
+            debugLogging: 'Debug-Logging',
+            debugLoggingForcedEnv: 'Aktiviert durch die Umgebungsvariable CC_LOG',
+            debugLoggingForcedFlag: 'Aktiviert durch das Flag --debug',
             customTheme: {
                 title: 'Benutzerdefiniertes Theme',
                 accent: 'Akzentfarbe',
@@ -430,6 +447,8 @@ export default {
                     'Sensornamen und ausgeblendete Sensoren aus den lm-sensors-\nKonfigurationsdateien (/etc/sensors3.conf und /etc/sensors.d) verwenden.\nIn CoolerControl gesetzte Namen haben immer Vorrang.',
                 deviceListener:
                     'Auf Geräte-Hinzufügen/-Entfernen-Ereignisse lauschen (z. B. USB-Hotplug)\nund benachrichtigen, wenn Hardwareänderungen erkannt werden.',
+                debugLogging:
+                    'Detaillierte DEBUG-Ausgabe zur Fehlersuche protokollieren.\nDie Ausgabe ist umfangreich, daher nach dem Sammeln der Logs wieder ausschalten.\nDie Logs-Seite zeigt, wie sie gesammelt werden.',
                 triggersDaemonRestart: 'Löst einen automatischen Daemon-Neustart aus',
                 copyThemeCode:
                     'Einen kompakten Code für dein aktuelles benutzerdefiniertes Theme kopieren.\nTeile ihn in Chats oder Foren.',
