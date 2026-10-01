@@ -45,6 +45,68 @@ export interface InstalledTheme {
     tokens: ThemeTokens
 }
 
+/**
+ * Patternfly Project Felt themes
+ * Source: https://www.patternfly.org/foundations-and-styles/design-tokens/all-design-tokens
+ */
+const PROJECT_FELT_THEME_TOKENS: Record<
+    'light' | 'lightHighContrast' | 'dark' | 'darkHighContrast',
+    ThemeTokens
+> = {
+    light: {
+        accent: '#0066cc', // --pf-t--global--text--color--brand--default
+        accentGradientTo: '#0066cc',
+        bgOne: '#ffffff', // --pf-t--global--background--color--primary--default
+        bgTwo: '#f2f2f2', // --pf-t--global--background--color--secondary--default
+        borderOne: '#e0e0e0', // --pf-t--global--border--color--default
+        textColor: '#151515', // --pf-t--global--text--color--regular
+        textColorSecondary: '#4d4d4d', // --pf-t--global--text--color--subtle
+        success: '#3d7317', // --pf-t--global--text--color--status--success--default
+        warning: '#dca614', // --pf-t--global--text--color--status--warning--default
+        error: '#b1380b', // --pf-t--global--text--color--status--danger--default
+        info: '#5e40be', // --pf-t--global--text--color--status--info--default
+    },
+    lightHighContrast: {
+        accent: '#003366', // --pf-t--global--text--color--brand--default
+        accentGradientTo: '#003366',
+        bgOne: '#ffffff', // --pf-t--global--background--color--primary--default
+        bgTwo: '#f2f2f2', // --pf-t--global--background--color--secondary--default
+        borderOne: '#4d4d4d', // --pf-t--global--border--color--default
+        textColor: '#151515', // --pf-t--global--text--color--regular
+        textColorSecondary: '#383838', // --pf-t--global--text--color--subtle
+        success: '#204d00', // --pf-t--global--text--color--status--success--default
+        warning: '#73480b', // --pf-t--global--text--color--status--warning--default
+        error: '#731f00', // --pf-t--global--text--color--status--danger--default
+        info: '#3d2785', // --pf-t--global--text--color--status--info--default
+    },
+    dark: {
+        accent: '#b9dafc', // --pf-t--global--text--color--brand--default
+        accentGradientTo: '#b9dafc',
+        bgOne: '#292929', // --pf-t--global--background--color--primary--default
+        bgTwo: '#151515', // --pf-t--global--background--color--secondary--default
+        borderOne: '#4d4d4d', // --pf-t--global--border--color--default
+        textColor: '#ffffff', // --pf-t--global--text--color--regular
+        textColorSecondary: '#c7c7c7', // --pf-t--global--text--color--subtle
+        success: '#87bb62', // --pf-t--global--text--color--status--success--default
+        warning: '#ffcc17', // --pf-t--global--text--color--status--warning--default
+        error: '#f89b78', // --pf-t--global--text--color--status--danger--default
+        info: '#b6a6e9', // --pf-t--global--text--color--status--info--default
+    },
+    darkHighContrast: {
+        accent: '#b9dafc', // --pf-t--global--text--color--brand--default
+        accentGradientTo: '#b9dafc',
+        bgOne: '#000000', // --pf-t--global--background--color--primary--default
+        bgTwo: '#151515', // --pf-t--global--background--color--secondary--default
+        borderOne: '#c7c7c7', // --pf-t--global--border--color--default
+        textColor: '#ffffff', // --pf-t--global--text--color--regular
+        textColorSecondary: '#c7c7c7', // --pf-t--global--text--color--subtle
+        success: '#afdc8f', // --pf-t--global--text--color--status--success--default
+        warning: '#ffcc17', // --pf-t--global--text--color--status--warning--default
+        error: '#fbbea8', // --pf-t--global--text--color--status--danger--default
+        info: '#b6a6e9', // --pf-t--global--text--color--status--info--default
+    },
+}
+
 export const INSTALLED_THEMES: InstalledTheme[] = [
     {
         id: 'true-black',
@@ -334,6 +396,30 @@ export const INSTALLED_THEMES: InstalledTheme[] = [
             info: '#7f9bb3', // as above
         },
     },
+    {
+        id: 'project-felt-light',
+        name: 'Project Felt Light',
+        variant: 'light',
+        tokens: PROJECT_FELT_THEME_TOKENS.light,
+    },
+    {
+        id: 'project-felt-light-high-contrast',
+        name: 'Project Felt Light (High Contrast)',
+        variant: 'light',
+        tokens: PROJECT_FELT_THEME_TOKENS.lightHighContrast,
+    },
+    {
+        id: 'project-felt-dark',
+        name: 'Project Felt Dark',
+        variant: 'dark',
+        tokens: PROJECT_FELT_THEME_TOKENS.dark,
+    },
+    {
+        id: 'project-felt-dark-high-contrast',
+        name: 'Project Felt Dark (High Contrast)',
+        variant: 'dark',
+        tokens: PROJECT_FELT_THEME_TOKENS.darkHighContrast,
+    },
 ]
 
 const THEMES_BY_ID = new Map(INSTALLED_THEMES.map((theme) => [theme.id, theme]))
@@ -498,4 +584,19 @@ export const probeCompiledSwatch = (className: string): ThemeSwatch => {
     ]
     probe.remove()
     return swatch
+}
+
+export const getCockpitSystemPalette = (): SystemPalette => {
+    const prefersDark = !window.matchMedia('(prefers-color-scheme: light)').matches
+    const prefersContrast = window.matchMedia('(prefers-contrast: more)').matches
+    return {
+        variant: prefersDark ? 'dark' : 'light',
+        tokens: prefersDark
+        ? prefersContrast
+            ? PROJECT_FELT_THEME_TOKENS.darkHighContrast
+            : PROJECT_FELT_THEME_TOKENS.dark
+        : prefersContrast
+          ? PROJECT_FELT_THEME_TOKENS.lightHighContrast
+          : PROJECT_FELT_THEME_TOKENS.light
+    }
 }
