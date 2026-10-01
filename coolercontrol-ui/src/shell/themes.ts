@@ -592,11 +592,11 @@ export const getCockpitSystemPalette = (): SystemPalette => {
     return {
         variant: prefersDark ? 'dark' : 'light',
         tokens: prefersDark
-        ? prefersContrast
-            ? PROJECT_FELT_THEME_TOKENS.darkHighContrast
-            : PROJECT_FELT_THEME_TOKENS.dark
-        : prefersContrast
-          ? PROJECT_FELT_THEME_TOKENS.lightHighContrast
-          : PROJECT_FELT_THEME_TOKENS.light
+            ? prefersContrast
+                ? PROJECT_FELT_THEME_TOKENS.darkHighContrast
+                : PROJECT_FELT_THEME_TOKENS.dark
+            : prefersContrast
+              ? PROJECT_FELT_THEME_TOKENS.lightHighContrast
+              : PROJECT_FELT_THEME_TOKENS.light,
     }
 }
