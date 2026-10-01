@@ -182,6 +182,11 @@ emitter.on('start-tour', startTour)
 onMounted(async () => {
     deviceStore.connectToQtIPC()
 
+    if (window.parent !== window) {
+        // notify parent window, e.g. Cockpit, that UI has started loading
+        window.parent.postMessage('loadstart', '*')
+    }
+
     // Add theme change event listener
     window.addEventListener('theme-changed', () => {
         // Ensure custom theme is correctly applied
@@ -267,6 +272,9 @@ onMounted(async () => {
             ipc.setTranslations?.(JSON.stringify(buildQtStrings(t)))
             // Seed the tray's sensor list. The watch only fires on later changes.
             settingsStore.pushTrayPinnedSensors()
+        } else if (window.parent !== window) {
+            // notify parent window, e.g. Cockpit, that UI has finished loading
+            window.parent.postMessage('loadend', '*')
         }
     }
     // Fire-and-forget: SW manages its own SSE connection independently.
