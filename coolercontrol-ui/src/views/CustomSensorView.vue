@@ -30,7 +30,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
 import { useConfirm } from '@/shell/confirm'
 import UiListbox from '@/shell/ui/UiListbox.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
@@ -77,6 +77,7 @@ const deviceStore = useDeviceStore()
 const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
+const router = useRouter()
 const { t } = useI18n()
 
 const contextIsDirty: Ref<boolean> = ref(false)
@@ -409,6 +410,14 @@ const saveSensor = async (): Promise<void> => {
                     sensorName.value,
                 )
             }
+            // Point the reload at the new sensor, or it lands back on an empty
+            // new-sensor form. Not a router navigation: that would set this
+            // view up again before the stores know the sensor.
+            const created = router.resolve({
+                name: 'device-custom-sensor',
+                params: { customSensorID: customSensor.id },
+            })
+            window.history.replaceState(null, '', created.href)
             await deviceStore.waitAndReload(1)
         }
     } else {
@@ -435,6 +444,15 @@ const saveNameFunction = async (newName: string): Promise<boolean> => {
     // the override and falls back to the detected label, which has to be read
     // before saving drops the override it is derived from.
     const applied = newName.length > 0 ? newName : defaultLabel.value
+    if (shouldCreateSensor) {
+        // Nothing to name yet: saveSensor applies it once the sensor exists.
+        // Saving it now would leave an override behind if the page is abandoned.
+        if (newName === currentName.value) return true
+        sensorName.value = newName
+        currentName.value = applied
+        contextIsDirty.value = true
+        return true
+    }
     const success = await settingsStore.saveChannelName(
         customSensorsDeviceUID,
         customSensor.id,
