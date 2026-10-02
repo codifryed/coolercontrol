@@ -79,22 +79,55 @@ impl FramePolicy {
     }
 }
 
-/// The configured entries that name an origin, as the policy writes them.
+/// The configured entries that name an origin, as the policy writes them. Whatever is left
+/// out is logged.
 fn valid_origins(entries: &[String]) -> Vec<&str> {
+    let screened = screen(entries);
+    for (entry, reason) in &screened.refused {
+        warn!("Ignoring frame_ancestors entry {entry:?}: {reason}");
+    }
+    if screened.is_truncated {
+        warn!("Only the first {MAX_FRAME_ANCESTORS} frame_ancestors entries are used.");
+    }
+    screened.origins
+}
+
+/// The configured entries, sorted into what the policy takes and what it leaves out.
+#[derive(Debug, PartialEq, Eq)]
+struct Screened<'a> {
+    origins: Vec<&'a str>,
+    /// The entries that name no origin, each with the reason.
+    refused: Vec<(&'a str, EntryError)>,
+    /// Whether a valid origin was dropped for arriving past the cap.
+    is_truncated: bool,
+}
+
+/// Sorts the entries without logging. Stops at the first valid origin past the cap, so the
+/// list only counts as truncated when an origin is dropped.
+fn screen(entries: &[String]) -> Screened<'_> {
     let mut origins = Vec::with_capacity(entries.len().min(MAX_FRAME_ANCESTORS));
+    let mut refused = Vec::new();
+    let mut is_truncated = false;
     for entry in entries {
-        if origins.len() == MAX_FRAME_ANCESTORS {
-            warn!("Only the first {MAX_FRAME_ANCESTORS} frame_ancestors entries are used.");
-            break;
-        }
         match ancestor_origin(entry) {
-            Ok(origin) => origins.push(origin),
-            Err(reason) => warn!("Ignoring frame_ancestors entry {entry:?}: {reason}"),
+            Ok(origin) => {
+                if origins.len() < MAX_FRAME_ANCESTORS {
+                    origins.push(origin);
+                } else {
+                    is_truncated = true;
+                    break;
+                }
+            }
+            Err(reason) => refused.push((entry.as_str(), reason)),
         }
     }
     debug_assert!(origins.len() <= MAX_FRAME_ANCESTORS);
-    debug_assert!(origins.len() <= entries.len());
-    origins
+    debug_assert!(origins.len() + refused.len() <= entries.len());
+    Screened {
+        origins,
+        refused,
+        is_truncated,
+    }
 }
 
 /// Why a `frame_ancestors` entry is not used.
@@ -432,6 +465,42 @@ mod tests {
         let mut padded = entries(&["bad.value"; MAX_FRAME_ANCESTORS]);
         padded.push("https://cockpit.example.com:9090".to_string());
         assert_eq!(valid_origins(&padded), ["https://cockpit.example.com:9090"]);
+    }
+
+    /// Goal: the log reports a dropped origin only when one is dropped, and an invalid entry
+    /// past a full list is still reported. Method: fill the list to the cap, then follow
+    /// it with an invalid entry, a valid one, and an invalid one past the truncation.
+    #[test]
+    fn only_a_valid_origin_past_the_cap_truncates() {
+        let mut configured: Vec<String> = (0..MAX_FRAME_ANCESTORS)
+            .map(|index| format!("https://host{index}.example.com"))
+            .collect();
+        configured.extend(entries(&[
+            "bad.value",
+            "https://late.example.com",
+            "https://late.example.com/path",
+        ]));
+        let full = screen(&configured[..MAX_FRAME_ANCESTORS]);
+        assert_eq!(full.origins.len(), MAX_FRAME_ANCESTORS);
+        assert!(full.refused.is_empty());
+        assert!(full.is_truncated.not());
+
+        let followed_by_invalid = screen(&configured[..=MAX_FRAME_ANCESTORS]);
+        assert_eq!(followed_by_invalid.origins, full.origins);
+        assert_eq!(
+            followed_by_invalid.refused,
+            [("bad.value", EntryError::Scheme)]
+        );
+        assert!(followed_by_invalid.is_truncated.not());
+
+        let followed_by_valid = screen(&configured);
+        assert_eq!(followed_by_valid.origins, full.origins);
+        assert_eq!(
+            followed_by_valid.refused,
+            [("bad.value", EntryError::Scheme)],
+            "nothing is screened once the list is truncated"
+        );
+        assert!(followed_by_valid.is_truncated);
     }
 
     /// Goal: the trailing slash of an entry never reaches the policy, where it would read
