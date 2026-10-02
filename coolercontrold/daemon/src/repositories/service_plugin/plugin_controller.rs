@@ -545,8 +545,19 @@ pub async fn remove_runtime_services(
         if manifest.is_managed().not() {
             continue;
         }
-        let _ = manager.remove(&manifest.id).await;
-        info!("Plugin Service {} stopped.", manifest.id);
+        // Found but never started: no service was installed, so none is reported stopped.
+        if let Ok(ServiceStatus::Unmanaged) = manager.status(&manifest.id).await {
+            continue;
+        }
+        remove_service(manager, &manifest.id).await;
+    }
+}
+
+/// Stops and removes one plugin's service as the daemon shuts down, and says how that went.
+pub async fn remove_service(manager: &impl ServiceManager, service_id: &ServiceId) {
+    match manager.remove(service_id).await {
+        Ok(()) => info!("Plugin Service {service_id} stopped."),
+        Err(err) => warn!("Plugin Service {service_id} could not be stopped: {err:#}"),
     }
 }
 
@@ -1508,17 +1519,20 @@ mod tests {
     }
 
     /// Goal: the repository only stops the plugins it registered at startup, so one started
-    /// after being found later would outlive the daemon. An unmanaged plugin has no service.
-    /// Method: one of each, and what the fake init system is asked to do.
+    /// after being found later would outlive the daemon. An unmanaged plugin has no service,
+    /// and neither has one that was found but never started, so nothing is stopped for them.
+    /// Method: one of each, and what the fake init system is asked to do. Its status
+    /// script answers for the two managed plugins in turn.
     #[test]
-    fn shutdown_removes_only_the_managed_runtime_services() {
+    fn shutdown_removes_only_the_installed_runtime_services() {
         crate::rt::test_runtime(async {
             let managed = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
             let mut unmanaged = managed.clone();
             unmanaged.executable = None;
-            let manager = FakeManager::new([ServiceStatus::Running]);
+            let never_started = managed.clone();
+            let manager = FakeManager::new([ServiceStatus::Running, ServiceStatus::Unmanaged]);
 
-            remove_runtime_services(&manager, &[managed, unmanaged]).await;
+            remove_runtime_services(&manager, &[managed, unmanaged, never_started]).await;
 
             assert_eq!(*manager.calls.borrow(), ["remove"]);
         });

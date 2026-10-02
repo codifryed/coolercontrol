@@ -16,7 +16,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
-    remove_runtime_services, secure_plugin_files,
+    remove_runtime_services, remove_service, secure_plugin_files,
 };
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -1081,8 +1081,7 @@ impl Repository for ServicePluginRepo {
                         debug!("Plugin Service {service_id} internal shutdown complete");
                     }
                     if service_manifest.is_managed() {
-                        let _ = self.service_manager.remove(service_id).await;
-                        info!("Plugin Service {service_id} stopped.");
+                        remove_service(&self.service_manager, service_id).await;
                     }
                 });
             }
