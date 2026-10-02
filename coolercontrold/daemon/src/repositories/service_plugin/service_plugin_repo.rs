@@ -16,7 +16,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
-    remove_discovered_services, secure_plugin_files,
+    remove_runtime_services, secure_plugin_files,
 };
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -70,8 +70,9 @@ pub struct ServicePluginRepo {
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
-    /// Filled by the plugin controller with the plugins it finds after startup.
-    discovered_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
+    /// Filled by the plugin controller with the plugins it finds after startup, and those
+    /// whose manifest gained a service since. `services` knows neither.
+    runtime_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
@@ -185,7 +186,7 @@ impl ServicePluginRepo {
             api_up_token,
             reset_plugin_user,
             services: HashMap::new(),
-            discovered_plugins: Rc::new(RefCell::new(Vec::new())),
+            runtime_plugins: Rc::new(RefCell::new(Vec::new())),
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -872,8 +873,8 @@ impl ServicePluginRepo {
         self.service_manager.clone()
     }
 
-    pub fn discovered_plugins(&self) -> Rc<RefCell<Vec<ServiceManifest>>> {
-        Rc::clone(&self.discovered_plugins)
+    pub fn runtime_plugins(&self) -> Rc<RefCell<Vec<ServiceManifest>>> {
+        Rc::clone(&self.runtime_plugins)
     }
 
     /// Returns a copy of the plugins information, used by the plugin controller.
@@ -1072,8 +1073,8 @@ impl Repository for ServicePluginRepo {
         })
         .await;
         // Cloned, so that no borrow is held across the awaits.
-        let discovered = self.discovered_plugins.borrow().clone();
-        remove_discovered_services(&self.service_manager, &discovered).await;
+        let runtime_plugins = self.runtime_plugins.borrow().clone();
+        remove_runtime_services(&self.service_manager, &runtime_plugins).await;
         info!("Service Plugins Repository shutdown");
         Ok(())
     }

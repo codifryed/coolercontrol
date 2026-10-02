@@ -60,9 +60,10 @@ enum StartAction {
 
 pub struct PluginController {
     plugins: RefCell<HashMap<ServiceId, ServiceManifest>>,
-    /// The plugins found after startup. Shared with the repository, which did not register
-    /// them and so would not stop their services on shutdown.
-    discovered: Rc<RefCell<Vec<ServiceManifest>>>,
+    /// The plugins found after startup, and those whose manifest gained a service since.
+    /// Shared with the repository, which knows neither and so would not stop their services
+    /// on shutdown.
+    runtime_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
     config: Option<Rc<Config>>,
     service_manager: Manager,
     is_systemd: bool,
@@ -79,7 +80,7 @@ impl PluginController {
     ) -> Self {
         Self {
             plugins: RefCell::new(service_plugin_repo.get_plugins()),
-            discovered: service_plugin_repo.discovered_plugins(),
+            runtime_plugins: service_plugin_repo.runtime_plugins(),
             config: Some(config),
             service_manager,
             is_systemd,
@@ -92,7 +93,7 @@ impl PluginController {
     pub fn new_disabled() -> Self {
         Self {
             plugins: RefCell::new(HashMap::new()),
-            discovered: Rc::new(RefCell::new(Vec::new())),
+            runtime_plugins: Rc::new(RefCell::new(Vec::new())),
             config: None,
             service_manager: Manager::Disabled,
             is_systemd: false,
@@ -102,8 +103,7 @@ impl PluginController {
 
     /// Registers plugins whose folder appeared after the daemon started.
     ///
-    /// A known plugin keeps the manifest it was registered with: an edited manifest takes
-    /// effect on the next daemon start, as it always has.
+    /// A known plugin is left alone here: its manifest is re-read when it is started.
     pub async fn discover_plugins(&self) {
         // Without a config the plugin system failed to initialize.
         if self.config.is_none() {
@@ -119,16 +119,50 @@ impl PluginController {
                 continue;
             }
             info!("Found new plugin: {service_id}");
-            self.discovered.borrow_mut().push(manifest.clone());
+            self.runtime_plugins.borrow_mut().push(manifest.clone());
             self.register(manifest);
         }
     }
 
-    fn is_discovered(&self, plugin_id: &str) -> bool {
-        self.discovered
+    fn is_runtime_plugin(&self, plugin_id: &str) -> bool {
+        self.runtime_plugins
             .borrow()
             .iter()
             .any(|manifest| manifest.id == plugin_id)
+    }
+
+    /// Re-reads an integration plugin's manifest, so that starting it applies what is on
+    /// disk now rather than what was there when the daemon started.
+    ///
+    /// The file can be trusted this late because only root can change or replace it: see
+    /// `secure_folder_entries`. A device plugin is skipped, since its devices are registered
+    /// once at startup and a changed manifest could not be applied to them.
+    async fn reload_manifest(&self, plugin_id: &str) -> Result<()> {
+        let registered = self.manifest(plugin_id)?;
+        if registered.service_type != ServiceType::Integration {
+            return Ok(());
+        }
+        let reloaded = ServicePluginRepo::read_manifest(&registered.path).await?;
+        ensure_same_plugin(&registered, &reloaded)?;
+        self.track_service(&registered, &reloaded);
+        self.register(reloaded);
+        Ok(())
+    }
+
+    /// Keeps `runtime_plugins` holding every service the repository would not stop.
+    fn track_service(&self, registered: &ServiceManifest, reloaded: &ServiceManifest) {
+        let mut runtime_plugins = self.runtime_plugins.borrow_mut();
+        if let Some(tracked) = runtime_plugins
+            .iter_mut()
+            .find(|manifest| manifest.id == reloaded.id)
+        {
+            *tracked = reloaded.clone();
+            return;
+        }
+        // The repository registered this plugin without a service, so it will not stop one.
+        if registered.is_managed().not() && reloaded.is_managed() {
+            runtime_plugins.push(reloaded.clone());
+        }
     }
 
     pub fn register(&self, manifest: ServiceManifest) {
@@ -222,7 +256,7 @@ impl PluginController {
 
     /// Start a managed integration plugin's service.
     pub async fn start_plugin(&self, plugin_id: &str) -> Result<()> {
-        self.bring_up(plugin_id, StartAction::Start)
+        self.reload_and_bring_up(plugin_id, StartAction::Start)
             .await
             .with_context(|| format!("Starting plugin service: {plugin_id}"))
     }
@@ -242,7 +276,7 @@ impl PluginController {
     /// window where the old process has not gone yet, and starting into that window is what
     /// leaves two of them running.
     pub async fn restart_plugin(&self, plugin_id: &str) -> Result<()> {
-        self.bring_up(plugin_id, StartAction::Restart)
+        self.reload_and_bring_up(plugin_id, StartAction::Restart)
             .await
             .with_context(|| format!("Restarting plugin service: {plugin_id}"))
     }
@@ -250,7 +284,7 @@ impl PluginController {
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
         let manifest = self.manifest(plugin_id)?;
-        if manifest.service_type == ServiceType::Device && self.is_discovered(plugin_id) {
+        if manifest.service_type == ServiceType::Device && self.is_runtime_plugin(plugin_id) {
             return Ok(ServiceStatus::Stopped(Some(
                 RESTART_TO_LOAD_DEVICES.to_string(),
             )));
@@ -293,7 +327,7 @@ impl PluginController {
     /// Integration plugins have their service started immediately.
     /// Device plugins require a daemon restart.
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
-        let manifest = self.manifest(plugin_id)?;
+        self.manifest(plugin_id)?;
         let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
             msg: "No config available".to_string(),
         })?;
@@ -303,6 +337,10 @@ impl PluginController {
             config.set_disabled_plugins(&disabled);
             config.save_config_file().await?;
         }
+        self.reload_manifest(plugin_id).await.with_context(|| {
+            format!("Plugin {plugin_id} is enabled, but its manifest cannot be used")
+        })?;
+        let manifest = self.manifest(plugin_id)?;
         // Start integration plugins immediately.
         if manifest.service_type != ServiceType::Integration {
             return Ok(());
@@ -316,6 +354,11 @@ impl PluginController {
             .with_context(|| {
                 format!("Plugin {plugin_id} is enabled, but its service did not start")
             })
+    }
+
+    async fn reload_and_bring_up(&self, plugin_id: &str, action: StartAction) -> Result<()> {
+        self.reload_manifest(plugin_id).await?;
+        self.bring_up(plugin_id, action).await
     }
 
     async fn bring_up(&self, plugin_id: &str, action: StartAction) -> Result<()> {
@@ -364,6 +407,30 @@ impl PluginController {
     }
 }
 
+/// A re-read manifest may change how a plugin runs, but not which plugin it is: the id
+/// names its service, and the type decides whether it has devices registered at startup.
+fn ensure_same_plugin(registered: &ServiceManifest, reloaded: &ServiceManifest) -> Result<()> {
+    if reloaded.id != registered.id {
+        return Err(CCError::UserError {
+            msg: format!(
+                "The manifest of plugin {} now names it {}. Restart the daemon to load it.",
+                registered.id, reloaded.id
+            ),
+        }
+        .into());
+    }
+    if reloaded.service_type != registered.service_type {
+        return Err(CCError::UserError {
+            msg: format!(
+                "The manifest of plugin {} changed its type. Restart the daemon to apply it.",
+                registered.id
+            ),
+        }
+        .into());
+    }
+    Ok(())
+}
+
 /// The status shown for a managed plugin, given what the init system reports.
 fn reported_status(manifest: &ServiceManifest, status: ServiceStatus) -> ServiceStatus {
     match status {
@@ -377,11 +444,11 @@ fn reported_status(manifest: &ServiceManifest, status: ServiceStatus) -> Service
 }
 
 /// Stops and removes the services of plugins found while the daemon was running.
-pub async fn remove_discovered_services(
+pub async fn remove_runtime_services(
     manager: &impl ServiceManager,
-    discovered: &[ServiceManifest],
+    runtime_plugins: &[ServiceManifest],
 ) {
-    for manifest in discovered {
+    for manifest in runtime_plugins {
         if manifest.is_managed().not() {
             continue;
         }
@@ -700,12 +767,118 @@ mod tests {
 
     fn write_manifest(plugins_dir: &Path, id: &str, kind: &str, description: &str) {
         let folder = plugins_dir.join(id);
-        std::fs::create_dir(&folder).unwrap();
+        std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(
             folder.join(SERVICE_MANIFEST_FILE_NAME),
             format!("id = \"{id}\"\ntype = \"{kind}\"\ndescription = \"{description}\"\n"),
         )
         .unwrap();
+    }
+
+    /// A controller that knows one integration plugin, registered as `registered` describes
+    /// it, whose folder holds a manifest with a different description and an executable.
+    fn controller_with_edited_manifest(
+        plugins_dir: &Path,
+        registered: impl FnOnce(&mut ServiceManifest),
+    ) -> PluginController {
+        let folder = plugins_dir.join("test-plugin");
+        write_manifest(plugins_dir, "test-plugin", "integration", "edited on disk");
+        let manifest_file = folder.join(SERVICE_MANIFEST_FILE_NAME);
+        let mut content = std::fs::read_to_string(&manifest_file).unwrap();
+        content.push_str("executable = \"/usr/bin/test-plugin\"\n");
+        std::fs::write(&manifest_file, content).unwrap();
+        let mut manifest = managed_manifest(folder);
+        manifest.description = Some("as registered".to_string());
+        registered(&mut manifest);
+        let controller = PluginController::new_disabled();
+        controller.register(manifest);
+        controller
+    }
+
+    /// Goal: a manifest edited under a running daemon has to take effect when its plugin is
+    /// started, instead of needing a daemon restart.
+    /// Method: a plugin registered with one description and a manifest on disk with another.
+    #[test]
+    fn a_start_applies_the_manifest_on_disk() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |_| {});
+
+            let result = controller.start_plugin("test-plugin").await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(
+                description_of(&controller, "test-plugin").as_deref(),
+                Some("edited on disk")
+            );
+            assert!(
+                controller.runtime_plugins.borrow().is_empty(),
+                "the repository already stops a plugin it registered with a service"
+            );
+        });
+    }
+
+    /// Goal: a manifest that cannot be read must fail the start and say why, rather than
+    /// quietly start the plugin as it was registered.
+    /// Method: break the manifest's syntax, start, and check what stays registered.
+    #[test]
+    fn a_start_refuses_a_broken_manifest_and_keeps_the_registered_one() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |_| {});
+            let manifest_file = plugins_dir
+                .path()
+                .join("test-plugin")
+                .join(SERVICE_MANIFEST_FILE_NAME);
+            std::fs::write(&manifest_file, "id = \"test-plugin\"\ntype = ").unwrap();
+
+            let result = controller.start_plugin("test-plugin").await;
+
+            let message = format!("{:#}", result.expect_err("the manifest is broken"));
+            assert!(message.contains("check the syntax"), "{message}");
+            assert_eq!(
+                description_of(&controller, "test-plugin").as_deref(),
+                Some("as registered")
+            );
+        });
+    }
+
+    /// Goal: the repository stops the services it registered at startup. A plugin it
+    /// registered without one, which a manifest edit has since given an executable, would
+    /// keep running after the daemon stops unless it is tracked for shutdown.
+    /// Method: register the plugin without an executable, start it from a manifest with one.
+    #[test]
+    fn a_plugin_that_gains_a_service_is_tracked_for_shutdown() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
+                registered.executable = None;
+            });
+
+            let result = controller.start_plugin("test-plugin").await;
+
+            assert!(result.is_ok(), "{result:?}");
+            let runtime_plugins = controller.runtime_plugins.borrow();
+            assert_eq!(runtime_plugins.len(), 1);
+            assert!(runtime_plugins[0].is_managed());
+        });
+    }
+
+    /// Goal: a re-read manifest may not turn a plugin into a different one. The id names
+    /// its service, and a device plugin's devices are registered at startup.
+    #[test]
+    fn a_reloaded_manifest_must_describe_the_same_plugin() {
+        let registered = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
+        let mut renamed = registered.clone();
+        renamed.id = "other-plugin".to_string();
+        let mut retyped = registered.clone();
+        retyped.service_type = ServiceType::Device;
+        let mut edited = registered.clone();
+        edited.args = vec!["--verbose".to_string()];
+
+        assert!(ensure_same_plugin(&registered, &renamed).is_err());
+        assert!(ensure_same_plugin(&registered, &retyped).is_err());
+        assert!(ensure_same_plugin(&registered, &edited).is_ok());
     }
 
     fn description_of(controller: &PluginController, plugin_id: &str) -> Option<String> {
@@ -736,7 +909,7 @@ mod tests {
                 description_of(&controller, "known").as_deref(),
                 Some("as registered")
             );
-            let discovered = controller.discovered.borrow();
+            let discovered = controller.runtime_plugins.borrow();
             assert_eq!(discovered.len(), 1, "a second scan must not add it again");
             assert_eq!(discovered[0].id, "added");
         });
@@ -797,14 +970,14 @@ mod tests {
     /// after being found later would outlive the daemon. An unmanaged plugin has no service.
     /// Method: one of each, and what the fake init system is asked to do.
     #[test]
-    fn shutdown_removes_only_the_managed_discovered_services() {
+    fn shutdown_removes_only_the_managed_runtime_services() {
         crate::rt::test_runtime(async {
             let managed = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
             let mut unmanaged = managed.clone();
             unmanaged.executable = None;
             let manager = FakeManager::new([ServiceStatus::Running]);
 
-            remove_discovered_services(&manager, &[managed, unmanaged]).await;
+            remove_runtime_services(&manager, &[managed, unmanaged]).await;
 
             assert_eq!(*manager.calls.borrow(), ["remove"]);
         });
