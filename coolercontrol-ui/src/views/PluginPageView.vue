@@ -21,7 +21,6 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
-import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { useDialog } from '@/shell/dialog'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
@@ -94,48 +93,10 @@ const restartPlugin = (): Promise<void> => pluginActions.restartPlugin(props.plu
 const reloadPlugin = (): Promise<void> =>
     pluginActions.reloadPlugin(props.pluginId, !isIntegration.value)
 
-const togglePlugin = async (): Promise<void> => {
-    if (isDisabled.value) {
-        const response = await deviceStore.daemonClient.enablePlugin(props.pluginId)
-        if (!(response instanceof ErrorResponse)) {
-            toast.add({
-                severity: 'success',
-                summary: t('common.success'),
-                detail: isIntegration.value
-                    ? t('layout.plugins.pluginEnabled')
-                    : t('layout.plugins.pluginEnabledRestart'),
-                life: 4000,
-            })
-        } else {
-            toast.add({
-                severity: 'error',
-                summary: t('layout.plugins.enableFailed'),
-                detail: response.error,
-                life: 3000,
-            })
-        }
-    } else {
-        const response = await deviceStore.daemonClient.disablePlugin(props.pluginId)
-        if (!(response instanceof ErrorResponse)) {
-            toast.add({
-                severity: 'success',
-                summary: t('common.success'),
-                detail: isIntegration.value
-                    ? t('layout.plugins.pluginDisabled')
-                    : t('layout.plugins.pluginDisabledRestart'),
-                life: 4000,
-            })
-        } else {
-            toast.add({
-                severity: 'error',
-                summary: t('layout.plugins.disableFailed'),
-                detail: response.error,
-                life: 3000,
-            })
-        }
-    }
-    await loadPluginData()
-}
+const togglePlugin = (): Promise<void> =>
+    isDisabled.value
+        ? pluginActions.enablePlugin(props.pluginId, !isIntegration.value)
+        : pluginActions.disablePlugin(props.pluginId, !isIntegration.value)
 
 const copyCommand = (text: string): void => {
     if (navigator.clipboard?.writeText) {

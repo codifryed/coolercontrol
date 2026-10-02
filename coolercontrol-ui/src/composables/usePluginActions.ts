@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Plugin start/stop/restart with toasts, shared by the plugin page and the
+// Plugin lifecycle actions with toasts, shared by the plugin page and the
 // plugins panel (PrimeVue toast service stays out of the shell).
 
 import { ref } from 'vue'
@@ -14,6 +14,10 @@ import { PluginStatusDto } from '@/models/Plugins.ts'
 // One map for every view, so a plugin stopped from its page is not still shown
 // as running in the panel.
 const statuses = ref<Map<string, PluginStatusDto>>(new Map())
+
+const TOAST_LIFE_MS = 3000
+// Long enough to read that a device plugin needs a daemon restart.
+const TOGGLE_SUCCESS_LIFE_MS = 4000
 
 export function usePluginActions() {
     const toast = useToast()
@@ -37,6 +41,7 @@ export function usePluginActions() {
         pluginId: string,
         successKey: string,
         failureKey: string,
+        successLife: number = TOAST_LIFE_MS,
     ): Promise<void> => {
         const response = await action(pluginId)
         if (response instanceof ErrorResponse) {
@@ -44,14 +49,14 @@ export function usePluginActions() {
                 severity: 'error',
                 summary: t(failureKey),
                 detail: response.error,
-                life: 3000,
+                life: TOAST_LIFE_MS,
             })
         } else {
             toast.add({
                 severity: 'success',
                 summary: t('common.success'),
                 detail: t(successKey),
-                life: 3000,
+                life: successLife,
             })
         }
         // A start or restart re-reads the plugin's manifest.
@@ -92,6 +97,26 @@ export function usePluginActions() {
             'layout.plugins.reloadFailed',
         )
 
+    // A device plugin is only loaded or dropped when the daemon restarts.
+    const enablePlugin = (pluginId: string, isDevicePlugin: boolean): Promise<void> =>
+        runAction(
+            (id) => deviceStore.daemonClient.enablePlugin(id),
+            pluginId,
+            isDevicePlugin ? 'layout.plugins.pluginEnabledRestart' : 'layout.plugins.pluginEnabled',
+            'layout.plugins.enableFailed',
+            TOGGLE_SUCCESS_LIFE_MS,
+        )
+    const disablePlugin = (pluginId: string, isDevicePlugin: boolean): Promise<void> =>
+        runAction(
+            (id) => deviceStore.daemonClient.disablePlugin(id),
+            pluginId,
+            isDevicePlugin
+                ? 'layout.plugins.pluginDisabledRestart'
+                : 'layout.plugins.pluginDisabled',
+            'layout.plugins.disableFailed',
+            TOGGLE_SUCCESS_LIFE_MS,
+        )
+
     return {
         statuses,
         refreshStatus,
@@ -100,5 +125,7 @@ export function usePluginActions() {
         stopPlugin,
         restartPlugin,
         reloadPlugin,
+        enablePlugin,
+        disablePlugin,
     }
 }
