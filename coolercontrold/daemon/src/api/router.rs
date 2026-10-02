@@ -346,6 +346,25 @@ fn device_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
+            "/devices/{device_uid}/channels/{channel_name}/attributes",
+            get_with(devices::device_channel_attributes_get, |o| {
+                o.summary("Device Channel Attributes")
+                    .description(
+                        "Returns the extra attributes the driver reports for a temperature, fan \
+                        or power channel, such as its max, critical and emergency limits, fan \
+                        target or power cap, read from the hardware when requested. Each is \
+                        named by its sysfs file, because the meaning varies by driver: on some \
+                        chips min and max are the lowest and highest readings so far. Unset and \
+                        unreadable values are left out. Channels without attribute files return \
+                        an empty list.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
             "/devices/{device_uid}/settings",
             get_with(devices::device_settings_get, |o| {
                 o.summary("All Device Settings")

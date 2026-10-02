@@ -19,8 +19,8 @@ use crate::calibration::{
 };
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelName, ChannelStatus, DeviceType, DeviceUID, Duty,
-    Status, TempStatus, RPM, UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelName, ChannelStatus, DeviceType,
+    DeviceUID, Duty, Status, TempStatus, MAX_CHANNEL_ATTRIBUTES, RPM, UID,
 };
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
@@ -1008,6 +1008,40 @@ impl Engine {
                 .starts_with(paths::config_dir())
                 .not()
         })
+    }
+
+    /// Reads the driver-reported attributes of one channel on demand. An unknown device or a
+    /// channel it does not have is `NotFound`, so a stale or mistyped path reads as such rather
+    /// than as a server fault.
+    pub async fn channel_attributes(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let Some(device_lock) = self.all_devices.get(device_uid) else {
+            return Err(CCError::NotFound {
+                msg: format!("Device: {device_uid}"),
+            }
+            .into());
+        };
+        let channel_known = {
+            let device = device_lock.borrow();
+            device.info.temps.contains_key(channel_name)
+                || device.info.channels.contains_key(channel_name)
+        };
+        if channel_known.not() {
+            return Err(CCError::NotFound {
+                msg: format!("Channel: {channel_name}"),
+            }
+            .into());
+        }
+        let (_, repo) = self.get_device_repo(device_uid)?;
+        let attributes = repo.channel_attributes(device_uid, channel_name).await?;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        debug_assert!(attributes
+            .iter()
+            .all(|attribute| attribute.value.is_finite()));
+        Ok(attributes)
     }
 
     /// Retrieves the saved image file

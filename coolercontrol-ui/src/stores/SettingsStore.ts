@@ -18,8 +18,9 @@ import {
     ONBOARDING_TOUR_VERSION,
     SensorAndChannelSettings,
     StartupPage,
+    type StatsLegendScope,
     TagSettings,
-    type TablePosition,
+    type OverlayPosition,
     ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
@@ -271,17 +272,20 @@ export const useSettingsStore = defineStore('settings', () => {
     const entityColors: Ref<Array<[string, string]>> = ref([])
     const eyeCandy: Ref<boolean> = ref(false)
     // The corner each profile's points overlay table was last moved to, by profile UID.
-    const pointsOverlayTablePositions: Ref<Array<[UID, TablePosition]>> = ref([])
-    const pointsTablePosition = (profileUID: UID): TablePosition =>
+    const pointsOverlayTablePositions: Ref<Array<[UID, OverlayPosition]>> = ref([])
+    const pointsTablePosition = (profileUID: UID): OverlayPosition =>
         pointsOverlayTablePositions.value.find(([uid]) => uid === profileUID)?.[1] ?? 'bottom-right'
     // Replaces the array rather than mutating it: the settings saver watches this ref without
     // deep: true, so only a new value reaches it.
-    const setPointsTablePosition = (profileUID: UID, position: TablePosition): void => {
+    const setPointsTablePosition = (profileUID: UID, position: OverlayPosition): void => {
         pointsOverlayTablePositions.value = [
             ...pointsOverlayTablePositions.value.filter(([uid]) => uid !== profileUID),
             [profileUID, position],
         ]
     }
+    const sensorStatsPanelVisible: Ref<boolean> = ref(true)
+    const sensorStatsPanelPosition: Ref<OverlayPosition> = ref('top-left')
+    const statsLegendScope: Ref<StatsLegendScope> = ref('window')
     const interfaceFont: Ref<InterfaceFont> = ref(InterfaceFont.BUNDLED)
     // The chosen language, not the resolved one: `system` follows the browser.
     const language: Ref<string> = ref(SYSTEM_LANGUAGE)
@@ -428,6 +432,9 @@ export const useSettingsStore = defineStore('settings', () => {
         entityColors.value = uiSettings.entityColors
         eyeCandy.value = uiSettings.eyeCandy
         pointsOverlayTablePositions.value = uiSettings.pointsOverlayTablePositions ?? []
+        sensorStatsPanelVisible.value = uiSettings.sensorStatsPanelVisible ?? true
+        sensorStatsPanelPosition.value = uiSettings.sensorStatsPanelPosition ?? 'top-left'
+        statsLegendScope.value = uiSettings.statsLegendScope ?? 'window'
         interfaceFont.value = uiSettings.interfaceFont ?? InterfaceFont.BUNDLED
         applyInterfaceFont()
         persistedLanguage = uiSettings.language
@@ -1361,6 +1368,9 @@ export const useSettingsStore = defineStore('settings', () => {
                 entityColors.value,
                 eyeCandy,
                 pointsOverlayTablePositions,
+                sensorStatsPanelVisible,
+                sensorStatsPanelPosition,
+                statsLegendScope,
                 interfaceFont,
                 language,
                 onboardingSeenVersion,
@@ -1422,6 +1432,9 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.entityColors = entityColors.value
                     uiSettings.eyeCandy = eyeCandy.value
                     uiSettings.pointsOverlayTablePositions = pointsOverlayTablePositions.value
+                    uiSettings.sensorStatsPanelVisible = sensorStatsPanelVisible.value
+                    uiSettings.sensorStatsPanelPosition = sensorStatsPanelPosition.value
+                    uiSettings.statsLegendScope = statsLegendScope.value
                     uiSettings.interfaceFont = interfaceFont.value
                     uiSettings.language = language.value
                     uiSettings.showOnboarding = onboardingSeenVersion.value
@@ -1854,6 +1867,9 @@ export const useSettingsStore = defineStore('settings', () => {
         eyeCandy,
         pointsTablePosition,
         setPointsTablePosition,
+        sensorStatsPanelVisible,
+        sensorStatsPanelPosition,
+        statsLegendScope,
         interfaceFont,
         language,
         showOnboarding,

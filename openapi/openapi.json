@@ -638,6 +638,76 @@
         ]
       }
     },
+    "/devices/{device_uid}/channels/{channel_name}/attributes": {
+      "get": {
+        "tags": [
+          "device"
+        ],
+        "summary": "Device Channel Attributes",
+        "description": "Returns the extra attributes the driver reports for a temperature, fan or power channel, such as its max, critical and emergency limits, fan target or power cap, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          },
+          {
+            "in": "path",
+            "name": "device_uid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelAttributesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/devices/{device_uid}/settings": {
       "get": {
         "tags": [
@@ -7469,6 +7539,202 @@
           "device_uid",
           "channel_name",
           "profile_uid"
+        ]
+      },
+      "ChannelAttribute": {
+        "description": "One driver-reported attribute. `name` is the sysfs file name, so clients can show it as is:\n the same attribute means different things on different drivers.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ChannelAttributeKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "°C for temperatures, rpm for fan speeds, watts for power, a plain number otherwise.\n Microbar for the fan limits of a pressure channel such as the Leakshield's fan1.",
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "value"
+        ]
+      },
+      "ChannelAttributeKind": {
+        "description": "A driver-reported channel attribute that is read on demand rather than polled: limits,\n targets and sensor details. Serialized upper-case so clients can pick the unit and decide\n which values to draw as limits.",
+        "oneOf": [
+          {
+            "description": "Degrees Celsius.",
+            "type": "string",
+            "const": "TEMP_MAX"
+          },
+          {
+            "description": "Degrees Celsius, an absolute temperature per the hwmon ABI, not a delta.",
+            "type": "string",
+            "const": "TEMP_MAX_HYST"
+          },
+          {
+            "description": "Degrees Celsius.",
+            "type": "string",
+            "const": "TEMP_CRIT"
+          },
+          {
+            "description": "Degrees Celsius, absolute.",
+            "type": "string",
+            "const": "TEMP_CRIT_HYST"
+          },
+          {
+            "description": "Degrees Celsius.",
+            "type": "string",
+            "const": "TEMP_EMERGENCY"
+          },
+          {
+            "description": "Degrees Celsius, absolute.",
+            "type": "string",
+            "const": "TEMP_EMERGENCY_HYST"
+          },
+          {
+            "description": "Degrees Celsius.",
+            "type": "string",
+            "const": "TEMP_MIN"
+          },
+          {
+            "description": "Degrees Celsius, absolute.",
+            "type": "string",
+            "const": "TEMP_MIN_HYST"
+          },
+          {
+            "description": "Degrees Celsius.",
+            "type": "string",
+            "const": "TEMP_LCRIT"
+          },
+          {
+            "description": "Degrees Celsius, absolute.",
+            "type": "string",
+            "const": "TEMP_LCRIT_HYST"
+          },
+          {
+            "description": "Degrees Celsius, the lowest reading since the driver loaded or was reset.",
+            "type": "string",
+            "const": "TEMP_LOWEST"
+          },
+          {
+            "description": "Degrees Celsius, the highest reading since the driver loaded or was reset.",
+            "type": "string",
+            "const": "TEMP_HIGHEST"
+          },
+          {
+            "description": "Degrees Celsius, the lowest temperature the sensor is rated for.",
+            "type": "string",
+            "const": "TEMP_RATED_MIN"
+          },
+          {
+            "description": "Degrees Celsius, the highest temperature the sensor is rated for.",
+            "type": "string",
+            "const": "TEMP_RATED_MAX"
+          },
+          {
+            "description": "Degrees Celsius, added by the chip to the raw reading.",
+            "type": "string",
+            "const": "TEMP_OFFSET"
+          },
+          {
+            "description": "Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,\n Intel PECI).",
+            "type": "string",
+            "const": "TEMP_TYPE"
+          },
+          {
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
+            "type": "string",
+            "const": "FAN_MIN"
+          },
+          {
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
+            "type": "string",
+            "const": "FAN_MAX"
+          },
+          {
+            "description": "Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.",
+            "type": "string",
+            "const": "FAN_TARGET"
+          },
+          {
+            "description": "Divisor, a plain number.",
+            "type": "string",
+            "const": "FAN_DIV"
+          },
+          {
+            "description": "Tachometer pulses per revolution, a plain number.",
+            "type": "string",
+            "const": "FAN_PULSES"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_MAX"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_CRIT"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_MIN"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_LCRIT"
+          },
+          {
+            "description": "Watts, the power limit the device currently enforces.",
+            "type": "string",
+            "const": "POWER_CAP"
+          },
+          {
+            "description": "Watts, the margin around the cap, not an absolute power.",
+            "type": "string",
+            "const": "POWER_CAP_HYST"
+          },
+          {
+            "description": "Watts, the highest cap that can be set.",
+            "type": "string",
+            "const": "POWER_CAP_MAX"
+          },
+          {
+            "description": "Watts, the lowest cap that can be set.",
+            "type": "string",
+            "const": "POWER_CAP_MIN"
+          },
+          {
+            "description": "Watts, the lowest power the sensor is rated for.",
+            "type": "string",
+            "const": "POWER_RATED_MIN"
+          },
+          {
+            "description": "Watts, the highest power the sensor is rated for.",
+            "type": "string",
+            "const": "POWER_RATED_MAX"
+          }
+        ]
+      },
+      "ChannelAttributesResponse": {
+        "type": "object",
+        "properties": {
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelAttribute"
+            }
+          }
+        },
+        "required": [
+          "attributes"
         ]
       },
       "ChannelEvidence": {

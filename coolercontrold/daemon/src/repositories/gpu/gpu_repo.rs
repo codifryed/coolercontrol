@@ -21,11 +21,12 @@ use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 use crate::config::Config;
-use crate::device::{DeviceType, Duty, UID};
+use crate::device::{ChannelAttribute, DeviceType, Duty, MAX_CHANNEL_ATTRIBUTES, UID};
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
 use crate::repositories::gpu::nvidia::{GpuNVidia, NvmlInitResult, StatusNvidiaDeviceSMI};
+use crate::repositories::hwmon::attributes;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::apply_device_command_delay;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -600,6 +601,37 @@ impl Repository for GpuRepo {
     fn duty_floor(&self, device_uid: &UID, _channel_name: &str) -> Duty {
         self.gpus_amd.pmfw_duty_floor(device_uid).unwrap_or(0)
     }
+
+    /// AMD only: its channels are hwmon files. NVIDIA thresholds live in NVML and are not
+    /// read yet, so NVIDIA devices report none.
+    async fn channel_attributes(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let Some(amd_driver) = self.gpus_amd.amd_driver_infos.get(device_uid) else {
+            return Ok(Vec::new());
+        };
+        let driver = &amd_driver.hwmon;
+        let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
+            return Ok(Vec::new());
+        };
+        debug_assert_eq!(channel.name, channel_name);
+        if driver.io.is_unreachable() {
+            return Err(anyhow!("AMD GPU device {} is not responding", driver.name));
+        }
+        let semaphore = self
+            .device_permits
+            .get(device_uid)
+            .ok_or_else(|| anyhow!("No device permit found for AMD GPU: {device_uid}"))?;
+        let device_label = format!("AMD GPU device: {device_uid} channel: {channel_name}");
+        let _permit =
+            attributes::acquire_permit(semaphore, self.device_read_permit_timeout, &device_label)
+                .await?;
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
+    }
 }
 
 #[cfg(test)]
@@ -699,6 +731,106 @@ mod verdict_publish_tests {
             assert_eq!(permanent.len(), 1, "expected one published verdict");
             assert_eq!(permanent[0].channel_name, "fan1");
             assert_eq!(permanent[0].verdict, ChannelVerdict::NotSupportedByDriver);
+        });
+    }
+}
+
+#[cfg(test)]
+mod channel_attributes_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::repositories::gpu::amd::AMDDriverInfo;
+    use crate::repositories::hwmon::hwmon_repo::{
+        HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    };
+    use serial_test::serial;
+    use std::path::{Path, PathBuf};
+    use uuid::Uuid;
+
+    /// amdgpu junction limits as reported on real hardware, hysteresis unset.
+    async fn seeded_dir() -> PathBuf {
+        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+        cc_fs::create_dir_all(&base).await.unwrap();
+        for (name, contents) in [
+            ("temp2_crit", "110000"),
+            ("temp2_crit_hyst", "-273150"),
+            ("temp2_emergency", "115000"),
+        ] {
+            cc_fs::write(base.join(name), contents.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        base
+    }
+
+    fn repo_with_amd_gpu(base: &Path, uid: &UID) -> GpuRepo {
+        let mut repo = GpuRepo::new(Rc::new(Config::init_default_config().unwrap()), false);
+        let hwmon = HwmonDriverInfo {
+            name: "amdgpu".to_string(),
+            path: base.to_path_buf(),
+            channels: vec![HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                number: 2,
+                name: "temp2".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        repo.gpus_amd
+            .amd_driver_infos
+            .insert(uid.clone(), Rc::new(AMDDriverInfo::for_test(hwmon)));
+        repo.device_permits
+            .insert(uid.clone(), Semaphore::const_new(1));
+        repo
+    }
+
+    #[test]
+    #[serial]
+    fn amd_limits_are_read_and_nvidia_reports_none() {
+        // Goal: an AMD GPU temp reports its hwmon limits without the unset hysteresis, and a
+        // device that is not an AMD GPU (NVIDIA) reports none. Method: one AMD card registered
+        // by hand, then a query for an unregistered uid.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let uid = "amd-gpu".to_string();
+            let repo = repo_with_amd_gpu(&base, &uid);
+
+            let temp2 = repo.channel_attributes(&uid, "temp2").await.unwrap();
+            let other = repo
+                .channel_attributes(&"nvidia-gpu".to_string(), "GPU Temp")
+                .await
+                .unwrap();
+
+            let names: Vec<&str> = temp2.iter().map(|a| a.name.as_str()).collect();
+            assert_eq!(names, ["temp2_crit", "temp2_emergency"]);
+            assert_eq!(temp2[1].value, 115.0);
+            assert!(other.is_empty());
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn held_amd_permit_times_out_with_an_error() {
+        // Goal: a busy AMD GPU fails the request after the permit timeout instead of blocking
+        // the API actor. Method: hold its permit with a shortened read permit timeout.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let uid = "amd-gpu".to_string();
+            let mut repo = repo_with_amd_gpu(&base, &uid);
+            repo.device_read_permit_timeout = Duration::from_millis(100);
+            let _holder = repo
+                .device_permits
+                .get(&uid)
+                .unwrap()
+                .try_acquire()
+                .expect("permit must start free");
+
+            let result = repo.channel_attributes(&uid, "temp2").await;
+
+            let err = result.expect_err("held permit must time out");
+            assert!(err.to_string().contains("TIMEOUT"), "{err}");
+            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }

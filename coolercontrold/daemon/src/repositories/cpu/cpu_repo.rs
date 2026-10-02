@@ -12,8 +12,8 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
-    DriverType, Status, TempInfo, TempStatus, Watts, UID,
+    ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::association::{
@@ -27,7 +27,7 @@ use crate::repositories::hwmon::chip_name::{self, ChipName};
 use crate::repositories::hwmon::hwmon_repo::{
     install_read_registry, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
-use crate::repositories::hwmon::{devices, power_cap, temps};
+use crate::repositories::hwmon::{attributes, devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
@@ -1011,6 +1011,32 @@ impl Repository for CpuRepo {
         out
     }
 
+    async fn channel_attributes(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let cpu_device = self
+            .devices
+            .get(device_uid)
+            .ok_or_else(|| anyhow!("Device UID not found! {device_uid}"))?;
+        let driver = &cpu_device.driver;
+        let Some(channel) = driver.channels.iter().find(|c| c.name == channel_name) else {
+            return Ok(Vec::new());
+        };
+        debug_assert_eq!(channel.name, channel_name);
+        if driver.io.is_unreachable() {
+            return Err(anyhow!(
+                "CPU sensor device {} is not responding",
+                driver.name
+            ));
+        }
+        // No permit to take: this repository has none. Its reads go through the same device IO.
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
+    }
+
     async fn shutdown(&self) -> Result<()> {
         info!("CPU Repository shutdown");
         Ok(())
@@ -1457,5 +1483,70 @@ mod sensors_conf_tests {
 
         let names: Vec<&str> = channels.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, vec!["temp3"]);
+    }
+}
+
+#[cfg(test)]
+mod channel_attributes_tests {
+    use super::*;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    #[test]
+    #[serial]
+    fn cpu_temp_attributes_are_read_from_its_driver() {
+        // Goal: a CPU temp reports its driver's limits the same way an hwmon one does, and a
+        // non-temp channel or unknown device behaves as documented. Method: a k10temp-style
+        // device with a crit limit, registered by hand.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            cc_fs::create_dir_all(&base).await.unwrap();
+            cc_fs::write(base.join("temp1_crit"), b"105000".to_vec())
+                .await
+                .unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CpuRepo::new(config, Rc::new(OverridesController::empty())).unwrap();
+            let driver = HwmonDriverInfo {
+                name: "k10temp".to_string(),
+                path: base.clone(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    name: "temp1".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let device = Device::new(
+                "cpu".to_string(),
+                DeviceType::CPU,
+                1,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            );
+            let uid = device.uid.clone();
+            repo.devices.insert(
+                uid.clone(),
+                CpuDevice {
+                    association: CpuAssociation::Socket(0),
+                    type_index: 1,
+                    device: Rc::new(RefCell::new(device)),
+                    driver: Rc::new(driver),
+                },
+            );
+
+            let temp1 = repo.channel_attributes(&uid, "temp1").await.unwrap();
+            let load = repo.channel_attributes(&uid, "CPU Load").await.unwrap();
+            let unknown = repo.channel_attributes(&"nope".to_string(), "temp1").await;
+
+            assert_eq!(temp1.len(), 1);
+            assert_eq!(temp1[0].name, "temp1_crit");
+            assert_eq!(temp1[0].value, 105.0);
+            assert!(load.is_empty());
+            assert!(unknown.is_err());
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
     }
 }

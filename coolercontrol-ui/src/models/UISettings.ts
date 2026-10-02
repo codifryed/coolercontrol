@@ -226,9 +226,10 @@ export const ONBOARDING_TOUR_VERSION = 3
  * The Class-Transformer has issues with Maps, so we have to use Arrays to
  * store that data and do the transformation.
  */
-// Which corner the points overlay table sits in on a graph editor. Persisted per profile, since
-// where the table is out of the way depends on the shape of that profile's curve.
-export type TablePosition = 'top-left' | 'bottom-right'
+// Which corner an overlay sits in: a graph editor's points table, or the chart stats panel.
+export type OverlayPosition = 'top-left' | 'bottom-right'
+
+export type StatsLegendScope = 'window' | 'since-start'
 
 export class UISettingsDTO {
     devices?: Array<UID> = []
@@ -259,7 +260,14 @@ export class UISettingsDTO {
     customTheme: CustomThemeSettings = { ...defaultCustomTheme }
     entityColors: Array<[string, string]> = []
     eyeCandy: boolean = false
-    pointsOverlayTablePositions: Array<[UID, TablePosition]> = []
+    // Per profile, since where the points table is out of the way depends on the curve's shape.
+    pointsOverlayTablePositions: Array<[UID, OverlayPosition]> = []
+    // The stats panel on individual channel charts. Global rather than per channel, so
+    // moving or hiding it never rebuilds the chart.
+    sensorStatsPanelVisible: boolean = true
+    sensorStatsPanelPosition: OverlayPosition = 'top-left'
+    // What the dashboard stats legend's min/max/avg cover. Global for the same reason.
+    statsLegendScope: StatsLegendScope = 'window'
     interfaceFont: InterfaceFont = InterfaceFont.BUNDLED
     // Undefined means the user has never chosen, and `system` means follow the
     // browser locale. Never a resolved code for a non-choice: that is what let

@@ -10,21 +10,24 @@ import { mdiMemory, mdiMinusThick } from '@mdi/js'
 import UiTable from '@/shell/ui/UiTable.vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onBeforeUnmount, onMounted, Ref, ref, watch } from 'vue'
+import { computed, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
+import type { ChannelStats } from '@/models/Stats'
 import {
-    ChannelStats,
-    DeviceStatsDTO,
-    StatsResponseDTO,
-    defaultStatsResponse,
-} from '@/models/Stats'
+    DATA_TYPE_STATS,
+    formatStatValue,
+    statUnitSuffix,
+    toDisplayUnits,
+} from '@/components/chartStats.ts'
+import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
+const { displayOf, reset } = useLifetimeStats()
 
 interface Props {
     dashboard: Dashboard
@@ -56,7 +59,6 @@ const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
     )
 
 const deviceTableData: Ref<Array<DeviceData>> = ref([])
-const currentStats: Ref<StatsResponseDTO> = ref(defaultStatsResponse())
 
 interface DeviceData {
     rowID: string
@@ -66,32 +68,11 @@ interface DeviceData {
     channelColor: string
     channelLabel: string
     dataType: DataType // we include LOAD in with DUTY since they are both percents.
-    value: number
-    min: number
-    max: number
-    avg: number
-    count: number // number of values folded so far
     // True when the next row belongs to a different channel (or this is the
     // last row). Used to drop the channel column's border-b between same-
     // channel rows so they read as one merged cell. Set by a post-pass in
     // rebuildTableData after sort.
     isLastOfChannel?: boolean
-}
-
-// Daemon hasn't observed this entry yet. Sentinel min lets the first Math.min
-// in updateTableData seed the correct minimum; max=avg=count=0 self-seed too.
-const emptyStats = (): { min: number; max: number; avg: number; count: number } => ({
-    min: Number.MAX_SAFE_INTEGER,
-    max: 0,
-    avg: 0,
-    count: 0,
-})
-
-const fromChannelStats = (
-    stats: ChannelStats | undefined,
-): { min: number; max: number; avg: number; count: number } => {
-    if (stats == null || stats.count === 0) return emptyStats()
-    return { min: stats.min, max: stats.max, avg: stats.avg, count: stats.count }
 }
 
 // Device subheader color: matches the per-device userColor used in AppTreeMenu.
@@ -120,29 +101,26 @@ const isFirstOfDevice = (index: number): boolean =>
     index === 0 ||
     deviceTableData.value[index - 1].deviceUID !== deviceTableData.value[index].deviceUID
 
-const rebuildTableData = (stats: StatsResponseDTO) => {
+const rebuildTableData = () => {
     deviceTableData.value.length = 0
-    const statsByUid = new Map<UID, DeviceStatsDTO>()
-    for (const d of stats.devices) statsByUid.set(d.uid, d)
-
     for (const device of deviceStore.allDevices()) {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         if (!includesDevice(device.uid)) continue
-        const deviceStats = statsByUid.get(device.uid)
-        for (const temp of device.status.temps) {
-            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) continue
-            const channelSettings = deviceSettings.sensorsAndChannels.get(temp.name)
-            deviceTableData.value.push({
-                rowID: device.uid + temp.name,
+        const row = (channelID: string, dataType: DataType): DeviceData => {
+            const channelSettings = deviceSettings.sensorsAndChannels.get(channelID)
+            return {
+                rowID: device.uid + channelID,
                 deviceUID: device.uid,
                 deviceName: deviceSettings.name,
-                channelID: temp.name,
+                channelID: channelID,
                 channelColor: channelSettings?.color ?? 'white',
-                dataType: DataType.TEMP,
-                channelLabel: channelSettings?.name ?? temp.name,
-                value: temp.temp,
-                ...fromChannelStats(deviceStats?.temps?.[temp.name]),
-            })
+                channelLabel: channelSettings?.name ?? channelID,
+                dataType: dataType,
+            }
+        }
+        for (const temp of device.status.temps) {
+            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) continue
+            deviceTableData.value.push(row(temp.name, DataType.TEMP))
         }
         if (device.info == null) continue
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -153,69 +131,21 @@ const rebuildTableData = (stats: StatsResponseDTO) => {
             ) {
                 continue
             }
-            const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
-            const channelDeviceStats = deviceStats?.channels?.[channelName]
             for (const channel of device.status.channels) {
                 if (channel.name !== channelName) continue
                 if (channel.duty != null) {
                     if (!includesLoads && channel.name.endsWith('Load')) continue
                     if (!includedDuties && !channel.name.endsWith('Load')) continue
-                    deviceTableData.value.push({
-                        rowID: device.uid + channel.name,
-                        deviceUID: device.uid,
-                        deviceName: deviceSettings.name,
-                        channelID: channel.name,
-                        channelColor: channelSettings?.color ?? 'white',
-                        channelLabel: channelSettings?.name ?? channel.name,
-                        dataType: DataType.DUTY,
-                        value: channel.duty,
-                        ...fromChannelStats(channelDeviceStats?.['DUTY']),
-                    })
+                    deviceTableData.value.push(row(channel.name, DataType.DUTY))
                 }
                 if (includesRPMs && channel.rpm != null) {
-                    deviceTableData.value.push({
-                        rowID: device.uid + channel.name,
-                        deviceUID: device.uid,
-                        deviceName: deviceSettings.name,
-                        channelID: channel.name,
-                        channelColor: channelSettings?.color ?? 'white',
-                        channelLabel: channelSettings?.name ?? channel.name,
-                        dataType: DataType.RPM,
-                        value: channel.rpm,
-                        ...fromChannelStats(channelDeviceStats?.['RPM']),
-                    })
+                    deviceTableData.value.push(row(channel.name, DataType.RPM))
                 }
                 if (includesFreqs && channel.freq != null) {
-                    const scaled = fromChannelStats(channelDeviceStats?.['FREQ'])
-                    if (settingsStore.frequencyPrecision > 1 && scaled.count > 0) {
-                        scaled.min /= settingsStore.frequencyPrecision
-                        scaled.max /= settingsStore.frequencyPrecision
-                        scaled.avg /= settingsStore.frequencyPrecision
-                    }
-                    deviceTableData.value.push({
-                        rowID: device.uid + channel.name,
-                        deviceUID: device.uid,
-                        deviceName: deviceSettings.name,
-                        channelID: channel.name,
-                        channelColor: channelSettings?.color ?? 'white',
-                        channelLabel: channelSettings?.name ?? channel.name,
-                        dataType: DataType.FREQ,
-                        value: channel.freq / settingsStore.frequencyPrecision,
-                        ...scaled,
-                    })
+                    deviceTableData.value.push(row(channel.name, DataType.FREQ))
                 }
                 if (includesWatts && channel.watts != null) {
-                    deviceTableData.value.push({
-                        rowID: device.uid + channel.name,
-                        deviceUID: device.uid,
-                        deviceName: deviceSettings.name,
-                        channelID: channel.name,
-                        channelColor: channelSettings?.color ?? 'white',
-                        channelLabel: channelSettings?.name ?? channel.name,
-                        dataType: DataType.WATTS,
-                        value: channel.watts,
-                        ...fromChannelStats(channelDeviceStats?.['WATTS']),
-                    })
+                    deviceTableData.value.push(row(channel.name, DataType.WATTS))
                 }
             }
         }
@@ -256,99 +186,40 @@ const rebuildTableData = (stats: StatsResponseDTO) => {
     }
 }
 
-const refreshStats = async () => {
-    currentStats.value = await deviceStore.daemonClient.getStats()
-    rebuildTableData(currentStats.value)
-}
-
-const resetStats = async () => {
-    currentStats.value = await deviceStore.daemonClient.resetStats()
-    rebuildTableData(currentStats.value)
-}
-
 // Exposed so parent views can wire a "Reset" button into their existing
 // control panel (where the chart-type Select and filter dropdowns live).
-defineExpose({ resetStats })
+defineExpose({ resetStats: reset })
 
-// Initial render before /stats returns: build rows with empty baselines so the
-// table is laid out immediately. refreshStats() below replaces them with the
-// daemon-provided values.
-rebuildTableData(currentStats.value)
+rebuildTableData()
 
-// Allows us to efficiently calculate averages in real time
-const calcCumulativeAverage = (row: DeviceData, newValue: number, newCount: number): number =>
-    (row.avg * row.count + newValue) / newCount
-
-const updateTableData = () => {
-    for (const row of deviceTableData.value) {
-        let newValue: number
-        switch (row.dataType) {
-            case DataType.TEMP:
-                newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.temp,
-                )
-                break
-            case DataType.DUTY:
-                newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.duty,
-                )
-                break
-            case DataType.RPM:
-                newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.rpm,
-                )
-                break
-            case DataType.FREQ:
-                newValue =
-                    Number(
-                        deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!
-                            .freq,
-                    ) / settingsStore.frequencyPrecision
-                break
-            case DataType.WATTS:
-                newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.watts,
-                )
-                break
-            default:
-                newValue = 0
-        }
-        row.value = newValue
-        row.min = Math.min(row.min, newValue)
-        row.max = Math.max(row.max, newValue)
-        const newCount = row.count + 1
-        row.avg = calcCumulativeAverage(row, newValue, newCount)
-        row.count = newCount
-    }
+const currentValue = (row: DeviceData): number => {
+    const values = deviceStore.currentDeviceStatus.get(row.deviceUID)?.get(row.channelID)
+    const value = Number(values?.[DATA_TYPE_STATS[row.dataType].statusField])
+    return toDisplayUnits(value, row.dataType, settingsStore.frequencyPrecision)
 }
 
-const format = (value: number, dataType: DataType): string => {
-    if (dataType === DataType.TEMP || dataType === DataType.WATTS) {
-        return value.toFixed(1)
-    } else if (dataType === DataType.FREQ && settingsStore.frequencyPrecision > 1) {
-        return value.toFixed(2)
-    } else {
-        return value.toFixed(0)
-    }
+interface RowValues {
+    current: number
+    // Null until the daemon has observed this line.
+    stats: ChannelStats | null
 }
-const suffix = (dataType: DataType): string => {
-    switch (dataType) {
-        case DataType.TEMP:
-            return ` ${t('common.tempUnit')}`
-        case DataType.DUTY:
-            return ` ${t('common.percentUnit')}`
-        case DataType.RPM:
-            return ` ${t('common.rpmAbbr')}`
-        case DataType.FREQ:
-            return settingsStore.frequencyPrecision === 1
-                ? ` ${t('common.mhzAbbr')}`
-                : ` ${t('common.ghzAbbr')}`
-        case DataType.WATTS:
-            return ` ${t('common.wattAbbr')}`
-        default:
-            return ` ${t('common.percentUnit')}`
-    }
-}
+
+// Recomputed on every status tick: the lifetime stats are folded and re-triggered each tick.
+const rowValues = computed<Array<RowValues>>(() =>
+    deviceTableData.value.map((row) => ({
+        current: currentValue(row),
+        stats: displayOf({
+            deviceUID: row.deviceUID,
+            channelName: row.channelID,
+            dataType: row.dataType,
+        }),
+    })),
+)
+
+const format = (value: number, dataType: DataType): string =>
+    formatStatValue(value, dataType, settingsStore.frequencyPrecision)
+const suffix = (dataType: DataType): string =>
+    statUnitSuffix(dataType, settingsStore.frequencyPrecision, t)
 const suffixStyle = (dataType: DataType): string => {
     switch (dataType) {
         case DataType.TEMP:
@@ -361,42 +232,8 @@ const suffixStyle = (dataType: DataType): string => {
     }
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-
-const onVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-        refreshStats()
-    }
-}
-
-onMounted(async () => {
-    await refreshStats()
-
-    deviceStore.$onAction(({ name, after }) => {
-        if (name === 'updateStatus') {
-            after((onlyRecentStatus: boolean) => {
-                if (onlyRecentStatus) {
-                    updateTableData()
-                } else {
-                    // Full history reload (e.g. daemon reconnect): daemon stats
-                    // were not affected, but resync to be safe.
-                    refreshStats()
-                }
-            })
-        }
-    })
-
-    watch(settingsStore.allUIDeviceSettings, () => {
-        // Settings changed (name/color/label); rebuild rows with cached stats.
-        rebuildTableData(currentStats.value)
-    })
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-})
-
-onBeforeUnmount(() => {
-    document.removeEventListener('visibilitychange', onVisibilityChange)
-})
+// Settings changed (name/color/label); rebuild the rows.
+watch(settingsStore.allUIDeviceSettings, () => rebuildTableData())
 </script>
 
 <template>
@@ -449,13 +286,17 @@ onBeforeUnmount(() => {
                                 </div>
                             </td>
                             <td>
-                                <span class="font-bold">{{ format(row.value, row.dataType) }}</span>
+                                <span class="font-bold">{{
+                                    format(rowValues[index].current, row.dataType)
+                                }}</span>
                                 <span :style="suffixStyle(row.dataType)">{{
                                     suffix(row.dataType)
                                 }}</span>
                             </td>
                             <td>
-                                <span v-if="row.count === 0" class="text-text-color-secondary"
+                                <span
+                                    v-if="rowValues[index].stats == null"
+                                    class="text-text-color-secondary"
                                     >-</span
                                 >
                                 <span
@@ -463,11 +304,11 @@ onBeforeUnmount(() => {
                                     class="inline-flex items-baseline font-numeric tabular-nums"
                                 >
                                     <span class="text-right min-w-[3rem]">{{
-                                        format(row.min, row.dataType)
+                                        format(rowValues[index].stats!.min, row.dataType)
                                     }}</span>
                                     <span class="mx-2 text-text-color-secondary">-</span>
                                     <span class="text-left min-w-[3rem]">{{
-                                        format(row.max, row.dataType)
+                                        format(rowValues[index].stats!.max, row.dataType)
                                     }}</span>
                                     <span class="ml-1" :style="suffixStyle(row.dataType)">{{
                                         suffix(row.dataType)
@@ -475,11 +316,13 @@ onBeforeUnmount(() => {
                                 </span>
                             </td>
                             <td>
-                                <span v-if="row.count === 0" class="text-text-color-secondary"
+                                <span
+                                    v-if="rowValues[index].stats == null"
+                                    class="text-text-color-secondary"
                                     >-</span
                                 >
                                 <template v-else>
-                                    {{ format(row.avg, row.dataType) }}
+                                    {{ format(rowValues[index].stats!.avg, row.dataType) }}
                                     <span :style="suffixStyle(row.dataType)">{{
                                         suffix(row.dataType)
                                     }}</span>

@@ -5,7 +5,7 @@ use crate::api::devices::DeviceDto;
 use crate::api::CCError;
 use crate::cc_fs;
 use crate::config::Config;
-use crate::device::{ChannelName, DeviceUID, Duty};
+use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::notifier::NotificationHandle;
@@ -49,6 +49,11 @@ enum DeviceMessage {
         device_uid: DeviceUID,
         channel_name: ChannelName,
         respond_to: oneshot::Sender<Result<(Mime, Vec<u8>)>>,
+    },
+    DeviceChannelAttributesGet {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<Vec<ChannelAttribute>>>,
     },
     DeviceImageProcess {
         device_uid: DeviceUID,
@@ -220,6 +225,17 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let response = self.engine.get_lcd_image(&device_uid, &channel_name).await;
+                let _ = respond_to.send(response);
+            }
+            DeviceMessage::DeviceChannelAttributesGet {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let response = self
+                    .engine
+                    .channel_attributes(&device_uid, &channel_name)
+                    .await;
                 let _ = respond_to.send(response);
             }
             DeviceMessage::DeviceImageProcess {
@@ -566,6 +582,21 @@ impl DeviceHandle {
     ) -> Result<(Mime, Vec<u8>)> {
         let (tx, rx) = oneshot::channel();
         let msg = DeviceMessage::DeviceImageGet {
+            device_uid,
+            channel_name,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_channel_attributes_get(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceChannelAttributesGet {
             device_uid,
             channel_name,
             respond_to: tx,

@@ -5,7 +5,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, type Ref, ref, shallowRef, watch } from 'vue'
 import { type Color, DeviceType, type UID } from '@/models/Device.ts'
 import {
     ChartType,
@@ -14,10 +14,12 @@ import {
     DataType,
     getLocalizedChartType,
     getLocalizedDataType,
+    knownChartType,
 } from '@/models/Dashboard.ts'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import AxisOptions from '@/components/AxisOptions.vue'
+import ChartDisplayOptions from '@/components/ChartDisplayOptions.vue'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { ChannelInfo } from '@/models/ChannelInfo.ts'
 // @ts-ignore
@@ -35,6 +37,11 @@ import {
 } from '@mdi/js'
 import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
+import TimeChartStatsLegend from '@/components/TimeChartStatsLegend.vue'
+import SensorStatsPanel from '@/components/SensorStatsPanel.vue'
+import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
+import { limitLinesFrom, type LimitLine } from '@/components/channelAttributes.ts'
+import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { component as Fullscreen } from 'vue-fullscreen'
@@ -91,23 +98,21 @@ const isCustomSensor = computed((): boolean => {
     return false
 })
 
-const channelLabel = ref(
-    sensorMode
-        ? (settingsStore.allUIDeviceSettings
-              .get(props.deviceUID!)
-              ?.sensorsAndChannels.get(props.channelName!)?.name ?? props.channelName!)
-        : '',
-)
+const channelSettings = sensorMode
+    ? settingsStore.allUIDeviceSettings
+          .get(props.deviceUID!)
+          ?.sensorsAndChannels.get(props.channelName!)
+    : undefined
+const channelLabel = ref(sensorMode ? (channelSettings?.name ?? props.channelName!) : '')
 const createChannelDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel.value)
     dash.timeRangeSeconds = 300
     // needed due to reduced default data type range:
     dash.dataTypes = []
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID!, props.channelName!))
-    settingsStore.allUIDeviceSettings
-        .get(props.deviceUID!)!
-        .sensorsAndChannels.get(props.channelName!)!.channelDashboard = dash
-    return dash
+    channelSettings!.channelDashboard = dash
+    // The raw object does not track edits; hand back the stored proxy.
+    return channelSettings!.channelDashboard!
 }
 
 // Sensors fall back to their detected label; a dashboard keeps its own name.
@@ -142,17 +147,13 @@ const homeDashboard: Dashboard =
     settingsStore.dashboards.find((dashboard) => dashboard.uid === settingsStore.homeDashboard) ??
     settingsStore.dashboards[0] // show first dashboard if no Home Dashboard set
 const dashboard: Dashboard = sensorMode
-    ? (settingsStore.allUIDeviceSettings
-          .get(props.deviceUID!)!
-          .sensorsAndChannels.get(props.channelName!)!.channelDashboard ?? createChannelDashboard())
+    ? (channelSettings!.channelDashboard ?? createChannelDashboard())
     : props.dashboardUID != null
       ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ?? homeDashboard)
       : homeDashboard
 
-// Migrate removed Controls chart type to Time Chart
-if ((dashboard.chartType as string) === 'Controls') {
-    dashboard.chartType = ChartType.TIME_CHART
-}
+// Migrates removed chart types, such as Controls, to Time Chart.
+dashboard.chartType = knownChartType(dashboard.chartType)
 // A saved types filter on a channel dashboard would annoyingly hide some
 // metrics like i.e. RPMs.
 if (sensorMode && dashboard.dataTypes.length > 0) {
@@ -196,6 +197,8 @@ const duplicateDashboard = (): void => {
     copy.frequencyMin = dashboard.frequencyMin
     copy.wattsMax = dashboard.wattsMax
     copy.wattsMin = dashboard.wattsMin
+    copy.showStatsLegend = dashboard.showStatsLegend
+    copy.showLimitLines = dashboard.showLimitLines
     copy.dataTypes = [...dashboard.dataTypes]
     copy.selectedTags = [...dashboard.selectedTags]
     copy.deviceChannelNames = dashboard.deviceChannelNames.map(
@@ -459,6 +462,38 @@ const viewDashboard = computed(() => ({
     deviceChannelNames: effectiveChannels.value,
 }))
 
+const timeChartRef = ref<InstanceType<typeof TimeChart> | null>(null)
+const windowStats = shallowRef<WindowStatsPayload | null>(null)
+const showLegend = computed(
+    (): boolean =>
+        !sensorMode && dashboard.chartType === ChartType.TIME_CHART && dashboard.showStatsLegend,
+)
+const legendRef = ref<InstanceType<typeof TimeChartStatsLegend> | null>(null)
+const showPanel = computed(
+    (): boolean =>
+        sensorMode &&
+        dashboard.chartType === ChartType.TIME_CHART &&
+        settingsStore.sensorStatsPanelVisible,
+)
+
+// Read on page open and on request only: some values (a fan target, a chip's recorded extremes)
+// move, but polling them would cost a device read each time.
+const attributes = shallowRef<Array<ChannelAttribute>>([])
+const loadAttributes = async (): Promise<void> => {
+    if (!sensorMode) return
+    attributes.value = await deviceStore.daemonClient.getChannelAttributes(
+        props.deviceUID!,
+        props.channelName!,
+    )
+}
+loadAttributes()
+const drawableLimits = computed((): Array<LimitLine> =>
+    limitLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
+)
+const limitLines = computed((): Array<LimitLine> =>
+    sensorMode && dashboard.showLimitLines ? drawableLimits.value : [],
+)
+
 const addScrollEventListener = (): void => {
     // @ts-ignore
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
@@ -466,8 +501,11 @@ const addScrollEventListener = (): void => {
 const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('u-plot-chart')
     if (graphEl != null) {
+        // The stats legend sits under the chart, so the chart leaves room for it.
+        const legend = document.getElementById('time-chart-legend')
+        const legendHeight = legend ? Math.ceil(legend.getBoundingClientRect().height) : 0
         if (fullPage.value) {
-            graphEl.style.height = 'calc(100vh - 1rem)'
+            graphEl.style.height = `calc(100vh - 1rem - ${legendHeight}px)`
             return
         }
         // Fill the viewport from wherever the chart starts; works both at the page
@@ -476,7 +514,7 @@ const updateResponsiveGraphHeight = (): void => {
         const top = Math.ceil(graphEl.getBoundingClientRect().top)
         const bottomNav = document.getElementById('shell-bottom-nav')
         const bottomNavHeight = bottomNav ? Math.ceil(bottomNav.getBoundingClientRect().height) : 0
-        graphEl.style.height = `calc(100vh - ${top + 12 + bottomNavHeight}px)`
+        graphEl.style.height = `calc(100vh - ${top + 12 + bottomNavHeight + legendHeight}px)`
     }
 }
 
@@ -492,6 +530,19 @@ const toggleFullPage = async (): Promise<void> => {
 const chartKey: Ref<string> = ref(uuidV4())
 const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 let panelResizeObserver: ResizeObserver | null = null
+// The legend grows as its rows arrive and when lines are added, so the chart re-fits with it.
+let legendResizeObserver: ResizeObserver | null = null
+watch(legendRef, (legend) => {
+    legendResizeObserver?.disconnect()
+    legendResizeObserver = null
+    const el: Element | undefined = legend?.$el
+    if (el == null) {
+        updateResponsiveGraphHeight()
+        return
+    }
+    legendResizeObserver = new ResizeObserver(() => updateResponsiveGraphHeight())
+    legendResizeObserver.observe(el)
+})
 onMounted(async () => {
     window.addEventListener('resize', updateResponsiveGraphHeight)
     setTimeout(updateResponsiveGraphHeight)
@@ -526,6 +577,8 @@ onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
     panelResizeObserver?.disconnect()
     panelResizeObserver = null
+    legendResizeObserver?.disconnect()
+    legendResizeObserver = null
 })
 </script>
 
@@ -600,6 +653,12 @@ onUnmounted(() => {
                         v-tooltip.top="t('views.dashboard.timeRange')"
                     />
                     <axis-options class="h-10 ml-3" :dashboard="dashboard" />
+                    <chart-display-options
+                        class="h-10 ml-3"
+                        :dashboard="dashboard"
+                        :sensor-mode="sensorMode"
+                        :has-limit-lines="drawableLimits.length > 0"
+                    />
                 </div>
                 <div
                     v-if="dashboard.chartType == ChartType.TABLE"
@@ -736,7 +795,7 @@ onUnmounted(() => {
             class="min-h-0 flex-1"
             :class="{ 'z-[1200]': fullPage }"
         >
-            <div class="h-full" :class="{ 'full-page-wrapper': fullPage }">
+            <div class="relative h-full" :class="{ 'full-page-wrapper': fullPage }">
                 <!-- pr-2 plus the w-10 box put the icon where the header's
                      full-page button sits, so it does not jump on toggle. -->
                 <div
@@ -756,12 +815,34 @@ onUnmounted(() => {
                         />
                     </div>
                 </div>
-                <TimeChart
-                    v-if="dashboard.chartType == ChartType.TIME_CHART"
-                    :dashboard="viewDashboard"
-                    :key="chartKey"
-                    @line-set-changed="chartKey = uuidV4()"
-                />
+                <template v-if="dashboard.chartType == ChartType.TIME_CHART">
+                    <TimeChart
+                        ref="timeChartRef"
+                        :dashboard="viewDashboard"
+                        :key="chartKey"
+                        :emit-window-stats="showLegend || showPanel"
+                        :limit-lines="limitLines"
+                        @line-set-changed="chartKey = uuidV4()"
+                        @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
+                    />
+                    <SensorStatsPanel
+                        v-if="showPanel"
+                        :payload="windowStats"
+                        :range-minutes="chartMinutes"
+                        :attributes="attributes"
+                        :limit-lines="limitLines"
+                        @refresh-attributes="loadAttributes"
+                    />
+                    <TimeChartStatsLegend
+                        v-if="showLegend"
+                        ref="legendRef"
+                        :payload="windowStats"
+                        :range-minutes="chartMinutes"
+                        @focus-line="
+                            (seriesIndex: number | null) => timeChartRef?.focusLine(seriesIndex)
+                        "
+                    />
+                </template>
                 <SensorTable
                     v-else-if="dashboard.chartType == ChartType.TABLE"
                     ref="sensorTableRef"

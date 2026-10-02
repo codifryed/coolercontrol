@@ -109,6 +109,92 @@ pub enum ChannelDataType {
     Watts,
 }
 
+/// Most attributes one channel can report: the temperature set is the larger one.
+pub const MAX_CHANNEL_ATTRIBUTES: usize = 16;
+
+/// A driver-reported channel attribute that is read on demand rather than polled: limits,
+/// targets and sensor details. Serialized upper-case so clients can pick the unit and decide
+/// which values to draw as limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[schemars(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ChannelAttributeKind {
+    /// Degrees Celsius.
+    TempMax,
+    /// Degrees Celsius, an absolute temperature per the hwmon ABI, not a delta.
+    TempMaxHyst,
+    /// Degrees Celsius.
+    TempCrit,
+    /// Degrees Celsius, absolute.
+    TempCritHyst,
+    /// Degrees Celsius.
+    TempEmergency,
+    /// Degrees Celsius, absolute.
+    TempEmergencyHyst,
+    /// Degrees Celsius.
+    TempMin,
+    /// Degrees Celsius, absolute.
+    TempMinHyst,
+    /// Degrees Celsius.
+    TempLcrit,
+    /// Degrees Celsius, absolute.
+    TempLcritHyst,
+    /// Degrees Celsius, the lowest reading since the driver loaded or was reset.
+    TempLowest,
+    /// Degrees Celsius, the highest reading since the driver loaded or was reset.
+    TempHighest,
+    /// Degrees Celsius, the lowest temperature the sensor is rated for.
+    TempRatedMin,
+    /// Degrees Celsius, the highest temperature the sensor is rated for.
+    TempRatedMax,
+    /// Degrees Celsius, added by the chip to the raw reading.
+    TempOffset,
+    /// Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,
+    /// Intel PECI).
+    TempType,
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
+    FanMin,
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
+    FanMax,
+    /// Revolutions per minute. Microbar on a pressure channel such as the Leakshield's fan1.
+    FanTarget,
+    /// Divisor, a plain number.
+    FanDiv,
+    /// Tachometer pulses per revolution, a plain number.
+    FanPulses,
+    /// Watts.
+    PowerMax,
+    /// Watts.
+    PowerCrit,
+    /// Watts.
+    PowerMin,
+    /// Watts.
+    PowerLcrit,
+    /// Watts, the power limit the device currently enforces.
+    PowerCap,
+    /// Watts, the margin around the cap, not an absolute power.
+    PowerCapHyst,
+    /// Watts, the highest cap that can be set.
+    PowerCapMax,
+    /// Watts, the lowest cap that can be set.
+    PowerCapMin,
+    /// Watts, the lowest power the sensor is rated for.
+    PowerRatedMin,
+    /// Watts, the highest power the sensor is rated for.
+    PowerRatedMax,
+}
+
+/// One driver-reported attribute. `name` is the sysfs file name, so clients can show it as is:
+/// the same attribute means different things on different drivers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelAttribute {
+    pub name: String,
+    pub kind: ChannelAttributeKind,
+    /// °C for temperatures, rpm for fan speeds, watts for power, a plain number otherwise.
+    /// Microbar for the fan limits of a pressure channel such as the Leakshield's fan1.
+    pub value: f64,
+}
+
 /// Per-device running stats since daemon start. Populated lazily as
 /// channels/temps are observed. Reset via `Device::reset_stats`.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]
