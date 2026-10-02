@@ -13,11 +13,7 @@ export const POWER_PROFILE_NAMES = ['power-saver', 'balanced', 'performance'] as
 
 export type PowerProfileName = (typeof POWER_PROFILE_NAMES)[number]
 
-/**
- * The Mode mapped to the active profile when it is not the active Mode, otherwise undefined.
- * The daemon activates that Mode again when it starts, replacing whatever was applied by hand
- * since, so the page says so before it happens.
- */
+/** The Mode mapped to the active profile when it is not the active Mode, otherwise undefined. */
 export function unappliedProfileMode(
     activeProfile: string | undefined,
     profileModes: Record<string, string>,
