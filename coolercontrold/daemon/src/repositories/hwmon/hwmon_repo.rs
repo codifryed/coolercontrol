@@ -1571,7 +1571,7 @@ impl HwmonRepo {
     }
 
     /// Reads one channel's attributes under the device permit, or nothing for a sleeping drive.
-    async fn read_channel_attributes(
+    async fn channel_attributes_inner(
         &self,
         type_index: TypeIndex,
         driver: &HwmonDriverInfo,
@@ -2682,7 +2682,7 @@ impl Repository for HwmonRepo {
         let drivetemp_suspended =
             drivetemp::is_suspended(&driver.drivetemp, self.drivetemp_ioctl_timeout).await;
         let type_index = device_lock.borrow().type_index;
-        self.read_channel_attributes(type_index, driver, channel, drivetemp_suspended)
+        self.channel_attributes_inner(type_index, driver, channel, drivetemp_suspended)
             .await
     }
 }
@@ -7116,12 +7116,12 @@ mod channel_attributes_tests {
             let channel = &driver.channels[0];
 
             let suspended = repo
-                .read_channel_attributes(TYPE_INDEX, &driver, channel, true)
+                .channel_attributes_inner(TYPE_INDEX, &driver, channel, true)
                 .await
                 .unwrap();
             drop(holder);
             let awake = repo
-                .read_channel_attributes(TYPE_INDEX, &driver, channel, false)
+                .channel_attributes_inner(TYPE_INDEX, &driver, channel, false)
                 .await
                 .unwrap();
 
