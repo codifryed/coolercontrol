@@ -251,11 +251,11 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
 
     // REST API servers
     if let Some(addr) = config.ipv4 {
-        let server = create_api_server(SocketAddr::from(addr), config.clone());
+        let server = run_api_server(SocketAddr::from(addr), config.clone());
         handles.push(tokio::task::spawn_local(server));
     }
     if let Some(addr) = config.ipv6 {
-        let server = create_api_server(SocketAddr::from(addr), config);
+        let server = run_api_server(SocketAddr::from(addr), config);
         handles.push(tokio::task::spawn_local(server));
     }
 
@@ -264,6 +264,14 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
         if let Err(e) = handle.await {
             log::error!("API server task error: {e}");
         }
+    }
+}
+
+/// Runs one listener's server to its end. A failure is logged here, as it happens: the
+/// servers are only joined at shutdown, in order, so a join would report it late or never.
+async fn run_api_server(addr: SocketAddr, config: ApiServerConfig) {
+    if let Err(err) = create_api_server(addr, config).await {
+        log::error!("API server on {addr} failed: {err:#}");
     }
 }
 
