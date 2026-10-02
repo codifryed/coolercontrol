@@ -32,6 +32,8 @@ const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 const PLUGIN_MANIFEST_PERMISSIONS: u32 = 0o644;
 /// The daemon's outbound token and TLS pin: root-owned and readable by root alone.
 const PLUGIN_CREDENTIAL_PERMISSIONS: u32 = 0o600;
+/// Group-writable with the sticky bit. See `secure_folder_entries`.
+const PLUGIN_FOLDER_PERMISSIONS: u32 = 0o1775;
 const ROOT_USER: &str = "root";
 const CHOWN_BIN: &str = "chown";
 const CHOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -424,12 +426,13 @@ pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>
 }
 
 /// Hands the plugin folder to `owner` so the plugin can manage its own runtime files, then takes
-/// `manifest.toml` back for root.
+/// `manifest.toml` and the folder's own entry list back for root.
 ///
 /// The manifest declares `privileged`, which decides whether the generated service unit omits
 /// `User=` and therefore runs the plugin as root. An unprivileged plugin that owned its own
 /// manifest could set that flag and gain root on the next daemon start, so ownership of that one
-/// file must not follow the rest of the folder. The plugin is not running while this executes
+/// file must not follow the rest of the folder, and neither may the right to replace it:
+/// see `secure_folder_entries`. The plugin is not running while this executes
 /// (`initialize_service` secures the folder before starting the service), so the window in which
 /// the manifest is briefly plugin-owned is not reachable by the plugin.
 pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()> {
@@ -445,7 +448,27 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     // Must follow the handover, not precede it: the recursive chown above would take these
     // files back for the plugin user.
     let credentials = secure_daemon_credentials(path).await;
-    handover.and(manifest).and(credentials)
+    // Last, for the same reason: the handover resets the folder's owner too.
+    let entries = secure_folder_entries(path).await;
+    handover.and(manifest).and(credentials).and(entries)
+}
+
+/// Takes the folder itself back for root, while the plugin's group can still write in it.
+///
+/// The owner of a directory can rename or delete any entry in it, whoever owns the entry, so
+/// a plugin that owned its folder could swap the root-owned manifest or TLS pin for a file
+/// of its own. Under a root-owned folder with the sticky bit, it can only replace what it owns.
+async fn secure_folder_entries(plugin_dir: &Path) -> Result<()> {
+    // The mode first: a root-owned folder without the group write bit would lock the
+    // plugin out of its own files, so a failure here leaves the folder as it was.
+    cc_fs::set_permissions(
+        plugin_dir,
+        Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS),
+    )
+    .await?;
+    // The owner alone: the group stays the one the handover gave it.
+    std::os::unix::fs::chown(plugin_dir, Some(0), None)
+        .with_context(|| format!("Taking back plugin folder {}", plugin_dir.display()))
 }
 
 /// Returns the daemon's own credentials for this plugin to root, readable by nobody else.
@@ -937,6 +960,23 @@ mod tests {
         });
     }
 
+    /// Goal: the plugin must not be able to rename or delete what root owns in its folder,
+    /// or the root-owned manifest protects nothing. The sticky bit is what enforces that, and
+    /// the group write bit is what keeps the folder usable by the plugin.
+    /// Methodology: setting the mode needs no root, so secure a folder and read it back.
+    #[test]
+    fn secure_plugin_folder_makes_the_folder_sticky() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+
+            let _ = secure_plugin_folder(dir.path(), Some(ROOT_USER)).await;
+
+            let mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+            assert_eq!(mode & 0o7777, PLUGIN_FOLDER_PERMISSIONS);
+        });
+    }
+
     /// Goal: a folder with no manifest is still secured without erroring.
     /// Methodology: secure an empty directory as root and assert success, so plugins that have
     /// not yet been given a manifest do not fail initialization.
@@ -982,7 +1022,14 @@ mod tests {
 
             let manifest_uid = std::fs::metadata(&manifest_path).unwrap().uid();
             let nested_uid = std::fs::metadata(&nested).unwrap().uid();
+            let folder = std::fs::metadata(dir.path()).unwrap();
             assert_eq!(manifest_uid, 0, "Manifest must remain owned by root");
+            assert_eq!(folder.uid(), 0, "The folder itself must be root's");
+            assert_eq!(
+                folder.gid(),
+                std::fs::metadata(&nested).unwrap().gid(),
+                "The plugin's group must keep the folder"
+            );
             assert_ne!(
                 nested_uid, manifest_uid,
                 "The rest of the folder must be handed to the plugin user"
