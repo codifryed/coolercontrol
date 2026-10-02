@@ -31,7 +31,14 @@ const devices = [
         info: {
             temps: new Map([['temp1', {}]]),
             channels: new Map([
-                ['fan1', { speed_options: { min_duty: 0, max_duty: 100 }, lighting_modes: [] }],
+                [
+                    'fan1',
+                    {
+                        speed_options: { min_duty: 0, max_duty: 100 },
+                        lighting_modes: [],
+                        lcd_modes: [],
+                    },
+                ],
             ]),
         },
     },
@@ -49,6 +56,8 @@ const settings = reactive({
     healthMissing: [],
     healthStaleSource: [],
     allUIDeviceSettings: new Map(),
+    allDaemonDeviceSettings: new Map(),
+    ccDeviceSettings: new Map(),
     dashboards: [{ uid: DASHBOARD, name: 'Overview' }],
     alerts: [],
     alertsNeedingAttention: [],
@@ -111,6 +120,11 @@ const mountOptions = {
             AlertSilenceMenu: true,
             LibraryList: true,
             HardwareHelpLine: true,
+            CalibrationBadge: true,
+            FirmwareCurveBadge: true,
+            UncontrollableBadge: true,
+            ChannelMiniGraph: true,
+            ChannelSetupMenu: true,
         },
         directives: { tooltip: {} },
     },
@@ -190,5 +204,64 @@ describe.each(['Home', 'Monitoring'] as const)('%s panel, pinned dashboard', (na
         const wrapper = await mountPanel(name)
         expect(wrapper.find('[data-panel-pinned]').exists()).toBe(true)
         expect(pinnedTooltips(wrapper)).toEqual([])
+    })
+})
+
+const tooltips = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.findAll('[data-tooltip]').map((marker) => marker.attributes('data-tooltip'))
+
+describe('Cooling page fan card', () => {
+    const mountCard = async () => {
+        const { default: ChannelCard } = await import('@/shell/cooling/ChannelCard.vue')
+        return mount(ChannelCard, {
+            ...mountOptions,
+            props: {
+                channel: { ...CHANNELS.fan, controllable: true, minDuty: 0, maxDuty: 100 },
+            },
+        })
+    }
+
+    it('says failsafe values are in use', async () => {
+        settings.healthFailsafe = [failsafe(CHANNELS.fan)]
+        expect(tooltips(await mountCard())).toEqual([FAILSAFE_TEXT])
+    })
+
+    it('says the device stopped responding, not failsafe', async () => {
+        settings.healthUnreachable = [{ device_uid: DEVICE }]
+        settings.healthFailsafe = [failsafe(CHANNELS.fan)]
+        expect(tooltips(await mountCard())).toEqual([UNREACHABLE_TEXT])
+    })
+
+    it('marks a device that stopped responding before any channel failsafes', async () => {
+        settings.healthUnreachable = [{ device_uid: DEVICE }]
+        expect(tooltips(await mountCard())).toEqual([UNREACHABLE_TEXT])
+    })
+
+    it('leaves a healthy fan unmarked', async () => {
+        settings.healthFailsafe = [failsafe(CHANNELS.temp)]
+        expect(tooltips(await mountCard())).toEqual([])
+    })
+})
+
+describe('Devices panel', () => {
+    const mountDevices = async () => {
+        const { default: DevicesPanel } = await import('@/shell/devices/DevicesPanel.vue')
+        return mount(DevicesPanel, mountOptions)
+    }
+
+    it('says failsafe values are in use on a custom sensor row', async () => {
+        settings.healthFailsafe = [failsafe(CHANNELS['custom sensor'])]
+        expect(tooltips(await mountDevices())).toEqual([FAILSAFE_TEXT])
+    })
+
+    it('says failsafe values are in use on a device row', async () => {
+        settings.healthFailsafe = [failsafe(CHANNELS.fan)]
+        expect(tooltips(await mountDevices())).toEqual([FAILSAFE_TEXT])
+    })
+
+    it('says a device stopped responding, not failsafe', async () => {
+        settings.healthUnreachable = [{ device_uid: DEVICE }]
+        settings.healthFailsafe = [failsafe(CHANNELS.fan)]
+        expect(tooltips(await mountDevices())).toEqual([UNREACHABLE_TEXT])
     })
 })
