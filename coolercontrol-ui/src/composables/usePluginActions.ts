@@ -54,6 +54,8 @@ export function usePluginActions() {
                 life: 3000,
             })
         }
+        // A start or restart re-reads the plugin's manifest.
+        await deviceStore.loadAllPlugins()
         await refreshStatus(pluginId)
     }
 

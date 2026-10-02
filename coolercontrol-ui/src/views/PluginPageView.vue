@@ -45,8 +45,11 @@ const toast = useToast()
 const { t } = useI18n()
 const pluginActions = usePluginActions()
 
-const plugin = ref<PluginDto | null>(null)
-const hasUi = ref(false)
+// From the store, so a manifest re-read by a start or restart shows up here.
+const plugin = computed(
+    (): PluginDto | null => deviceStore.plugins.find((p) => p.id === props.pluginId) ?? null,
+)
+const hasUi = computed(() => deviceStore.pluginUiInfo.get(props.pluginId)?.has_ui ?? false)
 const pluginStatus = computed(
     () => pluginActions.statuses.value.get(props.pluginId)?.status ?? PluginStatus.Unmanaged,
 )
@@ -78,10 +81,7 @@ const statusDisplayName = computed(() => {
 })
 
 const loadPluginData = async (): Promise<void> => {
-    const pluginsDto = await deviceStore.daemonClient.loadPlugins()
-    plugin.value = pluginsDto.plugins.find((p) => p.id === props.pluginId) ?? null
-    const uiInfo = await deviceStore.daemonClient.hasPluginUi(props.pluginId)
-    hasUi.value = uiInfo.has_ui
+    await deviceStore.loadAllPlugins()
     await refreshStatus()
     loading.value = false
 }
@@ -132,7 +132,6 @@ const togglePlugin = async (): Promise<void> => {
         }
     }
     await loadPluginData()
-    await deviceStore.loadAllPlugins()
 }
 
 const copyCommand = (text: string): void => {
