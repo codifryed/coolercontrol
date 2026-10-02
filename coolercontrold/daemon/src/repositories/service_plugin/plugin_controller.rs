@@ -1153,6 +1153,8 @@ mod tests {
 
     /// Goal: a plugin with no service has no restart to re-read its manifest, so a reload
     /// has to apply it.
+    /// Method: register the plugin without an executable, reload it, and check that the
+    /// description on disk is the one registered.
     #[test]
     fn a_reload_applies_the_manifest_of_a_plugin_without_a_service() {
         crate::rt::test_runtime(async {
@@ -1173,6 +1175,8 @@ mod tests {
 
     /// Goal: a managed plugin's manifest must only change together with its service, so a
     /// reload sends it to its restart and leaves what is registered alone.
+    /// Method: reload a plugin registered with an executable, and check the error and that
+    /// the registered description is unchanged.
     #[test]
     fn a_reload_sends_a_managed_plugin_to_its_restart() {
         crate::rt::test_runtime(async {
@@ -1366,6 +1370,7 @@ mod tests {
 
     /// Goal: a re-read manifest may not turn a plugin into a different one. The id names
     /// its service, and a device plugin's devices are registered at startup.
+    /// Method: compare a manifest with a renamed, a retyped and a merely edited copy.
     #[test]
     fn a_reloaded_manifest_must_describe_the_same_plugin() {
         let registered = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
@@ -1506,6 +1511,7 @@ mod tests {
     /// Goal: a new integration plugin has no service installed yet, and reporting that as
     /// unmanaged hides the start button that would install it. A device plugin is left as
     /// it was, since nothing starts one while the daemon runs.
+    /// Method: map the statuses an init system can report, for one plugin of each type.
     #[test]
     fn an_uninstalled_integration_service_is_reported_stopped() {
         let integration = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
