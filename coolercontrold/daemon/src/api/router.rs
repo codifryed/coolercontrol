@@ -23,13 +23,14 @@ use std::ops::Not;
 
 pub async fn init(app_state: AppState) -> ApiRouter {
     let token_handle = app_state.token_handle.clone();
+    let document_csp = app_state.frame_policy.document_csp.clone();
     let router = documented_routes().merge(grpc_routes(&app_state).await);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
 
     router
-        .fallback_service(base::web_app_service())
+        .fallback_service(base::web_app_service(document_csp))
         .with_state(app_state)
         // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
         .layer(Extension(token_handle))
