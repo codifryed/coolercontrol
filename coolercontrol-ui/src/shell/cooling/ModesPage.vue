@@ -21,7 +21,12 @@ import UiButton from '@/shell/ui/UiButton.vue'
 import UiSelect, { type UiSelectOption } from '@/shell/ui/UiSelect.vue'
 import UiSettingRow from '@/shell/ui/UiSettingRow.vue'
 import UiSettingsCard from '@/shell/ui/UiSettingsCard.vue'
-import { hasTranslatedLabel, unappliedProfileMode } from '@/shell/cooling/powerProfiles.ts'
+import {
+    hasTranslatedLabel,
+    unappliedProfileMode,
+    UNAPPLIED_MODE_GRACE_MS,
+    useSustained,
+} from '@/shell/cooling/powerProfiles.ts'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -49,15 +54,16 @@ const profileLabel = (profile: string): string =>
         ? t(`layout.shell.coolingPage.powerProfiles.profileNames.${profile}`)
         : profile
 
-// Undefined when there is nothing to warn about.
-const unappliedModeName = computed<string | undefined>(() => {
+// Undefined when there is nothing to warn about, and while a mismatch is still fresh: every
+// profile switch opens one until its Mode is active.
+const unappliedModeName = useSustained<string>(() => {
     const modeUID = unappliedProfileMode(
         settingsStore.powerProfileActive,
         settingsStore.powerProfileModes,
         settingsStore.modeActiveCurrent,
     )
     return settingsStore.modes.find((mode) => mode.uid === modeUID)?.name
-})
+}, UNAPPLIED_MODE_GRACE_MS)
 
 const mappedMode = (profile: string): string => {
     const modeUID = settingsStore.powerProfileModes[profile]
