@@ -718,6 +718,7 @@ export default {
             reference: '參考值',
             referenceHelp:
                 '所選通道源的讀數，以及其驅動程式回報的限制值。選擇一個數值即可將其用作臨界值。\n驅動程式限制值的意義取決於驅動程式：在某些晶片上，最小值與最大值是目前為止的最低與最高讀數，目標可能是目前的目標值。',
+            referenceEmpty: '選擇一個通道源，即可在此查看其讀數與限制值。',
             allSources: '所有通道源',
             useAsGreaterThan: '用作「大於」',
             useAsLessThan: '用作「小於」',

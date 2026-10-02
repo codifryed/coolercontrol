@@ -718,6 +718,7 @@ export default {
             reference: '参考值',
             referenceHelp:
                 '所选通道源的读数，以及其驱动报告的限值。选择一个数值可将其用作阈值。\n驱动限值的含义取决于驱动：在某些芯片上，最小值和最大值是迄今为止的最低和最高读数，目标可能是当前目标值。',
+            referenceEmpty: '选择一个通道源，即可在此查看其读数和限值。',
             allSources: '所有通道源',
             useAsGreaterThan: '用作“大于”',
             useAsLessThan: '用作“小于”',

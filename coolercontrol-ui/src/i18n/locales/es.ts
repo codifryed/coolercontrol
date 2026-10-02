@@ -760,6 +760,7 @@ export default {
             reference: 'Valores de referencia',
             referenceHelp:
                 'Lo que han medido las fuentes seleccionadas y los límites que informan sus controladores. Selecciona un valor para usarlo como umbral.\nEl significado de un límite del controlador depende del controlador: en algunos chips Mín y Máx son las lecturas más baja y más alta hasta ahora, y Objetivo puede ser el objetivo actual.',
+            referenceEmpty: 'Selecciona una fuente de canal para ver aquí sus lecturas y límites.',
             allSources: 'Todas las fuentes',
             useAsGreaterThan: 'Usar como «mayor que»',
             useAsLessThan: 'Usar como «menor que»',

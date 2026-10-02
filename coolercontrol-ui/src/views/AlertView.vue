@@ -45,6 +45,7 @@ import {
 } from '@/components/alertThresholds.ts'
 import { groupDigits } from '@/shell/digitGroups.ts'
 import AlertSourceReference from '@/components/AlertSourceReference.vue'
+import HelpIcon from '@/components/info/HelpIcon.vue'
 import type { ThresholdTarget, Thresholds } from '@/components/alertReference.ts'
 
 interface Props {
@@ -543,247 +544,266 @@ onMounted(async () => {
         </entity-page-header>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
             <ScrollAreaViewport class="p-4 h-full w-full">
-                <div class="flex flex-col-reverse items-start lg:flex-row mt-0 w-full">
-                    <!-- Stacked (below lg) the listbox needs its own height: the
-                         flex-1/basis-0 fill only works next to the settings column. -->
+                <div class="flex w-full flex-col-reverse items-start gap-4 lg:flex-row">
+                    <!-- Beside the cards (lg) the list stays in view while they scroll, as
+                         tall as the window allows: 9.5rem is the shell and page header above
+                         it plus the page padding. Stacked under them it has a fixed height. -->
                     <div
-                        class="flex w-full flex-col self-stretch mt-4 lg:mt-0 lg:mr-4 lg:w-96 lg:shrink-0"
+                        class="flex h-96 w-full flex-col rounded-lg border bg-bg-two lg:sticky lg:top-0 lg:h-[calc(100vh-9.5rem)] lg:min-h-80 lg:w-96 lg:shrink-0"
+                        :class="
+                            chosenChannelKeys.length === 0 ? 'border-error' : 'border-border-one'
+                        "
                     >
-                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        <div
+                            class="flex items-center gap-1.5 border-b border-border-one px-4 py-3 text-base font-semibold text-text-color"
+                        >
                             {{ t('views.alerts.channelSources') }}
-                        </small>
+                            <HelpIcon :text="t('views.alerts.channelSourcesTooltip')" />
+                        </div>
                         <UiGroupedListbox
                             :model-value="chosenChannelKeys"
                             multiple
-                            class="mt-1 h-96 min-h-0 lg:h-auto lg:flex-1 lg:basis-0"
+                            class="min-h-0 flex-1 !rounded-t-none !border-0"
                             :groups="sourceGroups"
                             filter
                             :filter-placeholder="t('common.search')"
-                            :invalid="chosenChannelKeys.length === 0"
-                            v-tooltip.top="t('views.alerts.channelSourcesTooltip')"
                             @update:model-value="onSourcesChange"
                         />
                     </div>
-                    <!-- Responsive card grid: full-width cards when narrow, two
-                         columns when wide, like the overview pages. -->
-                    <div
-                        class="grid w-full max-w-4xl flex-1 grid-cols-1 items-start gap-4 xl:grid-cols-2"
-                    >
-                        <UiSettingsCard :title="t('views.alerts.sectionGeneral')">
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.enabledTooltip')"
-                                :label="t('views.alerts.enabled')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiSwitch v-model="chosenEnabled" />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-if="!shouldCreateAlert"
-                                v-tooltip.top="t('views.alerts.silenceTooltip')"
-                                :label="t('views.alerts.silence')"
-                            >
-                                <div class="flex items-center justify-end gap-2">
-                                    <UiTag
-                                        v-if="alertIsSilenced(alert)"
-                                        :value="
-                                            t('views.alerts.silencedUntil', {
-                                                time: silencedUntilText(),
-                                            })
-                                        "
-                                        severity="warn"
-                                    />
-                                    <AlertSilenceMenu :alert="alert">
-                                        <template #trigger>
-                                            <UiButton variant="ghost" size="icon">
-                                                <svg-icon
-                                                    type="mdi"
-                                                    :path="mdiBellSleepOutline"
-                                                    :size="deviceStore.getREMSize(1.25)"
+                    <div class="flex w-full min-w-0 max-w-6xl flex-1 flex-col gap-4">
+                        <AlertSourceReference
+                            :sources="selectedChannels"
+                            :metric="selectedMetric"
+                            :thresholds="referenceThresholds"
+                            :warmup-seconds="chosenWarmupDuration"
+                            @apply="applyThreshold"
+                        />
+                        <!-- Two independent stacks, so a tall card never leaves a gap beside
+                             a short one. They wrap into one column when there is no room
+                             for two. -->
+                        <div class="flex flex-wrap items-start gap-4">
+                            <div class="flex min-w-0 flex-1 basis-80 flex-col gap-4">
+                                <UiSettingsCard :title="t('views.alerts.triggerConditions')">
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.maxValueTooltip')"
+                                        :label="t('views.alerts.greaterThan')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <div class="flex items-center gap-1">
+                                                <UiLockToggle
+                                                    v-if="hasThresholdLock(selectedMetric)"
+                                                    v-model="thresholdsUnlocked"
+                                                    v-tooltip.top="
+                                                        thresholdsUnlocked
+                                                            ? t(
+                                                                  'layout.settings.tooltips.lockRange',
+                                                              )
+                                                            : t(
+                                                                  'layout.settings.tooltips.unlockRange',
+                                                              )
+                                                    "
                                                 />
-                                            </UiButton>
-                                        </template>
-                                    </AlertSilenceMenu>
-                                </div>
-                            </UiSettingRow>
-                        </UiSettingsCard>
-                        <UiSettingsCard :title="t('views.alerts.triggerConditions')">
-                            <AlertSourceReference
-                                v-if="selectedChannels.length > 0"
-                                :sources="selectedChannels"
-                                :metric="selectedMetric"
-                                :thresholds="referenceThresholds"
-                                :warmup-seconds="chosenWarmupDuration"
-                                @apply="applyThreshold"
-                            />
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.maxValueTooltip')"
-                                :label="t('views.alerts.greaterThan')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <div class="flex items-center gap-1">
-                                        <UiLockToggle
-                                            v-if="hasThresholdLock(selectedMetric)"
-                                            v-model="thresholdsUnlocked"
-                                            v-tooltip.top="
-                                                thresholdsUnlocked
-                                                    ? t('layout.settings.tooltips.lockRange')
-                                                    : t('layout.settings.tooltips.unlockRange')
-                                            "
-                                        />
-                                        <UiNumberInput
-                                            v-model="chosenMax"
-                                            :min="chosenMin + THRESHOLD_GAP"
-                                            :max="maxLimit"
-                                            :safe-max="lockedMaxLimit"
-                                            grouped
-                                            :step="step"
-                                            :suffix="valueSuffix(selectedMetric)"
-                                            :disabled="selectedMetric == null"
-                                        />
-                                    </div>
-                                    <!-- The unlocked range is too wide for a slider. -->
-                                    <UiSlider
-                                        v-if="!rangeUnlocked"
-                                        v-model="chosenMax"
-                                        class="!w-48"
-                                        :step="step"
-                                        :min="alignUpToStep(chosenMin + THRESHOLD_GAP, step)"
-                                        :max="maxLimit"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.minValueTooltip')"
-                                :label="t('views.alerts.lessThan')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiNumberInput
-                                        v-model="chosenMin"
-                                        :min="0"
-                                        :max="chosenMax - THRESHOLD_GAP"
-                                        :safe-max="lockedMaxLimit"
-                                        grouped
-                                        :step="step"
-                                        :suffix="valueSuffix(selectedMetric)"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                    <UiSlider
-                                        v-if="!rangeUnlocked"
-                                        v-model="chosenMin"
-                                        class="!w-48"
-                                        :step="step"
-                                        :min="0"
-                                        :max="chosenMax - THRESHOLD_GAP"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.warmupDurationTooltip')"
-                                :label="t('views.alerts.warmupGreaterThan')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiNumberInput
-                                        v-model="chosenWarmupDuration"
-                                        :min="0"
-                                        :max="60"
-                                        :step="0.5"
-                                        :suffix="' s'"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                    <UiSlider
-                                        v-model="chosenWarmupDuration"
-                                        class="!w-48"
-                                        :step="0.5"
-                                        :min="0"
-                                        :max="60"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.cooldownDurationTooltip')"
-                                :label="t('views.alerts.cooldownLessThan')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiNumberInput
-                                        v-model="chosenCooldownDuration"
-                                        :min="0"
-                                        :max="60"
-                                        :step="0.5"
-                                        :suffix="' s'"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                    <UiSlider
-                                        v-model="chosenCooldownDuration"
-                                        class="!w-48"
-                                        :step="0.5"
-                                        :min="0"
-                                        :max="60"
-                                        :disabled="selectedMetric == null"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                        </UiSettingsCard>
-                        <UiSettingsCard :title="t('views.alerts.sectionNotifications')">
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.desktopNotifyTooltip')"
-                                :label="t('views.alerts.desktopNotify')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiSwitch v-model="chosenDesktopNotification" />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.desktopNotifyRecoveryTooltip')"
-                                :label="t('views.alerts.desktopNotifyRecovery')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiSwitch
-                                        v-model="chosenDesktopNotificationRecovery"
-                                        :disabled="!chosenDesktopNotification"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.desktopNotifyAudioTooltip')"
-                                :label="t('views.alerts.desktopNotifyAudio')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiSwitch
-                                        v-model="chosenDesktopNotificationAudio"
-                                        :disabled="!chosenDesktopNotification"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.repeatIntervalTooltip')"
-                                :label="t('views.alerts.repeatInterval')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiNumberInput
-                                        v-model="chosenRepeatMinutes"
-                                        :min="0"
-                                        :max="120"
-                                        :step="1"
-                                        :suffix="' min'"
-                                        :disabled="!chosenDesktopNotification"
-                                    />
-                                </div>
-                            </UiSettingRow>
-                        </UiSettingsCard>
-                        <UiSettingsCard :title="t('views.alerts.sectionActions')">
-                            <UiSettingRow
-                                v-tooltip.top="t('views.alerts.shutdownOnActivationTooltip')"
-                                :label="t('views.alerts.shutdownOnActivation')"
-                            >
-                                <div class="flex flex-col items-end gap-2">
-                                    <UiSwitch v-model="chosenShutdownOnActivation" />
-                                </div>
-                            </UiSettingRow>
-                        </UiSettingsCard>
+                                                <UiNumberInput
+                                                    v-model="chosenMax"
+                                                    :min="chosenMin + THRESHOLD_GAP"
+                                                    :max="maxLimit"
+                                                    :safe-max="lockedMaxLimit"
+                                                    grouped
+                                                    :step="step"
+                                                    :suffix="valueSuffix(selectedMetric)"
+                                                    :disabled="selectedMetric == null"
+                                                />
+                                            </div>
+                                            <!-- The unlocked range is too wide for a slider. -->
+                                            <UiSlider
+                                                v-if="!rangeUnlocked"
+                                                v-model="chosenMax"
+                                                class="!w-48"
+                                                :step="step"
+                                                :min="
+                                                    alignUpToStep(chosenMin + THRESHOLD_GAP, step)
+                                                "
+                                                :max="maxLimit"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.minValueTooltip')"
+                                        :label="t('views.alerts.lessThan')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiNumberInput
+                                                v-model="chosenMin"
+                                                :min="0"
+                                                :max="chosenMax - THRESHOLD_GAP"
+                                                :safe-max="lockedMaxLimit"
+                                                grouped
+                                                :step="step"
+                                                :suffix="valueSuffix(selectedMetric)"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                            <UiSlider
+                                                v-if="!rangeUnlocked"
+                                                v-model="chosenMin"
+                                                class="!w-48"
+                                                :step="step"
+                                                :min="0"
+                                                :max="chosenMax - THRESHOLD_GAP"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.warmupDurationTooltip')"
+                                        :label="t('views.alerts.warmupGreaterThan')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiNumberInput
+                                                v-model="chosenWarmupDuration"
+                                                :min="0"
+                                                :max="60"
+                                                :step="0.5"
+                                                :suffix="' s'"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                            <UiSlider
+                                                v-model="chosenWarmupDuration"
+                                                class="!w-48"
+                                                :step="0.5"
+                                                :min="0"
+                                                :max="60"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.cooldownDurationTooltip')"
+                                        :label="t('views.alerts.cooldownLessThan')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiNumberInput
+                                                v-model="chosenCooldownDuration"
+                                                :min="0"
+                                                :max="60"
+                                                :step="0.5"
+                                                :suffix="' s'"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                            <UiSlider
+                                                v-model="chosenCooldownDuration"
+                                                class="!w-48"
+                                                :step="0.5"
+                                                :min="0"
+                                                :max="60"
+                                                :disabled="selectedMetric == null"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                </UiSettingsCard>
+                            </div>
+                            <div class="flex min-w-0 flex-1 basis-80 flex-col gap-4">
+                                <UiSettingsCard :title="t('views.alerts.sectionGeneral')">
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.enabledTooltip')"
+                                        :label="t('views.alerts.enabled')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiSwitch v-model="chosenEnabled" />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-if="!shouldCreateAlert"
+                                        v-tooltip.top="t('views.alerts.silenceTooltip')"
+                                        :label="t('views.alerts.silence')"
+                                    >
+                                        <div class="flex items-center justify-end gap-2">
+                                            <UiTag
+                                                v-if="alertIsSilenced(alert)"
+                                                :value="
+                                                    t('views.alerts.silencedUntil', {
+                                                        time: silencedUntilText(),
+                                                    })
+                                                "
+                                                severity="warn"
+                                            />
+                                            <AlertSilenceMenu :alert="alert">
+                                                <template #trigger>
+                                                    <UiButton variant="ghost" size="icon">
+                                                        <svg-icon
+                                                            type="mdi"
+                                                            :path="mdiBellSleepOutline"
+                                                            :size="deviceStore.getREMSize(1.25)"
+                                                        />
+                                                    </UiButton>
+                                                </template>
+                                            </AlertSilenceMenu>
+                                        </div>
+                                    </UiSettingRow>
+                                </UiSettingsCard>
+                                <UiSettingsCard :title="t('views.alerts.sectionNotifications')">
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.desktopNotifyTooltip')"
+                                        :label="t('views.alerts.desktopNotify')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiSwitch v-model="chosenDesktopNotification" />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="
+                                            t('views.alerts.desktopNotifyRecoveryTooltip')
+                                        "
+                                        :label="t('views.alerts.desktopNotifyRecovery')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiSwitch
+                                                v-model="chosenDesktopNotificationRecovery"
+                                                :disabled="!chosenDesktopNotification"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.desktopNotifyAudioTooltip')"
+                                        :label="t('views.alerts.desktopNotifyAudio')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiSwitch
+                                                v-model="chosenDesktopNotificationAudio"
+                                                :disabled="!chosenDesktopNotification"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                    <UiSettingRow
+                                        v-tooltip.top="t('views.alerts.repeatIntervalTooltip')"
+                                        :label="t('views.alerts.repeatInterval')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiNumberInput
+                                                v-model="chosenRepeatMinutes"
+                                                :min="0"
+                                                :max="120"
+                                                :step="1"
+                                                :suffix="' min'"
+                                                :disabled="!chosenDesktopNotification"
+                                            />
+                                        </div>
+                                    </UiSettingRow>
+                                </UiSettingsCard>
+                                <UiSettingsCard :title="t('views.alerts.sectionActions')">
+                                    <UiSettingRow
+                                        v-tooltip.top="
+                                            t('views.alerts.shutdownOnActivationTooltip')
+                                        "
+                                        :label="t('views.alerts.shutdownOnActivation')"
+                                    >
+                                        <div class="flex flex-col items-end gap-2">
+                                            <UiSwitch v-model="chosenShutdownOnActivation" />
+                                        </div>
+                                    </UiSettingRow>
+                                </UiSettingsCard>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div v-if="!shouldCreateAlert" class="mt-8 flex max-w-4xl flex-col">

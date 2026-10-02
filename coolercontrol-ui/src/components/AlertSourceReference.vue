@@ -9,7 +9,7 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiMinusThick, mdiRefresh } from '@mdi/js'
-import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -57,13 +57,31 @@ const formatNumber = (value: number): string =>
 
 const channelKey = (source: ReferenceSource): string => `${source.deviceUID}/${source.channelName}`
 
+// The card follows its own width, not the window's: the side panel and the source list
+// take a varying share of it. With room, time outside gets columns that line up across the
+// sources. Without, it moves to a line under each source.
+const WIDE_REM_MIN = 38
+const root = ref<HTMLElement>()
+const wide = ref(false)
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+    if (root.value == null) return
+    resizeObserver = new ResizeObserver((entries) => {
+        wide.value = entries[0].contentRect.width >= deviceStore.getREMSize(WIDE_REM_MIN)
+    })
+    resizeObserver.observe(root.value)
+})
+
 // Driver attributes per channel. Each one costs a device read, so a channel is read once,
 // when it is first selected, and only one at a time.
 const attributes = shallowRef(new Map<string, Array<ChannelAttribute>>())
 const hasDriverLimits = computed(() => metricHasDriverLimits(props.metric))
 let reading = false
 let unmounted = false
-onBeforeUnmount(() => (unmounted = true))
+onBeforeUnmount(() => {
+    unmounted = true
+    resizeObserver?.disconnect()
+})
 // More reads than this in one pass means the selection keeps changing under it.
 const READS_PER_PASS_MAX = 64
 const readMissing = async (): Promise<void> => {
@@ -106,8 +124,19 @@ interface OutsideItem {
 }
 interface Outside {
     minutes: number
-    items: Array<OutsideItem>
+    above: OutsideItem
+    // Absent when the lower threshold is 0, which cannot be crossed.
+    below: OutsideItem | null
+    longest: OutsideItem
 }
+const outsideItems = (outside: Outside): Array<OutsideItem> =>
+    [outside.above, outside.below, outside.longest].filter(
+        (item): item is OutsideItem => item != null,
+    )
+const outsideClass = (item: OutsideItem | null) => ({
+    'text-text-color-secondary': item == null || item.none,
+    'font-semibold text-warning': item?.triggers === true,
+})
 const shareText = (count: number, readings: number): string => {
     const percent = (count / readings) * 100
     const shown = percent < 1 ? '<1' : percent.toFixed(0)
@@ -135,19 +164,17 @@ const outsideOf = (source: ReferenceSource): Outside | null => {
         none: count === 0,
         triggers: false,
     })
-    const items = [sideItem('above', t('views.alerts.above'), measured.above)]
-    // A lower threshold of 0 cannot be crossed.
-    if (min > 0) items.push(sideItem('below', t('views.alerts.below'), measured.below))
-    items.push({
-        key: 'longest',
-        label: t('views.alerts.longest'),
-        text: span(measured.longestRun),
-        none: measured.longestRun === 0,
-        triggers: runReachesWarmup(measured.longestRun, pollSeconds, props.warmupSeconds),
-    })
     return {
         minutes: Math.max(1, Math.round((measured.readings * pollSeconds) / 60)),
-        items,
+        above: sideItem('above', t('views.alerts.above'), measured.above),
+        below: min > 0 ? sideItem('below', t('views.alerts.below'), measured.below) : null,
+        longest: {
+            key: 'longest',
+            label: t('views.alerts.longest'),
+            text: span(measured.longestRun),
+            none: measured.longestRun === 0,
+            triggers: runReachesWarmup(measured.longestRun, pollSeconds, props.warmupSeconds),
+        },
     }
 }
 
@@ -179,21 +206,30 @@ const rows = computed(() =>
 const allSources = computed(() =>
     rows.value.length < 2 ? null : observedRange(rows.value.map((row) => row.stats)),
 )
+// Every device keeps the same span of history, so the longest any source covers names it.
+const outsideMinutes = computed(() =>
+    rows.value.reduce((minutes, row) => Math.max(minutes, row.outside?.minutes ?? 0), 0),
+)
+const columnCount = computed(() => (wide.value ? 8 : 5))
 </script>
 
 <template>
-    <div class="px-4 py-3">
-        <div class="flex items-center gap-1.5 pb-1">
-            <span class="text-base text-text-color">{{ t('views.alerts.reference') }}</span>
+    <div ref="root" class="rounded-lg border border-border-one bg-bg-two">
+        <div class="flex items-center gap-1.5 border-b border-border-one px-4 py-3">
+            <span class="text-base font-semibold text-text-color">
+                {{ t('views.alerts.reference') }}
+            </span>
             <HelpIcon
                 :text="`${t('views.alerts.referenceHelp')}\n${t('views.alerts.outsideHelp')}`"
             />
             <span class="flex-1"></span>
+            <!-- Negative margin: the button must not make this title bar taller than the
+                 other cards'. -->
             <UiButton
-                v-if="hasDriverLimits"
+                v-if="hasDriverLimits && sources.length > 0"
                 variant="ghost"
                 size="icon"
-                class="!h-7 !w-7"
+                class="-my-1 !h-7 !w-7"
                 :aria-label="t('components.channelAttributes.refresh')"
                 v-tooltip.top="t('components.channelAttributes.refresh')"
                 @click="readAgain"
@@ -201,7 +237,10 @@ const allSources = computed(() =>
                 <svg-icon type="mdi" :path="mdiRefresh" :size="deviceStore.getREMSize(1)" />
             </UiButton>
         </div>
-        <div class="max-h-72 overflow-y-auto">
+        <p v-if="sources.length === 0" class="px-4 py-3 text-base text-text-color-secondary">
+            {{ t('views.alerts.referenceEmpty') }}
+        </p>
+        <div v-else class="max-h-72 overflow-y-auto px-4 py-2">
             <table class="w-full text-sm tabular-nums text-text-color">
                 <thead class="text-xs text-text-color-secondary">
                     <tr>
@@ -218,6 +257,15 @@ const allSources = computed(() =>
                                 />
                             </span>
                         </th>
+                        <th v-if="wide" colspan="3" class="pl-6 text-right font-medium">
+                            <template v-if="outsideMinutes > 0">
+                                {{
+                                    t('components.chartStats.lastMinutes', {
+                                        minutes: outsideMinutes,
+                                    })
+                                }}
+                            </template>
+                        </th>
                     </tr>
                     <tr>
                         <th class="px-1.5 pb-0.5 text-right font-medium">
@@ -229,6 +277,17 @@ const allSources = computed(() =>
                         <th class="pl-1.5 pb-0.5 text-right font-medium">
                             {{ t('components.chartStats.avg') }}
                         </th>
+                        <template v-if="wide">
+                            <th class="pl-6 pr-1.5 pb-0.5 text-right font-medium">
+                                {{ t('views.alerts.above') }}
+                            </th>
+                            <th class="px-1.5 pb-0.5 text-right font-medium">
+                                {{ t('views.alerts.below') }}
+                            </th>
+                            <th class="pl-1.5 pb-0.5 text-right font-medium">
+                                {{ t('views.alerts.longest') }}
+                            </th>
+                        </template>
                     </tr>
                 </thead>
                 <tbody v-for="row in rows" :key="row.key">
@@ -270,9 +329,29 @@ const allSources = computed(() =>
                         <td class="whitespace-nowrap py-0.5 pl-1.5 text-right">
                             {{ row.stats != null ? formatNumber(row.stats.avg) : '-' }}
                         </td>
+                        <template v-if="wide">
+                            <td
+                                class="whitespace-nowrap py-0.5 pl-6 pr-1.5 text-right"
+                                :class="outsideClass(row.outside?.above ?? null)"
+                            >
+                                {{ row.outside?.above.text ?? '-' }}
+                            </td>
+                            <td
+                                class="whitespace-nowrap px-1.5 py-0.5 text-right"
+                                :class="outsideClass(row.outside?.below ?? null)"
+                            >
+                                {{ row.outside?.below?.text ?? '-' }}
+                            </td>
+                            <td
+                                class="whitespace-nowrap py-0.5 pl-1.5 text-right"
+                                :class="outsideClass(row.outside?.longest ?? null)"
+                            >
+                                {{ row.outside?.longest.text ?? '-' }}
+                            </td>
+                        </template>
                     </tr>
                     <tr v-if="row.limits.length > 0">
-                        <td colspan="5" class="pb-1.5 pl-5">
+                        <td :colspan="columnCount" class="pb-1.5 pl-5">
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                                 <span class="text-xs text-text-color-secondary">
                                     {{ t('components.channelAttributes.title') }}
@@ -289,8 +368,8 @@ const allSources = computed(() =>
                             </div>
                         </td>
                     </tr>
-                    <tr v-if="row.outside != null">
-                        <td colspan="5" class="pb-1.5 pl-5">
+                    <tr v-if="!wide && row.outside != null">
+                        <td :colspan="columnCount" class="pb-1.5 pl-5">
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                                 <span class="text-xs text-text-color-secondary">
                                     {{
@@ -300,13 +379,10 @@ const allSources = computed(() =>
                                     }}
                                 </span>
                                 <span
-                                    v-for="item in row.outside.items"
+                                    v-for="item in outsideItems(row.outside)"
                                     :key="item.key"
                                     class="whitespace-nowrap"
-                                    :class="{
-                                        'text-text-color-secondary': item.none,
-                                        'font-semibold text-warning': item.triggers,
-                                    }"
+                                    :class="outsideClass(item)"
                                 >
                                     <span class="text-text-color-secondary"
                                         >{{ item.label }}&nbsp;</span
@@ -336,7 +412,7 @@ const allSources = computed(() =>
                                 @apply="(target, value) => emit('apply', target, value)"
                             />
                         </td>
-                        <td></td>
+                        <td :colspan="columnCount - 4"></td>
                     </tr>
                 </tbody>
             </table>

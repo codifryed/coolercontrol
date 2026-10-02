@@ -749,6 +749,7 @@ export default {
             reference: 'Reference Values',
             referenceHelp:
                 "What the selected sources have read, and the limits their drivers report. Select a value to use it as a threshold.\nA driver limit's meaning depends on the driver: on some chips Min and Max are the lowest and highest readings so far, and Target can be the current target.",
+            referenceEmpty: 'Select a channel source to see its readings and limits here.',
             allSources: 'All Sources',
             useAsGreaterThan: 'Use as Greater Than',
             useAsLessThan: 'Use as Less Than',

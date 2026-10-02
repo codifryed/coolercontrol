@@ -772,6 +772,8 @@ export default {
             reference: 'Valeurs de référence',
             referenceHelp:
                 "Ce que les sources sélectionnées ont relevé et les limites indiquées par leurs pilotes. Sélectionnez une valeur pour l'utiliser comme seuil.\nLa signification d'une limite du pilote dépend du pilote : sur certaines puces, Min et Max sont les relevés les plus bas et les plus hauts jusqu'ici, et Cible peut être la cible actuelle.",
+            referenceEmpty:
+                'Sélectionnez une source de canal pour voir ici ses relevés et ses limites.',
             allSources: 'Toutes les sources',
             useAsGreaterThan: 'Utiliser comme « supérieur à »',
             useAsLessThan: 'Utiliser comme « inférieur à »',
