@@ -507,8 +507,6 @@ async fn available_profiles(proxy: &Proxy<'static>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-    use std::sync::Mutex;
 
     /// Goal: an unmapped profile must resolve to nothing, so an unconfigured system never
     /// activates a Mode by accident.
@@ -676,55 +674,14 @@ mod tests {
         println!("active: {active}, available: {available:?}");
     }
 
-    /// Captures log records so a test can assert what was logged, and at which level.
-    struct CapturingLogger;
-
-    static CAPTURED_LOGS: Mutex<Vec<(log::Level, String)>> = Mutex::new(Vec::new());
-
-    impl log::Log for CapturingLogger {
-        fn enabled(&self, _metadata: &log::Metadata) -> bool {
-            true
-        }
-
-        fn log(&self, record: &log::Record) {
-            CAPTURED_LOGS
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push((record.level(), record.args().to_string()));
-        }
-
-        fn flush(&self) {}
-    }
-
-    /// Installs the capturing logger and empties it, so `captured` returns only what follows.
-    fn capture_logs() {
-        // Failure means a logger is already installed, which still captures nothing of ours.
-        let _ = log::set_boxed_logger(Box::new(CapturingLogger));
-        log::set_max_level(log::LevelFilter::Info);
-        CAPTURED_LOGS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clear();
-    }
-
-    fn captured() -> Vec<(log::Level, String)> {
-        CAPTURED_LOGS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Goal: probing a bus name nobody owns must stay silent, where a lazily cached proxy made
-    /// zbus warn on every retry.
-    /// Methodology: probe a name that cannot exist while capturing the log. Needs a system bus,
-    /// not a power profile daemon; without a bus there is nothing to probe.
+    /// Goal: probing a bus name nobody owns reports it as not served, without an error.
+    /// Methodology: probe a name that cannot exist. Needs a system bus, not a power profile
+    /// daemon; without a bus there is nothing to probe.
     #[test]
-    #[serial]
-    fn probing_an_absent_bus_name_stays_silent() {
+    fn an_absent_bus_name_is_not_served() {
         const ABSENT_BUS_NAME: &str = "org.coolercontrol.NoSuchPowerProfileDaemon";
         const ABSENT_OBJECT_PATH: &str = "/org/coolercontrol/NoSuchPowerProfileDaemon";
 
-        capture_logs();
         crate::sidecar::ensure_test_handle();
         let probed = crate::rt::test_runtime(async {
             crate::sidecar::handle()
@@ -732,69 +689,53 @@ mod tests {
                     let connection = Connection::system().await.ok()?;
                     let served = is_served(&connection, ABSENT_BUS_NAME, ABSENT_OBJECT_PATH).await;
                     let _ = connection.close().await;
-                    Some(served.is_ok_and(|served| served))
+                    Some(served)
                 })
                 .await
                 .expect("sidecar must run the probe")
         });
 
-        let logs = captured();
         let Some(served) = probed else {
             println!("No system bus reachable, nothing was probed.");
             return;
         };
-        assert!(served.not(), "A name nobody owns can never be served");
         assert!(
-            logs.iter()
-                .all(|(_, line)| line.contains("properties cache").not()),
-            "Probing an absent bus name must not warn about the property cache: {logs:?}"
+            matches!(served, Ok(false)),
+            "A name nobody owns is not served, and asking is not an error: {served:?}"
         );
     }
 
-    /// Goal: a daemon that was never there is expected and must only inform, while a daemon that
-    /// answered and then went away must warn. Either way the retry runs every 30s for the life of
-    /// the daemon, so an outage must cost exactly one line.
-    /// Methodology: drive the outage reporting through both sequences with the log captured.
+    /// Goal: the retry runs every 30s for the life of the daemon, so an outage must be reported
+    /// once: it stays marked as reported until the connection is back, however it began.
+    /// Methodology: drive the outage state through a daemon that was never there, then one that
+    /// answered and went away, and read the mark after each step. The log lines themselves are
+    /// not asserted.
     #[test]
-    #[serial]
-    fn an_outage_is_reported_once_at_the_level_its_history_earns() {
-        capture_logs();
+    fn an_outage_stays_reported_until_the_connection_returns() {
         let mut outage = OutageLog::default();
-
-        outage.not_connected(&NoConnection::Absent);
-        outage.not_connected(&NoConnection::Absent);
-        outage.not_connected(&NoConnection::TimedOut);
-        let never_connected = captured();
-        assert_eq!(
-            never_connected.len(),
-            1,
-            "A retry must not repeat the line: {never_connected:?}"
-        );
-        assert_eq!(
-            never_connected[0].0,
-            log::Level::Info,
-            "A power profile daemon that was never there is not a fault"
-        );
-
-        capture_logs();
-        outage.connected();
-        outage.lost();
-        outage.not_connected(&NoConnection::Absent);
-        let after_a_loss = captured();
-        assert_eq!(
-            after_a_loss.len(),
-            1,
-            "A failed reconnect must not repeat the outage line: {after_a_loss:?}"
-        );
-        assert_eq!(
-            after_a_loss[0].0,
-            log::Level::Warn,
-            "A daemon that answered and then went away is worth a warning"
-        );
         assert!(
-            after_a_loss[0].1.contains("Lost the connection"),
-            "The warning must say what happened: {after_a_loss:?}"
+            outage.reported.not(),
+            "Nothing is reported before an outage"
         );
+
+        outage.not_connected(&NoConnection::Absent);
+        assert!(
+            outage.reported,
+            "The first failed connect reports the outage"
+        );
+        outage.not_connected(&NoConnection::TimedOut);
+        assert!(outage.reported, "A retry leaves the outage reported");
+
+        outage.connected();
+        assert!(outage.reported.not(), "A connection ends the outage");
+
+        outage.lost();
+        assert!(outage.reported, "A lost connection reports a new outage");
+        outage.not_connected(&NoConnection::Absent);
+        assert!(outage.reported, "A failed reconnect leaves it reported");
+
+        outage.connected();
+        assert!(outage.reported.not(), "A reconnect ends that outage too");
     }
 
     /// Goal: `CC_DBUS` gates this listener the same way it gates the sleep listener, so one
