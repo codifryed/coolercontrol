@@ -517,6 +517,11 @@ export default {
                 'プラグインが有効化されました。適用するにはデーモンを再起動してください。',
             disableFailed: 'プラグインの無効化に失敗しました',
             enableFailed: 'プラグインの有効化に失敗しました',
+            reloadManifest: 'マニフェストを再読み込み',
+            manifestReloaded: 'マニフェストを再読み込みしました。',
+            manifestValidRestart:
+                'マニフェストは有効です。適用するにはデーモンを再起動してください。',
+            reloadFailed: 'マニフェストの再読み込みに失敗しました',
             serviceLogs: 'サービスログ',
             commandCopied: 'コマンドをクリップボードにコピーしました',
         },

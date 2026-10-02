@@ -8,6 +8,7 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiContentCopy,
+    mdiFileRefreshOutline,
     mdiInformationOutline,
     mdiLinkVariant,
     mdiLoading,
@@ -90,6 +91,8 @@ const refreshStatus = (): Promise<void> => pluginActions.refreshStatus(props.plu
 const startPlugin = (): Promise<void> => pluginActions.startPlugin(props.pluginId)
 const stopPlugin = (): Promise<void> => pluginActions.stopPlugin(props.pluginId)
 const restartPlugin = (): Promise<void> => pluginActions.restartPlugin(props.pluginId)
+const reloadPlugin = (): Promise<void> =>
+    pluginActions.reloadPlugin(props.pluginId, !isIntegration.value)
 
 const togglePlugin = async (): Promise<void> => {
     if (isDisabled.value) {
@@ -261,6 +264,21 @@ onUnmounted(() => {
                         />
                     </UiButton>
                 </template>
+
+                <!-- A plugin with no service has no restart to re-read its manifest. -->
+                <UiButton
+                    v-else-if="!isDisabled"
+                    v-tooltip.top="t('layout.plugins.reloadManifest')"
+                    variant="ghost"
+                    size="icon"
+                    @click="reloadPlugin"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :path="mdiFileRefreshOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </UiButton>
 
                 <!-- Plugin info button (visible for plugins with UI) -->
                 <UiButton

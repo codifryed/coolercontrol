@@ -1605,6 +1605,10 @@ export default class DaemonClient {
         return this.postPluginAction(pluginId, 'restart', 'Restart Plugin')
     }
 
+    reloadPlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'reload', 'Reload Plugin')
+    }
+
     async getPluginStatus(pluginId: string): Promise<PluginStatusDto> {
         try {
             const response = await this.getClient().get(`/plugins/${pluginId}/status`)
