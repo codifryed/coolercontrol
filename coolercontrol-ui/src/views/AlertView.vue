@@ -613,6 +613,7 @@ onMounted(async () => {
                                 :sources="selectedChannels"
                                 :metric="selectedMetric"
                                 :thresholds="referenceThresholds"
+                                :warmup-seconds="chosenWarmupDuration"
                                 @apply="applyThreshold"
                             />
                             <UiSettingRow

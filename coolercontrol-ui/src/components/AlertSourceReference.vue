@@ -12,20 +12,24 @@ import { mdiMinusThick, mdiRefresh } from '@mdi/js'
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import AlertReferenceValue from '@/components/AlertReferenceValue.vue'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
 import type { ChannelMetric } from '@/models/ChannelSource.ts'
-import { formatStatValue } from '@/components/chartStats.ts'
+import { formatSpan, formatStatValue } from '@/components/chartStats.ts'
+import { windowValues } from '@/components/windowDetail.ts'
 import { groupDigits } from '@/shell/digitGroups.ts'
 import { attributeLabel, formatAttributeNumber } from '@/components/channelAttributes.ts'
 import {
     metricDataType,
     metricHasDriverLimits,
     observedRange,
+    runReachesWarmup,
     thresholdAttributes,
+    timeOutside,
     type ReferenceSource,
     type ThresholdTarget,
     type Thresholds,
@@ -35,11 +39,14 @@ const props = defineProps<{
     sources: Array<ReferenceSource>
     metric: ChannelMetric | undefined
     thresholds: Thresholds
+    // The alert's "Condition Triggered Longer Than".
+    warmupSeconds: number
 }>()
 const emit = defineEmits<{ apply: [target: ThresholdTarget, value: number] }>()
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 const { displayOf } = useLifetimeStats()
 
 // Alert thresholds are in the daemon's own units, so no frequency precision applies.
@@ -88,6 +95,64 @@ watch(
     { immediate: true },
 )
 
+interface OutsideItem {
+    key: string
+    label: string
+    text: string
+    // Nothing was outside, so the item recedes.
+    none: boolean
+    // The stretch is long enough to have triggered the alert.
+    triggers: boolean
+}
+interface Outside {
+    minutes: number
+    items: Array<OutsideItem>
+}
+const shareText = (count: number, readings: number): string => {
+    const percent = (count / readings) * 100
+    const shown = percent < 1 ? '<1' : percent.toFixed(0)
+    return ` (${shown} ${t('common.percentUnit')})`
+}
+// How the source's recent readings sit against the thresholds as they are set right now.
+// It covers the status history the UI holds, which is what the daemon keeps: the last hour.
+const outsideOf = (source: ReferenceSource): Outside | null => {
+    if (dataType.value == null) return null
+    const device = [...deviceStore.allDevices()].find((d) => d.uid === source.deviceUID)
+    if (device == null) return null
+    const { min, max } = props.thresholds
+    const measured = timeOutside(
+        windowValues(device.status_history, source.channelName, dataType.value),
+        min,
+        max,
+    )
+    if (measured == null) return null
+    const pollSeconds = settingsStore.ccSettings.poll_rate
+    const span = (readings: number): string => formatSpan(readings * pollSeconds)
+    const sideItem = (key: string, label: string, count: number): OutsideItem => ({
+        key,
+        label,
+        text: span(count) + (count > 0 ? shareText(count, measured.readings) : ''),
+        none: count === 0,
+        triggers: false,
+    })
+    const items = [sideItem('above', t('views.alerts.above'), measured.above)]
+    // A lower threshold of 0 cannot be crossed.
+    if (min > 0) items.push(sideItem('below', t('views.alerts.below'), measured.below))
+    items.push({
+        key: 'longest',
+        label: t('views.alerts.longest'),
+        text: span(measured.longestRun),
+        none: measured.longestRun === 0,
+        triggers: runReachesWarmup(measured.longestRun, pollSeconds, props.warmupSeconds),
+    })
+    return {
+        minutes: Math.max(1, Math.round((measured.readings * pollSeconds) / 60)),
+        items,
+    }
+}
+
+// displayOf reads the lifetime stats, which change with every status update, so the rows
+// and their time outside follow the readings as they arrive.
 const rows = computed(() =>
     props.sources.map((source) => {
         const stats =
@@ -106,6 +171,7 @@ const rows = computed(() =>
                 attributes.value.get(channelKey(source)) ?? [],
                 props.metric,
             ),
+            outside: outsideOf(source),
         }
     }),
 )
@@ -119,7 +185,9 @@ const allSources = computed(() =>
     <div class="px-4 py-3">
         <div class="flex items-center gap-1.5 pb-1">
             <span class="text-base text-text-color">{{ t('views.alerts.reference') }}</span>
-            <HelpIcon :text="t('views.alerts.referenceHelp')" />
+            <HelpIcon
+                :text="`${t('views.alerts.referenceHelp')}\n${t('views.alerts.outsideHelp')}`"
+            />
             <span class="flex-1"></span>
             <UiButton
                 v-if="hasDriverLimits"
@@ -218,6 +286,32 @@ const allSources = computed(() =>
                                     :thresholds="thresholds"
                                     @apply="(target, value) => emit('apply', target, value)"
                                 />
+                            </div>
+                        </td>
+                    </tr>
+                    <tr v-if="row.outside != null">
+                        <td colspan="5" class="pb-1.5 pl-5">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                <span class="text-xs text-text-color-secondary">
+                                    {{
+                                        t('components.chartStats.lastMinutes', {
+                                            minutes: row.outside.minutes,
+                                        })
+                                    }}
+                                </span>
+                                <span
+                                    v-for="item in row.outside.items"
+                                    :key="item.key"
+                                    class="whitespace-nowrap"
+                                    :class="{
+                                        'text-text-color-secondary': item.none,
+                                        'font-semibold text-warning': item.triggers,
+                                    }"
+                                >
+                                    <span class="text-text-color-secondary"
+                                        >{{ item.label }}&nbsp;</span
+                                    >{{ item.text }}
+                                </span>
                             </div>
                         </td>
                     </tr>

@@ -777,6 +777,11 @@ export default {
             useAsLessThan: 'Utiliser comme « inférieur à »',
             crossesOtherThreshold: "Franchirait l'autre seuil",
             outsideRange: 'Hors de la plage autorisée',
+            above: 'Au-dessus',
+            below: 'En dessous',
+            longest: 'Plus longue',
+            outsideHelp:
+                "Sous chaque source : combien de temps ses relevés récents ont été au-dessus ou en dessous des seuils tels qu'ils sont réglés maintenant, et la plus longue période ininterrompue. Cette période est mise en évidence lorsqu'elle dure assez longtemps pour déclencher l'alerte.",
             newAlert: 'Nouvelle Alerte',
             warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',

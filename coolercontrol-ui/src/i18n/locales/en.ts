@@ -754,6 +754,11 @@ export default {
             useAsLessThan: 'Use as Less Than',
             crossesOtherThreshold: 'Would cross the other threshold',
             outsideRange: 'Outside the allowed range',
+            above: 'Above',
+            below: 'Below',
+            longest: 'Longest',
+            outsideHelp:
+                'Under each source: how long its recent readings were above or below the thresholds as set now, and the longest unbroken stretch. The stretch is highlighted when it lasts long enough to trigger the alert.',
             newAlert: 'New Alert',
             warmupGreaterThan: 'Condition Triggered Longer Than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',

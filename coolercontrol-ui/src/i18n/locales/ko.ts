@@ -748,6 +748,11 @@ export default {
             useAsLessThan: '‘보다 작은’으로 사용',
             crossesOtherThreshold: '다른 임계값을 넘게 됩니다',
             outsideRange: '허용 범위를 벗어났습니다',
+            above: '초과',
+            below: '미만',
+            longest: '최장',
+            outsideHelp:
+                '각 소스 아래에 최근 측정값이 현재 임계값보다 높거나 낮았던 시간과 가장 길게 이어진 구간을 표시합니다. 구간이 경고를 발생시킬 만큼 길면 강조 표시됩니다.',
             newAlert: '새 경고',
             warmupGreaterThan: '조건이 더 오래 지속됨',
             unsavedChanges: '이 경고에 저장되지 않은 변경 사항이 있습니다.',

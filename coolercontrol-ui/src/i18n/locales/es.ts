@@ -765,6 +765,11 @@ export default {
             useAsLessThan: 'Usar como «menor que»',
             crossesOtherThreshold: 'Cruzaría el otro umbral',
             outsideRange: 'Fuera del rango permitido',
+            above: 'Por encima',
+            below: 'Por debajo',
+            longest: 'Mayor racha',
+            outsideHelp:
+                'Debajo de cada fuente: cuánto tiempo estuvieron sus lecturas recientes por encima o por debajo de los umbrales tal como están ahora, y la racha ininterrumpida más larga. La racha se resalta cuando dura lo suficiente para activar la alerta.',
             newAlert: 'Nueva Alerta',
             warmupGreaterThan: 'condición activada por más tiempo que',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',

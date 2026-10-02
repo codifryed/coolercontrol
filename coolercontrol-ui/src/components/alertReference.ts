@@ -113,3 +113,53 @@ export const applyBlock = (
     if (value < 0) return 'outsideRange'
     return value <= thresholds.max - THRESHOLD_GAP ? null : 'crossesOther'
 }
+
+// How one source's recorded readings sit against a pair of thresholds. Counts are readings,
+// one per poll.
+export interface TimeOutside {
+    readings: number
+    above: number
+    below: number
+    // The most consecutive readings out of range, on either side.
+    longestRun: number
+}
+
+// Measures the readings against the thresholds the way the daemon does: in range means
+// min <= value <= max. A NaN is a poll without a reading: it is not counted and it ends a
+// run. Null when there are no readings.
+export function timeOutside(
+    values: ArrayLike<number>,
+    min: number,
+    max: number,
+): TimeOutside | null {
+    const result: TimeOutside = { readings: 0, above: 0, below: 0, longestRun: 0 }
+    let run = 0
+    for (let i = 0; i < values.length; i++) {
+        const value = values[i]
+        if (Number.isNaN(value)) {
+            run = 0
+            continue
+        }
+        result.readings++
+        if (value > max) {
+            result.above++
+        } else if (value < min) {
+            result.below++
+        } else {
+            run = 0
+            continue
+        }
+        run++
+        if (run > result.longestRun) result.longestRun = run
+    }
+    return result.readings === 0 ? null : result
+}
+
+// Whether a run of readings out of range would have triggered an alert. The daemon starts
+// its warmup clock on the first of them and triggers on a later one once the warmup has
+// passed, so a single reading never triggers, whatever the warmup.
+export const runReachesWarmup = (
+    run: number,
+    pollSeconds: number,
+    warmupSeconds: number,
+): boolean => run >= 2 && (run - 1) * pollSeconds >= warmupSeconds

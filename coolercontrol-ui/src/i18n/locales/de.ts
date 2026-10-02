@@ -773,6 +773,11 @@ export default {
             useAsLessThan: 'Als „kleiner als“ verwenden',
             crossesOtherThreshold: 'Würde den anderen Schwellenwert kreuzen',
             outsideRange: 'Außerhalb des zulässigen Bereichs',
+            above: 'Darüber',
+            below: 'Darunter',
+            longest: 'Längste',
+            outsideHelp:
+                'Unter jeder Quelle: wie lange ihre letzten Messwerte über oder unter den aktuell eingestellten Schwellenwerten lagen, und die längste ununterbrochene Phase. Die Phase wird hervorgehoben, wenn sie lang genug ist, um die Warnung auszulösen.',
             newAlert: 'Neue Warnung',
             warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',

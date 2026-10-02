@@ -723,6 +723,11 @@ export default {
             useAsLessThan: '用作“小于”',
             crossesOtherThreshold: '会越过另一个阈值',
             outsideRange: '超出允许范围',
+            above: '高于',
+            below: '低于',
+            longest: '最长',
+            outsideHelp:
+                '每个通道源下方：其近期读数高于或低于当前所设阈值的时长，以及最长的连续区间。当该区间长到足以触发警报时会高亮显示。',
             newAlert: '新警报',
             warmupGreaterThan: '条件触发时间超过',
             unsavedChanges: '此警报有未保存的更改。',

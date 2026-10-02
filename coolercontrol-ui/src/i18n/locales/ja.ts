@@ -762,6 +762,11 @@ export default {
             useAsLessThan: '「より小さい」として使用',
             crossesOtherThreshold: 'もう一方のしきい値を超えてしまいます',
             outsideRange: '許容範囲外です',
+            above: '超過',
+            below: '未満',
+            longest: '最長',
+            outsideHelp:
+                '各ソースの下に、最近の値が現在のしきい値を上回っていた時間と下回っていた時間、および連続した最長の区間を表示します。区間がアラートをトリガーするのに十分な長さの場合は強調表示されます。',
             newAlert: '新しいアラート',
             warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',

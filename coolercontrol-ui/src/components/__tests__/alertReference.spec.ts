@@ -9,7 +9,9 @@ import {
     metricDataType,
     metricHasDriverLimits,
     observedRange,
+    runReachesWarmup,
     thresholdAttributes,
+    timeOutside,
 } from '@/components/alertReference.ts'
 import { ChannelMetric } from '@/models/ChannelSource.ts'
 import { DataType } from '@/models/Dashboard.ts'
@@ -121,5 +123,82 @@ describe('applyBlock', () => {
         // nvme reports a real temp1_min of -5.15, and thresholds cannot be negative.
         expect(applyBlock('min', -5.15, thresholds)).toBe('outsideRange')
         expect(applyBlock('max', Number.NaN, thresholds)).toBe('outsideRange')
+    })
+})
+
+describe('timeOutside', () => {
+    const N = Number.NaN
+
+    it('counts readings above and below, and the longest run', () => {
+        //             in   above above in  below in  above above above
+        const values = [50, 90, 95, 60, 10, 55, 81, 99, 85]
+        expect(timeOutside(values, 20, 80)).toEqual({
+            readings: 9,
+            above: 5,
+            below: 1,
+            longestRun: 3,
+        })
+    })
+
+    it('treats a reading on a threshold as in range, like the daemon', () => {
+        expect(timeOutside([20, 80, 20, 80], 20, 80)).toEqual({
+            readings: 4,
+            above: 0,
+            below: 0,
+            longestRun: 0,
+        })
+    })
+
+    it('joins above and below into one run when nothing in between is in range', () => {
+        // The daemon's source stays out of range across the jump.
+        expect(timeOutside([90, 10, 90], 20, 80)?.longestRun).toBe(3)
+    })
+
+    it('does not count a poll without a reading, and lets it end a run', () => {
+        expect(timeOutside([90, 90, N, 90, 90, 90, N], 20, 80)).toEqual({
+            readings: 5,
+            above: 5,
+            below: 0,
+            longestRun: 3,
+        })
+    })
+
+    it('never reports below with a zero lower threshold', () => {
+        expect(timeOutside([0, 0, 1200, 0], 0, 10_000)?.below).toBe(0)
+    })
+
+    it('is null without readings', () => {
+        expect(timeOutside([], 20, 80)).toBeNull()
+        expect(timeOutside([N, N], 20, 80)).toBeNull()
+    })
+
+    it('reads a typed array', () => {
+        expect(timeOutside(Float64Array.from([438_300, N, 480_000]), 382_800, 472_800)).toEqual({
+            readings: 2,
+            above: 1,
+            below: 0,
+            longestRun: 1,
+        })
+    })
+})
+
+describe('runReachesWarmup', () => {
+    it('never triggers on a single reading, as the daemon needs two', () => {
+        expect(runReachesWarmup(0, 1, 0)).toBe(false)
+        expect(runReachesWarmup(1, 1, 0)).toBe(false)
+        expect(runReachesWarmup(1, 5, 1)).toBe(false)
+    })
+
+    it('triggers on the second reading with no warmup', () => {
+        expect(runReachesWarmup(2, 1, 0)).toBe(true)
+    })
+
+    it('measures the time from the first reading of the run', () => {
+        // Three readings at a 1 s poll span 2 s.
+        expect(runReachesWarmup(3, 1, 2)).toBe(true)
+        expect(runReachesWarmup(3, 1, 2.5)).toBe(false)
+        expect(runReachesWarmup(2, 5, 5)).toBe(true)
+        expect(runReachesWarmup(11, 0.5, 5)).toBe(true)
+        expect(runReachesWarmup(10, 0.5, 5)).toBe(false)
     })
 })

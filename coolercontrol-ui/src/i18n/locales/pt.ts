@@ -764,6 +764,11 @@ export default {
             useAsLessThan: 'Usar como “menor que”',
             crossesOtherThreshold: 'Cruzaria o outro limiar',
             outsideRange: 'Fora do intervalo permitido',
+            above: 'Acima',
+            below: 'Abaixo',
+            longest: 'Maior período',
+            outsideHelp:
+                'Abaixo de cada fonte: por quanto tempo suas leituras recentes ficaram acima ou abaixo dos limiares como estão agora, e o período ininterrupto mais longo. O período é destacado quando dura o suficiente para acionar o alerta.',
             newAlert: 'Novo Alerta',
             warmupGreaterThan: 'condição desencadeada durante mais tempo do que',
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',
