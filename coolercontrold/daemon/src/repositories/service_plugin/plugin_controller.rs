@@ -41,6 +41,15 @@ const PLUGIN_FOLDER_PERMISSIONS: u32 = 0o1775;
 const ROOT_USER: &str = "root";
 const CHOWN_BIN: &str = "chown";
 const CHOWN_TIMEOUT: Duration = Duration::from_secs(5);
+/// Root's entries in a plugin folder, which the handover to the plugin user leaves out.
+const ROOT_ENTRY_NAMES: [&str; 3] = [
+    SERVICE_MANIFEST_FILE_NAME,
+    trust::TOKEN_FILE_NAME,
+    trust::PIN_FILE_NAME,
+];
+/// The most entries of one plugin folder that are handed over. The plugin fills its own
+/// folder, so the count is its to choose, and the command line that names them has a limit.
+const HANDOVER_ENTRIES_MAX: usize = 1024;
 /// How often, and how many times, a just-started plugin is checked before its start counts
 /// as a success. Under systemd a plugin that exits stays down for `RestartSec` (1s) before
 /// it is restarted, so checks this close together cannot miss it.
@@ -562,16 +571,19 @@ pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>
     }
 }
 
-/// Hands the plugin folder to `owner` so the plugin can manage its own runtime files, then takes
-/// `manifest.toml` and the folder's own entry list back for root.
+/// Hands what is in the plugin folder to `owner` so the plugin can manage its own runtime
+/// files, while `manifest.toml`, the daemon's credentials and the folder itself are root's.
 ///
 /// The manifest declares `privileged`, which decides whether the generated service unit omits
 /// `User=` and therefore runs the plugin as root. An unprivileged plugin that owned its own
-/// manifest could set that flag and gain root on the next daemon start, so ownership of that one
-/// file must not follow the rest of the folder, and neither may the right to replace it:
-/// see `secure_folder_entries`. The plugin is not running while this executes
-/// (`initialize_service` secures the folder before starting the service), so the window in which
-/// the manifest is briefly plugin-owned is not reachable by the plugin.
+/// manifest could set that flag and gain root on its next start, so that one file must not
+/// follow the rest of the folder, and neither may the right to replace it: see
+/// `secure_folder_entries`.
+///
+/// Neither may be the plugin user's even for a moment. That this plugin is down is no
+/// guarantee that nothing runs as its user: every unprivileged plugin runs as the same one,
+/// and an init system restarts a plugin that keeps exiting whenever it sees fit. So root's
+/// entries are never handed over and taken back, they are left out of the handover.
 pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()> {
     let Some(owner) = owner else {
         return Ok(());
@@ -580,22 +592,22 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     // the end. A previous run may have left the manifest plugin-owned, which is the exact
     // state this guards against, and the caller only warns on error and starts the plugin
     // anyway: a step that is skipped is a file left readable by the plugin user.
-    let handover = chown(path, owner, true).await;
+    //
+    // The folder first: under a folder that is root's and sticky, nothing handed over
+    // below can be moved over one of root's files.
+    let entries = secure_folder_entries(path, owner).await;
     let manifest = secure_manifest(path);
-    // Must follow the handover, not precede it: the recursive chown above would take these
-    // files back for the plugin user.
     let credentials = secure_daemon_credentials(path);
-    // Last, for the same reason: the handover resets the folder's owner too.
-    let entries = secure_folder_entries(path).await;
-    handover.and(manifest).and(credentials).and(entries)
+    let handover = hand_over_entries(path, owner).await;
+    entries.and(manifest).and(credentials).and(handover)
 }
 
-/// Takes the folder itself back for root, while the plugin's group can still write in it.
+/// Makes the folder itself root's, while the plugin's group can still write in it.
 ///
 /// The owner of a directory can rename or delete any entry in it, whoever owns the entry, so
 /// a plugin that owned its folder could swap the root-owned manifest or TLS pin for a file
 /// of its own. Under a root-owned folder with the sticky bit, it can only replace what it owns.
-async fn secure_folder_entries(plugin_dir: &Path) -> Result<()> {
+async fn secure_folder_entries(plugin_dir: &Path, owner: &str) -> Result<()> {
     // The mode first: a root-owned folder without the group write bit would lock the
     // plugin out of its own files, so a failure here leaves the folder as it was.
     cc_fs::set_permissions(
@@ -603,14 +615,55 @@ async fn secure_folder_entries(plugin_dir: &Path) -> Result<()> {
         Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS),
     )
     .await?;
-    // The owner alone: the group stays the one the handover gave it.
-    std::os::unix::fs::chown(plugin_dir, Some(0), None)
-        .with_context(|| format!("Taking back plugin folder {}", plugin_dir.display()))
+    let group = owner_ids(owner).map(|(_, gid)| gid);
+    // Root takes the folder even when the plugin's group cannot be found.
+    std::os::unix::fs::chown(plugin_dir, Some(0), group.as_ref().ok().copied())
+        .with_context(|| format!("Taking plugin folder {}", plugin_dir.display()))?;
+    group.map(|_| ())
+}
+
+/// Gives `owner` every entry of the plugin folder that is not root's, and what is under it.
+async fn hand_over_entries(plugin_dir: &Path, owner: &str) -> Result<()> {
+    let (paths, skipped_count) = handover_paths(plugin_dir)?;
+    let handover = if paths.is_empty() {
+        Ok(())
+    } else {
+        chown(&paths, owner).await
+    };
+    if skipped_count > 0 {
+        return Err(anyhow!(
+            "{skipped_count} entries of {} were not handed to {owner}: the folder holds more \
+             than {HANDOVER_ENTRIES_MAX}, or a name is not valid UTF-8",
+            plugin_dir.display()
+        ));
+    }
+    handover
+}
+
+/// The entries of a plugin folder to hand to the plugin user, and how many were left out
+/// because they cannot be named to `chown`. Never the folder itself, nor one of root's entries.
+fn handover_paths(plugin_dir: &Path) -> Result<(Vec<String>, usize)> {
+    let mut paths = Vec::new();
+    let mut skipped_count = 0;
+    for entry in cc_fs::read_dir(plugin_dir)? {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        if ROOT_ENTRY_NAMES.iter().any(|name| file_name == *name) {
+            continue;
+        }
+        let path = entry.path();
+        match path.to_str() {
+            Some(path) if paths.len() < HANDOVER_ENTRIES_MAX => paths.push(path.to_string()),
+            _ => skipped_count += 1,
+        }
+    }
+    assert!(paths.len() <= HANDOVER_ENTRIES_MAX);
+    Ok((paths, skipped_count))
 }
 
 /// Returns the daemon's own credentials for this plugin to root, readable by nobody else.
 ///
-/// The recursive handover above hands the plugin directory to the plugin user, but the
+/// The handover gives the rest of the plugin directory to the plugin user, but the
 /// token and TLS pin are the *daemon's* credentials for talking to a remote device
 /// service, not the plugin's. A plugin has no business reading the bearer token that
 /// authenticates this daemon to another machine, and it must not be able to rewrite the
@@ -729,48 +782,44 @@ fn remove_planted(path: &Path) -> Result<()> {
 }
 
 /// Builds the `chown` argument vector. Extracted from the I/O so the argument boundaries can be
-/// asserted directly: the path must stay a single argument no matter what characters it holds.
-fn chown_args(path: &str, owner: &str, recursive: bool) -> Vec<String> {
+/// asserted directly: each path must stay a single argument no matter what characters it holds.
+fn chown_args(paths: &[String], owner: &str) -> Vec<String> {
     assert!(
-        path.is_empty().not(),
-        "chown must never be run against an empty path"
+        paths.is_empty().not(),
+        "chown must never be run without a path"
     );
     assert!(
         owner.is_empty().not(),
         "chown must never be run without an owner"
     );
-    let mut args = Vec::with_capacity(3);
-    if recursive {
-        // -R: recursive, -h: do not follow symlinks (set ownership on the link itself)
-        args.push("-Rh".to_string());
-    }
+    let mut args = Vec::with_capacity(paths.len() + 3);
+    // -R: recursive, -h: do not follow symlinks (set ownership on the link itself)
+    args.push("-Rh".to_string());
     args.push(format!("{owner}:{owner}"));
-    args.push(path.to_string());
-    assert_eq!(args.len(), if recursive { 3 } else { 2 });
+    // A plugin names its own files, and one that starts with a dash is not an option.
+    args.push("--".to_string());
+    args.extend(paths.iter().cloned());
     assert_eq!(
-        args.last().map(String::as_str),
-        Some(path),
-        "The path must stay one trailing argument, whatever characters it holds"
+        args.len(),
+        paths.len() + 3,
+        "Each path must stay one argument, whatever characters it holds"
     );
     args
 }
 
 /// Runs `chown` as a direct binary, never through a shell.
 ///
-/// The target path is passed as its own argument, so a plugin directory name containing shell
-/// metacharacters cannot inject a command into this root-run process. The path comes from a
-/// directory scan rather than the validated manifest `id`, so it is not otherwise constrained.
-async fn chown(path: &Path, owner: &str, recursive: bool) -> Result<()> {
-    let path_arg = path
-        .to_str()
-        .ok_or_else(|| anyhow!("plugin path is not valid UTF-8: {}", path.display()))?;
+/// Each path is passed as its own argument, so a file name containing shell metacharacters
+/// cannot inject a command into this root-run process. The paths come from a directory scan
+/// rather than the validated manifest `id`, so they are not otherwise constrained.
+async fn chown(paths: &[String], owner: &str) -> Result<()> {
     let mut command = DirectCommand::new(CHOWN_BIN, CHOWN_TIMEOUT);
-    for arg in chown_args(path_arg, owner, recursive) {
+    for arg in chown_args(paths, owner) {
         command = command.arg(arg);
     }
     match command.run().await {
         ShellCommandResult::Success { .. } => Ok(()),
-        ShellCommandResult::Error(stderr) => Err(anyhow!("chown failed for {path_arg}: {stderr}")),
+        ShellCommandResult::Error(stderr) => Err(anyhow!("chown failed: {stderr}")),
     }
 }
 
@@ -1316,31 +1365,59 @@ mod tests {
         assert_eq!(definition.username.as_deref(), Some(CC_PLUGIN_USER));
     }
 
-    /// Goal: a plugin directory name containing shell metacharacters must reach `chown` as one
-    /// argument, so it can never be split into a command.
+    /// Goal: a file name containing shell metacharacters, or one that looks like an option,
+    /// must reach `chown` as one argument, so it can never be split into a command.
     /// Methodology: assert the argument vector directly. A shell would have split on `;` and the
     /// spaces; a direct exec cannot.
     #[test]
     fn chown_args_keep_a_hostile_path_as_one_argument() {
-        let hostile = "/var/lib/coolercontrol/plugins/x; touch /tmp/pwned";
+        let hostile = "/var/lib/coolercontrol/plugins/x/; touch /tmp/pwned".to_string();
+        let option = "-R".to_string();
 
-        let args = chown_args(hostile, ROOT_USER, true);
+        let args = chown_args(&[hostile.clone(), option.clone()], ROOT_USER);
 
-        assert_eq!(args, vec!["-Rh", "root:root", hostile]);
-        assert_eq!(args.len(), 3, "The path must not be split into extra args");
+        assert_eq!(args, vec!["-Rh", "root:root", "--", &hostile, &option]);
     }
 
-    /// Goal: the recursive flag is only present when asked for, since securing a single file must
-    /// not descend into anything.
-    /// Methodology: build both forms and compare.
+    /// Goal: the folder and root's files in it must never be the plugin user's, not even
+    /// until they are taken back: another process of that user could use the moment to put
+    /// its own manifest in place. So the handover may name neither.
+    /// Method: a folder holding root's three files and the plugin's own, and what the
+    /// handover would pass to `chown`.
     #[test]
-    fn chown_args_omit_the_recursive_flag_for_a_single_file() {
-        let args = chown_args("/tmp/manifest.toml", CC_PLUGIN_USER, false);
+    fn the_handover_names_neither_the_folder_nor_roots_files() {
+        let dir = tempfile::tempdir().unwrap();
+        for file_name in ROOT_ENTRY_NAMES {
+            std::fs::write(dir.path().join(file_name), "").unwrap();
+        }
+        std::fs::write(dir.path().join(PLUGIN_CONFIG_FILE_NAME), "{}").unwrap();
+        std::fs::create_dir(dir.path().join(PLUGIN_UI_DIR_NAME)).unwrap();
 
-        assert_eq!(
-            args,
-            vec!["cc-plugin-user:cc-plugin-user", "/tmp/manifest.toml"]
-        );
+        let (mut paths, skipped_count) = handover_paths(dir.path()).unwrap();
+
+        paths.sort_unstable();
+        let expected = [PLUGIN_CONFIG_FILE_NAME, PLUGIN_UI_DIR_NAME]
+            .map(|name| dir.path().join(name).to_str().unwrap().to_string());
+        assert_eq!(paths, expected);
+        assert_eq!(skipped_count, 0);
+        let args = chown_args(&paths, CC_PLUGIN_USER);
+        assert_eq!(args.len(), 5, "{args:?}");
+    }
+
+    /// Goal: a plugin decides how many files its folder holds, so the handover has to stop
+    /// at a limit and say that it did, instead of growing a command line without bound.
+    /// Method: a folder with a few entries too many, and what the handover would name.
+    #[test]
+    fn the_handover_stops_at_its_entry_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        for index in 0..HANDOVER_ENTRIES_MAX + 3 {
+            std::fs::write(dir.path().join(format!("file-{index}")), "").unwrap();
+        }
+
+        let (paths, skipped_count) = handover_paths(dir.path()).unwrap();
+
+        assert_eq!(paths.len(), HANDOVER_ENTRIES_MAX);
+        assert_eq!(skipped_count, 3);
     }
 
     /// Goal: the daemon's outbound credentials must not follow the rest of the plugin
