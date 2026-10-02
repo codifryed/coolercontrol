@@ -271,10 +271,26 @@ impl ServicePluginRepo {
     pub async fn find_service_manifests_in(
         plugins_dir: &Path,
     ) -> HashMap<ServiceId, ServiceManifest> {
+        let (services, problems) = Self::scan_service_manifests_in(plugins_dir).await;
+        for problem in &problems {
+            error!("{problem}");
+        }
+        services
+    }
+
+    /// As `find_service_manifests_in`, but hands back why each skipped plugin was skipped
+    /// instead of logging it: a caller that scans again and again knows which are news.
+    pub async fn scan_service_manifests_in(
+        plugins_dir: &Path,
+    ) -> (HashMap<ServiceId, ServiceManifest>, Vec<String>) {
         let mut services = HashMap::new();
+        let mut problems = Vec::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
-            error!("Error reading plugins directory: {}", plugins_dir.display());
-            return services;
+            problems.push(format!(
+                "Error reading plugins directory: {}",
+                plugins_dir.display()
+            ));
+            return (services, problems);
         };
         // cycle through subdirectories looking for a manifest.toml file
         for entry in dir_entries {
@@ -291,21 +307,21 @@ impl ServicePluginRepo {
             let manifest = match Self::read_manifest(&path).await {
                 Ok(manifest) => manifest,
                 Err(err) => {
-                    error!("{err:#}");
+                    problems.push(format!("{err:#}"));
                     continue;
                 }
             };
             if services.contains_key(&manifest.id) {
-                error!(
+                problems.push(format!(
                     "Service Name {} already registered. Skipping {}",
                     manifest.id,
                     path.display()
-                );
+                ));
                 continue;
             }
             services.insert(manifest.id.clone(), manifest);
         }
-        services
+        (services, problems)
     }
 
     /// The manifest in one plugin folder, or why it cannot be used.

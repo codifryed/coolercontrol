@@ -21,7 +21,7 @@ use log::{debug, error, info, warn};
 use nix::libc;
 use nix::unistd::{Group, User};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions, Permissions};
 use std::ops::Not;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -57,6 +57,8 @@ const HANDOVER_ENTRIES_MAX: usize = 1024;
 const START_SETTLE_INTERVAL: Duration = Duration::from_millis(250);
 #[cfg(test)]
 const START_SETTLE_INTERVAL: Duration = Duration::from_millis(1);
+/// The most rescan problems remembered as reported. Past it, a problem is not reported.
+const REPORTED_PROBLEMS_MAX: usize = 64;
 const START_SETTLE_CHECKS: u8 = 4;
 const _: () = assert!(START_SETTLE_CHECKS > 0);
 
@@ -76,6 +78,9 @@ pub struct PluginController<M: ServiceManager = Manager> {
     /// Shared with the repository, which knows neither and so would not stop their services
     /// on shutdown.
     runtime_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
+    /// What the last rescan could not load, so that each problem is logged as an error
+    /// once and not every time the plugins are listed.
+    reported_problems: RefCell<HashSet<String>>,
     config: Option<Rc<Config>>,
     service_manager: M,
     is_systemd: bool,
@@ -93,6 +98,7 @@ impl PluginController {
         Self {
             plugins: RefCell::new(service_plugin_repo.get_plugins()),
             runtime_plugins: service_plugin_repo.runtime_plugins(),
+            reported_problems: RefCell::new(HashSet::new()),
             config: Some(config),
             service_manager,
             is_systemd,
@@ -106,6 +112,7 @@ impl PluginController {
         Self {
             plugins: RefCell::new(HashMap::new()),
             runtime_plugins: Rc::new(RefCell::new(Vec::new())),
+            reported_problems: RefCell::new(HashSet::new()),
             config: None,
             service_manager: Manager::Disabled,
             is_systemd: false,
@@ -127,7 +134,10 @@ impl<M: ServiceManager> PluginController<M> {
     }
 
     async fn discover_plugins_in(&self, plugins_dir: &Path) {
-        let found = ServicePluginRepo::find_service_manifests_in(plugins_dir).await;
+        let (found, problems) = ServicePluginRepo::scan_service_manifests_in(plugins_dir).await;
+        for problem in self.unreported_problems(problems) {
+            error!("{problem}");
+        }
         for (service_id, manifest) in found {
             if self.plugins.borrow().contains_key(&service_id) {
                 continue;
@@ -136,6 +146,32 @@ impl<M: ServiceManager> PluginController<M> {
             self.runtime_plugins.borrow_mut().push(manifest.clone());
             self.register(manifest);
         }
+    }
+
+    /// The problems of a rescan that the one before it did not have, which makes them news.
+    ///
+    /// The plugins are listed on every page load and after every plugin action, so a broken
+    /// manifest would otherwise be logged as an error each time. One that was fixed and
+    /// broke again is news again.
+    fn unreported_problems(&self, mut problems: Vec<String>) -> Vec<String> {
+        // Sorted, so that with too many of them the same ones are kept each time.
+        problems.sort_unstable();
+        for problem in problems.iter().skip(REPORTED_PROBLEMS_MAX) {
+            debug!("{problem}");
+        }
+        problems.truncate(REPORTED_PROBLEMS_MAX);
+        let mut reported = self.reported_problems.borrow_mut();
+        let mut unreported = Vec::with_capacity(problems.len());
+        for problem in &problems {
+            if reported.contains(problem) {
+                debug!("{problem}");
+            } else {
+                unreported.push(problem.clone());
+            }
+        }
+        *reported = problems.into_iter().collect();
+        assert!(reported.len() <= REPORTED_PROBLEMS_MAX);
+        unreported
     }
 
     fn is_runtime_plugin(&self, plugin_id: &str) -> bool {
@@ -979,6 +1015,7 @@ mod tests {
         PluginController {
             plugins: RefCell::new(HashMap::new()),
             runtime_plugins: Rc::new(RefCell::new(Vec::new())),
+            reported_problems: RefCell::new(HashSet::new()),
             config: Some(config),
             service_manager: manager,
             is_systemd: false,
@@ -1357,6 +1394,66 @@ mod tests {
             assert_eq!(discovered.len(), 1, "a second scan must not add it again");
             assert_eq!(discovered[0].id, "added");
         });
+    }
+
+    /// Goal: the plugins are rescanned every time they are listed, so a folder that cannot be
+    /// loaded must be reported once, not on every request. It must not hide the plugins
+    /// that do load, and one that is fixed and breaks again is reported again.
+    /// Method: one good and one broken manifest, scanned repeatedly. What is reported is
+    /// what `unreported_problems` returns, so that and what it remembers are checked.
+    #[test]
+    fn discovery_reports_a_broken_manifest_once() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let root = plugins_dir.path();
+            write_manifest(root, "good", "integration", "loads");
+            write_manifest(root, "broken", "integration", "loads");
+            let broken_file = root.join("broken").join(SERVICE_MANIFEST_FILE_NAME);
+            let valid = std::fs::read_to_string(&broken_file).unwrap();
+            std::fs::write(&broken_file, "id = ").unwrap();
+            let controller = PluginController::new_disabled();
+
+            let (_, problems) = ServicePluginRepo::scan_service_manifests_in(root).await;
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            assert_eq!(controller.unreported_problems(problems.clone()), problems);
+            assert!(controller.unreported_problems(problems.clone()).is_empty());
+            controller.discover_plugins_in(root).await;
+            assert_eq!(
+                *controller.reported_problems.borrow(),
+                HashSet::from_iter(problems)
+            );
+            assert_eq!(controller.manifests().len(), 1);
+
+            std::fs::write(&broken_file, valid).unwrap();
+            controller.discover_plugins_in(root).await;
+            assert!(controller.reported_problems.borrow().is_empty());
+            assert_eq!(controller.manifests().len(), 2);
+
+            std::fs::write(&broken_file, "id = ").unwrap();
+            let (_, problems) = ServicePluginRepo::scan_service_manifests_in(root).await;
+            assert_eq!(controller.unreported_problems(problems).len(), 1);
+        });
+    }
+
+    /// Goal: what is remembered as reported must not grow with the number of broken plugin
+    /// folders, and a problem past the limit must not be reported on every rescan instead.
+    /// Method: more problems than the limit, twice.
+    #[test]
+    fn remembered_scan_problems_are_bounded() {
+        let controller = PluginController::new_disabled();
+        let problems: Vec<String> = (0..REPORTED_PROBLEMS_MAX + 5)
+            .map(|index| format!("problem {index:03}"))
+            .collect();
+
+        let first = controller.unreported_problems(problems.clone());
+        let second = controller.unreported_problems(problems);
+
+        assert_eq!(first.len(), REPORTED_PROBLEMS_MAX);
+        assert!(second.is_empty());
+        assert_eq!(
+            controller.reported_problems.borrow().len(),
+            REPORTED_PROBLEMS_MAX
+        );
     }
 
     /// Goal: a device plugin found under a running daemon cannot be loaded, since devices are
