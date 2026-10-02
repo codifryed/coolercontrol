@@ -41,12 +41,16 @@ pub async fn handshake() -> impl IntoApiResponse {
     Json(json!({"shake": true})).into_response()
 }
 
-pub fn web_app_service() -> axum::routing::MethodRouter {
+/// `document_csp` is the document's whole `Content-Security-Policy`, composed at startup.
+pub fn web_app_service(document_csp: HeaderValue) -> axum::routing::MethodRouter {
     axum::routing::get_service(ServeDir::new(&ASSETS_DIR))
         .layer(middleware::from_fn(|request, next| {
             precompressed_middleware(&GZIP_ASSETS, request, next)
         }))
-        .layer(middleware::from_fn(cache_control_middleware))
+        .layer(middleware::from_fn_with_state(
+            document_csp,
+            cache_control_middleware,
+        ))
 }
 
 const VARY_ACCEPT_ENCODING: HeaderValue = HeaderValue::from_static("accept-encoding");
@@ -148,12 +152,15 @@ fn is_zero_quality(parameter: &str) -> bool {
         .is_ok_and(|quality| quality <= 0.0)
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
+/// The document's policy when nothing may frame it. `FramePolicy` widens `frame-ancestors`
+/// for configured origins.
+pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
     script-src 'self' qrc:; \
     style-src 'self' 'unsafe-inline'; \
     img-src 'self' blob: data:; \
     font-src 'self' data:; \
     connect-src 'self'; \
+    frame-ancestors 'none'; \
     object-src 'none'; \
     base-uri 'self'; \
     form-action 'self'";
@@ -165,7 +172,6 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
 const HASHED_ASSETS_PREFIX: &str = "/assets/";
 
 const CSP_HEADER: HeaderName = HeaderName::from_static("content-security-policy");
-const CSP_VALUE: HeaderValue = HeaderValue::from_static(CONTENT_SECURITY_POLICY);
 const CACHE_PINNED: HeaderValue = HeaderValue::from_static("public, max-age=31536000, immutable");
 const CACHE_REVALIDATE: HeaderValue = HeaderValue::from_static("no-cache");
 const TYPE_CSS: HeaderValue = HeaderValue::from_static("text/css; charset=utf-8");
@@ -211,7 +217,11 @@ pub struct StaticAsset;
 
 /// Only the fallback service is layered with this, so API and SSE requests never reach it.
 /// Everything is classified up front: `path` borrows `request`, which the next layer consumes.
-async fn cache_control_middleware(request: Request, next: Next) -> axum::response::Response {
+async fn cache_control_middleware(
+    State(document_csp): State<HeaderValue>,
+    request: Request,
+    next: Next,
+) -> axum::response::Response {
     let path = request.uri().path();
     debug_assert!(path.starts_with('/'), "an axum request path is absolute");
     let policy = CachePolicy::for_path(path);
@@ -231,7 +241,7 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
     }
     let cache_value = match policy {
         CachePolicy::Document => {
-            headers.insert(CSP_HEADER, CSP_VALUE);
+            headers.insert(CSP_HEADER, document_csp);
             CACHE_REVALIDATE
         }
         CachePolicy::Revalidate => CACHE_REVALIDATE,
@@ -324,11 +334,16 @@ mod tests {
     use axum::Router;
     use tower::ServiceExt;
 
+    /// The policy of a daemon with no `frame_ancestors` configured.
+    fn default_csp() -> HeaderValue {
+        crate::api::frame_policy::FramePolicy::default().document_csp
+    }
+
     #[tokio::test]
     async fn test_csp_header_set_on_index() {
-        let app = Router::new()
-            .route("/", get(|| async { "index" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+        let app = Router::new().route("/", get(|| async { "index" })).layer(
+            middleware::from_fn_with_state(default_csp(), cache_control_middleware),
+        );
 
         let response = app
             .oneshot(
@@ -347,13 +362,17 @@ mod tests {
         let csp_str = csp.to_str().unwrap();
         assert!(csp_str.contains("default-src 'self'"));
         assert!(csp_str.contains("script-src 'self' qrc:"));
+        assert!(csp_str.contains("frame-ancestors 'none'"));
     }
 
     #[tokio::test]
     async fn test_csp_header_absent_on_assets() {
         let app = Router::new()
             .route("/assets/app.js", get(|| async { "js" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -372,7 +391,10 @@ mod tests {
     async fn test_csp_header_set_on_index_html() {
         let app = Router::new()
             .route("/index.html", get(|| async { "index" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -395,7 +417,10 @@ mod tests {
     async fn test_manifest_is_revalidated() {
         let app = Router::new()
             .route("/manifest.webmanifest", get(|| async { "{}" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -418,7 +443,10 @@ mod tests {
     async fn test_service_worker_revalidates_and_keeps_charset() {
         let app = Router::new()
             .route("/notification-sw.js", get(|| async { "self" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -446,9 +474,9 @@ mod tests {
             "/assets/notification-sw-abc123.js",
             "/assets/index-abc123.js",
         ] {
-            let app = Router::new()
-                .route(path, get(|| async { "js" }))
-                .layer(middleware::from_fn(cache_control_middleware));
+            let app = Router::new().route(path, get(|| async { "js" })).layer(
+                middleware::from_fn_with_state(default_csp(), cache_control_middleware),
+            );
 
             let response = app
                 .oneshot(
@@ -506,7 +534,7 @@ mod tests {
         if ASSETS_DIR.get_file("index.html").is_none() {
             return;
         }
-        let app = Router::new().fallback_service(web_app_service());
+        let app = Router::new().fallback_service(web_app_service(default_csp()));
         let response = app
             .oneshot(
                 http::Request::builder()
@@ -700,7 +728,7 @@ mod tests {
                 let original_path = copy.path().to_str().unwrap().strip_suffix(".gz").unwrap();
                 let original = ASSETS_DIR.get_file(original_path).unwrap().contents();
                 let uri = format!("/{original_path}");
-                let app = Router::new().fallback_service(web_app_service());
+                let app = Router::new().fallback_service(web_app_service(default_csp()));
                 let request = http::Request::builder()
                     .uri(&uri)
                     .header(ACCEPT_ENCODING, "gzip, deflate")
@@ -732,7 +760,10 @@ mod tests {
     async fn test_static_responses_carry_the_marker() {
         let app = Router::new()
             .route("/assets/app-abc123.js", get(|| async { "x" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -757,7 +788,10 @@ mod tests {
     async fn test_unhashed_css_still_declares_charset() {
         let app = Router::new()
             .route("/theme.css", get(|| async { "body{}" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -779,7 +813,10 @@ mod tests {
     async fn test_css_charset_utf8() {
         let app = Router::new()
             .route("/assets/style-abc123.css", get(|| async { "body{}" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -805,7 +842,10 @@ mod tests {
     async fn test_js_charset_utf8() {
         let app = Router::new()
             .route("/assets/app-abc123.js", get(|| async { "console.log(1)" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
@@ -827,7 +867,10 @@ mod tests {
     async fn test_non_text_assets_no_charset_override() {
         let app = Router::new()
             .route("/assets/primeicons-abc123.svg", get(|| async { "<svg/>" }))
-            .layer(middleware::from_fn(cache_control_middleware));
+            .layer(middleware::from_fn_with_state(
+                default_csp(),
+                cache_control_middleware,
+            ));
 
         let response = app
             .oneshot(
