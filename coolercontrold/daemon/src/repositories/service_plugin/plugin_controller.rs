@@ -281,6 +281,26 @@ impl PluginController {
             .with_context(|| format!("Restarting plugin service: {plugin_id}"))
     }
 
+    /// Re-reads the manifest of a plugin that has no service to restart.
+    ///
+    /// A managed integration plugin is refused: restarting it is what re-reads its manifest,
+    /// and the only way its service and its manifest stay in step. A device plugin's
+    /// manifest is checked but not applied, since its devices were registered at startup.
+    pub async fn reload_plugin(&self, plugin_id: &str) -> Result<()> {
+        let registered = self.manifest(plugin_id)?;
+        if registered.service_type == ServiceType::Device {
+            let reloaded = ServicePluginRepo::read_manifest(&registered.path).await?;
+            return ensure_same_plugin(&registered, &reloaded);
+        }
+        if registered.is_managed() {
+            return Err(CCError::UserError {
+                msg: "Restart this plugin to apply its manifest".to_string(),
+            }
+            .into());
+        }
+        self.reload_manifest(plugin_id).await
+    }
+
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
         let manifest = self.manifest(plugin_id)?;
@@ -836,6 +856,80 @@ mod tests {
 
             let message = format!("{:#}", result.expect_err("the manifest is broken"));
             assert!(message.contains("check the syntax"), "{message}");
+            assert_eq!(
+                description_of(&controller, "test-plugin").as_deref(),
+                Some("as registered")
+            );
+        });
+    }
+
+    /// Goal: a plugin with no service has no restart to re-read its manifest, so a reload
+    /// has to apply it.
+    #[test]
+    fn a_reload_applies_the_manifest_of_a_plugin_without_a_service() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
+                registered.executable = None;
+            });
+
+            let result = controller.reload_plugin("test-plugin").await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(
+                description_of(&controller, "test-plugin").as_deref(),
+                Some("edited on disk")
+            );
+        });
+    }
+
+    /// Goal: a managed plugin's manifest must only change together with its service, so a
+    /// reload sends it to its restart and leaves what is registered alone.
+    #[test]
+    fn a_reload_sends_a_managed_plugin_to_its_restart() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |_| {});
+
+            let result = controller.reload_plugin("test-plugin").await;
+
+            let message = result.expect_err("a restart applies it").to_string();
+            assert!(message.contains("Restart this plugin"), "{message}");
+            assert_eq!(
+                description_of(&controller, "test-plugin").as_deref(),
+                Some("as registered")
+            );
+        });
+    }
+
+    /// Goal: a device plugin's devices are registered at startup, so its edited manifest
+    /// cannot take effect under a running daemon. A reload still has to say whether the
+    /// manifest is usable, which is otherwise only found out by restarting the daemon.
+    /// Method: a valid edit is accepted but not registered, a broken one is reported.
+    #[test]
+    fn a_reload_checks_a_device_plugin_without_applying_it() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
+                registered.service_type = ServiceType::Device;
+            });
+            write_manifest(
+                plugins_dir.path(),
+                "test-plugin",
+                "device",
+                "edited on disk",
+            );
+
+            let valid = controller.reload_plugin("test-plugin").await;
+            let manifest_file = plugins_dir
+                .path()
+                .join("test-plugin")
+                .join(SERVICE_MANIFEST_FILE_NAME);
+            std::fs::write(&manifest_file, "id = ").unwrap();
+            let broken = controller.reload_plugin("test-plugin").await;
+
+            assert!(valid.is_ok(), "{valid:?}");
+            assert!(broken.is_err());
             assert_eq!(
                 description_of(&controller, "test-plugin").as_deref(),
                 Some("as registered")

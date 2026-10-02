@@ -46,6 +46,10 @@ enum PluginMessage {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<()>>,
     },
+    ReloadPlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
     GetStatus {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<PluginStatusDto>>,
@@ -112,6 +116,7 @@ impl ApiActor<PluginMessage> for PluginActor {
         &mut self.receiver
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_message(&mut self, message: PluginMessage) {
         match message {
             PluginMessage::GetAll { respond_to } => {
@@ -165,6 +170,13 @@ impl ApiActor<PluginMessage> for PluginActor {
                 respond_to,
             } => {
                 let result = self.plugin_controller.restart_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::ReloadPlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.reload_plugin(&plugin_id).await;
                 let _ = respond_to.send(result);
             }
             PluginMessage::GetStatus {
@@ -288,6 +300,16 @@ impl PluginHandle {
     pub async fn restart_plugin(&self, plugin_id: String) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::RestartPlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn reload_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::ReloadPlugin {
             plugin_id,
             respond_to: tx,
         };

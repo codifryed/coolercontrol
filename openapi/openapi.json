@@ -4417,6 +4417,57 @@
         ]
       }
     },
+    "/plugins/{plugin_id}/reload": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Reload CoolerControl Plugin Manifest",
+        "description": "Re-reads the manifest of a plugin that has no service to restart. A device plugin's manifest is only checked: applying it takes a daemon restart. A managed integration plugin is refused, since restarting it re-reads its manifest.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "simple"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Bad Request. The request is invalid"
+          },
+          "401": {
+            "description": "Unauthorized. Invalid credentials were provided."
+          },
+          "403": {
+            "description": "Forbidden. Insufficient permissions."
+          },
+          "404": {
+            "description": "Whatever you're looking for, it's not here."
+          },
+          "500": {
+            "description": "An internal error has occurred."
+          },
+          "429": {
+            "description": "Too Many Requests. Login attempts have been rate limited."
+          },
+          "502": {
+            "description": "Bad Gateway. An error has occurred with an external library."
+          }
+        },
+        "security": [
+          {
+            "CookieAuth": []
+          }
+        ]
+      }
+    },
     "/plugins/{plugin_id}/status": {
       "get": {
         "tags": [

@@ -129,6 +129,16 @@ pub async fn restart_plugin(
         .map_err(handle_lifecycle_error)
 }
 
+pub async fn reload_plugin(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    plugin_handle
+        .reload_plugin(path.plugin_id)
+        .await
+        .map_err(handle_lifecycle_error)
+}
+
 pub async fn get_plugin_status(
     Path(path): Path<PluginPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,

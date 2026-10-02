@@ -1166,6 +1166,21 @@ fn plugins_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
+            "/plugins/{plugin_id}/reload",
+            post_with(plugins::reload_plugin, |o| {
+                o.summary("Reload CoolerControl Plugin Manifest")
+                    .description(
+                        "Re-reads the manifest of a plugin that has no service to restart. \
+                        A device plugin's manifest is only checked: applying it takes a daemon \
+                        restart. A managed integration plugin is refused, since restarting it \
+                        re-reads its manifest.",
+                    )
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
             "/plugins/{plugin_id}/status",
             get_with(plugins::get_plugin_status, |o| {
                 o.summary("CoolerControl Plugin Status")
