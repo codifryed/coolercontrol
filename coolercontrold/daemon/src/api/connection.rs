@@ -686,6 +686,9 @@ mod tests {
 
     /// Goal: `0.0.0.0` and `::` listen on one port together, as a config that sets both
     /// expects. A dual-stack `::` claims the IPv4 port as well and fails with `EADDRINUSE`.
+    /// Method: bind `0.0.0.0` on a kernel-chosen port, then `::` on the same port, and read
+    /// `IPV6_V6ONLY` back as set. Retries while another process holds the port for IPv6, and
+    /// skips on a kernel without IPv6.
     #[test]
     fn ipv4_and_ipv6_wildcards_share_a_port() {
         for _ in 0..SHARED_PORT_ATTEMPTS {
@@ -708,6 +711,8 @@ mod tests {
     /// Goal: an IPv4-mapped `ipv6_address` still binds, as it did before IPv6 listeners
     /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`, so the
     /// socket must be dual-stack even where `net.ipv6.bindv6only` defaults it to IPv6-only.
+    /// Method: bind `::ffff:127.0.0.1` on a kernel-chosen port, then check the bound address
+    /// and read `IPV6_V6ONLY` back as cleared. Skips on a kernel without IPv6.
     #[test]
     fn ipv4_mapped_ipv6_address_binds() {
         let mapped_address = socket_address("[::ffff:127.0.0.1]:0");
@@ -742,7 +747,8 @@ mod tests {
     }
 
     /// Goal: only a kernel without IPv6 skips the IPv6 tests. The errors a broken
-    /// `listener` returns must still fail them.
+    /// `listener` returns must still fail them. Method: `kernel_lacks_ipv6` is given
+    /// `EAFNOSUPPORT`, then three errnos a failed bind can return.
     #[test]
     fn only_missing_ipv6_support_skips_ipv6_tests() {
         assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EAFNOSUPPORT)));
@@ -752,7 +758,8 @@ mod tests {
     }
 
     /// Goal: the port still belongs to one listener per family. `SO_REUSEADDR` must not let
-    /// a second daemon listen on an address the first already serves.
+    /// a second daemon listen on an address the first already serves. Method: bind loopback
+    /// on a kernel-chosen port, then bind the address it got again and expect `EADDRINUSE`.
     #[test]
     fn listening_address_cannot_be_bound_twice() {
         let first = listener(socket_address("127.0.0.1:0")).unwrap();
