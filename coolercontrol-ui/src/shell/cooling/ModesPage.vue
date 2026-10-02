@@ -49,22 +49,14 @@ const profileLabel = (profile: string): string =>
         ? t(`layout.shell.coolingPage.powerProfiles.profileNames.${profile}`)
         : profile
 
-// Empty when there is nothing to warn about. With apply-on-boot off the daemon activates
-// nothing at startup, so the restart sentence is left out.
-const unappliedModeWarning = computed<string>(() => {
+// Undefined when there is nothing to warn about.
+const unappliedModeName = computed<string | undefined>(() => {
     const modeUID = unappliedProfileMode(
         settingsStore.powerProfileActive,
         settingsStore.powerProfileModes,
         settingsStore.modeActiveCurrent,
     )
-    const mode = settingsStore.modes.find((mode) => mode.uid === modeUID)
-    if (mode == null) return ''
-    const notActive = t('layout.shell.coolingPage.powerProfiles.modeNotActive', {
-        mode: mode.name,
-    })
-    return settingsStore.ccSettings.apply_on_boot
-        ? `${notActive} ${t('layout.shell.coolingPage.powerProfiles.modeNotActiveRestart')}`
-        : notActive
+    return settingsStore.modes.find((mode) => mode.uid === modeUID)?.name
 })
 
 const mappedMode = (profile: string): string => {
@@ -167,7 +159,7 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
                 "
             />
             <div
-                v-if="unappliedModeWarning"
+                v-if="unappliedModeName != null"
                 class="flex items-start gap-2 px-4 py-3 text-base text-text-color"
                 role="status"
             >
@@ -177,7 +169,20 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
                     :size="18"
                     class="mt-0.5 shrink-0 text-warning"
                 />
-                <span>{{ unappliedModeWarning }}</span>
+                <!-- Two blocks, so no separator is imposed on languages that use none. -->
+                <div>
+                    <p>
+                        {{
+                            t('layout.shell.coolingPage.powerProfiles.modeNotActive', {
+                                mode: unappliedModeName,
+                            })
+                        }}
+                    </p>
+                    <!-- With apply-on-boot off the daemon activates nothing at startup. -->
+                    <p v-if="settingsStore.ccSettings.apply_on_boot">
+                        {{ t('layout.shell.coolingPage.powerProfiles.modeNotActiveRestart') }}
+                    </p>
+                </div>
             </div>
             <UiSettingRow
                 v-for="profile in settingsStore.powerProfilesAvailable"
