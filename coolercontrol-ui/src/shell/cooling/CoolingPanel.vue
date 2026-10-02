@@ -136,7 +136,7 @@ const createFailAlert = (channel: CoolingChannel): void =>
         channelLabel(channel.deviceUID, channel.channelName),
     )
 
-const { isChannelUnhealthy: isUnhealthy, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isPinned = (channel: CoolingChannel): boolean =>
     settingsStore.pinnedIds.includes(pinId(channel.deviceUID, channel.channelName))

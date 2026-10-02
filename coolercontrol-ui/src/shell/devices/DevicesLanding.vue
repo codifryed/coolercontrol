@@ -38,7 +38,7 @@ const deviceColor = (deviceUID: UID): string =>
 
 const {
     isDeviceUnreachable: isUnreachable,
-    isDeviceUnhealthy: isUnhealthy,
+    isUnhealthy,
     healthTooltip,
 } = useDeviceHealth()
 

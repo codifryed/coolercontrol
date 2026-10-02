@@ -46,7 +46,7 @@ import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 const { t } = useI18n()
 const router = useRouter()
 const { createFailAlert } = useFailAlert()
-const { isChannelUnhealthy, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthTooltip } = useDeviceHealth()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
@@ -290,7 +290,7 @@ const isRouteActive = useRouteActive()
                             v-if="
                                 row.deviceUID != null &&
                                 row.channelName != null &&
-                                isChannelUnhealthy(row.deviceUID, row.channelName)
+                                isUnhealthy(row.deviceUID, row.channelName)
                             "
                             :text="healthTooltip(row.deviceUID, row.channelName)"
                         >

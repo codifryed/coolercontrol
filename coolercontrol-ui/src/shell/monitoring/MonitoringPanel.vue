@@ -174,7 +174,7 @@ const liveValue = (sensor: MonitoringSensor): string => {
     return ''
 }
 
-const { isChannelUnhealthy: isUnhealthy, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isPinned = (sensor: MonitoringSensor): boolean =>
     settingsStore.pinnedIds.includes(pinId(sensor.deviceUID, sensor.channelName))

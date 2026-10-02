@@ -109,10 +109,10 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
-const { isDeviceUnreachable, isDeviceUnhealthy: isUnhealthyUid, healthTooltip } = useDeviceHealth()
+const { isDeviceUnreachable, isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isDeviceUnhealthy = (device: Device): boolean =>
-    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthyUid(device.uid)
+    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthy(device.uid)
 
 const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
     settingsStore.healthFailsafe.some(
