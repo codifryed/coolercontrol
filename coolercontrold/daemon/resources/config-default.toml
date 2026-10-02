@@ -132,15 +132,24 @@ drivetemp_suspend = false
 # Reverse Proxy / CORS Configuration:
 # Custom origins to allow in CORS requests. This is useful when accessing CoolerControl through
 # a reverse proxy with a custom domain, or via port forwarding with a public IP. Add the full
-# origin URL (scheme + host + port if non-standard).
+# origin URL (scheme + host + port if non-standard). Only read from this file, at startup.
 # origins = ["https://coolercontrol.mydomain.com", "http://192.168.1.1:8080"]
 
-# Content-Security-Policy frame-ancestors Configuration:
-# Custom parent sources that may embed the CoolerControl UI. This is required to access CoolerControl
-# through an iframe from a different origin. Add the full origin URL (scheme + host + port if
-# non-standard). If not specified, or if the list is empty, the CSP frame-ancestors directive will
-# be set to 'none'.
-# frame_ancestors = ["https://coolercontrolparent.mydomain.com", "http://192.168.1.1:9090"]
+# Embedding the UI in another page:
+# The origins of pages that may show the CoolerControl UI inside an iframe, such as a server
+# dashboard. By default no page may. Only list pages you trust: a page that frames the UI can
+# trick a logged-in user into clicking things in it.
+# - Write each origin exactly as the browser shows the embedding page's address: scheme, host
+#   and port, without a path. The host must be written the same way too. A page opened by IP
+#   address needs that IP address here, and a page opened by name needs that name.
+# - An IPv6 address such as "https://[2001:db8::1]:9090" cannot be listed. It is a valid
+#   address for a browser to open, but the security header that carries this list has no way
+#   to write one. Open the embedding page by hostname or IPv4 address and list that instead.
+# - An entry that is not an exact origin is ignored, with a warning in the log at startup.
+# - Only read from this file, at startup. Restart the daemon after changing it.
+# - The login only holds inside the frame when the embedding page and CoolerControl are opened
+#   with the same scheme, normally HTTPS, and at the same host or domain.
+# frame_ancestors = ["https://dashboard.mydomain.com:9090", "https://192.168.1.10:9090"]
 
 # Header to check for the client's original protocol when behind a reverse proxy. Common values
 # are "X-Forwarded-Proto" (nginx, Apache) or "X-Scheme". When this header indicates "https",
