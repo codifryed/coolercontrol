@@ -7902,16 +7902,6 @@
               "null"
             ]
           },
-          "origins": {
-            "description": "Custom origins to allow in CORS (for reverse proxy setups)",
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
-          },
           "poll_rate": {
             "type": [
               "number",
