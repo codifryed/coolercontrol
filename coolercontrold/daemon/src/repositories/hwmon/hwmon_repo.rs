@@ -1569,6 +1569,36 @@ impl HwmonRepo {
             .borrow_mut()
             .insert(channel_name.to_string());
     }
+
+    /// Reads one channel's attributes under the device permit, or nothing for a sleeping drive.
+    async fn read_channel_attributes(
+        &self,
+        type_index: TypeIndex,
+        driver: &HwmonDriverInfo,
+        channel: &HwmonChannelInfo,
+        drivetemp_suspended: bool,
+    ) -> Result<Vec<ChannelAttribute>> {
+        // Reading a sleeping drive's attributes would spin it up.
+        if drivetemp_suspended {
+            return Ok(Vec::new());
+        }
+        let semaphore = self.device_permits.get(&type_index).expect(
+            "invariant: device_permits entry exists for every registered device type_index",
+        );
+        let device_label = format!("HWMon device: {} channel: {}", driver.name, channel.name);
+        // One hold for the whole pass: at most one read per attribute file this channel has.
+        let _permit = tokio::select! {
+            () = self.shutdown_token.cancelled() => return Ok(Vec::new()),
+            permit = attributes::acquire_permit(
+                semaphore,
+                self.device_read_permit_timeout,
+                &device_label,
+            ) => permit?,
+        };
+        let attributes = attributes::read_channel_attributes(driver, channel).await;
+        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
+        Ok(attributes)
+    }
 }
 
 /// Clears `preload_in_flight` on drop so a panic / cancellation
@@ -2649,27 +2679,11 @@ impl Repository for HwmonRepo {
         if driver.io.is_unreachable() {
             return Err(anyhow!("HWMon device {} is not responding", driver.name));
         }
-        // Reading a sleeping drive's attributes would spin it up.
-        if drivetemp::is_suspended(&driver.drivetemp, self.drivetemp_ioctl_timeout).await {
-            return Ok(Vec::new());
-        }
+        let drivetemp_suspended =
+            drivetemp::is_suspended(&driver.drivetemp, self.drivetemp_ioctl_timeout).await;
         let type_index = device_lock.borrow().type_index;
-        let semaphore = self.device_permits.get(&type_index).expect(
-            "invariant: device_permits entry exists for every registered device type_index",
-        );
-        let device_label = format!("HWMon device: {} channel: {channel_name}", driver.name);
-        // One hold for the whole pass: at most one read per attribute file this channel has.
-        let _permit = tokio::select! {
-            () = self.shutdown_token.cancelled() => return Ok(Vec::new()),
-            permit = attributes::acquire_permit(
-                semaphore,
-                self.device_read_permit_timeout,
-                &device_label,
-            ) => permit?,
-        };
-        let attributes = attributes::read_channel_attributes(driver, channel).await;
-        debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
-        Ok(attributes)
+        self.read_channel_attributes(type_index, driver, channel, drivetemp_suspended)
+            .await
     }
 }
 
@@ -7081,6 +7095,38 @@ mod channel_attributes_tests {
             let attributes = repo.channel_attributes(&uid, "temp1").await.unwrap();
 
             assert!(attributes.is_empty());
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn suspended_drive_reports_nothing_without_reading() {
+        // Goal: a sleeping drive yields an empty list and is never read, since a read would
+        // spin it up. Method: a device whose attribute files exist, with its permit held and a
+        // short permit timeout; reaching the read path would fail with a timeout instead.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let uid = insert_device(&mut repo, &base, DeviceIo::default());
+            repo.device_read_permit_timeout = Duration::from_millis(100);
+            let sem = Rc::clone(repo.device_permits.get(&TYPE_INDEX).unwrap());
+            let holder = sem.try_acquire().expect("permit must start free");
+            let driver = Rc::clone(&repo.devices.get(&uid).unwrap().1);
+            let channel = &driver.channels[0];
+
+            let suspended = repo
+                .read_channel_attributes(TYPE_INDEX, &driver, channel, true)
+                .await
+                .unwrap();
+            drop(holder);
+            let awake = repo
+                .read_channel_attributes(TYPE_INDEX, &driver, channel, false)
+                .await
+                .unwrap();
+
+            assert!(suspended.is_empty());
+            assert_eq!(awake.len(), 1, "the same files are returned once awake");
             let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
