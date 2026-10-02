@@ -272,6 +272,8 @@ export default {
                     activeProfile: 'Current profile: {profile}',
                     noMode: 'No mode',
                     saveFailed: 'The power profile mapping could not be saved.',
+                    modeNotActive: '{mode} is set for the current profile but is not active.',
+                    modeNotActiveRestart: 'It is activated again the next time the daemon starts.',
                     profileNames: {
                         'power-saver': 'Power Saver',
                         balanced: 'Balanced',

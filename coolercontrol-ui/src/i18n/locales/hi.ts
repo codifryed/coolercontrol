@@ -274,6 +274,9 @@ export default {
                     activeProfile: 'वर्तमान प्रोफ़ाइल: {profile}',
                     noMode: 'कोई मोड नहीं',
                     saveFailed: 'पावर प्रोफ़ाइल मैपिंग सहेजी नहीं जा सकी।',
+                    modeNotActive: '{mode} वर्तमान प्रोफ़ाइल के लिए सेट है, लेकिन सक्रिय नहीं है।',
+                    modeNotActiveRestart:
+                        'डेमन के अगली बार शुरू होने पर यह फिर से सक्रिय हो जाएगा।',
                     profileNames: {
                         'power-saver': 'पावर सेवर',
                         balanced: 'संतुलित',

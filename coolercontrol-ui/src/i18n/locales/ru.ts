@@ -277,6 +277,9 @@ export default {
                     activeProfile: 'Текущий профиль: {profile}',
                     noMode: 'Без режима',
                     saveFailed: 'Не удалось сохранить сопоставление профилей питания.',
+                    modeNotActive: '{mode} назначен текущему профилю, но не активен.',
+                    modeNotActiveRestart:
+                        'Он будет снова активирован при следующем запуске демона.',
                     profileNames: {
                         'power-saver': 'Энергосбережение',
                         balanced: 'Сбалансированный',

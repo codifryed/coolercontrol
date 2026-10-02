@@ -271,6 +271,9 @@ export default {
                     activeProfile: '현재 프로필: {profile}',
                     noMode: '모드 없음',
                     saveFailed: '전원 프로필 매핑을 저장하지 못했습니다.',
+                    modeNotActive:
+                        '{mode}이(가) 현재 프로필에 지정되어 있지만 활성 상태가 아닙니다.',
+                    modeNotActiveRestart: '다음에 데몬이 시작될 때 다시 활성화됩니다.',
                     profileNames: {
                         'power-saver': '절전',
                         balanced: '균형',

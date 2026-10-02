@@ -262,6 +262,8 @@ export default {
                     activeProfile: '当前配置：{profile}',
                     noMode: '无模式',
                     saveFailed: '无法保存电源配置映射。',
+                    modeNotActive: '{mode} 已分配给当前配置，但未激活。',
+                    modeNotActiveRestart: '后台服务下次启动时将再次激活它。',
                     profileNames: {
                         'power-saver': '节能',
                         balanced: '平衡',

@@ -262,6 +262,8 @@ export default {
                     activeProfile: '目前設定檔：{profile}',
                     noMode: '無模式',
                     saveFailed: '無法儲存電源設定檔對應。',
+                    modeNotActive: '{mode} 已指定給目前設定檔，但尚未啟用。',
+                    modeNotActiveRestart: '守護程式下次啟動時會再次啟用它。',
                     profileNames: {
                         'power-saver': '節能',
                         balanced: '平衡',

@@ -6,7 +6,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiBookmarkCheck, mdiBookmarkMinusOutline, mdiBookmarkMultipleOutline } from '@mdi/js'
+import {
+    mdiAlertOutline,
+    mdiBookmarkCheck,
+    mdiBookmarkMinusOutline,
+    mdiBookmarkMultipleOutline,
+} from '@mdi/js'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -16,7 +21,7 @@ import UiButton from '@/shell/ui/UiButton.vue'
 import UiSelect, { type UiSelectOption } from '@/shell/ui/UiSelect.vue'
 import UiSettingRow from '@/shell/ui/UiSettingRow.vue'
 import UiSettingsCard from '@/shell/ui/UiSettingsCard.vue'
-import { hasTranslatedLabel } from '@/shell/cooling/powerProfiles.ts'
+import { hasTranslatedLabel, unappliedProfileMode } from '@/shell/cooling/powerProfiles.ts'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -43,6 +48,24 @@ const profileLabel = (profile: string): string =>
     hasTranslatedLabel(profile)
         ? t(`layout.shell.coolingPage.powerProfiles.profileNames.${profile}`)
         : profile
+
+// Empty when there is nothing to warn about. With apply-on-boot off the daemon activates
+// nothing at startup, so the restart sentence is left out.
+const unappliedModeWarning = computed<string>(() => {
+    const modeUID = unappliedProfileMode(
+        settingsStore.powerProfileActive,
+        settingsStore.powerProfileModes,
+        settingsStore.modeActiveCurrent,
+    )
+    const mode = settingsStore.modes.find((mode) => mode.uid === modeUID)
+    if (mode == null) return ''
+    const notActive = t('layout.shell.coolingPage.powerProfiles.modeNotActive', {
+        mode: mode.name,
+    })
+    return settingsStore.ccSettings.apply_on_boot
+        ? `${notActive} ${t('layout.shell.coolingPage.powerProfiles.modeNotActiveRestart')}`
+        : notActive
+})
 
 const mappedMode = (profile: string): string => {
     const modeUID = settingsStore.powerProfileModes[profile]
@@ -143,6 +166,19 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
                         : ''
                 "
             />
+            <div
+                v-if="unappliedModeWarning"
+                class="flex items-start gap-2 px-4 py-3 text-base text-text-color"
+                role="status"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiAlertOutline"
+                    :size="18"
+                    class="mt-0.5 shrink-0 text-warning"
+                />
+                <span>{{ unappliedModeWarning }}</span>
+            </div>
             <UiSettingRow
                 v-for="profile in settingsStore.powerProfilesAvailable"
                 :key="profile"

@@ -274,6 +274,9 @@ export default {
                     activeProfile: '現在のプロファイル: {profile}',
                     noMode: 'モードなし',
                     saveFailed: '電源プロファイルの割り当てを保存できませんでした。',
+                    modeNotActive:
+                        '{mode} は現在のプロファイルに割り当てられていますが、有効ではありません。',
+                    modeNotActiveRestart: '次回デーモンの起動時に再び有効になります。',
                     profileNames: {
                         'power-saver': '省電力',
                         balanced: 'バランス',
