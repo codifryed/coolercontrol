@@ -134,6 +134,18 @@ describe('UiNumberInput grouped', () => {
         expect(wrapper.get('input').element.value).toBe(`438${S}300`)
     })
 
+    it('follows grouping as it is switched on and off', async () => {
+        // The alert editor groups only the rpm metric, and the metric can change.
+        const wrapper = mountInput({ modelValue: 438_300, grouped: true })
+        const input = wrapper.get('input')
+        await wrapper.setProps({ grouped: false })
+        expect(input.attributes('type')).toBe('number')
+        expect(input.element.value).toBe('438300')
+        await wrapper.setProps({ grouped: true })
+        expect(input.attributes('type')).toBe('text')
+        expect(input.element.value).toBe(`438${S}300`)
+    })
+
     it('steps on the arrow keys', async () => {
         const wrapper = mountInput({
             modelValue: 500,

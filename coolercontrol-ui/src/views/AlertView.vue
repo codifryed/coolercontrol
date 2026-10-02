@@ -608,7 +608,7 @@ onMounted(async () => {
                                                     :min="chosenMin + THRESHOLD_GAP"
                                                     :max="maxLimit"
                                                     :safe-max="lockedMaxLimit"
-                                                    grouped
+                                                    :grouped="hasThresholdLock(selectedMetric)"
                                                     :step="step"
                                                     :suffix="valueSuffix(selectedMetric)"
                                                     :disabled="selectedMetric == null"
@@ -638,7 +638,7 @@ onMounted(async () => {
                                                 :min="0"
                                                 :max="chosenMax - THRESHOLD_GAP"
                                                 :safe-max="lockedMaxLimit"
-                                                grouped
+                                                :grouped="hasThresholdLock(selectedMetric)"
                                                 :step="step"
                                                 :suffix="valueSuffix(selectedMetric)"
                                                 :disabled="selectedMetric == null"
