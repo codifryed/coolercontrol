@@ -47,9 +47,9 @@ const fn spec(suffix: &'static str, kind: ChannelAttributeKind) -> AttributeSpec
     AttributeSpec { suffix, kind }
 }
 
-/// Display order: upper limits, lower limits, recorded extremes, then sensor details. Each
-/// hysteresis follows its limit.
-const TEMP_ATTRIBUTES: [AttributeSpec; 14] = [
+/// Display order: upper limits, lower limits, recorded extremes, the rated range, then sensor
+/// details. Each hysteresis follows its limit.
+const TEMP_ATTRIBUTES: [AttributeSpec; 16] = [
     spec("max", ChannelAttributeKind::TempMax),
     spec("max_hyst", ChannelAttributeKind::TempMaxHyst),
     spec("crit", ChannelAttributeKind::TempCrit),
@@ -62,6 +62,8 @@ const TEMP_ATTRIBUTES: [AttributeSpec; 14] = [
     spec("lcrit_hyst", ChannelAttributeKind::TempLcritHyst),
     spec("lowest", ChannelAttributeKind::TempLowest),
     spec("highest", ChannelAttributeKind::TempHighest),
+    spec("rated_min", ChannelAttributeKind::TempRatedMin),
+    spec("rated_max", ChannelAttributeKind::TempRatedMax),
     spec("offset", ChannelAttributeKind::TempOffset),
     spec("type", ChannelAttributeKind::TempType),
 ];
@@ -74,8 +76,24 @@ const FAN_ATTRIBUTES: [AttributeSpec; 5] = [
     spec("pulses", ChannelAttributeKind::FanPulses),
 ];
 
+/// Display order: upper limits, lower limits, the cap with its margin and range, then the
+/// rated range.
+const POWER_ATTRIBUTES: [AttributeSpec; 10] = [
+    spec("max", ChannelAttributeKind::PowerMax),
+    spec("crit", ChannelAttributeKind::PowerCrit),
+    spec("min", ChannelAttributeKind::PowerMin),
+    spec("lcrit", ChannelAttributeKind::PowerLcrit),
+    spec("cap", ChannelAttributeKind::PowerCap),
+    spec("cap_hyst", ChannelAttributeKind::PowerCapHyst),
+    spec("cap_max", ChannelAttributeKind::PowerCapMax),
+    spec("cap_min", ChannelAttributeKind::PowerCapMin),
+    spec("rated_min", ChannelAttributeKind::PowerRatedMin),
+    spec("rated_max", ChannelAttributeKind::PowerRatedMax),
+];
+
 const _: () = assert!(TEMP_ATTRIBUTES.len() <= MAX_CHANNEL_ATTRIBUTES);
 const _: () = assert!(FAN_ATTRIBUTES.len() <= MAX_CHANNEL_ATTRIBUTES);
+const _: () = assert!(POWER_ATTRIBUTES.len() <= MAX_CHANNEL_ATTRIBUTES);
 
 /// Absolute zero. Drivers report it, or colder, for a limit that is not set.
 const MILLIDEGREES_ABSOLUTE_ZERO: i64 = -273_150;
@@ -92,12 +110,17 @@ const LEAKSHIELD_PRESSURE_MICROBAR_MAX: i64 = u16::MAX as i64 * 100;
 const FAN_DIVISOR_MAX: i64 = 128;
 const FAN_PULSES_MAX: i64 = 4;
 const TEMP_TYPE_MAX: i64 = 6;
+/// 100 kW, more than any supply in one machine delivers.
+const MICROWATTS_MAX: i64 = 100_000_000_000;
+const MICROWATTS_PER_WATT: f64 = 1_000_000.0;
 
-// Every accepted value must convert to f64 exactly, through i32.
-const _: () = assert!(MILLIDEGREES_MAX <= i32::MAX as i64);
-const _: () = assert!(MILLIDEGREES_ABSOLUTE_ZERO >= i32::MIN as i64);
-const _: () = assert!(FAN_RPM_MAX <= i32::MAX as i64);
-const _: () = assert!(LEAKSHIELD_PRESSURE_MICROBAR_MAX <= i32::MAX as i64);
+/// Every integer up to here converts to f64 exactly, and so must every accepted value.
+const F64_EXACT_INTEGER_MAX: i64 = 1 << 53;
+const _: () = assert!(MILLIDEGREES_MAX <= F64_EXACT_INTEGER_MAX);
+const _: () = assert!(MILLIDEGREES_ABSOLUTE_ZERO >= -F64_EXACT_INTEGER_MAX);
+const _: () = assert!(FAN_RPM_MAX <= F64_EXACT_INTEGER_MAX);
+const _: () = assert!(LEAKSHIELD_PRESSURE_MICROBAR_MAX <= F64_EXACT_INTEGER_MAX);
+const _: () = assert!(MICROWATTS_MAX <= F64_EXACT_INTEGER_MAX);
 
 /// Reads every attribute file the channel has. Absent files are skipped without driver IO;
 /// unreadable, unparseable and unset values are left out.
@@ -111,10 +134,10 @@ pub async fn read_channel_attributes(
     let (prefix, specs): (&str, &[AttributeSpec]) = match channel.hwmon_type {
         HwmonChannelType::Temp => ("temp", &TEMP_ATTRIBUTES),
         HwmonChannelType::Fan => ("fan", &FAN_ATTRIBUTES),
-        HwmonChannelType::Load
-        | HwmonChannelType::Freq
-        | HwmonChannelType::Power
-        | HwmonChannelType::PowerCap => return Vec::new(),
+        HwmonChannelType::Power => ("power", &POWER_ATTRIBUTES),
+        HwmonChannelType::Load | HwmonChannelType::Freq | HwmonChannelType::PowerCap => {
+            return Vec::new()
+        }
     };
     debug_assert!(specs.len() <= MAX_CHANNEL_ATTRIBUTES);
     let fan_limit_max = fan_limit_max(&driver.name, channel.number);
@@ -156,7 +179,7 @@ fn fan_limit_max(driver_name: &str, channel_number: u8) -> i64 {
 /// The bounds are wide on purpose: they only reject values no real sensor reports.
 pub fn sanitize_attribute(kind: ChannelAttributeKind, raw: i64, fan_limit_max: i64) -> Option<f64> {
     use ChannelAttributeKind as K;
-    debug_assert!(fan_limit_max <= i64::from(i32::MAX));
+    debug_assert!(fan_limit_max <= F64_EXACT_INTEGER_MAX);
     let (accepted, divisor): (RangeInclusive<i64>, f64) = match kind {
         K::TempMax
         | K::TempMaxHyst
@@ -169,7 +192,9 @@ pub fn sanitize_attribute(kind: ChannelAttributeKind, raw: i64, fan_limit_max: i
         | K::TempLcrit
         | K::TempLcritHyst
         | K::TempLowest
-        | K::TempHighest => (
+        | K::TempHighest
+        | K::TempRatedMin
+        | K::TempRatedMax => (
             (MILLIDEGREES_ABSOLUTE_ZERO + 1)..=MILLIDEGREES_MAX,
             MILLIDEGREES_PER_DEGREE,
         ),
@@ -181,12 +206,23 @@ pub fn sanitize_attribute(kind: ChannelAttributeKind, raw: i64, fan_limit_max: i
         K::FanMin | K::FanMax | K::FanTarget => (0..=fan_limit_max, 1.0),
         K::FanDiv => (1..=FAN_DIVISOR_MAX, 1.0),
         K::FanPulses => (1..=FAN_PULSES_MAX, 1.0),
+        K::PowerMax
+        | K::PowerCrit
+        | K::PowerMin
+        | K::PowerLcrit
+        | K::PowerCap
+        | K::PowerCapHyst
+        | K::PowerCapMax
+        | K::PowerCapMin
+        | K::PowerRatedMin
+        | K::PowerRatedMax => (0..=MICROWATTS_MAX, MICROWATTS_PER_WATT),
     };
     if accepted.contains(&raw).not() {
         return None;
     }
-    // Every accepted range fits in an i32 (asserted above), so this cannot fail.
-    let value = f64::from(i32::try_from(raw).ok()?) / divisor;
+    // Exact: every accepted range is inside f64's exact integers (asserted above).
+    #[allow(clippy::cast_precision_loss)]
+    let value = raw as f64 / divisor;
     debug_assert!(value.is_finite());
     Some(value)
 }
@@ -315,6 +351,67 @@ mod tests {
     }
 
     #[test]
+    fn rated_temps_are_absolute_temperatures() {
+        // Goal: the rated range converts like any other limit and drops the unset markers.
+        // Method: a real pair, then both placeholders.
+        use ChannelAttributeKind as K;
+        assert_eq!(
+            sanitize_attribute(K::TempRatedMin, -40_000, FAN_RPM_MAX),
+            Some(-40.0)
+        );
+        assert_eq!(
+            sanitize_attribute(K::TempRatedMax, 125_000, FAN_RPM_MAX),
+            Some(125.0)
+        );
+        assert_eq!(
+            sanitize_attribute(K::TempRatedMin, -273_150, FAN_RPM_MAX),
+            None
+        );
+        assert_eq!(
+            sanitize_attribute(K::TempRatedMax, 65_261_850, FAN_RPM_MAX),
+            None
+        );
+    }
+
+    #[test]
+    fn power_limits_convert_from_microwatts() {
+        // Goal: power limits convert to watts across the whole accepted range, including
+        // values past i32, and nothing outside it passes. Method: the amdgpu cap from real
+        // hardware, a 3 kW supply, and both edges with the first rejected value past each.
+        use ChannelAttributeKind as K;
+        assert_eq!(
+            sanitize_attribute(K::PowerCap, 230_000_000, FAN_RPM_MAX),
+            Some(230.0)
+        );
+        assert_eq!(
+            sanitize_attribute(K::PowerCapMin, 216_000_000, FAN_RPM_MAX),
+            Some(216.0)
+        );
+        assert_eq!(
+            sanitize_attribute(K::PowerCapHyst, 500_000, FAN_RPM_MAX),
+            Some(0.5)
+        );
+        assert_eq!(
+            sanitize_attribute(K::PowerRatedMax, 3_000_000_000, FAN_RPM_MAX),
+            Some(3000.0)
+        );
+        assert_eq!(sanitize_attribute(K::PowerMin, 0, FAN_RPM_MAX), Some(0.0));
+        assert_eq!(sanitize_attribute(K::PowerLcrit, -1, FAN_RPM_MAX), None);
+        assert_eq!(
+            sanitize_attribute(K::PowerMax, 100_000_000_000, FAN_RPM_MAX),
+            Some(100_000.0)
+        );
+        assert_eq!(
+            sanitize_attribute(K::PowerCrit, 100_000_000_001, FAN_RPM_MAX),
+            None
+        );
+        assert_eq!(
+            sanitize_attribute(K::PowerCapMax, i64::MAX, FAN_RPM_MAX),
+            None
+        );
+    }
+
+    #[test]
     fn leakshield_pressure_limits_use_the_pressure_range() {
         // Goal: Leakshield fan1 limits in µbar pass, other channels keep the rpm bound.
         // Method: the values from issue #613 and the edges of each range.
@@ -439,6 +536,82 @@ mod tests {
 
     #[test]
     #[serial]
+    fn amdgpu_like_power_reads_the_cap_and_its_range() {
+        // Goal: a power channel reads its own attribute files, in table order, and nothing
+        // the table does not name. Method: the amdgpu layout from real hardware, whose
+        // `cap_default` is not in the hwmon ABI, next to another channel's files.
+        cc_fs::test_runtime(async {
+            let base = test_dir().await;
+            write_files(
+                &base,
+                &[
+                    ("power1_average", "36000000"),
+                    ("power1_cap", "230000000"),
+                    ("power1_cap_default", "230000000"),
+                    ("power1_cap_max", "230000000"),
+                    ("power1_cap_min", "216000000"),
+                    ("power2_max", "90000000"),
+                ],
+            )
+            .await;
+            let driver = driver_at(&base);
+
+            let power1 =
+                read_channel_attributes(&driver, &channel(HwmonChannelType::Power, 1)).await;
+
+            assert_eq!(
+                names(&power1),
+                ["power1_cap", "power1_cap_max", "power1_cap_min"]
+            );
+            assert_eq!(power1[0].kind, ChannelAttributeKind::PowerCap);
+            assert_eq!(power1[0].value, 230.0);
+            assert_eq!(power1[2].value, 216.0);
+            cc_fs::remove_dir_all(&base).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn rated_range_follows_the_recorded_extremes() {
+        // Goal: a temp channel reports its rated range after the limits and extremes and
+        // before the sensor details. Method: a PMBus-style temp with one of each group.
+        cc_fs::test_runtime(async {
+            let base = test_dir().await;
+            write_files(
+                &base,
+                &[
+                    ("temp1_input", "41000"),
+                    ("temp1_type", "3"),
+                    ("temp1_rated_max", "125000"),
+                    ("temp1_rated_min", "-40000"),
+                    ("temp1_highest", "58000"),
+                    ("temp1_crit", "110000"),
+                ],
+            )
+            .await;
+            let driver = driver_at(&base);
+
+            let temp1 = read_channel_attributes(&driver, &channel(HwmonChannelType::Temp, 1)).await;
+
+            assert_eq!(
+                names(&temp1),
+                [
+                    "temp1_crit",
+                    "temp1_highest",
+                    "temp1_rated_min",
+                    "temp1_rated_max",
+                    "temp1_type"
+                ]
+            );
+            assert_eq!(temp1[2].kind, ChannelAttributeKind::TempRatedMin);
+            assert_eq!(temp1[2].value, -40.0);
+            assert_eq!(temp1[3].value, 125.0);
+            cc_fs::remove_dir_all(&base).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
     fn unparseable_values_are_left_out() {
         // Goal: a garbage or empty file does not fail the whole read, and is not reported.
         // Method: one good attribute next to two bad ones.
@@ -466,8 +639,8 @@ mod tests {
     #[test]
     #[serial]
     fn other_channel_types_and_missing_dirs_report_nothing() {
-        // Goal: only temp and fan channels have attribute tables, and a vanished device dir
-        // yields an empty list rather than an error. Method: a load channel whose number
+        // Goal: only temp, fan and power channels have attribute tables, and a vanished device
+        // dir yields an empty list rather than an error. Method: a load channel whose number
         // collides with real temp files, then a path that does not exist.
         cc_fs::test_runtime(async {
             let base = test_dir().await;

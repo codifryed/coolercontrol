@@ -6965,7 +6965,7 @@ mod channel_attributes_tests {
         )
     }
 
-    /// A temp1 with one real limit and one nvme-style placeholder.
+    /// A temp1 with one real limit and one nvme-style placeholder, and a capped power1.
     async fn seeded_dir() -> PathBuf {
         let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
         cc_fs::create_dir_all(&base).await.unwrap();
@@ -6973,6 +6973,8 @@ mod channel_attributes_tests {
             ("temp1_input", "45000"),
             ("temp1_crit", "100000"),
             ("temp1_max", "65261850"),
+            ("power1_average", "36000000"),
+            ("power1_cap", "230000000"),
         ] {
             cc_fs::write(base.join(name), contents.as_bytes().to_vec())
                 .await
@@ -6981,18 +6983,26 @@ mod channel_attributes_tests {
         base
     }
 
-    /// Registers one device with a single temp1 channel in `base`, skipping init.
+    /// Registers one device with a temp1 and a power1 channel in `base`, skipping init.
     fn insert_device(repo: &mut HwmonRepo, base: &Path, io: DeviceIo) -> UID {
         let driver = HwmonDriverInfo {
             name: "test_chip".to_string(),
             path: base.to_path_buf(),
-            channels: vec![HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Temp,
-                number: 1,
-                name: "temp1".to_string(),
-                temp_path: Some(base.join("temp1_input")),
-                ..Default::default()
-            }],
+            channels: vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    name: "temp1".to_string(),
+                    temp_path: Some(base.join("temp1_input")),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    number: 1,
+                    name: "power1_average".to_string(),
+                    ..Default::default()
+                },
+            ],
             u_id: "test-uid-attributes".to_string(),
             io,
             ..Default::default()
@@ -7031,6 +7041,35 @@ mod channel_attributes_tests {
             assert_eq!(attributes.len(), 1, "placeholder must be dropped");
             assert_eq!(attributes[0].name, "temp1_crit");
             assert_eq!(attributes[0].value, 100.0);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn power_channel_resolves_by_its_file_name() {
+        // Goal: a power channel is named after the sysfs file it reads, and that name still
+        // resolves to the channel's `power1_` attributes. Method: query `power1_average`,
+        // then the bare feature name, which is not a channel.
+        cc_fs::test_runtime(async {
+            let base = seeded_dir().await;
+            let mut repo = empty_repo();
+            let uid = insert_device(&mut repo, &base, DeviceIo::default());
+
+            let attributes = repo
+                .channel_attributes(&uid, "power1_average")
+                .await
+                .unwrap();
+            let feature_name = repo.channel_attributes(&uid, "power1").await.unwrap();
+
+            assert_eq!(attributes.len(), 1);
+            assert_eq!(attributes[0].name, "power1_cap");
+            assert_eq!(
+                attributes[0].kind,
+                crate::device::ChannelAttributeKind::PowerCap
+            );
+            assert_eq!(attributes[0].value, 230.0);
+            assert!(feature_name.is_empty());
             let _ = cc_fs::remove_dir_all(&base).await;
         });
     }

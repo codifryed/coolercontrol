@@ -644,7 +644,7 @@
           "device"
         ],
         "summary": "Device Channel Attributes",
-        "description": "Returns the extra attributes the driver reports for a temperature or fan channel, such as its max, critical and emergency limits or fan target, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
+        "description": "Returns the extra attributes the driver reports for a temperature, fan or power channel, such as its max, critical and emergency limits, fan target or power cap, read from the hardware when requested. Each is named by its sysfs file, because the meaning varies by driver: on some chips min and max are the lowest and highest readings so far. Unset and unreadable values are left out. Channels without attribute files return an empty list.",
         "parameters": [
           {
             "in": "path",
@@ -7552,7 +7552,7 @@
             "type": "string"
           },
           "value": {
-            "description": "°C for temperatures, rpm for fan speeds, a plain number otherwise. Microbar for the fan\n limits of a pressure channel such as the Leakshield's fan1.",
+            "description": "°C for temperatures, rpm for fan speeds, watts for power, a plain number otherwise.\n Microbar for the fan limits of a pressure channel such as the Leakshield's fan1.",
             "type": "number",
             "format": "double"
           }
@@ -7627,6 +7627,16 @@
             "const": "TEMP_HIGHEST"
           },
           {
+            "description": "Degrees Celsius, the lowest temperature the sensor is rated for.",
+            "type": "string",
+            "const": "TEMP_RATED_MIN"
+          },
+          {
+            "description": "Degrees Celsius, the highest temperature the sensor is rated for.",
+            "type": "string",
+            "const": "TEMP_RATED_MAX"
+          },
+          {
             "description": "Degrees Celsius, added by the chip to the raw reading.",
             "type": "string",
             "const": "TEMP_OFFSET"
@@ -7660,6 +7670,56 @@
             "description": "Tachometer pulses per revolution, a plain number.",
             "type": "string",
             "const": "FAN_PULSES"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_MAX"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_CRIT"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_MIN"
+          },
+          {
+            "description": "Watts.",
+            "type": "string",
+            "const": "POWER_LCRIT"
+          },
+          {
+            "description": "Watts, the power limit the device currently enforces.",
+            "type": "string",
+            "const": "POWER_CAP"
+          },
+          {
+            "description": "Watts, the margin around the cap, not an absolute power.",
+            "type": "string",
+            "const": "POWER_CAP_HYST"
+          },
+          {
+            "description": "Watts, the highest cap that can be set.",
+            "type": "string",
+            "const": "POWER_CAP_MAX"
+          },
+          {
+            "description": "Watts, the lowest cap that can be set.",
+            "type": "string",
+            "const": "POWER_CAP_MIN"
+          },
+          {
+            "description": "Watts, the lowest power the sensor is rated for.",
+            "type": "string",
+            "const": "POWER_RATED_MIN"
+          },
+          {
+            "description": "Watts, the highest power the sensor is rated for.",
+            "type": "string",
+            "const": "POWER_RATED_MAX"
           }
         ]
       },

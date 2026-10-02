@@ -110,7 +110,7 @@ pub enum ChannelDataType {
 }
 
 /// Most attributes one channel can report: the temperature set is the larger one.
-pub const MAX_CHANNEL_ATTRIBUTES: usize = 14;
+pub const MAX_CHANNEL_ATTRIBUTES: usize = 16;
 
 /// A driver-reported channel attribute that is read on demand rather than polled: limits,
 /// targets and sensor details. Serialized upper-case so clients can pick the unit and decide
@@ -143,6 +143,10 @@ pub enum ChannelAttributeKind {
     TempLowest,
     /// Degrees Celsius, the highest reading since the driver loaded or was reset.
     TempHighest,
+    /// Degrees Celsius, the lowest temperature the sensor is rated for.
+    TempRatedMin,
+    /// Degrees Celsius, the highest temperature the sensor is rated for.
+    TempRatedMax,
     /// Degrees Celsius, added by the chip to the raw reading.
     TempOffset,
     /// Sensor type code 1-6 (CPU diode, transistor, thermal diode, thermistor, AMD AMDSI,
@@ -158,6 +162,26 @@ pub enum ChannelAttributeKind {
     FanDiv,
     /// Tachometer pulses per revolution, a plain number.
     FanPulses,
+    /// Watts.
+    PowerMax,
+    /// Watts.
+    PowerCrit,
+    /// Watts.
+    PowerMin,
+    /// Watts.
+    PowerLcrit,
+    /// Watts, the power limit the device currently enforces.
+    PowerCap,
+    /// Watts, the margin around the cap, not an absolute power.
+    PowerCapHyst,
+    /// Watts, the highest cap that can be set.
+    PowerCapMax,
+    /// Watts, the lowest cap that can be set.
+    PowerCapMin,
+    /// Watts, the lowest power the sensor is rated for.
+    PowerRatedMin,
+    /// Watts, the highest power the sensor is rated for.
+    PowerRatedMax,
 }
 
 /// One driver-reported attribute. `name` is the sysfs file name, so clients can show it as is:
@@ -166,8 +190,8 @@ pub enum ChannelAttributeKind {
 pub struct ChannelAttribute {
     pub name: String,
     pub kind: ChannelAttributeKind,
-    /// °C for temperatures, rpm for fan speeds, a plain number otherwise. Microbar for the fan
-    /// limits of a pressure channel such as the Leakshield's fan1.
+    /// °C for temperatures, rpm for fan speeds, watts for power, a plain number otherwise.
+    /// Microbar for the fan limits of a pressure channel such as the Leakshield's fan1.
     pub value: f64,
 }
 
