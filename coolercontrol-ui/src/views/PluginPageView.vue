@@ -20,6 +20,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
 import { usePluginActions } from '@/composables/usePluginActions.ts'
+import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { useDialog } from '@/shell/dialog'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
@@ -92,8 +93,8 @@ const restartPlugin = (): Promise<void> => pluginActions.restartPlugin(props.plu
 
 const togglePlugin = async (): Promise<void> => {
     if (isDisabled.value) {
-        const success = await deviceStore.daemonClient.enablePlugin(props.pluginId)
-        if (success) {
+        const response = await deviceStore.daemonClient.enablePlugin(props.pluginId)
+        if (!(response instanceof ErrorResponse)) {
             toast.add({
                 severity: 'success',
                 summary: t('common.success'),
@@ -105,14 +106,14 @@ const togglePlugin = async (): Promise<void> => {
         } else {
             toast.add({
                 severity: 'error',
-                summary: t('common.error'),
-                detail: t('layout.plugins.enableFailed'),
+                summary: t('layout.plugins.enableFailed'),
+                detail: response.error,
                 life: 3000,
             })
         }
     } else {
-        const success = await deviceStore.daemonClient.disablePlugin(props.pluginId)
-        if (success) {
+        const response = await deviceStore.daemonClient.disablePlugin(props.pluginId)
+        if (!(response instanceof ErrorResponse)) {
             toast.add({
                 severity: 'success',
                 summary: t('common.success'),
@@ -124,8 +125,8 @@ const togglePlugin = async (): Promise<void> => {
         } else {
             toast.add({
                 severity: 'error',
-                summary: t('common.error'),
-                detail: t('layout.plugins.disableFailed'),
+                summary: t('layout.plugins.disableFailed'),
+                detail: response.error,
                 life: 3000,
             })
         }

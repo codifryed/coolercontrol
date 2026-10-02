@@ -8,6 +8,7 @@ import { ref } from 'vue'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { PluginStatusDto } from '@/models/Plugins.ts'
 
 // One map for every view, so a plugin stopped from its page is not still shown
@@ -32,24 +33,24 @@ export function usePluginActions() {
     }
 
     const runAction = async (
-        action: (pluginId: string) => Promise<boolean>,
+        action: (pluginId: string) => Promise<undefined | ErrorResponse>,
         pluginId: string,
         successKey: string,
         failureKey: string,
     ): Promise<void> => {
-        const success = await action(pluginId)
-        if (success) {
+        const response = await action(pluginId)
+        if (response instanceof ErrorResponse) {
             toast.add({
-                severity: 'success',
-                summary: t('common.success'),
-                detail: t(successKey),
+                severity: 'error',
+                summary: t(failureKey),
+                detail: response.error,
                 life: 3000,
             })
         } else {
             toast.add({
-                severity: 'error',
-                summary: t('common.error'),
-                detail: t(failureKey),
+                severity: 'success',
+                summary: t('common.success'),
+                detail: t(successKey),
                 life: 3000,
             })
         }
