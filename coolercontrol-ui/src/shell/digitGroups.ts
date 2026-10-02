@@ -3,7 +3,7 @@
 
 // A narrow no-break space. Unlike a comma or a dot it is never read as a decimal mark,
 // and decimals here are always written with a dot whatever the language.
-export const DIGIT_GROUP_SEPARATOR = ' '
+export const DIGIT_GROUP_SEPARATOR = '\u202F'
 // Four digits stay together, so an ordinary fan speed reads as before.
 const GROUPED_DIGITS_MIN = 5
 

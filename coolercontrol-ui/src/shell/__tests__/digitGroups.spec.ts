@@ -40,6 +40,6 @@ describe('ungroupDigits', () => {
 
     it('strips ordinary and no-break spaces from a pasted number', () => {
         expect(ungroupDigits('438 300')).toBe('438300')
-        expect(ungroupDigits('438 300 ')).toBe('438300')
+        expect(ungroupDigits('438\u00A0300 ')).toBe('438300')
     })
 })
