@@ -7,13 +7,14 @@ use crate::config::Config;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceManager, ServiceStatus,
 };
-use crate::repositories::service_plugin::service_management::ServiceId;
+use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::repositories::service_plugin::service_plugin_repo::{
     ServicePluginRepo, CC_PLUGIN_USER, SERVICE_MANIFEST_FILE_NAME,
 };
 use crate::repositories::service_plugin::trust;
 use crate::repositories::utils::{DirectCommand, ShellCommandResult};
+use crate::rt::sleep;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
@@ -34,6 +35,21 @@ const PLUGIN_CREDENTIAL_PERMISSIONS: u32 = 0o600;
 const ROOT_USER: &str = "root";
 const CHOWN_BIN: &str = "chown";
 const CHOWN_TIMEOUT: Duration = Duration::from_secs(5);
+/// How often, and how many times, a just-started plugin is checked before its start counts
+/// as a success. Under systemd a plugin that exits stays down for `RestartSec` (1s) before
+/// it is restarted, so checks this close together cannot miss it.
+#[cfg(not(test))]
+const START_SETTLE_INTERVAL: Duration = Duration::from_millis(250);
+#[cfg(test)]
+const START_SETTLE_INTERVAL: Duration = Duration::from_millis(1);
+const START_SETTLE_CHECKS: u8 = 4;
+const _: () = assert!(START_SETTLE_CHECKS > 0);
+
+#[derive(Clone, Copy)]
+enum StartAction {
+    Start,
+    Restart,
+}
 
 pub struct PluginController {
     pub plugins: HashMap<ServiceId, ServiceManifest>,
@@ -127,14 +143,7 @@ impl PluginController {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        let owner = (self.is_systemd || self.is_open_rc).then_some({
-            if manifest.privileged {
-                "root"
-            } else {
-                CC_PLUGIN_USER
-            }
-        });
-        if let Err(err) = secure_config_file(&config_path, owner).await {
+        if let Err(err) = secure_config_file(&config_path, self.owner(manifest)).await {
             warn!(
                 "Failed to secure plugin config file {}: {err}",
                 config_path.display()
@@ -176,16 +185,14 @@ impl PluginController {
 
     /// Start a managed integration plugin's service.
     pub async fn start_plugin(&self, plugin_id: &str) -> Result<()> {
-        let service_id = self.get_integration_service_id(plugin_id)?;
-        self.service_manager
-            .start(&service_id)
+        self.bring_up(plugin_id, StartAction::Start)
             .await
             .with_context(|| format!("Starting plugin service: {plugin_id}"))
     }
 
     /// Stop a managed integration plugin's service.
     pub async fn stop_plugin(&self, plugin_id: &str) -> Result<()> {
-        let service_id = self.get_integration_service_id(plugin_id)?;
+        let service_id = self.get_integration_manifest(plugin_id)?.id.clone();
         self.service_manager
             .stop(&service_id)
             .await
@@ -198,9 +205,7 @@ impl PluginController {
     /// window where the old process has not gone yet, and starting into that window is what
     /// leaves two of them running.
     pub async fn restart_plugin(&self, plugin_id: &str) -> Result<()> {
-        let service_id = self.get_integration_service_id(plugin_id)?;
-        self.service_manager
-            .restart(&service_id)
+        self.bring_up(plugin_id, StartAction::Restart)
             .await
             .with_context(|| format!("Restarting plugin service: {plugin_id}"))
     }
@@ -277,34 +282,32 @@ impl PluginController {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        if let Err(err) = self.install_and_restart(plugin_id, manifest).await {
-            info!("Could not start plugin service on enable: {err}");
-        }
-        Ok(())
+        // Reported rather than swallowed: the plugin is enabled, but it is not running.
+        self.bring_up(plugin_id, StartAction::Restart)
+            .await
+            .with_context(|| {
+                format!("Plugin {plugin_id} is enabled, but its service did not start")
+            })
     }
 
-    /// Installs a plugin's service definition, then brings the service up.
-    ///
-    /// A plugin that was disabled when the daemon started was skipped during registration,
-    /// so nothing ever wrote its service definition and the init system does not know it
-    /// exists. Starting it in that state fails and the plugin stays `Unmanaged` until the
-    /// daemon is restarted. Installing first is what makes enabling take effect right away.
-    async fn install_and_restart(&self, plugin_id: &str, manifest: &ServiceManifest) -> Result<()> {
-        let service_id = self.get_integration_service_id(plugin_id)?;
-        let definition =
-            ServicePluginRepo::service_definition(&service_id, manifest).ok_or_else(|| {
-                CCError::UserError {
-                    msg: "Plugin manifest has no executable to manage".to_string(),
-                }
-            })?;
-        self.service_manager
-            .add(definition)
-            .await
-            .with_context(|| format!("Installing plugin service: {plugin_id}"))?;
-        self.service_manager
-            .restart(&service_id)
-            .await
-            .with_context(|| format!("Starting plugin service: {plugin_id}"))
+    async fn bring_up(&self, plugin_id: &str, action: StartAction) -> Result<()> {
+        let manifest = self.get_integration_manifest(plugin_id)?;
+        bring_up_service(
+            &self.service_manager,
+            manifest,
+            self.owner(manifest),
+            action,
+        )
+        .await
+    }
+
+    /// The user a managed plugin's files belong to, or `None` where no init system runs it.
+    fn owner(&self, manifest: &ServiceManifest) -> Option<&'static str> {
+        (self.is_systemd || self.is_open_rc).then_some(if manifest.privileged {
+            ROOT_USER
+        } else {
+            CC_PLUGIN_USER
+        })
     }
 
     /// Check if a plugin is disabled in config.
@@ -314,8 +317,8 @@ impl PluginController {
             .is_some_and(|c| c.get_disabled_plugins().contains(&plugin_id.to_string()))
     }
 
-    /// Validate that a plugin is an integration type and return its service ID.
-    fn get_integration_service_id(&self, plugin_id: &str) -> Result<ServiceId> {
+    /// Validate that a plugin is a managed integration type and return its manifest.
+    fn get_integration_manifest(&self, plugin_id: &str) -> Result<&ServiceManifest> {
         let manifest = self
             .plugins
             .get(plugin_id)
@@ -334,8 +337,67 @@ impl PluginController {
             }
             .into());
         }
-        Ok(plugin_id.to_string())
+        Ok(manifest)
     }
+}
+
+/// Brings a managed plugin's service up from whatever state it is in.
+///
+/// Does everything a daemon restart does for a plugin, so that restarting the daemon is
+/// never the fix: the service definition is installed, the plugin's folder is handed to the
+/// user it runs as, and the service has to still be up a moment later.
+async fn bring_up_service(
+    manager: &impl ServiceManager,
+    manifest: &ServiceManifest,
+    owner: Option<&str>,
+    action: StartAction,
+) -> Result<()> {
+    let service_id = manifest.id.clone();
+    let definition =
+        ServicePluginRepo::service_definition(&service_id, manifest).ok_or_else(|| {
+            CCError::UserError {
+                msg: "Plugin manifest has no executable to manage".to_string(),
+            }
+        })?;
+    // A status that cannot be read counts as running, which only skips the handover.
+    let is_down = matches!(
+        manager.status(&service_id).await,
+        Ok(ServiceStatus::Stopped(_) | ServiceStatus::Unmanaged)
+    );
+    manager
+        .add(definition)
+        .await
+        .context("Installing the plugin service")?;
+    if is_down {
+        // Never under a running plugin, see `secure_plugin_folder`.
+        secure_plugin_files(manifest, owner).await;
+    }
+    match action {
+        StartAction::Start => manager.start(&service_id).await?,
+        StartAction::Restart => manager.restart(&service_id).await?,
+    }
+    await_running(manager, &service_id).await
+}
+
+/// Confirms a service that was just started is still up a moment later.
+///
+/// An init system reports a start once the process is spawned, so a plugin that exited
+/// straight away looked like a success while its supervisor restarted it in a loop.
+async fn await_running(manager: &impl ServiceManager, service_id: &ServiceId) -> Result<()> {
+    for _ in 0..START_SETTLE_CHECKS {
+        sleep(START_SETTLE_INTERVAL).await;
+        let reason = match manager.status(service_id).await? {
+            ServiceStatus::Running => continue,
+            ServiceStatus::Stopped(reason) => reason,
+            ServiceStatus::Unmanaged => None,
+        };
+        let reason = reason.map_or_else(String::new, |reason| format!(" ({reason})"));
+        return Err(anyhow!(
+            "{} stopped right after starting{reason}. Its service log has the cause.",
+            service_id.to_service_name()
+        ));
+    }
+    Ok(())
 }
 
 /// Hands a managed plugin's folder and config file to `owner`.
@@ -486,11 +548,164 @@ async fn chown(path: &Path, owner: &str, recursive: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::service_plugin::service_management::manager::ServiceDefinition;
     use crate::repositories::service_plugin::service_manifest::{ConnectionType, EnvVar};
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
     use std::os::unix::fs::MetadataExt;
 
     fn is_root() -> bool {
         nix::unistd::geteuid().is_root()
+    }
+
+    /// Answers `status` from a script, repeating its last entry, and records every other call.
+    struct FakeManager {
+        statuses: RefCell<VecDeque<ServiceStatus>>,
+        calls: RefCell<Vec<&'static str>>,
+    }
+
+    impl FakeManager {
+        fn new(statuses: impl IntoIterator<Item = ServiceStatus>) -> Self {
+            let statuses: VecDeque<ServiceStatus> = statuses.into_iter().collect();
+            assert!(statuses.is_empty().not(), "a status script needs an entry");
+            Self {
+                statuses: RefCell::new(statuses),
+                calls: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn record(&self, call: &'static str) -> Result<()> {
+            self.calls.borrow_mut().push(call);
+            Ok(())
+        }
+    }
+
+    impl ServiceManager for FakeManager {
+        async fn add(&self, _service_definition: ServiceDefinition) -> Result<()> {
+            self.record("add")
+        }
+
+        async fn remove(&self, _service_id: &ServiceId) -> Result<()> {
+            self.record("remove")
+        }
+
+        async fn start(&self, _service_id: &ServiceId) -> Result<()> {
+            self.record("start")
+        }
+
+        async fn stop(&self, _service_id: &ServiceId) -> Result<()> {
+            self.record("stop")
+        }
+
+        async fn restart(&self, _service_id: &ServiceId) -> Result<()> {
+            self.record("restart")
+        }
+
+        async fn status(&self, _service_id: &ServiceId) -> Result<ServiceStatus> {
+            let mut statuses = self.statuses.borrow_mut();
+            if statuses.len() > 1 {
+                return Ok(statuses.pop_front().expect("more than one entry"));
+            }
+            Ok(statuses.front().cloned().expect("never emptied"))
+        }
+    }
+
+    fn managed_manifest(path: PathBuf) -> ServiceManifest {
+        ServiceManifest {
+            id: "test-plugin".to_string(),
+            service_type: ServiceType::Integration,
+            description: None,
+            version: None,
+            url: None,
+            executable: Some(PathBuf::from("/usr/bin/test-plugin")),
+            args: Vec::new(),
+            envs: Vec::new(),
+            address: ConnectionType::None,
+            tls: None,
+            privileged: false,
+            proxy: None,
+            path,
+        }
+    }
+
+    /// Goal: starting a plugin whose service was never installed must work, which is what a
+    /// daemon restart used to be needed for. Method: a fake init system that does not know
+    /// the service yet, and the order of what it is asked to do.
+    #[test]
+    fn bring_up_installs_the_service_before_starting_it() {
+        crate::rt::test_runtime(async {
+            let manifest = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
+            let cases = [
+                (StartAction::Start, ["add", "start"]),
+                (StartAction::Restart, ["add", "restart"]),
+            ];
+            for (action, expected_calls) in cases {
+                let manager = FakeManager::new([ServiceStatus::Unmanaged, ServiceStatus::Running]);
+
+                let result = bring_up_service(&manager, &manifest, None, action).await;
+
+                assert!(result.is_ok(), "{result:?}");
+                assert_eq!(*manager.calls.borrow(), expected_calls);
+            }
+        });
+    }
+
+    /// Goal: a plugin that exits right after it starts must not be reported as started, and
+    /// the reason the init system gives has to reach the caller.
+    /// Method: the fake reports it up once, then down with a reason.
+    #[test]
+    fn bring_up_reports_a_plugin_that_stops_right_after_starting() {
+        crate::rt::test_runtime(async {
+            let manifest = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
+            let manager = FakeManager::new([
+                ServiceStatus::Stopped(None),
+                ServiceStatus::Running,
+                ServiceStatus::Stopped(Some("exit-code".to_string())),
+            ]);
+
+            let result = bring_up_service(&manager, &manifest, None, StartAction::Start).await;
+
+            let message = result.expect_err("the plugin is not running").to_string();
+            assert!(message.contains("cc-plugin-test-plugin"), "{message}");
+            assert!(message.contains("exit-code"), "{message}");
+            assert_eq!(*manager.calls.borrow(), ["add", "start"]);
+        });
+    }
+
+    /// Goal: a plugin folder that was installed after the daemon started is still root's, and
+    /// an unprivileged plugin cannot use it until it is handed over. That has to happen on a
+    /// start, but never under a running plugin: see `secure_plugin_folder`.
+    /// Method: the manifest's mode is reset whenever the folder is secured, and that needs
+    /// no root, so it shows whether the handover ran.
+    #[test]
+    fn bring_up_secures_the_folder_only_while_the_plugin_is_down() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let cases = [
+                (ServiceStatus::Stopped(None), PLUGIN_MANIFEST_PERMISSIONS),
+                (ServiceStatus::Unmanaged, PLUGIN_MANIFEST_PERMISSIONS),
+                (ServiceStatus::Running, 0o666),
+            ];
+            for (status_before, expected_mode) in cases {
+                let dir = tempfile::tempdir().unwrap();
+                let manifest_path = dir.path().join(SERVICE_MANIFEST_FILE_NAME);
+                std::fs::write(&manifest_path, "").unwrap();
+                std::fs::set_permissions(&manifest_path, Permissions::from_mode(0o666)).unwrap();
+                let manifest = managed_manifest(dir.path().to_path_buf());
+                let manager = FakeManager::new([status_before.clone(), ServiceStatus::Running]);
+
+                let result =
+                    bring_up_service(&manager, &manifest, Some(ROOT_USER), StartAction::Restart)
+                        .await;
+
+                assert!(result.is_ok(), "{result:?}");
+                let mode = std::fs::metadata(&manifest_path)
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o777, expected_mode, "{status_before:?}");
+            }
+        });
     }
 
     /// Goal: a plugin disabled when the daemon started is skipped during registration, so
