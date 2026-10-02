@@ -5,14 +5,21 @@
 
 use crate::api::{base, plugins};
 use axum::http::HeaderValue;
-use log::error;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use log::{error, info, warn};
 use std::ops::Not;
+use thiserror::Error;
 
 /// What the UI document's policy says with no `frame_ancestors` configured.
 const DOCUMENT_FRAME_ANCESTORS: &str = "frame-ancestors 'none'";
 /// What a plugin page's policy says with no `frame_ancestors` configured: the UI frames it.
 const PLUGIN_FRAME_ANCESTORS: &str = "frame-ancestors 'self'";
+
+/// The most origins a config may name. One per address the embedding page is opened at is
+/// typical, so a handful.
+const MAX_FRAME_ANCESTORS: usize = 16;
+/// The longest a DNS name may be, and the longest any one label of it.
+const HOST_LEN_MAX: usize = 253;
+const LABEL_LEN_MAX: usize = 63;
 
 /// The header values that depend on `frame_ancestors`. Composed once at startup, so no
 /// request pays for it.
@@ -37,14 +44,10 @@ impl Default for FramePolicy {
 }
 
 impl FramePolicy {
-    /// Widens the default policy by the configured origins. An invalid entry is skipped:
-    /// that origin then cannot frame the UI, which is the safe direction to fail.
+    /// Widens the default policy by the configured origins. An invalid entry is logged and
+    /// skipped: that origin then cannot frame the UI, which is the safe direction to fail.
     pub fn from_config(entries: &[String]) -> Self {
-        let origins: Vec<&str> = entries
-            .iter()
-            .map(String::as_str)
-            .filter(|entry| csp_frame_ancestor_is_valid(entry))
-            .collect();
+        let origins = valid_origins(entries);
         if origins.is_empty() {
             return Self::default();
         }
@@ -68,6 +71,7 @@ impl FramePolicy {
             error!("The frame_ancestors origins do not form a header value: {sources:?}");
             return Self::default();
         };
+        info!("The UI may be embedded in a frame by: {sources}");
         Self {
             document_csp,
             plugin_csp,
@@ -75,98 +79,121 @@ impl FramePolicy {
     }
 }
 
-fn hostname_is_valid(hostname: &str) -> bool {
-    if hostname.is_empty() || hostname.len() > 253 {
-        return false;
+/// The configured entries that name an origin, as the policy writes them.
+fn valid_origins(entries: &[String]) -> Vec<&str> {
+    let mut origins = Vec::with_capacity(entries.len().min(MAX_FRAME_ANCESTORS));
+    for entry in entries {
+        if origins.len() == MAX_FRAME_ANCESTORS {
+            warn!("Only the first {MAX_FRAME_ANCESTORS} frame_ancestors entries are used.");
+            break;
+        }
+        match ancestor_origin(entry) {
+            Ok(origin) => origins.push(origin),
+            Err(reason) => warn!("Ignoring frame_ancestors entry {entry:?}: {reason}"),
+        }
     }
-    hostname.split('.').all(|label| {
-        if label.is_empty() || label.len() > 63 {
-            return false;
-        }
-        if label.starts_with('-') {
-            return false;
-        }
-        if label.ends_with('-') {
-            return false;
-        }
-        label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-    })
+    debug_assert!(origins.len() <= MAX_FRAME_ANCESTORS);
+    debug_assert!(origins.len() <= entries.len());
+    origins
 }
 
-struct CspFrameAncestorParts<'a> {
-    /// "http://", "https://", etc.
-    scheme: &'a str,
-    host: &'a str,
-    /// port, not including ':'
-    port: Option<&'a str>,
-    /// path after host (and port), not including leading '/'
-    path: Option<&'a str>,
+/// Why a `frame_ancestors` entry is not used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+enum EntryError {
+    #[error("it must start with http:// or https://")]
+    Scheme,
+    #[error("it must be an origin without a path, such as https://host:9090")]
+    Path,
+    #[error(
+        "an IPv6 address cannot be written in a Content-Security-Policy, \
+        use a hostname or an IPv4 address"
+    )]
+    Ipv6,
+    #[error("the host must be a hostname or an IPv4 address")]
+    Host,
+    #[error("the port must be a number up to 65535")]
+    Port,
 }
 
-fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>> {
-    let (scheme, after_scheme) = ancestor.split_once("://")?;
-    let (origin, path) = after_scheme
-        .split_once('/')
-        .map_or((after_scheme, None), |(origin, path)| (origin, Some(path)));
-    let (host, port) = (if origin.starts_with('[') {
-        origin.find(']').and_then(|host_end_index| {
-            let host = &origin[0..=host_end_index];
-            let after_host = &origin[host_end_index + 1..];
-            match after_host {
-                s if s.starts_with(':') => Some((host, after_host.strip_prefix(':'))),
-                "" => Some((host, None)),
-                _ => None,
-            }
-        })
-    } else {
-        Some(
-            origin
-                .split_once(':')
-                .map_or((origin, None), |(host, port)| (host, Some(port))),
-        )
-    })?;
-    Some(CspFrameAncestorParts {
-        scheme,
-        host,
-        port,
-        path,
-    })
-}
-
-fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
-    let Some(parsed) = csp_frame_ancestor_parse(ancestor) else {
-        return false;
+/// The origin an entry names, as the policy writes it: `scheme://host[:port]`.
+///
+/// Only an exact origin is taken. A wildcard or a keyword would let more frame the UI than
+/// the entry reads as, and a path never matches, since browsers compare ancestors by origin.
+/// What is returned holds nothing that could end the directive or start another.
+fn ancestor_origin(entry: &str) -> Result<&str, EntryError> {
+    let after_scheme = entry
+        .strip_prefix("https://")
+        .or_else(|| entry.strip_prefix("http://"))
+        .ok_or(EntryError::Scheme)?;
+    // An origin's own trailing slash, as an address bar shows it.
+    let authority = after_scheme.strip_suffix('/').unwrap_or(after_scheme);
+    if authority.contains('/') {
+        return Err(EntryError::Path);
+    }
+    if authority.starts_with('[') {
+        return Err(EntryError::Ipv6);
+    }
+    let (host, port) = match authority.split_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (authority, None),
     };
-    // validate scheme
-    if ["http", "https"].contains(&parsed.scheme).not() {
-        return false;
+    if host_is_valid(host).not() {
+        return Err(EntryError::Host);
     }
-    // validate host
-    let host_valid = parsed
-        .host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .map_or_else(
-            || parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host),
-            |ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok(),
-        );
-    if host_valid.not() {
-        return false;
-    }
-    // validate port
-    if let Some(port) = parsed.port {
-        if port.parse::<u16>().is_err() {
-            return false;
+    if let Some(port) = port {
+        if port_is_valid(port).not() {
+            return Err(EntryError::Port);
         }
     }
-    // validate path
-    if let Some(path) = parsed.path {
-        // only allow no path or bare /
-        if path.is_empty().not() {
-            return false;
-        }
+    let slash_len = after_scheme.len() - authority.len();
+    debug_assert!(slash_len <= 1);
+    let origin = &entry[..entry.len() - slash_len];
+    debug_assert!(origin.ends_with(authority));
+    debug_assert!(
+        origin
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b".-:/".contains(&byte)),
+        "an origin holds no separator or quote"
+    );
+    Ok(origin)
+}
+
+/// Whether `host` is a DNS name or a dotted IPv4 address. Both are dot-separated labels, and
+/// a policy's host allows no character beyond theirs.
+fn host_is_valid(host: &str) -> bool {
+    if host.is_empty() {
+        return false;
     }
-    true
+    if host.len() > HOST_LEN_MAX {
+        return false;
+    }
+    host.split('.').all(label_is_valid)
+}
+
+fn label_is_valid(label: &str) -> bool {
+    if label.is_empty() {
+        return false;
+    }
+    if label.len() > LABEL_LEN_MAX {
+        return false;
+    }
+    if label.starts_with('-') {
+        return false;
+    }
+    if label.ends_with('-') {
+        return false;
+    }
+    label
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+/// Digits only. Parsing alone would take a leading `+`, which no browser reads as a port.
+fn port_is_valid(port: &str) -> bool {
+    if port.bytes().all(|byte| byte.is_ascii_digit()).not() {
+        return false;
+    }
+    port.parse::<u16>().is_ok()
 }
 
 #[cfg(test)]
@@ -251,69 +278,168 @@ mod tests {
         );
     }
 
+    /// Goal: every shape of exact origin is taken, and comes out as the policy writes it.
+    /// Method: each scheme, host form and port, with and without the address bar's
+    /// trailing slash, must yield the entry minus that slash.
     #[test]
-    fn test_csp_frame_ancestor_is_valid() {
-        let valid_schemes = vec!["https://", "http://"];
-        let valid_hosts = vec![
+    fn an_exact_origin_is_taken() {
+        let hosts = [
             "192.168.0.1",
-            "[2001:db8::1]",
+            "localhost",
             "example.com",
             "sub.example.com",
+            "my-host.lan",
+            "EXAMPLE.com",
         ];
-        let valid_ports = vec!["", ":9090", ":65535"];
-        let valid_paths = vec!["", "/"];
-
-        for scheme in &valid_schemes {
-            for host in &valid_hosts {
-                for port in &valid_ports {
-                    for path in &valid_paths {
-                        assert!(csp_frame_ancestor_is_valid(&format!(
-                            "{scheme}{host}{port}{path}"
-                        )));
-                    }
+        for scheme in ["https://", "http://"] {
+            for host in hosts {
+                for port in ["", ":0", ":80", ":9090", ":65535"] {
+                    let origin = format!("{scheme}{host}{port}");
+                    assert_eq!(ancestor_origin(&origin), Ok(origin.as_str()));
+                    assert_eq!(ancestor_origin(&format!("{origin}/")), Ok(origin.as_str()));
                 }
             }
         }
+    }
 
-        let invalid_hosts = [
-            "",
-            "[2001:db8::1",
-            "[invalid]",
-            "example.com.",
-            "-example.com",
-            "example-.com",
-            "example..com",
+    /// Goal: anything looser or other than an exact origin is refused, for the reason the
+    /// log will give. Method: one table per reason, covering the keywords and wildcards a
+    /// policy would otherwise honor.
+    #[test]
+    fn anything_but_an_exact_origin_is_refused() {
+        let refused: [(EntryError, &[&str]); 5] = [
+            (
+                EntryError::Scheme,
+                &[
+                    "",
+                    "*",
+                    "'self'",
+                    "'none'",
+                    "https:",
+                    "data:",
+                    "example.com",
+                    "example.com:9090",
+                    "//example.com",
+                    "HTTPS://example.com",
+                    "ftp://example.com",
+                    "wss://example.com",
+                    " https://example.com",
+                ],
+            ),
+            (
+                EntryError::Path,
+                &[
+                    "https://example.com/test",
+                    "https://example.com:9090/a/b/",
+                    "https://example.com//",
+                    "https://example.com:9090/with space",
+                    "https://[::1]/test",
+                ],
+            ),
+            (
+                EntryError::Ipv6,
+                &[
+                    "https://[::1]",
+                    "http://[2001:db8::1]:9090",
+                    "https://[2001:db8::1]/",
+                    "https://[::1]junk",
+                    "https://[invalid",
+                ],
+            ),
+            (
+                EntryError::Host,
+                &[
+                    "https://",
+                    "https:///",
+                    "https://:9090",
+                    "https://*",
+                    "https://*.example.com",
+                    "https://example.com.",
+                    "https://-example.com",
+                    "https://example-.com",
+                    "https://example..com",
+                    "https://exa_mple.com",
+                    "https://user@example.com",
+                    "https://example.com?query",
+                    "https://example.com#fragment",
+                    "https://bücher.example",
+                ],
+            ),
+            (
+                EntryError::Port,
+                &[
+                    "https://example.com:",
+                    "https://example.com:*",
+                    "https://example.com:abc",
+                    "https://example.com:+80",
+                    "https://example.com:-1",
+                    "https://example.com:65536",
+                    "https://example.com:9090x",
+                    "https://example.com:80:80",
+                    "https://example.com: 80",
+                ],
+            ),
         ];
-        for host in invalid_hosts {
-            assert!(!csp_frame_ancestor_is_valid(&format!(
-                "https://{host}:9090/test"
-            )));
+        for (reason, table) in refused {
+            for entry in table {
+                assert_eq!(ancestor_origin(entry), Err(reason), "{entry:?}");
+            }
         }
+        let host_too_long = format!("https://{}", vec!["a".repeat(63); 4].join("."));
+        assert_eq!(ancestor_origin(&host_too_long), Err(EntryError::Host));
+        let label_too_long = format!("https://{}.com", "a".repeat(64));
+        assert_eq!(ancestor_origin(&label_too_long), Err(EntryError::Host));
+    }
 
-        let invalid_ports = [":", ":abc", ":65536", ":-1", ":9090x"];
-        for port in invalid_ports {
-            assert!(!csp_frame_ancestor_is_valid(&format!(
-                "https://example.com{port}/test"
-            )));
+    /// Goal: an entry cannot smuggle a second source or directive into the policy. Method:
+    /// entries carrying each separator a policy has are refused whole, and the composed
+    /// policies stay the baselines.
+    #[test]
+    fn an_entry_cannot_extend_the_policy() {
+        let smuggling = entries(&[
+            "https://example.com; script-src *",
+            "https://example.com;script-src *",
+            "https://example.com 'unsafe-inline'",
+            "https://example.com https://evil.example",
+            "https://example.com,https://evil.example",
+            "https://example.com\nx-injected: 1",
+            "https://example.com\r\n",
+            "https://example.com\t*",
+            "https://example.com'",
+            "https://example.com\"",
+        ]);
+        for entry in &smuggling {
+            assert!(ancestor_origin(entry).is_err(), "{entry:?}");
         }
+        let policy = FramePolicy::from_config(&smuggling);
+        assert_eq!(policy.document_csp, base::CONTENT_SECURITY_POLICY);
+        assert_eq!(policy.plugin_csp, plugins::PLUGIN_CONTENT_SECURITY_POLICY);
+    }
 
-        let invalid_paths = [
-            "/test",
-            "/a/b/123/test_path/~/./",
-            "/ABC",
-            "//",
-            "/test//",
-            "/test//sdf",
-            "/@#$%^",
-            "/with space",
-        ];
-        for path in invalid_paths {
-            assert!(
-                !csp_frame_ancestor_is_valid(&format!("https://example.com:9090{path}")),
-                "failed on path {path}"
-            );
-        }
+    /// Goal: the list is bounded, and the bound drops the tail rather than the head.
+    /// Method: one entry more than the cap, each a distinct origin.
+    #[test]
+    fn entries_past_the_cap_are_dropped() {
+        let configured: Vec<String> = (0..=MAX_FRAME_ANCESTORS)
+            .map(|index| format!("https://host{index}.example.com"))
+            .collect();
+        let origins = valid_origins(&configured);
+        assert_eq!(origins.len(), MAX_FRAME_ANCESTORS);
+        assert_eq!(origins.first(), Some(&"https://host0.example.com"));
+        assert_eq!(origins.last(), Some(&"https://host15.example.com"));
 
-        assert!(!csp_frame_ancestor_is_valid("https://[::1]junk"));
+        // Invalid entries do not count toward the cap.
+        let mut padded = entries(&["bad.value"; MAX_FRAME_ANCESTORS]);
+        padded.push("https://cockpit.example.com:9090".to_string());
+        assert_eq!(valid_origins(&padded), ["https://cockpit.example.com:9090"]);
+    }
+
+    /// Goal: the trailing slash of an entry never reaches the policy, where it would read
+    /// as a path. Method: compose from an entry written with one.
+    #[test]
+    fn a_trailing_slash_is_not_written() {
+        let policy = FramePolicy::from_config(&entries(&["https://cockpit.example.com:9090/"]));
+        let csp = policy.document_csp.to_str().unwrap();
+        assert!(csp.contains("; frame-ancestors https://cockpit.example.com:9090; "));
     }
 }
