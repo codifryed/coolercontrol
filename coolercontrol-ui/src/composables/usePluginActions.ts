@@ -4,14 +4,32 @@
 // Plugin start/stop/restart with toasts, shared by the plugin page and the
 // plugins panel (PrimeVue toast service stays out of the shell).
 
+import { ref } from 'vue'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { PluginStatusDto } from '@/models/Plugins.ts'
+
+// One map for every view, so a plugin stopped from its page is not still shown
+// as running in the panel.
+const statuses = ref<Map<string, PluginStatusDto>>(new Map())
 
 export function usePluginActions() {
     const toast = useToast()
     const { t } = useI18n()
     const deviceStore = useDeviceStore()
+
+    const refreshStatus = async (pluginId: string): Promise<void> => {
+        const statusDto = await deviceStore.daemonClient.getPluginStatus(pluginId)
+        statuses.value = new Map(statuses.value).set(pluginId, statusDto)
+    }
+
+    const refreshStatuses = async (): Promise<void> => {
+        for (const plugin of deviceStore.plugins) {
+            if (plugin.disabled) continue
+            await refreshStatus(plugin.id)
+        }
+    }
 
     const runAction = async (
         action: (pluginId: string) => Promise<boolean>,
@@ -35,6 +53,7 @@ export function usePluginActions() {
                 life: 3000,
             })
         }
+        await refreshStatus(pluginId)
     }
 
     const startPlugin = (pluginId: string): Promise<void> =>
@@ -59,5 +78,5 @@ export function usePluginActions() {
             'layout.plugins.restartFailed',
         )
 
-    return { startPlugin, stopPlugin, restartPlugin }
+    return { statuses, refreshStatus, refreshStatuses, startPlugin, stopPlugin, restartPlugin }
 }

@@ -19,6 +19,7 @@ import {
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
+import { usePluginActions } from '@/composables/usePluginActions.ts'
 import { useDialog } from '@/shell/dialog'
 import { useToast } from '@/shell/toast'
 import { useI18n } from 'vue-i18n'
@@ -41,11 +42,14 @@ const deviceStore = useDeviceStore()
 const dialog = useDialog()
 const toast = useToast()
 const { t } = useI18n()
+const pluginActions = usePluginActions()
 
 const plugin = ref<PluginDto | null>(null)
 const hasUi = ref(false)
-const pluginStatus = ref<PluginStatus>(PluginStatus.Unmanaged)
-const pluginStatusReason = ref<string | undefined>(undefined)
+const pluginStatus = computed(
+    () => pluginActions.statuses.value.get(props.pluginId)?.status ?? PluginStatus.Unmanaged,
+)
+const pluginStatusReason = computed(() => pluginActions.statuses.value.get(props.pluginId)?.reason)
 const loading = ref(true)
 let statusPollTimer: ReturnType<typeof setInterval> | undefined
 
@@ -79,74 +83,12 @@ const loadPluginData = async (): Promise<void> => {
     hasUi.value = uiInfo.has_ui
     await refreshStatus()
     loading.value = false
-    statusPollTimer = setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS)
 }
 
-const refreshStatus = async (): Promise<void> => {
-    const statusDto = await deviceStore.daemonClient.getPluginStatus(props.pluginId)
-    pluginStatus.value = statusDto.status as PluginStatus
-    pluginStatusReason.value = statusDto.reason
-}
-
-const startPlugin = async (): Promise<void> => {
-    const success = await deviceStore.daemonClient.startPlugin(props.pluginId)
-    if (success) {
-        toast.add({
-            severity: 'success',
-            summary: t('common.success'),
-            detail: t('layout.plugins.started'),
-            life: 3000,
-        })
-    } else {
-        toast.add({
-            severity: 'error',
-            summary: t('common.error'),
-            detail: t('layout.plugins.startFailed'),
-            life: 3000,
-        })
-    }
-    await refreshStatus()
-}
-
-const stopPlugin = async (): Promise<void> => {
-    const success = await deviceStore.daemonClient.stopPlugin(props.pluginId)
-    if (success) {
-        toast.add({
-            severity: 'success',
-            summary: t('common.success'),
-            detail: t('layout.plugins.stopped'),
-            life: 3000,
-        })
-    } else {
-        toast.add({
-            severity: 'error',
-            summary: t('common.error'),
-            detail: t('layout.plugins.stopFailed'),
-            life: 3000,
-        })
-    }
-    await refreshStatus()
-}
-
-const restartPlugin = async (): Promise<void> => {
-    const success = await deviceStore.daemonClient.restartPlugin(props.pluginId)
-    if (success) {
-        toast.add({
-            severity: 'success',
-            summary: t('common.success'),
-            detail: t('layout.plugins.restarted'),
-            life: 3000,
-        })
-    } else {
-        toast.add({
-            severity: 'error',
-            summary: t('common.error'),
-            detail: t('layout.plugins.restartFailed'),
-            life: 3000,
-        })
-    }
-    await refreshStatus()
-}
+const refreshStatus = (): Promise<void> => pluginActions.refreshStatus(props.pluginId)
+const startPlugin = (): Promise<void> => pluginActions.startPlugin(props.pluginId)
+const stopPlugin = (): Promise<void> => pluginActions.stopPlugin(props.pluginId)
+const restartPlugin = (): Promise<void> => pluginActions.restartPlugin(props.pluginId)
 
 const togglePlugin = async (): Promise<void> => {
     if (isDisabled.value) {
@@ -232,7 +174,10 @@ const openMetadataModal = (): void => {
     })
 }
 
-onMounted(loadPluginData)
+onMounted(async () => {
+    await loadPluginData()
+    statusPollTimer = setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS)
+})
 onUnmounted(() => {
     if (statusPollTimer != null) {
         clearInterval(statusPollTimer)
