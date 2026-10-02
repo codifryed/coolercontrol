@@ -43,6 +43,7 @@ const props = defineProps<{
     warmupSeconds: number
 }>()
 const emit = defineEmits<{ apply: [target: ThresholdTarget, value: number] }>()
+const relayApply = (target: ThresholdTarget, value: number): void => emit('apply', target, value)
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
@@ -55,7 +56,8 @@ const dataType = computed(() => (props.metric == null ? undefined : metricDataTy
 const formatNumber = (value: number): string =>
     dataType.value == null ? String(value) : formatStatValue(value, dataType.value, RAW_PRECISION)
 
-const channelKey = (source: ReferenceSource): string => `${source.deviceUID}/${source.channelName}`
+const attributeKey = (source: ReferenceSource): string =>
+    `${source.deviceUID}/${source.channelName}`
 
 // The card follows its own width, not the window's: the side panel and the source list
 // take a varying share of it. With room, time outside gets columns that line up across the
@@ -90,9 +92,9 @@ const readMissing = async (): Promise<void> => {
     try {
         for (let reads = 0; reads < READS_PER_PASS_MAX; reads++) {
             if (unmounted || !hasDriverLimits.value) return
-            const next = props.sources.find((source) => !attributes.value.has(channelKey(source)))
+            const next = props.sources.find((source) => !attributes.value.has(attributeKey(source)))
             if (next == null) return
-            const key = channelKey(next)
+            const key = attributeKey(next)
             const result = await deviceStore.daemonClient.getChannelAttributes(
                 next.deviceUID,
                 next.channelName,
@@ -108,7 +110,7 @@ const readAgain = (): void => {
     void readMissing()
 }
 watch(
-    () => props.sources.map(channelKey).join('|') + props.metric,
+    () => props.sources.map(attributeKey).join('|') + props.metric,
     () => void readMissing(),
     { immediate: true },
 )
@@ -191,11 +193,11 @@ const rows = computed(() =>
                       dataType: dataType.value,
                   })
         return {
-            key: channelKey(source),
+            key: attributeKey(source),
             source,
             stats,
             limits: thresholdAttributes(
-                attributes.value.get(channelKey(source)) ?? [],
+                attributes.value.get(attributeKey(source)) ?? [],
                 props.metric,
             ),
             outside: outsideOf(source),
@@ -313,7 +315,7 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
                                 v-if="row.stats != null"
                                 :text="formatNumber(row.stats.min)"
                                 :thresholds="thresholds"
-                                @apply="(target, value) => emit('apply', target, value)"
+                                @apply="relayApply"
                             />
                             <span v-else>-</span>
                         </td>
@@ -322,7 +324,7 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
                                 v-if="row.stats != null"
                                 :text="formatNumber(row.stats.max)"
                                 :thresholds="thresholds"
-                                @apply="(target, value) => emit('apply', target, value)"
+                                @apply="relayApply"
                             />
                             <span v-else>-</span>
                         </td>
@@ -363,7 +365,7 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
                                     :label="attributeLabel(limit.kind, t)"
                                     :text="formatAttributeNumber(limit)"
                                     :thresholds="thresholds"
-                                    @apply="(target, value) => emit('apply', target, value)"
+                                    @apply="relayApply"
                                 />
                             </div>
                         </td>
@@ -402,14 +404,14 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
                             <AlertReferenceValue
                                 :text="formatNumber(allSources.min)"
                                 :thresholds="thresholds"
-                                @apply="(target, value) => emit('apply', target, value)"
+                                @apply="relayApply"
                             />
                         </td>
                         <td class="px-1.5 py-1 text-right">
                             <AlertReferenceValue
                                 :text="formatNumber(allSources.max)"
                                 :thresholds="thresholds"
-                                @apply="(target, value) => emit('apply', target, value)"
+                                @apply="relayApply"
                             />
                         </td>
                         <td :colspan="columnCount - 4"></td>
