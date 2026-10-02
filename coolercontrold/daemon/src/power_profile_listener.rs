@@ -791,6 +791,72 @@ mod tests {
         });
     }
 
+    /// Goal: a shutdown must not be held up by boot settings that never finish applying, and
+    /// must not activate the startup Mode on the way out.
+    /// Methodology: map the profile to the idle Mode, start the first connect with the boot
+    /// settings pending, then cancel the listener's run token and give it a bounded number of
+    /// turns. A flag set once the connect returns is read back instead of awaiting the task, so
+    /// a listener that keeps waiting fails the test rather than hanging it.
+    #[test]
+    #[serial(modes_file)]
+    fn a_shutdown_ends_the_wait_for_the_boot_settings() {
+        const YIELDS_FOR_THE_LISTENER_TO_RUN: usize = 8;
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            map_startup_profile_to(&profiles, &idle);
+            let boot_settings_applied = CancellationToken::new();
+            let actor_token = CancellationToken::new();
+            let returned = Rc::new(std::cell::Cell::new(false));
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(
+                    mode_handle,
+                    profiles.clone(),
+                    Some(boot_settings_applied.clone()),
+                );
+                let run_token = listener.run_token.clone();
+                let first_connect_returned = Rc::clone(&returned);
+                scope.spawn(async move {
+                    listener.catch_up(Some(STARTUP_PROFILE.to_string())).await;
+                    first_connect_returned.set(true);
+                });
+                for _ in 0..YIELDS_FOR_THE_LISTENER_TO_RUN {
+                    crate::rt::yield_now().await;
+                }
+                assert!(
+                    returned.get().not(),
+                    "The first connect waits while the boot settings are pending"
+                );
+
+                run_token.cancel();
+                for _ in 0..YIELDS_FOR_THE_LISTENER_TO_RUN {
+                    crate::rt::yield_now().await;
+                }
+                assert!(
+                    returned.get(),
+                    "A shutdown must end the wait for the boot settings"
+                );
+                assert!(
+                    boot_settings_applied.is_cancelled().not(),
+                    "The wait ended on the shutdown, not on the boot settings"
+                );
+
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(
+                controller.get_active_modes().current_mode_uid,
+                Some(active),
+                "Nothing is activated on the way out"
+            );
+        });
+    }
+
     /// Goal: with `apply_on_boot` off the daemon writes nothing at startup, so the first connect
     /// must leave the active Mode alone while still recording the profile.
     /// Methodology: map the profile to the idle Mode and run the first connect with no boot
