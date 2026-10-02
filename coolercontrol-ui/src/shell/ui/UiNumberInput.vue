@@ -7,7 +7,7 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiMinus, mdiPlus } from '@mdi/js'
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, nextTick, onBeforeUnmount } from 'vue'
 
 const model = defineModel<number>({ required: true })
 const props = withDefaults(
@@ -76,8 +76,15 @@ const keyboardStep = (event: MouseEvent, direction: number): void => {
     if (event.detail === 0) stepBy(direction)
 }
 const onInput = (event: Event): void => {
-    const value = Number((event.target as HTMLInputElement).value)
-    if (!Number.isNaN(value)) model.value = clamp(value)
+    const input = event.target as HTMLInputElement
+    const value = Number(input.value)
+    if (Number.isNaN(value)) return
+    model.value = clamp(value)
+    // Clamping back to the value already held changes nothing reactive, so the typed text
+    // would stay in the field while the model holds the bound.
+    void nextTick(() => {
+        input.value = displayValue.value
+    })
 }
 // Fractional steps keep a fixed precision: 10.5 + 0.5 reads 11.0, not 11.
 // A finer value typed by hand keeps its own precision.
