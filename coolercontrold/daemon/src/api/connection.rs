@@ -104,10 +104,13 @@ const LISTEN_BACKLOG: i32 = 128;
 /// An IPv6 listener takes IPv6 traffic only. Linux otherwise makes `::` dual-stack, which
 /// claims the port for IPv4 too, so it and a `0.0.0.0` listener cannot share a port:
 /// whichever binds second gets `EADDRINUSE`. Each family has its own setting and listener.
+///
+/// The exception is an IPv4-mapped address such as `::ffff:192.0.2.1`: it names an IPv4
+/// address, which an IPv6-only socket cannot bind, so its socket stays dual-stack.
 pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
-    let family = match address {
-        SocketAddr::V4(_) => AddressFamily::Inet,
-        SocketAddr::V6(_) => AddressFamily::Inet6,
+    let (family, is_ipv6_only) = match address {
+        SocketAddr::V4(_) => (AddressFamily::Inet, false),
+        SocketAddr::V6(ipv6) => (AddressFamily::Inet6, ipv6.ip().to_ipv4_mapped().is_none()),
     };
     let socket_fd = socket(
         family,
@@ -115,7 +118,7 @@ pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
         SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
         SockProtocol::Tcp,
     )?;
-    if address.is_ipv6() {
+    if is_ipv6_only {
         setsockopt(&socket_fd, sockopt::Ipv6V6Only, &true)?;
     }
     // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
@@ -678,6 +681,16 @@ mod tests {
             }
         }
         panic!("`::` never shared a port with `0.0.0.0`");
+    }
+
+    /// Goal: an IPv4-mapped `ipv6_address` still binds, as it did before IPv6 listeners
+    /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`.
+    #[test]
+    fn ipv4_mapped_ipv6_address_binds() {
+        let mapped = listener(socket_address("[::ffff:127.0.0.1]:0")).unwrap();
+        let bound = mapped.local_addr().unwrap();
+        assert_eq!(bound.ip(), socket_address("[::ffff:127.0.0.1]:0").ip());
+        assert_ne!(bound.port(), 0);
     }
 
     /// Goal: the port still belongs to one listener per family. `SO_REUSEADDR` must not let
