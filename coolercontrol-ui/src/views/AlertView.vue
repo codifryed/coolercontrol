@@ -22,6 +22,7 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vu
 import { useConfirm } from '@/shell/confirm'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiGroupedListbox from '@/shell/ui/UiGroupedListbox.vue'
+import UiLockToggle from '@/shell/ui/UiLockToggle.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
 import UiSlider from '@/shell/ui/UiSlider.vue'
 import { Alert, alertIsSilenced, alertSources } from '@/models/Alert.ts'
@@ -34,6 +35,14 @@ import EntityPageHeader from '@/components/EntityPageHeader.vue'
 import UiSettingRow from '@/shell/ui/UiSettingRow.vue'
 import UiSettingsCard from '@/shell/ui/UiSettingsCard.vue'
 import UiSwitch from '@/shell/ui/UiSwitch.vue'
+import {
+    alignUpToStep,
+    hasThresholdLock,
+    needsUnlock,
+    THRESHOLD_GAP,
+    thresholdMax,
+    thresholdStep,
+} from '@/components/alertThresholds.ts'
 
 interface Props {
     alertUID?: string
@@ -195,7 +204,7 @@ const startingChannelKeys = (): Array<string> => {
 }
 chosenChannelKeys.value = startingChannelKeys()
 // Create-from-sensor convenience: honor optional min/max/name query overrides
-// (the fan "fail alert" prefills min=1 with an open max to catch 0 rpm).
+// (the fan "fail alert" prefills min=1 to catch 0 rpm).
 if (shouldCreateAlert) {
     if (route.query.min != null) chosenMin.value = Number(route.query.min)
     if (route.query.max != null) chosenMax.value = Number(route.query.max)
@@ -333,36 +342,6 @@ const updateValues = (): void => {
     }
 }
 
-const stepSize = (metric: ChannelMetric | undefined): number => {
-    switch (metric) {
-        case ChannelMetric.Duty:
-        case ChannelMetric.Load:
-            return 1
-        case ChannelMetric.RPM:
-        case ChannelMetric.Freq:
-            return 100
-        case ChannelMetric.Temp:
-        default:
-            return 0.1
-    }
-}
-
-const valueMax = (metric: ChannelMetric | undefined): number => {
-    switch (metric) {
-        case ChannelMetric.Duty:
-        case ChannelMetric.Load:
-            return 100
-        // Small server fans (40/60mm Delta, San Ace) reach ~20k RPM.
-        case ChannelMetric.RPM:
-            return 30_000
-        case ChannelMetric.Freq:
-            return 10_000
-        case ChannelMetric.Temp:
-        default:
-            return 200
-    }
-}
-
 const selectedChannels = computed<Array<AvailableChannel>>(() =>
     chosenChannelKeys.value
         .map((key) =>
@@ -374,6 +353,33 @@ const selectedChannels = computed<Array<AvailableChannel>>(() =>
 )
 // All sources share one metric; the first pick establishes it.
 const selectedMetric = computed<ChannelMetric | undefined>(() => selectedChannels.value[0]?.metric)
+
+const liveReadings = (): Array<number> =>
+    selectedChannels.value.map((channel) => Number(channel.value))
+// A threshold or reading already above the locked range comes up unlocked, so opening an
+// alert never silently pulls its thresholds back in.
+const thresholdsUnlocked: Ref<boolean> = ref(
+    needsUnlock(selectedMetric.value, [chosenMax.value, chosenMin.value, ...liveReadings()]),
+)
+const rangeUnlocked = computed(
+    () => hasThresholdLock(selectedMetric.value) && thresholdsUnlocked.value,
+)
+const maxLimit = computed(() => thresholdMax(selectedMetric.value, rangeUnlocked.value))
+const lockedMaxLimit = computed(() =>
+    hasThresholdLock(selectedMetric.value) ? thresholdMax(selectedMetric.value, false) : undefined,
+)
+const step = computed(() => thresholdStep(selectedMetric.value))
+// Re-locking pulls out-of-range thresholds back in, so the lock and the values never disagree.
+watch(thresholdsUnlocked, (unlocked) => {
+    if (unlocked || !hasThresholdLock(selectedMetric.value)) return
+    chosenMax.value = Math.min(chosenMax.value, maxLimit.value)
+    chosenMin.value = Math.min(chosenMin.value, chosenMax.value - THRESHOLD_GAP)
+})
+// A preselected RPM source without a "Greater Than" starts at the top of its range.
+if (shouldCreateAlert && route.query.max == null && selectedMetric.value === ChannelMetric.RPM) {
+    chosenMax.value = maxLimit.value
+}
+
 const sourceGroups = computed(() =>
     channelSources.value.map((source) => ({
         label: source.deviceName,
@@ -390,8 +396,12 @@ const onSourcesChange = (value: string | string[] | undefined): void => {
     if (!Array.isArray(value)) return
     const hadNone = chosenChannelKeys.value.length === 0
     chosenChannelKeys.value = value
+    // A first pick starts locked. Any pick that reads above the locked range unlocks it.
+    if (hadNone) thresholdsUnlocked.value = false
+    if (needsUnlock(selectedMetric.value, liveReadings())) thresholdsUnlocked.value = true
     if (hadNone && selectedMetric.value != null) {
-        chosenMax.value = valueMax(selectedMetric.value)
+        chosenMax.value = maxLimit.value
+        if (chosenMin.value >= chosenMax.value) chosenMin.value = defaultMin
     }
 }
 
@@ -588,26 +598,34 @@ onMounted(async () => {
                                 :label="t('views.alerts.greaterThan')"
                             >
                                 <div class="flex flex-col items-end gap-2">
-                                    <UiNumberInput
-                                        v-model="chosenMax"
-                                        :min="
-                                            chosenMin +
-                                            (selectedMetric !== ChannelMetric.RPM ? 1 : 100)
-                                        "
-                                        :max="valueMax(selectedMetric)"
-                                        :step="stepSize(selectedMetric)"
-                                        :suffix="valueSuffix(selectedMetric)"
-                                        :disabled="selectedMetric == null"
-                                    />
+                                    <div class="flex items-center gap-1">
+                                        <UiLockToggle
+                                            v-if="hasThresholdLock(selectedMetric)"
+                                            v-model="thresholdsUnlocked"
+                                            v-tooltip.top="
+                                                thresholdsUnlocked
+                                                    ? t('layout.settings.tooltips.lockRange')
+                                                    : t('layout.settings.tooltips.unlockRange')
+                                            "
+                                        />
+                                        <UiNumberInput
+                                            v-model="chosenMax"
+                                            :min="chosenMin + THRESHOLD_GAP"
+                                            :max="maxLimit"
+                                            :safe-max="lockedMaxLimit"
+                                            :step="step"
+                                            :suffix="valueSuffix(selectedMetric)"
+                                            :disabled="selectedMetric == null"
+                                        />
+                                    </div>
+                                    <!-- The unlocked range is too wide for a slider. -->
                                     <UiSlider
+                                        v-if="!rangeUnlocked"
                                         v-model="chosenMax"
                                         class="!w-48"
-                                        :step="stepSize(selectedMetric)"
-                                        :min="
-                                            chosenMin +
-                                            (selectedMetric !== ChannelMetric.RPM ? 1 : 100)
-                                        "
-                                        :max="valueMax(selectedMetric)"
+                                        :step="step"
+                                        :min="alignUpToStep(chosenMin + THRESHOLD_GAP, step)"
+                                        :max="maxLimit"
                                         :disabled="selectedMetric == null"
                                     />
                                 </div>
@@ -620,23 +638,19 @@ onMounted(async () => {
                                     <UiNumberInput
                                         v-model="chosenMin"
                                         :min="0"
-                                        :max="
-                                            chosenMax -
-                                            (selectedMetric !== ChannelMetric.RPM ? 1 : 100)
-                                        "
-                                        :step="stepSize(selectedMetric)"
+                                        :max="chosenMax - THRESHOLD_GAP"
+                                        :safe-max="lockedMaxLimit"
+                                        :step="step"
                                         :suffix="valueSuffix(selectedMetric)"
                                         :disabled="selectedMetric == null"
                                     />
                                     <UiSlider
+                                        v-if="!rangeUnlocked"
                                         v-model="chosenMin"
                                         class="!w-48"
-                                        :step="stepSize(selectedMetric)"
+                                        :step="step"
                                         :min="0"
-                                        :max="
-                                            chosenMax -
-                                            (selectedMetric !== ChannelMetric.RPM ? 1 : 100)
-                                        "
+                                        :max="chosenMax - THRESHOLD_GAP"
                                         :disabled="selectedMetric == null"
                                     />
                                 </div>
