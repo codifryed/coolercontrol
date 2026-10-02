@@ -19,6 +19,12 @@ export function useDeviceHealth() {
         isDeviceUnreachable(deviceUID) ||
         settingsStore.healthFailsafe.some((ref) => ref.device_uid === deviceUID)
 
+    const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
+        isDeviceUnreachable(deviceUID) ||
+        settingsStore.healthFailsafe.some(
+            (ref) => ref.device_uid === deviceUID && ref.name === channelName,
+        )
+
     const unreachableText = (): string =>
         `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
 
@@ -40,6 +46,7 @@ export function useDeviceHealth() {
     return {
         isDeviceUnreachable,
         isDeviceUnhealthy,
+        isChannelUnhealthy,
         unreachableText,
         failsafeText,
         healthTooltip,

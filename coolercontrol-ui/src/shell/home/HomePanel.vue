@@ -8,6 +8,7 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { v4 as uuidV4 } from 'uuid'
 import {
+    mdiAlert,
     mdiBellPlusOutline,
     mdiDragVertical,
     mdiFan,
@@ -38,11 +39,14 @@ import { channelRoute } from '@/shell/channelRoute.ts'
 import CCColorPicker from '@/components/CCColorPicker.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
+import UiTooltip from '@/shell/ui/UiTooltip.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const router = useRouter()
 const { createFailAlert } = useFailAlert()
+const { isChannelUnhealthy, healthTooltip } = useDeviceHealth()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
@@ -282,6 +286,21 @@ const isRouteActive = useRouteActive()
                         >
                             {{ row.sublabel }}
                         </span>
+                        <UiTooltip
+                            v-if="
+                                row.deviceUID != null &&
+                                row.channelName != null &&
+                                isChannelUnhealthy(row.deviceUID, row.channelName)
+                            "
+                            :text="healthTooltip(row.deviceUID, row.channelName)"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiAlert"
+                                :size="14"
+                                class="shrink-0 text-error"
+                            />
+                        </UiTooltip>
                         <span
                             v-if="row.value"
                             class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"

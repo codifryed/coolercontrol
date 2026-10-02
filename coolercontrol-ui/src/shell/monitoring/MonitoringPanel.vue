@@ -174,13 +174,7 @@ const liveValue = (sensor: MonitoringSensor): string => {
     return ''
 }
 
-const { isDeviceUnreachable, healthTooltip } = useDeviceHealth()
-
-const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    isDeviceUnreachable(deviceUID) ||
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
+const { isChannelUnhealthy: isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isPinned = (sensor: MonitoringSensor): boolean =>
     settingsStore.pinnedIds.includes(pinId(sensor.deviceUID, sensor.channelName))
@@ -438,6 +432,17 @@ const isRouteActive = useRouteActive()
                             <span class="shrink-[9999] truncate text-xs text-text-color-secondary">
                                 {{ deviceLabel(row.sensor.deviceUID) }}
                             </span>
+                            <UiTooltip
+                                v-if="isUnhealthy(row.sensor.deviceUID, row.sensor.channelName)"
+                                :text="healthTooltip(row.sensor.deviceUID, row.sensor.channelName)"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiAlert"
+                                    :size="14"
+                                    class="shrink-0 text-error"
+                                />
+                            </UiTooltip>
                             <span
                                 class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{
