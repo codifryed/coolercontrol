@@ -109,20 +109,20 @@ pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
         SocketAddr::V4(_) => AddressFamily::Inet,
         SocketAddr::V6(_) => AddressFamily::Inet6,
     };
-    let socket = socket(
+    let socket_fd = socket(
         family,
         SockType::Stream,
         SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
         SockProtocol::Tcp,
     )?;
     if address.is_ipv6() {
-        setsockopt(&socket, sockopt::Ipv6V6Only, &true)?;
+        setsockopt(&socket_fd, sockopt::Ipv6V6Only, &true)?;
     }
     // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
-    setsockopt(&socket, sockopt::ReuseAddr, &true)?;
-    bind(socket.as_raw_fd(), &SockaddrStorage::from(address))?;
-    listen(&socket, Backlog::new(LISTEN_BACKLOG)?)?;
-    Ok(std::net::TcpListener::from(socket))
+    setsockopt(&socket_fd, sockopt::ReuseAddr, &true)?;
+    bind(socket_fd.as_raw_fd(), &SockaddrStorage::from(address))?;
+    listen(&socket_fd, Backlog::new(LISTEN_BACKLOG)?)?;
+    Ok(std::net::TcpListener::from(socket_fd))
 }
 
 /// The API server for `listener`, with every connection admitted by `limiter`, accepted
@@ -657,8 +657,8 @@ mod tests {
     /// IPv4, which another process may still hold for IPv6.
     const SHARED_PORT_ATTEMPTS: usize = 8;
 
-    fn address(address: &str) -> SocketAddr {
-        address.parse().unwrap()
+    fn socket_address(text: &str) -> SocketAddr {
+        text.parse().unwrap()
     }
 
     /// Goal: `0.0.0.0` and `::` listen on one port together, as a config that sets both
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn ipv4_and_ipv6_wildcards_share_a_port() {
         for _ in 0..SHARED_PORT_ATTEMPTS {
-            let ipv4 = listener(address("0.0.0.0:0")).unwrap();
+            let ipv4 = listener(socket_address("0.0.0.0:0")).unwrap();
             let port = ipv4.local_addr().unwrap().port();
             let ipv6_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, port));
             match listener(ipv6_address) {
@@ -684,7 +684,7 @@ mod tests {
     /// a second daemon listen on an address the first already serves.
     #[test]
     fn listening_address_cannot_be_bound_twice() {
-        let first = listener(address("127.0.0.1:0")).unwrap();
+        let first = listener(socket_address("127.0.0.1:0")).unwrap();
         let taken = first.local_addr().unwrap();
         let error = listener(taken).unwrap_err();
         assert_eq!(error.kind(), ErrorKind::AddrInUse);
@@ -707,10 +707,10 @@ mod tests {
         timeouts: ConnectionTimeouts,
         peer_ip: fn(SocketAddr) -> IpAddr,
     ) -> SocketAddr {
-        let listener = listener(address("127.0.0.1:0")).unwrap();
-        let address = listener.local_addr().unwrap();
+        let tcp_listener = listener(socket_address("127.0.0.1:0")).unwrap();
+        let address = tcp_listener.local_addr().unwrap();
         let acceptor = DefaultAcceptor::new();
-        let server = server_with(listener, acceptor, limiter, timeouts, peer_ip).unwrap();
+        let server = server_with(tcp_listener, acceptor, limiter, timeouts, peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
@@ -729,11 +729,12 @@ mod tests {
         )
         .await
         .unwrap();
-        let listener = listener(address("127.0.0.1:0")).unwrap();
-        let address = listener.local_addr().unwrap();
+        let tcp_listener = listener(socket_address("127.0.0.1:0")).unwrap();
+        let address = tcp_listener.local_addr().unwrap();
         let acceptor = DualProtocolAcceptor::new(config);
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
-        let server = server_with(listener, acceptor, limiter, TEST_TIMEOUTS, tcp_peer_ip).unwrap();
+        let server =
+            server_with(tcp_listener, acceptor, limiter, TEST_TIMEOUTS, tcp_peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
