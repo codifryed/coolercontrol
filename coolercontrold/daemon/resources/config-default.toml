@@ -150,6 +150,8 @@ drivetemp_suspend = false
 # - Only read from this file, at startup. Restart the daemon after changing it.
 # - The login only holds inside the frame when the embedding page and CoolerControl are opened
 #   with the same scheme, normally HTTPS, and at the same host or domain.
+# - Prefer "https" origins. A page served over plain "http" can be replaced by anyone on the
+#   network path between the browser and that page, who could then frame the UI in its place.
 # frame_ancestors = ["https://dashboard.mydomain.com:9090", "https://192.168.1.10:9090"]
 
 # Header to check for the client's original protocol when behind a reverse proxy. Common values
