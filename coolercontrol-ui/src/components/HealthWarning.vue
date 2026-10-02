@@ -30,7 +30,7 @@ const props = defineProps<Props>()
 const { t } = useI18n({ useScope: 'global' })
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const { isDeviceUnreachable, unreachableText } = useDeviceHealth()
+const { isDeviceUnreachable, unreachableText, failsafeText } = useDeviceHealth()
 
 // A custom sensor's own failsafe entry lives on the Custom Sensors device
 // under its sensor id; channels and LCDs failsafe under their own device.
@@ -90,11 +90,7 @@ const issues = computed((): Array<string> => {
                   (ref) => ref.device_uid === subject.deviceUid && ref.name === subject.channelName,
               )
         if (failsafeRef != null) {
-            lines.push(
-                failsafeRef.reason
-                    ? `${t('views.appInfo.failsafeActive')}: ${failsafeRef.reason}`
-                    : t('views.appInfo.failsafeActive'),
-            )
+            lines.push(failsafeText(failsafeRef.reason))
         }
     }
     for (const ref of settingsStore.healthMissing.filter(matchesEntity)) {
