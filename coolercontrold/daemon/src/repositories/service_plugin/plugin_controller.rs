@@ -516,6 +516,12 @@ async fn bring_up_service(
         .await
         .context("Installing the plugin service")?;
     if is_down {
+        // Down is not idle: a plugin that keeps exiting is down between two attempts, and
+        // its init system would start it again in the middle of the handover. Stopping it
+        // cancels that. A unit that is not loaded yet has nothing to cancel.
+        if let Err(err) = manager.stop(&service_id).await {
+            debug!("Nothing to stop before handing over the folder of {service_id}: {err:#}");
+        }
         // Never under a running plugin, see `secure_plugin_folder`.
         secure_plugin_files(manifest, owner).await;
     }
@@ -840,6 +846,9 @@ mod tests {
     struct FakeManager {
         statuses: RefCell<VecDeque<ServiceStatus>>,
         calls: RefCell<Vec<&'static str>>,
+        /// A file whose mode is noted in `mode_at_stop` when a stop is asked for.
+        watched_file: Option<PathBuf>,
+        mode_at_stop: RefCell<Option<u32>>,
     }
 
     impl FakeManager {
@@ -849,6 +858,8 @@ mod tests {
             Self {
                 statuses: RefCell::new(statuses),
                 calls: RefCell::new(Vec::new()),
+                watched_file: None,
+                mode_at_stop: RefCell::new(None),
             }
         }
 
@@ -872,6 +883,10 @@ mod tests {
         }
 
         async fn stop(&self, _service_id: &ServiceId) -> Result<()> {
+            if let Some(watched_file) = &self.watched_file {
+                let mode = std::fs::metadata(watched_file)?.permissions().mode();
+                *self.mode_at_stop.borrow_mut() = Some(mode & 0o777);
+            }
             self.record("stop")
         }
 
@@ -1206,8 +1221,8 @@ mod tests {
         crate::rt::test_runtime(async {
             let manifest = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
             let cases = [
-                (StartAction::Start, ["add", "start"]),
-                (StartAction::Restart, ["add", "restart"]),
+                (StartAction::Start, ["add", "stop", "start"]),
+                (StartAction::Restart, ["add", "stop", "restart"]),
             ];
             for (action, expected_calls) in cases {
                 let manager = FakeManager::new([ServiceStatus::Unmanaged, ServiceStatus::Running]);
@@ -1238,7 +1253,43 @@ mod tests {
             let message = result.expect_err("the plugin is not running").to_string();
             assert!(message.contains("cc-plugin-test-plugin"), "{message}");
             assert!(message.contains("exit-code"), "{message}");
-            assert_eq!(*manager.calls.borrow(), ["add", "start"]);
+            assert_eq!(*manager.calls.borrow(), ["add", "stop", "start"]);
+        });
+    }
+
+    /// Goal: a plugin that keeps exiting is reported as down while its init system waits to
+    /// start it again, which would land in the middle of the handover of its folder. So a
+    /// plugin that is down is stopped before the handover, and a running one is left alone.
+    /// Method: the handover resets the manifest's mode, so the fake init system records
+    /// that mode when it is asked to stop: still unset there means the stop came first.
+    #[test]
+    fn bring_up_stops_a_plugin_that_is_down_before_the_handover() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let cases = [
+                (ServiceStatus::Stopped(None), vec!["add", "stop", "restart"]),
+                (ServiceStatus::Unmanaged, vec!["add", "stop", "restart"]),
+                (ServiceStatus::Running, vec!["add", "restart"]),
+            ];
+            for (status_before, expected_calls) in cases {
+                let dir = tempfile::tempdir().unwrap();
+                let manifest_path = dir.path().join(SERVICE_MANIFEST_FILE_NAME);
+                std::fs::write(&manifest_path, "").unwrap();
+                std::fs::set_permissions(&manifest_path, Permissions::from_mode(0o666)).unwrap();
+                let manifest = managed_manifest(dir.path().to_path_buf());
+                let mut manager = FakeManager::new([status_before.clone(), ServiceStatus::Running]);
+                manager.watched_file = Some(manifest_path);
+
+                let result =
+                    bring_up_service(&manager, &manifest, Some(ROOT_USER), StartAction::Restart)
+                        .await;
+
+                assert!(result.is_ok(), "{result:?}");
+                assert_eq!(*manager.calls.borrow(), expected_calls, "{status_before:?}");
+                let stopped_at_mode = *manager.mode_at_stop.borrow();
+                let expected_mode = (status_before != ServiceStatus::Running).then_some(0o666);
+                assert_eq!(stopped_at_mode, expected_mode, "{status_before:?}");
+            }
         });
     }
 
