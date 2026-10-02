@@ -43,6 +43,7 @@ import {
     thresholdMax,
     thresholdStep,
 } from '@/components/alertThresholds.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 interface Props {
     alertUID?: string
@@ -387,7 +388,7 @@ const sourceGroups = computed(() =>
             label: channel.channelFrontendName,
             value: channelKey(channel),
             color: channel.lineColor,
-            rightText: `${channel.value}${valueSuffix(channel.metric)}`,
+            rightText: `${groupDigits(channel.value)}${valueSuffix(channel.metric)}`,
             disabled: selectedMetric.value != null && channel.metric !== selectedMetric.value,
         })),
     })),
@@ -613,6 +614,7 @@ onMounted(async () => {
                                             :min="chosenMin + THRESHOLD_GAP"
                                             :max="maxLimit"
                                             :safe-max="lockedMaxLimit"
+                                            grouped
                                             :step="step"
                                             :suffix="valueSuffix(selectedMetric)"
                                             :disabled="selectedMetric == null"
@@ -640,6 +642,7 @@ onMounted(async () => {
                                         :min="0"
                                         :max="chosenMax - THRESHOLD_GAP"
                                         :safe-max="lockedMaxLimit"
+                                        grouped
                                         :step="step"
                                         :suffix="valueSuffix(selectedMetric)"
                                         :disabled="selectedMetric == null"

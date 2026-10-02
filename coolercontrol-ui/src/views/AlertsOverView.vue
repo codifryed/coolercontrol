@@ -38,6 +38,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { computed } from 'vue'
 import AlertLogTable from '@/components/AlertLogTable.vue'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -122,10 +123,11 @@ const liveValue = (source: ChannelSource): string => {
 // range); min is validated >= 0, so a 0 floor cannot fire and is omitted.
 const triggerText = (alert: Alert): string => {
     const unit = valueSuffix(alertSources(alert)[0].channel_metric)
+    const max = groupDigits(alert.max)
     if (alert.min > 0) {
-        return t('views.alerts.triggersOutside', { min: alert.min, max: alert.max, unit })
+        return t('views.alerts.triggersOutside', { min: groupDigits(alert.min), max, unit })
     }
-    return t('views.alerts.triggersAbove', { max: alert.max, unit })
+    return t('views.alerts.triggersAbove', { max, unit })
 }
 const silencedUntilText = (alert: Alert): string =>
     new Date(alert.silenced_until!).toLocaleString([], {
@@ -238,7 +240,7 @@ const lastLogTimes = computed(() => {
                                         v-if="liveValue(source) !== ''"
                                         class="ml-auto shrink-0 text-text-color-secondary"
                                     >
-                                        {{ liveValue(source)
+                                        {{ groupDigits(liveValue(source))
                                         }}{{ valueSuffix(source.channel_metric) }}
                                     </span>
                                 </div>
