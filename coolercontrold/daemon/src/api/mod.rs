@@ -57,6 +57,7 @@ use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
 };
+use aide::axum::ApiRouter;
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -69,7 +70,7 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json, Router, ServiceExt};
+use axum::{Json, Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
 use log::{debug, info, warn, Level};
@@ -551,12 +552,24 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
     });
-    let mut open_api = OpenApi::default();
-    let router = router::init(app_state)
-        .await
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)));
+    let router = finish_api(router::init(app_state).await);
     with_client_addr(router, trusted_proxies)
+}
+
+/// Debug builds serve the `OpenAPI` document at `/api.json`, so they build and keep it.
+#[cfg(debug_assertions)]
+fn finish_api(router: ApiRouter) -> Router {
+    let mut open_api = OpenApi::default();
+    router
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(axum::Extension(Arc::new(open_api)))
+}
+
+/// Release builds have no `/api.json` route, so nothing would read the document. Each
+/// listener's copy holds about 3 MB.
+#[cfg(not(debug_assertions))]
+fn finish_api(router: ApiRouter) -> Router {
+    Router::from(router)
 }
 
 /// Outside the router, so the client is known before its auth throttles read it.
@@ -1523,7 +1536,40 @@ pub struct AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Extension;
     use tower::ServiceExt as _;
+
+    /// Goal: the `OpenAPI` document is kept exactly when `/api.json` serves it. A route
+    /// without the document answers 500, and a document without the route is dead weight.
+    /// Method: the real `api_router` over an empty app state, asked for `/api.json`.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_doc_is_served_only_by_debug_builds() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let app = api_router(state, Arc::default()).await;
+                let request = Request::get("/api.json").body(axum::body::Body::empty())?;
+                let response = app.oneshot(request).await?;
+                if cfg!(debug_assertions) {
+                    assert_eq!(response.status(), StatusCode::OK);
+                    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+                    let served: OpenApi = serde_json::from_slice(&body)?;
+                    assert!(served
+                        .paths
+                        .is_some_and(|paths| paths.paths.is_empty().not()));
+                } else {
+                    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+                }
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
 
     /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
     /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
