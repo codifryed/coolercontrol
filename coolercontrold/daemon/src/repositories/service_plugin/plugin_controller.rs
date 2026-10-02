@@ -375,7 +375,7 @@ impl<M: ServiceManager> PluginController<M> {
     /// Integration plugins have their service started immediately.
     /// Device plugins require a daemon restart.
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
-        self.manifest(plugin_id)?;
+        let privileged_before = self.manifest(plugin_id)?.privileged;
         let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
             msg: "No config available".to_string(),
         })?;
@@ -397,7 +397,7 @@ impl<M: ServiceManager> PluginController<M> {
             return Ok(());
         }
         // Reported rather than swallowed: the plugin is enabled, but it is not running.
-        self.bring_up(plugin_id, StartAction::Restart)
+        self.bring_up(plugin_id, StartAction::Restart, privileged_before)
             .await
             .with_context(|| {
                 format!("Plugin {plugin_id} is enabled, but its service did not start")
@@ -405,17 +405,26 @@ impl<M: ServiceManager> PluginController<M> {
     }
 
     async fn reload_and_bring_up(&self, plugin_id: &str, action: StartAction) -> Result<()> {
+        let privileged_before = self.manifest(plugin_id)?.privileged;
         self.reload_manifest(plugin_id).await?;
-        self.bring_up(plugin_id, action).await
+        self.bring_up(plugin_id, action, privileged_before).await
     }
 
-    async fn bring_up(&self, plugin_id: &str, action: StartAction) -> Result<()> {
+    /// `privileged_before` is what the plugin was registered with before its manifest was
+    /// re-read, which tells whether the user it runs as has changed.
+    async fn bring_up(
+        &self,
+        plugin_id: &str,
+        action: StartAction,
+        privileged_before: bool,
+    ) -> Result<()> {
         let manifest = self.get_integration_manifest(plugin_id)?;
         bring_up_service(
             &self.service_manager,
             &manifest,
             self.owner(&manifest),
             action,
+            manifest.privileged != privileged_before,
         )
         .await
     }
@@ -510,11 +519,15 @@ pub async fn remove_runtime_services(
 /// Does everything a daemon restart does for a plugin, so that restarting the daemon is
 /// never the fix: the service definition is installed, the plugin's folder is handed to the
 /// user it runs as, and the service has to still be up a moment later.
+///
+/// `owner_changed` says the plugin now runs as another user than the one its folder was
+/// handed to, so a running plugin is stopped for a handover it would otherwise not get.
 async fn bring_up_service(
     manager: &impl ServiceManager,
     manifest: &ServiceManifest,
     owner: Option<&str>,
     action: StartAction,
+    owner_changed: bool,
 ) -> Result<()> {
     let service_id = manifest.id.clone();
     let definition =
@@ -539,6 +552,14 @@ async fn bring_up_service(
         if let Err(err) = manager.stop(&service_id).await {
             debug!("Nothing to stop before handing over the folder of {service_id}: {err:#}");
         }
+    } else if owner_changed {
+        // Left running, the plugin would come back up as a user that cannot use its files.
+        manager
+            .stop(&service_id)
+            .await
+            .context("Stopping the plugin to hand its folder to the user it now runs as")?;
+    }
+    if is_down || owner_changed {
         // Never under a running plugin, see `secure_plugin_folder`.
         secure_plugin_files(manifest, owner).await;
     }
@@ -1169,6 +1190,47 @@ mod tests {
         });
     }
 
+    /// Goal: a manifest edit that flips `privileged` changes the user the plugin runs as, and
+    /// its folder still belongs to the old one. The folder is only handed over while the
+    /// plugin is down, so a restart has to stop a running plugin first, or it comes back up
+    /// unable to read its own files, restart after restart.
+    /// Method: a running plugin restarted with and without that edit. The handover resets
+    /// the mode of the config file, which needs no root and so shows whether it ran.
+    #[test]
+    fn a_restart_hands_the_folder_over_when_privileged_changed() {
+        crate::rt::test_runtime(async {
+            let cases = [
+                (true, vec!["add", "stop", "restart"], 0o600),
+                (false, vec!["add", "restart"], 0o644),
+            ];
+            for (privileged_before, expected_calls, expected_mode) in cases {
+                let plugins_dir = tempfile::tempdir().unwrap();
+                let config = Rc::new(Config::init_default_config().unwrap());
+                let manager = FakeManager::new([ServiceStatus::Running]);
+                let controller = controller_with(config, manager);
+                controller.register(edited_manifest(plugins_dir.path(), |registered| {
+                    registered.privileged = privileged_before;
+                }));
+                let config_path = plugins_dir
+                    .path()
+                    .join("test-plugin")
+                    .join(PLUGIN_CONFIG_FILE_NAME);
+                std::fs::write(&config_path, "{}").unwrap();
+                std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
+
+                let result = controller.restart_plugin("test-plugin").await;
+
+                assert!(result.is_ok(), "{result:?}");
+                assert_eq!(*controller.service_manager.calls.borrow(), expected_calls);
+                let mode = std::fs::metadata(&config_path)
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o777, expected_mode, "{privileged_before}");
+            }
+        });
+    }
+
     /// Goal: a manifest that lost its `executable` makes its plugin one without a service,
     /// which nothing can stop any more. The service it still has must be removed before
     /// that, or it runs on with no control over it and outlives the daemon.
@@ -1379,7 +1441,7 @@ mod tests {
             for (action, expected_calls) in cases {
                 let manager = FakeManager::new([ServiceStatus::Unmanaged, ServiceStatus::Running]);
 
-                let result = bring_up_service(&manager, &manifest, None, action).await;
+                let result = bring_up_service(&manager, &manifest, None, action, false).await;
 
                 assert!(result.is_ok(), "{result:?}");
                 assert_eq!(*manager.calls.borrow(), expected_calls);
@@ -1400,7 +1462,8 @@ mod tests {
                 ServiceStatus::Stopped(Some("exit-code".to_string())),
             ]);
 
-            let result = bring_up_service(&manager, &manifest, None, StartAction::Start).await;
+            let result =
+                bring_up_service(&manager, &manifest, None, StartAction::Start, false).await;
 
             let message = result.expect_err("the plugin is not running").to_string();
             assert!(message.contains("cc-plugin-test-plugin"), "{message}");
@@ -1432,9 +1495,14 @@ mod tests {
                 let mut manager = FakeManager::new([status_before.clone(), ServiceStatus::Running]);
                 manager.watched_file = Some(manifest_path);
 
-                let result =
-                    bring_up_service(&manager, &manifest, Some(ROOT_USER), StartAction::Restart)
-                        .await;
+                let result = bring_up_service(
+                    &manager,
+                    &manifest,
+                    Some(ROOT_USER),
+                    StartAction::Restart,
+                    false,
+                )
+                .await;
 
                 assert!(result.is_ok(), "{result:?}");
                 assert_eq!(*manager.calls.borrow(), expected_calls, "{status_before:?}");
@@ -1467,9 +1535,14 @@ mod tests {
                 let manifest = managed_manifest(dir.path().to_path_buf());
                 let manager = FakeManager::new([status_before.clone(), ServiceStatus::Running]);
 
-                let result =
-                    bring_up_service(&manager, &manifest, Some(ROOT_USER), StartAction::Restart)
-                        .await;
+                let result = bring_up_service(
+                    &manager,
+                    &manifest,
+                    Some(ROOT_USER),
+                    StartAction::Restart,
+                    false,
+                )
+                .await;
 
                 assert!(result.is_ok(), "{result:?}");
                 let mode = std::fs::metadata(&manifest_path)
