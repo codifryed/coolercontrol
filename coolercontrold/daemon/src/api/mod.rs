@@ -1493,7 +1493,6 @@ mod tests {
             tls_config: None,
             cancel_token,
             cors_origins: Vec::new(),
-            frame_ancestors: Vec::new(),
             allow_unencrypted: false,
             protocol_header: None,
         }
