@@ -18,11 +18,13 @@ use crate::repositories::utils::{DirectCommand, ShellCommandResult};
 use crate::rt::sleep;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
+use nix::libc;
+use nix::unistd::{Group, User};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs::Permissions;
+use std::fs::{File, OpenOptions, Permissions};
 use std::ops::Not;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -228,7 +230,7 @@ impl PluginController {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        if let Err(err) = secure_config_file(&config_path, self.owner(&manifest)).await {
+        if let Err(err) = secure_config_file(&config_path, self.owner(&manifest)) {
             warn!(
                 "Failed to secure plugin config file {}: {err}",
                 config_path.display()
@@ -548,10 +550,11 @@ pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>
         );
     }
     let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-    if config_path.exists().not() {
+    // The entry itself: a link the plugin planted counts, wherever it points.
+    if config_path.symlink_metadata().is_err() {
         return;
     }
-    if let Err(err) = secure_config_file(&config_path, owner).await {
+    if let Err(err) = secure_config_file(&config_path, owner) {
         warn!(
             "Failed to secure plugin config file {}: {err}",
             config_path.display()
@@ -578,10 +581,10 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     // state this guards against, and the caller only warns on error and starts the plugin
     // anyway: a step that is skipped is a file left readable by the plugin user.
     let handover = chown(path, owner, true).await;
-    let manifest = secure_manifest(path).await;
+    let manifest = secure_manifest(path);
     // Must follow the handover, not precede it: the recursive chown above would take these
     // files back for the plugin user.
-    let credentials = secure_daemon_credentials(path).await;
+    let credentials = secure_daemon_credentials(path);
     // Last, for the same reason: the handover resets the folder's owner too.
     let entries = secure_folder_entries(path).await;
     handover.and(manifest).and(credentials).and(entries)
@@ -612,22 +615,19 @@ async fn secure_folder_entries(plugin_dir: &Path) -> Result<()> {
 /// service, not the plugin's. A plugin has no business reading the bearer token that
 /// authenticates this daemon to another machine, and it must not be able to rewrite the
 /// pin that decides which certificate is trusted.
-async fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
-    // A failure on one file must not skip hardening the other. Both the mode and the
-    // ownership reset matter, so neither short-circuits the loop.
+fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
+    // A failure on one file must not skip hardening the other.
     let mut outcome = Ok(());
     for file_name in [trust::TOKEN_FILE_NAME, trust::PIN_FILE_NAME] {
         let path = plugin_dir.join(file_name);
-        if cc_fs::exists(&path).not() {
-            continue;
-        }
-        if let Err(err) =
-            cc_fs::set_permissions(&path, Permissions::from_mode(PLUGIN_CREDENTIAL_PERMISSIONS))
-                .await
-        {
-            outcome = Err(err);
-        }
-        if let Err(err) = chown(&path, ROOT_USER, false).await {
+        let secured = secure_file(&path, PLUGIN_CREDENTIAL_PERMISSIONS, Some(ROOT_USER));
+        let result = match secured {
+            Ok(Secured::Done | Secured::Absent) => Ok(()),
+            // Left in place, the daemon would read and write its credentials through it.
+            Ok(Secured::NotAFile) => remove_planted(&path),
+            Err(err) => Err(err),
+        };
+        if let Err(err) = result {
             outcome = Err(err);
         }
     }
@@ -635,25 +635,97 @@ async fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
 }
 
 /// Returns `manifest.toml` to root and drops any group or world write bit left on it.
-async fn secure_manifest(plugin_dir: &Path) -> Result<()> {
+fn secure_manifest(plugin_dir: &Path) -> Result<()> {
     let manifest_path = plugin_dir.join(SERVICE_MANIFEST_FILE_NAME);
-    if cc_fs::exists(&manifest_path).not() {
-        return Ok(());
+    let secured = secure_file(&manifest_path, PLUGIN_MANIFEST_PERMISSIONS, Some(ROOT_USER))?;
+    match secured {
+        Secured::Done | Secured::Absent => Ok(()),
+        Secured::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
     }
-    cc_fs::set_permissions(
-        &manifest_path,
-        Permissions::from_mode(PLUGIN_MANIFEST_PERMISSIONS),
-    )
-    .await?;
-    chown(&manifest_path, ROOT_USER, false).await
 }
 
-pub async fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {
-    cc_fs::set_permissions(path, Permissions::from_mode(PLUGIN_CONFIG_FILE_PERMISSIONS)).await?;
+pub fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {
+    match secure_file(path, PLUGIN_CONFIG_FILE_PERMISSIONS, owner)? {
+        Secured::Done => Ok(()),
+        Secured::Absent => Err(anyhow!("{} does not exist", path.display())),
+        Secured::NotAFile => remove_planted(path),
+    }
+}
+
+/// What `secure_file` found at the path it was given.
+enum Secured {
+    Done,
+    Absent,
+    /// A symlink or anything else that is not a regular file, and left untouched.
+    NotAFile,
+}
+
+/// Sets the mode of the regular file at `path` and, given an owner, its ownership.
+///
+/// The plugin can create entries in its own folder, so any name in it may be a link the
+/// plugin planted to have root hand it another file: the manifest, which decides whether
+/// it runs as root, or any file on the system. The entry is therefore opened without
+/// following a link, and checked and changed through that one descriptor, so that nothing
+/// can be swapped in between the check and the change.
+fn secure_file(path: &Path, mode: u32, owner: Option<&str>) -> Result<Secured> {
+    let opened = OpenOptions::new()
+        .read(true)
+        // NOFOLLOW refuses a symlink. NONBLOCK keeps a planted FIFO from hanging the open.
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path);
+    let file = match opened {
+        Ok(file) => file,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Secured::Absent),
+        Err(err) if err.raw_os_error() == Some(libc::ELOOP) => return Ok(Secured::NotAFile),
+        Err(err) => return Err(err).with_context(|| format!("Opening {}", path.display())),
+    };
+    let metadata = file.metadata()?;
+    if metadata.is_file().not() {
+        return Ok(Secured::NotAFile);
+    }
+    // A second name for a file elsewhere: changing this one would change that one.
+    if metadata.nlink() != 1 {
+        return Err(anyhow!(
+            "{} is a hard link, and is left as it is",
+            path.display()
+        ));
+    }
+    set_mode_and_owner(&file, mode, owner)
+        .with_context(|| format!("Securing {}", path.display()))?;
+    Ok(Secured::Done)
+}
+
+fn set_mode_and_owner(file: &File, mode: u32, owner: Option<&str>) -> Result<()> {
+    // The mode first, as it needs no lookup: a missing plugin user must not leave the
+    // file open to others.
+    file.set_permissions(Permissions::from_mode(mode))?;
     let Some(owner) = owner else {
         return Ok(());
     };
-    chown(path, owner, false).await
+    let (uid, gid) = owner_ids(owner)?;
+    Ok(std::os::unix::fs::fchown(file, Some(uid), Some(gid))?)
+}
+
+/// The uid of `owner` and the gid of the group that carries its name.
+fn owner_ids(owner: &str) -> Result<(u32, u32)> {
+    assert!(owner.is_empty().not(), "ownership needs a user name");
+    let user = User::from_name(owner)?.ok_or_else(|| anyhow!("There is no user {owner}"))?;
+    let group = Group::from_name(owner)?.ok_or_else(|| anyhow!("There is no group {owner}"))?;
+    Ok((user.uid.as_raw(), group.gid.as_raw()))
+}
+
+/// Removes an entry that stands where a plugin file belongs but is not a regular file.
+///
+/// Only the entry goes: unlinking a symlink never touches what it points to.
+fn remove_planted(path: &Path) -> Result<()> {
+    std::fs::remove_file(path)
+        .with_context(|| format!("Removing {}, which is not a regular file", path.display()))?;
+    warn!(
+        "Removed {}: it was not a regular file, and securing it would have changed \
+         whatever it led to.",
+        path.display()
+    );
+    Ok(())
 }
 
 /// Builds the `chown` argument vector. Extracted from the I/O so the argument boundaries can be
@@ -1289,7 +1361,7 @@ mod tests {
 
             // The chown needs root; the permission bits are what this asserts, and they
             // are applied before it, exactly as the manifest test does.
-            let _ = secure_daemon_credentials(dir.path()).await;
+            let _ = secure_daemon_credentials(dir.path());
 
             for path in [&token_path, &pin_path] {
                 let mode = std::fs::metadata(path).unwrap().permissions().mode();
@@ -1354,9 +1426,110 @@ mod tests {
         crate::sidecar::ensure_test_handle();
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
-            assert!(secure_daemon_credentials(dir.path()).await.is_ok());
+            assert!(secure_daemon_credentials(dir.path()).is_ok());
             assert!(dir.path().join(trust::TOKEN_FILE_NAME).exists().not());
         });
+    }
+
+    /// A file outside the plugin folder that a planted link leads to, and its mode.
+    const SENTINEL_MODE: u32 = 0o644;
+
+    fn sentinel(dir: &Path) -> PathBuf {
+        let path = dir.join("sentinel");
+        std::fs::write(&path, "untouched").unwrap();
+        std::fs::set_permissions(&path, Permissions::from_mode(SENTINEL_MODE)).unwrap();
+        path
+    }
+
+    fn assert_untouched(sentinel: &Path) {
+        let mode = std::fs::metadata(sentinel).unwrap().permissions().mode();
+        assert_eq!(mode & 0o7777, SENTINEL_MODE, "the link was followed");
+        assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "untouched");
+    }
+
+    /// Goal: a plugin owns its `config.json`, so it can swap it for a symlink to a file it
+    /// wants: its own manifest, to set `privileged`, or any file on the system. Securing
+    /// the config must change neither the mode nor the owner of what the link points to.
+    /// Method: plant such a link, to a file and to nothing, and secure the plugin's files.
+    /// The mode needs no root, so a followed link shows in the sentinel's mode.
+    #[test]
+    fn a_planted_config_link_is_removed_and_never_followed() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let outside = tempfile::tempdir().unwrap();
+            let sentinel = sentinel(outside.path());
+            for target in [sentinel.clone(), outside.path().join("absent")] {
+                let dir = tempfile::tempdir().unwrap();
+                let config_path = dir.path().join(PLUGIN_CONFIG_FILE_NAME);
+                std::os::unix::fs::symlink(&target, &config_path).unwrap();
+                let manifest = managed_manifest(dir.path().to_path_buf());
+
+                secure_plugin_files(&manifest, None).await;
+
+                assert_untouched(&sentinel);
+                assert!(config_path.symlink_metadata().is_err(), "the link stays");
+                assert!(outside.path().join("absent").exists().not());
+            }
+        });
+    }
+
+    /// Goal: where hard links to files of others are allowed, a second name for a file does
+    /// what a symlink does. Such a config must not be secured, as that secures the other file.
+    /// Method: link the config to a sentinel and require an error and an unchanged mode.
+    #[test]
+    fn a_hard_linked_config_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let sentinel = sentinel(dir.path());
+        let config_path = dir.path().join(PLUGIN_CONFIG_FILE_NAME);
+        std::fs::hard_link(&sentinel, &config_path).unwrap();
+
+        let result = secure_config_file(&config_path, None);
+
+        assert!(result.is_err());
+        assert_untouched(&sentinel);
+    }
+
+    /// Goal: the daemon reads its token and writes its TLS pin by name, so a link planted
+    /// under either name would have root secure, read or overwrite another file.
+    /// Method: plant a link to a file as the token and a dangling one as the pin, then
+    /// secure the credentials. Both links have to go and the sentinel stays as it was.
+    #[test]
+    fn planted_credential_links_are_removed_and_never_followed() {
+        let outside = tempfile::tempdir().unwrap();
+        let sentinel = sentinel(outside.path());
+        let dir = tempfile::tempdir().unwrap();
+        let token_path = dir.path().join(trust::TOKEN_FILE_NAME);
+        let pin_path = dir.path().join(trust::PIN_FILE_NAME);
+        std::os::unix::fs::symlink(&sentinel, &token_path).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("absent"), &pin_path).unwrap();
+
+        let result = secure_daemon_credentials(dir.path());
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_untouched(&sentinel);
+        assert!(
+            token_path.symlink_metadata().is_err(),
+            "the token link stays"
+        );
+        assert!(pin_path.symlink_metadata().is_err(), "the pin link stays");
+    }
+
+    /// Goal: a manifest that is a link is never secured through it, and never removed
+    /// either: a plugin without its manifest is not a plugin.
+    /// Method: make the manifest a link to a sentinel and require an error, with both left.
+    #[test]
+    fn a_linked_manifest_is_refused_and_kept() {
+        let outside = tempfile::tempdir().unwrap();
+        let sentinel = sentinel(outside.path());
+        let dir = tempfile::tempdir().unwrap();
+        let manifest_path = dir.path().join(SERVICE_MANIFEST_FILE_NAME);
+        std::os::unix::fs::symlink(&sentinel, &manifest_path).unwrap();
+
+        let result = secure_manifest(dir.path());
+
+        assert!(result.is_err());
+        assert_untouched(&sentinel);
+        assert!(manifest_path.symlink_metadata().is_ok());
     }
 
     /// Goal: the manifest must not stay group- or world-writable, since it declares `privileged`
@@ -1474,7 +1647,7 @@ mod tests {
 
             // secure_config_file will set permissions and attempt chown.
             // chown may fail if not root, but permissions should still be set.
-            let _ = secure_config_file(&config_path, Some("root")).await;
+            let _ = secure_config_file(&config_path, Some("root"));
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
             assert_eq!(
@@ -1492,7 +1665,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let config_path = dir.path().join("nonexistent.json");
 
-            let result = secure_config_file(&config_path, Some("root")).await;
+            let result = secure_config_file(&config_path, Some("root"));
             assert!(result.is_err(), "Should fail for nonexistent file");
         });
     }
@@ -1509,7 +1682,7 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let result = secure_config_file(&config_path, Some("root")).await;
+            let result = secure_config_file(&config_path, Some("root"));
             assert!(
                 result.is_err(),
                 "chown to root should fail when not running as root"
@@ -1529,7 +1702,7 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let result = secure_config_file(&config_path, Some("root")).await;
+            let result = secure_config_file(&config_path, Some("root"));
             assert!(result.is_ok(), "chown to root should succeed as root");
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
@@ -1549,13 +1722,13 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let _ = secure_config_file(&config_path, Some("root")).await;
+            let _ = secure_config_file(&config_path, Some("root"));
 
             // Simulate a rewrite that resets permissions
             std::fs::write(&config_path, "{\"updated\": true}").unwrap();
             std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
 
-            let _ = secure_config_file(&config_path, Some("root")).await;
+            let _ = secure_config_file(&config_path, Some("root"));
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
             assert_eq!(
@@ -1575,7 +1748,7 @@ mod tests {
             std::fs::write(&config_path, "{}").unwrap();
             std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
 
-            let result = secure_config_file(&config_path, None).await;
+            let result = secure_config_file(&config_path, None);
             assert!(result.is_ok(), "Should succeed without chown");
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
