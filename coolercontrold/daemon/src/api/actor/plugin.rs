@@ -116,6 +116,7 @@ impl ApiActor<PluginMessage> for PluginActor {
         &mut self.receiver
     }
 
+    // A flat dispatch with one short arm per message: splitting it would only hide the list.
     #[allow(clippy::too_many_lines)]
     async fn handle_message(&mut self, message: PluginMessage) {
         match message {
