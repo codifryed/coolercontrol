@@ -476,7 +476,8 @@ export default {
             gettingStarted:
                 '插件通过额外的设备支持、集成和自动化来扩展 CoolerControl。它们可以提供新的设备传感器和控制、连接外部服务或添加自定义 UI 页面。',
             findPlugins: '查找并安装插件',
-            restartNote: '如果您最近添加了新插件但它未显示在此处，请重启 CoolerControl 守护进程。',
+            restartNote:
+                '打开此页面时，新添加的插件会显示在此处。设备插件还需要重启 CoolerControl 守护进程，才会加载其设备。',
             containerNote:
                 '在容器中运行 CoolerControl 时，插件必须放置在持久化的虚拟共享文件夹中，以便在容器重启后保留。',
             installedPlugins: '已安装的插件',

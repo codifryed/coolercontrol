@@ -477,7 +477,7 @@ export default {
                 '外掛透過額外的裝置支援、整合和自動化來擴展 CoolerControl。它們可以提供新的裝置感測器和控制、連接外部服務或新增自訂 UI 頁面。',
             findPlugins: '尋找並安裝外掛',
             restartNote:
-                '如果您最近新增了外掛但它未顯示在此處，請重新啟動 CoolerControl 守護程式。',
+                '開啟此頁面時，新增的外掛會顯示在此處。裝置外掛還需要重新啟動 CoolerControl 守護程式，才會載入其裝置。',
             containerNote:
                 '在容器中執行 CoolerControl 時，外掛必須放置在持久化的虛擬共享資料夾中，以便在容器重新啟動後保留。',
             installedPlugins: '已安裝的外掛',

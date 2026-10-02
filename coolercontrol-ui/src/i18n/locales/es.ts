@@ -504,7 +504,7 @@ export default {
                 'Los plugins amplían CoolerControl con soporte adicional de dispositivos, integraciones y automatización. Pueden proporcionar nuevos sensores y controles de dispositivos, conectarse a servicios externos o agregar páginas de interfaz personalizadas.',
             findPlugins: 'Buscar e instalar Plugins',
             restartNote:
-                'Si recientemente agregó un nuevo plugin y no aparece aquí, reinicie el demonio de CoolerControl.',
+                'Un plugin recién agregado aparece aquí al abrir esta página. Un plugin de dispositivo también necesita reiniciar el demonio de CoolerControl antes de que se carguen sus dispositivos.',
             containerNote:
                 'Al ejecutar CoolerControl en un contenedor, los plugins deben colocarse en la carpeta compartida virtual persistente para que sobrevivan a los reinicios del contenedor.',
             installedPlugins: 'Plugins Instalados',
