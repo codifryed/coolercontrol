@@ -7,7 +7,8 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiMinus, mdiPlus } from '@mdi/js'
-import { computed, nextTick, onBeforeUnmount } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { groupDigits, ungroupDigits } from '@/shell/digitGroups.ts'
 
 const model = defineModel<number>({ required: true })
 const props = withDefaults(
@@ -22,6 +23,9 @@ const props = withDefaults(
         prefix?: string
         suffix?: string
         disabled?: boolean
+        // Groups a long number in threes while the field is not being edited. A number
+        // field cannot show the separators, so this renders a text field.
+        grouped?: boolean
     }>(),
     {
         min: Number.MIN_SAFE_INTEGER,
@@ -32,6 +36,7 @@ const props = withDefaults(
         prefix: '',
         suffix: '',
         disabled: false,
+        grouped: false,
     },
 )
 
@@ -77,14 +82,20 @@ const keyboardStep = (event: MouseEvent, direction: number): void => {
 }
 const onInput = (event: Event): void => {
     const input = event.target as HTMLInputElement
-    const value = Number(input.value)
-    if (Number.isNaN(value)) return
-    model.value = clamp(value)
-    // Clamping back to the value already held changes nothing reactive, so the typed text
-    // would stay in the field while the model holds the bound.
+    const value = Number(ungroupDigits(input.value))
+    if (!Number.isNaN(value)) model.value = clamp(value)
+    // Clamping back to the value already held changes nothing reactive, and neither does
+    // rejected text, so either would stay in the field while the model holds another value.
     void nextTick(() => {
-        input.value = displayValue.value
+        input.value = shownValue.value
     })
+}
+// A number field steps on the arrow keys by itself; the text field needs it done.
+const onKeydown = (event: KeyboardEvent): void => {
+    if (!props.grouped) return
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    stepBy(event.key === 'ArrowUp' ? 1 : -1)
 }
 // Fractional steps keep a fixed precision: 10.5 + 0.5 reads 11.0, not 11.
 // A finer value typed by hand keeps its own precision.
@@ -98,8 +109,28 @@ const displayValue = computed(() => {
     const digits = Math.max(decimalsOf(props.step), decimalsOf(model.value))
     return digits > 0 ? model.value.toFixed(digits) : String(model.value)
 })
+const editing = ref(false)
+const shownValue = computed(() =>
+    props.grouped && !editing.value ? groupDigits(displayValue.value) : displayValue.value,
+)
+// Entering the field swaps the grouped text for plain digits. The browser places the caret
+// after the focus event, so the swap waits a task and then puts the caret back on its digit.
+const onFocus = (event: FocusEvent): void => {
+    if (!props.grouped) return
+    const input = event.target as HTMLInputElement
+    setTimeout(() => {
+        if (document.activeElement !== input) return
+        const text = input.value
+        const digitsBefore = (caret: number | null): number =>
+            ungroupDigits(text.slice(0, caret ?? text.length)).length
+        const start = digitsBefore(input.selectionStart)
+        const end = digitsBefore(input.selectionEnd)
+        editing.value = true
+        void nextTick(() => input.setSelectionRange(start, end))
+    })
+}
 // Size the input to its content so the suffix hugs the number.
-const inputWidth = computed(() => `${Math.max(displayValue.value.length, 1) + 1}ch`)
+const inputWidth = computed(() => `${Math.max(shownValue.value.length, 1) + 1}ch`)
 const outsideSafeBand = computed(() => {
     if (model.value == null) return false
     if (props.safeMin != null && model.value < props.safeMin) return true
@@ -131,8 +162,9 @@ const outsideSafeBand = computed(() => {
                 {{ prefix }}
             </span>
             <input
-                type="number"
-                :value="displayValue"
+                :type="grouped ? 'text' : 'number'"
+                :inputmode="grouped ? 'decimal' : undefined"
+                :value="shownValue"
                 :min="min"
                 :max="max"
                 :step="step"
@@ -141,6 +173,9 @@ const outsideSafeBand = computed(() => {
                 :class="outsideSafeBand ? 'text-warning' : 'text-text-color'"
                 :style="{ width: inputWidth }"
                 @change="onInput"
+                @focus="onFocus"
+                @blur="editing = false"
+                @keydown="onKeydown"
             />
             <span v-if="suffix" class="pl-0.5 text-sm text-text-color-secondary">
                 {{ suffix }}
