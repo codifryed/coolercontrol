@@ -2,22 +2,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::{
-    alerts, auth, auth_throttle, base, calibration, custom_sensors, detect, device_health,
-    functions, hardware_report, metrics, modes, plugins, power_profiles, profile_generation,
-    profiles, settings, sse, stats, status, stress_test, tokens,
+    alerts, auth, auth_throttle, base, calibration, connection, custom_sensors, detect,
+    device_health, functions, hardware_report, metrics, modes, plugins, power_profiles,
+    profile_generation, profiles, settings, sse, stats, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
+use crate::grpc_api;
 #[cfg(debug_assertions)]
 use aide::axum::routing::get;
 use aide::axum::routing::{delete_with, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
+use axum::extract::Request;
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::Extension;
+use std::ops::Not;
 
 // Note: using `#[debug_handler]` on the handler functions themselves is sometimes very helpful.
 
-pub fn init(app_state: AppState) -> ApiRouter {
+pub async fn init(app_state: AppState) -> ApiRouter {
     let token_handle = app_state.token_handle.clone();
-    let router = documented_routes();
+    let router = documented_routes().merge(grpc_routes(&app_state).await);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
@@ -27,10 +33,97 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .with_state(app_state)
         // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
         .layer(Extension(token_handle))
-        // Outermost, so a throttled peer is turned away before any credential work runs.
+        // Outermost here, so a throttled peer is turned away before any token validation
+        // runs. `grpc_error_middleware` wraps this whole router from `create_api_server`.
         .layer(axum::middleware::from_fn(
-            auth_throttle::throttle_middleware,
+            auth_throttle::token_throttle_middleware,
         ))
+}
+
+/// Renders error responses that gRPC clients can actually read.
+///
+/// The auth middleware, the throttle, and the timeout layer all answer with ordinary
+/// HTTP status codes and a JSON body. A gRPC client cannot parse that: it reports
+/// `Internal` with a content-type complaint, so an expired token would reach a user as
+/// an unexplained protocol error rather than "your credentials were refused". This
+/// translates those into properly framed `grpc-status` responses.
+///
+/// Applied by `create_api_server` outside every other layer, which is the only position
+/// that catches the timeout: `TimeoutLayer` wraps this router, so a 408 is produced above
+/// anything `init` could install and would otherwise never reach this translation.
+/// Requests that are not gRPC, and responses already framed as gRPC, pass through
+/// untouched.
+pub async fn grpc_error_middleware(request: Request, next: Next) -> Response {
+    let is_grpc = is_grpc_content_type(request.headers());
+    let response = next.run(request).await;
+    if is_grpc.not() {
+        return response;
+    }
+    if is_grpc_content_type(response.headers()) {
+        return response;
+    }
+    let Some((code, message)) = grpc_code_for(response.status()) else {
+        return response;
+    };
+    tonic::Status::new(code, message).into_http()
+}
+
+fn is_grpc_content_type(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/grpc"))
+}
+
+/// Maps the HTTP statuses our own layers produce onto gRPC codes. Anything else is left
+/// alone: a status we did not generate is not ours to reinterpret.
+fn grpc_code_for(status: StatusCode) -> Option<(tonic::Code, &'static str)> {
+    match status {
+        StatusCode::UNAUTHORIZED => Some((
+            tonic::Code::Unauthenticated,
+            "Invalid or missing access token.",
+        )),
+        StatusCode::FORBIDDEN => Some((
+            tonic::Code::PermissionDenied,
+            "This token does not have the required access.",
+        )),
+        StatusCode::TOO_MANY_REQUESTS => Some((
+            tonic::Code::ResourceExhausted,
+            "Too many failed authentication attempts.",
+        )),
+        StatusCode::REQUEST_TIMEOUT => {
+            Some((tonic::Code::DeadlineExceeded, "The request timed out."))
+        }
+        StatusCode::NOT_FOUND => Some((tonic::Code::Unimplemented, "Unknown gRPC method.")),
+        _ => None,
+    }
+}
+
+/// The gRPC services, mounted on the REST listener behind the same read-tier auth.
+///
+/// gRPC used to run its own `tonic::transport::Server` on `port + 1`, which meant it had
+/// no TLS and no authentication at all: a second, weaker front door onto the same data.
+/// Sharing the REST listener is what closes that, and it costs nothing, because that
+/// listener already speaks HTTP/2.
+///
+/// These carry no `OpenAPI` metadata on purpose. They are not REST operations and have no
+/// place in the spec, so they are merged in outside `documented_routes`.
+async fn grpc_routes(app_state: &AppState) -> ApiRouter<AppState> {
+    let device_service = grpc_api::device_service(
+        app_state.device_handle.clone(),
+        app_state.status_handle.clone(),
+        app_state.calibration_handle.clone(),
+    );
+    ApiRouter::new()
+        .route_service(&grpc_api::device_service_route(), device_service)
+        .route_service(
+            &grpc_api::health_service_route(),
+            grpc_api::health_service().await,
+        )
+        // The whole served surface is read-only: every mutating RPC answers
+        // `Unimplemented`. So it takes the same read-tier credentials as `GET /devices`,
+        // rather than a third auth semantic invented for gRPC.
+        .layer(axum::middleware::from_fn(auth::auth_middleware))
 }
 
 /// Every route carrying `OpenAPI` metadata, before state, the fallback and the doc route are
@@ -129,11 +222,12 @@ fn auth_routes() -> ApiRouter<AppState> {
                     .tag("auth")
                     .security_requirement("BasicAuth")
             })
-            // The only unauthenticated route that adjudicates credentials in its handler,
-            // so it reports its own verdict to the throttle rather than being read off a
-            // status code the throttle cannot attribute.
+            // The handler checks the password itself, so its status is the verdict.
             .layer(axum::middleware::from_fn(
-                auth_throttle::credential_route_middleware,
+                connection::promote_on_success_middleware,
+            ))
+            .layer(axum::middleware::from_fn(
+                auth_throttle::password_throttle_middleware,
             )),
         )
         .api_route(
@@ -155,6 +249,11 @@ fn auth_routes() -> ApiRouter<AppState> {
                     // both are required:
                     .security_requirement_multi(["CookieAuth", "BasicAuth"])
             })
+            // Inside the session check: a cookie-less 401 is not a password guess. Without
+            // this, a stolen session could brute-force `current_password` unthrottled.
+            .layer(axum::middleware::from_fn(
+                auth_throttle::password_throttle_middleware,
+            ))
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
@@ -1660,4 +1759,367 @@ fn legacy_sse_event_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::actor::TokenHandle;
+    use crate::api::auth;
+    use crate::api::session_store::MemorySessionStore;
+    use crate::token::{self, StoredToken};
+    use axum::Extension;
+    use chrono::Local;
+    use tokio::net::TcpListener;
+    use tonic::Code;
+    use tonic_health::pb::health_client::HealthClient;
+    use tonic_health::pb::HealthCheckRequest;
+    use tower::ServiceExt;
+    use tower_http::timeout::TimeoutLayer;
+    use tower_sessions::SessionManagerLayer;
+
+    fn expired_token(raw: &str) -> StoredToken {
+        StoredToken {
+            expires_at: Some(Local::now() - chrono::Duration::hours(1)),
+            ..stored_token(raw)
+        }
+    }
+
+    fn stored_token(raw: &str) -> StoredToken {
+        StoredToken {
+            id: "grpc-test".to_string(),
+            label: "gRPC Test".to_string(),
+            hash: token::hash_token(raw).unwrap(),
+            digest: Some(token::digest_token(raw)),
+            created_at: Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: false,
+        }
+    }
+
+    /// Mounts the health service the way `grpc_routes` and `init` mount the real ones:
+    /// same route pattern, same read-tier auth middleware, same session layer, and the
+    /// same outermost gRPC error translation. The device service needs live actor
+    /// handles, so health stands in for it; the mounting and transport path under test
+    /// is identical.
+    ///
+    /// The layer order here mirrors `init` by hand. If a layer is added there, it must
+    /// be added here too, or these tests stop covering the real stack.
+    async fn serve(token_handle: TokenHandle) -> String {
+        let router = axum::Router::new()
+            .route_service(
+                &grpc_api::health_service_route(),
+                grpc_api::health_service().await,
+            )
+            .layer(axum::middleware::from_fn(auth::auth_middleware))
+            .layer(Extension(token_handle))
+            .layer(SessionManagerLayer::new(MemorySessionStore::new(4)))
+            .layer(axum::middleware::from_fn(grpc_error_middleware));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        format!("http://{address}")
+    }
+
+    /// Goal: `/set-passwd` counts a wrong current password against the peer's password
+    /// budget, but not a request refused for lacking a session, which guesses nothing.
+    /// Method: the route's two layers in the order `auth_routes` applies them, mirrored by
+    /// hand around a handler that always refuses the password, like the gRPC `serve` above.
+    #[tokio::test]
+    async fn set_passwd_throttle_sits_inside_the_session_check() {
+        use axum::extract::ConnectInfo;
+        use axum::routing::{get, post};
+        use std::net::SocketAddr;
+        use tower_sessions::Session;
+
+        let app = axum::Router::new()
+            .route(
+                "/grant",
+                get(|session: Session| async move { auth::grant_admin_session(&session).await }),
+            )
+            .route(
+                "/set-passwd",
+                post(|| async { StatusCode::UNAUTHORIZED })
+                    .layer(axum::middleware::from_fn(
+                        auth_throttle::password_throttle_middleware,
+                    ))
+                    .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+            )
+            .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
+        // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
+        let peer = SocketAddr::from(([198, 51, 100, 20], 40000));
+        let set_passwd = |cookie: Option<&str>| {
+            let mut builder = Request::builder()
+                .method("POST")
+                .uri("/set-passwd")
+                .header(header::AUTHORIZATION, "Basic Q0NBZG1pbjpuZXc=");
+            if let Some(value) = cookie {
+                builder = builder.header(header::COOKIE, value);
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request.extensions_mut().insert(ConnectInfo(peer));
+            request
+        };
+
+        for _ in 0..10 {
+            let response = app.clone().oneshot(set_passwd(None)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        assert_eq!(auth_throttle::password_failures(peer.ip()), None);
+
+        let granted = app
+            .clone()
+            .oneshot(
+                Request::get("/grant")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let set_cookie = granted.headers()[header::SET_COOKIE].to_str().unwrap();
+        let cookie = set_cookie.split(';').next().unwrap();
+        let response = app.oneshot(set_passwd(Some(cookie))).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(auth_throttle::password_failures(peer.ip()), Some(1));
+    }
+
+    /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
+    /// and whether it promoted the connection.
+    async fn login(app: &axum::Router, credentials: &str) -> (StatusCode, bool) {
+        use axum::extract::ConnectInfo;
+        // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
+        let peer = std::net::SocketAddr::from(([198, 51, 100, 21], 40000));
+        let connection = connection::AdmittedConnection::remote_for_test();
+        let mut request = Request::post("/login")
+            .header(header::AUTHORIZATION, format!("Basic {credentials}"))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        request.extensions_mut().insert(connection.clone());
+        let response = app.clone().oneshot(request).await.unwrap();
+        (response.status(), connection.is_authenticated())
+    }
+
+    /// Goal: the real `/login` promotes its connection out of the pre-auth pool, and only
+    /// when the password is right. Method: `auth_routes` over an empty app state, sent a
+    /// wrong password and then the default one.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn real_login_promotes_only_on_success() {
+        crate::rt::test_runtime(async {
+            let cancel_token = tokio_util::sync::CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = crate::api::empty_app_state(&cancel_token, main_scope).await;
+                let routes = axum::Router::from(auth_routes().with_state(state))
+                    .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
+                let app = crate::api::with_client_addr(routes, std::sync::Arc::default());
+                // "CCAdmin:x", then "CCAdmin:coolAdmin".
+                let (status, promoted) = login(&app, "Q0NBZG1pbjp4").await;
+                assert_eq!(status, StatusCode::UNAUTHORIZED);
+                assert!(promoted.not());
+                let (status, promoted) = login(&app, "Q0NBZG1pbjpjb29sQWRtaW4=").await;
+                assert_eq!(status, StatusCode::OK);
+                assert!(promoted);
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Goal: the load-bearing claim of the whole design. gRPC is served from the REST
+    /// listener over plaintext h2c prior-knowledge, with no `tonic::transport::Server`
+    /// and no second port. If hyper's auto builder ever stopped sniffing the HTTP/2
+    /// preface, every gRPC client would break and only this test would notice.
+    #[tokio::test]
+    async fn grpc_is_served_over_h2c_from_the_rest_listener() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .expect("h2c prior-knowledge connect must succeed");
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {raw}").parse().unwrap());
+
+        let response = client.check(request).await.expect("authenticated call");
+        assert_eq!(response.into_inner().status, 1); // SERVING
+    }
+
+    /// Goal: the gap this branch exists to close. An unauthenticated peer must not reach
+    /// the gRPC surface, on loopback included.
+    #[tokio::test]
+    async fn grpc_without_credentials_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let status = client
+            .check(HealthCheckRequest {
+                service: String::new(),
+            })
+            .await
+            .expect_err("an unauthenticated call must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
+    /// Goal: a token that was never minted here is refused just like no token, so the
+    /// gRPC surface cannot be reached by guessing. Expiry is covered separately, since a
+    /// token that exists but has lapsed takes a different path through the store.
+    #[tokio::test]
+    async fn grpc_with_an_unknown_token_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![stored_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {}", token::generate_token())
+                .parse()
+                .unwrap(),
+        );
+
+        let status = client
+            .check(request)
+            .await
+            .expect_err("an unknown token must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
+    /// Goal: plan criterion 2's other half. A token this daemon really did mint, but whose
+    /// `expires_at` has passed, must be refused on the gRPC surface exactly like an
+    /// unknown one. The digest fast path matches an expired token before expiry is
+    /// checked, so a store hit is not on its own a grant.
+    #[tokio::test]
+    async fn grpc_with_an_expired_token_is_rejected() {
+        let raw = token::generate_token();
+        let address = serve(TokenHandle::with_tokens(vec![expired_token(&raw)])).await;
+
+        let channel = tonic::transport::Endpoint::new(address)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+        let mut request = tonic::Request::new(HealthCheckRequest {
+            service: String::new(),
+        });
+        request
+            .metadata_mut()
+            .insert("authorization", format!("Bearer {raw}").parse().unwrap());
+
+        let status = client
+            .check(request)
+            .await
+            .expect_err("an expired token must be refused");
+        assert_eq!(status.code(), Code::Unauthenticated);
+    }
+
+    /// Goal: only the statuses our own layers emit are rewritten. Reinterpreting an
+    /// arbitrary status would turn an unrelated failure into a misleading gRPC code.
+    #[test]
+    fn only_our_own_error_statuses_map_to_grpc_codes() {
+        assert_eq!(
+            grpc_code_for(StatusCode::UNAUTHORIZED).map(|(code, _)| code),
+            Some(tonic::Code::Unauthenticated)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::FORBIDDEN).map(|(code, _)| code),
+            Some(tonic::Code::PermissionDenied)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::TOO_MANY_REQUESTS).map(|(code, _)| code),
+            Some(tonic::Code::ResourceExhausted)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::REQUEST_TIMEOUT).map(|(code, _)| code),
+            Some(tonic::Code::DeadlineExceeded)
+        );
+        assert_eq!(
+            grpc_code_for(StatusCode::NOT_FOUND).map(|(code, _)| code),
+            Some(tonic::Code::Unimplemented)
+        );
+        assert_eq!(grpc_code_for(StatusCode::OK), None);
+        assert_eq!(grpc_code_for(StatusCode::INTERNAL_SERVER_ERROR), None);
+        assert_eq!(grpc_code_for(StatusCode::BAD_GATEWAY), None);
+    }
+
+    /// Goal: the request timeout must reach a gRPC client as `DeadlineExceeded`. This is
+    /// a layer-ordering test, not a mapping test: `TimeoutLayer` wraps the router in
+    /// `create_api_server`, so the translation only ever sees a 408 while it sits outside
+    /// that layer. Nest it the other way and this fails with a bare 408 and no
+    /// `grpc-status`, which is what a user would have got.
+    #[tokio::test]
+    async fn a_timed_out_grpc_request_comes_back_as_deadline_exceeded() {
+        async fn too_slow() -> StatusCode {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            StatusCode::OK
+        }
+
+        let router = axum::Router::new()
+            .route("/slow", axum::routing::get(too_slow))
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                std::time::Duration::from_millis(10),
+            ))
+            .layer(axum::middleware::from_fn(grpc_error_middleware));
+
+        let request = Request::builder()
+            .uri("/slow")
+            .header(header::CONTENT_TYPE, "application/grpc")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(
+            response
+                .headers()
+                .get("grpc-status")
+                .and_then(|v| v.to_str().ok()),
+            Some((tonic::Code::DeadlineExceeded as i32).to_string().as_str()),
+            "a 408 must be translated, not passed through as an HTTP status"
+        );
+    }
+
+    /// Goal: the translation only fires for gRPC traffic, so a browser hitting the same
+    /// port keeps getting ordinary JSON errors.
+    #[test]
+    fn grpc_content_type_detection_is_exact() {
+        let mut headers = HeaderMap::new();
+        assert!(is_grpc_content_type(&headers).not());
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        assert!(is_grpc_content_type(&headers).not());
+        headers.insert(header::CONTENT_TYPE, "application/grpc".parse().unwrap());
+        assert!(is_grpc_content_type(&headers));
+        headers.insert(
+            header::CONTENT_TYPE,
+            "application/grpc+proto".parse().unwrap(),
+        );
+        assert!(is_grpc_content_type(&headers));
+    }
 }

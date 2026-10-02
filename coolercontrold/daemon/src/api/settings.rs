@@ -150,112 +150,81 @@ pub struct CoolerControlSettingsDto {
     device_listener_enabled: Option<bool>,
     /// Whether to apply labels and ignores from the lm-sensors configuration
     sensors_conf_enabled: Option<bool>,
+    tls_strict: Option<bool>,
+    /// The SHA-256 fingerprint of the TLS certificate this daemon serves, or `None` when
+    /// TLS is off. Report-only: it is derived from the certificate, so anything sent here
+    /// is ignored.
+    tls_fingerprint: Option<String>,
     /// Whether to log at DEBUG level. Applies after a daemon restart.
     debug_logging: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
-    pub fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
-        let apply_on_boot = if let Some(apply) = self.apply_on_boot {
-            apply
-        } else {
-            current_settings.apply_on_boot
-        };
-        let no_init = if let Some(init) = self.no_init {
-            init
-        } else {
-            current_settings.no_init
-        };
-        let startup_delay = if let Some(delay) = self.startup_delay {
-            Duration::from_secs(u64::from(delay.clamp(0, STARTUP_DELAY_SECONDS_MAX)))
-        } else {
-            current_settings.startup_delay
-        };
-        let thinkpad_full_speed = if let Some(full_speed) = self.thinkpad_full_speed {
-            full_speed
-        } else {
-            current_settings.thinkpad_full_speed
-        };
-        let hide_duplicate_devices = if let Some(hide) = self.hide_duplicate_devices {
-            hide
-        } else {
-            current_settings.hide_duplicate_devices
-        };
-        let liquidctl_integration = if let Some(integrate) = self.liquidctl_integration {
-            integrate
-        } else {
-            current_settings.liquidctl_integration
-        };
-        let compress = if let Some(compress) = self.compress {
-            compress
-        } else {
-            current_settings.compress
-        };
-        let poll_rate = if let Some(poll_rate) = self.poll_rate {
-            // clamps and rounds to the nearest half-second.
-            (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.
-        } else {
-            current_settings.poll_rate
-        };
-        let drivetemp_suspend = if let Some(d_suspend) = self.drivetemp_suspend {
-            d_suspend
-        } else {
-            current_settings.drivetemp_suspend
-        };
-        let origins = if let Some(ref origins) = self.origins {
-            origins.clone()
-        } else {
-            current_settings.origins
-        };
-        let allow_unencrypted = if let Some(allow) = self.allow_unencrypted {
-            allow
-        } else {
-            current_settings.allow_unencrypted
-        };
-        let protocol_header = if let Some(ref header) = self.protocol_header {
-            if header.is_empty() {
-                None
-            } else {
-                Some(header.clone())
-            }
-        } else {
-            current_settings.protocol_header
-        };
-        let sensors_auto_detect = self
-            .sensors_auto_detect
-            .unwrap_or(current_settings.sensors_auto_detect);
-        let device_listener_enabled = self
-            .device_listener_enabled
-            .unwrap_or(current_settings.device_listener_enabled);
-        let sensors_conf_enabled = self
-            .sensors_conf_enabled
-            .unwrap_or(current_settings.sensors_conf_enabled);
-        let debug_logging = self.debug_logging.unwrap_or(current_settings.debug_logging);
+    pub fn merge(&self, current: CoolerControlSettings) -> CoolerControlSettings {
         CoolerControlSettings {
-            apply_on_boot,
-            no_init,
-            startup_delay,
-            thinkpad_full_speed,
-            hide_duplicate_devices,
-            liquidctl_integration,
-            port: current_settings.port,
-            ipv4_address: current_settings.ipv4_address,
-            ipv6_address: current_settings.ipv6_address,
-            compress,
-            poll_rate,
-            drivetemp_suspend,
-            tls_enabled: current_settings.tls_enabled,
-            tls_cert_path: current_settings.tls_cert_path,
-            tls_key_path: current_settings.tls_key_path,
-            origins,
-            frame_ancestors: current_settings.frame_ancestors,
-            allow_unencrypted,
-            protocol_header,
-            sensors_auto_detect,
-            device_listener_enabled,
-            sensors_conf_enabled,
-            debug_logging,
+            apply_on_boot: self.apply_on_boot.unwrap_or(current.apply_on_boot),
+            no_init: self.no_init.unwrap_or(current.no_init),
+            startup_delay: self
+                .startup_delay
+                .map_or(current.startup_delay, clamped_startup_delay),
+            thinkpad_full_speed: self
+                .thinkpad_full_speed
+                .unwrap_or(current.thinkpad_full_speed),
+            hide_duplicate_devices: self
+                .hide_duplicate_devices
+                .unwrap_or(current.hide_duplicate_devices),
+            liquidctl_integration: self
+                .liquidctl_integration
+                .unwrap_or(current.liquidctl_integration),
+            port: current.port,
+            ipv4_address: current.ipv4_address,
+            ipv6_address: current.ipv6_address,
+            compress: self.compress.unwrap_or(current.compress),
+            poll_rate: self.poll_rate.map_or(current.poll_rate, clamped_poll_rate),
+            drivetemp_suspend: self.drivetemp_suspend.unwrap_or(current.drivetemp_suspend),
+            tls_enabled: current.tls_enabled,
+            tls_cert_path: current.tls_cert_path,
+            tls_key_path: current.tls_key_path,
+            origins: self.origins.clone().unwrap_or(current.origins),
+            // config.toml only: the API neither shows nor changes it.
+            frame_ancestors: current.frame_ancestors,
+            allow_unencrypted: self.allow_unencrypted.unwrap_or(current.allow_unencrypted),
+            protocol_header: self
+                .protocol_header
+                .as_deref()
+                .map_or(current.protocol_header, non_empty),
+            // config.toml only: the API neither shows nor changes it.
+            trusted_proxies: current.trusted_proxies,
+            sensors_auto_detect: self
+                .sensors_auto_detect
+                .unwrap_or(current.sensors_auto_detect),
+            device_listener_enabled: self
+                .device_listener_enabled
+                .unwrap_or(current.device_listener_enabled),
+            sensors_conf_enabled: self
+                .sensors_conf_enabled
+                .unwrap_or(current.sensors_conf_enabled),
+            tls_strict: self.tls_strict.unwrap_or(current.tls_strict),
+            debug_logging: self.debug_logging.unwrap_or(current.debug_logging),
         }
+    }
+}
+
+fn clamped_startup_delay(delay_seconds: u16) -> Duration {
+    Duration::from_secs(u64::from(delay_seconds.clamp(0, STARTUP_DELAY_SECONDS_MAX)))
+}
+
+/// Clamps and rounds to the nearest half-second.
+fn clamped_poll_rate(poll_rate: f64) -> f64 {
+    (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.
+}
+
+/// An empty header name clears the setting.
+fn non_empty(header: &str) -> Option<String> {
+    if header.is_empty() {
+        None
+    } else {
+        Some(header.to_string())
     }
 }
 
@@ -278,6 +247,8 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             sensors_auto_detect: Some(settings.sensors_auto_detect),
             device_listener_enabled: Some(settings.device_listener_enabled),
             sensors_conf_enabled: Some(settings.sensors_conf_enabled),
+            tls_strict: Some(settings.tls_strict),
+            tls_fingerprint: crate::api::tls::served_fingerprint().map(str::to_string),
             debug_logging: Some(settings.debug_logging),
         }
     }
@@ -338,6 +309,8 @@ mod tests {
                 sensors_auto_detect: None,
                 device_listener_enabled: None,
                 sensors_conf_enabled: None,
+                tls_strict: None,
+                tls_fingerprint: None,
                 debug_logging: None,
             }
         }
@@ -392,6 +365,22 @@ mod tests {
             merged.startup_delay,
             Duration::from_secs(u64::from(STARTUP_DELAY_SECONDS_MAX))
         );
+    }
+
+    /// Goal: a settings PATCH never touches trusted proxies, which live in config.toml only.
+    /// Method: a PATCH that sets other fields keeps the configured list, and the list is not
+    /// part of what the API reports.
+    #[test]
+    fn trusted_proxies_are_config_file_only() {
+        let current = CoolerControlSettings {
+            trusted_proxies: vec!["127.0.0.1".to_string()],
+            ..Default::default()
+        };
+        let mut dto = empty_dto();
+        dto.apply_on_boot = Some(true);
+        assert_eq!(dto.merge(current.clone()).trusted_proxies, ["127.0.0.1"]);
+        let reported = serde_json::to_value(CoolerControlSettingsDto::from(current)).unwrap();
+        assert!(reported.get("trusted_proxies").is_none());
     }
 
     #[test]

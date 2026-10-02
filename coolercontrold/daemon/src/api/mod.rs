@@ -4,9 +4,11 @@
 pub mod actor;
 mod alerts;
 mod auth;
+mod auth_breaker;
 mod auth_throttle;
 mod base;
 mod calibration;
+mod connection;
 mod custom_sensors;
 mod detect;
 mod device_health;
@@ -16,6 +18,7 @@ mod functions;
 mod hardware_report;
 mod metrics;
 pub mod modes;
+pub mod peer;
 mod plugins;
 mod power_profiles;
 mod profile_generation;
@@ -42,7 +45,6 @@ use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
 use crate::device_health::DeviceHealthController;
 use crate::engine::main::Engine;
-use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
@@ -68,6 +70,7 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
+use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
 use log::{debug, info, warn, Level};
 use moro_local::Scope;
@@ -84,9 +87,9 @@ use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
+use tower_http::compression::predicate::{And, DefaultPredicate, Predicate};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors;
-use tower_http::decompression::DecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -99,7 +102,6 @@ use tower_sessions::{
 };
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
-const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
@@ -140,14 +142,10 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port)
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
-    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port, ApiServer::Rest);
+    let (ipv4, ipv6) = resolve_server_addresses(&config, rest_port);
 
     let settings = config.get_settings()?;
-    let compression_layers = if settings.compress {
-        Some((CompressionLayer::new(), DecompressionLayer::new()))
-    } else {
-        None
-    };
+    let compression_layer = settings.compress.then(api_compression_layer);
     let app_state = create_app_state(
         all_devices,
         repos,
@@ -201,69 +199,51 @@ pub async fn start_server<'s>(
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnInactivity(SESSION_COOKIE_EXPIRATION));
 
-    // GRPC API
-    // We use a separate socket because the purpose and scope is quite different comparatively
-    let grpc_port = env::var(ENV_PORT)
-        .ok()
-        .and_then(|p| p.parse::<u16>().map(|p| p + 1).ok())
-        .unwrap_or_else(|| {
-            config
-                .get_settings()
-                .ok()
-                .and_then(|settings| settings.port.map(|p| p + 1))
-                .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
-        });
-    let (grpc_ipv4, grpc_ipv6) = resolve_server_addresses(&config, grpc_port, ApiServer::Grpc);
-
-    // Extract proxy/cors settings for the API servers
-    let cors_origins = settings.origins.clone();
-    let frame_ancestors = settings.frame_ancestors.clone();
-    let allow_unencrypted = settings.allow_unencrypted;
-    let protocol_header = settings.protocol_header.clone();
+    let trusted_proxies = Arc::new(peer::TrustedProxies::from_config(&settings.trusted_proxies));
+    let server_config = ApiServerConfig {
+        ipv4,
+        ipv6,
+        app_state,
+        session_layer,
+        compression_layer,
+        // One limiter for both listeners, so a peer cannot double its share by using both.
+        connection_limiter: connection::process_limiter(Arc::clone(&trusted_proxies)),
+        trusted_proxies,
+        tls_config,
+        cancel_token,
+        cors_origins: settings.origins.clone(),
+        frame_ancestors: settings.frame_ancestors.clone(),
+        allow_unencrypted: settings.allow_unencrypted,
+        protocol_header: settings.protocol_header.clone(),
+    };
 
     // Run all API servers on the shared sidecar thread. The builder closure captures only `Send`
     // data and is invoked on the sidecar to construct the `!Send` server future.
-    crate::sidecar::handle().spawn(move || {
-        run_all_api_servers(
-            ipv4,
-            ipv6,
-            grpc_ipv4,
-            grpc_ipv6,
-            app_state,
-            session_layer,
-            expired_deletion_store,
-            compression_layers,
-            tls_config,
-            cancel_token,
-            cors_origins,
-            frame_ancestors,
-            allow_unencrypted,
-            protocol_header,
-        )
-    });
+    crate::sidecar::handle()
+        .spawn(move || run_all_api_servers(server_config, expired_deletion_store));
     Ok(())
 }
 
-async fn run_all_api_servers(
+/// What every listener's server is built from. Both listeners share one of each.
+#[derive(Clone)]
+struct ApiServerConfig {
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
-    grpc_ipv4: Option<SocketAddrV4>,
-    grpc_ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
-    expired_deletion_store: FileSessionStore,
-    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
+    compression_layer: Option<ApiCompressionLayer>,
+    connection_limiter: Arc<connection::ConnectionLimiter>,
+    trusted_proxies: Arc<peer::TrustedProxies>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
     frame_ancestors: Vec<String>,
     allow_unencrypted: bool,
     protocol_header: Option<String>,
-) {
-    let mut handles = Vec::new();
-    let grpc_device_handle = app_state.device_handle.clone();
-    let grpc_status_handle = app_state.status_handle.clone();
-    let grpc_calibration_handle = app_state.calibration_handle.clone();
+}
+
+async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: FileSessionStore) {
+    let mut handles = Vec::with_capacity(2);
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
@@ -271,57 +251,13 @@ async fn run_all_api_servers(
     );
 
     // REST API servers
-    if let Some(addr) = ipv4 {
-        handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(addr),
-            ipv4,
-            ipv6,
-            app_state.clone(),
-            session_layer.clone(),
-            compression_layers.clone(),
-            tls_config.clone(),
-            cancel_token.clone(),
-            cors_origins.clone(),
-            allow_unencrypted,
-            protocol_header.clone(),
-            frame_ancestors.clone(),
-        )));
+    if let Some(addr) = config.ipv4 {
+        let server = create_api_server(SocketAddr::from(addr), config.clone());
+        handles.push(tokio::task::spawn_local(server));
     }
-    if let Some(addr) = ipv6 {
-        handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(addr),
-            ipv4,
-            ipv6,
-            app_state,
-            session_layer,
-            compression_layers,
-            tls_config,
-            cancel_token.clone(),
-            cors_origins,
-            allow_unencrypted,
-            protocol_header,
-            frame_ancestors,
-        )));
-    }
-
-    // gRPC API servers
-    if let Some(ipv4) = grpc_ipv4 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv4),
-            grpc_device_handle.clone(),
-            grpc_status_handle.clone(),
-            grpc_calibration_handle.clone(),
-            cancel_token.clone(),
-        )));
-    }
-    if let Some(ipv6) = grpc_ipv6 {
-        handles.push(tokio::task::spawn_local(create_grpc_api_server(
-            SocketAddr::from(ipv6),
-            grpc_device_handle,
-            grpc_status_handle,
-            grpc_calibration_handle,
-            cancel_token,
-        )));
+    if let Some(addr) = config.ipv6 {
+        let server = create_api_server(SocketAddr::from(addr), config);
+        handles.push(tokio::task::spawn_local(server));
     }
 
     // Wait for all servers (they run until canceled)
@@ -534,78 +470,38 @@ async fn csp_frame_ancestors_middleware(
     response
 }
 
-async fn create_api_server(
-    addr: SocketAddr,
-    ipv4: Option<SocketAddrV4>,
-    ipv6: Option<SocketAddrV6>,
-    app_state: AppState,
-    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
-    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
-    tls_config: Option<RustlsConfig>,
-    cancel_token: CancellationToken,
-    cors_origins: Vec<String>,
-    allow_unencrypted: bool,
-    protocol_header: Option<String>,
-    frame_ancestors: Vec<String>,
-) -> Result<()> {
-    aide::generate::on_error(|error| {
-        debug!("OpenApi Generation Error: {error}");
-    });
-    let mut open_api = OpenApi::default();
-    let router = router::init(app_state)
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)));
-
-    // Build the base router with all layers
-    // Layers are processed bottom to top: (last is first in the chain)
-    // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
-    let base_router = optional_layers(compression_layers, router)
-        // Limits the size of the payload in bytes: (Max 50MB for image files)
-        .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
-        // 2MB is the default payload limit:
-        .route_layer(DefaultBodyLimit::disable())
-        .route_layer(session_layer)
-        .layer(cors_layer(ipv4, ipv6, cors_origins))
-        .layer(middleware::from_fn(security_headers_middleware))
-        .layer((
-            TraceLayer::new_for_http(),
-            TimeoutLayer::with_status_code(
-                StatusCode::REQUEST_TIMEOUT,
-                Duration::from_secs(API_TIMEOUT_SECS),
-            ),
-        ))
-        .layer(middleware::from_fn_with_state(
-            csp_frame_ancestors_value(frame_ancestors),
-            csp_frame_ancestors_middleware,
-        ));
+async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<()> {
+    let router = api_router(config.app_state, config.trusted_proxies).await;
+    let base_router = with_base_layers(
+        router,
+        config.compression_layer,
+        config.session_layer,
+        cors_layer(config.ipv4, config.ipv6, config.cors_origins),
+        csp_frame_ancestors_value(config.frame_ancestors),
+    );
+    let connection_limiter = config.connection_limiter;
 
     let listener = TcpListener::bind(addr).await?;
-    let handle = axum_server::Handle::new();
-    let shutdown_handle = handle.clone();
-    tokio::task::spawn_local(async move {
-        cancel_token.cancelled().await;
-        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(API_SHUTDOWN_TIMEOUT_SECS)));
-    });
+    let handle = shutdown_handle(config.cancel_token);
 
-    if let Some(tls) = tls_config {
+    if let Some(tls) = config.tls_config {
         // Dual-protocol server: accepts both HTTP and HTTPS on the same port
         // HTTP requests from non-localhost are redirected to HTTPS (via middleware)
         // HTTP requests from localhost and to /health are allowed
-        info!("Serving HTTP and HTTPS API on {addr}");
+        info!("Serving HTTP, HTTPS and gRPC API on {addr}");
 
         // Add HTTPS redirect layer for non-localhost HTTP requests
         let redirect_layer = dual_protocol::HttpsRedirectLayer {
             port: addr.port(),
-            allow_unencrypted,
-            protocol_header,
+            allow_unencrypted: config.allow_unencrypted,
+            protocol_header: config.protocol_header,
         };
         let router_with_redirect = base_router.layer(redirect_layer);
         let normalized_router =
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        axum_server::from_tcp(listener.into_std()?)?
-            .acceptor(acceptor)
+        connection::server(listener.into_std()?, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -615,21 +511,93 @@ async fn create_api_server(
             .await?;
     } else {
         // Plain HTTP server (no redirect needed)
-        info!("Serving HTTP API on: {addr}");
+        info!("Serving HTTP and gRPC API on {addr}");
         let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(base_router);
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        axum_server::from_tcp(listener.into_std()?)?
-            .handle(handle)
-            .serve(
-                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
-                    normalized_router,
-                ),
-            )
-            .await?;
+        connection::server(
+            listener.into_std()?,
+            DefaultAcceptor::new(),
+            connection_limiter,
+        )?
+        .handle(handle)
+        .serve(
+            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                normalized_router,
+            ),
+        )
+        .await?;
     }
     Ok(())
+}
+
+/// A server handle that shuts down gracefully once `cancel_token` fires.
+fn shutdown_handle(cancel_token: CancellationToken) -> axum_server::Handle<SocketAddr> {
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::task::spawn_local(async move {
+        cancel_token.cancelled().await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(API_SHUTDOWN_TIMEOUT_SECS)));
+    });
+    handle
+}
+
+/// The API routes, with the client address resolved before anything reads it.
+async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
+    aide::generate::on_error(|error| {
+        debug!("OpenApi Generation Error: {error}");
+    });
+    let mut open_api = OpenApi::default();
+    let router = router::init(app_state)
+        .await
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(Extension(Arc::new(open_api)));
+    with_client_addr(router, trusted_proxies)
+}
+
+/// Outside the router, so the client is known before its auth throttles read it.
+fn with_client_addr(router: Router, trusted_proxies: Arc<peer::TrustedProxies>) -> Router {
+    router.layer(middleware::from_fn_with_state(
+        trusted_proxies,
+        peer::client_addr_middleware,
+    ))
+}
+
+/// The layers every listener shares.
+///
+/// Layers are processed bottom to top: (last is first in the chain)
+/// See: <https://docs.rs/axum/latest/axum/middleware/index.html#ordering>
+fn with_base_layers(
+    router: Router,
+    compression_layer: Option<ApiCompressionLayer>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
+    cors_layer: cors::CorsLayer,
+    frame_ancestors: String,
+) -> Router {
+    optional_layers(compression_layer, router)
+        // Limits the size of the payload in bytes: (Max 50MB for image files)
+        .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+        // 2MB is the default payload limit:
+        .route_layer(DefaultBodyLimit::disable())
+        .route_layer(session_layer)
+        .layer(cors_layer)
+        .layer(middleware::from_fn(security_headers_middleware))
+        .layer((
+            TraceLayer::new_for_http(),
+            TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::from_secs(API_TIMEOUT_SECS),
+            ),
+        ))
+        .layer(middleware::from_fn_with_state(
+            frame_ancestors,
+            csp_frame_ancestors_middleware,
+        ))
+        // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
+        // gRPC clients as statuses they can read. Inside the timeout layer it would never
+        // see a 408 at all.
+        .layer(middleware::from_fn(router::grpc_error_middleware))
 }
 
 /// The `OpenAPI` spec, built straight from the route table. Needs no `AppState`, no hardware and
@@ -888,14 +856,103 @@ async fn create_app_state<'s>(
     }
 }
 
-fn optional_layers(
-    compression_layer: Option<(CompressionLayer, DecompressionLayer)>,
-    router: Router,
-) -> Router {
+/// The real app state over no devices and the default config, for tests of the real routes.
+/// Its actors run in `main_scope` until `cancel_token` is cancelled.
+#[cfg(test)]
+async fn empty_app_state<'s>(
+    cancel_token: &CancellationToken,
+    main_scope: &'s Scope<'s, 's, Result<()>>,
+) -> AppState {
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    crate::sidecar::ensure_test_handle();
+    let config = Rc::new(Config::init_default_config().unwrap());
+    let all_devices: AllDevices = Rc::new(std::collections::HashMap::new());
+    let repos: Repos = Rc::default();
+    let overrides = Rc::new(OverridesController::empty());
+    let engine = Rc::new(Engine::new(
+        Rc::clone(&all_devices),
+        &repos,
+        Rc::clone(&config),
+        Rc::new(CalibrationStore::empty()),
+        Rc::new(FanStateMap::new()),
+        Rc::clone(&overrides),
+    ));
+    let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
+    if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+    }
+    let modes = ModeController::init(
+        Rc::clone(&config),
+        Rc::clone(&all_devices),
+        Rc::clone(&engine),
+        power_profiles.clone(),
+    );
+    let modes = Rc::new(modes.await.unwrap());
+    let alerts = AlertController::init(
+        Rc::clone(&all_devices),
+        Rc::clone(&overrides),
+        engine.diagnosis_registry(),
+    );
+    let alerts = Rc::new(alerts.await.unwrap());
+    let device_health = Rc::new(DeviceHealthController::new(
+        Rc::clone(&all_devices),
+        Rc::clone(&config),
+        Rc::clone(&repos),
+        Rc::clone(&overrides),
+    ));
+    let custom_sensors =
+        CustomSensorsRepo::new(Rc::clone(&config), Vec::new(), Rc::clone(&overrides));
+    let hardware_support = crate::hardware_support::HardwareSupportController::init(None, false);
+    let status_handle =
+        StatusHandle::new(Rc::clone(&all_devices), cancel_token.clone(), main_scope);
+    create_app_state(
+        all_devices,
+        repos,
+        &engine,
+        config,
+        &Rc::new(custom_sensors.unwrap()),
+        &modes,
+        &alerts,
+        &device_health,
+        Rc::new(hardware_support.await),
+        overrides,
+        Rc::new(PluginController::new_disabled()),
+        LogBufHandle::new(cancel_token.clone()),
+        status_handle,
+        crate::notifier::NotificationHandle::new(cancel_token.clone()),
+        crate::system_event::SystemEventHandle::new(cancel_token.clone()),
+        power_profiles,
+        cancel_token,
+        main_scope,
+    )
+    .await
+}
+
+fn optional_layers(compression_layer: Option<ApiCompressionLayer>, router: Router) -> Router {
     if let Some(layer) = compression_layer {
-        router.layer(layer.0).layer(layer.1)
+        router.layer(layer)
     } else {
         router
+    }
+}
+
+type ApiCompressionLayer = CompressionLayer<And<DefaultPredicate, NotStaticAsset>>;
+
+/// Response compression for everything except the embedded web app. See `base::StaticAsset`.
+fn api_compression_layer() -> ApiCompressionLayer {
+    CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotStaticAsset))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NotStaticAsset;
+
+impl Predicate for NotStaticAsset {
+    fn should_compress<B>(&self, response: &Response<B>) -> bool
+    where
+        B: axum::body::HttpBody,
+    {
+        response.extensions().get::<base::StaticAsset>().is_none()
     }
 }
 
@@ -988,6 +1045,12 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             warn!("Failed to ensure TLS certificates: {err}");
         })
         .ok()?;
+    // Announce the fingerprint a remote daemon will pin. On a headless server this log
+    // line is the only way a user can check a pin against the certificate actually served.
+    if let Some(fingerprint) = tls::certificate_fingerprint(&cert_path).await {
+        info!("TLS certificate fingerprint (SHA-256): {fingerprint}");
+        tls::set_served_fingerprint(fingerprint);
+    }
     // `RustlsConfig::from_pem_file` reads the cert/key via `tokio::fs` and parses via
     // `spawn_blocking`, both of which need a Tokio reactor. This runs during main-thread API init
     // (no reactor on the compio main thread), so load it on the sidecar. Harmless on Tokio too.
@@ -1159,55 +1222,30 @@ fn log_bind_outcome<A>(outcome: Result<Option<A>>, family: &str) -> Option<A> {
     outcome.ok().flatten()
 }
 
-/// The two API servers. They bind independently: neither one being off or unable to bind
-/// may stop the other, and neither stops the daemon, whose fan control needs no socket.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ApiServer {
-    Rest,
-    Grpc,
-}
+/// Stable log text: users grep these lines. gRPC shares the REST listener, so there is
+/// one socket to bind and one failure to report; neither family failing stops the daemon,
+/// whose fan control needs no socket at all.
+const API_SERVER_NAME: &str = "REST API";
+const API_SERVER_CONSEQUENCE: &str = "No API, UI, or gRPC connection available.";
 
-impl ApiServer {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Rest => "REST API",
-            Self::Grpc => "GRPC API",
-        }
-    }
-
-    /// Per-family log label, e.g. "IPv6 GRPC". Stable text: users grep these lines.
-    fn family_label(self, family: &str) -> String {
-        match self {
-            Self::Rest => family.to_string(),
-            Self::Grpc => format!("{family} GRPC"),
-        }
-    }
-
-    fn consequence(self) -> &'static str {
-        match self {
-            Self::Rest => "No API and UI connection available.",
-            Self::Grpc => "External Device services are unavailable.",
-        }
-    }
-}
-
-/// What to log when a server ends up with nothing to listen on. Both families switched off
-/// is a deliberate opt-out; anything else means we tried to bind and could not.
+/// What to log when the server ends up with nothing to listen on. Both families switched
+/// off is a deliberate opt-out; anything else means we tried to bind and could not.
 fn unavailable_log<A4, A6>(
     ipv4: &Result<Option<A4>>,
     ipv6: &Result<Option<A6>>,
-    server: ApiServer,
 ) -> Option<(Level, String)> {
     if matches!(ipv4, Ok(Some(_))) || matches!(ipv6, Ok(Some(_))) {
         return None;
     }
-    let (name, consequence) = (server.name(), server.consequence());
     if matches!(ipv4, Ok(None)) && matches!(ipv6, Ok(None)) {
-        return Some((Level::Info, format!("{name} disabled. {consequence}")));
+        return Some((
+            Level::Info,
+            format!("{API_SERVER_NAME} disabled. {API_SERVER_CONSEQUENCE}"),
+        ));
     }
     Some((
         Level::Error,
-        format!("Could not bind {name} to any address. {consequence}"),
+        format!("Could not bind {API_SERVER_NAME} to any address. {API_SERVER_CONSEQUENCE}"),
     ))
 }
 
@@ -1217,13 +1255,12 @@ fn unavailable_log<A4, A6>(
 fn resolve_server_addresses(
     config: &Rc<Config>,
     port: Port,
-    server: ApiServer,
 ) -> (Option<SocketAddrV4>, Option<SocketAddrV6>) {
     let ipv4_outcome = determine_ipv4_address(config, port);
     let ipv6_outcome = determine_ipv6_address(config, port);
-    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome, server);
-    let ipv4 = log_bind_outcome(ipv4_outcome, &server.family_label("IPv4"));
-    let ipv6 = log_bind_outcome(ipv6_outcome, &server.family_label("IPv6"));
+    let unavailable = unavailable_log(&ipv4_outcome, &ipv6_outcome);
+    let ipv4 = log_bind_outcome(ipv4_outcome, "IPv4");
+    let ipv6 = log_bind_outcome(ipv6_outcome, "IPv6");
     if let Some((level, message)) = unavailable {
         log::log!(level, "{message}");
     }
@@ -1484,6 +1521,95 @@ mod tests {
     use super::*;
     use tower::ServiceExt as _;
 
+    /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
+    /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
+    /// trusted proxy for two clients. TEST-NET addresses keep the process-wide statics apart,
+    /// allotted beside them in `auth_throttle`.
+    #[tokio::test]
+    async fn auth_throttles_see_the_forwarded_client() {
+        use axum::extract::ConnectInfo;
+        let proxy = SocketAddr::from(([198, 51, 100, 30], 40000));
+        let clients = ["203.0.113.30", "203.0.113.31"];
+        let routes = Router::new().route(
+            "/login",
+            axum::routing::post(|| async { StatusCode::UNAUTHORIZED }).layer(middleware::from_fn(
+                auth_throttle::password_throttle_middleware,
+            )),
+        );
+        let trusted = peer::TrustedProxies::from_config(&[proxy.ip().to_string()]);
+        let app = with_client_addr(routes, Arc::new(trusted));
+        for client in clients {
+            let mut request = Request::post("/login")
+                .header(axum::http::header::AUTHORIZATION, "Basic Q0NBZG1pbjp4")
+                .header("x-forwarded-for", client)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request.extensions_mut().insert(ConnectInfo(proxy));
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        for client in clients {
+            let address: std::net::IpAddr = client.parse().unwrap();
+            assert_eq!(auth_throttle::password_failures(address), Some(1));
+        }
+        assert_eq!(auth_throttle::password_failures(proxy.ip()), None);
+    }
+
+    /// A JSON body comfortably above the compression predicate's 32 byte floor.
+    fn large_json() -> Json<Vec<u32>> {
+        Json((0..256).collect())
+    }
+
+    fn compressed_app() -> Router {
+        let router = Router::new()
+            .route("/json", axum::routing::get(|| async { large_json() }))
+            .route(
+                "/static",
+                axum::routing::get(|| async { (Extension(base::StaticAsset), large_json()) }),
+            );
+        optional_layers(Some(api_compression_layer()), router)
+    }
+
+    async fn content_encoding(accept_encoding: Option<&str>, uri: &str) -> Option<String> {
+        let mut builder = Request::builder().uri(uri);
+        if let Some(value) = accept_encoding {
+            builder = builder.header(axum::http::header::ACCEPT_ENCODING, value);
+        }
+        let response = compressed_app()
+            .oneshot(builder.body(axum::body::Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        response
+            .headers()
+            .get(axum::http::header::CONTENT_ENCODING)
+            .map(|value| value.to_str().unwrap().to_string())
+    }
+
+    /// Goal: a client that accepts gzip receives gzip on the wire. The old stack paired the
+    /// compressor with tower-http's client-side decompressor, which undid it on the way out.
+    #[tokio::test]
+    async fn api_responses_reach_the_client_compressed() {
+        assert_eq!(
+            content_encoding(Some("gzip"), "/json").await.as_deref(),
+            Some("gzip")
+        );
+    }
+
+    /// Goal: a client that offers no encoding gets identity, so compression stays negotiated
+    /// rather than imposed.
+    #[tokio::test]
+    async fn api_responses_stay_identity_without_accept_encoding() {
+        assert_eq!(content_encoding(None, "/json").await, None);
+    }
+
+    /// Goal: embedded web app files are never compressed per request, since any client can
+    /// fetch them without credentials. Method: a response carrying the `StaticAsset` marker.
+    #[tokio::test]
+    async fn static_assets_are_not_compressed() {
+        assert_eq!(content_encoding(Some("gzip, br"), "/static").await, None);
+    }
+
     /// Repo-root spec, relative to this crate. Absent in vendored/source-tarball builds,
     /// which ship only the crate, so the freshness test skips rather than fails there.
     const SPEC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/openapi.json");
@@ -1592,9 +1718,9 @@ mod tests {
     #[test]
     fn test_server_with_one_family_is_not_reported() {
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        assert!(unavailable_log(&bound_v4(), &disabled, ApiServer::Rest).is_none());
+        assert!(unavailable_log(&bound_v4(), &disabled).is_none());
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
-        assert!(unavailable_log(&failed, &bound_v6(), ApiServer::Rest).is_none());
+        assert!(unavailable_log(&failed, &bound_v6()).is_none());
     }
 
     /// Turning both families off is a deliberate opt-out, so a server that is entirely
@@ -1603,12 +1729,11 @@ mod tests {
     fn test_server_fully_disabled_logs_info() {
         let v4: Result<Option<SocketAddrV4>> = Ok(None);
         let v6: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&v4, &v6, ApiServer::Rest).expect("no address is reported");
+        let (level, message) = unavailable_log(&v4, &v6).expect("no address is reported");
         assert_eq!(level, Level::Info);
         assert_eq!(
             message,
-            "REST API disabled. No API and UI connection available."
+            "REST API disabled. No API, UI, or gRPC connection available."
         );
     }
 
@@ -1618,22 +1743,12 @@ mod tests {
     fn test_server_unable_to_bind_logs_error() {
         let failed: Result<Option<SocketAddrV4>> = Err(anyhow!("port in use"));
         let disabled: Result<Option<SocketAddrV6>> = Ok(None);
-        let (level, message) =
-            unavailable_log(&failed, &disabled, ApiServer::Grpc).expect("no address is reported");
+        let (level, message) = unavailable_log(&failed, &disabled).expect("no address is reported");
         assert_eq!(level, Level::Error);
         assert_eq!(
             message,
-            "Could not bind GRPC API to any address. External Device services are unavailable."
+            "Could not bind REST API to any address. No API, UI, or gRPC connection available."
         );
-    }
-
-    /// The per-family log labels are what users grep for, so keep them exact.
-    #[test]
-    fn test_family_labels_are_stable() {
-        assert_eq!(ApiServer::Rest.family_label("IPv4"), "IPv4");
-        assert_eq!(ApiServer::Rest.family_label("IPv6"), "IPv6");
-        assert_eq!(ApiServer::Grpc.family_label("IPv4"), "IPv4 GRPC");
-        assert_eq!(ApiServer::Grpc.family_label("IPv6"), "IPv6 GRPC");
     }
 
     fn default_allowed_hosts() -> Vec<String> {

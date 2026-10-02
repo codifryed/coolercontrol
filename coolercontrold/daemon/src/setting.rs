@@ -290,12 +290,17 @@ pub struct CoolerControlSettings {
     pub allow_unencrypted: bool,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
     pub protocol_header: Option<String>,
+    /// Reverse proxies, as addresses or CIDR ranges, whose `X-Forwarded-For` names the client
+    pub trusted_proxies: Vec<String>,
     /// Whether to auto-detect Super-I/O sensors and load kernel modules at startup
     pub sensors_auto_detect: bool,
     /// Whether to listen for kernel device add/remove events at startup
     pub device_listener_enabled: bool,
     /// Whether to apply the `label` and `ignore` statements from the lm-sensors configuration
     pub sensors_conf_enabled: bool,
+    /// Whether outbound device-service TLS connections require a fingerprint the user
+    /// pinned in advance, instead of trusting the peer on first contact.
+    pub tls_strict: bool,
     /// Whether to log at DEBUG level. Read at startup, so a change applies after a restart.
     pub debug_logging: bool,
 }

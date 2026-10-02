@@ -6,10 +6,13 @@ use aide::axum::IntoApiResponse;
 #[cfg(debug_assertions)]
 use aide::openapi::OpenApi;
 use anyhow::Result;
+use axum::body::Body;
 use axum::extract::Request;
 use axum::extract::State;
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
-use axum::http::{HeaderName, HeaderValue};
+use axum::http::header::{
+    ACCEPT_ENCODING, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, VARY,
+};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 #[cfg(debug_assertions)]
@@ -24,11 +27,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+use std::ops::Not;
 #[cfg(debug_assertions)]
 use std::sync::Arc;
 use tower_serve_static::ServeDir;
 
 static ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/resources/app");
+/// Gzip copies of the compressible files in `ASSETS_DIR`, made by build.rs, each at its
+/// original's path plus `.gz`.
+static GZIP_ASSETS: Dir<'static> = include_dir!("$OUT_DIR/app-gzip");
 
 pub async fn handshake() -> impl IntoApiResponse {
     Json(json!({"shake": true})).into_response()
@@ -36,7 +43,109 @@ pub async fn handshake() -> impl IntoApiResponse {
 
 pub fn web_app_service() -> axum::routing::MethodRouter {
     axum::routing::get_service(ServeDir::new(&ASSETS_DIR))
+        .layer(middleware::from_fn(|request, next| {
+            precompressed_middleware(&GZIP_ASSETS, request, next)
+        }))
         .layer(middleware::from_fn(cache_control_middleware))
+}
+
+const VARY_ACCEPT_ENCODING: HeaderValue = HeaderValue::from_static("accept-encoding");
+const ENCODING_GZIP: HeaderValue = HeaderValue::from_static("gzip");
+
+/// Swaps in the build-time gzip of a file for clients that accept it.
+///
+/// Everything else stays with `ServeDir`: the lookup, redirects, 404s, `If-Modified-Since`,
+/// the content type and `Last-Modified`, all of which describe the original file. Only a
+/// 200 has its body replaced, and only when a gzip copy exists, so the daemon never
+/// compresses a static file per request.
+async fn precompressed_middleware(
+    variants: &'static Dir<'static>,
+    request: Request,
+    next: Next,
+) -> axum::response::Response {
+    let gzipped = gzip_variant(variants, request.uri().path());
+    let accepts_gzip = accepts_gzip(request.headers());
+    let mut response = next.run(request).await;
+    let Some(gzipped) = gzipped else {
+        return response;
+    };
+    // A file with two representations must say so on every response for it, so no cache
+    // hands the gzip to a client that never asked for it.
+    response.headers_mut().append(VARY, VARY_ACCEPT_ENCODING);
+    if response.status() != StatusCode::OK {
+        return response;
+    }
+    if accepts_gzip.not() {
+        return response;
+    }
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_ENCODING, ENCODING_GZIP);
+    headers.remove(CONTENT_LENGTH);
+    *response.body_mut() = Body::from(gzipped);
+    response
+}
+
+/// The gzip copy of the file `ServeDir` serves for `request_path`, if the build made one.
+///
+/// `ServeDir` percent-decodes the path. Bundle names are plain ASCII, so an encoded path is
+/// simply served uncompressed rather than decoded twice.
+fn gzip_variant(variants: &'static Dir<'static>, request_path: &str) -> Option<&'static [u8]> {
+    let relative = request_path.trim_start_matches('/');
+    if relative.contains('%') {
+        return None;
+    }
+    let variant_path = if relative.is_empty() || relative.ends_with('/') {
+        format!("{relative}index.html.gz")
+    } else {
+        format!("{relative}.gz")
+    };
+    debug_assert!(
+        variant_path.starts_with('/').not(),
+        "variants are keyed relative"
+    );
+    debug_assert!(
+        variant_path.starts_with(relative),
+        "a variant extends its original path"
+    );
+    variants
+        .get_file(variant_path)
+        .map(include_dir::File::contents)
+}
+
+/// Whether `Accept-Encoding` allows gzip: named outright, or covered by `*`, at a nonzero
+/// quality. A named entry wins over the wildcard, as RFC 9110 specifies.
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    let mut wildcard = false;
+    let entries = headers
+        .get_all(ACCEPT_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','));
+    for entry in entries {
+        let mut parts = entry.split(';');
+        let coding = parts.next().unwrap_or_default().trim();
+        let allowed = parts.all(|parameter| is_zero_quality(parameter).not());
+        if coding.eq_ignore_ascii_case("gzip") || coding.eq_ignore_ascii_case("x-gzip") {
+            return allowed;
+        }
+        if coding == "*" {
+            wildcard = allowed;
+        }
+    }
+    wildcard
+}
+
+fn is_zero_quality(parameter: &str) -> bool {
+    let Some((name, value)) = parameter.split_once('=') else {
+        return false;
+    };
+    if name.trim().eq_ignore_ascii_case("q").not() {
+        return false;
+    }
+    value
+        .trim()
+        .parse::<f32>()
+        .is_ok_and(|quality| quality <= 0.0)
 }
 
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
@@ -92,6 +201,14 @@ impl CachePolicy {
     }
 }
 
+/// Marks a response from the embedded web app, so the API's compression layer leaves it alone.
+///
+/// The fallback is reachable without credentials, and its bundles run to megabytes. Compressing
+/// them per request would let any client spend the sidecar thread's CPU at will, while hashed
+/// bundles are cached for a year and the rest revalidate for free.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StaticAsset;
+
 /// Only the fallback service is layered with this, so API and SSE requests never reach it.
 /// Everything is classified up front: `path` borrows `request`, which the next layer consumes.
 async fn cache_control_middleware(request: Request, next: Next) -> axum::response::Response {
@@ -121,6 +238,7 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
         CachePolicy::Pinned => CACHE_PINNED,
     };
     headers.insert(CACHE_CONTROL, cache_value);
+    response.extensions_mut().insert(StaticAsset);
     response
 }
 
@@ -403,6 +521,232 @@ mod tests {
         assert!(
             response.headers().contains_key("last-modified"),
             "the metadata feature must stay enabled, or revalidation costs a full body"
+        );
+    }
+
+    fn accept(values: &[&str]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for value in values {
+            headers.append(ACCEPT_ENCODING, value.parse().unwrap());
+        }
+        headers
+    }
+
+    // Goal: gzip is accepted when named or wildcarded at a nonzero quality, and refused when
+    // absent or zeroed, with a named entry overriding the wildcard.
+    #[test]
+    fn test_accepts_gzip() {
+        for (values, expected) in [
+            (&["gzip, deflate, br"][..], true),
+            (&["GZIP"][..], true),
+            (&["br", "gzip;q=0.5"][..], true),
+            (&["*"][..], true),
+            (&["br, *;q=0.5"][..], true),
+            (&[][..], false),
+            (&["br, deflate"][..], false),
+            (&["gzip;q=0"][..], false),
+            (&["gzip; q=0.000"][..], false),
+            (&["*;q=0"][..], false),
+            (&["gzip;q=0, *"][..], false),
+            (&["identity"][..], false),
+        ] {
+            assert_eq!(accepts_gzip(&accept(values)), expected, "{values:?}");
+        }
+    }
+
+    static TEST_VARIANTS: Dir<'static> = Dir::new(
+        "",
+        &[
+            include_dir::DirEntry::File(include_dir::File::new("index.html.gz", b"GZ-INDEX")),
+            include_dir::DirEntry::Dir(Dir::new(
+                "assets",
+                &[include_dir::DirEntry::File(include_dir::File::new(
+                    "assets/app.js.gz",
+                    b"GZ-APP",
+                ))],
+            )),
+        ],
+    );
+
+    // Goal: a request path finds its gzip copy, directories map to index.html as ServeDir
+    // does, and paths without a copy or with percent-encoding find none.
+    #[test]
+    fn test_gzip_variant_lookup() {
+        assert_eq!(
+            gzip_variant(&TEST_VARIANTS, "/assets/app.js"),
+            Some(&b"GZ-APP"[..])
+        );
+        assert_eq!(gzip_variant(&TEST_VARIANTS, "/"), Some(&b"GZ-INDEX"[..]));
+        assert_eq!(gzip_variant(&TEST_VARIANTS, "/assets/other.js"), None);
+        assert_eq!(gzip_variant(&TEST_VARIANTS, "/assets/app%2Ejs"), None);
+        assert_eq!(gzip_variant(&TEST_VARIANTS, "/assets/../index.html"), None);
+    }
+
+    /// The precompressed layer in front of a stand-in for ServeDir that answers every path
+    /// with the given status and a plain body.
+    async fn serve_precompressed(
+        path: &str,
+        accept_encoding: Option<&str>,
+        status: http::StatusCode,
+    ) -> axum::response::Response {
+        let app = Router::new()
+            .fallback(
+                move || async move { (status, [(CONTENT_TYPE, "text/javascript")], "original") },
+            )
+            .layer(middleware::from_fn(|request, next| {
+                precompressed_middleware(&TEST_VARIANTS, request, next)
+            }));
+        let mut builder = http::Request::builder().uri(path);
+        if let Some(value) = accept_encoding {
+            builder = builder.header(ACCEPT_ENCODING, value);
+        }
+        app.oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
+        axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec()
+    }
+
+    // Goal: a client that accepts gzip gets the build-time copy, labelled as gzip, with the
+    // original's content type kept and caches told the response varies.
+    #[tokio::test]
+    async fn test_gzip_copy_is_served_when_accepted() {
+        let response =
+            serve_precompressed("/assets/app.js", Some("gzip, br"), http::StatusCode::OK).await;
+        assert_eq!(response.headers()[CONTENT_ENCODING], "gzip");
+        assert_eq!(response.headers()[CONTENT_TYPE], "text/javascript");
+        assert_eq!(response.headers()[VARY], "accept-encoding");
+        assert_eq!(body_bytes(response).await, b"GZ-APP");
+    }
+
+    // Goal: a client that does not accept gzip gets the original, still marked as varying.
+    #[tokio::test]
+    async fn test_original_is_served_without_gzip() {
+        for accept_encoding in [None, Some("br"), Some("gzip;q=0")] {
+            let response =
+                serve_precompressed("/assets/app.js", accept_encoding, http::StatusCode::OK).await;
+            assert!(response.headers().get(CONTENT_ENCODING).is_none());
+            assert_eq!(response.headers()[VARY], "accept-encoding");
+            assert_eq!(body_bytes(response).await, b"original");
+        }
+    }
+
+    // Goal: a file with no gzip copy passes through untouched, with no Vary added.
+    #[tokio::test]
+    async fn test_file_without_a_copy_is_untouched() {
+        let response =
+            serve_precompressed("/assets/other.js", Some("gzip"), http::StatusCode::OK).await;
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+        assert!(response.headers().get(VARY).is_none());
+        assert_eq!(body_bytes(response).await, b"original");
+    }
+
+    // Goal: only a 200 is swapped. A 304 keeps its empty meaning, though it still carries
+    // Vary, which a 304 must repeat from the 200 it stands for.
+    #[tokio::test]
+    async fn test_not_modified_is_not_swapped() {
+        let response = serve_precompressed(
+            "/assets/app.js",
+            Some("gzip"),
+            http::StatusCode::NOT_MODIFIED,
+        )
+        .await;
+        assert_eq!(response.status(), http::StatusCode::NOT_MODIFIED);
+        assert!(response.headers().get(CONTENT_ENCODING).is_none());
+        assert_eq!(response.headers()[VARY], "accept-encoding");
+    }
+
+    // Goal: every gzip copy the build embedded decompresses to exactly the file it stands
+    // for, so a client can never get stale or corrupt content. Method: walk every copy; a
+    // daemon-only build embeds none, and the loop is then empty.
+    #[test]
+    fn test_embedded_gzip_copies_match_their_originals() {
+        use std::io::Read;
+        let mut pending = vec![&GZIP_ASSETS];
+        while let Some(dir) = pending.pop() {
+            pending.extend(dir.dirs());
+            for copy in dir.files() {
+                let copy_path = copy.path().to_str().unwrap();
+                let original_path = copy_path.strip_suffix(".gz").unwrap();
+                let original = ASSETS_DIR
+                    .get_file(original_path)
+                    .unwrap_or_else(|| panic!("no original for {copy_path}"));
+                let mut decompressed = Vec::new();
+                flate2::read::GzDecoder::new(copy.contents())
+                    .read_to_end(&mut decompressed)
+                    .unwrap();
+                assert!(decompressed == original.contents(), "{copy_path} is stale");
+                assert!(copy.contents().len() < original.contents().len());
+            }
+        }
+    }
+
+    // Goal: end to end through the production fallback, every file with a gzip copy is
+    // served gzipped to a client that accepts it and decompresses to the original, while a
+    // client that does not gets the original. Method: every embedded copy; a daemon-only
+    // build embeds none, and the loop is then empty.
+    #[tokio::test]
+    async fn test_fallback_serves_embedded_gzip_copies() {
+        use std::io::Read;
+        let mut pending = vec![&GZIP_ASSETS];
+        while let Some(dir) = pending.pop() {
+            pending.extend(dir.dirs());
+            for copy in dir.files() {
+                let original_path = copy.path().to_str().unwrap().strip_suffix(".gz").unwrap();
+                let original = ASSETS_DIR.get_file(original_path).unwrap().contents();
+                let uri = format!("/{original_path}");
+                let app = Router::new().fallback_service(web_app_service());
+                let request = http::Request::builder()
+                    .uri(&uri)
+                    .header(ACCEPT_ENCODING, "gzip, deflate")
+                    .body(Body::empty())
+                    .unwrap();
+                let response = app.clone().oneshot(request).await.unwrap();
+                assert_eq!(response.status(), http::StatusCode::OK, "{uri}");
+                assert_eq!(response.headers()[CONTENT_ENCODING], "gzip", "{uri}");
+                let mut decompressed = Vec::new();
+                flate2::read::GzDecoder::new(&body_bytes(response).await[..])
+                    .read_to_end(&mut decompressed)
+                    .unwrap();
+                assert!(decompressed == original, "{uri}");
+
+                let plain = http::Request::builder()
+                    .uri(&uri)
+                    .body(Body::empty())
+                    .unwrap();
+                let response = app.oneshot(plain).await.unwrap();
+                assert!(response.headers().get(CONTENT_ENCODING).is_none(), "{uri}");
+                assert!(body_bytes(response).await == original, "{uri}");
+            }
+        }
+    }
+
+    // Goal: every file the fallback serves carries the `StaticAsset` marker, which is what keeps
+    // the API compression layer off it. Method: a route behind the same middleware.
+    #[tokio::test]
+    async fn test_static_responses_carry_the_marker() {
+        let app = Router::new()
+            .route("/assets/app-abc123.js", get(|| async { "x" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/app-abc123.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.extensions().get::<StaticAsset>(),
+            Some(&StaticAsset)
         );
     }
 

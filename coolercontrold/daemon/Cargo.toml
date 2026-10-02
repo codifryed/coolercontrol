@@ -90,9 +90,6 @@ tower-http = { version = "0.7.0", features = [
   "compression-br",
   "compression-gzip",
   "compression-deflate",
-  "decompression-br",
-  "decompression-gzip",
-  "decompression-deflate",
   "fs",
 ] }
 tower-sessions = { version = "0.15.0", features = ["private"] }
@@ -145,6 +142,8 @@ hyper = { version = "1.11", default-features = false, features = [
 hyper-util = { version = "0.1", default-features = false, features = [
   "client",
   "http1",
+  # The API server's builder, configured directly for its connection timeouts.
+  "server-auto",
   "tokio",
 ] }
 http-body-util = "0.1"
@@ -181,6 +180,7 @@ nix = { version = "0.31.3", default-features = false, features = [
   "user",
   "signal",
   "process",
+  "resource",
   "sched",
   "net",
 ] }
@@ -210,6 +210,8 @@ serial_test = "=3.5"
 tokio = { version = "1.53", default-features = false, features = ["test-util"] }
 
 [build-dependencies]
+# Gzips the embedded UI at build time. Already in the tree through tower-http.
+flate2 = "1.1"
 tonic-prost-build = "0.14.6"
 tonic-build = "0.14.6"
 # Pure-Rust protobuf compiler: drops the protoc binary as a system build dependency. Pinned to 0.9.1

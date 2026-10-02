@@ -13,6 +13,7 @@ use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
     secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
@@ -48,6 +49,12 @@ pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
 const TIMEOUT_API_UP_SECONDS: u64 = 60; // We have a 30-second max startup delay
+/// Spacing between health attempts while a plugin comes up, so that
+/// `TIMEOUT_SERVICE_START_SECONDS` attempts really do span that many seconds.
+const HEALTH_RETRY_DELAY: Duration = Duration::from_secs(1);
+// The give-up message names seconds, so any other spacing puts it at odds with the
+// attempt count.
+const _: () = assert!(HEALTH_RETRY_DELAY.as_secs() == 1);
 
 #[derive(Debug)]
 struct DeviceServiceConnection {
@@ -366,6 +373,7 @@ impl ServicePluginRepo {
         >,
         devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
         poll_rate: f64,
+        tls_strict: bool,
         api_up_token: CancellationToken,
     ) {
         // The definition is overwritten in place rather than removed and re-added. Removing
@@ -462,7 +470,8 @@ impl ServicePluginRepo {
         }
         let mut connect_wait_secs = 0;
         'connection: loop {
-            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate).await {
+            match DeviceServiceClientHandle::connect(&service_manifest, poll_rate, tls_strict).await
+            {
                 Ok(client) => {
                     let mut version = String::new();
                     let mut retries = 0;
@@ -495,9 +504,22 @@ impl ServicePluginRepo {
                                 version = response.version;
                                 break 'health;
                             }
-                            Err(status) => {
-                                debug!("Health request returned status: {status}, retrying...");
+                            Err(err) => {
+                                // Retrying a refusal only buries it under the startup
+                                // timeout below, so this is reported and abandoned here.
+                                if let Some(reason) = client::credential_refusal(&err) {
+                                    error!(
+                                        "Plugin service {service_id} will not be used: {reason}"
+                                    );
+                                    if service_manifest.is_managed() {
+                                        let _ = service_manager.remove(&service_id).await;
+                                    }
+                                    return;
+                                }
+                                debug!("Health request returned status: {err:#}, retrying...");
                                 retries += 1;
+                                // Spaced so the count really is a count of seconds.
+                                sleep(HEALTH_RETRY_DELAY).await;
                             }
                         }
                     }
@@ -897,7 +919,9 @@ impl Repository for ServicePluginRepo {
         let devices = Rc::new(RefCell::new(HashMap::new()));
         let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
         let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
-        let poll_rate = self.config.get_settings()?.poll_rate;
+        let settings = self.config.get_settings()?;
+        let poll_rate = settings.poll_rate;
+        let tls_strict = settings.tls_strict;
         if self.reset_plugin_user {
             info!("Resetting plugin user '{CC_PLUGIN_USER}' as requested");
             if let Err(err) = delete_plugin_user(CC_PLUGIN_USER).await {
@@ -927,6 +951,7 @@ impl Repository for ServicePluginRepo {
                         services,
                         devices,
                         poll_rate,
+                        tls_strict,
                         api_up_token,
                     )
                     .await;

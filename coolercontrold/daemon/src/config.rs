@@ -1383,6 +1383,7 @@ impl Config {
             } else {
                 None
             };
+            let trusted_proxies = read_trusted_proxies(settings)?;
             let sensors_auto_detect = settings
                 .get("sensors_auto_detect")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
@@ -1400,6 +1401,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
                 .with_context(|| "sensors_conf_enabled should be a boolean value")?;
+            let tls_strict = settings
+                .get("tls_strict")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "tls_strict should be a boolean value")?;
             let debug_logging = settings
                 .get("debug_logging")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
@@ -1425,9 +1431,11 @@ impl Config {
                 frame_ancestors,
                 allow_unencrypted,
                 protocol_header,
+                trusted_proxies,
                 sensors_auto_detect,
                 device_listener_enabled,
                 sensors_conf_enabled,
+                tls_strict,
                 debug_logging,
             })
         } else {
@@ -1557,6 +1565,7 @@ impl Config {
             base_settings["protocol_header"] =
                 Item::Value(Value::String(Formatted::new(header.clone())));
         }
+        write_trusted_proxies(base_settings, &cc_settings.trusted_proxies);
         base_settings["sensors_auto_detect"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_auto_detect,
         )));
@@ -1566,6 +1575,8 @@ impl Config {
         base_settings["sensors_conf_enabled"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_conf_enabled,
         )));
+        base_settings["tls_strict"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.tls_strict)));
         base_settings["debug_logging"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.debug_logging)));
     }
@@ -2949,6 +2960,60 @@ impl Config {
     }
 }
 
+/// Reads `trusted_proxies`, skipping non-string entries. An absent key means none.
+fn read_trusted_proxies(settings: &Table) -> Result<Vec<String>> {
+    let Some(value) = settings.get("trusted_proxies") else {
+        return Ok(Vec::new());
+    };
+    let entries = value
+        .as_array()
+        .with_context(|| "trusted_proxies should be an array")?
+        .iter()
+        .filter_map(|entry| {
+            let text = entry.as_str();
+            if text.is_none() {
+                error!("Ignoring a trusted_proxies entry, not a string: {entry}");
+            }
+            text
+        });
+    let trusted_proxies = trimmed_entries(entries);
+    debug_assert_trimmed_entries(&trusted_proxies);
+    Ok(trusted_proxies)
+}
+
+/// Entries trimmed, with blank ones dropped, as config.toml stores them.
+fn trimmed_entries<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    entries
+        .into_iter()
+        .map(str::trim)
+        .filter(|entry| entry.is_empty().not())
+        .map(str::to_string)
+        .collect()
+}
+
+fn debug_assert_trimmed_entries(entries: &[String]) {
+    for entry in entries {
+        debug_assert!(entry.is_empty().not());
+        debug_assert_eq!(entry.as_str(), entry.trim());
+    }
+}
+
+/// Writes `trusted_proxies`, removing the key when there are none so no stale list remains.
+fn write_trusted_proxies(base_settings: &mut Item, trusted_proxies: &[String]) {
+    if trusted_proxies.is_empty() {
+        if let Some(table) = base_settings.as_table_mut() {
+            table.remove("trusted_proxies");
+        }
+        return;
+    }
+    debug_assert_trimmed_entries(trusted_proxies);
+    let proxies: toml_edit::Array = trusted_proxies
+        .iter()
+        .map(|s| Value::String(Formatted::new(s.clone())))
+        .collect();
+    base_settings["trusted_proxies"] = Item::Value(Value::Array(proxies));
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cc_fs;
@@ -3318,6 +3383,38 @@ mod tests {
             assert_eq!(moved, 0);
             assert_eq!(config.document.borrow().to_string(), before);
         });
+    }
+
+    // Goal: trusted proxies read back as written, trimmed, with blank and non-string entries
+    // dropped, and an absent key means none.
+    #[test]
+    fn trusted_proxies_are_read_from_settings() {
+        let settings = config_from("[settings]\n").get_settings().unwrap();
+        assert!(settings.trusted_proxies.is_empty());
+        let document =
+            "[settings]\ntrusted_proxies = [\" 127.0.0.1 \", \"\", 10, \"10.0.0.0/8\"]\n";
+        let settings = config_from(document).get_settings().unwrap();
+        assert_eq!(settings.trusted_proxies, ["127.0.0.1", "10.0.0.0/8"]);
+    }
+
+    // Goal: trusted proxies survive a write and read, and clearing them removes the key
+    // rather than leaving the old list in the file.
+    #[test]
+    fn trusted_proxies_round_trip_and_clear() {
+        let config = config_from("[settings]\n");
+        let mut settings = config.get_settings().unwrap();
+        settings.trusted_proxies = vec!["127.0.0.1".to_string(), "::1".to_string()];
+        config.set_settings(&settings);
+        assert_eq!(
+            config.get_settings().unwrap().trusted_proxies,
+            ["127.0.0.1", "::1"]
+        );
+        settings.trusted_proxies.clear();
+        config.set_settings(&settings);
+        assert!(config.get_settings().unwrap().trusted_proxies.is_empty());
+        assert!(config.document.borrow()["settings"]
+            .get("trusted_proxies")
+            .is_none());
     }
 
     // Goal: the device listener is off unless the config turns it on, and an
