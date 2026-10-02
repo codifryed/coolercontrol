@@ -31,6 +31,7 @@ import CCColorPicker from '@/components/CCColorPicker.vue'
 import PanelHeader from '@/shell/PanelHeader.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import UiTooltip from '@/shell/ui/UiTooltip.vue'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -113,11 +114,6 @@ const { isDeviceUnreachable, isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isDeviceUnhealthy = (device: Device): boolean =>
     device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthy(device.uid)
-
-const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
 
 const setDeviceColor = (deviceUID: UID, newColor: Color): void => {
     const setting = settingsStore.allUIDeviceSettings.get(deviceUID)
@@ -299,17 +295,10 @@ const isRouteActive = useRouteActive()
                                 <span class="truncate">
                                     {{ channelLabel(device.uid, sensorName) }}
                                 </span>
-                                <UiTooltip
-                                    v-if="isChannelUnhealthy(device.uid, sensorName)"
-                                    :text="healthTooltip(device.uid, sensorName)"
-                                >
-                                    <svg-icon
-                                        type="mdi"
-                                        :path="mdiAlert"
-                                        :size="14"
-                                        class="shrink-0 text-error"
-                                    />
-                                </UiTooltip>
+                                <ChannelHealthIcon
+                                    :device-u-i-d="device.uid"
+                                    :channel-name="sensorName"
+                                />
                             </RouterLink>
                             <div
                                 class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"

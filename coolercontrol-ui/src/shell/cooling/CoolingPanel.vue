@@ -47,7 +47,7 @@ import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
-import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
 const { createFailAlert: pushFailAlert } = useFailAlert()
@@ -135,8 +135,6 @@ const createFailAlert = (channel: CoolingChannel): void =>
         channel.channelName,
         channelLabel(channel.deviceUID, channel.channelName),
     )
-
-const { isUnhealthy, healthTooltip } = useDeviceHealth()
 
 const isPinned = (channel: CoolingChannel): boolean =>
     settingsStore.pinnedIds.includes(pinId(channel.deviceUID, channel.channelName))
@@ -279,17 +277,10 @@ const isRouteActive = useRouteActive()
                         <span class="shrink-[9999] truncate text-xs text-text-color-secondary">
                             {{ deviceLabel(channel.deviceUID) }}
                         </span>
-                        <UiTooltip
-                            v-if="isUnhealthy(channel.deviceUID, channel.channelName)"
-                            :text="healthTooltip(channel.deviceUID, channel.channelName)"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                :path="mdiAlert"
-                                :size="14"
-                                class="shrink-0 text-error"
-                            />
-                        </UiTooltip>
+                        <ChannelHealthIcon
+                            :device-u-i-d="channel.deviceUID"
+                            :channel-name="channel.channelName"
+                        />
                         <span
                             class="ml-auto flex items-baseline gap-1.5 whitespace-nowrap group-hover:hidden group-has-[:focus-visible]:hidden"
                             :class="{
@@ -464,17 +455,10 @@ const isRouteActive = useRouteActive()
                                 :device-u-i-d="channel.deviceUID"
                                 :channel-name="channel.channelName"
                             />
-                            <UiTooltip
-                                v-if="isUnhealthy(channel.deviceUID, channel.channelName)"
-                                :text="healthTooltip(channel.deviceUID, channel.channelName)"
-                            >
-                                <svg-icon
-                                    type="mdi"
-                                    :path="mdiAlert"
-                                    :size="14"
-                                    class="shrink-0 text-error"
-                                />
-                            </UiTooltip>
+                            <ChannelHealthIcon
+                                :device-u-i-d="channel.deviceUID"
+                                :channel-name="channel.channelName"
+                            />
                             <span
                                 class="ml-auto flex items-baseline gap-1.5 whitespace-nowrap group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{
