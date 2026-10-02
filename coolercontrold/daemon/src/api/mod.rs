@@ -1571,6 +1571,67 @@ mod tests {
         });
     }
 
+    /// Far beyond a failed bind, so a server that starts serving fails the test instead of
+    /// hanging it.
+    const BIND_FAILURE_DEADLINE: Duration = Duration::from_secs(10);
+
+    /// A plain HTTP server config over `app_state`, with no listener address of its own.
+    fn server_config(app_state: AppState, cancel_token: CancellationToken) -> ApiServerConfig {
+        let sessions = CachingSessionStore::new(
+            MemorySessionStore::new(1),
+            FileSessionStore::new(std::env::temp_dir().join("cc-api-server-test-sessions")),
+        );
+        let session_key = tower_sessions::cookie::Key::generate();
+        ApiServerConfig {
+            ipv4: None,
+            ipv6: None,
+            app_state,
+            session_layer: SessionManagerLayer::new(sessions).with_private(session_key),
+            compression_layer: None,
+            connection_limiter: connection::process_limiter(Arc::default()),
+            trusted_proxies: Arc::default(),
+            tls_config: None,
+            cancel_token,
+            cors_origins: Vec::new(),
+            frame_ancestors: Vec::new(),
+            allow_unencrypted: false,
+            protocol_header: None,
+        }
+    }
+
+    /// Goal: a listener that cannot bind ends `create_api_server` with the bind error at
+    /// once, which is the error `run_api_server` logs. It must not hang or be swallowed.
+    /// Method: hold a loopback port with `connection::listener`, then start the real server
+    /// on that same address.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_server_returns_the_bind_failure() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let holder = connection::listener(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))?;
+                let taken = holder.local_addr()?;
+                assert_ne!(taken.port(), 0);
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let config = server_config(state, cancel_token.clone());
+                let server = create_api_server(taken, config);
+                let error = crate::rt::timeout(BIND_FAILURE_DEADLINE, server)
+                    .await
+                    .expect("a failed bind must not leave the server running")
+                    .expect_err("the address is already held");
+                let io_error = error
+                    .downcast_ref::<std::io::Error>()
+                    .expect("the bind failure keeps its io::Error");
+                assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse, "{error:#}");
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
     /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
     /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
     /// trusted proxy for two clients. TEST-NET addresses keep the process-wide statics apart,
