@@ -339,11 +339,17 @@ mod tests {
         crate::api::frame_policy::FramePolicy::default().document_csp
     }
 
+    /// Puts `router` behind the middleware, with that policy.
+    fn with_document_csp(router: Router) -> Router {
+        router.layer(middleware::from_fn_with_state(
+            default_csp(),
+            cache_control_middleware,
+        ))
+    }
+
     #[tokio::test]
     async fn test_csp_header_set_on_index() {
-        let app = Router::new().route("/", get(|| async { "index" })).layer(
-            middleware::from_fn_with_state(default_csp(), cache_control_middleware),
-        );
+        let app = with_document_csp(Router::new().route("/", get(|| async { "index" })));
 
         let response = app
             .oneshot(
@@ -367,12 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_csp_header_absent_on_assets() {
-        let app = Router::new()
-            .route("/assets/app.js", get(|| async { "js" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(Router::new().route("/assets/app.js", get(|| async { "js" })));
 
         let response = app
             .oneshot(
@@ -389,12 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_csp_header_set_on_index_html() {
-        let app = Router::new()
-            .route("/index.html", get(|| async { "index" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(Router::new().route("/index.html", get(|| async { "index" })));
 
         let response = app
             .oneshot(
@@ -415,12 +411,8 @@ mod tests {
     // which is what every unhashed path got before.
     #[tokio::test]
     async fn test_manifest_is_revalidated() {
-        let app = Router::new()
-            .route("/manifest.webmanifest", get(|| async { "{}" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app =
+            with_document_csp(Router::new().route("/manifest.webmanifest", get(|| async { "{}" })));
 
         let response = app
             .oneshot(
@@ -441,12 +433,8 @@ mod tests {
     // branch out of the cache branch did not cost it the JS charset it had before.
     #[tokio::test]
     async fn test_service_worker_revalidates_and_keeps_charset() {
-        let app = Router::new()
-            .route("/notification-sw.js", get(|| async { "self" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app =
+            with_document_csp(Router::new().route("/notification-sw.js", get(|| async { "self" })));
 
         let response = app
             .oneshot(
@@ -474,9 +462,7 @@ mod tests {
             "/assets/notification-sw-abc123.js",
             "/assets/index-abc123.js",
         ] {
-            let app = Router::new().route(path, get(|| async { "js" })).layer(
-                middleware::from_fn_with_state(default_csp(), cache_control_middleware),
-            );
+            let app = with_document_csp(Router::new().route(path, get(|| async { "js" })));
 
             let response = app
                 .oneshot(
@@ -758,12 +744,8 @@ mod tests {
     // the API compression layer off it. Method: a route behind the same middleware.
     #[tokio::test]
     async fn test_static_responses_carry_the_marker() {
-        let app = Router::new()
-            .route("/assets/app-abc123.js", get(|| async { "x" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app =
+            with_document_csp(Router::new().route("/assets/app-abc123.js", get(|| async { "x" })));
 
         let response = app
             .oneshot(
@@ -786,12 +768,7 @@ mod tests {
     // the hashed prefix, which takes the named-path fallthrough arm.
     #[tokio::test]
     async fn test_unhashed_css_still_declares_charset() {
-        let app = Router::new()
-            .route("/theme.css", get(|| async { "body{}" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(Router::new().route("/theme.css", get(|| async { "body{}" })));
 
         let response = app
             .oneshot(
@@ -811,12 +788,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_css_charset_utf8() {
-        let app = Router::new()
-            .route("/assets/style-abc123.css", get(|| async { "body{}" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(
+            Router::new().route("/assets/style-abc123.css", get(|| async { "body{}" })),
+        );
 
         let response = app
             .oneshot(
@@ -840,12 +814,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_js_charset_utf8() {
-        let app = Router::new()
-            .route("/assets/app-abc123.js", get(|| async { "console.log(1)" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(
+            Router::new().route("/assets/app-abc123.js", get(|| async { "console.log(1)" })),
+        );
 
         let response = app
             .oneshot(
@@ -865,12 +836,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_non_text_assets_no_charset_override() {
-        let app = Router::new()
-            .route("/assets/primeicons-abc123.svg", get(|| async { "<svg/>" }))
-            .layer(middleware::from_fn_with_state(
-                default_csp(),
-                cache_control_middleware,
-            ));
+        let app = with_document_csp(
+            Router::new().route("/assets/primeicons-abc123.svg", get(|| async { "<svg/>" })),
+        );
 
         let response = app
             .oneshot(
