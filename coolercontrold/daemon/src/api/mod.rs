@@ -1539,8 +1539,36 @@ mod tests {
     use axum::Extension;
     use tower::ServiceExt as _;
 
-    /// Goal: the `OpenAPI` document is kept exactly when `/api.json` serves it. A route
-    /// without the document answers 500, and a document without the route is dead weight.
+    /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
+    /// route that reads it, so there it is dead weight on every listener.
+    /// Method: `finish_api` attaches the document as a request extension, so a probe route
+    /// run through it reports whether its request carries one.
+    #[tokio::test]
+    async fn api_doc_is_kept_only_by_debug_builds() {
+        const KEPT: StatusCode = StatusCode::OK;
+        const SKIPPED: StatusCode = StatusCode::NO_CONTENT;
+        let probe = |request: Request| async move {
+            if request.extensions().get::<Arc<OpenApi>>().is_some() {
+                KEPT
+            } else {
+                SKIPPED
+            }
+        };
+        let app = finish_api(ApiRouter::new().route("/probe", axum::routing::get(probe)));
+        let request = Request::get("/probe")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let expected = if cfg!(debug_assertions) {
+            KEPT
+        } else {
+            SKIPPED
+        };
+        assert_eq!(response.status(), expected);
+    }
+
+    /// Goal: the `/api.json` route and the document stay paired: debug builds serve the
+    /// document, release builds have no route. A route without the document answers 500.
     /// Method: the real `api_router` over an empty app state, asked for `/api.json`.
     #[test]
     #[serial_test::serial(modes_file)]
