@@ -85,6 +85,16 @@ impl SystemdManager {
             .await
     }
 
+    /// Clears a unit's failed state and its start limiter ahead of a deliberate start.
+    ///
+    /// A plugin that crash loops runs into `StartLimitBurst`, and systemd then refuses every
+    /// start until the interval has passed, including one requested after the cause was
+    /// fixed. The limiter is there to bound automatic restarts, which it still does.
+    async fn reset_failed(service_id: &ServiceId) {
+        // Fails only for a unit that is not loaded, which has no limiter to clear.
+        let _ = Self::systemctl("reset-failed", service_id).await;
+    }
+
     /// Waits until the unit is no longer running, so no caller acts on a stop that has
     /// been reported but has not finished.
     async fn await_stopped(&self, service_id: &ServiceId) -> Result<()> {
@@ -149,6 +159,7 @@ impl ServiceManager for SystemdManager {
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {
+        Self::reset_failed(service_id).await;
         let (code, _, stderr) = Self::systemctl("start", service_id).await?;
         if code != 0 {
             Err(anyhow!(
@@ -172,6 +183,7 @@ impl ServiceManager for SystemdManager {
     }
 
     async fn restart(&self, service_id: &ServiceId) -> Result<()> {
+        Self::reset_failed(service_id).await;
         let (code, _, stderr) = Self::systemctl("restart", service_id).await?;
         if code != 0 {
             Err(anyhow!(
