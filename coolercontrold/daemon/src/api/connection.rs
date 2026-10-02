@@ -21,12 +21,17 @@ use futures_util::future::BoxFuture;
 use hyper_util::rt::{TokioExecutor, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
 use log::{debug, info};
+use nix::sys::socket::{
+    bind, listen, setsockopt, socket, sockopt, AddressFamily, Backlog, SockFlag, SockProtocol,
+    SockType, SockaddrStorage,
+};
 use pin_project_lite::pin_project;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io::{self, ErrorKind, IoSlice};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Not;
+use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -90,6 +95,35 @@ const TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
 };
 
 const _: () = assert!(TIMEOUTS.first_bytes_timeout.as_secs() <= TIMEOUTS.header_read.as_secs());
+
+/// Pending connections the kernel queues per listener. The value std and tokio use.
+const LISTEN_BACKLOG: i32 = 128;
+
+/// A non-blocking listener on `address`, ready for `server`. Needs no reactor.
+///
+/// An IPv6 listener takes IPv6 traffic only. Linux otherwise makes `::` dual-stack, which
+/// claims the port for IPv4 too, so it and a `0.0.0.0` listener cannot share a port:
+/// whichever binds second gets `EADDRINUSE`. Each family has its own setting and listener.
+pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
+    let family = match address {
+        SocketAddr::V4(_) => AddressFamily::Inet,
+        SocketAddr::V6(_) => AddressFamily::Inet6,
+    };
+    let socket = socket(
+        family,
+        SockType::Stream,
+        SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
+        SockProtocol::Tcp,
+    )?;
+    if address.is_ipv6() {
+        setsockopt(&socket, sockopt::Ipv6V6Only, &true)?;
+    }
+    // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
+    setsockopt(&socket, sockopt::ReuseAddr, &true)?;
+    bind(socket.as_raw_fd(), &SockaddrStorage::from(address))?;
+    listen(&socket, Backlog::new(LISTEN_BACKLOG)?)?;
+    Ok(std::net::TcpListener::from(socket))
+}
 
 /// The API server for `listener`, with every connection admitted by `limiter`, accepted
 /// through `acceptor`, then bounded by the guard. Taking both here keeps the guard on every
@@ -596,6 +630,7 @@ mod tests {
     use axum::Router;
     use axum_server::accept::DefaultAcceptor;
     use axum_server::tls_rustls::RustlsConfig;
+    use std::net::Ipv6Addr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::timeout;
     use tonic_health::pb::health_client::HealthClient;
@@ -618,6 +653,43 @@ mod tests {
             > 2 * TEST_TIMEOUTS.header_read.as_millis()
     );
 
+    /// Attempts at a port free for both families. The kernel picks one that is free for
+    /// IPv4, which another process may still hold for IPv6.
+    const SHARED_PORT_ATTEMPTS: usize = 8;
+
+    fn address(address: &str) -> SocketAddr {
+        address.parse().unwrap()
+    }
+
+    /// Goal: `0.0.0.0` and `::` listen on one port together, as a config that sets both
+    /// expects. A dual-stack `::` claims the IPv4 port as well and fails with `EADDRINUSE`.
+    #[test]
+    fn ipv4_and_ipv6_wildcards_share_a_port() {
+        for _ in 0..SHARED_PORT_ATTEMPTS {
+            let ipv4 = listener(address("0.0.0.0:0")).unwrap();
+            let port = ipv4.local_addr().unwrap().port();
+            let ipv6_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, port));
+            match listener(ipv6_address) {
+                Ok(ipv6) => {
+                    assert_eq!(ipv6.local_addr().unwrap(), ipv6_address);
+                    return;
+                }
+                Err(err) => assert_eq!(err.kind(), ErrorKind::AddrInUse, "{err}"),
+            }
+        }
+        panic!("`::` never shared a port with `0.0.0.0`");
+    }
+
+    /// Goal: the port still belongs to one listener per family. `SO_REUSEADDR` must not let
+    /// a second daemon listen on an address the first already serves.
+    #[test]
+    fn listening_address_cannot_be_bound_twice() {
+        let first = listener(address("127.0.0.1:0")).unwrap();
+        let taken = first.local_addr().unwrap();
+        let error = listener(taken).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::AddrInUse);
+    }
+
     /// Serves `router` through the production server, the way `create_api_server` does.
     async fn serve(router: Router) -> SocketAddr {
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
@@ -635,17 +707,10 @@ mod tests {
         timeouts: ConnectionTimeouts,
         peer_ip: fn(SocketAddr) -> IpAddr,
     ) -> SocketAddr {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = listener(address("127.0.0.1:0")).unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DefaultAcceptor::new();
-        let server = server_with(
-            listener.into_std().unwrap(),
-            acceptor,
-            limiter,
-            timeouts,
-            peer_ip,
-        )
-        .unwrap();
+        let server = server_with(listener, acceptor, limiter, timeouts, peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
@@ -664,18 +729,11 @@ mod tests {
         )
         .await
         .unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = listener(address("127.0.0.1:0")).unwrap();
         let address = listener.local_addr().unwrap();
         let acceptor = DualProtocolAcceptor::new(config);
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
-        let server = server_with(
-            listener.into_std().unwrap(),
-            acceptor,
-            limiter,
-            TEST_TIMEOUTS,
-            tcp_peer_ip,
-        )
-        .unwrap();
+        let server = server_with(listener, acceptor, limiter, TEST_TIMEOUTS, tcp_peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())

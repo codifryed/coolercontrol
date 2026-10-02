@@ -84,7 +84,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
-use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::predicate::{And, DefaultPredicate, Predicate};
@@ -481,7 +480,7 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
     );
     let connection_limiter = config.connection_limiter;
 
-    let listener = TcpListener::bind(addr).await?;
+    let listener = connection::listener(addr)?;
     let handle = shutdown_handle(config.cancel_token);
 
     if let Some(tls) = config.tls_config {
@@ -501,7 +500,7 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        connection::server(listener.into_std()?, acceptor, connection_limiter)?
+        connection::server(listener, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -516,18 +515,14 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        connection::server(
-            listener.into_std()?,
-            DefaultAcceptor::new(),
-            connection_limiter,
-        )?
-        .handle(handle)
-        .serve(
-            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
-                normalized_router,
-            ),
-        )
-        .await?;
+        connection::server(listener, DefaultAcceptor::new(), connection_limiter)?
+            .handle(handle)
+            .serve(
+                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                    normalized_router,
+                ),
+            )
+            .await?;
     }
     Ok(())
 }
@@ -1123,11 +1118,12 @@ pub fn is_forbidden_name_char(c: char) -> bool {
     ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c)
 }
 
-/// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
-/// on the main thread (which may be compio) during API init, before the server moves to the sidecar.
+/// Probes whether `address` can be bound, the same way the server binds it. The bind is
+/// synchronous so it needs no reactor: it runs on the main thread (which may be compio) during
+/// API init, before the server moves to the sidecar.
 /// The actual server listener is bound on the sidecar (see `create_api_server`).
-fn can_bind_tcp<A: std::net::ToSocketAddrs>(addrs: A) -> bool {
-    std::net::TcpListener::bind(addrs).is_ok()
+fn can_bind_tcp(address: impl Into<SocketAddr>) -> bool {
+    connection::listener(address.into()).is_ok()
 }
 
 fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
