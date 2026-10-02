@@ -118,6 +118,14 @@ describe.each(Object.keys(panels) as Array<keyof typeof panels>)('%s panel pinne
         expect(pinnedMarkers(wrapper)).toHaveLength(1)
     })
 
+    // Unreachable is reported ahead of the channels going stale, so the row
+    // cannot wait for a failsafe entry to say something is wrong.
+    it('marks a channel whose device stopped responding', async () => {
+        settings.healthUnreachable = [{ device_uid: DEVICE }]
+        const wrapper = await mountPanel(name)
+        expect(pinnedMarkers(wrapper)).toHaveLength(1)
+    })
+
     it('leaves a healthy channel unmarked', async () => {
         settings.healthFailsafe = [{ device_uid: DEVICE, name: TEMP }]
         const wrapper = await mountPanel(name)
