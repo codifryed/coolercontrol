@@ -618,7 +618,7 @@ mod tests {
         assert_eq!(
             reconnect_action(false, None, Some("balanced")),
             Reconnect::Seed,
-            "The first connect only records the profile"
+            "The first connect is a seed, not a change"
         );
         assert_eq!(
             reconnect_action(false, None, None),
