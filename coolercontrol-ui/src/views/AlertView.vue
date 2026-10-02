@@ -46,7 +46,7 @@ import {
 import { groupDigits } from '@/shell/digitGroups.ts'
 import AlertSourceReference from '@/components/AlertSourceReference.vue'
 import HelpIcon from '@/components/info/HelpIcon.vue'
-import type { ThresholdTarget, Thresholds } from '@/components/alertReference.ts'
+import type { ReferenceSource, ThresholdTarget, Thresholds } from '@/components/alertReference.ts'
 
 interface Props {
     alertUID?: string
@@ -54,19 +54,10 @@ interface Props {
 
 const defaultMin: number = 0.0
 
-interface AvailableChannel {
-    deviceUID: string // needed here as well for the dropdown selector
-    channelName: string
-    channelFrontendName: string
-    lineColor: string
-    value: string
-    metric: ChannelMetric
-}
-
 interface AvailableChannelSources {
     deviceUID: string
     deviceName: string
-    channels: Array<AvailableChannel>
+    channels: Array<ReferenceSource>
 }
 
 const props = defineProps<Props>()
@@ -172,13 +163,13 @@ const fillChannelSources = async (): Promise<void> => {
 }
 await fillChannelSources()
 // Metric-qualified: a fan channel appears once per metric (Duty and RPM).
-const channelKey = (channel: AvailableChannel): string =>
+const channelKey = (channel: ReferenceSource): string =>
     `${channel.deviceUID}/${channel.channelName}/${channel.metric}`
 const findChannel = (
     deviceUID: string,
     channelName: string,
     metric: ChannelMetric,
-): AvailableChannel | undefined =>
+): ReferenceSource | undefined =>
     channelSources.value
         .flatMap((device) => device.channels)
         .find(
@@ -196,7 +187,7 @@ const startingChannelKeys = (): Array<string> => {
             .map((source) =>
                 findChannel(source.device_uid, source.channel_name, source.channel_metric),
             )
-            .filter((channel): channel is AvailableChannel => channel != null)
+            .filter((channel): channel is ReferenceSource => channel != null)
             .map(channelKey)
     }
     const deviceUID = route.query.device as string | undefined
@@ -346,14 +337,14 @@ const updateValues = (): void => {
     }
 }
 
-const selectedChannels = computed<Array<AvailableChannel>>(() =>
+const selectedChannels = computed<Array<ReferenceSource>>(() =>
     chosenChannelKeys.value
         .map((key) =>
             channelSources.value
                 .flatMap((source) => source.channels)
                 .find((candidate) => channelKey(candidate) === key),
         )
-        .filter((channel): channel is AvailableChannel => channel != null),
+        .filter((channel): channel is ReferenceSource => channel != null),
 )
 // All sources share one metric; the first pick establishes it.
 const selectedMetric = computed<ChannelMetric | undefined>(() => selectedChannels.value[0]?.metric)
