@@ -47,6 +47,7 @@ import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
 const { createFailAlert: pushFailAlert } = useFailAlert()
@@ -135,11 +136,6 @@ const createFailAlert = (channel: CoolingChannel): void =>
         channelLabel(channel.deviceUID, channel.channelName),
     )
 
-const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
-
 const isPinned = (channel: CoolingChannel): boolean =>
     settingsStore.pinnedIds.includes(pinId(channel.deviceUID, channel.channelName))
 
@@ -204,15 +200,6 @@ const sortFunctions = (): void =>
 const { openProfileWizard, openFunctionWizard } = useLibraryWizards()
 
 // A profile is unhealthy when the daemon reports a missing or stale temp source for it.
-const failsafeTooltip = (deviceUID: UID, channelName?: string): string => {
-    const ref = settingsStore.healthFailsafe.find(
-        (entry) =>
-            entry.device_uid === deviceUID && (channelName == null || entry.name === channelName),
-    )
-    const base = t('views.appInfo.failsafeActive')
-    return ref?.reason ? `${base}: ${ref.reason}` : base
-}
-
 const profileTooltip = (profileUID: string): string =>
     settingsStore.healthMissing.some(
         (ref) => ref.entity_type === HealthEntityType.Profile && ref.entity_uid === profileUID,
@@ -290,17 +277,10 @@ const isRouteActive = useRouteActive()
                         <span class="shrink-[9999] truncate text-xs text-text-color-secondary">
                             {{ deviceLabel(channel.deviceUID) }}
                         </span>
-                        <UiTooltip
-                            v-if="isUnhealthy(channel.deviceUID, channel.channelName)"
-                            :text="failsafeTooltip(channel.deviceUID, channel.channelName)"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                :path="mdiAlert"
-                                :size="14"
-                                class="shrink-0 text-error"
-                            />
-                        </UiTooltip>
+                        <ChannelHealthIcon
+                            :device-u-i-d="channel.deviceUID"
+                            :channel-name="channel.channelName"
+                        />
                         <span
                             class="ml-auto flex items-baseline gap-1.5 whitespace-nowrap group-hover:hidden group-has-[:focus-visible]:hidden"
                             :class="{
@@ -475,17 +455,10 @@ const isRouteActive = useRouteActive()
                                 :device-u-i-d="channel.deviceUID"
                                 :channel-name="channel.channelName"
                             />
-                            <UiTooltip
-                                v-if="isUnhealthy(channel.deviceUID, channel.channelName)"
-                                :text="failsafeTooltip(channel.deviceUID, channel.channelName)"
-                            >
-                                <svg-icon
-                                    type="mdi"
-                                    :path="mdiAlert"
-                                    :size="14"
-                                    class="shrink-0 text-error"
-                                />
-                            </UiTooltip>
+                            <ChannelHealthIcon
+                                :device-u-i-d="channel.deviceUID"
+                                :channel-name="channel.channelName"
+                            />
                             <span
                                 class="ml-auto flex items-baseline gap-1.5 whitespace-nowrap group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{

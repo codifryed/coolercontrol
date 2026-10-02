@@ -8,7 +8,6 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { v4 as uuidV4 } from 'uuid'
 import {
-    mdiAlert,
     mdiBellOffOutline,
     mdiBellOutline,
     mdiBellPlusOutline,
@@ -52,11 +51,10 @@ import { channelRoute, monitoringChannelRoute } from '@/shell/channelRoute.ts'
 import PanelHeader from '@/shell/PanelHeader.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import TagChips from '@/shell/TagChips.vue'
-import UiTooltip from '@/shell/ui/UiTooltip.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
 import type { RouteLocationRaw } from 'vue-router'
-import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -173,14 +171,6 @@ const liveValue = (sensor: MonitoringSensor): string => {
     if (values.rpm != null) return `${values.rpm} ${t('common.rpmAbbr')}`
     return ''
 }
-
-const { isDeviceUnreachable, healthTooltip } = useDeviceHealth()
-
-const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    isDeviceUnreachable(deviceUID) ||
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
 
 const isPinned = (sensor: MonitoringSensor): boolean =>
     settingsStore.pinnedIds.includes(pinId(sensor.deviceUID, sensor.channelName))
@@ -438,6 +428,10 @@ const isRouteActive = useRouteActive()
                             <span class="shrink-[9999] truncate text-xs text-text-color-secondary">
                                 {{ deviceLabel(row.sensor.deviceUID) }}
                             </span>
+                            <ChannelHealthIcon
+                                :device-u-i-d="row.sensor.deviceUID"
+                                :channel-name="row.sensor.channelName"
+                            />
                             <span
                                 class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{
@@ -794,17 +788,10 @@ const isRouteActive = useRouteActive()
                                 :device-u-i-d="sensor.deviceUID"
                                 :channel-name="sensor.channelName"
                             />
-                            <UiTooltip
-                                v-if="isUnhealthy(sensor.deviceUID, sensor.channelName)"
-                                :text="healthTooltip(sensor.deviceUID, sensor.channelName)"
-                            >
-                                <svg-icon
-                                    type="mdi"
-                                    :path="mdiAlert"
-                                    :size="14"
-                                    class="shrink-0 text-error"
-                                />
-                            </UiTooltip>
+                            <ChannelHealthIcon
+                                :device-u-i-d="sensor.deviceUID"
+                                :channel-name="sensor.channelName"
+                            />
                             <span
                                 class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{

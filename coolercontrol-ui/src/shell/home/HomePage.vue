@@ -40,6 +40,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { alertIsSilenced, getAlertStateClass, getAlertStateDisplayName } from '@/models/Alert.ts'
 import { useToolWizards } from '@/composables/useToolWizards.ts'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
 import { useShortcutsDialog } from '@/composables/useShortcutsDialog.ts'
 import { features } from '@/features'
@@ -58,6 +59,7 @@ const { t } = useI18n({ useScope: 'global' })
 const { openCalibrationWizard, openGenerateWizard } = useToolWizards()
 const { openShortcutsDialog } = useShortcutsDialog()
 const { findingDetail } = useHardwareText()
+const { failsafeText, unreachableText } = useDeviceHealth()
 
 // Read from the store rather than awaiting here: a top-level await makes this an
 // async-setup component behind Suspense, so a slow /health blocks navigation to Home
@@ -176,11 +178,6 @@ const sourceEntityLabel = (ref: SourceRef): string => {
 const sourceTempLabel = (ref: SourceRef): string =>
     sourceTempDisplayName(ref, settingsStore.allUIDeviceSettings)
 
-const failsafeDetail = (ref: FailsafeRef): string =>
-    ref.reason
-        ? `${t('views.appInfo.failsafeActive')}: ${ref.reason}`
-        : t('views.appInfo.failsafeActive')
-
 const healthRows = computed((): Array<HealthRow> => {
     const rows: Array<HealthRow> = []
     const failsafedCustomSensors = new Set<string>()
@@ -194,7 +191,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `unreachable/${ref.device_uid}`,
             label: deviceSettings?.name ?? ref.device_name,
-            detail: `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
+            detail: unreachableText(),
             to: { name: 'devices-device', params: { deviceUID: ref.device_uid } },
         })
     }
@@ -208,7 +205,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `failsafe/${failsafeKey(ref)}`,
             label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
-            detail: failsafeDetail(ref),
+            detail: failsafeText(ref.reason),
             to: failsafeRoute(ref),
         })
     }

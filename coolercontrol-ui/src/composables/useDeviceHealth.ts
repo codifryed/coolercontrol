@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mdiAlert, mdiLanDisconnect } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import type { UID } from '@/models/Device.ts'
+import type { FailsafeRef } from '@/models/DeviceHealth.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 // The daemon reports a wedged device as both unreachable and failsafe, since its channels go
@@ -15,9 +17,15 @@ export function useDeviceHealth() {
     const isDeviceUnreachable = (deviceUID: UID): boolean =>
         settingsStore.healthUnreachable.some((ref) => ref.device_uid === deviceUID)
 
-    const isDeviceUnhealthy = (deviceUID: UID): boolean =>
-        isDeviceUnreachable(deviceUID) ||
-        settingsStore.healthFailsafe.some((ref) => ref.device_uid === deviceUID)
+    // Without a channel, any failsafed channel of the device counts.
+    const failsafeRef = (deviceUID: UID, channelName?: string): FailsafeRef | undefined =>
+        settingsStore.healthFailsafe.find(
+            (ref) =>
+                ref.device_uid === deviceUID && (channelName == null || ref.name === channelName),
+        )
+
+    const isUnhealthy = (deviceUID: UID, channelName?: string): boolean =>
+        isDeviceUnreachable(deviceUID) || failsafeRef(deviceUID, channelName) != null
 
     const unreachableText = (): string =>
         `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`
@@ -27,19 +35,18 @@ export function useDeviceHealth() {
         return reason ? `${base}: ${reason}` : base
     }
 
-    const healthTooltip = (deviceUID: UID, channelName?: string): string => {
-        if (isDeviceUnreachable(deviceUID)) return unreachableText()
-        const ref = settingsStore.healthFailsafe.find(
-            (entry) =>
-                entry.device_uid === deviceUID &&
-                (channelName == null || entry.name === channelName),
-        )
-        return failsafeText(ref?.reason)
-    }
+    const healthTooltip = (deviceUID: UID, channelName?: string): string =>
+        isDeviceUnreachable(deviceUID)
+            ? unreachableText()
+            : failsafeText(failsafeRef(deviceUID, channelName)?.reason)
+
+    const healthIcon = (deviceUID: UID): string =>
+        isDeviceUnreachable(deviceUID) ? mdiLanDisconnect : mdiAlert
 
     return {
         isDeviceUnreachable,
-        isDeviceUnhealthy,
+        isUnhealthy,
+        healthIcon,
         unreachableText,
         failsafeText,
         healthTooltip,
