@@ -157,9 +157,10 @@ export function timeOutside(
 
 // Whether a run of readings out of range would have triggered an alert. The daemon starts
 // its warmup clock on the first of them and triggers on a later one once the warmup has
-// passed, so a single reading never triggers, whatever the warmup.
+// passed, so a single reading never triggers, whatever the warmup. It compares wall-clock
+// time, so a run that only equals the warmup may fall short and does not count.
 export const runReachesWarmup = (
     run: number,
     pollSeconds: number,
     warmupSeconds: number,
-): boolean => run >= 2 && (run - 1) * pollSeconds >= warmupSeconds
+): boolean => run >= 2 && (run - 1) * pollSeconds > warmupSeconds

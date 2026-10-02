@@ -195,10 +195,18 @@ describe('runReachesWarmup', () => {
 
     it('measures the time from the first reading of the run', () => {
         // Three readings at a 1 s poll span 2 s.
-        expect(runReachesWarmup(3, 1, 2)).toBe(true)
+        expect(runReachesWarmup(3, 1, 1.5)).toBe(true)
         expect(runReachesWarmup(3, 1, 2.5)).toBe(false)
-        expect(runReachesWarmup(2, 5, 5)).toBe(true)
-        expect(runReachesWarmup(11, 0.5, 5)).toBe(true)
+        expect(runReachesWarmup(12, 0.5, 5)).toBe(true)
         expect(runReachesWarmup(10, 0.5, 5)).toBe(false)
+    })
+
+    it('does not count a run that only equals the warmup', () => {
+        // The daemon's ticks are not exactly a poll apart, so it may measure just under.
+        expect(runReachesWarmup(2, 1, 1)).toBe(false)
+        expect(runReachesWarmup(3, 1, 2)).toBe(false)
+        expect(runReachesWarmup(2, 5, 5)).toBe(false)
+        expect(runReachesWarmup(11, 0.5, 5)).toBe(false)
+        expect(runReachesWarmup(3, 1, 1)).toBe(true)
     })
 })
