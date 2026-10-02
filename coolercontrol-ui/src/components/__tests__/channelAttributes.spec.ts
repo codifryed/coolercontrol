@@ -31,6 +31,11 @@ const amdgpuFan: Array<ChannelAttribute> = [
     { name: 'fan1_max', kind: 'FAN_MAX', value: 3500 },
     { name: 'fan1_target', kind: 'FAN_TARGET', value: 939 },
 ]
+const amdgpuPower: Array<ChannelAttribute> = [
+    { name: 'power1_cap', kind: 'POWER_CAP', value: 230 },
+    { name: 'power1_cap_max', kind: 'POWER_CAP_MAX', value: 230 },
+    { name: 'power1_cap_min', kind: 'POWER_CAP_MIN', value: 216 },
+]
 
 describe('limitLinesFrom', () => {
     it('draws upper temperature limits on the percent scale, never the lower ones', () => {
@@ -46,6 +51,14 @@ describe('limitLinesFrom', () => {
         expect(nct[0]).toMatchObject({ scale: 'rpm', severity: 'fan' })
         // fan1_min=0 sits on the axis; the target is only listed, not drawn.
         expect(limitLinesFrom(amdgpuFan, 1, t).map((line) => line.name)).toEqual(['fan1_max'])
+    })
+
+    it('only lists power and rated attributes', () => {
+        const rated: Array<ChannelAttribute> = [
+            { name: 'temp1_rated_max', kind: 'TEMP_RATED_MAX', value: 125 },
+        ]
+        expect(limitLinesFrom(amdgpuPower, 1, t)).toEqual([])
+        expect(limitLinesFrom(rated, 1, t)).toEqual([])
     })
 })
 
@@ -81,5 +94,23 @@ describe('attribute formatting', () => {
             '2',
         )
         expect(formatAttributeValue(amdgpuFan[2], t)).toBe('939 rpm')
+    })
+
+    it('shows power in watts and rated temperatures in degrees', () => {
+        expect(formatAttributeValue(amdgpuPower[2], t)).toBe('216.0 W')
+        expect(
+            formatAttributeValue(
+                { name: 'power1_cap_hyst', kind: 'POWER_CAP_HYST', value: 0.5 },
+                t,
+            ),
+        ).toBe('0.5 W')
+        expect(
+            formatAttributeValue(
+                { name: 'temp1_rated_min', kind: 'TEMP_RATED_MIN', value: -40 },
+                t,
+            ),
+        ).toBe('-40.0 °C')
+        expect(attributeLabel('POWER_CAP', t)).toBe('Power Cap')
+        expect(attributeLabel('TEMP_RATED_MAX', t)).toBe('Rated Max')
     })
 })

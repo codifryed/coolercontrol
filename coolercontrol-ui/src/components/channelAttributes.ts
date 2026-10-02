@@ -19,6 +19,8 @@ const KIND_LABEL_KEYS: Record<ChannelAttributeKind, string> = {
     TEMP_LCRIT_HYST: 'components.channelAttributes.kinds.tempLcritHyst',
     TEMP_LOWEST: 'components.channelAttributes.kinds.tempLowest',
     TEMP_HIGHEST: 'components.channelAttributes.kinds.tempHighest',
+    TEMP_RATED_MIN: 'components.channelAttributes.kinds.tempRatedMin',
+    TEMP_RATED_MAX: 'components.channelAttributes.kinds.tempRatedMax',
     TEMP_OFFSET: 'components.channelAttributes.kinds.tempOffset',
     TEMP_TYPE: 'components.channelAttributes.kinds.tempType',
     FAN_MIN: 'components.channelAttributes.kinds.fanMin',
@@ -26,6 +28,16 @@ const KIND_LABEL_KEYS: Record<ChannelAttributeKind, string> = {
     FAN_TARGET: 'components.channelAttributes.kinds.fanTarget',
     FAN_DIV: 'components.channelAttributes.kinds.fanDiv',
     FAN_PULSES: 'components.channelAttributes.kinds.fanPulses',
+    POWER_MAX: 'components.channelAttributes.kinds.powerMax',
+    POWER_CRIT: 'components.channelAttributes.kinds.powerCrit',
+    POWER_MIN: 'components.channelAttributes.kinds.powerMin',
+    POWER_LCRIT: 'components.channelAttributes.kinds.powerLcrit',
+    POWER_CAP: 'components.channelAttributes.kinds.powerCap',
+    POWER_CAP_HYST: 'components.channelAttributes.kinds.powerCapHyst',
+    POWER_CAP_MAX: 'components.channelAttributes.kinds.powerCapMax',
+    POWER_CAP_MIN: 'components.channelAttributes.kinds.powerCapMin',
+    POWER_RATED_MIN: 'components.channelAttributes.kinds.powerRatedMin',
+    POWER_RATED_MAX: 'components.channelAttributes.kinds.powerRatedMax',
 }
 
 // hwmon ABI sensor type codes.
@@ -81,15 +93,19 @@ export const limitColor = (severity: LimitSeverity, palette: LimitPalette): stri
 const isTemperature = (kind: ChannelAttributeKind): boolean =>
     kind.startsWith('TEMP_') && kind !== 'TEMP_TYPE'
 
+const isPower = (kind: ChannelAttributeKind): boolean => kind.startsWith('POWER_')
+
 export const attributeLabel = (kind: ChannelAttributeKind, t: Translate): string =>
     t(KIND_LABEL_KEYS[kind])
 
 // Temperatures keep a second decimal when the driver reports one (nvme limits are x.85 °C).
+// Power has one decimal, like the watt stats above it.
 export function formatAttributeNumber(attribute: ChannelAttribute): string {
     if (isTemperature(attribute.kind)) {
         const tenths = Math.round(attribute.value * 100) / 10
         return Number.isInteger(tenths) ? attribute.value.toFixed(1) : attribute.value.toFixed(2)
     }
+    if (isPower(attribute.kind)) return attribute.value.toFixed(1)
     return attribute.value.toFixed(0)
 }
 
@@ -100,6 +116,7 @@ export function formatAttributeValue(attribute: ChannelAttribute, t: Translate):
         return key == null ? number : t(key)
     }
     if (isTemperature(attribute.kind)) return `${number} ${t('common.tempUnit')}`
+    if (isPower(attribute.kind)) return `${number} ${t('common.wattAbbr')}`
     if (attribute.kind === 'FAN_DIV' || attribute.kind === 'FAN_PULSES') return number
     return `${number} ${t('common.rpmAbbr')}`
 }
