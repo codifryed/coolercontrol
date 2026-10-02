@@ -15,9 +15,7 @@ use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
-use crate::repositories::service_plugin::plugin_controller::{
-    secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
-};
+use crate::repositories::service_plugin::plugin_controller::secure_plugin_files;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
@@ -395,21 +393,7 @@ impl ServicePluginRepo {
                     CC_PLUGIN_USER
                 },
             );
-            if let Err(err) = secure_plugin_folder(&service_manifest.path, owner).await {
-                warn!(
-                    "Failed to secure plugin folder {}: {err}",
-                    service_manifest.path.display()
-                );
-            }
-            let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-            if config_path.exists() {
-                if let Err(err) = secure_config_file(&config_path, owner).await {
-                    warn!(
-                        "Failed to secure plugin config file {}: {err}",
-                        config_path.display()
-                    );
-                }
-            }
+            secure_plugin_files(&service_manifest, owner).await;
         }
         match service_manifest.service_type {
             ServiceType::Integration => {

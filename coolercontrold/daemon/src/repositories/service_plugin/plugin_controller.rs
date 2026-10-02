@@ -338,6 +338,29 @@ impl PluginController {
     }
 }
 
+/// Hands a managed plugin's folder and config file to `owner`.
+///
+/// A failure is logged and the plugin is started regardless: one that cannot use its own
+/// files says so in its service log.
+pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>) {
+    if let Err(err) = secure_plugin_folder(&manifest.path, owner).await {
+        warn!(
+            "Failed to secure plugin folder {}: {err}",
+            manifest.path.display()
+        );
+    }
+    let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
+    if config_path.exists().not() {
+        return;
+    }
+    if let Err(err) = secure_config_file(&config_path, owner).await {
+        warn!(
+            "Failed to secure plugin config file {}: {err}",
+            config_path.display()
+        );
+    }
+}
+
 /// Hands the plugin folder to `owner` so the plugin can manage its own runtime files, then takes
 /// `manifest.toml` back for root.
 ///
