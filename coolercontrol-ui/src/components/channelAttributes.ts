@@ -50,16 +50,17 @@ const TEMP_TYPE_KEYS: Record<number, string> = {
     6: 'components.channelAttributes.tempTypes.intelPeci',
 }
 
-export type LimitSeverity = 'warning' | 'critical' | 'fan'
+export type LimitSeverity = 'warning' | 'critical' | 'neutral'
 
-// Which attributes are drawn as limit lines. Lower limits, hysteresis and sensor details are
-// only listed: drawn, they crowd the chart without saying anything a reader acts on.
+// Which attributes are drawn as limit lines. Hysteresis, the critical low limit and sensor
+// details are only listed: drawn, they crowd the chart without saying anything a reader acts on.
 const LIMIT_SEVERITY: Partial<Record<ChannelAttributeKind, LimitSeverity>> = {
     TEMP_MAX: 'warning',
     TEMP_CRIT: 'critical',
     TEMP_EMERGENCY: 'critical',
-    FAN_MIN: 'fan',
-    FAN_MAX: 'fan',
+    TEMP_MIN: 'neutral',
+    FAN_MIN: 'neutral',
+    FAN_MAX: 'neutral',
 }
 
 export interface LimitLine {
@@ -121,8 +122,8 @@ export function formatAttributeValue(attribute: ChannelAttribute, t: Translate):
     return `${number} ${t('common.rpmAbbr')}`
 }
 
-// The attributes worth drawing on the chart. A fan limit of 0 is left off: it sits on the axis,
-// and on some chips it only means the fan never reported a speed.
+// The attributes worth drawing on the chart. A fan limit or temperature minimum of 0 or less is
+// left off: it sits on the axis, and on some chips it only means the sensor never reported.
 export function limitLinesFrom(
     attributes: Array<ChannelAttribute>,
     precision: number,
@@ -132,8 +133,8 @@ export function limitLinesFrom(
     for (const attribute of attributes) {
         const severity = LIMIT_SEVERITY[attribute.kind]
         if (severity == null) continue
-        const isFan = severity === 'fan'
-        if (isFan && attribute.value <= 0) continue
+        if (severity === 'neutral' && attribute.value <= 0) continue
+        const isFan = attribute.kind.startsWith('FAN_')
         lines.push({
             name: attribute.name,
             value: isFan ? attribute.value / precision : attribute.value,

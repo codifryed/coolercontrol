@@ -22,6 +22,10 @@ const nvme: Array<ChannelAttribute> = [
     { name: 'temp1_crit', kind: 'TEMP_CRIT', value: 94.85 },
     { name: 'temp1_min', kind: 'TEMP_MIN', value: -5.15 },
 ]
+const nct6687Temp: Array<ChannelAttribute> = [
+    { name: 'temp1_max', kind: 'TEMP_MAX', value: 95 },
+    { name: 'temp1_min', kind: 'TEMP_MIN', value: 39 },
+]
 const nct6687Fan: Array<ChannelAttribute> = [
     { name: 'fan1_min', kind: 'FAN_MIN', value: 402 },
     { name: 'fan1_max', kind: 'FAN_MAX', value: 1505 },
@@ -38,17 +42,30 @@ const amdgpuPower: Array<ChannelAttribute> = [
 ]
 
 describe('limitLinesFrom', () => {
-    it('draws upper temperature limits on the percent scale, never the lower ones', () => {
+    it('draws temperature limits on the percent scale and skips a minimum below the axis', () => {
         const lines = limitLinesFrom(nvme, 1, t)
         expect(lines.map((line) => line.name)).toEqual(['temp1_max', 'temp1_crit'])
         expect(lines[0]).toMatchObject({ scale: '%', severity: 'warning', value: 89.85 })
         expect(lines[1]).toMatchObject({ severity: 'critical', label: 'temp1_crit 94.85 °C' })
     })
 
+    it('draws a temperature minimum like a fan minimum', () => {
+        const lines = limitLinesFrom(nct6687Temp, 1000, t)
+        expect(lines.map((line) => line.name)).toEqual(['temp1_max', 'temp1_min'])
+        expect(lines[1]).toMatchObject({
+            scale: '%',
+            severity: 'neutral',
+            value: 39,
+            label: 'temp1_min 39.0 °C',
+        })
+        const zero: Array<ChannelAttribute> = [{ name: 'temp5_min', kind: 'TEMP_MIN', value: 0 }]
+        expect(limitLinesFrom(zero, 1, t)).toEqual([])
+    })
+
     it('draws fan limits on the rpm scale in chart units and skips a zero limit', () => {
         const nct = limitLinesFrom(nct6687Fan, 1000, t)
         expect(nct.map((line) => line.value)).toEqual([0.402, 1.505])
-        expect(nct[0]).toMatchObject({ scale: 'rpm', severity: 'fan' })
+        expect(nct[0]).toMatchObject({ scale: 'rpm', severity: 'neutral' })
         // fan1_min=0 sits on the axis; the target is only listed, not drawn.
         expect(limitLinesFrom(amdgpuFan, 1, t).map((line) => line.name)).toEqual(['fan1_max'])
     })
@@ -67,7 +84,7 @@ describe('limitColor', () => {
         const palette = { red: 'rgb(1 0 0)', yellow: 'rgb(0 1 0)', text_color_secondary: 'grey' }
         expect(limitColor('critical', palette)).toBe('rgb(1 0 0)')
         expect(limitColor('warning', palette)).toBe('rgb(0 1 0)')
-        expect(limitColor('fan', palette)).toBe('grey')
+        expect(limitColor('neutral', palette)).toBe('grey')
     })
 })
 
