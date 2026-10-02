@@ -106,11 +106,16 @@ const LISTEN_BACKLOG: i32 = 128;
 /// whichever binds second gets `EADDRINUSE`. Each family has its own setting and listener.
 ///
 /// The exception is an IPv4-mapped address such as `::ffff:192.0.2.1`: it names an IPv4
-/// address, which an IPv6-only socket cannot bind, so its socket stays dual-stack.
+/// address, which an IPv6-only socket cannot bind, so its socket is dual-stack.
+///
+/// Both cases set the option, since its default is the `net.ipv6.bindv6only` sysctl.
 pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
-    let (family, is_ipv6_only) = match address {
-        SocketAddr::V4(_) => (AddressFamily::Inet, false),
-        SocketAddr::V6(ipv6) => (AddressFamily::Inet6, ipv6.ip().to_ipv4_mapped().is_none()),
+    let (family, ipv6_only) = match address {
+        SocketAddr::V4(_) => (AddressFamily::Inet, None),
+        SocketAddr::V6(ipv6) => (
+            AddressFamily::Inet6,
+            Some(ipv6.ip().to_ipv4_mapped().is_none()),
+        ),
     };
     let socket_fd = socket(
         family,
@@ -118,8 +123,8 @@ pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
         SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
         SockProtocol::Tcp,
     )?;
-    if is_ipv6_only {
-        setsockopt(&socket_fd, sockopt::Ipv6V6Only, &true)?;
+    if let Some(is_ipv6_only) = ipv6_only {
+        setsockopt(&socket_fd, sockopt::Ipv6V6Only, &is_ipv6_only)?;
     }
     // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
     setsockopt(&socket_fd, sockopt::ReuseAddr, &true)?;
@@ -634,6 +639,7 @@ mod tests {
     use axum_server::accept::DefaultAcceptor;
     use axum_server::tls_rustls::RustlsConfig;
     use nix::errno::Errno;
+    use nix::sys::socket::getsockopt;
     use std::net::Ipv6Addr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::timeout;
@@ -683,6 +689,7 @@ mod tests {
             match listener(ipv6_address) {
                 Ok(ipv6) => {
                     assert_eq!(ipv6.local_addr().unwrap(), ipv6_address);
+                    assert!(getsockopt(&ipv6, sockopt::Ipv6V6Only).unwrap());
                     return;
                 }
                 Err(err) if kernel_lacks_ipv6(&err) => return,
@@ -693,7 +700,8 @@ mod tests {
     }
 
     /// Goal: an IPv4-mapped `ipv6_address` still binds, as it did before IPv6 listeners
-    /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`.
+    /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`, so the
+    /// socket must be dual-stack even where `net.ipv6.bindv6only` defaults it to IPv6-only.
     #[test]
     fn ipv4_mapped_ipv6_address_binds() {
         let mapped_address = socket_address("[::ffff:127.0.0.1]:0");
@@ -705,6 +713,7 @@ mod tests {
         let bound = mapped.local_addr().unwrap();
         assert_eq!(bound.ip(), mapped_address.ip());
         assert_ne!(bound.port(), 0);
+        assert!(getsockopt(&mapped, sockopt::Ipv6V6Only).unwrap().not());
     }
 
     /// Goal: only a kernel without IPv6 skips the IPv6 tests. The errors a broken
