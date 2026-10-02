@@ -110,12 +110,9 @@ const LISTEN_BACKLOG: i32 = 128;
 ///
 /// Both cases set the option, since its default is the `net.ipv6.bindv6only` sysctl.
 pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
-    let (family, ipv6_only) = match address {
-        SocketAddr::V4(_) => (AddressFamily::Inet, None),
-        SocketAddr::V6(ipv6) => (
-            AddressFamily::Inet6,
-            Some(ipv6.ip().to_ipv4_mapped().is_none()),
-        ),
+    let family = match address {
+        SocketAddr::V4(_) => AddressFamily::Inet,
+        SocketAddr::V6(_) => AddressFamily::Inet6,
     };
     let socket_fd = socket(
         family,
@@ -123,7 +120,7 @@ pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
         SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
         SockProtocol::Tcp,
     )?;
-    if let Some(is_ipv6_only) = ipv6_only {
+    if let Some(is_ipv6_only) = ipv6_only_option(address) {
         setsockopt(&socket_fd, sockopt::Ipv6V6Only, &is_ipv6_only)?;
     }
     // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
@@ -131,6 +128,15 @@ pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
     bind(socket_fd.as_raw_fd(), &SockaddrStorage::from(address))?;
     listen(&socket_fd, Backlog::new(LISTEN_BACKLOG)?)?;
     Ok(std::net::TcpListener::from(socket_fd))
+}
+
+/// What `IPV6_V6ONLY` must be set to on the socket for `address`. `None` for IPv4, which
+/// has no such option.
+fn ipv6_only_option(address: SocketAddr) -> Option<bool> {
+    match address {
+        SocketAddr::V4(_) => None,
+        SocketAddr::V6(ipv6) => Some(ipv6.ip().to_ipv4_mapped().is_none()),
+    }
 }
 
 /// The API server for `listener`, with every connection admitted by `limiter`, accepted
@@ -714,6 +720,25 @@ mod tests {
         assert_eq!(bound.ip(), mapped_address.ip());
         assert_ne!(bound.port(), 0);
         assert!(getsockopt(&mapped, sockopt::Ipv6V6Only).unwrap().not());
+    }
+
+    /// Goal: `IPV6_V6ONLY` is set explicitly for every IPv6 address, false included, and
+    /// never for IPv4. Checks the decision alone, since a host whose `net.ipv6.bindv6only`
+    /// is 0 hides a dual-stack socket that was left on the default.
+    #[test]
+    fn ipv6_only_option_is_explicit_for_every_ipv6_address() {
+        assert_eq!(ipv6_only_option(socket_address("0.0.0.0:80")), None);
+        assert_eq!(ipv6_only_option(socket_address("127.0.0.1:80")), None);
+        assert_eq!(ipv6_only_option(socket_address("[::]:80")), Some(true));
+        assert_eq!(ipv6_only_option(socket_address("[::1]:80")), Some(true));
+        assert_eq!(
+            ipv6_only_option(socket_address("[2001:db8::1]:80")),
+            Some(true)
+        );
+        assert_eq!(
+            ipv6_only_option(socket_address("[::ffff:127.0.0.1]:80")),
+            Some(false)
+        );
     }
 
     /// Goal: only a kernel without IPv6 skips the IPv6 tests. The errors a broken
