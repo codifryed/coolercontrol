@@ -6,7 +6,6 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiAlert } from '@mdi/js'
 import type { UID } from '@/models/Device.ts'
 import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 import UiTooltip from '@/shell/ui/UiTooltip.vue'
@@ -16,7 +15,7 @@ defineProps<{
     channelName: string
 }>()
 
-const { isUnhealthy, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthIcon, healthTooltip } = useDeviceHealth()
 </script>
 
 <template>
@@ -24,6 +23,6 @@ const { isUnhealthy, healthTooltip } = useDeviceHealth()
         v-if="isUnhealthy(deviceUID, channelName)"
         :text="healthTooltip(deviceUID, channelName)"
     >
-        <svg-icon type="mdi" :path="mdiAlert" :size="14" class="shrink-0 text-error" />
+        <svg-icon type="mdi" :path="healthIcon(deviceUID)" :size="14" class="shrink-0 text-error" />
     </UiTooltip>
 </template>

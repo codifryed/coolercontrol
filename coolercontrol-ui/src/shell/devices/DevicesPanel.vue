@@ -7,8 +7,6 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
-    mdiAlert,
-    mdiLanDisconnect,
     mdiDragVertical,
     mdiLightbulbOutline,
     mdiPinOff,
@@ -110,7 +108,7 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
-const { isDeviceUnreachable, isUnhealthy, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthIcon, healthTooltip } = useDeviceHealth()
 
 const isDeviceUnhealthy = (device: Device): boolean =>
     device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthy(device.uid)
@@ -205,9 +203,7 @@ const isRouteActive = useRouteActive()
                         >
                             <svg-icon
                                 type="mdi"
-                                :path="
-                                    isDeviceUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert
-                                "
+                                :path="healthIcon(device.uid)"
                                 :size="14"
                                 class="shrink-0 text-error"
                             />

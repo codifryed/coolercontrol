@@ -6,7 +6,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiAlert, mdiLanDisconnect, mdiToggleSwitchOffOutline } from '@mdi/js'
+import { mdiToggleSwitchOffOutline } from '@mdi/js'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Device, UID } from '@/models/Device.ts'
@@ -36,11 +36,7 @@ const deviceLabel = (deviceUID: UID): string =>
 const deviceColor = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor || 'rgb(var(--colors-text-color))'
 
-const {
-    isDeviceUnreachable: isUnreachable,
-    isUnhealthy,
-    healthTooltip,
-} = useDeviceHealth()
+const { isUnhealthy, healthIcon, healthTooltip } = useDeviceHealth()
 
 const facts = (device: Device): string => {
     const parts: string[] = [getDeviceTypeDisplayName(device.type)]
@@ -122,7 +118,7 @@ const counts = (device: Device): string => {
                         <UiTooltip v-if="isUnhealthy(device.uid)" :text="healthTooltip(device.uid)">
                             <svg-icon
                                 type="mdi"
-                                :path="isUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert"
+                                :path="healthIcon(device.uid)"
                                 :size="16"
                                 class="shrink-0 text-error"
                             />

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mdiAlert, mdiLanDisconnect } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import type { UID } from '@/models/Device.ts'
 import type { FailsafeRef } from '@/models/DeviceHealth.ts'
@@ -39,9 +40,13 @@ export function useDeviceHealth() {
             ? unreachableText()
             : failsafeText(failsafeRef(deviceUID, channelName)?.reason)
 
+    const healthIcon = (deviceUID: UID): string =>
+        isDeviceUnreachable(deviceUID) ? mdiLanDisconnect : mdiAlert
+
     return {
         isDeviceUnreachable,
         isUnhealthy,
+        healthIcon,
         unreachableText,
         failsafeText,
         healthTooltip,

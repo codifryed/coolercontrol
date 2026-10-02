@@ -6,7 +6,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiAlert, mdiAutoFix, mdiFanAlert } from '@mdi/js'
+import { mdiAutoFix, mdiFanAlert } from '@mdi/js'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -135,7 +135,7 @@ const healthTooltip = computed((): string => {
                     <UiTooltip v-if="isUnhealthy" :text="healthTooltip">
                         <svg-icon
                             type="mdi"
-                            :path="mdiAlert"
+                            :path="health.healthIcon(channel.deviceUID)"
                             :size="14"
                             class="shrink-0 text-error"
                         />

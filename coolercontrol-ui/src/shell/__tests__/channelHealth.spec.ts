@@ -11,6 +11,7 @@ import { mount } from '@vue/test-utils'
 import { reactive, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { mdiAlert, mdiLanDisconnect } from '@mdi/js'
 import en from '@/i18n/locales/en.ts'
 
 const DEVICE = 'dev1'
@@ -96,8 +97,12 @@ const router = createRouter({
     routes: [{ path: '/', component: { render: () => null } }],
 })
 
-const FAILSAFE_TEXT = `${en.views.appInfo.failsafeActive}: stale readings`
-const UNREACHABLE_TEXT = `${en.views.appInfo.deviceUnreachable}: ${en.views.appInfo.deviceUnreachableDetail}`
+// A marker is its tooltip text and its icon: the two conditions differ in both.
+const FAILSAFE = [`${en.views.appInfo.failsafeActive}: stale readings`, mdiAlert]
+const UNREACHABLE = [
+    `${en.views.appInfo.deviceUnreachable}: ${en.views.appInfo.deviceUnreachableDetail}`,
+    mdiLanDisconnect,
+]
 
 const failsafe = ({ deviceUID, channelName }: { deviceUID: string; channelName: string }) => ({
     device_uid: deviceUID,
@@ -153,10 +158,15 @@ const mountPanel = async (name: PanelName) => {
     return mount(Panel, mountOptions)
 }
 
-const pinnedTooltips = (wrapper: Awaited<ReturnType<typeof mountPanel>>) =>
+const markers = (wrapper: ReturnType<typeof mount>, within = '') =>
     wrapper
-        .findAll('[data-panel-pinned] [data-tooltip]')
-        .map((marker) => marker.attributes('data-tooltip'))
+        .findAll(`${within} [data-tooltip]`)
+        .map((marker) => [
+            marker.attributes('data-tooltip'),
+            marker.get('svg-icon-stub').attributes('path'),
+        ])
+
+const pinnedMarkers = (wrapper: ReturnType<typeof mount>) => markers(wrapper, '[data-panel-pinned]')
 
 beforeEach(() => {
     settings.pinnedIds = []
@@ -173,26 +183,26 @@ describe.each(pinnable)('%s panel, pinned %s', (name, kind) => {
 
     it('says failsafe values are in use', async () => {
         settings.healthFailsafe = [failsafe(channel)]
-        expect(pinnedTooltips(await mountPanel(name))).toEqual([FAILSAFE_TEXT])
+        expect(pinnedMarkers(await mountPanel(name))).toEqual([FAILSAFE])
     })
 
     // The daemon reports a wedged device's channels as failsafe too.
     it('says the device stopped responding, not failsafe', async () => {
         settings.healthUnreachable = [{ device_uid: channel.deviceUID }]
         settings.healthFailsafe = [failsafe(channel)]
-        expect(pinnedTooltips(await mountPanel(name))).toEqual([UNREACHABLE_TEXT])
+        expect(pinnedMarkers(await mountPanel(name))).toEqual([UNREACHABLE])
     })
 
     it('marks a device that stopped responding before any channel failsafes', async () => {
         settings.healthUnreachable = [{ device_uid: channel.deviceUID }]
-        expect(pinnedTooltips(await mountPanel(name))).toEqual([UNREACHABLE_TEXT])
+        expect(pinnedMarkers(await mountPanel(name))).toEqual([UNREACHABLE])
     })
 
     it('leaves a healthy channel unmarked', async () => {
         settings.healthFailsafe = [failsafe({ deviceUID: channel.deviceUID, channelName: 'other' })]
         const wrapper = await mountPanel(name)
         expect(wrapper.find('[data-panel-pinned]').exists()).toBe(true)
-        expect(pinnedTooltips(wrapper)).toEqual([])
+        expect(pinnedMarkers(wrapper)).toEqual([])
     })
 })
 
@@ -203,12 +213,9 @@ describe.each(['Home', 'Monitoring'] as const)('%s panel, pinned dashboard', (na
         settings.healthFailsafe = [failsafe(CHANNELS.fan)]
         const wrapper = await mountPanel(name)
         expect(wrapper.find('[data-panel-pinned]').exists()).toBe(true)
-        expect(pinnedTooltips(wrapper)).toEqual([])
+        expect(pinnedMarkers(wrapper)).toEqual([])
     })
 })
-
-const tooltips = (wrapper: ReturnType<typeof mount>) =>
-    wrapper.findAll('[data-tooltip]').map((marker) => marker.attributes('data-tooltip'))
 
 describe('Cooling page fan card', () => {
     const mountCard = async () => {
@@ -223,23 +230,23 @@ describe('Cooling page fan card', () => {
 
     it('says failsafe values are in use', async () => {
         settings.healthFailsafe = [failsafe(CHANNELS.fan)]
-        expect(tooltips(await mountCard())).toEqual([FAILSAFE_TEXT])
+        expect(markers(await mountCard())).toEqual([FAILSAFE])
     })
 
     it('says the device stopped responding, not failsafe', async () => {
         settings.healthUnreachable = [{ device_uid: DEVICE }]
         settings.healthFailsafe = [failsafe(CHANNELS.fan)]
-        expect(tooltips(await mountCard())).toEqual([UNREACHABLE_TEXT])
+        expect(markers(await mountCard())).toEqual([UNREACHABLE])
     })
 
     it('marks a device that stopped responding before any channel failsafes', async () => {
         settings.healthUnreachable = [{ device_uid: DEVICE }]
-        expect(tooltips(await mountCard())).toEqual([UNREACHABLE_TEXT])
+        expect(markers(await mountCard())).toEqual([UNREACHABLE])
     })
 
     it('leaves a healthy fan unmarked', async () => {
         settings.healthFailsafe = [failsafe(CHANNELS.temp)]
-        expect(tooltips(await mountCard())).toEqual([])
+        expect(markers(await mountCard())).toEqual([])
     })
 })
 
@@ -251,17 +258,17 @@ describe('Devices panel', () => {
 
     it('says failsafe values are in use on a custom sensor row', async () => {
         settings.healthFailsafe = [failsafe(CHANNELS['custom sensor'])]
-        expect(tooltips(await mountDevices())).toEqual([FAILSAFE_TEXT])
+        expect(markers(await mountDevices())).toEqual([FAILSAFE])
     })
 
     it('says failsafe values are in use on a device row', async () => {
         settings.healthFailsafe = [failsafe(CHANNELS.fan)]
-        expect(tooltips(await mountDevices())).toEqual([FAILSAFE_TEXT])
+        expect(markers(await mountDevices())).toEqual([FAILSAFE])
     })
 
     it('says a device stopped responding, not failsafe', async () => {
         settings.healthUnreachable = [{ device_uid: DEVICE }]
         settings.healthFailsafe = [failsafe(CHANNELS.fan)]
-        expect(tooltips(await mountDevices())).toEqual([UNREACHABLE_TEXT])
+        expect(markers(await mountDevices())).toEqual([UNREACHABLE])
     })
 })
