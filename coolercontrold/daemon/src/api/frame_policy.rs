@@ -14,8 +14,8 @@ const DOCUMENT_FRAME_ANCESTORS: &str = "frame-ancestors 'none'";
 /// What a plugin page's policy says with no `frame_ancestors` configured: the UI frames it.
 const PLUGIN_FRAME_ANCESTORS: &str = "frame-ancestors 'self'";
 
-/// The most origins a config may name. One per address the embedding page is opened at is
-/// typical, so a handful.
+/// The most entries read from a config, valid or not. One per address the embedding page is
+/// opened at is typical, so a handful.
 const FRAME_ANCESTORS_COUNT_MAX: usize = 16;
 /// The longest a DNS name may be, and the longest any one label of it.
 const HOST_LEN_MAX: usize = 253;
@@ -87,7 +87,7 @@ fn valid_origins(entries: &[String]) -> Vec<&str> {
         warn!("Ignoring frame_ancestors entry {entry:?}: {reason}");
     }
     if screened.is_truncated {
-        warn!("Only the first {FRAME_ANCESTORS_COUNT_MAX} frame_ancestors entries are used.");
+        warn!("Only the first {FRAME_ANCESTORS_COUNT_MAX} frame_ancestors entries are read.");
     }
     screened.origins
 }
@@ -98,35 +98,28 @@ struct Screened<'a> {
     origins: Vec<&'a str>,
     /// The entries that name no origin, each with the reason.
     refused: Vec<(&'a str, EntryError)>,
-    /// Whether a valid origin was dropped for arriving past the cap.
+    /// Whether more entries were configured than are read.
     is_truncated: bool,
 }
 
-/// Sorts the entries without logging. Stops at the first valid origin past the cap, so the
-/// list only counts as truncated when an origin is dropped.
+/// Sorts the entries without logging. Only the first `FRAME_ANCESTORS_COUNT_MAX` are read,
+/// valid or not, so one constant bounds the loop and both lists.
 fn screen(entries: &[String]) -> Screened<'_> {
-    let mut origins = Vec::with_capacity(entries.len().min(FRAME_ANCESTORS_COUNT_MAX));
+    let read_count = entries.len().min(FRAME_ANCESTORS_COUNT_MAX);
+    let mut origins = Vec::with_capacity(read_count);
     let mut refused = Vec::new();
-    let mut is_truncated = false;
-    for entry in entries {
+    for entry in entries.iter().take(FRAME_ANCESTORS_COUNT_MAX) {
         match ancestor_origin(entry) {
-            Ok(origin) => {
-                if origins.len() < FRAME_ANCESTORS_COUNT_MAX {
-                    origins.push(origin);
-                } else {
-                    is_truncated = true;
-                    break;
-                }
-            }
+            Ok(origin) => origins.push(origin),
             Err(reason) => refused.push((entry.as_str(), reason)),
         }
     }
-    debug_assert!(origins.len() <= FRAME_ANCESTORS_COUNT_MAX);
-    debug_assert!(origins.len() + refused.len() <= entries.len());
+    debug_assert!(read_count <= FRAME_ANCESTORS_COUNT_MAX);
+    debug_assert_eq!(origins.len() + refused.len(), read_count);
     Screened {
         origins,
         refused,
-        is_truncated,
+        is_truncated: entries.len() > FRAME_ANCESTORS_COUNT_MAX,
     }
 }
 
@@ -452,7 +445,8 @@ mod tests {
     }
 
     /// Goal: the list is bounded, and the bound drops the tail rather than the head.
-    /// Method: one entry more than the cap, each a distinct origin.
+    /// Method: one entry more than the cap, each a distinct origin, then a valid origin
+    /// behind a cap's worth of invalid entries.
     #[test]
     fn entries_past_the_cap_are_dropped() {
         let configured: Vec<String> = (0..=FRAME_ANCESTORS_COUNT_MAX)
@@ -463,46 +457,55 @@ mod tests {
         assert_eq!(origins.first(), Some(&"https://host0.example.com"));
         assert_eq!(origins.last(), Some(&"https://host15.example.com"));
 
-        // Invalid entries do not count toward the cap.
+        // An invalid entry uses up a slot, so a valid origin past the cap is never read.
         let mut padded = entries(&["bad.value"; FRAME_ANCESTORS_COUNT_MAX]);
         padded.push("https://cockpit.example.com:9090".to_string());
-        assert_eq!(valid_origins(&padded), ["https://cockpit.example.com:9090"]);
+        let screened = screen(&padded);
+        assert!(screened.origins.is_empty());
+        assert_eq!(screened.refused.len(), FRAME_ANCESTORS_COUNT_MAX);
+        assert!(screened.is_truncated);
+        assert!(valid_origins(&padded).is_empty());
     }
 
-    /// Goal: the log reports a dropped origin only when one is dropped, and an invalid entry
-    /// past a full list is still reported. Method: fill the list to the cap, then follow
-    /// it with an invalid entry, a valid one, and an invalid one past the truncation.
+    /// Goal: truncation is flagged exactly when more entries are configured than are read,
+    /// and an entry past the cap is neither used nor refused. Method: screen every length
+    /// of a list that holds an invalid entry within the cap and one of each kind past it.
     #[test]
-    fn only_a_valid_origin_past_the_cap_truncates() {
-        let mut configured: Vec<String> = (0..FRAME_ANCESTORS_COUNT_MAX)
+    fn only_entries_past_the_cap_truncate() {
+        let mut configured: Vec<String> = (1..FRAME_ANCESTORS_COUNT_MAX)
             .map(|index| format!("https://host{index}.example.com"))
             .collect();
+        configured.insert(0, "bad.value".to_string());
         configured.extend(entries(&[
-            "bad.value",
-            "https://late.example.com",
             "https://late.example.com/path",
+            "https://late.example.com",
         ]));
+        assert_eq!(configured.len(), FRAME_ANCESTORS_COUNT_MAX + 2);
+
+        for count in 0..=configured.len() {
+            let screened = screen(&configured[..count]);
+            let read_count = count.min(FRAME_ANCESTORS_COUNT_MAX);
+            assert_eq!(screened.origins.len() + screened.refused.len(), read_count);
+            assert!(screened.origins.len() + screened.refused.len() <= FRAME_ANCESTORS_COUNT_MAX);
+            assert_eq!(
+                screened.is_truncated,
+                count > FRAME_ANCESTORS_COUNT_MAX,
+                "{count} entries"
+            );
+        }
+
         let full = screen(&configured[..FRAME_ANCESTORS_COUNT_MAX]);
-        assert_eq!(full.origins.len(), FRAME_ANCESTORS_COUNT_MAX);
-        assert!(full.refused.is_empty());
+        assert_eq!(full.origins.len(), FRAME_ANCESTORS_COUNT_MAX - 1);
+        assert_eq!(full.refused, [("bad.value", EntryError::Scheme)]);
         assert!(full.is_truncated.not());
 
-        let followed_by_invalid = screen(&configured[..=FRAME_ANCESTORS_COUNT_MAX]);
-        assert_eq!(followed_by_invalid.origins, full.origins);
+        let past_the_cap = screen(&configured);
+        assert_eq!(past_the_cap.origins, full.origins);
         assert_eq!(
-            followed_by_invalid.refused,
-            [("bad.value", EntryError::Scheme)]
+            past_the_cap.refused, full.refused,
+            "an invalid entry past the cap is not read, so not refused"
         );
-        assert!(followed_by_invalid.is_truncated.not());
-
-        let followed_by_valid = screen(&configured);
-        assert_eq!(followed_by_valid.origins, full.origins);
-        assert_eq!(
-            followed_by_valid.refused,
-            [("bad.value", EntryError::Scheme)],
-            "nothing is screened once the list is truncated"
-        );
-        assert!(followed_by_valid.is_truncated);
+        assert!(past_the_cap.is_truncated);
     }
 
     /// Goal: the trailing slash of an entry never reaches the policy, where it would read

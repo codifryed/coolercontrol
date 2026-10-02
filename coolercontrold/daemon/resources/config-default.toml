@@ -146,6 +146,7 @@ drivetemp_suspend = false
 #   address for a browser to open, but the security header that carries this list has no way
 #   to write one. Open the embedding page by hostname or IPv4 address and list that instead.
 # - An entry that is not an exact origin is ignored, with a warning in the log at startup.
+# - At most 16 entries are read. Any after the first 16 are ignored, with a warning as well.
 # - Only read from this file, at startup. Restart the daemon after changing it.
 # - The login only holds inside the frame when the embedding page and CoolerControl are opened
 #   with the same scheme, normally HTTPS, and at the same host or domain.
