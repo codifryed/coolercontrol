@@ -59,6 +59,7 @@ use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
 };
+use aide::axum::ApiRouter;
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -71,7 +72,7 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json, Router, ServiceExt};
+use axum::{Json, Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
 use log::{debug, info, warn, Level};
@@ -86,7 +87,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
-use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::predicate::{And, DefaultPredicate, Predicate};
@@ -253,11 +253,11 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
 
     // REST API servers
     if let Some(addr) = config.ipv4 {
-        let server = create_api_server(SocketAddr::from(addr), config.clone());
+        let server = run_api_server(SocketAddr::from(addr), config.clone());
         handles.push(tokio::task::spawn_local(server));
     }
     if let Some(addr) = config.ipv6 {
-        let server = create_api_server(SocketAddr::from(addr), config);
+        let server = run_api_server(SocketAddr::from(addr), config);
         handles.push(tokio::task::spawn_local(server));
     }
 
@@ -266,6 +266,14 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
         if let Err(e) = handle.await {
             log::error!("API server task error: {e}");
         }
+    }
+}
+
+/// Runs one listener's server to its end. A failure is logged here, as it happens: the
+/// servers are only joined at shutdown, in order, so a join would report it late or never.
+async fn run_api_server(addr: SocketAddr, config: ApiServerConfig) {
+    if let Err(err) = create_api_server(addr, config).await {
+        log::error!("API server on {addr} failed: {err:#}");
     }
 }
 
@@ -353,7 +361,7 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
     );
     let connection_limiter = config.connection_limiter;
 
-    let listener = TcpListener::bind(addr).await?;
+    let listener = connection::listener(addr)?;
     let handle = shutdown_handle(config.cancel_token);
 
     if let Some(tls) = config.tls_config {
@@ -373,7 +381,7 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        connection::server(listener.into_std()?, acceptor, connection_limiter)?
+        connection::server(listener, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -388,18 +396,14 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        connection::server(
-            listener.into_std()?,
-            DefaultAcceptor::new(),
-            connection_limiter,
-        )?
-        .handle(handle)
-        .serve(
-            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
-                normalized_router,
-            ),
-        )
-        .await?;
+        connection::server(listener, DefaultAcceptor::new(), connection_limiter)?
+            .handle(handle)
+            .serve(
+                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                    normalized_router,
+                ),
+            )
+            .await?;
     }
     Ok(())
 }
@@ -420,12 +424,24 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
     });
-    let mut open_api = OpenApi::default();
-    let router = router::init(app_state)
-        .await
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)));
+    let router = finish_api(router::init(app_state).await);
     with_client_addr(router, trusted_proxies)
+}
+
+/// Debug builds serve the `OpenAPI` document at `/api.json`, so they build and keep it.
+#[cfg(debug_assertions)]
+fn finish_api(router: ApiRouter) -> Router {
+    let mut open_api = OpenApi::default();
+    router
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(axum::Extension(Arc::new(open_api)))
+}
+
+/// Release builds have no `/api.json` route, so nothing would read the document. Each
+/// listener's copy holds about 3 MB.
+#[cfg(not(debug_assertions))]
+fn finish_api(router: ApiRouter) -> Router {
+    Router::from(router)
 }
 
 /// Outside the router, so the client is known before its auth throttles read it.
@@ -993,11 +1009,12 @@ pub fn is_forbidden_name_char(c: char) -> bool {
     ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c)
 }
 
-/// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
-/// on the main thread (which may be compio) during API init, before the server moves to the sidecar.
+/// Probes whether `address` can be bound, the same way the server binds it. The bind is
+/// synchronous so it needs no reactor: it runs on the main thread (which may be compio) during
+/// API init, before the server moves to the sidecar.
 /// The actual server listener is bound on the sidecar (see `create_api_server`).
-fn can_bind_tcp<A: std::net::ToSocketAddrs>(addrs: A) -> bool {
-    std::net::TcpListener::bind(addrs).is_ok()
+fn can_bind_tcp(address: impl Into<SocketAddr>) -> bool {
+    connection::listener(address.into()).is_ok()
 }
 
 fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
@@ -1391,7 +1408,129 @@ pub struct AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Extension;
     use tower::ServiceExt as _;
+
+    /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
+    /// route that reads it, so there it is dead weight on every listener.
+    /// Method: `finish_api` attaches the document as a request extension, so a probe route
+    /// run through it reports whether its request carries one.
+    #[tokio::test]
+    async fn api_doc_is_kept_only_by_debug_builds() {
+        const KEPT: StatusCode = StatusCode::OK;
+        const SKIPPED: StatusCode = StatusCode::NO_CONTENT;
+        let probe = |request: Request| async move {
+            if request.extensions().get::<Arc<OpenApi>>().is_some() {
+                KEPT
+            } else {
+                SKIPPED
+            }
+        };
+        let app = finish_api(ApiRouter::new().route("/probe", axum::routing::get(probe)));
+        let request = Request::get("/probe")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let expected = if cfg!(debug_assertions) {
+            KEPT
+        } else {
+            SKIPPED
+        };
+        assert_eq!(response.status(), expected);
+    }
+
+    /// Goal: the `/api.json` route and the document stay paired: debug builds serve the
+    /// document, release builds have no route. A route without the document answers 500.
+    /// Method: the real `api_router` over an empty app state, asked for `/api.json`.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_doc_is_served_only_by_debug_builds() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let app = api_router(state, Arc::default()).await;
+                let request = Request::get("/api.json").body(axum::body::Body::empty())?;
+                let response = app.oneshot(request).await?;
+                if cfg!(debug_assertions) {
+                    assert_eq!(response.status(), StatusCode::OK);
+                    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+                    let served: OpenApi = serde_json::from_slice(&body)?;
+                    assert!(served
+                        .paths
+                        .is_some_and(|paths| paths.paths.is_empty().not()));
+                } else {
+                    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+                }
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Far beyond a failed bind, so a server that starts serving fails the test instead of
+    /// hanging it.
+    const BIND_FAILURE_DEADLINE: Duration = Duration::from_secs(10);
+
+    /// A plain HTTP server config over `app_state`, with no listener address of its own.
+    fn server_config(app_state: AppState, cancel_token: CancellationToken) -> ApiServerConfig {
+        let sessions = CachingSessionStore::new(
+            MemorySessionStore::new(1),
+            FileSessionStore::new(std::env::temp_dir().join("cc-api-server-test-sessions")),
+        );
+        let session_key = tower_sessions::cookie::Key::generate();
+        ApiServerConfig {
+            ipv4: None,
+            ipv6: None,
+            app_state,
+            session_layer: SessionManagerLayer::new(sessions).with_private(session_key),
+            compression_layer: None,
+            connection_limiter: connection::process_limiter(Arc::default()),
+            trusted_proxies: Arc::default(),
+            tls_config: None,
+            cancel_token,
+            cors_origins: Vec::new(),
+            frame_ancestors: Vec::new(),
+            allow_unencrypted: false,
+            protocol_header: None,
+        }
+    }
+
+    /// Goal: a listener that cannot bind ends `create_api_server` with the bind error at
+    /// once, which is the error `run_api_server` logs. It must not hang or be swallowed.
+    /// Method: hold a loopback port with `connection::listener`, then start the real server
+    /// on that same address.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_server_returns_the_bind_failure() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let holder = connection::listener(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))?;
+                let taken = holder.local_addr()?;
+                assert_ne!(taken.port(), 0);
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let config = server_config(state, cancel_token.clone());
+                let server = create_api_server(taken, config);
+                let error = crate::rt::timeout(BIND_FAILURE_DEADLINE, server)
+                    .await
+                    .expect("a failed bind must not leave the server running")
+                    .expect_err("the address is already held");
+                let io_error = error
+                    .downcast_ref::<std::io::Error>()
+                    .expect("the bind failure keeps its io::Error");
+                assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse, "{error:#}");
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
 
     /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
     /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
