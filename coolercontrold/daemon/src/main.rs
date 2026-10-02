@@ -407,8 +407,13 @@ fn main() -> Result<()> {
                 // the engine as they apply; the main loop picks them
                 // up on the next tick once each is scheduled.
                 let mode_controller_for_boot = Rc::clone(&mode_controller);
+                // Lets the power profile listener hold its startup Mode back until
+                // the saved settings have landed, so the two never race.
+                let boot_settings_applied = CancellationToken::new();
+                let boot_settings_applied_signal = boot_settings_applied.clone();
                 main_scope.spawn(async move {
                     mode_controller_for_boot.handle_settings_at_boot().await;
+                    boot_settings_applied_signal.cancel();
                 });
                 let status_handle = api::actor::StatusHandle::new(
                     Rc::clone(&all_devices),
@@ -489,10 +494,12 @@ fn main() -> Result<()> {
                 // Started after the API so the ModeHandle exists; the listener activates Modes
                 // through the actor rather than the !Send controller.
                 if let Some(mode_handle) = mode_controller.mode_handle() {
+                    let apply_on_boot = config.get_settings()?.apply_on_boot;
                     power_profile_listener::start(
                         system_event_handle,
                         mode_handle,
                         power_profiles,
+                        apply_on_boot.then_some(boot_settings_applied),
                         run_token.clone(),
                     );
                 }
