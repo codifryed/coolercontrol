@@ -44,6 +44,8 @@ import {
     thresholdStep,
 } from '@/components/alertThresholds.ts'
 import { groupDigits } from '@/shell/digitGroups.ts'
+import AlertSourceReference from '@/components/AlertSourceReference.vue'
+import type { ThresholdTarget, Thresholds } from '@/components/alertReference.ts'
 
 interface Props {
     alertUID?: string
@@ -393,6 +395,18 @@ const sourceGroups = computed(() =>
         })),
     })),
 )
+const referenceThresholds = computed<Thresholds>(() => ({
+    min: chosenMin.value,
+    max: chosenMax.value,
+    ceiling: thresholdMax(selectedMetric.value, true),
+}))
+// A reference value picked as a threshold. One above the locked range unlocks it: the pick
+// is as deliberate as the lock button.
+const applyThreshold = (target: ThresholdTarget, value: number): void => {
+    if (needsUnlock(selectedMetric.value, [value])) thresholdsUnlocked.value = true
+    if (target === 'max') chosenMax.value = value
+    else chosenMin.value = value
+}
 const onSourcesChange = (value: string | string[] | undefined): void => {
     if (!Array.isArray(value)) return
     const hadNone = chosenChannelKeys.value.length === 0
@@ -594,6 +608,13 @@ onMounted(async () => {
                             </UiSettingRow>
                         </UiSettingsCard>
                         <UiSettingsCard :title="t('views.alerts.triggerConditions')">
+                            <AlertSourceReference
+                                v-if="selectedChannels.length > 0"
+                                :sources="selectedChannels"
+                                :metric="selectedMetric"
+                                :thresholds="referenceThresholds"
+                                @apply="applyThreshold"
+                            />
                             <UiSettingRow
                                 v-tooltip.top="t('views.alerts.maxValueTooltip')"
                                 :label="t('views.alerts.greaterThan')"
