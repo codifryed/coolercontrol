@@ -22,7 +22,8 @@ use tower_serve_static::include_file;
 
 /// Content-Security-Policy for plugin UI HTML responses.
 /// `connect-src 'none'` forces plugins to use the pluginFetch relay for all network access.
-const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
+/// `FramePolicy` widens `frame-ancestors` for configured origins.
+pub const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     script-src 'self' 'unsafe-inline'; \
     style-src 'self' 'unsafe-inline'; \
     img-src 'self' data: blob:; \
@@ -150,7 +151,11 @@ pub async fn enable_plugin(
 
 pub async fn get_ui_files(
     Path(path): Path<PluginUiPath>,
-    State(AppState { plugin_handle, .. }): State<AppState>,
+    State(AppState {
+        plugin_handle,
+        frame_policy,
+        ..
+    }): State<AppState>,
     request: Request,
 ) -> Result<impl IntoApiResponse, CCError> {
     let safe_path = sanitize_file_path(&path.file_path)?;
@@ -168,7 +173,7 @@ pub async fn get_ui_files(
         let headers = response.headers_mut();
         headers.insert(
             axum::http::HeaderName::from_static("content-security-policy"),
-            axum::http::HeaderValue::from_static(PLUGIN_CONTENT_SECURITY_POLICY),
+            frame_policy.plugin_csp,
         );
         headers.insert(
             axum::http::header::CACHE_CONTROL,
@@ -440,6 +445,14 @@ impl From<ServiceStatus> for PluginStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::actor::PluginHandle;
+    use crate::api::frame_policy::FramePolicy;
+    use crate::repositories::service_plugin::plugin_controller::PluginController;
+    use crate::repositories::service_plugin::service_manifest::{
+        ConnectionType, ServiceManifest, ServiceType,
+    };
+    use std::rc::Rc;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn test_sanitize_file_path_valid_simple() {
@@ -609,5 +622,110 @@ mod tests {
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("form-action 'none'"));
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("object-src 'none'"));
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("base-uri 'none'"));
+    }
+
+    /// What the real handler answers each of a plugin's UI `files` with. Runs on the
+    /// sidecar, as the servers do, since the file service needs its reactor. Nothing is
+    /// asserted there: a panic would take the shared test sidecar down with it.
+    async fn ui_file_responses(
+        state: AppState,
+        files: &'static [&'static str],
+    ) -> Vec<axum::http::response::Parts> {
+        let serve = move || async move {
+            let app = axum::Router::new()
+                .route(
+                    "/plugins/{plugin_id}/ui/{*file_path}",
+                    axum::routing::get(get_ui_files),
+                )
+                .with_state(state);
+            let mut responses = Vec::with_capacity(files.len());
+            for file in files {
+                let request = Request::get(format!("/plugins/{PLUGIN_ID}/ui/{file}"))
+                    .body(Body::empty())
+                    .unwrap();
+                let response = app.clone().oneshot(request).await.unwrap();
+                responses.push(response.into_parts().0);
+            }
+            responses
+        };
+        let responses = crate::sidecar::handle().run(serve).await.unwrap();
+        assert_eq!(responses.len(), files.len());
+        responses
+    }
+
+    const PLUGIN_ID: &str = "test-plugin";
+
+    /// A plugin with a UI under `plugin_dir`, known to a controller that manages no services.
+    fn controller_with_ui(plugin_dir: &std::path::Path) -> PluginController {
+        let ui_dir = plugin_dir.join("ui");
+        std::fs::create_dir(&ui_dir).unwrap();
+        std::fs::write(ui_dir.join("index.html"), "<html></html>").unwrap();
+        std::fs::write(ui_dir.join("app.js"), "").unwrap();
+        let manifest = ServiceManifest {
+            id: PLUGIN_ID.to_string(),
+            service_type: ServiceType::Integration,
+            description: None,
+            version: None,
+            url: None,
+            executable: None,
+            args: Vec::new(),
+            envs: Vec::new(),
+            address: ConnectionType::None,
+            tls: None,
+            privileged: false,
+            proxy: None,
+            path: plugin_dir.to_path_buf(),
+        };
+        let mut controller = PluginController::new_disabled();
+        controller.plugins.insert(PLUGIN_ID.to_string(), manifest);
+        controller
+    }
+
+    /// Goal: the UI frames a plugin page, and a browser checks every ancestor, so once the UI
+    /// is embedded the page must admit the same ancestors or it renders blank. Method: the
+    /// real handler over a plugin on disk, with and without a configured ancestor. Without
+    /// one the policy is the baseline, byte for byte, and only HTML ever carries a policy.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn plugin_pages_admit_the_configured_frame_ancestors() {
+        const ANCESTOR: &str = "https://cockpit.example.com:9090";
+        const FILES: [&str; 2] = ["index.html", "app.js"];
+        crate::rt::test_runtime(async {
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let controller = Rc::new(controller_with_ui(plugin_dir.path()));
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = AppState {
+                    plugin_handle: PluginHandle::new(controller, cancel_token.clone(), main_scope),
+                    ..crate::api::empty_app_state(&cancel_token, main_scope).await
+                };
+                let framed_state = AppState {
+                    frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
+                    ..state.clone()
+                };
+                let unframed = ui_file_responses(state, &FILES).await;
+                let framed = ui_file_responses(framed_state, &FILES).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                for response in unframed.iter().chain(&framed) {
+                    assert_eq!(response.status, axum::http::StatusCode::OK);
+                }
+                assert_eq!(
+                    unframed[0].headers["content-security-policy"],
+                    PLUGIN_CONTENT_SECURITY_POLICY
+                );
+                let csp = &framed[0].headers["content-security-policy"];
+                let csp = csp.to_str().unwrap();
+                assert!(csp.contains(&format!("; frame-ancestors 'self' {ANCESTOR}; ")));
+                assert_eq!(csp.matches("frame-ancestors").count(), 1);
+                for script in [&unframed[1], &framed[1]] {
+                    assert!(script.headers.get("content-security-policy").is_none());
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 }

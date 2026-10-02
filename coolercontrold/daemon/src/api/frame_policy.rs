@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Who may embed the UI in a frame, and the `Content-Security-Policy` value that says so.
+//! Who may embed the UI in a frame, and the `Content-Security-Policy` values that say so.
 
-use crate::api::base;
+use crate::api::{base, plugins};
 use axum::http::HeaderValue;
 use log::error;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -11,6 +11,8 @@ use std::ops::Not;
 
 /// What the UI document's policy says with no `frame_ancestors` configured.
 const DOCUMENT_FRAME_ANCESTORS: &str = "frame-ancestors 'none'";
+/// What a plugin page's policy says with no `frame_ancestors` configured: the UI frames it.
+const PLUGIN_FRAME_ANCESTORS: &str = "frame-ancestors 'self'";
 
 /// The header values that depend on `frame_ancestors`. Composed once at startup, so no
 /// request pays for it.
@@ -18,13 +20,18 @@ const DOCUMENT_FRAME_ANCESTORS: &str = "frame-ancestors 'none'";
 pub struct FramePolicy {
     /// The `Content-Security-Policy` of the UI document.
     pub document_csp: HeaderValue,
+    /// The `Content-Security-Policy` of a plugin's UI pages. The UI document frames those,
+    /// and a browser checks every ancestor, so whatever frames the UI must be allowed here
+    /// as well.
+    pub plugin_csp: HeaderValue,
 }
 
 impl Default for FramePolicy {
-    /// Nothing may frame the UI.
+    /// Nothing may frame the UI, and only the UI may frame a plugin page.
     fn default() -> Self {
         Self {
             document_csp: HeaderValue::from_static(base::CONTENT_SECURITY_POLICY),
+            plugin_csp: HeaderValue::from_static(plugins::PLUGIN_CONTENT_SECURITY_POLICY),
         }
     }
 }
@@ -46,14 +53,25 @@ impl FramePolicy {
             DOCUMENT_FRAME_ANCESTORS,
             &format!("frame-ancestors {sources}"),
         );
+        let plugin = plugins::PLUGIN_CONTENT_SECURITY_POLICY.replace(
+            PLUGIN_FRAME_ANCESTORS,
+            &format!("{PLUGIN_FRAME_ANCESTORS} {sources}"),
+        );
         debug_assert!(document.contains(&sources));
         debug_assert!(document.contains(DOCUMENT_FRAME_ANCESTORS).not());
-        let Ok(document_csp) = HeaderValue::try_from(document) else {
+        debug_assert!(plugin.contains(&sources));
+        let (Ok(document_csp), Ok(plugin_csp)) = (
+            HeaderValue::try_from(document),
+            HeaderValue::try_from(plugin),
+        ) else {
             // Validated origins are visible ASCII, so this is a bug. Keep the UI unframeable.
             error!("The frame_ancestors origins do not form a header value: {sources:?}");
             return Self::default();
         };
-        Self { document_csp }
+        Self {
+            document_csp,
+            plugin_csp,
+        }
     }
 }
 
@@ -171,16 +189,22 @@ mod tests {
             1,
             "the baseline must deny framing, in the one place composition replaces"
         );
-        for config in [entries(&[]), entries(&["bad.value", "'self'", "*"])] {
-            assert_eq!(
-                FramePolicy::from_config(&config).document_csp,
-                base::CONTENT_SECURITY_POLICY
-            );
-        }
         assert_eq!(
-            FramePolicy::default().document_csp,
-            base::CONTENT_SECURITY_POLICY
+            plugins::PLUGIN_CONTENT_SECURITY_POLICY
+                .matches(PLUGIN_FRAME_ANCESTORS)
+                .count(),
+            1,
+            "a plugin page is framed by the UI alone, in the one place composition widens"
         );
+        let policies = [
+            FramePolicy::default(),
+            FramePolicy::from_config(&entries(&[])),
+            FramePolicy::from_config(&entries(&["bad.value", "'self'", "*"])),
+        ];
+        for policy in policies {
+            assert_eq!(policy.document_csp, base::CONTENT_SECURITY_POLICY);
+            assert_eq!(policy.plugin_csp, plugins::PLUGIN_CONTENT_SECURITY_POLICY);
+        }
     }
 
     /// Goal: configured origins replace `'none'` and nothing else in the policy changes.
@@ -205,6 +229,25 @@ mod tests {
                 DOCUMENT_FRAME_ANCESTORS
             ),
             base::CONTENT_SECURITY_POLICY
+        );
+    }
+
+    /// Goal: a plugin page stays framed by the UI and additionally admits what frames the
+    /// UI, with nothing else in its policy changed. Method: compose and compare against
+    /// the baseline with only that directive restored.
+    #[test]
+    fn valid_entries_join_self_on_plugin_pages() {
+        let policy = FramePolicy::from_config(&entries(&[
+            "https://localhost:9090",
+            "http://192.168.2.1:1234",
+        ]));
+        let csp = policy.plugin_csp.to_str().unwrap();
+        let widened = "frame-ancestors 'self' https://localhost:9090 http://192.168.2.1:1234";
+        assert!(csp.contains(&format!("; {widened}; ")));
+        assert_eq!(csp.matches("frame-ancestors").count(), 1);
+        assert_eq!(
+            csp.replace(widened, PLUGIN_FRAME_ANCESTORS),
+            plugins::PLUGIN_CONTENT_SECURITY_POLICY
         );
     }
 
