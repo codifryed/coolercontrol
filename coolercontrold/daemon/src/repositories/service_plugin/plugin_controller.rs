@@ -69,14 +69,15 @@ enum StartAction {
     Restart,
 }
 
-pub struct PluginController {
+/// Generic over the init system only so that tests can script one.
+pub struct PluginController<M: ServiceManager = Manager> {
     plugins: RefCell<HashMap<ServiceId, ServiceManifest>>,
     /// The plugins found after startup, and those whose manifest gained a service since.
     /// Shared with the repository, which knows neither and so would not stop their services
     /// on shutdown.
     runtime_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
     config: Option<Rc<Config>>,
-    service_manager: Manager,
+    service_manager: M,
     is_systemd: bool,
     is_open_rc: bool,
 }
@@ -111,7 +112,9 @@ impl PluginController {
             is_open_rc: false,
         }
     }
+}
 
+impl<M: ServiceManager> PluginController<M> {
     /// Registers plugins whose folder appeared after the daemon started.
     ///
     /// A known plugin is left alone here: its manifest is re-read when it is started.
@@ -931,12 +934,35 @@ mod tests {
         .unwrap();
     }
 
+    /// A controller with a config, whose init system is the given fake.
+    fn controller_with(config: Rc<Config>, manager: FakeManager) -> PluginController<FakeManager> {
+        PluginController {
+            plugins: RefCell::new(HashMap::new()),
+            runtime_plugins: Rc::new(RefCell::new(Vec::new())),
+            config: Some(config),
+            service_manager: manager,
+            is_systemd: false,
+            is_open_rc: false,
+        }
+    }
+
     /// A controller that knows one integration plugin, registered as `registered` describes
     /// it, whose folder holds a manifest with a different description and an executable.
     fn controller_with_edited_manifest(
         plugins_dir: &Path,
         registered: impl FnOnce(&mut ServiceManifest),
     ) -> PluginController {
+        let controller = PluginController::new_disabled();
+        controller.register(edited_manifest(plugins_dir, registered));
+        controller
+    }
+
+    /// One integration plugin as `registered` describes it, whose folder holds a manifest
+    /// with a different description and an executable.
+    fn edited_manifest(
+        plugins_dir: &Path,
+        registered: impl FnOnce(&mut ServiceManifest),
+    ) -> ServiceManifest {
         let folder = plugins_dir.join("test-plugin");
         write_manifest(plugins_dir, "test-plugin", "integration", "edited on disk");
         let manifest_file = folder.join(SERVICE_MANIFEST_FILE_NAME);
@@ -946,9 +972,39 @@ mod tests {
         let mut manifest = managed_manifest(folder);
         manifest.description = Some("as registered".to_string());
         registered(&mut manifest);
-        let controller = PluginController::new_disabled();
-        controller.register(manifest);
-        controller
+        manifest
+    }
+
+    /// Goal: enabling a plugin starts it, and a start that fails must come back as an error
+    /// instead of an enabled plugin that looks fine and is not running. The plugin still
+    /// counts as enabled, which is what the error says.
+    /// Method: a disabled plugin and a fake init system that reports it up once, then down.
+    #[test]
+    fn enable_reports_a_plugin_that_does_not_stay_up() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            config.set_disabled_plugins(&["test-plugin".to_string()]);
+            let manager = FakeManager::new([
+                ServiceStatus::Stopped(None),
+                ServiceStatus::Running,
+                ServiceStatus::Stopped(Some("exit-code".to_string())),
+            ]);
+            let controller = controller_with(config, manager);
+            controller.register(edited_manifest(plugins_dir.path(), |_| {}));
+            assert!(controller.is_plugin_disabled("test-plugin"));
+
+            let result = controller.enable_plugin("test-plugin").await;
+
+            let message = format!("{:#}", result.expect_err("the plugin is not running"));
+            assert!(message.contains("its service did not start"), "{message}");
+            assert!(message.contains("exit-code"), "{message}");
+            assert!(controller.is_plugin_disabled("test-plugin").not());
+            assert_eq!(
+                *controller.service_manager.calls.borrow(),
+                ["add", "stop", "restart"]
+            );
+        });
     }
 
     /// Goal: a manifest edited under a running daemon has to take effect when its plugin is
