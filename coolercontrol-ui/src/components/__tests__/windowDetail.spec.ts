@@ -236,7 +236,7 @@ describe('channelDetail', () => {
         expect(samples).toEqual({ first: T0 + 1, last: T0 + 3 })
         const detail = channelDetail(history, 'temp1', [DataType.TEMP], samples, options)
         const bands = detail.get(DataType.TEMP)!.timeInRange!.bands
-        expect(bands.map((b) => b.from).sort()).toEqual([41, 42, 43])
+        expect(bands.map((b) => b.from).sort((a, b) => a - b)).toEqual([41, 42, 43])
     })
 
     it('has no rows when the window holds no sample', () => {
