@@ -335,85 +335,87 @@ mod tests {
         }
     }
 
+    /// Entries that are not an exact origin, by the reason each is refused for.
+    const REFUSED: [(EntryError, &[&str]); 5] = [
+        (
+            EntryError::Scheme,
+            &[
+                "",
+                "*",
+                "'self'",
+                "'none'",
+                "https:",
+                "data:",
+                "example.com",
+                "example.com:9090",
+                "//example.com",
+                "HTTPS://example.com",
+                "ftp://example.com",
+                "wss://example.com",
+                " https://example.com",
+            ],
+        ),
+        (
+            EntryError::Path,
+            &[
+                "https://example.com/test",
+                "https://example.com:9090/a/b/",
+                "https://example.com//",
+                "https://example.com:9090/with space",
+                "https://[::1]/test",
+            ],
+        ),
+        (
+            EntryError::Ipv6,
+            &[
+                "https://[::1]",
+                "http://[2001:db8::1]:9090",
+                "https://[2001:db8::1]/",
+                "https://[::1]junk",
+                "https://[invalid",
+            ],
+        ),
+        (
+            EntryError::Host,
+            &[
+                "https://",
+                "https:///",
+                "https://:9090",
+                "https://*",
+                "https://*.example.com",
+                "https://example.com.",
+                "https://-example.com",
+                "https://example-.com",
+                "https://example..com",
+                "https://exa_mple.com",
+                "https://user@example.com",
+                "https://example.com?query",
+                "https://example.com#fragment",
+                "https://bücher.example",
+            ],
+        ),
+        (
+            EntryError::Port,
+            &[
+                "https://example.com:",
+                "https://example.com:*",
+                "https://example.com:abc",
+                "https://example.com:+80",
+                "https://example.com:-1",
+                "https://example.com:65536",
+                "https://example.com:9090x",
+                "https://example.com:80:80",
+                "https://example.com: 80",
+            ],
+        ),
+    ];
+
     /// Goal: anything looser or other than an exact origin is refused, for the reason the
     /// log will give. Method: one table per reason, covering the keywords and wildcards a
     /// policy would otherwise honor.
     #[test]
     fn anything_but_an_exact_origin_is_refused() {
-        let refused: [(EntryError, &[&str]); 5] = [
-            (
-                EntryError::Scheme,
-                &[
-                    "",
-                    "*",
-                    "'self'",
-                    "'none'",
-                    "https:",
-                    "data:",
-                    "example.com",
-                    "example.com:9090",
-                    "//example.com",
-                    "HTTPS://example.com",
-                    "ftp://example.com",
-                    "wss://example.com",
-                    " https://example.com",
-                ],
-            ),
-            (
-                EntryError::Path,
-                &[
-                    "https://example.com/test",
-                    "https://example.com:9090/a/b/",
-                    "https://example.com//",
-                    "https://example.com:9090/with space",
-                    "https://[::1]/test",
-                ],
-            ),
-            (
-                EntryError::Ipv6,
-                &[
-                    "https://[::1]",
-                    "http://[2001:db8::1]:9090",
-                    "https://[2001:db8::1]/",
-                    "https://[::1]junk",
-                    "https://[invalid",
-                ],
-            ),
-            (
-                EntryError::Host,
-                &[
-                    "https://",
-                    "https:///",
-                    "https://:9090",
-                    "https://*",
-                    "https://*.example.com",
-                    "https://example.com.",
-                    "https://-example.com",
-                    "https://example-.com",
-                    "https://example..com",
-                    "https://exa_mple.com",
-                    "https://user@example.com",
-                    "https://example.com?query",
-                    "https://example.com#fragment",
-                    "https://bücher.example",
-                ],
-            ),
-            (
-                EntryError::Port,
-                &[
-                    "https://example.com:",
-                    "https://example.com:*",
-                    "https://example.com:abc",
-                    "https://example.com:+80",
-                    "https://example.com:-1",
-                    "https://example.com:65536",
-                    "https://example.com:9090x",
-                    "https://example.com:80:80",
-                    "https://example.com: 80",
-                ],
-            ),
-        ];
-        for (reason, table) in refused {
+        for (reason, table) in REFUSED {
             for entry in table {
                 assert_eq!(ancestor_origin(entry), Err(reason), "{entry:?}");
             }
