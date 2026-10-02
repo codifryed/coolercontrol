@@ -344,6 +344,10 @@ impl Listener {
     /// overwrite the Mode's channels if they landed after it. There is no timeout because going
     /// ahead early is exactly that race.
     async fn activate_startup_mode(&self) {
+        debug_assert!(
+            self.seeded,
+            "The startup Mode belongs to the first connect, which seeds before it activates"
+        );
         let Some(boot_settings_applied) = self.boot_settings_applied.as_ref() else {
             return;
         };
@@ -351,6 +355,10 @@ impl Listener {
             () = self.run_token.cancelled() => return,
             () = boot_settings_applied.cancelled() => {},
         }
+        debug_assert!(
+            boot_settings_applied.is_cancelled(),
+            "The startup Mode must never be activated ahead of the boot settings"
+        );
         let Some(profile) = self.current.as_deref() else {
             return;
         };
