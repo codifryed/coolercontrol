@@ -277,6 +277,9 @@ export default {
                     activeProfile: 'Perfil actual: {profile}',
                     noMode: 'Ningun modo',
                     saveFailed: 'No se pudo guardar la asignacion de perfiles de energia.',
+                    modeNotActive: '{mode} está asignado al perfil actual, pero no está activo.',
+                    modeNotActiveRestart:
+                        'Se activará de nuevo la próxima vez que se inicie el daemon.',
                     profileNames: {
                         'power-saver': 'Ahorro de energia',
                         balanced: 'Equilibrado',

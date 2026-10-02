@@ -280,6 +280,8 @@ export default {
                     noMode: 'Aucun mode',
                     saveFailed:
                         "L'association des profils d'alimentation n'a pas pu etre enregistree.",
+                    modeNotActive: "{mode} est associé au profil actuel, mais n'est pas actif.",
+                    modeNotActiveRestart: 'Il sera réactivé au prochain démarrage du daemon.',
                     profileNames: {
                         'power-saver': "Economie d'energie",
                         balanced: 'Equilibre',

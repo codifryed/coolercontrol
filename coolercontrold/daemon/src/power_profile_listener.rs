@@ -169,10 +169,13 @@ impl PowerProfiles {
 /// sidecar (zbus needs a Tokio reactor), and every failure degrades to running deaf rather than
 /// failing daemon startup. Nothing is returned because the listener drives the SSE broadcast and
 /// Mode activation itself and needs nothing from the main loop tick.
+///
+/// `boot_settings_applied` is `None` when `apply_on_boot` is off, see `Listener`.
 pub fn start(
     system_event_handle: SystemEventHandle,
     mode_handle: ModeHandle,
     profiles: PowerProfiles,
+    boot_settings_applied: Option<CancellationToken>,
     run_token: CancellationToken,
 ) {
     if dbus_listener_enabled().not() {
@@ -183,6 +186,7 @@ pub fn start(
         system_event_handle,
         mode_handle,
         profiles,
+        boot_settings_applied,
         run_token,
         current: None,
         seeded: false,
@@ -212,7 +216,8 @@ fn dbus_listener_enabled_from(env_dbus: Option<&str>) -> bool {
 /// What a fresh connection means for the profile we already hold.
 #[derive(Debug, PartialEq, Eq)]
 enum Reconnect {
-    /// First connect: record the profile only. Activating a Mode here would fight `apply_on_boot`.
+    /// First connect: record the profile and bring its Mode in line. Not a change, so nothing is
+    /// broadcast.
     Seed,
     /// The profile is the same one we already acted on, or the daemon would not say.
     Unchanged,
@@ -236,6 +241,9 @@ struct Listener {
     system_event_handle: SystemEventHandle,
     mode_handle: ModeHandle,
     profiles: PowerProfiles,
+    /// Cancelled once the saved settings are back on the devices at boot. `None` when
+    /// `apply_on_boot` is off: the daemon then writes nothing at startup, a Mode included.
+    boot_settings_applied: Option<CancellationToken>,
     run_token: CancellationToken,
     /// The last profile we know of. Carried across reconnects so a change missed while the
     /// daemon was away is still visible as a change.
@@ -313,6 +321,7 @@ impl Listener {
                 self.seeded = true;
                 self.current = observed;
                 info!("DBUS power profile listener connected. Active profile: {reported}");
+                self.activate_startup_mode().await;
             }
             Reconnect::Unchanged => {
                 info!("DBUS power profile listener reconnected. Active profile: {reported}");
@@ -325,6 +334,40 @@ impl Listener {
                 };
                 self.apply(profile).await;
             }
+        }
+    }
+
+    /// Activates the Mode mapped to the profile found on the first connect, since the profile
+    /// may have changed while the daemon was not running. An already active Mode is left as is.
+    ///
+    /// Waits for the saved settings first: they are applied concurrently at boot and would
+    /// overwrite the Mode's channels if they landed after it. There is no timeout because going
+    /// ahead early is exactly that race.
+    async fn activate_startup_mode(&self) {
+        debug_assert!(
+            self.seeded,
+            "The startup Mode belongs to the first connect, which seeds before it activates"
+        );
+        let Some(boot_settings_applied) = self.boot_settings_applied.as_ref() else {
+            return;
+        };
+        tokio::select! {
+            () = self.run_token.cancelled() => return,
+            () = boot_settings_applied.cancelled() => {},
+        }
+        debug_assert!(
+            boot_settings_applied.is_cancelled(),
+            "The startup Mode must never be activated ahead of the boot settings"
+        );
+        let Some(profile) = self.current.as_deref() else {
+            return;
+        };
+        // Read after the wait, so a mapping edited in the meantime is the one that counts.
+        let Some(mode_uid) = self.profiles.mode_for(profile) else {
+            return;
+        };
+        if let Err(err) = self.mode_handle.activate(mode_uid.clone()).await {
+            error!("Failed to activate Mode {mode_uid} for the startup power profile: {err}");
         }
     }
 
@@ -507,6 +550,16 @@ async fn available_profiles(proxy: &Proxy<'static>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    use crate::config::Config;
+    use crate::engine::main::Engine;
+    use crate::modes::ModeController;
+    use crate::overrides::OverridesController;
+    use crate::paths;
+    use crate::repositories::repository::Repositories;
+    use crate::AllDevices;
+    use serial_test::serial;
+    use std::rc::Rc;
 
     /// Goal: an unmapped profile must resolve to nothing, so an unconfigured system never
     /// activates a Mode by accident.
@@ -556,16 +609,17 @@ mod tests {
         );
     }
 
-    /// Goal: the first connect must never activate a Mode, or the listener would fight
-    /// `apply_on_boot` at startup. Every later connect must still catch a change that happened
-    /// while the listener was disconnected, which is the whole point of reconnecting.
+    /// Goal: the first connect must be told apart from a reconnect, since it is not a profile
+    /// change and must not be broadcast as one. Every later connect must still catch a change
+    /// that happened while the listener was disconnected, which is the whole point of
+    /// reconnecting.
     /// Methodology: run the decision for the seeding connect and for each reconnect case.
     #[test]
     fn the_first_connect_seeds_and_later_ones_catch_up() {
         assert_eq!(
             reconnect_action(false, None, Some("balanced")),
             Reconnect::Seed,
-            "The first connect only records the profile"
+            "The first connect is a seed, not a change"
         );
         assert_eq!(
             reconnect_action(false, None, None),
@@ -594,6 +648,248 @@ mod tests {
             Reconnect::Unchanged,
             "A daemon that will not report its profile must not look like a change"
         );
+    }
+
+    const STARTUP_PROFILE: &str = "performance";
+
+    /// A controller with no devices and two Modes, returned as `(controller, idle, active)`.
+    /// Nothing reaches hardware, so only the choice of active Mode is exercised.
+    async fn controller_with_two_modes(profiles: &PowerProfiles) -> (Rc<ModeController>, UID, UID) {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let all_devices: AllDevices = Rc::new(HashMap::new());
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &Rc::new(Repositories::default()),
+            Rc::clone(&config),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+            Rc::new(OverridesController::empty()),
+        ));
+        // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
+        if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
+            assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+        }
+        let controller = Rc::new(
+            ModeController::init(config, all_devices, engine, profiles.clone())
+                .await
+                .unwrap(),
+        );
+        // A new Mode becomes the active one, so the last one created is active.
+        let idle = controller.create_mode("Idle".to_string()).await.unwrap();
+        let active = controller.create_mode("Active".to_string()).await.unwrap();
+        assert_eq!(
+            controller.get_active_modes().current_mode_uid.as_ref(),
+            Some(&active.uid)
+        );
+        (controller, idle.uid, active.uid)
+    }
+
+    fn map_startup_profile_to(profiles: &PowerProfiles, mode_uid: &UID) {
+        profiles.set_modes(HashMap::from([(
+            STARTUP_PROFILE.to_string(),
+            mode_uid.clone(),
+        )]));
+    }
+
+    fn unconnected_listener(
+        mode_handle: ModeHandle,
+        profiles: PowerProfiles,
+        boot_settings_applied: Option<CancellationToken>,
+    ) -> Listener {
+        let run_token = CancellationToken::new();
+        Listener {
+            system_event_handle: SystemEventHandle::new(run_token.clone()),
+            mode_handle,
+            profiles,
+            boot_settings_applied,
+            run_token,
+            current: None,
+            seeded: false,
+        }
+    }
+
+    /// Goal: a profile changed while the daemon was down must still get its Mode, so the first
+    /// connect activates the mapped Mode when another one is active. It is not a change, so
+    /// nothing is broadcast.
+    /// Methodology: map the profile to the idle Mode, run the first connect with the boot
+    /// settings already applied, then read the active Mode and the event channel back.
+    #[test]
+    #[serial(modes_file)]
+    fn the_first_connect_activates_the_mapped_mode() {
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, _) = controller_with_two_modes(&profiles).await;
+            map_startup_profile_to(&profiles, &idle);
+            let boot_settings_applied = CancellationToken::new();
+            boot_settings_applied.cancel();
+            let actor_token = CancellationToken::new();
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener =
+                    unconnected_listener(mode_handle, profiles, Some(boot_settings_applied));
+                let mut events = listener.system_event_handle.broadcaster().subscribe();
+
+                listener.catch_up(Some(STARTUP_PROFILE.to_string())).await;
+
+                assert!(
+                    events.try_recv().is_err(),
+                    "A first connect is not a change"
+                );
+                assert_eq!(listener.current.as_deref(), Some(STARTUP_PROFILE));
+                // Stops the actor so the scope can finish.
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(controller.get_active_modes().current_mode_uid, Some(idle));
+        });
+    }
+
+    /// Goal: the startup Mode must not be activated while the saved settings are still being
+    /// applied, or they would overwrite its channels afterwards.
+    /// Methodology: start the first connect with no mapping and the boot settings pending, let
+    /// it run, and only then add the mapping and release it. A listener that did not wait has
+    /// already found no mapping and activates nothing.
+    #[test]
+    #[serial(modes_file)]
+    fn the_startup_mode_waits_for_the_boot_settings() {
+        const YIELDS_FOR_THE_LISTENER_TO_RUN: usize = 8;
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            let boot_settings_applied = CancellationToken::new();
+            let actor_token = CancellationToken::new();
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(
+                    mode_handle,
+                    profiles.clone(),
+                    Some(boot_settings_applied.clone()),
+                );
+                let first_connect = scope.spawn(async move {
+                    listener.catch_up(Some(STARTUP_PROFILE.to_string())).await;
+                });
+                for _ in 0..YIELDS_FOR_THE_LISTENER_TO_RUN {
+                    crate::rt::yield_now().await;
+                }
+                assert_eq!(
+                    controller.get_active_modes().current_mode_uid.as_ref(),
+                    Some(&active),
+                    "Nothing is activated while the boot settings are pending"
+                );
+
+                map_startup_profile_to(&profiles, &idle);
+                boot_settings_applied.cancel();
+                first_connect.await;
+
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(controller.get_active_modes().current_mode_uid, Some(idle));
+        });
+    }
+
+    /// Goal: a shutdown must not be held up by boot settings that never finish applying, and
+    /// must not activate the startup Mode on the way out.
+    /// Methodology: map the profile to the idle Mode, start the first connect with the boot
+    /// settings pending, then cancel the listener's run token and give it a bounded number of
+    /// turns. A flag set once the connect returns is read back instead of awaiting the task, so
+    /// a listener that keeps waiting fails the test rather than hanging it.
+    #[test]
+    #[serial(modes_file)]
+    fn a_shutdown_ends_the_wait_for_the_boot_settings() {
+        const YIELDS_FOR_THE_LISTENER_TO_RUN: usize = 8;
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            map_startup_profile_to(&profiles, &idle);
+            let boot_settings_applied = CancellationToken::new();
+            let actor_token = CancellationToken::new();
+            let returned = Rc::new(std::cell::Cell::new(false));
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(
+                    mode_handle,
+                    profiles.clone(),
+                    Some(boot_settings_applied.clone()),
+                );
+                let run_token = listener.run_token.clone();
+                let first_connect_returned = Rc::clone(&returned);
+                scope.spawn(async move {
+                    listener.catch_up(Some(STARTUP_PROFILE.to_string())).await;
+                    first_connect_returned.set(true);
+                });
+                for _ in 0..YIELDS_FOR_THE_LISTENER_TO_RUN {
+                    crate::rt::yield_now().await;
+                }
+                assert!(
+                    returned.get().not(),
+                    "The first connect waits while the boot settings are pending"
+                );
+
+                run_token.cancel();
+                for _ in 0..YIELDS_FOR_THE_LISTENER_TO_RUN {
+                    crate::rt::yield_now().await;
+                }
+                assert!(
+                    returned.get(),
+                    "A shutdown must end the wait for the boot settings"
+                );
+                assert!(
+                    boot_settings_applied.is_cancelled().not(),
+                    "The wait ended on the shutdown, not on the boot settings"
+                );
+
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(
+                controller.get_active_modes().current_mode_uid,
+                Some(active),
+                "Nothing is activated on the way out"
+            );
+        });
+    }
+
+    /// Goal: with `apply_on_boot` off the daemon writes nothing at startup, so the first connect
+    /// must leave the active Mode alone while still recording the profile.
+    /// Methodology: map the profile to the idle Mode and run the first connect with no boot
+    /// signal, which is how `apply_on_boot = false` reaches the listener.
+    #[test]
+    #[serial(modes_file)]
+    fn the_first_connect_activates_nothing_without_apply_on_boot() {
+        crate::rt::test_runtime(async {
+            let profiles = PowerProfiles::default();
+            let (controller, idle, active) = controller_with_two_modes(&profiles).await;
+            map_startup_profile_to(&profiles, &idle);
+            let actor_token = CancellationToken::new();
+            moro_local::async_scope!(|scope| -> anyhow::Result<()> {
+                let mode_handle =
+                    ModeHandle::new(Rc::clone(&controller), actor_token.clone(), scope);
+                let mut listener = unconnected_listener(mode_handle, profiles, None);
+
+                listener.catch_up(Some(STARTUP_PROFILE.to_string())).await;
+
+                assert_eq!(listener.current.as_deref(), Some(STARTUP_PROFILE));
+                actor_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(controller.get_active_modes().current_mode_uid, Some(active));
+        });
     }
 
     /// Goal: a panic elsewhere must not turn the mapping into a silent "no mapping", which would

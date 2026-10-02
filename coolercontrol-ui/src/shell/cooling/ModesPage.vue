@@ -6,7 +6,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiBookmarkCheck, mdiBookmarkMinusOutline, mdiBookmarkMultipleOutline } from '@mdi/js'
+import {
+    mdiAlertOutline,
+    mdiBookmarkCheck,
+    mdiBookmarkMinusOutline,
+    mdiBookmarkMultipleOutline,
+} from '@mdi/js'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -16,7 +21,12 @@ import UiButton from '@/shell/ui/UiButton.vue'
 import UiSelect, { type UiSelectOption } from '@/shell/ui/UiSelect.vue'
 import UiSettingRow from '@/shell/ui/UiSettingRow.vue'
 import UiSettingsCard from '@/shell/ui/UiSettingsCard.vue'
-import { hasTranslatedLabel } from '@/shell/cooling/powerProfiles.ts'
+import {
+    hasTranslatedLabel,
+    unappliedProfileMode,
+    UNAPPLIED_MODE_GRACE_MS,
+    useSustained,
+} from '@/shell/cooling/powerProfiles.ts'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -43,6 +53,21 @@ const profileLabel = (profile: string): string =>
     hasTranslatedLabel(profile)
         ? t(`layout.shell.coolingPage.powerProfiles.profileNames.${profile}`)
         : profile
+
+// Undefined when there is nothing to warn about, and while a mismatch is still fresh: every
+// profile switch opens one until its Mode is active.
+const unappliedModeName = useSustained<string>(
+    () => {
+        const modeUID = unappliedProfileMode(
+            settingsStore.powerProfileActive,
+            settingsStore.powerProfileModes,
+            settingsStore.modeActiveCurrent,
+        )
+        return settingsStore.modes.find((mode) => mode.uid === modeUID)?.name
+    },
+    UNAPPLIED_MODE_GRACE_MS,
+    () => settingsStore.powerProfileActive,
+)
 
 const mappedMode = (profile: string): string => {
     const modeUID = settingsStore.powerProfileModes[profile]
@@ -143,6 +168,32 @@ const setMappedMode = async (profile: string, modeUID: string | undefined): Prom
                         : ''
                 "
             />
+            <div
+                v-if="unappliedModeName != null"
+                class="flex items-start gap-2 px-4 py-3 text-base text-text-color"
+                role="status"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiAlertOutline"
+                    :size="18"
+                    class="mt-0.5 shrink-0 text-warning"
+                />
+                <!-- Two blocks, so no separator is imposed on languages that use none. -->
+                <div>
+                    <p>
+                        {{
+                            t('layout.shell.coolingPage.powerProfiles.modeNotActive', {
+                                mode: unappliedModeName,
+                            })
+                        }}
+                    </p>
+                    <!-- With apply-on-boot off the daemon activates nothing at startup. -->
+                    <p v-if="settingsStore.ccSettings.apply_on_boot">
+                        {{ t('layout.shell.coolingPage.powerProfiles.modeNotActiveRestart') }}
+                    </p>
+                </div>
+            </div>
             <UiSettingRow
                 v-for="profile in settingsStore.powerProfilesAvailable"
                 :key="profile"

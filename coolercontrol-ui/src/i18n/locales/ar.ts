@@ -271,6 +271,8 @@ export default {
                     activeProfile: 'الملف الحالي: {profile}',
                     noMode: 'بلا وضع',
                     saveFailed: 'تعذر حفظ ربط ملفات الطاقة.',
+                    modeNotActive: 'تم تعيين {mode} للملف الحالي لكنه غير مفعّل.',
+                    modeNotActiveRestart: 'سيُفعَّل مجددًا عند بدء تشغيل الخدمة في المرة القادمة.',
                     profileNames: {
                         'power-saver': 'توفير الطاقة',
                         balanced: 'متوازن',
