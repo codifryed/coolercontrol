@@ -30,12 +30,14 @@ export const UNAPPLIED_MODE_GRACE_MS = 3000
 
 /**
  * `source`, but undefined until it has held a value for `graceMs` without a gap. A gap hides it
- * at once and the next value waits again; a value replaced by another one keeps showing.
+ * at once and the next value waits again, and so does a change of `restartKey`. A value replaced
+ * by another one under the same key keeps showing.
  * Needs an effect scope, such as a component setup, which clears the pending timer when it ends.
  */
 export function useSustained<T>(
     source: () => T | undefined,
     graceMs: number,
+    restartKey: () => unknown = () => undefined,
 ): ComputedRef<T | undefined> {
     const sustained = ref(false)
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -45,8 +47,8 @@ export function useSustained<T>(
     }
     // Sync, so the grace is measured from the edge itself and not from the next render.
     watch(
-        () => source() != null,
-        (present) => {
+        [() => source() != null, restartKey],
+        ([present]) => {
             stopTimer()
             sustained.value = false
             if (!present) return

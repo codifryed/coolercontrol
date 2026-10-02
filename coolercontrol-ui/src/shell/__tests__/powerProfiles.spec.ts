@@ -41,6 +41,21 @@ describe('useSustained', () => {
     const sustain = (source: Ref<string | undefined>) =>
         scope.run(() => useSustained(() => source.value, GRACE_MS))!
 
+    const MODE_OF: Record<string, string> = {
+        performance: 'Loud',
+        balanced: 'Quiet',
+        'power-saver': 'Quiet',
+    }
+    // As on the Modes page: the mismatch derives from the profile, which also restarts the grace.
+    const sustainProfile = (profile: Ref<string>, modeOf: Ref<Record<string, string>>) =>
+        scope.run(() =>
+            useSustained(
+                () => modeOf.value[profile.value],
+                GRACE_MS,
+                () => profile.value,
+            ),
+        )!
+
     beforeEach(() => {
         vi.useFakeTimers()
         scope = effectScope()
@@ -116,6 +131,59 @@ describe('useSustained', () => {
         vi.advanceTimersByTime(GRACE_MS)
 
         source.value = 'Quiet'
+        expect(shown.value).toBe('Quiet')
+    })
+
+    // Remapping the current profile, or renaming its Mode, is not an activation in flight.
+    it('keeps showing when the mismatch moves to another Mode under the same restart key', () => {
+        const profile = ref('performance')
+        const modeOf = ref(MODE_OF)
+        const shown = sustainProfile(profile, modeOf)
+        vi.advanceTimersByTime(GRACE_MS)
+        expect(shown.value).toBe('Loud')
+
+        modeOf.value = { ...MODE_OF, performance: 'Quiet' }
+        expect(shown.value).toBe('Quiet')
+    })
+
+    // A profile switch whose Mode is being activated: the mismatch never clears in between.
+    it('hides at once and waits again when the restart key changes and the value is replaced', () => {
+        const profile = ref('performance')
+        const shown = sustainProfile(profile, ref(MODE_OF))
+        vi.advanceTimersByTime(GRACE_MS)
+        expect(shown.value).toBe('Loud')
+
+        profile.value = 'balanced'
+        expect(shown.value).toBeUndefined()
+        vi.advanceTimersByTime(GRACE_MS - 1)
+        expect(shown.value).toBeUndefined()
+        vi.advanceTimersByTime(1)
+        expect(shown.value).toBe('Quiet')
+    })
+
+    it('hides at once and waits again when the restart key changes and the value stays', () => {
+        const profile = ref('balanced')
+        const shown = sustainProfile(profile, ref(MODE_OF))
+        vi.advanceTimersByTime(GRACE_MS)
+        expect(shown.value).toBe('Quiet')
+
+        profile.value = 'power-saver'
+        expect(shown.value).toBeUndefined()
+        vi.advanceTimersByTime(GRACE_MS - 1)
+        expect(shown.value).toBeUndefined()
+        vi.advanceTimersByTime(1)
+        expect(shown.value).toBe('Quiet')
+    })
+
+    it('measures the grace from the latest restart key change', () => {
+        const profile = ref('performance')
+        const shown = sustainProfile(profile, ref(MODE_OF))
+        vi.advanceTimersByTime(GRACE_MS - 1)
+
+        profile.value = 'balanced'
+        vi.advanceTimersByTime(1)
+        expect(shown.value).toBeUndefined()
+        vi.advanceTimersByTime(GRACE_MS - 1)
         expect(shown.value).toBe('Quiet')
     })
 

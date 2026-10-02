@@ -56,14 +56,18 @@ const profileLabel = (profile: string): string =>
 
 // Undefined when there is nothing to warn about, and while a mismatch is still fresh: every
 // profile switch opens one until its Mode is active.
-const unappliedModeName = useSustained<string>(() => {
-    const modeUID = unappliedProfileMode(
-        settingsStore.powerProfileActive,
-        settingsStore.powerProfileModes,
-        settingsStore.modeActiveCurrent,
-    )
-    return settingsStore.modes.find((mode) => mode.uid === modeUID)?.name
-}, UNAPPLIED_MODE_GRACE_MS)
+const unappliedModeName = useSustained<string>(
+    () => {
+        const modeUID = unappliedProfileMode(
+            settingsStore.powerProfileActive,
+            settingsStore.powerProfileModes,
+            settingsStore.modeActiveCurrent,
+        )
+        return settingsStore.modes.find((mode) => mode.uid === modeUID)?.name
+    },
+    UNAPPLIED_MODE_GRACE_MS,
+    () => settingsStore.powerProfileActive,
+)
 
 const mappedMode = (profile: string): string => {
     const modeUID = settingsStore.powerProfileModes[profile]
