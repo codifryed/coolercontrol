@@ -139,6 +139,7 @@ impl<M: ServiceManager> PluginController<M> {
             error!("{problem}");
         }
         for (service_id, manifest) in found {
+            debug_assert_eq!(service_id, manifest.id, "a scan keys a plugin by its id");
             if self.plugins.borrow().contains_key(&service_id) {
                 continue;
             }
@@ -210,6 +211,9 @@ impl<M: ServiceManager> PluginController<M> {
 
     /// Keeps `runtime_plugins` holding every service the repository would not stop.
     fn track_service(&self, registered: &ServiceManifest, reloaded: &ServiceManifest) {
+        // `ensure_same_plugin` has passed: tracking another plugin's service under this
+        // one would stop the wrong service on shutdown.
+        assert_eq!(registered.id, reloaded.id);
         let mut runtime_plugins = self.runtime_plugins.borrow_mut();
         let tracked_index = runtime_plugins
             .iter()
@@ -576,6 +580,9 @@ async fn bring_up_service(
     action: StartAction,
     owner_changed: bool,
 ) -> Result<()> {
+    // `get_integration_manifest` has passed: a device plugin is never started from here.
+    debug_assert!(manifest.is_managed());
+    debug_assert_eq!(manifest.service_type, ServiceType::Integration);
     let service_id = manifest.id.clone();
     let definition =
         ServicePluginRepo::service_definition(&service_id, manifest).ok_or_else(|| {
@@ -622,6 +629,7 @@ async fn bring_up_service(
 /// An init system reports a start once the process is spawned, so a plugin that exited
 /// straight away looked like a success while its supervisor restarted it in a loop.
 async fn await_running(manager: &impl ServiceManager, service_id: &ServiceId) -> Result<()> {
+    debug_assert!(service_id.is_empty().not(), "a manifest id is never empty");
     for _ in 0..START_SETTLE_CHECKS {
         sleep(START_SETTLE_INTERVAL).await;
         let reason = match manager.status(service_id).await? {
