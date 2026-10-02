@@ -4,7 +4,12 @@
 import type { Status } from '@/models/Status.ts'
 import type { Calibration } from '@/models/Calibration.ts'
 import { DataType } from '@/models/Dashboard.ts'
-import { DATA_TYPE_STATS, isSyntheticStatus, toDisplayUnits } from '@/components/chartStats.ts'
+import {
+    DATA_TYPE_STATS,
+    isSyntheticStatus,
+    toDisplayUnits,
+    type SampleRange,
+} from '@/components/chartStats.ts'
 
 // The stats panel's measured behaviour rows: time in range for every line, direction changes
 // for duty, stopped time and stalls for speed. All of them cover the chart's current window.
@@ -263,19 +268,17 @@ function currentValue(
     return valueOf(newest, channelName, dataType) ?? null
 }
 
-// The detail rows for each of one channel's lines over the window [tMin, tMax] (seconds). The
-// window comes from another device's timestamps, so half a poll of padding keeps this device's
-// readings at either edge.
+// Pads half a poll around the chart's samples: devices stamp one tick a few ms apart.
 export function channelDetail(
     history: ReadonlyArray<Status>,
     channelName: string,
     dataTypes: ReadonlyArray<DataType>,
-    tMin: number,
-    tMax: number,
+    samples: SampleRange | null,
     options: DetailOptions,
 ): Map<DataType, LineDetail> {
     const pad = options.pollSeconds / 2
-    const statuses = statusesInWindow(history, tMin - pad, tMax + pad)
+    const statuses =
+        samples == null ? [] : statusesInWindow(history, samples.first - pad, samples.last + pad)
     const details = new Map<DataType, LineDetail>()
     for (const dataType of dataTypes) {
         const values = windowValues(statuses, channelName, dataType)

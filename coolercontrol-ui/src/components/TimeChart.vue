@@ -30,6 +30,7 @@ import {
     chartValueToDisplay,
     isSyntheticStatus,
     lineDash,
+    sampleRange,
     windowStats,
     type LineKey,
     type WindowLineStats,
@@ -410,8 +411,7 @@ const computeWindowStats = (): void => {
     }
     emit('windowStats', {
         lines,
-        windowStart: xMin,
-        windowEnd: xMax,
+        sampleRange: sampleRange(time, xMin, xMax),
         spanSeconds: xMax - xMin,
         zoomed: xMax - xMin < (dataEnd - dataStart) * 0.99,
         scaleRanges: currentScaleRanges(),

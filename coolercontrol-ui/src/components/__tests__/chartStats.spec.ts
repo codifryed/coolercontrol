@@ -10,6 +10,7 @@ import {
     formatJitterValue,
     formatSpan,
     lineDash,
+    sampleRange,
     windowStats,
     foldChannelStats,
     foldStatusIntoStats,
@@ -172,6 +173,15 @@ describe('windowStats', () => {
         })
         expect(windowStats(time, values, valid, 105, 110)).toBeNull()
         expect(windowStats(time, values, new Uint8Array(5), 0, 200)).toBeNull()
+    })
+
+    it('reports the first and last sample times inside the window', () => {
+        expect(sampleRange(time, 0, 200)).toEqual({ first: 0, last: 104 })
+        // Edges between samples: 101 and 104 are cut off.
+        expect(sampleRange(time, 101.3, 103.7)).toEqual({ first: 102, last: 103 })
+        expect(sampleRange(time, 103, 103)).toEqual({ first: 103, last: 103 })
+        expect(sampleRange(time, 102.2, 102.8)).toBeNull()
+        expect(sampleRange([], 0, 200)).toBeNull()
     })
 
     it('measures jitter on a sensor that reports in whole steps', () => {

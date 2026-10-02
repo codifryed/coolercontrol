@@ -18,6 +18,7 @@ import {
     timeInRange,
     windowValues,
 } from '@/components/windowDetail.ts'
+import { sampleRange } from '@/components/chartStats.ts'
 import { ChannelStatus, Status, TempStatus } from '@/models/Status.ts'
 import { DataType } from '@/models/Dashboard.ts'
 import type { Calibration } from '@/models/Calibration.ts'
@@ -188,8 +189,7 @@ describe('channelDetail', () => {
             history,
             'fan1',
             [DataType.DUTY, DataType.RPM],
-            T0,
-            T0 + 3,
+            { first: T0, last: T0 + 3 },
             options,
         )
         const duty = detail.get(DataType.DUTY)!
@@ -202,12 +202,18 @@ describe('channelDetail', () => {
         expect(rpm.stoppedShare).toBe(0)
         expect(rpm.stalls).toEqual({ count: 0, seconds: 0 })
 
-        const temp = channelDetail(history, 'temp1', [DataType.TEMP], T0, T0 + 3, options)
+        const temp = channelDetail(
+            history,
+            'temp1',
+            [DataType.TEMP],
+            { first: T0, last: T0 + 3 },
+            options,
+        )
         expect(temp.get(DataType.TEMP)?.stalls).toBeNull()
         expect(temp.get(DataType.TEMP)?.timeInRange?.bands).toHaveLength(3)
     })
 
-    it('keeps readings stamped within half a poll of the window edges', () => {
+    it('keeps readings stamped within half a poll of the first and last samples', () => {
         const history = [
             status(-0.4, 40, 50),
             status(1, 40, 30),
@@ -215,9 +221,36 @@ describe('channelDetail', () => {
             status(3.04, 40, 35),
             status(3.6, 40, 50),
         ]
-        const detail = channelDetail(history, 'fan1', [DataType.DUTY], T0, T0 + 3, options)
+        const samples = { first: T0, last: T0 + 3 }
+        const detail = channelDetail(history, 'fan1', [DataType.DUTY], samples, options)
         // 50, 30, 40, 35: the edge readings add both turns, the one past half a poll stays out.
         expect(detail.get(DataType.DUTY)?.directionChanges).toBe(2)
+    })
+
+    it('leaves out the polls a window edge cuts off the chart', () => {
+        // The charted device stamps each poll 40 ms after the device the time row comes from.
+        const history = [0, 1, 2, 3, 4].map((s) => status(s + 0.04, 40 + s, 30))
+        const time = [0, 1, 2, 3, 4].map((s) => T0 + s)
+        // Both edges sit less than half a poll from a sample the chart leaves out.
+        const samples = sampleRange(time, T0 + 0.3, T0 + 3.7)
+        expect(samples).toEqual({ first: T0 + 1, last: T0 + 3 })
+        const detail = channelDetail(history, 'temp1', [DataType.TEMP], samples, options)
+        const bands = detail.get(DataType.TEMP)!.timeInRange!.bands
+        expect(bands.map((b) => b.from).sort()).toEqual([41, 42, 43])
+    })
+
+    it('has no rows when the window holds no sample', () => {
+        const history = [0, 1, 2].map((s) => status(s, 40 + s, 30, 900))
+        const detail = channelDetail(history, 'fan1', [DataType.DUTY, DataType.RPM], null, options)
+        expect(detail.get(DataType.DUTY)).toEqual({
+            directionChanges: null,
+            directionChangesPerMinute: null,
+            stoppedShare: null,
+            stalls: null,
+            timeInRange: null,
+        })
+        expect(detail.get(DataType.RPM)?.stoppedShare).toBeNull()
+        expect(detail.get(DataType.RPM)?.timeInRange).toBeNull()
     })
 
     it('bins frequencies in display units', () => {
@@ -229,7 +262,8 @@ describe('channelDetail', () => {
                     [new ChannelStatus('CPU Freq', undefined, undefined, freq)],
                 ),
         )
-        const detail = channelDetail(history, 'CPU Freq', [DataType.FREQ], T0, T0 + 2, {
+        const samples = { first: T0, last: T0 + 2 }
+        const detail = channelDetail(history, 'CPU Freq', [DataType.FREQ], samples, {
             ...options,
             precision: 1000,
         })

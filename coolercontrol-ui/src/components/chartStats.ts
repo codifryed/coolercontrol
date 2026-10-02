@@ -232,6 +232,28 @@ export function windowStats(
     }
 }
 
+export interface SampleRange {
+    first: number
+    last: number
+}
+
+// The first and last times of an ascending time row inside [tMin, tMax], or null when none are.
+export function sampleRange(
+    time: ArrayLike<number>,
+    tMin: number,
+    tMax: number,
+): SampleRange | null {
+    let first: number | null = null
+    let last = Number.NaN
+    for (let i = 0; i < time.length; i++) {
+        const t = time[i]
+        if (t < tMin || t > tMax) continue
+        first ??= t
+        last = t
+    }
+    return first === null ? null : { first, last }
+}
+
 export function formatJitterValue(value: number, dataType: DataType, precision: number): string {
     return value.toFixed(DATA_TYPE_STATS[dataType].jitterDecimals(precision))
 }
@@ -255,9 +277,9 @@ export interface WindowLineStats extends LineKey {
 
 export interface WindowStatsPayload {
     lines: Array<WindowLineStats>
-    // The window in seconds: the x scale's current range.
-    windowStart: number
-    windowEnd: number
+    // The chart's samples inside the x scale's range, which can end between two samples.
+    sampleRange: SampleRange | null
+    // The x scale's range in seconds.
     spanSeconds: number
     // True when the user zoomed in, so the window is the visible range, not the time range.
     zoomed: boolean

@@ -123,8 +123,7 @@ const details = computed((): Map<string, LineDetail> => {
             device.status_history,
             channelName,
             channelLines.map((line) => line.dataType),
-            payload.windowStart,
-            payload.windowEnd,
+            payload.sampleRange,
             {
                 precision: settingsStore.frequencyPrecision,
                 pollSeconds: settingsStore.ccSettings.poll_rate,
