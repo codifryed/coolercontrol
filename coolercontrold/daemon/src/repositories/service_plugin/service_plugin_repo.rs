@@ -284,54 +284,50 @@ impl ServicePluginRepo {
             if path.is_dir().not() {
                 continue;
             }
-            let service_manifest_file = path.join(SERVICE_MANIFEST_FILE_NAME);
-            if service_manifest_file.exists() {
-                let manifest_content = match cc_fs::read_txt(&service_manifest_file).await {
-                    Ok(content) => content,
-                    Err(err) => {
-                        // The reason matters: a permission problem and a vanished file
-                        // need different fixes, and the plugin is skipped either way.
-                        error!(
-                            "Error reading plugin manifest: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                        continue;
-                    }
-                };
-                let document = match manifest_content.parse::<DocumentMut>() {
-                    Ok(document) => document,
-                    Err(err) => {
-                        // `toml_edit` reports the line and column, which is the whole
-                        // value of a syntax error and used to be thrown away.
-                        error!(
-                            "Error parsing TOML manifest file, check the syntax: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                        continue;
-                    }
-                };
-                match ServiceManifest::from_document(&document, path) {
-                    Ok(manifest) => {
-                        if services.contains_key(&manifest.id) {
-                            error!(
-                                "Service Name {} already registered. Skipping {}",
-                                manifest.id,
-                                service_manifest_file.display()
-                            );
-                            continue;
-                        }
-                        services.insert(manifest.id.clone(), manifest);
-                    }
-                    Err(err) => {
-                        error!(
-                            "Error parsing service manifest file: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                    }
-                }
+            if path.join(SERVICE_MANIFEST_FILE_NAME).exists().not() {
+                continue;
             }
+            let manifest = match Self::read_manifest(&path).await {
+                Ok(manifest) => manifest,
+                Err(err) => {
+                    error!("{err:#}");
+                    continue;
+                }
+            };
+            if services.contains_key(&manifest.id) {
+                error!(
+                    "Service Name {} already registered. Skipping {}",
+                    manifest.id,
+                    path.display()
+                );
+                continue;
+            }
+            services.insert(manifest.id.clone(), manifest);
         }
         services
+    }
+
+    /// The manifest in one plugin folder, or why it cannot be used.
+    ///
+    /// Each error names the file and keeps its cause: a permission problem, a syntax error
+    /// with its line and column, and a rejected value all need different fixes.
+    pub async fn read_manifest(plugin_dir: &Path) -> Result<ServiceManifest> {
+        let manifest_file = plugin_dir.join(SERVICE_MANIFEST_FILE_NAME);
+        let content = cc_fs::read_txt(&manifest_file).await.with_context(|| {
+            format!("Error reading plugin manifest {}", manifest_file.display())
+        })?;
+        let document = content.parse::<DocumentMut>().with_context(|| {
+            format!(
+                "Error parsing TOML manifest file {}, check the syntax",
+                manifest_file.display()
+            )
+        })?;
+        ServiceManifest::from_document(&document, plugin_dir.to_path_buf()).with_context(|| {
+            format!(
+                "Error parsing service manifest file {}",
+                manifest_file.display()
+            )
+        })
     }
 
     /// The service definition for a plugin, or `None` when its manifest names no
