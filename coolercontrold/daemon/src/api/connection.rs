@@ -633,6 +633,7 @@ mod tests {
     use axum::Router;
     use axum_server::accept::DefaultAcceptor;
     use axum_server::tls_rustls::RustlsConfig;
+    use nix::errno::Errno;
     use std::net::Ipv6Addr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::timeout;
@@ -664,6 +665,13 @@ mod tests {
         text.parse().unwrap()
     }
 
+    /// Whether `error` is a kernel without IPv6, as when booted with `ipv6.disable=1`: it
+    /// cannot open an `AF_INET6` socket at all. The only case an IPv6 test may skip, since
+    /// every other failure is the daemon's.
+    fn kernel_lacks_ipv6(error: &io::Error) -> bool {
+        error.raw_os_error() == Some(Errno::EAFNOSUPPORT as i32)
+    }
+
     /// Goal: `0.0.0.0` and `::` listen on one port together, as a config that sets both
     /// expects. A dual-stack `::` claims the IPv4 port as well and fails with `EADDRINUSE`.
     #[test]
@@ -677,6 +685,7 @@ mod tests {
                     assert_eq!(ipv6.local_addr().unwrap(), ipv6_address);
                     return;
                 }
+                Err(err) if kernel_lacks_ipv6(&err) => return,
                 Err(err) => assert_eq!(err.kind(), ErrorKind::AddrInUse, "{err}"),
             }
         }
@@ -687,10 +696,25 @@ mod tests {
     /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`.
     #[test]
     fn ipv4_mapped_ipv6_address_binds() {
-        let mapped = listener(socket_address("[::ffff:127.0.0.1]:0")).unwrap();
+        let mapped_address = socket_address("[::ffff:127.0.0.1]:0");
+        let mapped = match listener(mapped_address) {
+            Ok(mapped) => mapped,
+            Err(err) if kernel_lacks_ipv6(&err) => return,
+            Err(err) => panic!("{err}"),
+        };
         let bound = mapped.local_addr().unwrap();
-        assert_eq!(bound.ip(), socket_address("[::ffff:127.0.0.1]:0").ip());
+        assert_eq!(bound.ip(), mapped_address.ip());
         assert_ne!(bound.port(), 0);
+    }
+
+    /// Goal: only a kernel without IPv6 skips the IPv6 tests. The errors a broken
+    /// `listener` returns must still fail them.
+    #[test]
+    fn only_missing_ipv6_support_skips_ipv6_tests() {
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EAFNOSUPPORT)));
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EINVAL)).not());
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EADDRINUSE)).not());
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EADDRNOTAVAIL)).not());
     }
 
     /// Goal: the port still belongs to one listener per family. `SO_REUSEADDR` must not let
