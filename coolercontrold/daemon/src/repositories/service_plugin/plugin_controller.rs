@@ -158,6 +158,15 @@ impl<M: ServiceManager> PluginController<M> {
         }
         let reloaded = ServicePluginRepo::read_manifest(&registered.path).await?;
         ensure_same_plugin(&registered, &reloaded)?;
+        if registered.is_managed() && reloaded.is_managed().not() {
+            // A plugin registered without a service has none that can be stopped, so the
+            // one it has now would be left running with nothing to control it. A failure
+            // returns before anything is registered, which keeps the plugin controllable.
+            self.service_manager
+                .remove(&registered.id)
+                .await
+                .context("Removing the service of a plugin whose manifest lost its executable")?;
+        }
         self.track_service(&registered, &reloaded);
         self.register(reloaded);
         Ok(())
@@ -166,16 +175,21 @@ impl<M: ServiceManager> PluginController<M> {
     /// Keeps `runtime_plugins` holding every service the repository would not stop.
     fn track_service(&self, registered: &ServiceManifest, reloaded: &ServiceManifest) {
         let mut runtime_plugins = self.runtime_plugins.borrow_mut();
-        if let Some(tracked) = runtime_plugins
-            .iter_mut()
-            .find(|manifest| manifest.id == reloaded.id)
-        {
-            *tracked = reloaded.clone();
-            return;
-        }
-        // The repository registered this plugin without a service, so it will not stop one.
-        if registered.is_managed().not() && reloaded.is_managed() {
-            runtime_plugins.push(reloaded.clone());
+        let tracked_index = runtime_plugins
+            .iter()
+            .position(|manifest| manifest.id == reloaded.id);
+        match tracked_index {
+            Some(index) if reloaded.is_managed() => runtime_plugins[index] = reloaded.clone(),
+            // Its service is gone, see `reload_manifest`.
+            Some(index) => {
+                runtime_plugins.swap_remove(index);
+            }
+            // The repository registered this plugin without a service, so it will not
+            // stop one.
+            None if registered.is_managed().not() && reloaded.is_managed() => {
+                runtime_plugins.push(reloaded.clone());
+            }
+            None => {}
         }
     }
 
@@ -849,6 +863,7 @@ mod tests {
     struct FakeManager {
         statuses: RefCell<VecDeque<ServiceStatus>>,
         calls: RefCell<Vec<&'static str>>,
+        fails_to_remove: bool,
         /// A file whose mode is noted in `mode_at_stop` when a stop is asked for.
         watched_file: Option<PathBuf>,
         mode_at_stop: RefCell<Option<u32>>,
@@ -861,6 +876,7 @@ mod tests {
             Self {
                 statuses: RefCell::new(statuses),
                 calls: RefCell::new(Vec::new()),
+                fails_to_remove: false,
                 watched_file: None,
                 mode_at_stop: RefCell::new(None),
             }
@@ -878,6 +894,9 @@ mod tests {
         }
 
         async fn remove(&self, _service_id: &ServiceId) -> Result<()> {
+            if self.fails_to_remove {
+                return Err(anyhow!("the service did not stop"));
+            }
             self.record("remove")
         }
 
@@ -1147,6 +1166,83 @@ mod tests {
             let runtime_plugins = controller.runtime_plugins.borrow();
             assert_eq!(runtime_plugins.len(), 1);
             assert!(runtime_plugins[0].is_managed());
+        });
+    }
+
+    /// Goal: a manifest that lost its `executable` makes its plugin one without a service,
+    /// which nothing can stop any more. The service it still has must be removed before
+    /// that, or it runs on with no control over it and outlives the daemon.
+    /// Method: a plugin found at runtime with a service, a manifest on disk without an
+    /// executable, a restart, and what the fake init system was asked to do.
+    #[test]
+    fn a_manifest_that_loses_its_executable_has_its_service_removed() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let manager = FakeManager::new([ServiceStatus::Running]);
+            let controller = controller_with(config, manager);
+            let registered = edited_manifest(plugins_dir.path(), |_| {});
+            controller
+                .runtime_plugins
+                .borrow_mut()
+                .push(registered.clone());
+            controller.register(registered);
+            write_manifest(
+                plugins_dir.path(),
+                "test-plugin",
+                "integration",
+                "no service",
+            );
+
+            let result = controller.restart_plugin("test-plugin").await;
+
+            let message = format!("{:#}", result.expect_err("there is nothing to restart"));
+            assert!(message.contains("not managed"), "{message}");
+            assert_eq!(*controller.service_manager.calls.borrow(), ["remove"]);
+            assert!(controller
+                .manifest("test-plugin")
+                .unwrap()
+                .is_managed()
+                .not());
+            assert!(
+                controller.runtime_plugins.borrow().is_empty(),
+                "a service that is gone is not one to remove on shutdown"
+            );
+        });
+    }
+
+    /// Goal: a service that could not be removed is still running, so its plugin has to stay
+    /// registered with it: that is what keeps stop, restart and disable working on it.
+    /// Method: the same edit, with a fake init system whose removal fails.
+    #[test]
+    fn a_service_that_cannot_be_removed_keeps_its_plugin_managed() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let mut manager = FakeManager::new([ServiceStatus::Running]);
+            manager.fails_to_remove = true;
+            let controller = controller_with(config, manager);
+            let registered = edited_manifest(plugins_dir.path(), |_| {});
+            controller
+                .runtime_plugins
+                .borrow_mut()
+                .push(registered.clone());
+            controller.register(registered);
+            write_manifest(
+                plugins_dir.path(),
+                "test-plugin",
+                "integration",
+                "no service",
+            );
+
+            let result = controller.restart_plugin("test-plugin").await;
+
+            let message = format!("{:#}", result.expect_err("the removal failed"));
+            assert!(message.contains("the service did not stop"), "{message}");
+            assert!(controller.manifest("test-plugin").unwrap().is_managed());
+            assert_eq!(controller.runtime_plugins.borrow().len(), 1);
+            assert!(controller.service_manager.calls.borrow().is_empty());
+            assert!(controller.stop_plugin("test-plugin").await.is_ok());
         });
     }
 
