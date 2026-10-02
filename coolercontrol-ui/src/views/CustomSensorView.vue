@@ -435,6 +435,15 @@ const saveNameFunction = async (newName: string): Promise<boolean> => {
     // the override and falls back to the detected label, which has to be read
     // before saving drops the override it is derived from.
     const applied = newName.length > 0 ? newName : defaultLabel.value
+    if (shouldCreateSensor) {
+        // Nothing to name yet: saveSensor applies it once the sensor exists.
+        // Saving it now would leave an override behind if the page is abandoned.
+        if (newName === currentName.value) return true
+        sensorName.value = newName
+        currentName.value = applied
+        contextIsDirty.value = true
+        return true
+    }
     const success = await settingsStore.saveChannelName(
         customSensorsDeviceUID,
         customSensor.id,
