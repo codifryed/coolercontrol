@@ -4,6 +4,7 @@
 use crate::api::CCError;
 use crate::cc_fs;
 use crate::config::Config;
+use crate::paths;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceManager, ServiceStatus,
 };
@@ -17,6 +18,7 @@ use crate::repositories::utils::{DirectCommand, ShellCommandResult};
 use crate::rt::sleep;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::Permissions;
 use std::ops::Not;
@@ -47,6 +49,9 @@ const START_SETTLE_INTERVAL: Duration = Duration::from_millis(1);
 const START_SETTLE_CHECKS: u8 = 4;
 const _: () = assert!(START_SETTLE_CHECKS > 0);
 
+/// Devices are registered once, when the daemon starts.
+const RESTART_TO_LOAD_DEVICES: &str = "Restart the daemon to load this plugin's devices";
+
 #[derive(Clone, Copy)]
 enum StartAction {
     Start,
@@ -54,7 +59,10 @@ enum StartAction {
 }
 
 pub struct PluginController {
-    pub plugins: HashMap<ServiceId, ServiceManifest>,
+    plugins: RefCell<HashMap<ServiceId, ServiceManifest>>,
+    /// The plugins found after startup. Shared with the repository, which did not register
+    /// them and so would not stop their services on shutdown.
+    discovered: Rc<RefCell<Vec<ServiceManifest>>>,
     config: Option<Rc<Config>>,
     service_manager: Manager,
     is_systemd: bool,
@@ -70,7 +78,8 @@ impl PluginController {
         is_open_rc: bool,
     ) -> Self {
         Self {
-            plugins: service_plugin_repo.get_plugins(),
+            plugins: RefCell::new(service_plugin_repo.get_plugins()),
+            discovered: service_plugin_repo.discovered_plugins(),
             config: Some(config),
             service_manager,
             is_systemd,
@@ -82,7 +91,8 @@ impl PluginController {
     /// Used when the service plugin repo fails to initialize.
     pub fn new_disabled() -> Self {
         Self {
-            plugins: HashMap::new(),
+            plugins: RefCell::new(HashMap::new()),
+            discovered: Rc::new(RefCell::new(Vec::new())),
             config: None,
             service_manager: Manager::Disabled,
             is_systemd: false,
@@ -90,13 +100,57 @@ impl PluginController {
         }
     }
 
+    /// Registers plugins whose folder appeared after the daemon started.
+    ///
+    /// A known plugin keeps the manifest it was registered with: an edited manifest takes
+    /// effect on the next daemon start, as it always has.
+    pub async fn discover_plugins(&self) {
+        // Without a config the plugin system failed to initialize.
+        if self.config.is_none() {
+            return;
+        }
+        self.discover_plugins_in(paths::plugins_dir()).await;
+    }
+
+    async fn discover_plugins_in(&self, plugins_dir: &Path) {
+        let found = ServicePluginRepo::find_service_manifests_in(plugins_dir).await;
+        for (service_id, manifest) in found {
+            if self.plugins.borrow().contains_key(&service_id) {
+                continue;
+            }
+            info!("Found new plugin: {service_id}");
+            self.discovered.borrow_mut().push(manifest.clone());
+            self.register(manifest);
+        }
+    }
+
+    fn is_discovered(&self, plugin_id: &str) -> bool {
+        self.discovered
+            .borrow()
+            .iter()
+            .any(|manifest| manifest.id == plugin_id)
+    }
+
+    pub fn register(&self, manifest: ServiceManifest) {
+        self.plugins
+            .borrow_mut()
+            .insert(manifest.id.clone(), manifest);
+    }
+
+    pub fn manifests(&self) -> Vec<ServiceManifest> {
+        self.plugins.borrow().values().cloned().collect()
+    }
+
+    /// A copy, so that no borrow of the plugin list is held across an await.
+    fn manifest(&self, plugin_id: &str) -> Result<ServiceManifest> {
+        let manifest = self.plugins.borrow().get(plugin_id).cloned();
+        Ok(manifest.ok_or_else(|| CCError::NotFound {
+            msg: "Plugin not found".to_string(),
+        })?)
+    }
+
     pub async fn load_plugin_config_file(&self, plugin_id: &str) -> Result<String> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
         let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
         let config_result = cc_fs::read_txt(&config_path).await.with_context(|| {
             format!(
@@ -127,12 +181,7 @@ impl PluginController {
     }
 
     pub async fn save_plugin_config_file(&self, plugin_id: &str, config: String) -> Result<()> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
         let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
         cc_fs::write_string(&config_path, config)
             .await
@@ -145,7 +194,7 @@ impl PluginController {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        if let Err(err) = secure_config_file(&config_path, self.owner(manifest)).await {
+        if let Err(err) = secure_config_file(&config_path, self.owner(&manifest)).await {
             warn!(
                 "Failed to secure plugin config file {}: {err}",
                 config_path.display()
@@ -155,33 +204,19 @@ impl PluginController {
     }
 
     pub fn get_plugin_ui_dir(&self, plugin_id: &str) -> Result<PathBuf> {
-        let dir = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })
-            .and_then(|manifest| {
-                let ui_dir = manifest.path.join(PLUGIN_UI_DIR_NAME);
-                if ui_dir.exists() {
-                    Ok(ui_dir)
-                } else {
-                    Err(CCError::NotFound {
-                        msg: "Plugin doesn't contain a UI directory".to_string(),
-                    })
-                }
-            })?;
-        Ok(dir)
+        let ui_dir = self.manifest(plugin_id)?.path.join(PLUGIN_UI_DIR_NAME);
+        if ui_dir.exists().not() {
+            return Err(CCError::NotFound {
+                msg: "Plugin doesn't contain a UI directory".to_string(),
+            }
+            .into());
+        }
+        Ok(ui_dir)
     }
 
     /// Returns the proxy port for a plugin that has `[proxy]` configured, or `None` if not set.
     pub fn get_proxy_port(&self, plugin_id: &str) -> Result<Option<u16>> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
         Ok(manifest.proxy.as_ref().map(|p| p.port))
     }
 
@@ -194,7 +229,7 @@ impl PluginController {
 
     /// Stop a managed integration plugin's service.
     pub async fn stop_plugin(&self, plugin_id: &str) -> Result<()> {
-        let service_id = self.get_integration_manifest(plugin_id)?.id.clone();
+        let service_id = self.get_integration_manifest(plugin_id)?.id;
         self.service_manager
             .stop(&service_id)
             .await
@@ -214,32 +249,28 @@ impl PluginController {
 
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
+        if manifest.service_type == ServiceType::Device && self.is_discovered(plugin_id) {
+            return Ok(ServiceStatus::Stopped(Some(
+                RESTART_TO_LOAD_DEVICES.to_string(),
+            )));
+        }
         if manifest.is_managed().not() {
             return Ok(ServiceStatus::Unmanaged);
         }
-        let service_id = plugin_id.to_string();
-        self.service_manager
-            .status(&service_id)
+        let status = self
+            .service_manager
+            .status(&manifest.id)
             .await
-            .with_context(|| format!("Getting plugin service status: {plugin_id}"))
+            .with_context(|| format!("Getting plugin service status: {plugin_id}"))?;
+        Ok(reported_status(&manifest, status))
     }
 
     /// Disable a plugin persistently.
     /// Integration plugins have their service stopped immediately.
     /// Device plugins require a daemon restart.
     pub async fn disable_plugin(&self, plugin_id: &str) -> Result<()> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
         let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
             msg: "No config available".to_string(),
         })?;
@@ -262,12 +293,7 @@ impl PluginController {
     /// Integration plugins have their service started immediately.
     /// Device plugins require a daemon restart.
     pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+        let manifest = self.manifest(plugin_id)?;
         let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
             msg: "No config available".to_string(),
         })?;
@@ -296,8 +322,8 @@ impl PluginController {
         let manifest = self.get_integration_manifest(plugin_id)?;
         bring_up_service(
             &self.service_manager,
-            manifest,
-            self.owner(manifest),
+            &manifest,
+            self.owner(&manifest),
             action,
         )
         .await
@@ -320,13 +346,8 @@ impl PluginController {
     }
 
     /// Validate that a plugin is a managed integration type and return its manifest.
-    fn get_integration_manifest(&self, plugin_id: &str) -> Result<&ServiceManifest> {
-        let manifest = self
-            .plugins
-            .get(plugin_id)
-            .ok_or_else(|| CCError::NotFound {
-                msg: "Plugin not found".to_string(),
-            })?;
+    fn get_integration_manifest(&self, plugin_id: &str) -> Result<ServiceManifest> {
+        let manifest = self.manifest(plugin_id)?;
         if manifest.service_type != ServiceType::Integration {
             return Err(CCError::UserError {
                 msg: "Lifecycle control is only available for integration plugins".to_string(),
@@ -340,6 +361,32 @@ impl PluginController {
             .into());
         }
         Ok(manifest)
+    }
+}
+
+/// The status shown for a managed plugin, given what the init system reports.
+fn reported_status(manifest: &ServiceManifest, status: ServiceStatus) -> ServiceStatus {
+    match status {
+        // A managed plugin whose service is not installed is stopped, not unmanaged:
+        // starting it installs it.
+        ServiceStatus::Unmanaged if manifest.service_type == ServiceType::Integration => {
+            ServiceStatus::Stopped(None)
+        }
+        status => status,
+    }
+}
+
+/// Stops and removes the services of plugins found while the daemon was running.
+pub async fn remove_discovered_services(
+    manager: &impl ServiceManager,
+    discovered: &[ServiceManifest],
+) {
+    for manifest in discovered {
+        if manifest.is_managed().not() {
+            continue;
+        }
+        let _ = manager.remove(&manifest.id).await;
+        info!("Plugin Service {} stopped.", manifest.id);
     }
 }
 
@@ -649,6 +696,118 @@ mod tests {
             proxy: None,
             path,
         }
+    }
+
+    fn write_manifest(plugins_dir: &Path, id: &str, kind: &str, description: &str) {
+        let folder = plugins_dir.join(id);
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(
+            folder.join(SERVICE_MANIFEST_FILE_NAME),
+            format!("id = \"{id}\"\ntype = \"{kind}\"\ndescription = \"{description}\"\n"),
+        )
+        .unwrap();
+    }
+
+    fn description_of(controller: &PluginController, plugin_id: &str) -> Option<String> {
+        controller.manifest(plugin_id).unwrap().description
+    }
+
+    /// Goal: a plugin folder added under a running daemon has to show up without a restart,
+    /// while a plugin that is already registered keeps the manifest it was started with.
+    /// Method: one known and one new plugin on disk, scanned twice.
+    #[test]
+    fn discovery_registers_new_plugins_and_leaves_known_ones_alone() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "known", "integration", "edited on disk");
+            write_manifest(plugins_dir.path(), "added", "integration", "new");
+            let controller = PluginController::new_disabled();
+            let mut known = managed_manifest(plugins_dir.path().join("known"));
+            known.id = "known".to_string();
+            known.description = Some("as registered".to_string());
+            controller.register(known);
+
+            controller.discover_plugins_in(plugins_dir.path()).await;
+            controller.discover_plugins_in(plugins_dir.path()).await;
+
+            assert_eq!(controller.manifests().len(), 2);
+            assert_eq!(description_of(&controller, "added").as_deref(), Some("new"));
+            assert_eq!(
+                description_of(&controller, "known").as_deref(),
+                Some("as registered")
+            );
+            let discovered = controller.discovered.borrow();
+            assert_eq!(discovered.len(), 1, "a second scan must not add it again");
+            assert_eq!(discovered[0].id, "added");
+        });
+    }
+
+    /// Goal: a device plugin found under a running daemon cannot be loaded, since devices are
+    /// registered at startup, and its status has to say so rather than look broken or idle.
+    /// Method: discover one, and compare with a device plugin that was there from the start.
+    #[test]
+    fn a_discovered_device_plugin_reports_that_it_needs_a_restart() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            write_manifest(plugins_dir.path(), "added", "device", "new");
+            let controller = PluginController::new_disabled();
+            let mut known = managed_manifest(plugins_dir.path().join("known"));
+            known.id = "known".to_string();
+            known.service_type = ServiceType::Device;
+            known.executable = None;
+            controller.register(known);
+
+            controller.discover_plugins_in(plugins_dir.path()).await;
+
+            assert_eq!(
+                controller.get_plugin_status("added").await.unwrap(),
+                ServiceStatus::Stopped(Some(RESTART_TO_LOAD_DEVICES.to_string()))
+            );
+            assert_eq!(
+                controller.get_plugin_status("known").await.unwrap(),
+                ServiceStatus::Unmanaged
+            );
+        });
+    }
+
+    /// Goal: a new integration plugin has no service installed yet, and reporting that as
+    /// unmanaged hides the start button that would install it. A device plugin is left as
+    /// it was, since nothing starts one while the daemon runs.
+    #[test]
+    fn an_uninstalled_integration_service_is_reported_stopped() {
+        let integration = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
+        let mut device = integration.clone();
+        device.service_type = ServiceType::Device;
+
+        assert_eq!(
+            reported_status(&integration, ServiceStatus::Unmanaged),
+            ServiceStatus::Stopped(None)
+        );
+        assert_eq!(
+            reported_status(&integration, ServiceStatus::Running),
+            ServiceStatus::Running
+        );
+        assert_eq!(
+            reported_status(&device, ServiceStatus::Unmanaged),
+            ServiceStatus::Unmanaged
+        );
+    }
+
+    /// Goal: the repository only stops the plugins it registered at startup, so one started
+    /// after being found later would outlive the daemon. An unmanaged plugin has no service.
+    /// Method: one of each, and what the fake init system is asked to do.
+    #[test]
+    fn shutdown_removes_only_the_managed_discovered_services() {
+        crate::rt::test_runtime(async {
+            let managed = managed_manifest(PathBuf::from("/nonexistent/test-plugin"));
+            let mut unmanaged = managed.clone();
+            unmanaged.executable = None;
+            let manager = FakeManager::new([ServiceStatus::Running]);
+
+            remove_discovered_services(&manager, &[managed, unmanaged]).await;
+
+            assert_eq!(*manager.calls.borrow(), ["remove"]);
+        });
     }
 
     /// Goal: starting a plugin whose service was never installed must work, which is what a

@@ -713,8 +713,8 @@ mod tests {
             proxy: None,
             path: plugin_dir.to_path_buf(),
         };
-        let mut controller = PluginController::new_disabled();
-        controller.plugins.insert(PLUGIN_ID.to_string(), manifest);
+        let controller = PluginController::new_disabled();
+        controller.register(manifest);
         controller
     }
 

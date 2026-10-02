@@ -15,7 +15,9 @@ use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
-use crate::repositories::service_plugin::plugin_controller::secure_plugin_files;
+use crate::repositories::service_plugin::plugin_controller::{
+    remove_discovered_services, secure_plugin_files,
+};
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
@@ -68,6 +70,8 @@ pub struct ServicePluginRepo {
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
+    /// Filled by the plugin controller with the plugins it finds after startup.
+    discovered_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
@@ -181,6 +185,7 @@ impl ServicePluginRepo {
             api_up_token,
             reset_plugin_user,
             services: HashMap::new(),
+            discovered_plugins: Rc::new(RefCell::new(Vec::new())),
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -262,7 +267,9 @@ impl ServicePluginRepo {
     /// independent of each other, and the daemon's own fan control depends on none of
     /// them. The directory is a parameter so this rule can be tested without touching the
     /// real plugins directory.
-    async fn find_service_manifests_in(plugins_dir: &Path) -> HashMap<ServiceId, ServiceManifest> {
+    pub async fn find_service_manifests_in(
+        plugins_dir: &Path,
+    ) -> HashMap<ServiceId, ServiceManifest> {
         let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
             error!("Error reading plugins directory: {}", plugins_dir.display());
@@ -869,6 +876,10 @@ impl ServicePluginRepo {
         self.service_manager.clone()
     }
 
+    pub fn discovered_plugins(&self) -> Rc<RefCell<Vec<ServiceManifest>>> {
+        Rc::clone(&self.discovered_plugins)
+    }
+
     /// Returns a copy of the plugins information, used by the plugin controller.
     pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
         let mut plugins = HashMap::new();
@@ -1064,6 +1075,9 @@ impl Repository for ServicePluginRepo {
             }
         })
         .await;
+        // Cloned, so that no borrow is held across the awaits.
+        let discovered = self.discovered_plugins.borrow().clone();
+        remove_discovered_services(&self.service_manager, &discovered).await;
         info!("Service Plugins Repository shutdown");
         Ok(())
     }

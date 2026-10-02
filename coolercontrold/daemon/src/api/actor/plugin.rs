@@ -79,23 +79,24 @@ impl PluginActor {
     }
 
     fn collect_all_plugins(&self) -> PluginsDto {
-        let mut plugins = Vec::with_capacity(self.plugin_controller.plugins.len());
-        for manifest in self.plugin_controller.plugins.values() {
-            let address = match &manifest.address {
+        let manifests = self.plugin_controller.manifests();
+        let mut plugins = Vec::with_capacity(manifests.len());
+        for manifest in manifests {
+            let address = match manifest.address {
                 ConnectionType::None => String::new(),
                 ConnectionType::Uds(uds_path) => uds_path.display().to_string(),
-                ConnectionType::Tcp(addr) => addr.clone(),
+                ConnectionType::Tcp(addr) => addr,
             };
             plugins.push(PluginDto {
-                id: manifest.id.clone(),
+                disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
+                id: manifest.id,
                 service_type: manifest.service_type.to_string(),
-                description: manifest.description.clone(),
-                version: manifest.version.clone(),
-                url: manifest.url.clone(),
+                description: manifest.description,
+                version: manifest.version,
+                url: manifest.url,
                 address,
                 privileged: manifest.privileged,
                 path: manifest.path.display().to_string(),
-                disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
             });
         }
         PluginsDto { plugins }
@@ -114,6 +115,7 @@ impl ApiActor<PluginMessage> for PluginActor {
     async fn handle_message(&mut self, message: PluginMessage) {
         match message {
             PluginMessage::GetAll { respond_to } => {
+                self.plugin_controller.discover_plugins().await;
                 let _ = respond_to.send(self.collect_all_plugins());
             }
             PluginMessage::GetConfig {
