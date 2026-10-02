@@ -52,17 +52,23 @@ impl FramePolicy {
             return Self::default();
         }
         let sources = origins.join(" ");
-        let document = base::CONTENT_SECURITY_POLICY.replace(
-            DOCUMENT_FRAME_ANCESTORS,
-            &format!("frame-ancestors {sources}"),
-        );
-        let plugin = plugins::PLUGIN_CONTENT_SECURITY_POLICY.replace(
-            PLUGIN_FRAME_ANCESTORS,
-            &format!("{PLUGIN_FRAME_ANCESTORS} {sources}"),
-        );
-        debug_assert!(document.contains(&sources));
-        debug_assert!(document.contains(DOCUMENT_FRAME_ANCESTORS).not());
-        debug_assert!(plugin.contains(&sources));
+        let (Some(document), Some(plugin)) = (
+            swap_directive(
+                base::CONTENT_SECURITY_POLICY,
+                DOCUMENT_FRAME_ANCESTORS,
+                &format!("frame-ancestors {sources}"),
+            ),
+            swap_directive(
+                plugins::PLUGIN_CONTENT_SECURITY_POLICY,
+                PLUGIN_FRAME_ANCESTORS,
+                &format!("{PLUGIN_FRAME_ANCESTORS} {sources}"),
+            ),
+        ) else {
+            // A baseline policy changed without this module, so this is a bug. Keep the UI
+            // unframeable.
+            error!("The baseline policies have no single frame-ancestors directive to widen.");
+            return Self::default();
+        };
         let (Ok(document_csp), Ok(plugin_csp)) = (
             HeaderValue::try_from(document),
             HeaderValue::try_from(plugin),
@@ -76,6 +82,16 @@ impl FramePolicy {
             document_csp,
             plugin_csp,
         }
+    }
+}
+
+/// `baseline` with `directive` swapped for `replacement`. `None` unless the baseline holds
+/// the directive exactly once: a swap of anything else would not say what the config asks.
+fn swap_directive(baseline: &str, directive: &str, replacement: &str) -> Option<String> {
+    if baseline.matches(directive).count() == 1 {
+        Some(baseline.replacen(directive, replacement, 1))
+    } else {
+        None
     }
 }
 
@@ -302,6 +318,36 @@ mod tests {
             csp.replace(widened, PLUGIN_FRAME_ANCESTORS),
             plugins::PLUGIN_CONTENT_SECURITY_POLICY
         );
+    }
+
+    /// Goal: a baseline that drifted from what composition expects is never served widened
+    /// or half-widened. Method: swap in a baseline that holds the directive once, not at
+    /// all, and twice, and only the first yields a policy.
+    #[test]
+    fn a_drifted_baseline_is_not_swapped() {
+        let replacement = "frame-ancestors https://localhost:9090";
+        assert_eq!(
+            swap_directive(
+                "default-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+                DOCUMENT_FRAME_ANCESTORS,
+                replacement
+            )
+            .as_deref(),
+            Some("default-src 'self'; frame-ancestors https://localhost:9090; base-uri 'self'")
+        );
+        let drifted = [
+            "",
+            "default-src 'self'; base-uri 'self'",
+            "default-src 'self'; frame-ancestors 'self'",
+            "frame-ancestors 'none'; default-src 'self'; frame-ancestors 'none'",
+        ];
+        for baseline in drifted {
+            assert_eq!(
+                swap_directive(baseline, DOCUMENT_FRAME_ANCESTORS, replacement),
+                None,
+                "{baseline:?}"
+            );
+        }
     }
 
     /// Goal: every shape of exact origin is taken, and comes out as the policy writes it.
