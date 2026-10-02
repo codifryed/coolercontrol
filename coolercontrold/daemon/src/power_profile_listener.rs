@@ -555,6 +555,7 @@ mod tests {
     use crate::engine::main::Engine;
     use crate::modes::ModeController;
     use crate::overrides::OverridesController;
+    use crate::paths;
     use crate::repositories::repository::Repositories;
     use crate::AllDevices;
     use serial_test::serial;
@@ -664,6 +665,10 @@ mod tests {
             Rc::new(FanStateMap::new()),
             Rc::new(OverridesController::empty()),
         ));
+        // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
+        if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
+            assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+        }
         let controller = Rc::new(
             ModeController::init(config, all_devices, engine, profiles.clone())
                 .await
