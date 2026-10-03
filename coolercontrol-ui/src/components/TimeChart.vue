@@ -148,7 +148,14 @@ const initUSeriesData = () => {
             uLineNames.push(lineName)
         }
         if (!allDevicesLineProperties.has(lineName)) {
-            allDevicesLineProperties.set(lineName, { color: settings.color, name: settings.name })
+            allDevicesLineProperties.set(lineName, {
+                color: settings.color,
+                name: settings.name,
+                unit:
+                    key.dataType === DataType.RPM
+                        ? settingsStore.channelUnit(key.deviceUID, key.channelName)
+                        : undefined,
+            })
         }
         if (!lineKeys.has(lineName)) {
             lineKeys.set(lineName, key)

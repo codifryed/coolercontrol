@@ -14,13 +14,9 @@ import { computed, Ref, ref, watch } from 'vue'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
 import type { ChannelStats } from '@/models/Stats'
-import {
-    DATA_TYPE_STATS,
-    formatStatValue,
-    statUnitSuffix,
-    toDisplayUnits,
-} from '@/components/chartStats.ts'
+import { DATA_TYPE_STATS, formatStatValue, toDisplayUnits } from '@/components/chartStats.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
+import { useStatFormat } from '@/composables/useStatFormat.ts'
 import { groupDigits } from '@/shell/digitGroups.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { useI18n } from 'vue-i18n'
@@ -29,6 +25,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const { displayOf, reset } = useLifetimeStats()
+const { unitSuffix } = useStatFormat()
 
 interface Props {
     dashboard: Dashboard
@@ -219,8 +216,8 @@ const rowValues = computed<Array<RowValues>>(() =>
 
 const format = (value: number, dataType: DataType): string =>
     groupDigits(formatStatValue(value, dataType, settingsStore.frequencyPrecision))
-const suffix = (dataType: DataType): string =>
-    statUnitSuffix(dataType, settingsStore.frequencyPrecision, t)
+const suffix = (row: DeviceData): string =>
+    unitSuffix({ deviceUID: row.deviceUID, channelName: row.channelID, dataType: row.dataType })
 const suffixStyle = (dataType: DataType): string => {
     switch (dataType) {
         case DataType.TEMP:
@@ -290,9 +287,7 @@ watch(settingsStore.allUIDeviceSettings, () => rebuildTableData())
                                 <span class="font-bold">{{
                                     format(rowValues[index].current, row.dataType)
                                 }}</span>
-                                <span :style="suffixStyle(row.dataType)">{{
-                                    suffix(row.dataType)
-                                }}</span>
+                                <span :style="suffixStyle(row.dataType)">{{ suffix(row) }}</span>
                             </td>
                             <td>
                                 <span
@@ -312,7 +307,7 @@ watch(settingsStore.allUIDeviceSettings, () => rebuildTableData())
                                         format(rowValues[index].stats!.max, row.dataType)
                                     }}</span>
                                     <span class="ml-1" :style="suffixStyle(row.dataType)">{{
-                                        suffix(row.dataType)
+                                        suffix(row)
                                     }}</span>
                                 </span>
                             </td>
@@ -325,7 +320,7 @@ watch(settingsStore.allUIDeviceSettings, () => rebuildTableData())
                                 <template v-else>
                                     {{ format(rowValues[index].stats!.avg, row.dataType) }}
                                     <span :style="suffixStyle(row.dataType)">{{
-                                        suffix(row.dataType)
+                                        suffix(row)
                                     }}</span>
                                 </template>
                             </td>

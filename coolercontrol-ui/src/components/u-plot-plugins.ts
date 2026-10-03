@@ -17,6 +17,8 @@ import {
 export interface DeviceLineProperties {
     color: Color
     name: string
+    // The unit an rpm line's label names, when it is not a speed.
+    unit?: string
 }
 
 export const tooltipPlugin = (
@@ -239,7 +241,9 @@ export const tooltipPlugin = (
                     }
                     // @ts-ignore
                 } else if (series.label!.endsWith('rpm')) {
-                    suffix = t('common.rpmAbbr')
+                    suffix =
+                        allDevicesLineProperties.get(series.label as string)?.unit ??
+                        t('common.rpmAbbr')
                     lineValue = groupDigits((seriesValue * precisionRef).toFixed(0))
                     // @ts-ignore
                 } else if (series.label!.endsWith('watts')) {

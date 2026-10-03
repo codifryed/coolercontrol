@@ -488,7 +488,12 @@ const loadAttributes = async (): Promise<void> => {
 }
 loadAttributes()
 const drawableLimits = computed((): Array<LimitLine> =>
-    limitLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
+    limitLinesFrom(
+        attributes.value,
+        settingsStore.frequencyPrecision,
+        t,
+        settingsStore.channelUnit(props.deviceUID!, props.channelName!),
+    ),
 )
 const limitLines = computed((): Array<LimitLine> =>
     sensorMode && dashboard.showLimitLines ? drawableLimits.value : [],
