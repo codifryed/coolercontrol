@@ -754,6 +754,22 @@ export default {
             disabledLabel: '無効',
             greaterThan: 'より大きい',
             lessThan: 'より小さい',
+            reference: '参考値',
+            referenceHelp:
+                '選択したソースがこれまでに示した値と、ドライバーが報告する制限値です。値を選択すると、しきい値として使用できます。',
+            driverLimitsHelp:
+                'ドライバーの制限値の意味はドライバーによって異なります。一部のチップでは最小と最大がこれまでの最低値と最高値です。',
+            referenceEmpty: 'チャネルソースを選択すると、その値と制限値がここに表示されます。',
+            allSources: 'すべてのソース',
+            useAsGreaterThan: '「より大きい」として使用',
+            useAsLessThan: '「より小さい」として使用',
+            crossesOtherThreshold: 'もう一方のしきい値を超えてしまいます',
+            outsideRange: '許容範囲外です',
+            above: '超過',
+            below: '未満',
+            longest: '最長',
+            outsideHelp:
+                '各ソースの最近の値が現在のしきい値を上回っていた時間と下回っていた時間、および連続した最長の区間です。区間がアラートをトリガーするのに十分な長さの場合は強調表示されます。',
             newAlert: '新しいアラート',
             warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',

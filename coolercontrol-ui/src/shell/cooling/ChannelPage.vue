@@ -50,6 +50,7 @@ import UiButton from '@/shell/ui/UiButton.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
 import UiGroupedSelect from '@/shell/ui/UiGroupedSelect.vue'
 import { useLibraryGroups } from '@/shell/useLibraryGroups.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import UiSlider from '@/shell/ui/UiSlider.vue'
 import UiToggleGroup from '@/shell/ui/UiToggleGroup.vue'
 
@@ -368,7 +369,7 @@ const chartKey = ref<string>(uuidV4())
                     v-if="liveRpm != null"
                     class="text-base font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ liveRpm }} rpm
+                    {{ groupDigits(liveRpm) }} rpm
                 </span>
             </div>
         </div>

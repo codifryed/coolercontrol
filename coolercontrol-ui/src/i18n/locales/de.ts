@@ -765,6 +765,23 @@ export default {
             disabledLabel: 'Deaktiviert',
             greaterThan: 'größer als',
             lessThan: 'kleiner als',
+            reference: 'Referenzwerte',
+            referenceHelp:
+                'Was die ausgewählten Quellen gemessen haben und welche Grenzwerte ihre Treiber melden. Einen Wert auswählen, um ihn als Schwellenwert zu verwenden.',
+            driverLimitsHelp:
+                'Die Bedeutung eines Treiber-Grenzwerts hängt vom Treiber ab: Bei manchen Chips sind Min und Max die niedrigsten und höchsten bisherigen Messwerte.',
+            referenceEmpty:
+                'Eine Kanalquelle auswählen, um ihre Messwerte und Grenzwerte hier zu sehen.',
+            allSources: 'Alle Quellen',
+            useAsGreaterThan: 'Als „größer als“ verwenden',
+            useAsLessThan: 'Als „kleiner als“ verwenden',
+            crossesOtherThreshold: 'Würde den anderen Schwellenwert kreuzen',
+            outsideRange: 'Außerhalb des zulässigen Bereichs',
+            above: 'Darüber',
+            below: 'Darunter',
+            longest: 'Längste',
+            outsideHelp:
+                'Wie lange die letzten Messwerte jeder Quelle über oder unter den aktuell eingestellten Schwellenwerten lagen, und die längste ununterbrochene Phase. Die Phase wird hervorgehoben, wenn sie lang genug ist, um die Warnung auszulösen.',
             newAlert: 'Neue Warnung',
             warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',

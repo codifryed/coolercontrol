@@ -715,6 +715,22 @@ export default {
             disabledLabel: '已停用',
             greaterThan: '大於',
             lessThan: '小於',
+            reference: '參考值',
+            referenceHelp:
+                '所選通道源的讀數，以及其驅動程式回報的限制值。選擇一個數值即可將其用作臨界值。',
+            driverLimitsHelp:
+                '驅動程式限制值的意義取決於驅動程式：在某些晶片上，最小值與最大值是目前為止的最低與最高讀數。',
+            referenceEmpty: '選擇一個通道源，即可在此查看其讀數與限制值。',
+            allSources: '所有通道源',
+            useAsGreaterThan: '用作「大於」',
+            useAsLessThan: '用作「小於」',
+            crossesOtherThreshold: '會越過另一個臨界值',
+            outsideRange: '超出允許範圍',
+            above: '高於',
+            below: '低於',
+            longest: '最長',
+            outsideHelp:
+                '每個通道源的近期讀數高於或低於目前所設臨界值的時間長度，以及最長的連續區間。當該區間長到足以觸發警報時會醒目顯示。',
             newAlert: '新警報',
             warmupGreaterThan: '條件觸發時間超過',
             unsavedChanges: '此警報有未保存的更改。',

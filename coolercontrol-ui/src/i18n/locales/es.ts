@@ -757,6 +757,22 @@ export default {
             disabledLabel: 'Deshabilitada',
             greaterThan: 'mayor que',
             lessThan: 'menor que',
+            reference: 'Valores de referencia',
+            referenceHelp:
+                'Lo que han medido las fuentes seleccionadas y los límites que informan sus controladores. Selecciona un valor para usarlo como umbral.',
+            driverLimitsHelp:
+                'El significado de un límite del controlador depende del controlador: en algunos chips Mín y Máx son las lecturas más baja y más alta hasta ahora.',
+            referenceEmpty: 'Selecciona una fuente de canal para ver aquí sus lecturas y límites.',
+            allSources: 'Todas las fuentes',
+            useAsGreaterThan: 'Usar como «mayor que»',
+            useAsLessThan: 'Usar como «menor que»',
+            crossesOtherThreshold: 'Cruzaría el otro umbral',
+            outsideRange: 'Fuera del rango permitido',
+            above: 'Por encima',
+            below: 'Por debajo',
+            longest: 'Mayor racha',
+            outsideHelp:
+                'Cuánto tiempo estuvieron las lecturas recientes de cada fuente por encima o por debajo de los umbrales tal como están ahora, y la racha ininterrumpida más larga. La racha se resalta cuando dura lo suficiente para activar la alerta.',
             newAlert: 'Nueva Alerta',
             warmupGreaterThan: 'condición activada por más tiempo que',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',

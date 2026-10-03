@@ -38,6 +38,7 @@ import {
     type TimeInRangeBand,
 } from '@/components/windowDetail.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import HelpIcon from '@/components/info/HelpIcon.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiToggleGroup, { type UiToggleOption } from '@/shell/ui/UiToggleGroup.vue'
@@ -240,8 +241,8 @@ const activeTimeInRange = computed((): TimeInRange | null =>
 const formatBand = (band: TimeInRangeBand, width: number, dataType: DataType): string => {
     const decimals = edgeDecimals(width)
     const range = t('components.statsPanel.band', {
-        from: band.from.toFixed(decimals),
-        to: band.to.toFixed(decimals),
+        from: groupDigits(band.from.toFixed(decimals)),
+        to: groupDigits(band.to.toFixed(decimals)),
     })
     return range + unitSuffix(dataType)
 }

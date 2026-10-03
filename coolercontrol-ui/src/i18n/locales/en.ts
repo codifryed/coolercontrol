@@ -746,6 +746,22 @@ export default {
             disabledLabel: 'Disabled',
             greaterThan: 'Greater Than',
             lessThan: 'Less Than',
+            reference: 'Reference Values',
+            referenceHelp:
+                'What the selected sources have read, and the limits their drivers report. Select a value to use it as a threshold.',
+            driverLimitsHelp:
+                "A driver limit's meaning depends on the driver: on some chips Min and Max are the lowest and highest readings so far.",
+            referenceEmpty: 'Select a channel source to see its readings and limits here.',
+            allSources: 'All Sources',
+            useAsGreaterThan: 'Use as Greater Than',
+            useAsLessThan: 'Use as Less Than',
+            crossesOtherThreshold: 'Would cross the other threshold',
+            outsideRange: 'Outside the allowed range',
+            above: 'Above',
+            below: 'Below',
+            longest: 'Longest',
+            outsideHelp:
+                "How long each source's recent readings were above or below the thresholds as set now, and the longest unbroken stretch. The stretch is highlighted when it lasts long enough to trigger the alert.",
             newAlert: 'New Alert',
             warmupGreaterThan: 'Condition Triggered Longer Than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',

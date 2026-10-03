@@ -39,6 +39,7 @@ import CCColorPicker from '@/components/CCColorPicker.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
@@ -88,7 +89,7 @@ const liveValue = (deviceUID: UID, channelName: string): string => {
             ? `${values.freq} ${t('common.mhzAbbr')}`
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
-    if (values.rpm != null) return `${values.rpm} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) return `${groupDigits(values.rpm)} ${t('common.rpmAbbr')}`
     return ''
 }
 

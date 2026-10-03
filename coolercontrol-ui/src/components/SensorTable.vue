@@ -21,6 +21,7 @@ import {
     toDisplayUnits,
 } from '@/components/chartStats.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { useI18n } from 'vue-i18n'
 
@@ -217,7 +218,7 @@ const rowValues = computed<Array<RowValues>>(() =>
 )
 
 const format = (value: number, dataType: DataType): string =>
-    formatStatValue(value, dataType, settingsStore.frequencyPrecision)
+    groupDigits(formatStatValue(value, dataType, settingsStore.frequencyPrecision))
 const suffix = (dataType: DataType): string =>
     statUnitSuffix(dataType, settingsStore.frequencyPrecision, t)
 const suffixStyle = (dataType: DataType): string => {

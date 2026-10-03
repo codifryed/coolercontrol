@@ -22,6 +22,7 @@ import ChannelMiniGraph from '@/shell/cooling/ChannelMiniGraph.vue'
 import ChannelSetupMenu from '@/shell/cooling/ChannelSetupMenu.vue'
 import { HealthEntityType } from '@/models/DeviceHealth.ts'
 import type { CoolingChannel } from '@/shell/cooling/channels.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 const props = defineProps<{ channel: CoolingChannel }>()
 
@@ -197,7 +198,7 @@ const healthTooltip = computed((): string => {
                     v-if="liveRpm != null"
                     class="ml-2 text-sm font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ liveRpm }} rpm
+                    {{ groupDigits(liveRpm) }} rpm
                 </span>
             </div>
         </div>

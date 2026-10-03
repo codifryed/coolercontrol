@@ -740,6 +740,22 @@ export default {
             disabledLabel: '비활성화됨',
             greaterThan: '보다 큰',
             lessThan: '보다 작은',
+            reference: '참고 값',
+            referenceHelp:
+                '선택한 소스가 지금까지 측정한 값과 드라이버가 보고하는 한계값입니다. 값을 선택하면 임계값으로 사용할 수 있습니다.',
+            driverLimitsHelp:
+                '드라이버 한계값의 의미는 드라이버마다 다릅니다. 일부 칩에서는 최소와 최대가 지금까지의 최저 및 최고 측정값입니다.',
+            referenceEmpty: '채널 소스를 선택하면 측정값과 한계값이 여기에 표시됩니다.',
+            allSources: '모든 소스',
+            useAsGreaterThan: '‘보다 큰’으로 사용',
+            useAsLessThan: '‘보다 작은’으로 사용',
+            crossesOtherThreshold: '다른 임계값을 넘게 됩니다',
+            outsideRange: '허용 범위를 벗어났습니다',
+            above: '초과',
+            below: '미만',
+            longest: '최장',
+            outsideHelp:
+                '각 소스의 최근 측정값이 현재 임계값보다 높거나 낮았던 시간과 가장 길게 이어진 구간입니다. 구간이 경고를 발생시킬 만큼 길면 강조 표시됩니다.',
             newAlert: '새 경고',
             warmupGreaterThan: '조건이 더 오래 지속됨',
             unsavedChanges: '이 경고에 저장되지 않은 변경 사항이 있습니다.',
