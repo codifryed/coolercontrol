@@ -32,6 +32,7 @@ import {
 } from '@/models/Plugins.ts'
 import pluginMetadataModal from '@/layout/PluginUi.vue'
 import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
+import { usePluginLinks } from '@/composables/usePluginLinks.ts'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiSwitch from '@/shell/ui/UiSwitch.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
@@ -53,6 +54,7 @@ const plugin = computed(
 const pluginLink = computed(
     () => validatePluginLinkForUi(plugin.value?.url, deviceStore.daemonClient.daemonURL)?.href,
 )
+const pluginLinks = usePluginLinks()
 const hasUi = computed(() => deviceStore.pluginUiInfo.get(props.pluginId)?.has_ui ?? false)
 const pluginStatus = computed(
     () => pluginActions.statuses.value.get(props.pluginId)?.status ?? PluginStatus.Unmanaged,
@@ -316,12 +318,11 @@ onUnmounted(() => {
                         <tr v-if="plugin.url" :class="{ 'border-b border-border-one': isManaged }">
                             <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                             <td class="py-3 px-4">
-                                <a
+                                <button
                                     v-if="pluginLink"
+                                    type="button"
                                     class="inline-flex items-center gap-1 underline"
-                                    :href="pluginLink"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                    @click="pluginLinks.requestLink(plugin.id, plugin.url)"
                                 >
                                     <svg-icon
                                         type="mdi"
@@ -329,7 +330,7 @@ onUnmounted(() => {
                                         :size="deviceStore.getREMSize(1)"
                                     />
                                     {{ t('layout.settings.plugins.pluginUrl') }}
-                                </a>
+                                </button>
                                 <!-- Not a link the UI may open, so it is shown, not followed. -->
                                 <code v-else class="select-all break-all">{{ plugin.url }}</code>
                             </td>
