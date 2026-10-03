@@ -97,7 +97,7 @@ const fallbackCopy = (text: string): void => {
                             v-if="pluginLink"
                             type="button"
                             class="inline-flex items-center gap-1 underline"
-                            @click="pluginLinks.requestLink(plugin.id, plugin.url)"
+                            @click="pluginLinks.requestLink(plugin.id, plugin.url, true)"
                         >
                             <svg-icon
                                 type="mdi"

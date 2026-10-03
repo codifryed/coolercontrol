@@ -4,14 +4,14 @@
 // A plugin's frame is untrusted: it can post an openLink message at any time, with anything
 // in it. These tests pin what the UI does with one before the user is asked.
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import en from '@/i18n/locales/en.ts'
 import { closeDialog, openDialogs } from '@/shell/dialog'
 import { activeToasts, useToast } from '@/shell/toast'
-import { usePluginLinks } from '@/composables/usePluginLinks.ts'
+import { PLUGIN_LINK_COOLDOWN_MS, usePluginLinks } from '@/composables/usePluginLinks.ts'
 
 // The real store drags the daemon client and the router in for one address.
 vi.mock('@/stores/DeviceStore.ts', () => ({
@@ -42,9 +42,18 @@ function setUserActivation(isActive: boolean | undefined): void {
     })
 }
 
+// One clock for the whole file: the cooldown is module state and outlives a test.
+beforeAll(() => {
+    vi.useFakeTimers()
+})
+afterAll(() => {
+    vi.useRealTimers()
+})
+
 afterEach(() => {
-    // Closing is what lets the next request through, as it does in the app.
+    // Closing, then the cooldown running out, is what lets the next request through.
     for (const dialog of [...openDialogs]) closeDialog(dialog.id)
+    vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS)
     useToast().removeAll()
     setUserActivation(undefined)
 })
@@ -61,7 +70,7 @@ describe('usePluginLinks', () => {
         expect(activeToasts).toHaveLength(0)
     })
 
-    it('asks about one link at a time, and again once that is closed', () => {
+    it('asks about one link at a time, and again after the cooldown', () => {
         setUserActivation(true)
         const links = pluginLinks()
         links.requestLink('my-plugin', 'https://example.com/one')
@@ -72,9 +81,65 @@ describe('usePluginLinks', () => {
         expect(openDialogs[0].options.data.url.pathname).toBe('/one')
 
         closeDialog(openDialogs[0].id)
+        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS)
         links.requestLink('my-plugin', 'https://example.com/two')
         expect(openDialogs).toHaveLength(1)
         expect(openDialogs[0].options.data.url.pathname).toBe('/two')
+    })
+
+    it('ignores every plugin for the cooldown after a prompt closes', () => {
+        // The click that closed the prompt leaves the window activated.
+        setUserActivation(true)
+        const links = pluginLinks()
+        links.requestLink('my-plugin', 'https://example.com/one')
+        closeDialog(openDialogs[0].id)
+
+        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS - 1)
+        links.requestLink('my-plugin', 'https://example.com/two')
+        pluginLinks().requestLink('other-plugin', 'https://example.com/three')
+        links.requestLink('my-plugin', 'file:///etc/passwd')
+        expect(openDialogs).toHaveLength(0)
+        expect(activeToasts).toHaveLength(0)
+
+        vi.advanceTimersByTime(1)
+        links.requestLink('my-plugin', 'https://example.com/two')
+        expect(openDialogs).toHaveLength(1)
+    })
+
+    it('asks about a link the UI itself offers during the cooldown, one at a time', () => {
+        setUserActivation(true)
+        const links = pluginLinks()
+        links.requestLink('my-plugin', 'https://example.com/one')
+        closeDialog(openDialogs[0].id)
+
+        links.requestLink('my-plugin', 'https://example.com/home', true)
+        links.requestLink('my-plugin', 'https://example.com/again', true)
+        expect(openDialogs).toHaveLength(1)
+        expect(openDialogs[0].options.data.url.pathname).toBe('/home')
+    })
+
+    it('still blocks a link the UI itself offers when it is not one to open', () => {
+        setUserActivation(true)
+        pluginLinks().requestLink('my-plugin', 'http://nas.lan:9999/steal', true)
+
+        expect(openDialogs).toHaveLength(0)
+        expect(activeToasts).toHaveLength(1)
+    })
+
+    it('says a link was blocked once per cooldown, however many are sent', () => {
+        setUserActivation(true)
+        const links = pluginLinks()
+        for (let i = 0; i < 50; i++) links.requestLink('my-plugin', 'file:///etc/passwd')
+        expect(activeToasts).toHaveLength(1)
+
+        // Nor does a valid link get a prompt in that time.
+        links.requestLink('my-plugin', 'https://example.com/')
+        expect(openDialogs).toHaveLength(0)
+
+        useToast().removeAll()
+        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS)
+        links.requestLink('my-plugin', 'file:///etc/passwd')
+        expect(activeToasts).toHaveLength(1)
     })
 
     it.each([
