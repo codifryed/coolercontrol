@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, it, expect } from 'vitest'
-import { uiHostnames, validatePluginLink } from '../pluginLinkValidation'
+import { uiHostnames, validatePluginLink, validatePluginLinkForUi } from '../pluginLinkValidation'
 
 const OWN = ['localhost']
 
@@ -100,5 +100,21 @@ describe('uiHostnames', () => {
 
     it('skips a daemon address that does not parse', () => {
         expect(uiHostnames('not a url')).toEqual([window.location.hostname])
+    })
+})
+
+describe('validatePluginLinkForUi', () => {
+    const DAEMON = 'https://nas.lan:11987/'
+
+    it('rejects the page host and the daemon host', () => {
+        const pageLink = `http://${window.location.hostname}:8123/`
+        expect(validatePluginLinkForUi(pageLink, DAEMON)).toBeNull()
+        expect(validatePluginLinkForUi('http://nas.lan:8123/', DAEMON)).toBeNull()
+    })
+
+    it('accepts another host', () => {
+        expect(validatePluginLinkForUi('https://example.com/', DAEMON)?.href).toBe(
+            'https://example.com/',
+        )
     })
 })

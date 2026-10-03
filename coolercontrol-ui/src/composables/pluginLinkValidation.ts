@@ -47,3 +47,8 @@ export function uiHostnames(daemonURL: string): string[] {
     }
     return hostnames.filter((hostname) => hostname !== '')
 }
+
+/** `validatePluginLink` against the hostnames this UI and its daemon are reached at. */
+export function validatePluginLinkForUi(raw: unknown, daemonURL: string): URL | null {
+    return validatePluginLink(raw, uiHostnames(daemonURL))
+}

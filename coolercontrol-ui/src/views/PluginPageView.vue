@@ -31,7 +31,7 @@ import {
     ServiceType,
 } from '@/models/Plugins.ts'
 import pluginMetadataModal from '@/layout/PluginUi.vue'
-import { uiHostnames, validatePluginLink } from '@/composables/pluginLinkValidation.ts'
+import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiSwitch from '@/shell/ui/UiSwitch.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
@@ -51,9 +51,7 @@ const plugin = computed(
     (): PluginDto | null => deviceStore.plugins.find((p) => p.id === props.pluginId) ?? null,
 )
 const pluginLink = computed(
-    () =>
-        validatePluginLink(plugin.value?.url, uiHostnames(deviceStore.daemonClient.daemonURL))
-            ?.href,
+    () => validatePluginLinkForUi(plugin.value?.url, deviceStore.daemonClient.daemonURL)?.href,
 )
 const hasUi = computed(() => deviceStore.pluginUiInfo.get(props.pluginId)?.has_ui ?? false)
 const pluginStatus = computed(

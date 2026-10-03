@@ -13,7 +13,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/shell/toast'
 import { PluginDto } from '@/models/Plugins.ts'
-import { uiHostnames, validatePluginLink } from '@/composables/pluginLinkValidation.ts'
+import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
 
 const deviceStore = useDeviceStore()
 const toast = useToast()
@@ -22,10 +22,7 @@ const { t } = useI18n()
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const plugin: PluginDto = dialogRef.value.data.plugin
 const isManaged: boolean = dialogRef.value.data.isManaged ?? false
-const pluginLink = validatePluginLink(
-    plugin.url,
-    uiHostnames(deviceStore.daemonClient.daemonURL),
-)?.href
+const pluginLink = validatePluginLinkForUi(plugin.url, deviceStore.daemonClient.daemonURL)?.href
 
 const copyCommand = (text: string): void => {
     if (navigator.clipboard?.writeText) {
