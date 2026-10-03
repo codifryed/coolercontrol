@@ -16,6 +16,12 @@ export interface OpenerLook {
     ringColor: string
 }
 
+/**
+ * How long a prompt is up before its opener takes a click. Longer than a double-click, so
+ * the second click of one aimed at the plugin's page cannot land on the link unread.
+ */
+export const OPENER_ARM_DELAY_MS = 1000
+
 const RADIUS_PATTERN = /^\d+(\.\d+)?px$/
 
 /**
