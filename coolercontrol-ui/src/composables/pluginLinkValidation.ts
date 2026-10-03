@@ -13,6 +13,9 @@ const comparableHostname = (hostname: string): string => hostname.toLowerCase().
  * Only absolute http(s) URLs without credentials are taken. A link to one of `ownHostnames`
  * is refused on any port: opened from the UI it is a same-site navigation, so the session
  * cookie, which is not scoped to a port, would go with it.
+ *
+ * Only the first hop is checked, so a returned URL is not cookie-safe to open from the UI:
+ * an external host can redirect to an own hostname, and the session cookie follows.
  */
 export function validatePluginLink(raw: unknown, ownHostnames: readonly string[]): URL | null {
     if (typeof raw !== 'string' || raw.length > PLUGIN_LINK_LENGTH_MAX) {
@@ -48,7 +51,10 @@ export function uiHostnames(daemonURL: string): string[] {
     return hostnames.filter((hostname) => hostname !== '')
 }
 
-/** `validatePluginLink` against the hostnames this UI and its daemon are reached at. */
+/**
+ * `validatePluginLink` against the hostnames this UI and its daemon are reached at. Its
+ * first-hop limit applies.
+ */
 export function validatePluginLinkForUi(raw: unknown, daemonURL: string): URL | null {
     return validatePluginLink(raw, uiHostnames(daemonURL))
 }
