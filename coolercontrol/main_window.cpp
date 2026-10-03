@@ -183,10 +183,17 @@ MainWindow::MainWindow(QWidget* parent)
   const auto paletteWatcher = new system_palette::Watcher(this);
   connect(paletteWatcher, &system_palette::Watcher::changed, this,
           &MainWindow::refreshSystemPalette);
-  // This allows external links in our app to be opened by the external browser:
+  // This allows external links in our app to be opened by the external browser. Web links
+  // only: any other scheme would be handed to whatever local handler is registered for it.
   connect(m_page, &QWebEnginePage::newWindowRequested,
           [](QWebEngineNewWindowRequest const& request) {
-            QDesktopServices::openUrl(request.requestedUrl());
+            const QUrl url = request.requestedUrl();
+            const QString scheme = url.scheme();
+            if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) {
+              qWarning() << "Blocked a new window for a non-web link:" << url.toDisplayString();
+              return;
+            }
+            QDesktopServices::openUrl(url);
           });
   connect(m_page, &QWebEnginePage::fullScreenRequested,
           [this](QWebEngineFullScreenRequest request) {
