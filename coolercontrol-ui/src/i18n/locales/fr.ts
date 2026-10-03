@@ -534,6 +534,12 @@ export default {
             reloadFailed: 'Impossible de recharger le manifeste',
             serviceLogs: 'Journaux du service',
             commandCopied: 'Commande copiee dans le presse-papiers',
+            openLinkHeader: 'Ouvrir le lien externe ?',
+            openLinkMessage:
+                "Ce lien provient du plugin {plugin} et s'ouvre dans votre navigateur :",
+            openLink: 'Ouvrir le lien',
+            linkBlocked: 'Lien bloqué',
+            linkBlockedDetail: "Un plugin ne peut ouvrir que des liens web vers d'autres sites.",
         },
         add: {
             profile: 'Profil',

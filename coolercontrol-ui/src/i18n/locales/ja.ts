@@ -524,6 +524,11 @@ export default {
             reloadFailed: 'マニフェストの再読み込みに失敗しました',
             serviceLogs: 'サービスログ',
             commandCopied: 'コマンドをクリップボードにコピーしました',
+            openLinkHeader: '外部リンクを開きますか？',
+            openLinkMessage: 'このリンクはプラグイン {plugin} のもので、ブラウザーで開きます：',
+            openLink: 'リンクを開く',
+            linkBlocked: 'リンクをブロックしました',
+            linkBlockedDetail: 'プラグインが開けるのは、他のサイトへのウェブリンクのみです。',
         },
         add: {
             profile: 'プロファイル',

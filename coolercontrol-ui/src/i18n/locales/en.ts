@@ -517,6 +517,11 @@ export default {
             reloadFailed: 'Failed to reload manifest',
             serviceLogs: 'Service Logs',
             commandCopied: 'Command copied to clipboard',
+            openLinkHeader: 'Open external link?',
+            openLinkMessage: 'This link comes from the plugin {plugin} and opens in your browser:',
+            openLink: 'Open link',
+            linkBlocked: 'Link blocked',
+            linkBlockedDetail: 'A plugin can only open web links to other sites.',
         },
         add: {
             profile: 'Profile',

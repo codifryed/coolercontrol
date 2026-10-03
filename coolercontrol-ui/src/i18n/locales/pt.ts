@@ -525,6 +525,11 @@ export default {
             reloadFailed: 'Falha ao recarregar o manifesto',
             serviceLogs: 'Logs do serviço',
             commandCopied: 'Comando copiado para a area de transferencia',
+            openLinkHeader: 'Abrir link externo?',
+            openLinkMessage: 'Este link vem do plugin {plugin} e abre no seu navegador:',
+            openLink: 'Abrir link',
+            linkBlocked: 'Link bloqueado',
+            linkBlockedDetail: 'Um plugin só pode abrir links da web para outros sites.',
         },
         add: {
             profile: 'Perfil',

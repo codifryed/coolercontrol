@@ -529,6 +529,12 @@ export default {
             reloadFailed: 'Manifest konnte nicht neu geladen werden',
             serviceLogs: 'Dienst-Protokolle',
             commandCopied: 'Befehl in die Zwischenablage kopiert',
+            openLinkHeader: 'Externen Link öffnen?',
+            openLinkMessage:
+                'Dieser Link stammt vom Plugin {plugin} und wird in Ihrem Browser geöffnet:',
+            openLink: 'Link öffnen',
+            linkBlocked: 'Link blockiert',
+            linkBlockedDetail: 'Ein Plugin kann nur Weblinks zu anderen Websites öffnen.',
         },
         add: {
             profile: 'Profil',
