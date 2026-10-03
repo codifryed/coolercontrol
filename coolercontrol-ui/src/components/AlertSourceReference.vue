@@ -212,6 +212,16 @@ const allSources = computed(() =>
 const outsideMinutes = computed(() =>
     rows.value.reduce((minutes, row) => Math.max(minutes, row.outside?.minutes ?? 0), 0),
 )
+// Each part shows only where it applies. The wide table explains the time outside beside
+// its own heading.
+const help = computed(() => {
+    const parts = [t('views.alerts.referenceHelp')]
+    if (rows.value.some((row) => row.limits.length > 0)) {
+        parts.push(t('views.alerts.driverLimitsHelp'))
+    }
+    if (!wide.value && outsideMinutes.value > 0) parts.push(t('views.alerts.outsideHelp'))
+    return parts.join('\n\n')
+})
 const columnCount = computed(() => (wide.value ? 8 : 5))
 </script>
 
@@ -221,9 +231,7 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
             <span class="text-base font-semibold text-text-color">
                 {{ t('views.alerts.reference') }}
             </span>
-            <HelpIcon
-                :text="`${t('views.alerts.referenceHelp')}\n${t('views.alerts.outsideHelp')}`"
-            />
+            <HelpIcon :text="help" />
             <span class="flex-1"></span>
             <!-- Negative margin: the button must not make this title bar taller than the
                  other cards'. -->
@@ -260,13 +268,14 @@ const columnCount = computed(() => (wide.value ? 8 : 5))
                             </span>
                         </th>
                         <th v-if="wide" colspan="3" class="pl-6 text-right font-medium">
-                            <template v-if="outsideMinutes > 0">
+                            <span v-if="outsideMinutes > 0" class="inline-flex items-center gap-1">
                                 {{
                                     t('components.chartStats.lastMinutes', {
                                         minutes: outsideMinutes,
                                     })
                                 }}
-                            </template>
+                                <HelpIcon :text="t('views.alerts.outsideHelp')" :size="0.9" />
+                            </span>
                         </th>
                     </tr>
                     <tr>

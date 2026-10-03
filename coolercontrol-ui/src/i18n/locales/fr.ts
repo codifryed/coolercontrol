@@ -771,7 +771,9 @@ export default {
             lessThan: 'inférieur à',
             reference: 'Valeurs de référence',
             referenceHelp:
-                "Ce que les sources sélectionnées ont relevé et les limites indiquées par leurs pilotes. Sélectionnez une valeur pour l'utiliser comme seuil.\nLa signification d'une limite du pilote dépend du pilote : sur certaines puces, Min et Max sont les relevés les plus bas et les plus hauts jusqu'ici, et Cible peut être la cible actuelle.",
+                "Ce que les sources sélectionnées ont relevé et les limites indiquées par leurs pilotes. Sélectionnez une valeur pour l'utiliser comme seuil.",
+            driverLimitsHelp:
+                "La signification d'une limite du pilote dépend du pilote : sur certaines puces, Min et Max sont les relevés les plus bas et les plus hauts jusqu'ici.",
             referenceEmpty:
                 'Sélectionnez une source de canal pour voir ici ses relevés et ses limites.',
             allSources: 'Toutes les sources',
@@ -783,7 +785,7 @@ export default {
             below: 'En dessous',
             longest: 'Plus longue',
             outsideHelp:
-                "Sous chaque source : combien de temps ses relevés récents ont été au-dessus ou en dessous des seuils tels qu'ils sont réglés maintenant, et la plus longue période ininterrompue. Cette période est mise en évidence lorsqu'elle dure assez longtemps pour déclencher l'alerte.",
+                "Combien de temps les relevés récents de chaque source ont été au-dessus ou en dessous des seuils tels qu'ils sont réglés maintenant, et la plus longue période ininterrompue. Cette période est mise en évidence lorsqu'elle dure assez longtemps pour déclencher l'alerte.",
             newAlert: 'Nouvelle Alerte',
             warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',

@@ -759,7 +759,9 @@ export default {
             lessThan: 'menor que',
             reference: 'Valores de referencia',
             referenceHelp:
-                'Lo que han medido las fuentes seleccionadas y los límites que informan sus controladores. Selecciona un valor para usarlo como umbral.\nEl significado de un límite del controlador depende del controlador: en algunos chips Mín y Máx son las lecturas más baja y más alta hasta ahora, y Objetivo puede ser el objetivo actual.',
+                'Lo que han medido las fuentes seleccionadas y los límites que informan sus controladores. Selecciona un valor para usarlo como umbral.',
+            driverLimitsHelp:
+                'El significado de un límite del controlador depende del controlador: en algunos chips Mín y Máx son las lecturas más baja y más alta hasta ahora.',
             referenceEmpty: 'Selecciona una fuente de canal para ver aquí sus lecturas y límites.',
             allSources: 'Todas las fuentes',
             useAsGreaterThan: 'Usar como «mayor que»',
@@ -770,7 +772,7 @@ export default {
             below: 'Por debajo',
             longest: 'Mayor racha',
             outsideHelp:
-                'Debajo de cada fuente: cuánto tiempo estuvieron sus lecturas recientes por encima o por debajo de los umbrales tal como están ahora, y la racha ininterrumpida más larga. La racha se resalta cuando dura lo suficiente para activar la alerta.',
+                'Cuánto tiempo estuvieron las lecturas recientes de cada fuente por encima o por debajo de los umbrales tal como están ahora, y la racha ininterrumpida más larga. La racha se resalta cuando dura lo suficiente para activar la alerta.',
             newAlert: 'Nueva Alerta',
             warmupGreaterThan: 'condición activada por más tiempo que',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',

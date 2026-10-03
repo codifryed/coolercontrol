@@ -758,7 +758,9 @@ export default {
             lessThan: 'menor que',
             reference: 'Valores de referência',
             referenceHelp:
-                'O que as fontes selecionadas mediram e os limites que seus drivers informam. Selecione um valor para usá-lo como limiar.\nO significado de um limite do driver depende do driver: em alguns chips, Mín e Máx são as leituras mais baixa e mais alta até agora, e Alvo pode ser o alvo atual.',
+                'O que as fontes selecionadas mediram e os limites que seus drivers informam. Selecione um valor para usá-lo como limiar.',
+            driverLimitsHelp:
+                'O significado de um limite do driver depende do driver: em alguns chips, Mín e Máx são as leituras mais baixa e mais alta até agora.',
             referenceEmpty: 'Selecione uma fonte de canal para ver aqui suas leituras e limites.',
             allSources: 'Todas as fontes',
             useAsGreaterThan: 'Usar como “maior que”',
@@ -769,7 +771,7 @@ export default {
             below: 'Abaixo',
             longest: 'Maior período',
             outsideHelp:
-                'Abaixo de cada fonte: por quanto tempo suas leituras recentes ficaram acima ou abaixo dos limiares como estão agora, e o período ininterrupto mais longo. O período é destacado quando dura o suficiente para acionar o alerta.',
+                'Por quanto tempo as leituras recentes de cada fonte ficaram acima ou abaixo dos limiares como estão agora, e o período ininterrupto mais longo. O período é destacado quando dura o suficiente para acionar o alerta.',
             newAlert: 'Novo Alerta',
             warmupGreaterThan: 'condição desencadeada durante mais tempo do que',
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',

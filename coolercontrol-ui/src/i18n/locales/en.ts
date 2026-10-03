@@ -748,7 +748,9 @@ export default {
             lessThan: 'Less Than',
             reference: 'Reference Values',
             referenceHelp:
-                "What the selected sources have read, and the limits their drivers report. Select a value to use it as a threshold.\nA driver limit's meaning depends on the driver: on some chips Min and Max are the lowest and highest readings so far, and Target can be the current target.",
+                'What the selected sources have read, and the limits their drivers report. Select a value to use it as a threshold.',
+            driverLimitsHelp:
+                "A driver limit's meaning depends on the driver: on some chips Min and Max are the lowest and highest readings so far.",
             referenceEmpty: 'Select a channel source to see its readings and limits here.',
             allSources: 'All Sources',
             useAsGreaterThan: 'Use as Greater Than',
@@ -759,7 +761,7 @@ export default {
             below: 'Below',
             longest: 'Longest',
             outsideHelp:
-                'Under each source: how long its recent readings were above or below the thresholds as set now, and the longest unbroken stretch. The stretch is highlighted when it lasts long enough to trigger the alert.',
+                "How long each source's recent readings were above or below the thresholds as set now, and the longest unbroken stretch. The stretch is highlighted when it lasts long enough to trigger the alert.",
             newAlert: 'New Alert',
             warmupGreaterThan: 'Condition Triggered Longer Than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
