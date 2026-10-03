@@ -369,7 +369,7 @@ const chartKey = ref<string>(uuidV4())
                     v-if="liveRpm != null"
                     class="text-base font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ groupDigits(liveRpm) }} rpm
+                    {{ groupDigits(liveRpm) }} {{ settingsStore.rpmUnit(deviceUID, channelName) }}
                 </span>
             </div>
         </div>

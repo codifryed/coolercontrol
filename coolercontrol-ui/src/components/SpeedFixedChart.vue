@@ -67,6 +67,7 @@ const getRPMs = (): number => {
     )
 }
 
+const rpmUnit = settingsStore.rpmUnit(props.currentDeviceUID, props.currentSensorName)
 const gaugeBasePx: Ref<number> = ref(deviceStore.getREMSize(5))
 const getFixedDuty = (): number => props.duty ?? 0
 const isDefaultProfile = (): boolean => props.defaultProfile ?? false
@@ -169,7 +170,7 @@ const option = {
                 color: colors.themeColors.text_color,
                 offsetCenter: [0, '80%'],
                 formatter: function (value: string) {
-                    return `${value} rpm`
+                    return `${value} ${rpmUnit}`
                 },
             },
             silent: true,
