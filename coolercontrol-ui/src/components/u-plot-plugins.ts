@@ -253,7 +253,7 @@ export const tooltipPlugin = (
                 // @ts-ignore
                 const lineColor = allDevicesLineProperties.get(series.label!)?.color
                 seriesTexts.push(
-                    `<tr><td><svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:middle;fill:${safeColor(lineColor)};"><path d="${mdiMinus}"/></svg></td><td>${escapeHtml(lineName)}&nbsp;</td><td>${lineValue} ${suffix}</td></tr>`,
+                    `<tr><td><svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:middle;fill:${safeColor(lineColor)};"><path d="${mdiMinus}"/></svg></td><td>${escapeHtml(lineName)}&nbsp;</td><td>${lineValue} ${escapeHtml(suffix)}</td></tr>`,
                 )
             }
         }
