@@ -16,7 +16,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client;
 use crate::repositories::service_plugin::client_proxy::DeviceServiceClientHandle;
 use crate::repositories::service_plugin::plugin_controller::{
-    secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
+    remove_runtime_services, remove_service, secure_plugin_files,
 };
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -70,6 +70,9 @@ pub struct ServicePluginRepo {
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
+    /// Filled by the plugin controller with the plugins it finds after startup, and those
+    /// whose manifest gained a service since. `services` knows neither.
+    runtime_plugins: Rc<RefCell<Vec<ServiceManifest>>>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     /// Registry the channel verdicts are published to.
     hardware_support: Option<Rc<HardwareSupportController>>,
@@ -183,6 +186,7 @@ impl ServicePluginRepo {
             api_up_token,
             reset_plugin_user,
             services: HashMap::new(),
+            runtime_plugins: Rc::new(RefCell::new(Vec::new())),
             devices: HashMap::new(),
             hardware_support: None,
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -264,11 +268,29 @@ impl ServicePluginRepo {
     /// independent of each other, and the daemon's own fan control depends on none of
     /// them. The directory is a parameter so this rule can be tested without touching the
     /// real plugins directory.
-    async fn find_service_manifests_in(plugins_dir: &Path) -> HashMap<ServiceId, ServiceManifest> {
+    pub async fn find_service_manifests_in(
+        plugins_dir: &Path,
+    ) -> HashMap<ServiceId, ServiceManifest> {
+        let (services, problems) = Self::scan_service_manifests_in(plugins_dir).await;
+        for problem in &problems {
+            error!("{problem}");
+        }
+        services
+    }
+
+    /// As `find_service_manifests_in`, but hands back why each skipped plugin was skipped
+    /// instead of logging it: a caller that scans again and again knows which are news.
+    pub async fn scan_service_manifests_in(
+        plugins_dir: &Path,
+    ) -> (HashMap<ServiceId, ServiceManifest>, Vec<String>) {
         let mut services = HashMap::new();
+        let mut problems = Vec::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
-            error!("Error reading plugins directory: {}", plugins_dir.display());
-            return services;
+            problems.push(format!(
+                "Error reading plugins directory: {}",
+                plugins_dir.display()
+            ));
+            return (services, problems);
         };
         // cycle through subdirectories looking for a manifest.toml file
         for entry in dir_entries {
@@ -279,54 +301,50 @@ impl ServicePluginRepo {
             if path.is_dir().not() {
                 continue;
             }
-            let service_manifest_file = path.join(SERVICE_MANIFEST_FILE_NAME);
-            if service_manifest_file.exists() {
-                let manifest_content = match cc_fs::read_txt(&service_manifest_file).await {
-                    Ok(content) => content,
-                    Err(err) => {
-                        // The reason matters: a permission problem and a vanished file
-                        // need different fixes, and the plugin is skipped either way.
-                        error!(
-                            "Error reading plugin manifest: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                        continue;
-                    }
-                };
-                let document = match manifest_content.parse::<DocumentMut>() {
-                    Ok(document) => document,
-                    Err(err) => {
-                        // `toml_edit` reports the line and column, which is the whole
-                        // value of a syntax error and used to be thrown away.
-                        error!(
-                            "Error parsing TOML manifest file, check the syntax: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                        continue;
-                    }
-                };
-                match ServiceManifest::from_document(&document, path) {
-                    Ok(manifest) => {
-                        if services.contains_key(&manifest.id) {
-                            error!(
-                                "Service Name {} already registered. Skipping {}",
-                                manifest.id,
-                                service_manifest_file.display()
-                            );
-                            continue;
-                        }
-                        services.insert(manifest.id.clone(), manifest);
-                    }
-                    Err(err) => {
-                        error!(
-                            "Error parsing service manifest file: {} Reason: {err}",
-                            service_manifest_file.display()
-                        );
-                    }
-                }
+            if path.join(SERVICE_MANIFEST_FILE_NAME).exists().not() {
+                continue;
             }
+            let manifest = match Self::read_manifest(&path).await {
+                Ok(manifest) => manifest,
+                Err(err) => {
+                    problems.push(format!("{err:#}"));
+                    continue;
+                }
+            };
+            if services.contains_key(&manifest.id) {
+                problems.push(format!(
+                    "Service Name {} already registered. Skipping {}",
+                    manifest.id,
+                    path.display()
+                ));
+                continue;
+            }
+            services.insert(manifest.id.clone(), manifest);
         }
-        services
+        (services, problems)
+    }
+
+    /// The manifest in one plugin folder, or why it cannot be used.
+    ///
+    /// Each error names the file and keeps its cause: a permission problem, a syntax error
+    /// with its line and column, and a rejected value all need different fixes.
+    pub async fn read_manifest(plugin_dir: &Path) -> Result<ServiceManifest> {
+        let manifest_file = plugin_dir.join(SERVICE_MANIFEST_FILE_NAME);
+        let content = cc_fs::read_txt(&manifest_file).await.with_context(|| {
+            format!("Error reading plugin manifest {}", manifest_file.display())
+        })?;
+        let document = content.parse::<DocumentMut>().with_context(|| {
+            format!(
+                "Error parsing TOML manifest file {}, check the syntax",
+                manifest_file.display()
+            )
+        })?;
+        ServiceManifest::from_document(&document, plugin_dir.to_path_buf()).with_context(|| {
+            format!(
+                "Error parsing service manifest file {}",
+                manifest_file.display()
+            )
+        })
     }
 
     /// The service definition for a plugin, or `None` when its manifest names no
@@ -395,21 +413,7 @@ impl ServicePluginRepo {
                     CC_PLUGIN_USER
                 },
             );
-            if let Err(err) = secure_plugin_folder(&service_manifest.path, owner).await {
-                warn!(
-                    "Failed to secure plugin folder {}: {err}",
-                    service_manifest.path.display()
-                );
-            }
-            let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-            if config_path.exists() {
-                if let Err(err) = secure_config_file(&config_path, owner).await {
-                    warn!(
-                        "Failed to secure plugin config file {}: {err}",
-                        config_path.display()
-                    );
-                }
-            }
+            secure_plugin_files(&service_manifest, owner).await;
         }
         match service_manifest.service_type {
             ServiceType::Integration => {
@@ -885,6 +889,10 @@ impl ServicePluginRepo {
         self.service_manager.clone()
     }
 
+    pub fn runtime_plugins(&self) -> Rc<RefCell<Vec<ServiceManifest>>> {
+        Rc::clone(&self.runtime_plugins)
+    }
+
     /// Returns a copy of the plugins information, used by the plugin controller.
     pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
         let mut plugins = HashMap::new();
@@ -1073,13 +1081,15 @@ impl Repository for ServicePluginRepo {
                         debug!("Plugin Service {service_id} internal shutdown complete");
                     }
                     if service_manifest.is_managed() {
-                        let _ = self.service_manager.remove(service_id).await;
-                        info!("Plugin Service {service_id} stopped.");
+                        remove_service(&self.service_manager, service_id).await;
                     }
                 });
             }
         })
         .await;
+        // Cloned, so that no borrow is held across the awaits.
+        let runtime_plugins = self.runtime_plugins.borrow().clone();
+        remove_runtime_services(&self.service_manager, &runtime_plugins).await;
         info!("Service Plugins Repository shutdown");
         Ok(())
     }

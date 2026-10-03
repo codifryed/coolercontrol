@@ -508,7 +508,7 @@ export default {
                 'Plugins erweitern CoolerControl um zusätzliche Geräteunterstützung, Integrationen und Automatisierung. Sie können neue Gerätesensoren und -steuerungen bereitstellen, sich mit externen Diensten verbinden oder benutzerdefinierte UI-Seiten hinzufügen.',
             findPlugins: 'Plugins finden und installieren',
             restartNote:
-                'Wenn Sie kürzlich ein neues Plugin hinzugefügt haben und es hier nicht angezeigt wird, starten Sie den CoolerControl-Daemon neu.',
+                'Ein neu hinzugefügtes Plugin erscheint hier, sobald diese Seite geöffnet wird. Ein Geräte-Plugin benötigt zusätzlich einen Neustart des CoolerControl-Daemons, bevor seine Geräte geladen werden.',
             containerNote:
                 'Wenn CoolerControl in einem Container ausgeführt wird, müssen Plugins im persistierten virtuellen freigegebenen Ordner abgelegt werden, damit sie Container-Neustarts überstehen.',
             installedPlugins: 'Installierte Plugins',
@@ -523,6 +523,10 @@ export default {
             pluginEnabledRestart: 'Plugin aktiviert. Daemon neu starten, um anzuwenden.',
             disableFailed: 'Plugin konnte nicht deaktiviert werden',
             enableFailed: 'Plugin konnte nicht aktiviert werden',
+            reloadManifest: 'Manifest neu laden',
+            manifestReloaded: 'Manifest neu geladen.',
+            manifestValidRestart: 'Manifest ist gültig. Daemon neu starten, um anzuwenden.',
+            reloadFailed: 'Manifest konnte nicht neu geladen werden',
             serviceLogs: 'Dienst-Protokolle',
             commandCopied: 'Befehl in die Zwischenablage kopiert',
         },

@@ -57,23 +57,13 @@ const persistPluginOrder = (): void => {
 }
 
 // Live statuses drive the row dot and the start/stop/restart hover actions.
-const statuses = ref<Map<string, PluginStatus>>(new Map())
-const refreshStatus = async (pluginId: string): Promise<void> => {
-    const statusDto = await deviceStore.daemonClient.getPluginStatus(pluginId)
-    const next = new Map(statuses.value)
-    next.set(pluginId, statusDto.status as PluginStatus)
-    statuses.value = next
-}
-onMounted(async () => {
-    for (const plugin of deviceStore.plugins) {
-        if (plugin.disabled) continue
-        await refreshStatus(plugin.id)
-    }
-})
+const statusOf = (pluginId: string): PluginStatus | undefined =>
+    pluginActions.statuses.value.get(pluginId)?.status
+onMounted(pluginActions.refreshStatuses)
 
 const statusDotClass = (row: PluginRow): string => {
     if (row.disabled) return 'bg-warning'
-    switch (statuses.value.get(row.id)) {
+    switch (statusOf(row.id)) {
         case PluginStatus.Running:
             return 'bg-success'
         case PluginStatus.Stopped:
@@ -90,7 +80,6 @@ const runAction = async (
 ): Promise<void> => {
     busy.value = new Set(busy.value).add(pluginId)
     await action(pluginId)
-    await refreshStatus(pluginId)
     const next = new Set(busy.value)
     next.delete(pluginId)
     busy.value = next
@@ -171,7 +160,7 @@ const isRouteActive = useRouteActive()
                 >
                     <template v-if="!plugin.disabled">
                         <button
-                            v-if="statuses.get(plugin.id) === PluginStatus.Stopped"
+                            v-if="statusOf(plugin.id) === PluginStatus.Stopped"
                             type="button"
                             :class="actionButtonClasses"
                             :disabled="busy.has(plugin.id)"
@@ -181,7 +170,7 @@ const isRouteActive = useRouteActive()
                             <svg-icon type="mdi" :path="mdiPlay" :size="16" />
                         </button>
                         <button
-                            v-if="statuses.get(plugin.id) === PluginStatus.Running"
+                            v-if="statusOf(plugin.id) === PluginStatus.Running"
                             type="button"
                             :class="actionButtonClasses"
                             :disabled="busy.has(plugin.id)"
@@ -191,7 +180,7 @@ const isRouteActive = useRouteActive()
                             <svg-icon type="mdi" :path="mdiStop" :size="16" />
                         </button>
                         <button
-                            v-if="statuses.get(plugin.id) === PluginStatus.Running"
+                            v-if="statusOf(plugin.id) === PluginStatus.Running"
                             type="button"
                             :class="actionButtonClasses"
                             :disabled="busy.has(plugin.id)"

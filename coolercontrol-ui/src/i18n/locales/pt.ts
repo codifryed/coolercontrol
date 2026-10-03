@@ -504,7 +504,7 @@ export default {
                 'Os plugins estendem o CoolerControl com suporte adicional a dispositivos, integrações e automação. Eles podem fornecer novos sensores e controles de dispositivos, conectar-se a serviços externos ou adicionar páginas de interface personalizadas.',
             findPlugins: 'Encontrar e instalar Plugins',
             restartNote:
-                'Se você adicionou recentemente um novo plugin e ele não aparece aqui, reinicie o daemon do CoolerControl.',
+                'Um plugin recém-adicionado aparece aqui quando esta página é aberta. Um plugin de dispositivo também precisa que o daemon do CoolerControl seja reiniciado antes de seus dispositivos serem carregados.',
             containerNote:
                 'Ao executar o CoolerControl em um contêiner, os plugins devem ser colocados na pasta compartilhada virtual persistente para que sobrevivam a reinicializações do contêiner.',
             installedPlugins: 'Plugins Instalados',
@@ -519,6 +519,10 @@ export default {
             pluginEnabledRestart: 'Plugin ativado. Reinicie o daemon para aplicar.',
             disableFailed: 'Falha ao desativar o plugin',
             enableFailed: 'Falha ao ativar o plugin',
+            reloadManifest: 'Recarregar manifesto',
+            manifestReloaded: 'Manifesto recarregado.',
+            manifestValidRestart: 'O manifesto é válido. Reinicie o daemon para aplicar.',
+            reloadFailed: 'Falha ao recarregar o manifesto',
             serviceLogs: 'Logs do serviço',
             commandCopied: 'Comando copiado para a area de transferencia',
         },

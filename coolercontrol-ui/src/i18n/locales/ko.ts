@@ -495,7 +495,7 @@ export default {
                 '플러그인은 추가 장치 지원, 통합 및 자동화로 CoolerControl을 확장합니다. 새로운 장치 센서 및 제어를 제공하고, 외부 서비스에 연결하거나, 사용자 지정 UI 페이지를 추가할 수 있습니다.',
             findPlugins: '플러그인 찾기 및 설치',
             restartNote:
-                '최근에 새 플러그인을 추가했는데 여기에 표시되지 않으면 CoolerControl 데몬을 재시작하세요.',
+                '새로 추가한 플러그인은 이 페이지를 열면 여기에 표시됩니다. 장치 플러그인은 장치가 로드되기 전에 CoolerControl 데몬도 재시작해야 합니다.',
             containerNote:
                 '컨테이너에서 CoolerControl을 실행할 때 플러그인은 컨테이너 재시작 후에도 유지되도록 영구 가상 공유 폴더에 배치해야 합니다.',
             installedPlugins: '설치된 플러그인',
@@ -510,6 +510,10 @@ export default {
             pluginEnabledRestart: '플러그인이 활성화되었습니다. 적용하려면 데몬을 재시작하세요.',
             disableFailed: '플러그인 비활성화 실패',
             enableFailed: '플러그인 활성화 실패',
+            reloadManifest: '매니페스트 다시 불러오기',
+            manifestReloaded: '매니페스트를 다시 불러왔습니다.',
+            manifestValidRestart: '매니페스트가 유효합니다. 적용하려면 데몬을 재시작하세요.',
+            reloadFailed: '매니페스트 다시 불러오기 실패',
             serviceLogs: '서비스 로그',
             commandCopied: '명령이 클립보드에 복사됨',
         },

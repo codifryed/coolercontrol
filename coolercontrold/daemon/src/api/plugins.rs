@@ -88,6 +88,17 @@ pub async fn has_ui(
     )
 }
 
+/// Keeps the whole cause chain. `handle_error` reports the outermost context alone, which
+/// for a lifecycle call names the action that failed and nothing about why.
+fn handle_lifecycle_error(err: anyhow::Error) -> CCError {
+    match err.downcast::<CCError>() {
+        Ok(cc_error) => cc_error,
+        Err(err) => CCError::InternalError {
+            msg: format!("{err:#}"),
+        },
+    }
+}
+
 pub async fn start_plugin(
     Path(path): Path<PluginPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -95,7 +106,7 @@ pub async fn start_plugin(
     plugin_handle
         .start_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn stop_plugin(
@@ -105,7 +116,7 @@ pub async fn stop_plugin(
     plugin_handle
         .stop_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn restart_plugin(
@@ -115,7 +126,17 @@ pub async fn restart_plugin(
     plugin_handle
         .restart_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
+}
+
+pub async fn reload_plugin(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    plugin_handle
+        .reload_plugin(path.plugin_id)
+        .await
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn get_plugin_status(
@@ -146,7 +167,7 @@ pub async fn enable_plugin(
     plugin_handle
         .enable_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn get_ui_files(
@@ -454,6 +475,32 @@ mod tests {
     use std::rc::Rc;
     use tokio_util::sync::CancellationToken;
 
+    /// Goal: a failed start has to say why, since the message is all the UI can show.
+    /// Method: an error built the way the controller builds one, and one that carries an
+    /// API error, which must keep its own status rather than become an internal error.
+    #[test]
+    fn lifecycle_errors_keep_their_cause() {
+        use anyhow::Context;
+        let failed: anyhow::Result<()> = Err(anyhow::anyhow!("stopped right after starting"));
+        let not_found: anyhow::Result<()> = Err(CCError::NotFound {
+            msg: "Plugin not found".to_string(),
+        }
+        .into());
+
+        let failed = handle_lifecycle_error(failed.context("Starting plugin service").unwrap_err());
+        let not_found =
+            handle_lifecycle_error(not_found.context("Starting plugin service").unwrap_err());
+
+        let CCError::InternalError { msg } = failed else {
+            panic!("expected an internal error, got {failed:?}");
+        };
+        assert_eq!(msg, "Starting plugin service: stopped right after starting");
+        assert!(
+            matches!(not_found, CCError::NotFound { .. }),
+            "{not_found:?}"
+        );
+    }
+
     #[test]
     fn test_sanitize_file_path_valid_simple() {
         // A simple file at the root of the ui directory.
@@ -676,8 +723,8 @@ mod tests {
             proxy: None,
             path: plugin_dir.to_path_buf(),
         };
-        let mut controller = PluginController::new_disabled();
-        controller.plugins.insert(PLUGIN_ID.to_string(), manifest);
+        let controller = PluginController::new_disabled();
+        controller.register(manifest);
         controller
     }
 

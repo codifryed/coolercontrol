@@ -182,8 +182,8 @@ export function usePluginIframe(pluginId: string, mode: PluginIframeMode) {
                 handleRestart()
                 break
             case 'restartPlugin': {
-                const success = await deviceStore.daemonClient.restartPlugin(pluginId)
-                postToIframe('pluginRestarted', success)
+                const response = await deviceStore.daemonClient.restartPlugin(pluginId)
+                postToIframe('pluginRestarted', response === undefined)
                 break
             }
             case 'context':

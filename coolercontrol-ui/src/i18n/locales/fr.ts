@@ -513,7 +513,7 @@ export default {
                 "Les plugins étendent CoolerControl avec une prise en charge supplémentaire des appareils, des intégrations et de l'automatisation. Ils peuvent fournir de nouveaux capteurs et commandes d'appareils, se connecter à des services externes ou ajouter des pages d'interface personnalisées.",
             findPlugins: 'Trouver et installer des Plugins',
             restartNote:
-                "Si vous avez récemment ajouté un nouveau plugin et qu'il n'apparaît pas ici, redémarrez le démon CoolerControl.",
+                "Un plugin récemment ajouté apparaît ici à l'ouverture de cette page. Un plugin d'appareil nécessite aussi un redémarrage du démon CoolerControl avant que ses appareils soient chargés.",
             containerNote:
                 "Lorsque CoolerControl s'exécute dans un conteneur, les plugins doivent être placés dans le dossier partagé virtuel persistant afin qu'ils survivent aux redémarrages du conteneur.",
             installedPlugins: 'Plugins Installés',
@@ -528,6 +528,10 @@ export default {
             pluginEnabledRestart: 'Plugin activé. Redémarrez le daemon pour appliquer.',
             disableFailed: 'Impossible de désactiver le plugin',
             enableFailed: "Impossible d'activer le plugin",
+            reloadManifest: 'Recharger le manifeste',
+            manifestReloaded: 'Manifeste rechargé.',
+            manifestValidRestart: 'Le manifeste est valide. Redémarrez le daemon pour appliquer.',
+            reloadFailed: 'Impossible de recharger le manifeste',
             serviceLogs: 'Journaux du service',
             commandCopied: 'Commande copiee dans le presse-papiers',
         },
