@@ -46,6 +46,7 @@ import TagChips from '@/shell/TagChips.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import type { RouteLocationRaw } from 'vue-router'
 import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
@@ -128,6 +129,8 @@ const liveFor = (deviceUID: UID, channelName: string): ChannelValues | undefined
 // Fail-alert convenience, same as the Monitoring panel's fan rows.
 const hasRpm = (channel: CoolingChannel): boolean =>
     liveFor(channel.deviceUID, channel.channelName)?.rpm != null
+const liveRpm = (channel: CoolingChannel): string =>
+    groupDigits(liveFor(channel.deviceUID, channel.channelName)?.rpm ?? '')
 
 const createFailAlert = (channel: CoolingChannel): void =>
     pushFailAlert(
@@ -298,7 +301,7 @@ const isRouteActive = useRouteActive()
                                 v-if="liveFor(channel.deviceUID, channel.channelName)?.rpm != null"
                                 class="text-sm font-numeric tabular-nums text-text-color-secondary"
                             >
-                                {{ liveFor(channel.deviceUID, channel.channelName)?.rpm }} rpm
+                                {{ liveRpm(channel) }} rpm
                             </span>
                         </span>
                     </RouterLink>
@@ -482,7 +485,7 @@ const isRouteActive = useRouteActive()
                                     "
                                     class="text-sm font-numeric tabular-nums text-text-color-secondary"
                                 >
-                                    {{ liveFor(channel.deviceUID, channel.channelName)?.rpm }} rpm
+                                    {{ liveRpm(channel) }} rpm
                                 </span>
                             </span>
                         </RouterLink>

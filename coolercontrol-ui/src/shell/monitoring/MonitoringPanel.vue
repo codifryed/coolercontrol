@@ -53,6 +53,7 @@ import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import TagChips from '@/shell/TagChips.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import type { RouteLocationRaw } from 'vue-router'
 import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
@@ -168,7 +169,7 @@ const liveValue = (sensor: MonitoringSensor): string => {
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
     if (values.duty != null) return `${values.duty} ${t('common.percentUnit')}`
-    if (values.rpm != null) return `${values.rpm} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) return `${groupDigits(values.rpm)} ${t('common.rpmAbbr')}`
     return ''
 }
 
