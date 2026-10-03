@@ -303,6 +303,8 @@ const runPluginScript = (mainPluginFunction, loadParentStyle = true) => {
 // The plugin page is sandboxed and cannot open a tab itself, so a click on a link to another
 // host is handed to CoolerControl. Links within the plugin's own pages are left alone.
 const _routeExternalLink = (clickEvent) => {
+    // Not framed, as in standalone development: the page can follow its own links.
+    if (window.parent === window) return
     if (clickEvent.defaultPrevented || clickEvent.button !== 0) return
     const anchor = clickEvent.target?.closest?.('a[href]')
     if (anchor == null) return
