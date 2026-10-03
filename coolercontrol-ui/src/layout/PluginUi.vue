@@ -13,6 +13,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/shell/toast'
 import { PluginDto } from '@/models/Plugins.ts'
+import { uiHostnames, validatePluginLink } from '@/composables/pluginLinkValidation.ts'
 
 const deviceStore = useDeviceStore()
 const toast = useToast()
@@ -21,6 +22,10 @@ const { t } = useI18n()
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const plugin: PluginDto = dialogRef.value.data.plugin
 const isManaged: boolean = dialogRef.value.data.isManaged ?? false
+const pluginLink = validatePluginLink(
+    plugin.url,
+    uiHostnames(deviceStore.daemonClient.daemonURL),
+)?.href
 
 const copyCommand = (text: string): void => {
     if (navigator.clipboard?.writeText) {
@@ -90,8 +95,9 @@ const fallbackCopy = (text: string): void => {
                     <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                     <td class="py-3 px-4">
                         <a
+                            v-if="pluginLink"
                             class="inline-flex items-center gap-1 underline"
-                            :href="plugin.url"
+                            :href="pluginLink"
                             target="_blank"
                             rel="noopener noreferrer"
                         >
@@ -102,6 +108,8 @@ const fallbackCopy = (text: string): void => {
                             />
                             {{ t('layout.settings.plugins.pluginUrl') }}
                         </a>
+                        <!-- Not a link the UI may open, so it is shown rather than followed. -->
+                        <code v-else class="select-all break-all">{{ plugin.url }}</code>
                     </td>
                 </tr>
                 <tr v-if="isManaged">
