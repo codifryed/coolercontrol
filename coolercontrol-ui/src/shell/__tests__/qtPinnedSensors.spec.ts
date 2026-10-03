@@ -30,12 +30,20 @@ const device = (uid: string, temps: string[], channels: string[]): Device =>
 const labelOf = (_uid: string, channelName: string) => `label:${channelName}`
 const colorOf = (_uid: string, channelName: string) => `#c0${channelName.length}`
 const routeOf = (uid: string, channelName: string) => `#/monitoring/sensors/${uid}/${channelName}`
+const noUnit = (): undefined => undefined
 
 describe('qt pinned sensors', () => {
     const devices = [device('d1', ['temp1', 'temp2'], ['fan1']), device('d2', ['temp1'], ['fan1'])]
 
     it('resolves pins to identity and label', () => {
-        const out = buildPinnedSensors(devices, [pinId('d1', 'temp1')], labelOf, colorOf, routeOf)
+        const out = buildPinnedSensors(
+            devices,
+            [pinId('d1', 'temp1')],
+            labelOf,
+            colorOf,
+            routeOf,
+            noUnit,
+        )
         expect(out).toEqual([
             {
                 deviceUid: 'd1',
@@ -55,6 +63,7 @@ describe('qt pinned sensors', () => {
             labelOf,
             colorOf,
             routeOf,
+            noUnit,
         )
         expect(out.map((s) => `${s.deviceUid}/${s.channelName}`)).toEqual(['d2/fan1'])
     })
@@ -66,6 +75,7 @@ describe('qt pinned sensors', () => {
             labelOf,
             colorOf,
             routeOf,
+            noUnit,
         )
         expect(out.map((s) => s.deviceUid)).toEqual(['d2', 'd1'])
     })
@@ -78,7 +88,7 @@ describe('qt pinned sensors', () => {
             pinId('d2', 'temp1'),
             pinId('d2', 'fan1'),
         ]
-        expect(buildPinnedSensors(devices, many, labelOf, colorOf, routeOf)).toHaveLength(
+        expect(buildPinnedSensors(devices, many, labelOf, colorOf, routeOf, noUnit)).toHaveLength(
             many.length,
         )
     })
@@ -90,7 +100,36 @@ describe('qt pinned sensors', () => {
             labelOf,
             colorOf,
             routeOf,
+            noUnit,
         )
         expect(out.map((s) => s.isTemp)).toEqual([true, false])
+    })
+
+    it('carries the unit a channel label names', () => {
+        const unitOf = (uid: string, channelName: string) =>
+            uid === 'd1' && channelName === 'fan1' ? 'dL/h' : undefined
+        const out = buildPinnedSensors(
+            devices,
+            [pinId('d1', 'fan1'), pinId('d2', 'fan1')],
+            labelOf,
+            colorOf,
+            routeOf,
+            unitOf,
+        )
+        expect(out.map((s) => s.unit)).toEqual(['dL/h', undefined])
+        // A channel in rpm adds nothing to the payload Qt caches.
+        expect(JSON.stringify(out[1])).not.toContain('unit')
+    })
+
+    it('never gives a temp a unit', () => {
+        const out = buildPinnedSensors(
+            devices,
+            [pinId('d1', 'temp1')],
+            labelOf,
+            colorOf,
+            routeOf,
+            () => 'dL/h',
+        )
+        expect(out[0].unit).toBeUndefined()
     })
 })

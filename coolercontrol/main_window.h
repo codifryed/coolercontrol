@@ -121,6 +121,8 @@ class MainWindow final : public QMainWindow {
     QString deviceUid;
     QString channelName;
     QString label;
+    // Unit of the speed value, as the UI read it from the label. Empty means rpm.
+    QString unit;
     QAction* action;
   };
 

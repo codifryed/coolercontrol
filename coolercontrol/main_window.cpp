@@ -774,13 +774,17 @@ void MainWindow::buildTraySensorRows(const QJsonArray& sensors) {
       m_trayIconMenu->insertAction(m_sensorsTrayMenu->menuAction(), action);
     }
     m_traySensors.append(TraySensor{sensor.value("deviceUid").toString(),
-                                    sensor.value("channelName").toString(), label, action});
+                                    sensor.value("channelName").toString(), label,
+                                    sensor.value("unit").toString(), action});
   }
 }
 
 // Formats whichever fields the daemon reported for this channel. A fan reports both rpm
 // and duty, a PSU rail only watts, a temp only its value, so nothing can be assumed.
-static QString formatSensorReading(const QJsonObject& status, const QString& channelName) {
+// The daemon reports every speed value as rpm; `unit` is what the channel's label says
+// it really is, and is empty for an actual fan speed.
+static QString formatSensorReading(const QJsonObject& status, const QString& channelName,
+                                   const QString& unit) {
   QStringList parts;
   for (const auto tempValue : status.value("temps").toArray()) {
     const auto temp = tempValue.toObject();
@@ -795,7 +799,8 @@ static QString formatSensorReading(const QJsonObject& status, const QString& cha
       continue;
     }
     if (channel.contains("rpm")) {
-      parts << QString::number(channel.value("rpm").toInt()) % " RPM";
+      parts << QString::number(channel.value("rpm").toInt()) % " " %
+                   (unit.isEmpty() ? QStringLiteral("RPM") : unit);
     }
     if (channel.contains("duty")) {
       parts << QString::number(channel.value("duty").toDouble(), 'f', 0) % "%";
@@ -840,7 +845,8 @@ void MainWindow::pollTraySensors() const {
         if (history.isEmpty()) {
           break;
         }
-        const auto reading = formatSensorReading(history.last().toObject(), sensor.channelName);
+        const auto reading =
+            formatSensorReading(history.last().toObject(), sensor.channelName, sensor.unit);
         if (!reading.isEmpty()) {
           sensor.action->setText(sensor.label % "   " % reading);
         }

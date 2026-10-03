@@ -265,6 +265,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 router.resolve(
                     channelRoute(deviceStore.allDevices(), deviceUID, channelName, channelUnit),
                 ).href,
+            channelUnit,
         )
         // @ts-ignore - window.ipc is the QWebChannel bridge, present only in the Qt app.
         window.ipc?.setPinnedSensors?.(JSON.stringify(sensors))
