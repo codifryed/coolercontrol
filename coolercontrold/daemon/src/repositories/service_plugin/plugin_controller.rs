@@ -285,11 +285,16 @@ impl<M: ServiceManager> PluginController<M> {
         // Off the runtime thread, as the load is.
         crate::rt::spawn_blocking(move || write_config_file(&path, &config, is_managed, owner))
             .await?
-            .with_context(|| {
-                format!(
+            .map_err(|err| {
+                // The reply to the UI names the action alone, so the cause goes here.
+                error!(
+                    "Error saving Plugin configuration file: {} - {err:#}",
+                    config_path.display()
+                );
+                err.context(format!(
                     "Saving Plugin configuration file: {}",
                     config_path.display()
-                )
+                ))
             })
     }
 
