@@ -221,7 +221,9 @@ const detailRows = computed((): Array<DetailRow> => {
             warn: false,
         })
     }
-    if (line.dataType === DataType.RPM) {
+    // Stopped and stalled are a fan's states: a flow or a pressure has neither.
+    const isFan = !settingsStore.isUnitSensor(line.deviceUID, line.channelName)
+    if (line.dataType === DataType.RPM && isFan) {
         rows.push({
             key: 'stopped',
             label: t('components.statsPanel.stopped'),

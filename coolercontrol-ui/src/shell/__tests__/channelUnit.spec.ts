@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest'
-import { channelUnit, labelUnit } from '@/shell/channelUnit.ts'
+import type { Device } from '@/models/Device.ts'
+import { channelUnit, isFanChannel, isUnitSensor, labelUnit } from '@/shell/channelUnit.ts'
 
 describe('labelUnit', () => {
     it('reads a short trailing bracket as written', () => {
@@ -62,5 +63,49 @@ describe('channelUnit', () => {
 
     it('ignores a stale hint once the override is gone', () => {
         expect(channelUnit('Pump speed', { channel_label: 'Flow speed [dL/h]' })).toBeUndefined()
+    })
+})
+
+describe('isUnitSensor and isFanChannel', () => {
+    const device = {
+        uid: 'd1',
+        info: {
+            channels: new Map([
+                ['fan1', { speed_options: { fixed_enabled: true } }],
+                ['fan2', { speed_options: { fixed_enabled: false } }],
+                ['fan3', { speed_options: {} }],
+                ['flow', {}],
+            ]),
+        },
+    } as unknown as Device
+    const noUnit = (): undefined => undefined
+    const everyUnit = (): string => 'dL/h'
+
+    it('calls every speed channel a fan while no label names a unit', () => {
+        for (const name of ['fan1', 'fan2', 'fan3']) {
+            expect(isFanChannel(device, name, noUnit)).toBe(true)
+            expect(isUnitSensor(device, name, noUnit)).toBe(false)
+        }
+        expect(isFanChannel(device, 'flow', noUnit)).toBe(false)
+    })
+
+    it('makes an uncontrollable channel in another unit a sensor', () => {
+        for (const name of ['fan2', 'fan3', 'flow']) {
+            expect(isUnitSensor(device, name, everyUnit)).toBe(true)
+            expect(isFanChannel(device, name, everyUnit)).toBe(false)
+        }
+    })
+
+    it('keeps a controllable channel a fan whatever its unit', () => {
+        expect(isUnitSensor(device, 'fan1', everyUnit)).toBe(false)
+        expect(isFanChannel(device, 'fan1', everyUnit)).toBe(true)
+    })
+
+    it('says nothing about a device or channel it does not know', () => {
+        expect(isUnitSensor(undefined, 'fan2', everyUnit)).toBe(false)
+        expect(isFanChannel(undefined, 'fan2', noUnit)).toBe(false)
+        expect(isFanChannel(device, 'missing', noUnit)).toBe(false)
+        const noInfo = { uid: 'd2', info: null } as unknown as Device
+        expect(isFanChannel(noInfo, 'fan1', noUnit)).toBe(false)
     })
 })

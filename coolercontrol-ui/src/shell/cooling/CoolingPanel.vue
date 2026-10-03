@@ -59,7 +59,7 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 // Mutable copy so rows are drag-sortable; rebuilt when devices change.
 const groups = ref<CoolingDeviceGroup[]>([])
 watchEffect(() => {
-    groups.value = coolingChannels(deviceStore.allDevices())
+    groups.value = coolingChannels(deviceStore.allDevices(), settingsStore.channelUnit)
 })
 
 // All channel ids of a device in current order (fans are a subset of the

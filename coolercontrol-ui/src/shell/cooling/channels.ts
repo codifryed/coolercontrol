@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Device, UID } from '@/models/Device.ts'
+import { isUnitSensor, type ChannelUnitOf } from '@/shell/channelUnit.ts'
 
 export interface CoolingChannel {
     deviceUID: UID
@@ -17,14 +18,19 @@ export interface CoolingDeviceGroup {
 }
 
 // A channel is a fan/pump channel iff it has speed_options; it is controllable
-// iff speed_options.fixed_enabled. Same structural rule as the legacy tree.
-export function coolingChannels(devices: Iterable<Device>): CoolingDeviceGroup[] {
+// iff speed_options.fixed_enabled. Same structural rule as the legacy tree, less
+// the fan inputs that report another unit: those are sensors.
+export function coolingChannels(
+    devices: Iterable<Device>,
+    unitOf: ChannelUnitOf,
+): CoolingDeviceGroup[] {
     const groups: CoolingDeviceGroup[] = []
     for (const device of devices) {
         if (device.info == null) continue
         const channels: CoolingChannel[] = []
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
             if (channelInfo.speed_options == null) continue
+            if (isUnitSensor(device, channelName, unitOf)) continue
             channels.push({
                 deviceUID: device.uid,
                 channelName,

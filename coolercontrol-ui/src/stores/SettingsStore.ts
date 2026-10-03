@@ -43,7 +43,10 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { buildPinnedSensors } from '@/shell/qtPinnedSensors.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
-import { channelUnit as unitFromLabels } from '@/shell/channelUnit.ts'
+import {
+    channelUnit as unitFromLabels,
+    isUnitSensor as isUnitSensorOf,
+} from '@/shell/channelUnit.ts'
 import router from '@/router'
 import type { AllDaemonDeviceSettings } from '@/models/DaemonSettings'
 import type { NameOverrides } from '@/models/NameOverrides'
@@ -193,6 +196,8 @@ export const useSettingsStore = defineStore('settings', () => {
      * what it cannot drive.
      */
     function channelVerdict(deviceUID: UID, channelName: string): ChannelVerdictRef | undefined {
+        // Not being drivable is no verdict on a flow meter or a pressure gauge.
+        if (isUnitSensor(deviceUID, channelName)) return undefined
         const matches = (ref: ChannelVerdictRef): boolean =>
             ref.device_uid === deviceUID && ref.channel_name === channelName
         return (
@@ -257,7 +262,9 @@ export const useSettingsStore = defineStore('settings', () => {
                         ?.color ?? '',
                 ),
             (deviceUID, channelName) =>
-                router.resolve(channelRoute(deviceStore.allDevices(), deviceUID, channelName)).href,
+                router.resolve(
+                    channelRoute(deviceStore.allDevices(), deviceUID, channelName, channelUnit),
+                ).href,
         )
         // @ts-ignore - window.ipc is the QWebChannel bridge, present only in the Qt app.
         window.ipc?.setPinnedSensors?.(JSON.stringify(sensors))
@@ -581,6 +588,11 @@ export const useSettingsStore = defineStore('settings', () => {
             ?.sensorsAndChannels.get(channelName)?.channelLabel
         const overrides = nameOverrides.value.devices[deviceUID]?.channels?.[channelName]
         return unitFromLabels(displayedLabel, overrides)
+    }
+
+    /** An uncontrollable channel in another unit is a sensor, not a fan. */
+    function isUnitSensor(deviceUID: UID, channelName: string): boolean {
+        return isUnitSensorOf(findDevice(deviceUID), channelName, channelUnit)
     }
 
     /** The unit text to show next to a channel's rpm value. */
@@ -1846,6 +1858,7 @@ export const useSettingsStore = defineStore('settings', () => {
         defaultDeviceName,
         defaultChannelLabel,
         channelUnit,
+        isUnitSensor,
         rpmUnit,
         predefinedColorOptions,
         profiles,

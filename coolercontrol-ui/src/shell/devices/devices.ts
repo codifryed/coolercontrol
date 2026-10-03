@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { type Device, DeviceType, type UID } from '@/models/Device.ts'
+import { isUnitSensor, type ChannelUnitOf } from '@/shell/channelUnit.ts'
 
 // Canonical device-type ordering for the Devices section (panel and landing).
 export const DEVICE_TYPE_ORDER: DeviceType[] = [
@@ -83,7 +84,7 @@ export interface DeviceSensorLink {
 // Every live channel/sensor of a device with the page it links to, so the
 // device page can present one complete list (temps and read channels, fans and
 // pumps, lighting, LCD). Mirrors sensorToggles' enumeration order.
-export function deviceSensorLinks(device: Device): DeviceSensorLink[] {
+export function deviceSensorLinks(device: Device, unitOf: ChannelUnitOf): DeviceSensorLink[] {
     const links: DeviceSensorLink[] = []
     const seen = new Set<string>()
     const add = (channelName: string, kind: SensorLinkKind): void => {
@@ -101,7 +102,8 @@ export function deviceSensorLinks(device: Device): DeviceSensorLink[] {
     }
     if (device.info != null) {
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.speed_options != null) add(channelName, 'cooling')
+            if (channelInfo.speed_options == null) continue
+            add(channelName, isUnitSensor(device, channelName, unitOf) ? 'monitoring' : 'cooling')
         }
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
             if (channelInfo.lighting_modes.length > 0) add(channelName, 'lighting')

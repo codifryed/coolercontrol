@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { Device, UID } from '@/models/Device.ts'
 import type { ChannelNameOverrides } from '@/models/NameOverrides'
 
 // hwmon has no flow, pressure or level type, so drivers report those through the rpm
@@ -29,4 +30,32 @@ export function channelUnit(
         if (unit != null) return unit.toLowerCase() === 'rpm' ? undefined : unit
     }
     return undefined
+}
+
+// Looks up a channel's unit, as the settings store's `channelUnit` does.
+export type ChannelUnitOf = (deviceUID: UID, channelName: string) => string | undefined
+
+// A value in another unit that cannot be controlled is a sensor: a flow meter or a
+// pressure gauge, not a fan. A controllable channel stays a fan and only shows its unit.
+export function isUnitSensor(
+    device: Device | undefined,
+    channelName: string,
+    unitOf: ChannelUnitOf,
+): boolean {
+    if (device == null) return false
+    const speedOptions = device.info?.channels.get(channelName)?.speed_options
+    const controllable = speedOptions?.fixed_enabled ?? false
+    return !controllable && unitOf(device.uid, channelName) != null
+}
+
+// A fan or pump channel: it has speed options and is not a sensor in another unit.
+export function isFanChannel(
+    device: Device | undefined,
+    channelName: string,
+    unitOf: ChannelUnitOf,
+): boolean {
+    return (
+        device?.info?.channels.get(channelName)?.speed_options != null &&
+        !isUnitSensor(device, channelName, unitOf)
+    )
 }

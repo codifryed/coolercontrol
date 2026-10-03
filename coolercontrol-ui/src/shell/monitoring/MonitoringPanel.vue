@@ -144,12 +144,18 @@ const sensorIcon = (sensor: MonitoringSensor): string =>
             devicesByUid.value.get(sensor.deviceUID),
             sensor.channelName,
             sensorValues(sensor),
+            settingsStore.channelUnit,
         ),
     )
 const sensorSpins = (sensor: MonitoringSensor): boolean => {
     const values = sensorValues(sensor)
     return channelSpins(
-        channelKind(devicesByUid.value.get(sensor.deviceUID), sensor.channelName, values),
+        channelKind(
+            devicesByUid.value.get(sensor.deviceUID),
+            sensor.channelName,
+            values,
+            settingsStore.channelUnit,
+        ),
         values,
         settingsStore.eyeCandy,
     )
@@ -188,12 +194,14 @@ const togglePin = (sensor: MonitoringSensor): void => {
 
 // Alert convenience: temp sensors get a plain new-alert button; fan channels
 // (those reporting rpm) get a "fail alert" prefilled to catch 0 rpm; other
-// value types (duty/load/watts/freq) get no button.
+// value types (duty/load/watts/freq) get no button. Nor does a sensor in another
+// unit: a flow or a pressure of 0 is not a failed fan.
 type AlertKind = 'temp' | 'fan'
 const alertKind = (sensor: MonitoringSensor): AlertKind | null => {
     if (sensor.isTemp) return 'temp'
     const values = currentDeviceStatus.value.get(sensor.deviceUID)?.get(sensor.channelName)
-    return values?.rpm != null ? 'fan' : null
+    if (values?.rpm == null) return null
+    return settingsStore.isUnitSensor(sensor.deviceUID, sensor.channelName) ? null : 'fan'
 }
 const createAlert = (sensor: MonitoringSensor): void => {
     const kind = alertKind(sensor)
@@ -337,11 +345,21 @@ const onTagOpen = (rowKey: string, open: boolean): void => {
 
 // Pinned rows are shortcuts, so they go to the channel's canonical page.
 const sensorRoute = (sensor: MonitoringSensor) =>
-    channelRoute(deviceStore.allDevices(), sensor.deviceUID, sensor.channelName)
+    channelRoute(
+        deviceStore.allDevices(),
+        sensor.deviceUID,
+        sensor.channelName,
+        settingsStore.channelUnit,
+    )
 
 // The section's own listing keeps fans on their Monitoring chart instead.
 const listedSensorRoute = (sensor: MonitoringSensor) =>
-    monitoringChannelRoute(deviceStore.allDevices(), sensor.deviceUID, sensor.channelName)
+    monitoringChannelRoute(
+        deviceStore.allDevices(),
+        sensor.deviceUID,
+        sensor.channelName,
+        settingsStore.channelUnit,
+    )
 
 // The row wrapper needs the same target its link uses, so both read it here.
 const dashboardTarget = (dashboardUID: UID): RouteLocationRaw => ({

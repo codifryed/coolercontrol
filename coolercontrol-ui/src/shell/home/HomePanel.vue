@@ -104,7 +104,7 @@ const buildPinnedRows = (): PinnedRow[] => {
     const devicesByUid = new Map<UID, Device>()
     for (const device of deviceStore.allDevices()) devicesByUid.set(device.uid, device)
     const fanIds = new Set(
-        coolingChannels(deviceStore.allDevices()).flatMap((group) =>
+        coolingChannels(deviceStore.allDevices(), settingsStore.channelUnit).flatMap((group) =>
             group.channels.map((channel) => pinId(channel.deviceUID, channel.channelName)),
         ),
     )
@@ -137,7 +137,12 @@ const buildPinnedRows = (): PinnedRow[] => {
             color: color(deviceUID, channelName),
             value: liveValue(deviceUID, channelName),
             channel: { deviceUID, channelName },
-            to: channelRoute(deviceStore.allDevices(), deviceUID, channelName),
+            to: channelRoute(
+                deviceStore.allDevices(),
+                deviceUID,
+                channelName,
+                settingsStore.channelUnit,
+            ),
         }
         if (fanIds.has(id)) {
             rows.push({
@@ -147,7 +152,12 @@ const buildPinnedRows = (): PinnedRow[] => {
                 alertKind: values?.rpm != null ? 'fan' : undefined,
             })
         } else if (sensorIds.has(id)) {
-            const kind = channelKind(devicesByUid.get(deviceUID), channelName, values)
+            const kind = channelKind(
+                devicesByUid.get(deviceUID),
+                channelName,
+                values,
+                settingsStore.channelUnit,
+            )
             rows.push({
                 ...base,
                 icon: channelKindIcon(kind),

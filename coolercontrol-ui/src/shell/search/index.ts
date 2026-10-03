@@ -12,6 +12,7 @@
 
 import { type Device, DeviceType, type UID } from '@/models/Device.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
+import type { ChannelUnitOf } from '@/shell/channelUnit.ts'
 import { coolingChannels } from '@/shell/cooling/channels.ts'
 import { deviceChannelLinks } from '@/shell/devices/devices.ts'
 import { monitoringSensors } from '@/shell/monitoring/sensors.ts'
@@ -31,6 +32,8 @@ export interface IndexDeps {
     deviceLabel: (deviceUID: UID) => string
     /** Display name for a channel or sensor, user renames included. */
     channelLabel: (deviceUID: UID, channelName: string) => string
+    /** The unit a channel's label names, which makes an uncontrollable fan input a sensor. */
+    channelUnit: ChannelUnitOf
     profiles: readonly Named[]
     functions: readonly Named[]
     modes: readonly Named[]
@@ -114,7 +117,7 @@ export function buildIndex(deps: IndexDeps): SearchEntry[] {
         })
     }
 
-    for (const group of coolingChannels(deps.devices)) {
+    for (const group of coolingChannels(deps.devices, deps.channelUnit)) {
         for (const channel of group.channels) {
             entries.push({
                 id: `fan-${group.deviceUID}-${channel.channelName}`,
@@ -137,7 +140,7 @@ export function buildIndex(deps: IndexDeps): SearchEntry[] {
     // A fan appears under Cooling above and is not repeated here; custom sensors
     // get their own kind, since they are edited rather than only watched.
     const coolingIds = new Set(
-        coolingChannels(deps.devices).flatMap((group) =>
+        coolingChannels(deps.devices, deps.channelUnit).flatMap((group) =>
             group.channels.map((channel) => `${group.deviceUID}-${channel.channelName}`),
         ),
     )
@@ -157,7 +160,12 @@ export function buildIndex(deps: IndexDeps): SearchEntry[] {
                     custom ? t('layout.menu.customSensors') : deviceLabel(group.deviceUID),
                 ],
                 target: {
-                    route: channelRoute(deps.devices, group.deviceUID, sensor.channelName),
+                    route: channelRoute(
+                        deps.devices,
+                        group.deviceUID,
+                        sensor.channelName,
+                        deps.channelUnit,
+                    ),
                 },
             })
         }
