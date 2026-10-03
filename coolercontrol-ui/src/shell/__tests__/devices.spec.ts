@@ -133,4 +133,22 @@ describe('deviceSensorLinks', () => {
             ['led1', 'lighting'],
         ])
     })
+
+    it('lists an info-only channel in another unit under Monitoring', () => {
+        const liquid = fakeDevice('d2', DeviceType.LIQUIDCTL, [], {
+            flow: {},
+            plain: {},
+            led1: { lighting_modes: [{}] },
+        })
+        const links = (unitOf: (uid: string, channelName: string) => string | undefined) =>
+            deviceSensorLinks(liquid, unitOf).map((link) => [link.channelName, link.kind])
+        // Every label names a unit here: only the channel with a reading becomes a sensor.
+        expect(
+            links((_uid, channelName) => (channelName === 'plain' ? undefined : 'dL/h')),
+        ).toEqual([
+            ['flow', 'monitoring'],
+            ['led1', 'lighting'],
+        ])
+        expect(links(() => undefined)).toEqual([['led1', 'lighting']])
+    })
 })

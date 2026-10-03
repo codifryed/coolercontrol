@@ -102,8 +102,16 @@ export function deviceSensorLinks(device: Device, unitOf: ChannelUnitOf): Device
     }
     if (device.info != null) {
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.speed_options == null) continue
-            add(channelName, isUnitSensor(device, channelName, unitOf) ? 'monitoring' : 'cooling')
+            const unitSensor = isUnitSensor(device, channelName, unitOf)
+            if (channelInfo.speed_options != null) {
+                add(channelName, unitSensor ? 'monitoring' : 'cooling')
+                continue
+            }
+            // A read-only value in another unit, such as a flow meter. Lighting and LCD
+            // channels have no reading, whatever their label ends in.
+            const readable =
+                channelInfo.lighting_modes.length === 0 && channelInfo.lcd_modes.length === 0
+            if (unitSensor && readable) add(channelName, 'monitoring')
         }
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
             if (channelInfo.lighting_modes.length > 0) add(channelName, 'lighting')
