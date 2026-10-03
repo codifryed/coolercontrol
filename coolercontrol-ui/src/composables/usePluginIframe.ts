@@ -10,7 +10,7 @@ import { useConfirm } from '@/shell/confirm'
 import { useI18n } from 'vue-i18n'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { validatePluginFetchPath, buildSafeOptions } from '@/composables/pluginFetchValidation.ts'
-import { usePluginLinks } from '@/composables/usePluginLinks.ts'
+import { frameClickOf, usePluginLinks } from '@/composables/usePluginLinks.ts'
 import { THEME_CSS_VAR_NAMES } from '@/shell/themes.ts'
 
 export type PluginIframeMode = 'modal' | 'full_page'
@@ -259,7 +259,7 @@ export function usePluginIframe(pluginId: string, mode: PluginIframeMode) {
                 break
             }
             case 'openLink':
-                pluginLinks.requestLink(pluginId, event.data.url)
+                pluginLinks.requestLink(pluginId, event.data.url, false, frameClickOf(event))
                 break
         }
     }

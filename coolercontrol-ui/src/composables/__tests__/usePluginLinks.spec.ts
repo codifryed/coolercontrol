@@ -11,7 +11,12 @@ import { createI18n } from 'vue-i18n'
 import en from '@/i18n/locales/en.ts'
 import { closeDialog, openDialogs } from '@/shell/dialog'
 import { activeToasts, useToast } from '@/shell/toast'
-import { PLUGIN_LINK_COOLDOWN_MS, usePluginLinks } from '@/composables/usePluginLinks.ts'
+import {
+    frameClickOf,
+    PLUGIN_LINK_COOLDOWN_MS,
+    PLUGIN_LINK_LOCK_MS,
+    usePluginLinks,
+} from '@/composables/usePluginLinks.ts'
 
 // The real store drags the daemon client and the router in for one address.
 vi.mock('@/stores/DeviceStore.ts', () => ({
@@ -42,7 +47,16 @@ function setUserActivation(isActive: boolean | undefined): void {
     })
 }
 
-// One clock for the whole file: the cooldown is module state and outlives a test.
+// A plugin's message as each kind of browser delivers it.
+const NO_FIELD = undefined
+const FRAME_CLICK = true
+const NO_FRAME_CLICK = false
+
+function hostInput(type: 'pointerdown' | 'keydown' = 'pointerdown'): void {
+    window.dispatchEvent(new Event(type))
+}
+
+// One clock for the whole file: the limits are module state and outlive a test.
 beforeAll(() => {
     vi.useFakeTimers()
 })
@@ -51,9 +65,9 @@ afterAll(() => {
 })
 
 afterEach(() => {
-    // Closing, then the cooldown running out, is what lets the next request through.
+    // Closing, then every limit running out, is what lets the next request through.
     for (const dialog of [...openDialogs]) closeDialog(dialog.id)
-    vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS)
+    vi.advanceTimersByTime(PLUGIN_LINK_LOCK_MS)
     useToast().removeAll()
     setUserActivation(undefined)
 })
@@ -87,23 +101,91 @@ describe('usePluginLinks', () => {
         expect(openDialogs[0].options.data.url.pathname).toBe('/two')
     })
 
-    it('ignores every plugin for the cooldown after a prompt closes', () => {
+    it('asks at once after a cancel when a click in the frame came first', () => {
+        setUserActivation(true)
+        const links = pluginLinks()
+        for (const path of ['/one', '/two', '/three']) {
+            links.requestLink('my-plugin', `https://example.com${path}`, false, FRAME_CLICK)
+            expect(openDialogs).toHaveLength(1)
+            expect(openDialogs[0].options.data.url.pathname).toBe(path)
+            closeDialog(openDialogs[0].id)
+        }
+    })
+
+    it('ignores a plugin whose frame was not clicked, whatever the UI was', () => {
+        // A click on the UI leaves the window activated, not the frame.
+        setUserActivation(true)
+        const links = pluginLinks()
+        links.requestLink('my-plugin', 'https://example.com/', false, NO_FRAME_CLICK)
+        links.requestLink('my-plugin', 'file:///etc/passwd', false, NO_FRAME_CLICK)
+        hostInput()
+        links.requestLink('my-plugin', 'https://example.com/', false, NO_FRAME_CLICK)
+
+        expect(openDialogs).toHaveLength(0)
+        expect(activeToasts).toHaveLength(0)
+    })
+
+    it('asks once more in the cooldown, then not until the lock runs out', () => {
         // The click that closed the prompt leaves the window activated.
         setUserActivation(true)
         const links = pluginLinks()
-        links.requestLink('my-plugin', 'https://example.com/one')
+        links.requestLink('my-plugin', 'https://example.com/one', false, NO_FIELD)
         closeDialog(openDialogs[0].id)
 
-        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS - 1)
-        links.requestLink('my-plugin', 'https://example.com/two')
-        pluginLinks().requestLink('other-plugin', 'https://example.com/three')
-        links.requestLink('my-plugin', 'file:///etc/passwd')
+        // The second try at a link.
+        links.requestLink('my-plugin', 'https://example.com/two', false, NO_FIELD)
+        expect(openDialogs).toHaveLength(1)
+        expect(openDialogs[0].options.data.url.pathname).toBe('/two')
+        closeDialog(openDialogs[0].id)
+
+        links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
+        pluginLinks().requestLink('other-plugin', 'https://example.com/four', false, NO_FIELD)
+        vi.advanceTimersByTime(PLUGIN_LINK_LOCK_MS - 1)
+        links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
         expect(openDialogs).toHaveLength(0)
-        expect(activeToasts).toHaveLength(0)
 
         vi.advanceTimersByTime(1)
-        links.requestLink('my-plugin', 'https://example.com/two')
+        links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
         expect(openDialogs).toHaveLength(1)
+    })
+
+    it.each(['pointerdown', 'keydown'] as const)(
+        'asks once more after a %s on the UI lifts the lock',
+        (type) => {
+            setUserActivation(true)
+            const links = pluginLinks()
+            links.requestLink('my-plugin', 'https://example.com/one', false, NO_FIELD)
+            closeDialog(openDialogs[0].id)
+            links.requestLink('my-plugin', 'https://example.com/two', false, NO_FIELD)
+            closeDialog(openDialogs[0].id)
+            links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
+            expect(openDialogs).toHaveLength(0)
+
+            hostInput(type)
+            links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
+            expect(openDialogs).toHaveLength(1)
+            closeDialog(openDialogs[0].id)
+
+            // One prompt for that input, not a new run of them.
+            links.requestLink('my-plugin', 'https://example.com/four', false, NO_FIELD)
+            expect(openDialogs).toHaveLength(0)
+        },
+    )
+
+    it('keeps the lock through the input that closes the prompt', () => {
+        setUserActivation(true)
+        const links = pluginLinks()
+        links.requestLink('my-plugin', 'https://example.com/one', false, NO_FIELD)
+        closeDialog(openDialogs[0].id)
+        links.requestLink('my-plugin', 'https://example.com/two', false, NO_FIELD)
+
+        // Cancel, or Escape: either starts while the prompt is open.
+        hostInput('pointerdown')
+        hostInput('keydown')
+        closeDialog(openDialogs[0].id)
+
+        links.requestLink('my-plugin', 'https://example.com/three', false, NO_FIELD)
+        expect(openDialogs).toHaveLength(0)
     })
 
     it('asks about a link the UI itself offers during the cooldown, one at a time', () => {
@@ -126,19 +208,41 @@ describe('usePluginLinks', () => {
         expect(activeToasts).toHaveLength(1)
     })
 
-    it('says a link was blocked once per cooldown, however many are sent', () => {
+    it.each([
+        ['with a click in the frame', FRAME_CLICK],
+        ['in a browser that cannot say', NO_FIELD],
+    ])('says a link was blocked once per cooldown, %s', (_, isFrameClick) => {
         setUserActivation(true)
         const links = pluginLinks()
-        for (let i = 0; i < 50; i++) links.requestLink('my-plugin', 'file:///etc/passwd')
+        for (let i = 0; i < 50; i++) {
+            links.requestLink('my-plugin', 'file:///etc/passwd', false, isFrameClick)
+        }
         expect(activeToasts).toHaveLength(1)
 
-        // Nor does a valid link get a prompt in that time.
-        links.requestLink('my-plugin', 'https://example.com/')
-        expect(openDialogs).toHaveLength(0)
+        // A valid link still gets its prompt in that time.
+        links.requestLink('my-plugin', 'https://example.com/', false, isFrameClick)
+        expect(openDialogs).toHaveLength(1)
+        closeDialog(openDialogs[0].id)
 
         useToast().removeAll()
-        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS)
-        links.requestLink('my-plugin', 'file:///etc/passwd')
+        vi.advanceTimersByTime(PLUGIN_LINK_COOLDOWN_MS - 1)
+        links.requestLink('my-plugin', 'file:///etc/passwd', false, isFrameClick)
+        expect(activeToasts).toHaveLength(0)
+
+        vi.advanceTimersByTime(1)
+        links.requestLink('my-plugin', 'file:///etc/passwd', false, isFrameClick)
+        expect(activeToasts).toHaveLength(1)
+    })
+
+    it('says a link was blocked while locked', () => {
+        setUserActivation(true)
+        const links = pluginLinks()
+        links.requestLink('my-plugin', 'https://example.com/one', false, NO_FIELD)
+        closeDialog(openDialogs[0].id)
+        links.requestLink('my-plugin', 'https://example.com/two', false, NO_FIELD)
+        closeDialog(openDialogs[0].id)
+
+        links.requestLink('my-plugin', 'file:///etc/passwd', false, NO_FIELD)
         expect(activeToasts).toHaveLength(1)
     })
 
@@ -173,5 +277,24 @@ describe('usePluginLinks', () => {
         pluginLinks().requestLink('my-plugin', 'https://example.com/')
 
         expect(openDialogs).toHaveLength(1)
+    })
+})
+
+describe('frameClickOf', () => {
+    const message = (fields: object) =>
+        Object.assign(new MessageEvent('message', { data: { type: 'openLink' } }), fields)
+
+    it('cannot say in a browser without the field', () => {
+        const event = new MessageEvent('message')
+        expect('userActivation' in event).toBe(false)
+        expect(frameClickOf(event)).toBeUndefined()
+    })
+
+    it.each([
+        ['a message sent without it', { userActivation: null }, false],
+        ['a frame that was not clicked', { userActivation: { isActive: false } }, false],
+        ['a frame that was clicked', { userActivation: { isActive: true } }, true],
+    ])('reads %s', (_, fields, expected) => {
+        expect(frameClickOf(message(fields))).toBe(expected)
     })
 })
