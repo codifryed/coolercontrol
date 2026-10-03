@@ -22,7 +22,9 @@ import {
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
     SCALE_KEY_WATTS,
+    sharedAxisUnit,
     tickSteps,
+    unitTickSteps,
     type ScaleKey,
 } from '@/components/chartScales.ts'
 import { limitColor, type LimitLine } from '@/components/channelAttributes.ts'
@@ -503,11 +505,13 @@ const uPlotSeries: Array<uPlot.Series> = [{}]
 let hasDegreeAxis: boolean = false
 let hasFrequencyAxis: boolean = false
 let hasWattsAxis: boolean = false
+const frequencyLineUnits: Array<string | undefined> = []
 for (const lineName of uLineNames) {
     const key = lineKeys.get(lineName)
     const dash = key == null ? [] : lineDash(key)
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
         hasFrequencyAxis = true
+        frequencyLineUnits.push(allDevicesLineProperties.get(lineName)?.unit)
         uPlotSeries.push({
             label: lineName,
             scale: SCALE_KEY_RPM,
@@ -562,6 +566,9 @@ for (const lineName of uLineNames) {
         })
     }
 }
+// When every line on the frequency axis names the same label unit, the axis is titled with
+// it and its ticks read as reported. The lines stay plotted on the frequency scale.
+const frequencyAxisUnit = sharedAxisUnit(frequencyLineUnits)
 
 const hourFormat = settingsStore.time24 ? 'HH' : 'h'
 // Escalating tick increments so axes still render values at small chart
@@ -671,9 +678,10 @@ const uOptions: uPlot.Options = {
             side: 1,
             scale: SCALE_KEY_RPM,
             label:
-                settingsStore.frequencyPrecision === 1
+                frequencyAxisUnit ??
+                (settingsStore.frequencyPrecision === 1
                     ? t('components.axisOptions.rpmMhz')
-                    : t('components.axisOptions.krpmGhz'),
+                    : t('components.axisOptions.krpmGhz')),
             labelGap: deviceStore.getREMSize(1.0),
             // The band has to hold the gap plus the rotated title, or the title
             // spills into whatever axis comes next (the watts axis, when shown).
@@ -690,14 +698,23 @@ const uOptions: uPlot.Options = {
                 size: 5,
             },
             values: (_, axisValues) =>
-                axisValues.map((rawValue) =>
-                    groupDigits(
+                axisValues.map((rawValue) => {
+                    if (frequencyAxisUnit != null) {
+                        return groupDigits((rawValue * settingsStore.frequencyPrecision).toFixed(0))
+                    }
+                    return groupDigits(
                         settingsStore.frequencyPrecision === 1
                             ? rawValue.toFixed(0)
                             : rawValue.toFixed(1),
-                    ),
-                ),
+                    )
+                }),
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
+                if (frequencyAxisUnit != null) {
+                    // In krpm the scale is a thousandth of what the ticks read. uPlot draws a
+                    // fractional step only from its own 1, 2, 2.5, 5 series, and these stay on it.
+                    const precision = settingsStore.frequencyPrecision
+                    return unitTickSteps(scaleMax * precision).map((step) => step / precision)
+                }
                 if (settingsStore.frequencyPrecision === 1) {
                     if (scaleMax > 7000) {
                         return tickSteps(1000, scaleMax)

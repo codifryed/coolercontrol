@@ -27,3 +27,18 @@ export const tickSteps = (base: number, scaleMax: number): number[] => {
     steps.push(unit)
     return steps
 }
+
+const UNIT_TICKS_MAX = 10
+
+// Tick steps for an axis in a label unit. Its readings are whole numbers of any size, so the
+// steps are whole and leave about ten ticks whatever the scale.
+export const unitTickSteps = (scaleMax: number): number[] =>
+    tickSteps(1, scaleMax).filter(
+        (step) => Number.isInteger(step) && step * UNIT_TICKS_MAX >= scaleMax,
+    )
+
+// The label unit an axis can be titled with: the one every line on it names.
+export const sharedAxisUnit = (units: Array<string | undefined>): string | undefined => {
+    const first = units[0]
+    return units.every((unit) => unit === first) ? first : undefined
+}
