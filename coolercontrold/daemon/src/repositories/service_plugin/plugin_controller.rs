@@ -296,7 +296,8 @@ impl<M: ServiceManager> PluginController<M> {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        if let Err(err) = secure_config_file(&config_path, self.owner(&manifest)) {
+        let owner = self.owner(&manifest).map(Owner::resolve);
+        if let Err(err) = secure_config_file(&config_path, owner.as_ref()) {
             warn!(
                 "Failed to secure plugin config file {}: {err}",
                 config_path.display()
@@ -651,6 +652,8 @@ async fn await_running(manager: &impl ServiceManager, service_id: &ServiceId) ->
 /// A failure is logged and the plugin is started regardless: one that cannot use its own
 /// files says so in its service log.
 pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>) {
+    let owner = owner.map(Owner::resolve);
+    let owner = owner.as_ref();
     if let Err(err) = secure_plugin_folder(&manifest.path, owner).await {
         warn!(
             "Failed to secure plugin folder {}: {err}",
@@ -683,7 +686,7 @@ pub async fn secure_plugin_files(manifest: &ServiceManifest, owner: Option<&str>
 /// guarantee that nothing runs as its user: every unprivileged plugin runs as the same one,
 /// and an init system restarts a plugin that keeps exiting whenever it sees fit. So root's
 /// entries are never handed over and taken back, they are left out of the handover.
-pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()> {
+async fn secure_plugin_folder(path: &Path, owner: Option<&Owner<'_>>) -> Result<()> {
     let Some(owner) = owner else {
         return Ok(());
     };
@@ -697,7 +700,7 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
     let entries = secure_folder_entries(path, owner).await;
     let manifest = secure_manifest(path);
     let credentials = secure_daemon_credentials(path);
-    let handover = hand_over_entries(path, owner).await;
+    let handover = hand_over_entries(path, owner.name).await;
     entries.and(manifest).and(credentials).and(handover)
 }
 
@@ -706,7 +709,7 @@ pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()
 /// The owner of a directory can rename or delete any entry in it, whoever owns the entry, so
 /// a plugin that owned its folder could swap the root-owned manifest or TLS pin for a file
 /// of its own. Under a root-owned folder with the sticky bit, it can only replace what it owns.
-async fn secure_folder_entries(plugin_dir: &Path, owner: &str) -> Result<()> {
+async fn secure_folder_entries(plugin_dir: &Path, owner: &Owner<'_>) -> Result<()> {
     // The mode first: a root-owned folder without the group write bit would lock the
     // plugin out of its own files, so a failure here leaves the folder as it was.
     cc_fs::set_permissions(
@@ -714,11 +717,12 @@ async fn secure_folder_entries(plugin_dir: &Path, owner: &str) -> Result<()> {
         Permissions::from_mode(PLUGIN_FOLDER_PERMISSIONS),
     )
     .await?;
-    let group = owner_ids(owner).map(|(_, gid)| gid);
+    let ids = owner.ids();
     // Root takes the folder even when the plugin's group cannot be found.
-    std::os::unix::fs::chown(plugin_dir, Some(0), group.as_ref().ok().copied())
+    let gid = ids.as_ref().ok().map(|ids| ids.gid);
+    std::os::unix::fs::chown(plugin_dir, Some(ROOT_IDS.uid), gid)
         .with_context(|| format!("Taking plugin folder {}", plugin_dir.display()))?;
-    group.map(|_| ())
+    ids.map(|_| ())
 }
 
 /// Gives `owner` every entry of the plugin folder that is not root's, and what is under it.
@@ -772,7 +776,7 @@ fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
     let mut outcome = Ok(());
     for file_name in [trust::TOKEN_FILE_NAME, trust::PIN_FILE_NAME] {
         let path = plugin_dir.join(file_name);
-        let secured = secure_file(&path, PLUGIN_CREDENTIAL_PERMISSIONS, Some(ROOT_USER));
+        let secured = secure_file(&path, PLUGIN_CREDENTIAL_PERMISSIONS, Some(&Owner::ROOT));
         let result = match secured {
             Ok(Secured::Done | Secured::Absent) => Ok(()),
             // Left in place, the daemon would read and write its credentials through it. A
@@ -790,7 +794,11 @@ fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
 /// Returns `manifest.toml` to root and drops any group or world write bit left on it.
 fn secure_manifest(plugin_dir: &Path) -> Result<()> {
     let manifest_path = plugin_dir.join(SERVICE_MANIFEST_FILE_NAME);
-    let secured = secure_file(&manifest_path, PLUGIN_MANIFEST_PERMISSIONS, Some(ROOT_USER))?;
+    let secured = secure_file(
+        &manifest_path,
+        PLUGIN_MANIFEST_PERMISSIONS,
+        Some(&Owner::ROOT),
+    )?;
     match secured {
         Secured::Done | Secured::Absent => Ok(()),
         Secured::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
@@ -798,7 +806,7 @@ fn secure_manifest(plugin_dir: &Path) -> Result<()> {
     }
 }
 
-pub fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {
+fn secure_config_file(path: &Path, owner: Option<&Owner<'_>>) -> Result<()> {
     match secure_file(path, PLUGIN_CONFIG_FILE_PERMISSIONS, owner)? {
         Secured::Done => Ok(()),
         Secured::Absent => Err(anyhow!("{} does not exist", path.display())),
@@ -828,7 +836,7 @@ enum Secured {
 /// it runs as root, or any file on the system. The entry is therefore opened without
 /// following a link, and checked and changed through that one descriptor, so that nothing
 /// can be swapped in between the check and the change.
-fn secure_file(path: &Path, mode: u32, owner: Option<&str>) -> Result<Secured> {
+fn secure_file(path: &Path, mode: u32, owner: Option<&Owner<'_>>) -> Result<Secured> {
     let opened = OpenOptions::new()
         .read(true)
         // NOFOLLOW refuses a symlink. NONBLOCK keeps a planted FIFO from hanging the open.
@@ -853,23 +861,72 @@ fn secure_file(path: &Path, mode: u32, owner: Option<&str>) -> Result<Secured> {
     Ok(Secured::Done)
 }
 
-fn set_mode_and_owner(file: &File, mode: u32, owner: Option<&str>) -> Result<()> {
-    // The mode first, as it needs no lookup: a missing plugin user must not leave the
+fn set_mode_and_owner(file: &File, mode: u32, owner: Option<&Owner<'_>>) -> Result<()> {
+    // The mode first, as it needs no owner: a missing plugin user must not leave the
     // file open to others.
     file.set_permissions(Permissions::from_mode(mode))?;
     let Some(owner) = owner else {
         return Ok(());
     };
-    let (uid, gid) = owner_ids(owner)?;
-    Ok(std::os::unix::fs::fchown(file, Some(uid), Some(gid))?)
+    let ids = owner.ids()?;
+    std::os::unix::fs::fchown(file, Some(ids.uid), Some(ids.gid))?;
+    Ok(())
+}
+
+/// A user and the group that carries its name, as the numbers ownership is set with.
+#[derive(Clone, Copy)]
+struct OwnerIds {
+    uid: u32,
+    gid: u32,
+}
+
+const ROOT_IDS: OwnerIds = OwnerIds { uid: 0, gid: 0 };
+
+/// Who a plugin's files are handed to.
+///
+/// Looked up once for a whole handover and passed along: the lookup reads the system's user
+/// database, which can block, and a handover runs on the runtime thread.
+struct Owner<'a> {
+    name: &'a str,
+    /// An error where the system has no such user or group. Kept, so that each step fails
+    /// with it only after doing what needs no ids.
+    ids: Result<OwnerIds>,
+}
+
+impl<'a> Owner<'a> {
+    /// Root's ids are fixed, so what is root's is secured without a lookup.
+    const ROOT: Owner<'static> = Owner {
+        name: ROOT_USER,
+        ids: Ok(ROOT_IDS),
+    };
+
+    fn resolve(name: &'a str) -> Self {
+        assert!(name.is_empty().not(), "ownership needs a user name");
+        if name == ROOT_USER {
+            return Self::ROOT;
+        }
+        Self {
+            name,
+            ids: owner_ids(name),
+        }
+    }
+
+    fn ids(&self) -> Result<OwnerIds> {
+        match &self.ids {
+            Ok(ids) => Ok(*ids),
+            Err(err) => Err(anyhow!("{err:#}")),
+        }
+    }
 }
 
 /// The uid of `owner` and the gid of the group that carries its name.
-fn owner_ids(owner: &str) -> Result<(u32, u32)> {
-    assert!(owner.is_empty().not(), "ownership needs a user name");
+fn owner_ids(owner: &str) -> Result<OwnerIds> {
     let user = User::from_name(owner)?.ok_or_else(|| anyhow!("There is no user {owner}"))?;
     let group = Group::from_name(owner)?.ok_or_else(|| anyhow!("There is no group {owner}"))?;
-    Ok((user.uid.as_raw(), group.gid.as_raw()))
+    Ok(OwnerIds {
+        uid: user.uid.as_raw(),
+        gid: group.gid.as_raw(),
+    })
 }
 
 /// Removes an entry that stands where a plugin file belongs but is a link, or not a regular
@@ -1885,7 +1942,7 @@ mod tests {
                 std::fs::set_permissions(path, Permissions::from_mode(0o666)).unwrap();
             }
 
-            let _ = secure_plugin_folder(dir.path(), Some(CC_PLUGIN_USER)).await;
+            let _ = secure_plugin_folder(dir.path(), Some(&Owner::resolve(CC_PLUGIN_USER))).await;
 
             let manifest_mode = std::fs::metadata(&manifest_path)
                 .unwrap()
@@ -2043,6 +2100,36 @@ mod tests {
         assert!(manifest_path.symlink_metadata().is_ok());
     }
 
+    /// Goal: the owner is looked up once, ahead of the handover, and a system without the
+    /// plugin user must still have every mode set, since a mode needs no owner. A lookup
+    /// that fails early must not turn into files that were never secured.
+    /// Method: hand a plugin's files to a user that does not exist and read the modes back.
+    #[test]
+    fn a_handover_to_an_unknown_user_still_sets_every_mode() {
+        crate::sidecar::ensure_test_handle();
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let manifest_path = dir.path().join(SERVICE_MANIFEST_FILE_NAME);
+            let config_path = dir.path().join(PLUGIN_CONFIG_FILE_NAME);
+            std::fs::write(&manifest_path, "").unwrap();
+            std::fs::write(&config_path, "{}").unwrap();
+            for path in [&manifest_path, &config_path] {
+                std::fs::set_permissions(path, Permissions::from_mode(0o666)).unwrap();
+            }
+            let manifest = managed_manifest(dir.path().to_path_buf());
+
+            secure_plugin_files(&manifest, Some("cc-no-such-user")).await;
+
+            let mode_of = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode();
+            assert_eq!(mode_of(dir.path()) & 0o7777, PLUGIN_FOLDER_PERMISSIONS);
+            assert_eq!(mode_of(&manifest_path) & 0o777, PLUGIN_MANIFEST_PERMISSIONS);
+            assert_eq!(
+                mode_of(&config_path) & 0o777,
+                PLUGIN_CONFIG_FILE_PERMISSIONS
+            );
+        });
+    }
+
     /// Goal: the manifest must not stay group- or world-writable, since it declares `privileged`
     /// and therefore decides whether the plugin runs as root.
     /// Methodology: leave a 0666 manifest behind, secure the folder, and re-read the mode. This
@@ -2056,7 +2143,7 @@ mod tests {
             std::fs::write(&manifest_path, "id = \"test\"\n").unwrap();
             std::fs::set_permissions(&manifest_path, Permissions::from_mode(0o666)).unwrap();
 
-            let _ = secure_plugin_folder(dir.path(), Some(ROOT_USER)).await;
+            let _ = secure_plugin_folder(dir.path(), Some(&Owner::ROOT)).await;
 
             let mode = std::fs::metadata(&manifest_path)
                 .unwrap()
@@ -2080,7 +2167,7 @@ mod tests {
         crate::rt::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
 
-            let _ = secure_plugin_folder(dir.path(), Some(ROOT_USER)).await;
+            let _ = secure_plugin_folder(dir.path(), Some(&Owner::ROOT)).await;
 
             let mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
             assert_eq!(mode & 0o7777, PLUGIN_FOLDER_PERMISSIONS);
@@ -2100,7 +2187,7 @@ mod tests {
             }
             let dir = tempfile::tempdir().unwrap();
 
-            let result = secure_plugin_folder(dir.path(), Some(ROOT_USER)).await;
+            let result = secure_plugin_folder(dir.path(), Some(&Owner::ROOT)).await;
 
             assert!(result.is_ok(), "Missing manifest must not be an error");
         });
@@ -2124,12 +2211,15 @@ mod tests {
             let nested = dir.path().join("data.txt");
             std::fs::write(&nested, "x").unwrap();
 
-            let result = secure_plugin_folder(dir.path(), Some(CC_PLUGIN_USER)).await;
-            if result.is_err() {
+            let owner = Owner::resolve(CC_PLUGIN_USER);
+            if owner.ids().is_err() {
                 // Skip: the plugin user does not exist on this machine.
                 return;
             }
 
+            let result = secure_plugin_folder(dir.path(), Some(&owner)).await;
+
+            assert!(result.is_ok(), "{result:?}");
             let manifest_uid = std::fs::metadata(&manifest_path).unwrap().uid();
             let nested_uid = std::fs::metadata(&nested).unwrap().uid();
             let folder = std::fs::metadata(dir.path()).unwrap();
@@ -2158,7 +2248,7 @@ mod tests {
 
             // secure_config_file will set permissions and attempt chown.
             // chown may fail if not root, but permissions should still be set.
-            let _ = secure_config_file(&config_path, Some("root"));
+            let _ = secure_config_file(&config_path, Some(&Owner::ROOT));
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
             assert_eq!(
@@ -2176,7 +2266,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let config_path = dir.path().join("nonexistent.json");
 
-            let result = secure_config_file(&config_path, Some("root"));
+            let result = secure_config_file(&config_path, Some(&Owner::ROOT));
             assert!(result.is_err(), "Should fail for nonexistent file");
         });
     }
@@ -2193,7 +2283,7 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let result = secure_config_file(&config_path, Some("root"));
+            let result = secure_config_file(&config_path, Some(&Owner::ROOT));
             assert!(
                 result.is_err(),
                 "chown to root should fail when not running as root"
@@ -2213,7 +2303,7 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let result = secure_config_file(&config_path, Some("root"));
+            let result = secure_config_file(&config_path, Some(&Owner::ROOT));
             assert!(result.is_ok(), "chown to root should succeed as root");
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
@@ -2233,13 +2323,13 @@ mod tests {
             let config_path = dir.path().join("config.json");
             std::fs::write(&config_path, "{}").unwrap();
 
-            let _ = secure_config_file(&config_path, Some("root"));
+            let _ = secure_config_file(&config_path, Some(&Owner::ROOT));
 
             // Simulate a rewrite that resets permissions
             std::fs::write(&config_path, "{\"updated\": true}").unwrap();
             std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
 
-            let _ = secure_config_file(&config_path, Some("root"));
+            let _ = secure_config_file(&config_path, Some(&Owner::ROOT));
 
             let perms = std::fs::metadata(&config_path).unwrap().permissions();
             assert_eq!(
