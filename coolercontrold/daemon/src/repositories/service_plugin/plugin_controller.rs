@@ -23,6 +23,7 @@ use nix::unistd::{Group, User};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions, Permissions};
+use std::io::{Read, Write};
 use std::ops::Not;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -254,30 +255,23 @@ impl<M: ServiceManager> PluginController<M> {
     pub async fn load_plugin_config_file(&self, plugin_id: &str) -> Result<String> {
         let manifest = self.manifest(plugin_id)?;
         let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-        let config_result = cc_fs::read_txt(&config_path).await.with_context(|| {
-            format!(
-                "Loading Plugin configuration file {}",
-                config_path.display()
-            )
-        });
-        match config_result {
-            Ok(config) => Ok(config),
+        let path = config_path.clone();
+        // Off the runtime thread: these are blocking calls, on a file the plugin sizes.
+        match crate::rt::spawn_blocking(move || read_config_file(&path)).await? {
+            Ok(Some(config)) => Ok(config),
+            Ok(None) => {
+                debug!("Plugin Config file for {plugin_id} not found. Using empty config file.");
+                Ok(String::new())
+            }
             Err(err) => {
-                for cause in err.chain() {
-                    if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
-                        if io_err.kind() == std::io::ErrorKind::NotFound {
-                            debug!(
-                                "Plugin Config file for {plugin_id} not found. Using empty config file."
-                            );
-                            return Ok(String::new());
-                        }
-                    }
-                }
                 error!(
-                    "Error reading Plugin configuration file: {} - {err}",
+                    "Error reading Plugin configuration file: {} - {err:#}",
                     config_path.display()
                 );
-                Err(err)
+                Err(err.context(format!(
+                    "Loading Plugin configuration file {}",
+                    config_path.display()
+                )))
             }
         }
     }
@@ -285,25 +279,18 @@ impl<M: ServiceManager> PluginController<M> {
     pub async fn save_plugin_config_file(&self, plugin_id: &str, config: String) -> Result<()> {
         let manifest = self.manifest(plugin_id)?;
         let config_path = manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-        cc_fs::write_string(&config_path, config)
-            .await
+        let path = config_path.clone();
+        let is_managed = manifest.is_managed();
+        let owner = self.owner(&manifest);
+        // Off the runtime thread, as the load is.
+        crate::rt::spawn_blocking(move || write_config_file(&path, &config, is_managed, owner))
+            .await?
             .with_context(|| {
                 format!(
                     "Saving Plugin configuration file: {}",
                     config_path.display()
                 )
-            })?;
-        if manifest.is_managed().not() {
-            return Ok(());
-        }
-        let owner = self.owner(&manifest).map(Owner::resolve);
-        if let Err(err) = secure_config_file(&config_path, owner.as_ref()) {
-            warn!(
-                "Failed to secure plugin config file {}: {err}",
-                config_path.display()
-            );
-        }
-        Ok(())
+            })
     }
 
     pub fn get_plugin_ui_dir(&self, plugin_id: &str) -> Result<PathBuf> {
@@ -801,7 +788,7 @@ fn secure_manifest(plugin_dir: &Path) -> Result<()> {
     )?;
     match secured {
         Entry::File(_) | Entry::Absent => Ok(()),
-        Entry::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
+        Entry::NotAFile => Err(refused_non_file(&manifest_path)),
         Entry::HardLinked => Err(refused_hard_link(&manifest_path)),
     }
 }
@@ -813,6 +800,80 @@ fn secure_config_file(path: &Path, owner: Option<&Owner<'_>>) -> Result<()> {
         Entry::NotAFile => remove_planted(path),
         Entry::HardLinked => Err(refused_hard_link(path)),
     }
+}
+
+/// The content of a plugin's config file, or `None` where the plugin has none yet.
+///
+/// The plugin's page is given this text. Read through a link the plugin put in the file's
+/// place, it would be the text of any file that root can read: see `open_entry`.
+fn read_config_file(path: &Path) -> Result<Option<String>> {
+    let mut file = match open_entry(path, OpenOptions::new().read(true))? {
+        Entry::File(file) => file,
+        Entry::Absent => return Ok(None),
+        Entry::NotAFile => return Err(refused_non_file(path)),
+        Entry::HardLinked => return Err(refused_hard_link(path)),
+    };
+    let mut config = String::new();
+    file.read_to_string(&mut config)?;
+    Ok(Some(config))
+}
+
+/// Replaces the content of a plugin's config file, which is created where there is none.
+///
+/// The plugin's page chooses this text. Written through a link the plugin put in the file's
+/// place, it would go to any file on the system, the plugin's own manifest among them: see
+/// `open_entry`. The config of a managed plugin is kept to `owner` alone, which is set
+/// through the same descriptor and before the text goes in.
+fn write_config_file(
+    path: &Path,
+    config: &str,
+    is_managed: bool,
+    owner: Option<&str>,
+) -> Result<()> {
+    let file = open_config_for_write(path)?;
+    if is_managed {
+        let owner = owner.map(Owner::resolve);
+        let secured = set_mode_and_owner(&file, PLUGIN_CONFIG_FILE_PERMISSIONS, owner.as_ref());
+        if let Err(err) = secured {
+            warn!(
+                "Failed to secure plugin config file {}: {err}",
+                path.display()
+            );
+        }
+    }
+    // Emptied only now, once it is known to be the plugin's config alone. An open that
+    // truncates would have emptied a file with a second name before that was seen.
+    file.set_len(0)?;
+    (&file).write_all(config.as_bytes())?;
+    Ok(())
+}
+
+/// Opens a plugin's config file for a save, and creates it where there is none.
+///
+/// A symlink, or anything else that is not a file, is removed and a file is created in its
+/// place, which is what a handover does with one: see `secure_config_file`. The save is the
+/// user's, and what the plugin planted does not get to lose it.
+fn open_config_for_write(path: &Path) -> Result<File> {
+    let open = || open_entry(path, OpenOptions::new().write(true).create(true));
+    let entry = match open()? {
+        Entry::NotAFile => {
+            remove_planted(path)?;
+            // Once: an entry that is planted again right away fails the save.
+            open()?
+        }
+        entry => entry,
+    };
+    match entry {
+        Entry::File(file) => Ok(file),
+        Entry::NotAFile => Err(refused_non_file(path)),
+        Entry::HardLinked => Err(refused_hard_link(path)),
+        // The file was to be created, so it is its folder that is not there.
+        Entry::Absent => Err(anyhow!("The folder of {} is missing", path.display())),
+    }
+}
+
+fn refused_non_file(path: &Path) -> anyhow::Error {
+    anyhow!("{} is not a regular file", path.display())
 }
 
 fn refused_hard_link(path: &Path) -> anyhow::Error {
@@ -846,6 +907,8 @@ fn open_entry(path: &Path, options: &mut OpenOptions) -> Result<Entry> {
         Ok(file) => file,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Entry::Absent),
         Err(err) if err.raw_os_error() == Some(libc::ELOOP) => return Ok(Entry::NotAFile),
+        // A FIFO that nobody reads, opened for writing, or a socket.
+        Err(err) if err.raw_os_error() == Some(libc::ENXIO) => return Ok(Entry::NotAFile),
         Err(err) => return Err(err).with_context(|| format!("Opening {}", path.display())),
     };
     let metadata = file.metadata()?;
@@ -2041,6 +2104,187 @@ mod tests {
 
         assert!(result.is_err());
         assert_untouched(&sentinel);
+    }
+
+    /// A controller that knows one managed plugin, and the path of that plugin's config.
+    fn controller_and_config_path(plugins_dir: &Path) -> (PluginController, PathBuf) {
+        let controller = controller_with_edited_manifest(plugins_dir, |_| {});
+        let config_path = plugins_dir
+            .join("test-plugin")
+            .join(PLUGIN_CONFIG_FILE_NAME);
+        (controller, config_path)
+    }
+
+    fn make_fifo(path: &Path) {
+        let path_c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        // SAFETY: CString is valid; mode is a standard POSIX value; mkfifo is safe for
+        // these args.
+        let rc = unsafe { libc::mkfifo(path_c.as_ptr(), 0o600) };
+        assert_eq!(rc, 0, "mkfifo failed: {}", std::io::Error::last_os_error());
+    }
+
+    /// Goal: the plugin owns its config, so it can put a link in its place, and its own page
+    /// chooses the text that is saved. A save through that link has root write the plugin's
+    /// text to any file: to the plugin's manifest, which sets `privileged`.
+    /// Method: make the config a link to a file and to nothing, then save. The file has to
+    /// stay as it was, nothing may be created, and the text ends up in a file of its own.
+    #[test]
+    fn a_config_save_never_writes_through_a_planted_link() {
+        crate::rt::test_runtime(async {
+            let outside = tempfile::tempdir().unwrap();
+            let sentinel = sentinel(outside.path());
+            for target in [sentinel.clone(), outside.path().join("absent")] {
+                let plugins_dir = tempfile::tempdir().unwrap();
+                let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+                std::os::unix::fs::symlink(&target, &config_path).unwrap();
+
+                let saved = controller
+                    .save_plugin_config_file("test-plugin", "{}".to_string())
+                    .await;
+
+                assert!(saved.is_ok(), "{saved:?}");
+                assert_untouched(&sentinel);
+                assert!(outside.path().join("absent").exists().not());
+                assert!(config_path.symlink_metadata().unwrap().is_file());
+                assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{}");
+            }
+        });
+    }
+
+    /// Goal: a config with a second name is some other file as well, so a save leaves it
+    /// alone. That includes emptying it, which an open that truncates does before any check.
+    /// Method: give a sentinel the config's name too, save, and require an error and the
+    /// sentinel's content and mode as they were.
+    #[test]
+    fn a_config_save_refuses_a_hard_linked_config() {
+        crate::rt::test_runtime(async {
+            let outside = tempfile::tempdir().unwrap();
+            let sentinel = sentinel(outside.path());
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+            std::fs::hard_link(&sentinel, &config_path).unwrap();
+
+            let saved = controller
+                .save_plugin_config_file("test-plugin", "{}".to_string())
+                .await;
+
+            assert!(saved.is_err());
+            assert_untouched(&sentinel);
+        });
+    }
+
+    /// Goal: a load hands the config's text to the plugin's page, so through a link it would
+    /// hand the plugin any file that root can read.
+    /// Method: make the config a symlink, then a second name, for a sentinel. Neither load
+    /// may return the sentinel's text.
+    #[test]
+    fn a_config_load_never_reads_through_a_link() {
+        crate::rt::test_runtime(async {
+            let outside = tempfile::tempdir().unwrap();
+            let sentinel = sentinel(outside.path());
+            let links: [fn(&Path, &Path) -> std::io::Result<()>; 2] = [
+                |target, link| std::os::unix::fs::symlink(target, link),
+                |target, link| std::fs::hard_link(target, link),
+            ];
+            for link in links {
+                let plugins_dir = tempfile::tempdir().unwrap();
+                let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+                link(&sentinel, &config_path).unwrap();
+
+                let loaded = controller.load_plugin_config_file("test-plugin").await;
+
+                assert!(loaded.is_err(), "{loaded:?}");
+            }
+        });
+    }
+
+    /// Goal: opening a FIFO waits for its other end, and a plugin that made its config one
+    /// would have the daemon wait for good. A load refuses it, a save replaces it.
+    /// Method: make the config a FIFO with no other end, then load and save within a time
+    /// limit, so that a wait fails this test and does not hang the suite.
+    #[test]
+    fn a_config_that_is_a_fifo_never_makes_the_daemon_wait() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+            make_fifo(&config_path);
+            let limit = Duration::from_secs(5);
+
+            let loaded =
+                crate::rt::timeout(limit, controller.load_plugin_config_file("test-plugin")).await;
+            let saved = crate::rt::timeout(
+                limit,
+                controller.save_plugin_config_file("test-plugin", "{}".to_string()),
+            )
+            .await;
+
+            assert!(loaded.expect("the load waited for the FIFO").is_err());
+            let saved = saved.expect("the save waited for the FIFO");
+            assert!(saved.is_ok(), "{saved:?}");
+            assert!(config_path.symlink_metadata().unwrap().is_file());
+            assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{}");
+        });
+    }
+
+    /// Goal: a save replaces the whole config, and a managed plugin's config is its owner's
+    /// alone from the first save on. A plugin with no config yet loads an empty one.
+    /// Method: load, save a long text and then a short one, and read back content and mode.
+    #[test]
+    fn a_config_save_replaces_the_content_and_keeps_it_private() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let (controller, config_path) = controller_and_config_path(plugins_dir.path());
+            let long_config = format!("{{\"key\": \"{}\"}}", "x".repeat(4096));
+
+            let before = controller.load_plugin_config_file("test-plugin").await;
+            for config in [long_config.as_str(), "{}"] {
+                controller
+                    .save_plugin_config_file("test-plugin", config.to_string())
+                    .await
+                    .unwrap();
+            }
+            let after = controller.load_plugin_config_file("test-plugin").await;
+
+            assert_eq!(before.unwrap(), "");
+            assert_eq!(after.unwrap(), "{}");
+            let mode = std::fs::metadata(&config_path)
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, PLUGIN_CONFIG_FILE_PERMISSIONS);
+        });
+    }
+
+    /// Goal: the daemon does not run an unmanaged plugin, so whoever does has to keep
+    /// reading its config. A save must leave the mode of that file as it found it.
+    /// Method: give an unmanaged plugin a config that others can read, save, and read back
+    /// the mode and the content.
+    #[test]
+    fn a_config_save_leaves_the_mode_of_an_unmanaged_config() {
+        crate::rt::test_runtime(async {
+            let plugins_dir = tempfile::tempdir().unwrap();
+            let controller = controller_with_edited_manifest(plugins_dir.path(), |registered| {
+                registered.executable = None;
+            });
+            let config_path = plugins_dir
+                .path()
+                .join("test-plugin")
+                .join(PLUGIN_CONFIG_FILE_NAME);
+            std::fs::write(&config_path, "{\"old\": true}").unwrap();
+            std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
+
+            let saved = controller
+                .save_plugin_config_file("test-plugin", "{}".to_string())
+                .await;
+
+            assert!(saved.is_ok(), "{saved:?}");
+            let mode = std::fs::metadata(&config_path)
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o644);
+            assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{}");
+        });
     }
 
     /// Goal: the daemon reads its token and writes its TLS pin by name, so a link planted
