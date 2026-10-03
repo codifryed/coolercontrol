@@ -380,6 +380,8 @@ if (shouldCreateAlert && route.query.max == null && selectedMetric.value === Cha
     chosenMax.value = maxLimit.value
 }
 
+// The thresholds are in the first source's unit.
+const thresholdSuffix = computed((): string => valueSuffix(selectedChannels.value[0]))
 const sourceGroups = computed(() =>
     channelSources.value.map((source) => ({
         label: source.deviceName,
@@ -387,7 +389,7 @@ const sourceGroups = computed(() =>
             label: channel.channelFrontendName,
             value: channelKey(channel),
             color: channel.lineColor,
-            rightText: `${groupDigits(channel.value)}${valueSuffix(channel.metric)}`,
+            rightText: `${groupDigits(channel.value)}${valueSuffix(channel)}`,
             disabled: selectedMetric.value != null && channel.metric !== selectedMetric.value,
         })),
     })),
@@ -417,13 +419,14 @@ const onSourcesChange = (value: string | string[] | undefined): void => {
     }
 }
 
-const valueSuffix = (metric: ChannelMetric | undefined): string => {
-    switch (metric) {
+// An RPM source takes the unit its channel's label names.
+const valueSuffix = (source: ReferenceSource | undefined): string => {
+    switch (source?.metric) {
         case ChannelMetric.Duty:
         case ChannelMetric.Load:
             return ` ${t('common.percentUnit')}`
         case ChannelMetric.RPM:
-            return ` ${t('common.rpmAbbr')}`
+            return ` ${settingsStore.rpmUnit(source.deviceUID, source.channelName)}`
         case ChannelMetric.Freq:
             return ` ${t('common.mhzAbbr')}`
         case ChannelMetric.Temp:
@@ -606,7 +609,7 @@ onMounted(async () => {
                                                     :safe-max="lockedMaxLimit"
                                                     :grouped="hasThresholdLock(selectedMetric)"
                                                     :step="step"
-                                                    :suffix="valueSuffix(selectedMetric)"
+                                                    :suffix="thresholdSuffix"
                                                     :disabled="selectedMetric == null"
                                                 />
                                             </div>
@@ -636,7 +639,7 @@ onMounted(async () => {
                                                 :safe-max="lockedMaxLimit"
                                                 :grouped="hasThresholdLock(selectedMetric)"
                                                 :step="step"
-                                                :suffix="valueSuffix(selectedMetric)"
+                                                :suffix="thresholdSuffix"
                                                 :disabled="selectedMetric == null"
                                             />
                                             <UiSlider
