@@ -4,6 +4,7 @@
 import { useI18n } from 'vue-i18n'
 import { DataType } from '@/models/Dashboard.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import {
     formatJitterValue,
     formatSpan,
@@ -31,12 +32,12 @@ export function useStatFormat(): StatFormat {
     const formatStat = (value: number | null | undefined, dataType: DataType): string =>
         value == null
             ? '-'
-            : formatStatValue(value, dataType, settingsStore.frequencyPrecision) +
+            : groupDigits(formatStatValue(value, dataType, settingsStore.frequencyPrecision)) +
               unitSuffix(dataType)
     const formatJitter = (value: number | null | undefined, dataType: DataType): string =>
         value == null
             ? '-'
-            : formatJitterValue(value, dataType, settingsStore.frequencyPrecision) +
+            : groupDigits(formatJitterValue(value, dataType, settingsStore.frequencyPrecision)) +
               unitSuffix(dataType)
     const windowLabelOf = (payload: WindowStatsPayload | null, rangeMinutes: number): string =>
         payload?.zoomed

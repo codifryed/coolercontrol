@@ -5,6 +5,7 @@ import uPlot from 'uplot'
 import { mdiMinus } from '@mdi/js'
 import type { Color } from '@/models/Device.ts'
 import { escapeHtml, safeColor } from '@/components/htmlEscaping.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 import {
     SCALE_KEY_PERCENT,
@@ -239,7 +240,7 @@ export const tooltipPlugin = (
                     // @ts-ignore
                 } else if (series.label!.endsWith('rpm')) {
                     suffix = t('common.rpmAbbr')
-                    lineValue = (seriesValue * precisionRef).toFixed(0)
+                    lineValue = groupDigits((seriesValue * precisionRef).toFixed(0))
                     // @ts-ignore
                 } else if (series.label!.endsWith('watts')) {
                     lineValue = seriesValue.toFixed(1)

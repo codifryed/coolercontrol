@@ -39,6 +39,7 @@ import {
 } from '@/components/chartStats.ts'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import type { SensorAndChannelSettings } from '@/models/UISettings.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
@@ -683,9 +684,11 @@ const uOptions: uPlot.Options = {
             },
             values: (_, axisValues) =>
                 axisValues.map((rawValue) =>
-                    settingsStore.frequencyPrecision === 1
-                        ? rawValue.toFixed(0)
-                        : rawValue.toFixed(1),
+                    groupDigits(
+                        settingsStore.frequencyPrecision === 1
+                            ? rawValue.toFixed(0)
+                            : rawValue.toFixed(1),
+                    ),
                 ),
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (settingsStore.frequencyPrecision === 1) {

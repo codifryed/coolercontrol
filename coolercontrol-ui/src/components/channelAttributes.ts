@@ -3,6 +3,7 @@
 
 import type { ChannelAttribute, ChannelAttributeKind } from '@/models/ChannelAttributes.ts'
 import { SCALE_KEY_PERCENT, SCALE_KEY_RPM, type ScaleKey } from '@/components/chartScales.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 type Translate = (key: string) => string
 
@@ -111,7 +112,7 @@ export function formatAttributeNumber(attribute: ChannelAttribute): string {
 }
 
 export function formatAttributeValue(attribute: ChannelAttribute, t: Translate): string {
-    const number = formatAttributeNumber(attribute)
+    const number = groupDigits(formatAttributeNumber(attribute))
     if (attribute.kind === 'TEMP_TYPE') {
         const key = TEMP_TYPE_KEYS[attribute.value]
         return key == null ? number : t(key)

@@ -10,6 +10,7 @@ import {
     limitLinesFrom,
 } from '@/components/channelAttributes.ts'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
+import { DIGIT_GROUP_SEPARATOR } from '@/shell/digitGroups.ts'
 import en from '@/i18n/locales/en.ts'
 
 // Resolves keys against the english locale, so a renamed key fails here too.
@@ -129,5 +130,16 @@ describe('attribute formatting', () => {
         ).toBe('-40.0 °C')
         expect(attributeLabel('POWER_CAP', t)).toBe('Power Cap')
         expect(attributeLabel('TEMP_RATED_MAX', t)).toBe('Rated Max')
+    })
+
+    it('groups a long limit for reading and keeps the plain number apart', () => {
+        // The Leakshield's pressure limit from issue #612.
+        const limit: ChannelAttribute = { name: 'fan1_max', kind: 'FAN_MAX', value: 472_800 }
+        expect(formatAttributeValue(limit, t)).toBe(`472${DIGIT_GROUP_SEPARATOR}800 rpm`)
+        // The alert editor reads this one back as a number.
+        expect(formatAttributeNumber(limit)).toBe('472800')
+        expect(limitLinesFrom([limit], 1, t)[0].label).toBe(
+            `fan1_max 472${DIGIT_GROUP_SEPARATOR}800 rpm`,
+        )
     })
 })
