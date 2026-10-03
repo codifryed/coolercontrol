@@ -197,9 +197,18 @@ const restartPlugin = async () => {
 
 /* Ask CoolerControl to open an external link in a new browser tab. The user confirms each
    link first. Only absolute http(s) links to another host are opened.
-   Plain <a href> links to another host go through this automatically. */
+   Plain <a href> links to another host go through this automatically.
+   Call it from a click on the page: a request that no recent click preceded is ignored. */
 const openLink = (url) => {
-    window.parent.postMessage({ type: 'openLink', url: String(url) }, document.location.origin)
+    const message = { type: 'openLink', url: String(url) }
+    const targetOrigin = document.location.origin
+    try {
+        // Tells CoolerControl whether a click on this page preceded the request.
+        window.parent.postMessage(message, { targetOrigin, includeUserActivation: true })
+    } catch {
+        // A browser without the options form reads the object as a bad origin.
+        window.parent.postMessage(message, targetOrigin)
+    }
 }
 
 // Data Exchange Functions

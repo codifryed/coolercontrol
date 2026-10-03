@@ -64,7 +64,7 @@ describe('cc-plugin-lib link routing', () => {
         expect(click('https://example.com/docs?a=1')).toBe(true)
         expect(postMessage).toHaveBeenCalledExactlyOnceWith(
             { type: 'openLink', url: 'https://example.com/docs?a=1' },
-            document.location.origin,
+            { targetOrigin: document.location.origin, includeUserActivation: true },
         )
     })
 
@@ -74,6 +74,20 @@ describe('cc-plugin-lib link routing', () => {
         expect(click('http://example.com/', {}, '<span>docs</span>')).toBe(true)
         expect(postMessage).toHaveBeenCalledExactlyOnceWith(
             { type: 'openLink', url: 'http://example.com/' },
+            { targetOrigin: document.location.origin, includeUserActivation: true },
+        )
+    })
+
+    it('posts the plain form to a browser that rejects the options form', () => {
+        setFramed(true)
+        postMessage.mockImplementationOnce(() => {
+            throw new SyntaxError('Invalid target origin')
+        })
+
+        expect(click('https://example.com/')).toBe(true)
+        expect(postMessage).toHaveBeenCalledTimes(2)
+        expect(postMessage).toHaveBeenLastCalledWith(
+            { type: 'openLink', url: 'https://example.com/' },
             document.location.origin,
         )
     })
