@@ -22,6 +22,7 @@ import {
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
     SCALE_KEY_WATTS,
+    tickSteps,
     type ScaleKey,
 } from '@/components/chartScales.ts'
 import { limitColor, type LimitLine } from '@/components/channelAttributes.ts'
@@ -559,6 +560,36 @@ const hourFormat = settingsStore.time24 ? 'HH' : 'h'
 // heights: uPlot picks the first increment whose ticks fit, so full-height
 // rendering is unchanged while smaller charts fall back to coarser steps.
 const incrSteps = (base: number): number[] => [base, base * 2, base * 2.5, base * 5, base * 10]
+
+// The frequency axis is sized for four-digit tick labels. A longer label widens it by what
+// it adds, measured off-screen in the axis font.
+const axisFont = `${deviceStore.getREMSize(1)}px sans-serif`
+const frequencyAxisSizeMin = deviceStore.getREMSize(2.5)
+const textMeasure = document.createElement('canvas').getContext('2d')
+const labelWidth = (label: string): number => {
+    if (textMeasure == null) return 0
+    textMeasure.font = axisFont
+    return textMeasure.measureText(label).width
+}
+const fourDigitsWidth = labelWidth('0000')
+let frequencyAxisSize = frequencyAxisSizeMin
+const frequencyAxisSizeOf = (
+    _self: uPlot,
+    values: string[] | null,
+    _axisIdx: number,
+    cycleNum: number,
+): number => {
+    // uPlot asks again while the layout settles. A second answer could keep it from settling.
+    if (cycleNum > 1) return frequencyAxisSize
+    let longest = ''
+    for (const value of values ?? []) {
+        if (value.length > longest.length) longest = value
+    }
+    const extra = Math.max(0, labelWidth(longest) - fourDigitsWidth)
+    frequencyAxisSize = Math.ceil(frequencyAxisSizeMin + extra)
+    return frequencyAxisSize
+}
+
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
@@ -642,8 +673,8 @@ const uOptions: uPlot.Options = {
             // labelFont, unlike font, seems to take rem values properly, and by is 1rem by default:
             labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
-            size: deviceStore.getREMSize(2.5),
-            font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            size: frequencyAxisSizeOf,
+            font: axisFont,
             ticks: {
                 show: true,
                 stroke: colors.themeColors.text_color_secondary,
@@ -659,7 +690,7 @@ const uOptions: uPlot.Options = {
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (settingsStore.frequencyPrecision === 1) {
                     if (scaleMax > 7000) {
-                        return incrSteps(1000)
+                        return tickSteps(1000, scaleMax)
                     } else if (scaleMax > 3000) {
                         return incrSteps(500)
                     } else if (scaleMax > 1300) {
@@ -671,7 +702,7 @@ const uOptions: uPlot.Options = {
                     }
                 } else {
                     if (scaleMax > 2) {
-                        return incrSteps(1)
+                        return tickSteps(1, scaleMax)
                     } else if (scaleMax > 1) {
                         return incrSteps(0.5)
                     } else {
