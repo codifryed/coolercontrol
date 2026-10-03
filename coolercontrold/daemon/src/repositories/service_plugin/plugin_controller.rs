@@ -775,8 +775,9 @@ fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
         let secured = secure_file(&path, PLUGIN_CREDENTIAL_PERMISSIONS, Some(ROOT_USER));
         let result = match secured {
             Ok(Secured::Done | Secured::Absent) => Ok(()),
-            // Left in place, the daemon would read and write its credentials through it.
-            Ok(Secured::NotAFile) => remove_planted(&path),
+            // Left in place, the daemon would read and write its credentials through it. A
+            // second name counts: whoever holds the other one reads and rewrites the file.
+            Ok(Secured::NotAFile | Secured::HardLinked) => remove_planted(&path),
             Err(err) => Err(err),
         };
         if let Err(err) = result {
@@ -793,6 +794,7 @@ fn secure_manifest(plugin_dir: &Path) -> Result<()> {
     match secured {
         Secured::Done | Secured::Absent => Ok(()),
         Secured::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
+        Secured::HardLinked => Err(refused_hard_link(&manifest_path)),
     }
 }
 
@@ -801,7 +803,12 @@ pub fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {
         Secured::Done => Ok(()),
         Secured::Absent => Err(anyhow!("{} does not exist", path.display())),
         Secured::NotAFile => remove_planted(path),
+        Secured::HardLinked => Err(refused_hard_link(path)),
     }
+}
+
+fn refused_hard_link(path: &Path) -> anyhow::Error {
+    anyhow!("{} is a hard link, and is left as it is", path.display())
 }
 
 /// What `secure_file` found at the path it was given.
@@ -810,6 +817,8 @@ enum Secured {
     Absent,
     /// A symlink or anything else that is not a regular file, and left untouched.
     NotAFile,
+    /// A regular file that has another name somewhere, and left untouched.
+    HardLinked,
 }
 
 /// Sets the mode of the regular file at `path` and, given an owner, its ownership.
@@ -837,10 +846,7 @@ fn secure_file(path: &Path, mode: u32, owner: Option<&str>) -> Result<Secured> {
     }
     // A second name for a file elsewhere: changing this one would change that one.
     if metadata.nlink() != 1 {
-        return Err(anyhow!(
-            "{} is a hard link, and is left as it is",
-            path.display()
-        ));
+        return Ok(Secured::HardLinked);
     }
     set_mode_and_owner(&file, mode, owner)
         .with_context(|| format!("Securing {}", path.display()))?;
@@ -866,14 +872,19 @@ fn owner_ids(owner: &str) -> Result<(u32, u32)> {
     Ok((user.uid.as_raw(), group.gid.as_raw()))
 }
 
-/// Removes an entry that stands where a plugin file belongs but is not a regular file.
+/// Removes an entry that stands where a plugin file belongs but is a link, or not a regular
+/// file at all.
 ///
-/// Only the entry goes: unlinking a symlink never touches what it points to.
+/// Only the entry goes: unlinking a link, symbolic or hard, never touches what it leads to.
 fn remove_planted(path: &Path) -> Result<()> {
-    std::fs::remove_file(path)
-        .with_context(|| format!("Removing {}, which is not a regular file", path.display()))?;
+    std::fs::remove_file(path).with_context(|| {
+        format!(
+            "Removing {}, which is not a file of its own",
+            path.display()
+        )
+    })?;
     warn!(
-        "Removed {}: it was not a regular file, and securing it would have changed \
+        "Removed {}: it was a link or not a regular file, and securing it would have changed \
          whatever it led to.",
         path.display()
     );
@@ -1990,6 +2001,28 @@ mod tests {
             "the token link stays"
         );
         assert!(pin_path.symlink_metadata().is_err(), "the pin link stays");
+    }
+
+    /// Goal: a credential with a second name is not the daemon's alone, since whoever holds
+    /// the other name reads and rewrites it. Refusing it would leave the daemon using it, so
+    /// it goes like a planted symlink does, and the file behind it stays as it was.
+    /// Method: give a sentinel the token's and the pin's name as well, then secure the
+    /// credentials. Both names have to go, with the sentinel's mode and content unchanged.
+    #[test]
+    fn hard_linked_credentials_are_removed_and_never_secured() {
+        let dir = tempfile::tempdir().unwrap();
+        let sentinel = sentinel(dir.path());
+        let token_path = dir.path().join(trust::TOKEN_FILE_NAME);
+        let pin_path = dir.path().join(trust::PIN_FILE_NAME);
+        std::fs::hard_link(&sentinel, &token_path).unwrap();
+        std::fs::hard_link(&sentinel, &pin_path).unwrap();
+
+        let result = secure_daemon_credentials(dir.path());
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_untouched(&sentinel);
+        assert!(token_path.symlink_metadata().is_err(), "the token stays");
+        assert!(pin_path.symlink_metadata().is_err(), "the pin stays");
     }
 
     /// Goal: a manifest that is a link is never secured through it, and never removed
