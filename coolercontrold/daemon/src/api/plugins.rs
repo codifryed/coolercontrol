@@ -748,13 +748,12 @@ mod tests {
     /// Goal: the UI frames a plugin page, and a browser checks every ancestor, so once the UI
     /// is embedded the page must admit the same ancestors or it renders blank. Method: the
     /// real handler over a plugin on disk, with and without a configured ancestor. Without
-    /// one the policy is the baseline, byte for byte. Every file carries the page's policy,
-    /// since a browser renders more than HTML as a document.
+    /// one the policy is the baseline, byte for byte.
     #[test]
     #[serial_test::serial(modes_file)]
     fn plugin_pages_admit_the_configured_frame_ancestors() {
         const ANCESTOR: &str = "https://cockpit.example.com:9090";
-        const FILES: [&str; 3] = ["index.html", "app.js", "icon.svg"];
+        const FILES: [&str; 1] = ["index.html"];
         crate::rt::test_runtime(async {
             let plugin_dir = tempfile::tempdir().unwrap();
             let controller = Rc::new(controller_with_ui(plugin_dir.path()));
@@ -784,12 +783,51 @@ mod tests {
                 let csp = csp.to_str().unwrap();
                 assert!(csp.contains(&format!("; frame-ancestors 'self' {ANCESTOR}; ")));
                 assert_eq!(csp.matches("frame-ancestors").count(), 1);
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Goal: a browser renders more than HTML as a document, SVG among them, and one served
+    /// without the policy would run its scripts in the daemon's origin. Method: the real
+    /// handler over a plugin on disk, with and without a configured ancestor, since the
+    /// policy differs between the two. Every file carries the page's policy.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn every_plugin_ui_file_carries_the_page_policy() {
+        const ANCESTOR: &str = "https://cockpit.example.com:9090";
+        const FILES: [&str; 3] = ["index.html", "app.js", "icon.svg"];
+        crate::rt::test_runtime(async {
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let controller = Rc::new(controller_with_ui(plugin_dir.path()));
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = AppState {
+                    plugin_handle: PluginHandle::new(controller, cancel_token.clone(), main_scope),
+                    ..crate::api::empty_app_state(&cancel_token, main_scope).await
+                };
+                let framed_state = AppState {
+                    frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
+                    ..state.clone()
+                };
+                let unframed = ui_file_responses(state, &FILES).await;
+                let framed = ui_file_responses(framed_state, &FILES).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
                 for responses in [&unframed, &framed] {
                     let page_csp = &responses[0].headers["content-security-policy"];
                     for file in &responses[1..] {
+                        assert_eq!(file.status, axum::http::StatusCode::OK);
                         assert_eq!(&file.headers["content-security-policy"], page_csp);
                     }
                 }
+                assert_ne!(
+                    unframed[0].headers["content-security-policy"],
+                    framed[0].headers["content-security-policy"]
+                );
                 Ok(())
             })
             .await
