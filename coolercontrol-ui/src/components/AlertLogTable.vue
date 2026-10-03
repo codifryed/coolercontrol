@@ -18,7 +18,7 @@ import { AlertLog, getAlertStateClass, getAlertStateDisplayName } from '@/models
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiInput from '@/shell/ui/UiInput.vue'
 import UiSelect from '@/shell/ui/UiSelect.vue'
@@ -78,10 +78,35 @@ const pagedLogs = computed(() => {
 watch([logSearch, logRows], () => {
     logPage.value = 1
 })
+
+// The message column takes all spare width, which alone would wrap a name at every word.
+// A name keeps to one line until it reaches this share of the text width the two columns
+// have together. Qt's Chrome 90 has no container queries, so the widths are measured.
+const NAME_WIDTH_SHARE = 0.4
+const table = ref<InstanceType<typeof UiTable>>()
+const timestampHead = ref<HTMLElement>()
+const stateHead = ref<HTMLElement>()
+const nameWidthMax = ref('none')
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+    const frame: HTMLElement | undefined = table.value?.$el
+    const timestamp = timestampHead.value
+    const state = stateHead.value
+    if (singleAlert.value || frame == null || timestamp == null || state == null) return
+    resizeObserver = new ResizeObserver(() => {
+        const style = getComputedStyle(state)
+        const cellPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+        const textWidth =
+            frame.clientWidth - timestamp.offsetWidth - state.offsetWidth - 2 * cellPadding
+        nameWidthMax.value = `${Math.max(0, Math.floor(textWidth * NAME_WIDTH_SHARE))}px`
+    })
+    for (const element of [frame, timestamp, state]) resizeObserver.observe(element)
+})
+onBeforeUnmount(() => resizeObserver?.disconnect())
 </script>
 
 <template>
-    <UiTable bordered class="w-full">
+    <UiTable ref="table" bordered class="w-full" :style="{ '--name-width-max': nameWidthMax }">
         <template #toolbar>
             <div
                 class="flex flex-wrap items-center justify-between gap-2 border-b border-border-one bg-bg-two p-2"
@@ -130,6 +155,7 @@ watch([logSearch, logRows], () => {
         <template #head>
             <tr>
                 <th
+                    ref="timestampHead"
                     class="cursor-pointer select-none hover:bg-surface-hover"
                     @click="logSortAsc = !logSortAsc"
                 >
@@ -142,7 +168,7 @@ watch([logSearch, logRows], () => {
                         />
                     </span>
                 </th>
-                <th>{{ t('common.state') }}</th>
+                <th ref="stateHead">{{ t('common.state') }}</th>
                 <th v-if="!singleAlert">{{ t('common.name') }}</th>
                 <th class="w-full">{{ t('common.message') }}</th>
             </tr>
@@ -161,7 +187,14 @@ watch([logSearch, logRows], () => {
                     {{ getAlertStateDisplayName(log.state) }}
                 </span>
             </td>
-            <td v-if="!singleAlert" class="underline">{{ log.name }}</td>
+            <td v-if="!singleAlert">
+                <!-- The longest word is the floor, as it is for plain cell text. -->
+                <span
+                    class="block w-max min-w-min max-w-[var(--name-width-max)] text-balance underline"
+                >
+                    {{ log.name }}
+                </span>
+            </td>
             <td class="w-full text-ellipsis">{{ log.message }}</td>
         </tr>
     </UiTable>
