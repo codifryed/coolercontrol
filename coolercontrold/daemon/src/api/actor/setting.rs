@@ -585,6 +585,7 @@ impl SettingHandle {
 /// Serves each live channel's current detected label as its hint. The stored hint is written
 /// at rename time only, so a migrated override has none and an older one can be stale, yet it
 /// is a client's only view of the label an active override hides. Nothing is persisted.
+/// A live channel without a detected label serves no hint; an absent one keeps its stored hint.
 fn refresh_channel_label_hints(document: &mut OverridesDocument, all_devices: &AllDevices) {
     for (device_uid, device_overrides) in &mut document.devices {
         let Some(device_lock) = all_devices.get(device_uid) else {
@@ -592,9 +593,12 @@ fn refresh_channel_label_hints(document: &mut OverridesDocument, all_devices: &A
         };
         let device = device_lock.borrow();
         debug_assert_eq!(&device.uid, device_uid);
+        let info = &device.info;
         for (channel_name, channel) in &mut device_overrides.channels {
-            if let Some(label) = device.info.detected_channel_label(channel_name) {
-                channel.channel_label = Some(label);
+            let is_live =
+                info.temps.contains_key(channel_name) || info.channels.contains_key(channel_name);
+            if is_live {
+                channel.channel_label = info.detected_channel_label(channel_name);
             }
         }
     }
@@ -1352,15 +1356,24 @@ mod tests {
         // Goal: a client reads the detected label of an overridden channel from its hint, so
         // the served document must carry the live label even when the stored hint is missing
         // (a migrated override) or stale. Renames two channels of a live device with no hint
-        // and with an outdated one, then refreshes a copy of the document.
+        // and with an outdated one, then refreshes a copy of the document. A live channel
+        // that lost its detected label must serve no hint, unlike an absent channel.
         crate::rt::test_runtime(async {
             let (_tmp, overrides) = empty_overrides().await;
+            let mut info = live_info();
+            info.channels.insert(
+                "fan3".to_string(),
+                ChannelInfo {
+                    label: None,
+                    kind: ChannelKind::default(),
+                },
+            );
             let device = Rc::new(RefCell::new(Device::new(
                 "nct6798".to_string(),
                 DeviceType::Hwmon,
                 0,
                 None,
-                live_info(),
+                info,
                 None,
                 1.0,
             )));
@@ -1370,6 +1383,7 @@ mod tests {
             for (device_uid, channel_name, hint) in [
                 (&uid, "fan1", None),
                 (&uid, "temp1", Some("Old Temp Label")),
+                (&uid, "fan3", Some("Flow [L/h]")),
                 (&uid, "fan9", Some("Gone Fan Label")),
                 (&absent_uid, "fan1", Some("Absent Fan Label")),
             ] {
@@ -1404,8 +1418,13 @@ mod tests {
                 hint(&served, &uid, "temp1"),
                 Some("Live Temp Label".to_string())
             );
-            // Negative space: with no live label the stored hint stands, the override itself
-            // is never touched, and the stored document is left as it was.
+            assert_eq!(hint(&served, &uid, "fan3"), None);
+            assert_eq!(
+                served.devices[&uid].channels["fan3"].label,
+                Some("Renamed".to_string())
+            );
+            // Negative space: an absent channel or device keeps its stored hint, the override
+            // itself is never touched, and the stored document is left as it was.
             assert_eq!(
                 hint(&served, &uid, "fan9"),
                 Some("Gone Fan Label".to_string())
