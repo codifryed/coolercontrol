@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelKind, ChannelName, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp,
-    TempInfo, TypeIndex, UID,
+    ChannelInfo, ChannelKind, ChannelName, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo, Status,
+    Temp, TempInfo, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
@@ -229,6 +229,27 @@ fn withdraw_lcd_gif_support(device_info: &mut DeviceInfo) {
             mode.frontend_name = LCD_IMAGE_MODE_NAME_NO_GIF.to_string();
         }
     }
+}
+
+/// Lists the flow sensor a device's first status reports.
+///
+/// liquidctl announces no such channel up front, so without this the reading has no label,
+/// and it is the label that says the value is a flow and not a speed.
+fn add_flow_channel_info(device_info: &mut DeviceInfo, status: &Status) {
+    let reports_flow = status
+        .channels
+        .iter()
+        .any(|channel| channel.name == device_support::FLOW_CHANNEL_NAME);
+    if reports_flow.not() {
+        return;
+    }
+    device_info
+        .channels
+        .entry(device_support::FLOW_CHANNEL_NAME.to_string())
+        .or_insert_with(|| ChannelInfo {
+            label: Some(device_support::FLOW_CHANNEL_LABEL.to_string()),
+            kind: ChannelKind::InfoOnly,
+        });
 }
 
 /// Maps a device onto what the hardware report prints for it. A pure helper so
@@ -634,8 +655,10 @@ impl LiquidctlRepo {
         driver_locations
     }
 
+    /// Completes each device's info from its first status, which is where liquidctl reveals
+    /// the temps and a flow sensor.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn update_temp_infos(&self) {
+    pub fn update_infos_from_first_status(&self) {
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.borrow();
@@ -659,7 +682,8 @@ impl LiquidctlRepo {
                     device.type_index,
                 )
             };
-            device_lock.borrow_mut().info.temps = status
+            let mut device = device_lock.borrow_mut();
+            device.info.temps = status
                 .temps
                 .iter()
                 .enumerate()
@@ -673,6 +697,7 @@ impl LiquidctlRepo {
                     )
                 })
                 .collect();
+            add_flow_channel_info(&mut device.info, &status);
         }
     }
 
@@ -1974,7 +1999,7 @@ fn find_duplicate_names<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::{ChannelInfo, LcdInfo, LcdMode, LcdModeType};
+    use crate::device::{ChannelStatus, LcdInfo, LcdMode, LcdModeType};
     use crate::repositories::liquidctl::liqctld_client::{DeviceProperties, LCStatus};
 
     const DEV_PROPS: DeviceProperties = DeviceProperties {
@@ -2604,6 +2629,69 @@ mod tests {
             device_info.channels["pump"].kind,
             ChannelKind::InfoOnly
         ));
+    }
+
+    fn status_with_channels(channel_names: &[&str]) -> Status {
+        Status {
+            channels: channel_names
+                .iter()
+                .map(|channel_name| ChannelStatus {
+                    name: (*channel_name).to_string(),
+                    rpm: Some(120),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// Goal: a flow reading must come with a label naming its unit, and as a channel that
+    /// offers no control. Method: a first status with a flow channel, on a device whose
+    /// driver announced none.
+    #[test]
+    fn a_reported_flow_sensor_is_listed_with_its_unit() {
+        let mut device_info = lcd_device_info();
+
+        add_flow_channel_info(&mut device_info, &status_with_channels(&["fan1", "flow"]));
+
+        assert_eq!(device_info.channels.len(), 3);
+        let flow = &device_info.channels["flow"];
+        assert_eq!(flow.label.as_deref(), Some("Flow [dL/h]"));
+        assert!(matches!(flow.kind, ChannelKind::InfoOnly));
+    }
+
+    /// Goal: only the status can say a device has a flow sensor, so a device that reports
+    /// none must not gain a channel that never has a value. Method: statuses without one.
+    #[test]
+    fn no_flow_channel_is_listed_without_a_flow_reading() {
+        let mut device_info = lcd_device_info();
+
+        add_flow_channel_info(&mut device_info, &status_with_channels(&["fan1", "pump"]));
+        add_flow_channel_info(&mut device_info, &Status::default());
+
+        assert_eq!(device_info.channels.len(), 2);
+        assert!(device_info.channels.contains_key("flow").not());
+    }
+
+    /// Goal: a driver that describes its own flow channel knows it better than the generic
+    /// label does. Method: a device that already lists the channel, then a flow reading.
+    #[test]
+    fn a_flow_channel_the_driver_announced_is_kept() {
+        let mut device_info = lcd_device_info();
+        device_info.channels.insert(
+            "flow".to_string(),
+            ChannelInfo {
+                label: Some("Coolant flow [L/h]".to_string()),
+                kind: ChannelKind::InfoOnly,
+            },
+        );
+
+        add_flow_channel_info(&mut device_info, &status_with_channels(&["flow"]));
+
+        assert_eq!(
+            device_info.channels["flow"].label.as_deref(),
+            Some("Coolant flow [L/h]")
+        );
     }
 }
 

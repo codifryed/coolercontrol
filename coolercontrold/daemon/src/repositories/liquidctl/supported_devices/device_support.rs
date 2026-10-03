@@ -15,6 +15,12 @@ use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 
 pub type StatusMap = HashMap<String, String>;
 
+/// The channel a flow sensor's reading is reported under.
+pub const FLOW_CHANNEL_NAME: &str = "flow";
+/// liquidctl reports flow in dL/h, and the status carries it as rpm. The bracketed unit is
+/// what tells the UI the value is not a speed.
+pub const FLOW_CHANNEL_LABEL: &str = "Flow [dL/h]";
+
 pub fn get_firmware_ver(status_map: &StatusMap) -> Option<String> {
     status_map.get("firmware version").cloned()
 }
@@ -517,7 +523,7 @@ pub trait DeviceSupport: Debug {
             .map(valid_rpm);
         if flow_speed.is_some() {
             channel_statuses.push(ChannelStatus {
-                name: "flow".to_string(),
+                name: FLOW_CHANNEL_NAME.to_string(),
                 rpm: flow_speed,
                 ..Default::default()
             });
@@ -554,6 +560,7 @@ pub trait DeviceSupport: Debug {
 /// Tests
 #[cfg(test)]
 mod tests {
+    use crate::repositories::hwmon::fans;
     use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 
     use super::*;
@@ -1341,7 +1348,7 @@ mod tests {
     #[test]
     fn add_flow_sensor_status() {
         // Confirms that a "flow sensor" key is parsed into a "flow" ChannelStatus
-        // with the value stored in rpm (used as a proxy for flow rate in L/h).
+        // with the value stored in rpm (used as a proxy for flow rate in dL/h).
         let device_support = KrakenX3Support::new();
         let flow_speed: u32 = 250;
         let given = HashMap::from([("flow sensor".to_string(), flow_speed.to_string())]);
@@ -1351,6 +1358,13 @@ mod tests {
         assert_eq!(result_statuses[0].name, "flow");
         assert_eq!(result_statuses[0].rpm, Some(flow_speed));
         assert_eq!(result_statuses[0].duty, None);
+    }
+
+    #[test]
+    fn flow_channel_label_names_its_unit() {
+        // The UI shows the unit a label names in its trailing brackets. Checks the flow label
+        // against the rule the hwmon repo applies to driver labels, so the two cannot drift.
+        assert_eq!(fans::label_unit(FLOW_CHANNEL_LABEL), Some("dL/h"));
     }
 
     #[test]
