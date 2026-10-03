@@ -129,7 +129,7 @@ const liveFor = (deviceUID: UID, channelName: string): ChannelValues | undefined
 // Fail-alert convenience, same as the Monitoring panel's fan rows.
 const hasRpm = (channel: CoolingChannel): boolean =>
     liveFor(channel.deviceUID, channel.channelName)?.rpm != null
-const liveRpm = (channel: CoolingChannel): string => {
+const liveSpeedText = (channel: CoolingChannel): string => {
     const rpm = groupDigits(liveFor(channel.deviceUID, channel.channelName)?.rpm ?? '')
     return `${rpm} ${settingsStore.rpmUnit(channel.deviceUID, channel.channelName)}`
 }
@@ -303,7 +303,7 @@ const isRouteActive = useRouteActive()
                                 v-if="liveFor(channel.deviceUID, channel.channelName)?.rpm != null"
                                 class="text-sm font-numeric tabular-nums text-text-color-secondary"
                             >
-                                {{ liveRpm(channel) }}
+                                {{ liveSpeedText(channel) }}
                             </span>
                         </span>
                     </RouterLink>
@@ -487,7 +487,7 @@ const isRouteActive = useRouteActive()
                                     "
                                     class="text-sm font-numeric tabular-nums text-text-color-secondary"
                                 >
-                                    {{ liveRpm(channel) }}
+                                    {{ liveSpeedText(channel) }}
                                 </span>
                             </span>
                         </RouterLink>
