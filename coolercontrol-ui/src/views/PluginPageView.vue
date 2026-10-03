@@ -31,6 +31,7 @@ import {
     ServiceType,
 } from '@/models/Plugins.ts'
 import pluginMetadataModal from '@/layout/PluginUi.vue'
+import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiSwitch from '@/shell/ui/UiSwitch.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
@@ -48,6 +49,9 @@ const pluginActions = usePluginActions()
 // From the store, so a manifest re-read by a start or restart shows up here.
 const plugin = computed(
     (): PluginDto | null => deviceStore.plugins.find((p) => p.id === props.pluginId) ?? null,
+)
+const pluginLink = computed(
+    () => validatePluginLinkForUi(plugin.value?.url, deviceStore.daemonClient.daemonURL)?.href,
 )
 const hasUi = computed(() => deviceStore.pluginUiInfo.get(props.pluginId)?.has_ui ?? false)
 const pluginStatus = computed(
@@ -313,8 +317,9 @@ onUnmounted(() => {
                             <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                             <td class="py-3 px-4">
                                 <a
+                                    v-if="pluginLink"
                                     class="inline-flex items-center gap-1 underline"
-                                    :href="plugin.url"
+                                    :href="pluginLink"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                 >
@@ -325,6 +330,8 @@ onUnmounted(() => {
                                     />
                                     {{ t('layout.settings.plugins.pluginUrl') }}
                                 </a>
+                                <!-- Not a link the UI may open, so it is shown, not followed. -->
+                                <code v-else class="select-all break-all">{{ plugin.url }}</code>
                             </td>
                         </tr>
                         <tr v-if="isManaged">
