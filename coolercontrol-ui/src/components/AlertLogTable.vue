@@ -15,6 +15,7 @@ import {
     mdiPageLast,
 } from '@mdi/js'
 import { AlertLog, getAlertStateClass, getAlertStateDisplayName } from '@/models/Alert.ts'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -29,6 +30,7 @@ import UiTable from '@/shell/ui/UiTable.vue'
 // and rows navigate to their alert.
 const props = defineProps<{ alertUID?: string }>()
 
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const { t } = useI18n()
@@ -83,30 +85,46 @@ watch([logSearch, logRows], () => {
 // A name keeps to one line until it reaches this share of the text width the two columns
 // have together. Qt's Chrome 90 has no container queries, so the widths are measured.
 const NAME_WIDTH_SHARE = 0.4
+// A narrower table would not fit its frame, so it puts the date above the time and
+// tightens its cells. Without a name column there is room for longer.
+const COMPACT_REM_MAX = 44
+const COMPACT_REM_MAX_SINGLE_ALERT = 30
 const table = ref<InstanceType<typeof UiTable>>()
 const timestampHead = ref<HTMLElement>()
 const stateHead = ref<HTMLElement>()
 const nameWidthMax = ref('none')
+const compact = ref(false)
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
     const frame: HTMLElement | undefined = table.value?.$el
     const timestamp = timestampHead.value
     const state = stateHead.value
-    if (singleAlert.value || frame == null || timestamp == null || state == null) return
+    if (frame == null || timestamp == null || state == null) return
     resizeObserver = new ResizeObserver(() => {
+        const compactRemMax = singleAlert.value ? COMPACT_REM_MAX_SINGLE_ALERT : COMPACT_REM_MAX
+        compact.value = frame.clientWidth < deviceStore.getREMSize(compactRemMax)
         const style = getComputedStyle(state)
         const cellPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
         const textWidth =
             frame.clientWidth - timestamp.offsetWidth - state.offsetWidth - 2 * cellPadding
         nameWidthMax.value = `${Math.max(0, Math.floor(textWidth * NAME_WIDTH_SHARE))}px`
     })
-    for (const element of [frame, timestamp, state]) resizeObserver.observe(element)
+    resizeObserver.observe(frame)
+    // Compact changes the cell padding, which only the border box shows.
+    resizeObserver.observe(timestamp, { box: 'border-box' })
+    resizeObserver.observe(state, { box: 'border-box' })
 })
 onBeforeUnmount(() => resizeObserver?.disconnect())
 </script>
 
 <template>
-    <UiTable ref="table" bordered class="w-full" :style="{ '--name-width-max': nameWidthMax }">
+    <UiTable
+        ref="table"
+        bordered
+        class="w-full"
+        :class="{ compact }"
+        :style="{ '--name-width-max': nameWidthMax }"
+    >
         <template #toolbar>
             <div
                 class="flex flex-wrap items-center justify-between gap-2 border-b border-border-one bg-bg-two p-2"
@@ -180,7 +198,11 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
             @click="openAlert(log.uid)"
         >
             <td class="whitespace-nowrap">
-                {{ new Date(log.timestamp).toLocaleString() }}
+                <template v-if="compact">
+                    {{ new Date(log.timestamp).toLocaleDateString() }}<br />
+                    {{ new Date(log.timestamp).toLocaleTimeString() }}
+                </template>
+                <template v-else>{{ new Date(log.timestamp).toLocaleString() }}</template>
             </td>
             <td>
                 <span class="underline" :class="logStateClass(log)">
@@ -195,7 +217,18 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
                     {{ log.name }}
                 </span>
             </td>
-            <td class="w-full text-ellipsis">{{ log.message }}</td>
+            <!-- Breaking anywhere lets the column go below its longest word, so the table
+                 never outgrows its frame. -->
+            <td class="w-full text-ellipsis [overflow-wrap:anywhere]">{{ log.message }}</td>
         </tr>
     </UiTable>
 </template>
+
+<style scoped lang="scss">
+// Outranks the kit's cell padding.
+.compact :deep(th),
+.compact :deep(td) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+</style>
