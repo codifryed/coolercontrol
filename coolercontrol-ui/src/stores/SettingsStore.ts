@@ -688,6 +688,7 @@ export const useSettingsStore = defineStore('settings', () => {
             const detected = defaultChannelLabel(deviceUID, channelName)
             delete nameOverrides.value.devices[deviceUID]?.channels?.[channelName]?.label
             if (channelSettings != null) channelSettings.channelLabel = detected
+            pushTrayPinnedSensors()
             return true
         }
         const deviceOverrides = (nameOverrides.value.devices[deviceUID] ??= {})
@@ -703,6 +704,8 @@ export const useSettingsStore = defineStore('settings', () => {
         if (channelSettings != null) {
             channelSettings.channelLabel = label
         }
+        // The tray caches the label, and the unit and route that follow from it.
+        pushTrayPinnedSensors()
         return true
     }
 
