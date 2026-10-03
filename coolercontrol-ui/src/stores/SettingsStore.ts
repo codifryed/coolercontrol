@@ -43,6 +43,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { buildPinnedSensors } from '@/shell/qtPinnedSensors.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
+import { channelUnit as unitFromLabels } from '@/shell/channelUnit.ts'
 import router from '@/router'
 import type { AllDaemonDeviceSettings } from '@/models/DaemonSettings'
 import type { NameOverrides } from '@/models/NameOverrides'
@@ -571,6 +572,20 @@ export const useSettingsStore = defineStore('settings', () => {
         const device = findDevice(deviceUID)
         const label = device != null ? detectedChannelLabel(device, channelName) : undefined
         return label ?? deviceStore.toTitleCase(channelName)
+    }
+
+    /** The unit a label gives a channel's rpm value, undefined when the value is rpm. */
+    function channelUnit(deviceUID: UID, channelName: string): string | undefined {
+        const displayedLabel = allUIDeviceSettings.value
+            .get(deviceUID)
+            ?.sensorsAndChannels.get(channelName)?.channelLabel
+        const overrides = nameOverrides.value.devices[deviceUID]?.channels?.[channelName]
+        return unitFromLabels(displayedLabel, overrides)
+    }
+
+    /** The unit text to show next to a channel's rpm value. */
+    function rpmUnit(deviceUID: UID, channelName: string): string {
+        return channelUnit(deviceUID, channelName) ?? t('common.rpmAbbr')
     }
 
     function setDisplayNames(
@@ -1830,6 +1845,8 @@ export const useSettingsStore = defineStore('settings', () => {
         saveChannelName,
         defaultDeviceName,
         defaultChannelLabel,
+        channelUnit,
+        rpmUnit,
         predefinedColorOptions,
         profiles,
         functions,

@@ -169,7 +169,10 @@ const liveValue = (sensor: MonitoringSensor): string => {
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
     if (values.duty != null) return `${values.duty} ${t('common.percentUnit')}`
-    if (values.rpm != null) return `${groupDigits(values.rpm)} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) {
+        const unit = settingsStore.rpmUnit(sensor.deviceUID, sensor.channelName)
+        return `${groupDigits(values.rpm)} ${unit}`
+    }
     return ''
 }
 

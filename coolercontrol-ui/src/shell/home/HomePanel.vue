@@ -89,7 +89,9 @@ const liveValue = (deviceUID: UID, channelName: string): string => {
             ? `${values.freq} ${t('common.mhzAbbr')}`
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
-    if (values.rpm != null) return `${groupDigits(values.rpm)} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) {
+        return `${groupDigits(values.rpm)} ${settingsStore.rpmUnit(deviceUID, channelName)}`
+    }
     return ''
 }
 
