@@ -1550,7 +1550,10 @@ mod tests {
         let app = with_client_addr(routes, Arc::new(trusted));
         for client in clients {
             let mut request = Request::post("/login")
-                .header(axum::http::header::AUTHORIZATION, "Basic Q0NBZG1pbjp4")
+                .header(
+                    axum::http::header::AUTHORIZATION,
+                    auth::encode_basic("CCAdmin", "x"),
+                )
                 .header("x-forwarded-for", client)
                 .body(axum::body::Body::empty())
                 .unwrap();

@@ -1875,7 +1875,7 @@ mod tests {
             let mut builder = Request::builder()
                 .method("POST")
                 .uri("/set-passwd")
-                .header(header::AUTHORIZATION, "Basic Q0NBZG1pbjpuZXc=");
+                .header(header::AUTHORIZATION, auth::encode_basic("CCAdmin", "new"));
             if let Some(value) = cookie {
                 builder = builder.header(header::COOKIE, value);
             }
@@ -1908,13 +1908,16 @@ mod tests {
 
     /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
     /// and whether it promoted the connection.
-    async fn login(app: &axum::Router, credentials: &str) -> (StatusCode, bool) {
+    async fn login(app: &axum::Router, password: &str) -> (StatusCode, bool) {
         use axum::extract::ConnectInfo;
         // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
         let peer = std::net::SocketAddr::from(([198, 51, 100, 21], 40000));
         let connection = connection::AdmittedConnection::remote_for_test();
         let mut request = Request::post("/login")
-            .header(header::AUTHORIZATION, format!("Basic {credentials}"))
+            .header(
+                header::AUTHORIZATION,
+                auth::encode_basic("CCAdmin", password),
+            )
             .body(axum::body::Body::empty())
             .unwrap();
         request.extensions_mut().insert(ConnectInfo(peer));
@@ -1936,11 +1939,10 @@ mod tests {
                 let routes = axum::Router::from(auth_routes().with_state(state))
                     .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
                 let app = crate::api::with_client_addr(routes, std::sync::Arc::default());
-                // "CCAdmin:x", then "CCAdmin:coolAdmin".
-                let (status, promoted) = login(&app, "Q0NBZG1pbjp4").await;
+                let (status, promoted) = login(&app, "x").await;
                 assert_eq!(status, StatusCode::UNAUTHORIZED);
                 assert!(promoted.not());
-                let (status, promoted) = login(&app, "Q0NBZG1pbjpjb29sQWRtaW4=").await;
+                let (status, promoted) = login(&app, crate::admin::DEFAULT_PASS).await;
                 assert_eq!(status, StatusCode::OK);
                 assert!(promoted);
                 // Stops the actors so the scope can finish.
