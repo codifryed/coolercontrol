@@ -778,10 +778,10 @@ fn secure_daemon_credentials(plugin_dir: &Path) -> Result<()> {
         let path = plugin_dir.join(file_name);
         let secured = secure_file(&path, PLUGIN_CREDENTIAL_PERMISSIONS, Some(&Owner::ROOT));
         let result = match secured {
-            Ok(Secured::Done | Secured::Absent) => Ok(()),
+            Ok(Entry::File(_) | Entry::Absent) => Ok(()),
             // Left in place, the daemon would read and write its credentials through it. A
             // second name counts: whoever holds the other one reads and rewrites the file.
-            Ok(Secured::NotAFile | Secured::HardLinked) => remove_planted(&path),
+            Ok(Entry::NotAFile | Entry::HardLinked) => remove_planted(&path),
             Err(err) => Err(err),
         };
         if let Err(err) = result {
@@ -800,18 +800,18 @@ fn secure_manifest(plugin_dir: &Path) -> Result<()> {
         Some(&Owner::ROOT),
     )?;
     match secured {
-        Secured::Done | Secured::Absent => Ok(()),
-        Secured::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
-        Secured::HardLinked => Err(refused_hard_link(&manifest_path)),
+        Entry::File(_) | Entry::Absent => Ok(()),
+        Entry::NotAFile => Err(anyhow!("{} is not a regular file", manifest_path.display())),
+        Entry::HardLinked => Err(refused_hard_link(&manifest_path)),
     }
 }
 
 fn secure_config_file(path: &Path, owner: Option<&Owner<'_>>) -> Result<()> {
     match secure_file(path, PLUGIN_CONFIG_FILE_PERMISSIONS, owner)? {
-        Secured::Done => Ok(()),
-        Secured::Absent => Err(anyhow!("{} does not exist", path.display())),
-        Secured::NotAFile => remove_planted(path),
-        Secured::HardLinked => Err(refused_hard_link(path)),
+        Entry::File(_) => Ok(()),
+        Entry::Absent => Err(anyhow!("{} does not exist", path.display())),
+        Entry::NotAFile => remove_planted(path),
+        Entry::HardLinked => Err(refused_hard_link(path)),
     }
 }
 
@@ -819,9 +819,10 @@ fn refused_hard_link(path: &Path) -> anyhow::Error {
     anyhow!("{} is a hard link, and is left as it is", path.display())
 }
 
-/// What `secure_file` found at the path it was given.
-enum Secured {
-    Done,
+/// What stands at a path in a plugin folder.
+enum Entry {
+    /// A regular file with no other name, opened without following a link.
+    File(File),
     Absent,
     /// A symlink or anything else that is not a regular file, and left untouched.
     NotAFile,
@@ -829,36 +830,43 @@ enum Secured {
     HardLinked,
 }
 
-/// Sets the mode of the regular file at `path` and, given an owner, its ownership.
+/// Opens the regular file at `path` as `options` ask, and never through a link.
 ///
 /// The plugin can create entries in its own folder, so any name in it may be a link the
-/// plugin planted to have root hand it another file: the manifest, which decides whether
+/// plugin planted to have root work on another file: the manifest, which decides whether
 /// it runs as root, or any file on the system. The entry is therefore opened without
-/// following a link, and checked and changed through that one descriptor, so that nothing
-/// can be swapped in between the check and the change.
-fn secure_file(path: &Path, mode: u32, owner: Option<&Owner<'_>>) -> Result<Secured> {
-    let opened = OpenOptions::new()
-        .read(true)
+/// following a link and checked through that one descriptor. Working on through the same
+/// descriptor leaves nothing that can be swapped in between the check and the work.
+fn open_entry(path: &Path, options: &mut OpenOptions) -> Result<Entry> {
+    let opened = options
         // NOFOLLOW refuses a symlink. NONBLOCK keeps a planted FIFO from hanging the open.
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path);
     let file = match opened {
         Ok(file) => file,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Secured::Absent),
-        Err(err) if err.raw_os_error() == Some(libc::ELOOP) => return Ok(Secured::NotAFile),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Entry::Absent),
+        Err(err) if err.raw_os_error() == Some(libc::ELOOP) => return Ok(Entry::NotAFile),
         Err(err) => return Err(err).with_context(|| format!("Opening {}", path.display())),
     };
     let metadata = file.metadata()?;
     if metadata.is_file().not() {
-        return Ok(Secured::NotAFile);
+        return Ok(Entry::NotAFile);
     }
     // A second name for a file elsewhere: changing this one would change that one.
     if metadata.nlink() != 1 {
-        return Ok(Secured::HardLinked);
+        return Ok(Entry::HardLinked);
     }
-    set_mode_and_owner(&file, mode, owner)
-        .with_context(|| format!("Securing {}", path.display()))?;
-    Ok(Secured::Done)
+    Ok(Entry::File(file))
+}
+
+/// Sets the mode of the regular file at `path` and, given an owner, its ownership.
+fn secure_file(path: &Path, mode: u32, owner: Option<&Owner<'_>>) -> Result<Entry> {
+    let entry = open_entry(path, OpenOptions::new().read(true))?;
+    if let Entry::File(file) = &entry {
+        set_mode_and_owner(file, mode, owner)
+            .with_context(|| format!("Securing {}", path.display()))?;
+    }
+    Ok(entry)
 }
 
 fn set_mode_and_owner(file: &File, mode: u32, owner: Option<&Owner<'_>>) -> Result<()> {
