@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Device, UID } from '@/models/Device.ts'
-import { isUnitSensor, type ChannelUnitOf } from '@/shell/channelUnit.ts'
+import { isFanChannel, type ChannelUnitOf } from '@/shell/channelUnit.ts'
 
 export interface CoolingChannel {
     deviceUID: UID
@@ -29,14 +29,15 @@ export function coolingChannels(
         if (device.info == null) continue
         const channels: CoolingChannel[] = []
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.speed_options == null) continue
-            if (isUnitSensor(device, channelName, unitOf)) continue
+            if (!isFanChannel(device, channelName, unitOf)) continue
+            // A fan channel has speed options: isFanChannel checked this same entry.
+            const speedOptions = channelInfo.speed_options!
             channels.push({
                 deviceUID: device.uid,
                 channelName,
-                controllable: channelInfo.speed_options.fixed_enabled ?? false,
-                minDuty: channelInfo.speed_options.min_duty,
-                maxDuty: channelInfo.speed_options.max_duty,
+                controllable: speedOptions.fixed_enabled ?? false,
+                minDuty: speedOptions.min_duty,
+                maxDuty: speedOptions.max_duty,
             })
         }
         if (channels.length > 0) {
