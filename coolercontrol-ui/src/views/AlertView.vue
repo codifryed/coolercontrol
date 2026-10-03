@@ -540,10 +540,10 @@ onMounted(async () => {
         </entity-page-header>
         <ScrollAreaRoot class="min-h-0 flex-1" style="--scrollbar-size: 10px">
             <ScrollAreaViewport class="p-4 h-full w-full">
-                <div class="flex w-full flex-col-reverse items-start gap-4 lg:flex-row">
+                <div class="flex w-full flex-col items-start gap-4 lg:flex-row">
                     <!-- Beside the cards (lg) the list stays in view while they scroll, as
                          tall as the window allows: 9.5rem is the shell and page header above
-                         it plus the page padding. Stacked under them it has a fixed height. -->
+                         it plus the page padding. Stacked above them it has a fixed height. -->
                     <div
                         class="flex h-96 w-full flex-col rounded-lg border bg-bg-two lg:sticky lg:top-0 lg:h-[calc(100vh-9.5rem)] lg:min-h-80 lg:w-96 lg:shrink-0"
                         :class="
