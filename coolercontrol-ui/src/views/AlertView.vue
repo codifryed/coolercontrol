@@ -277,6 +277,11 @@ const deleteAlert = (): void => {
 
 const saveNameFunction = async (newName: string): Promise<boolean> => {
     if (newName.length > 0) {
+        if (shouldCreateAlert) {
+            // Nothing to rename yet: saveAlert applies the name once the alert exists.
+            chosenName.value = newName
+            return true
+        }
         alert.name = newName
         const successful = await settingsStore.updateAlert(alert.uid)
         if (successful) {
