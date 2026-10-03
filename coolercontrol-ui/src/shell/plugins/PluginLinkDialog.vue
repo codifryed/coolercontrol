@@ -19,7 +19,7 @@ const pluginId: string = dialogRef.value.data.pluginId
 const url: URL = dialogRef.value.data.url
 
 const openButton = ref<InstanceType<typeof UiButton> | null>(null)
-const opener = ref<HTMLIFrameElement | null>(null)
+const openerFrame = ref<HTMLIFrameElement | null>(null)
 const openerDoc = ref('')
 
 let armTimer: ReturnType<typeof setTimeout> | undefined
@@ -36,7 +36,7 @@ onMounted(() => {
     // The opener frame runs no script, so it cannot say its link was used. Focus resting in
     // it while the window has none means the link took the user to another tab or window.
     focusPoll = setInterval(() => {
-        if (document.activeElement === opener.value && !document.hasFocus()) {
+        if (document.activeElement === openerFrame.value && !document.hasFocus()) {
             dialogRef.value.close()
         }
     }, FOCUS_POLL_MS)
@@ -68,7 +68,7 @@ onUnmounted(() => {
                 </UiButton>
                 <iframe
                     v-if="openerDoc"
-                    ref="opener"
+                    ref="openerFrame"
                     class="absolute inset-0 h-full w-full border-0"
                     sandbox="allow-popups allow-popups-to-escape-sandbox"
                     :srcdoc="openerDoc"
