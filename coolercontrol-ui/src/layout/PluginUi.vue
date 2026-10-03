@@ -23,7 +23,8 @@ const { t } = useI18n()
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const plugin: PluginDto = dialogRef.value.data.plugin
 const isManaged: boolean = dialogRef.value.data.isManaged ?? false
-const pluginLink = validatePluginLinkForUi(plugin.url, deviceStore.daemonClient.daemonURL)?.href
+const isPluginLinkOpenable =
+    validatePluginLinkForUi(plugin.url, deviceStore.daemonClient.daemonURL) != null
 const pluginLinks = usePluginLinks()
 
 const copyCommand = (text: string): void => {
@@ -94,7 +95,7 @@ const fallbackCopy = (text: string): void => {
                     <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                     <td class="py-3 px-4">
                         <button
-                            v-if="pluginLink"
+                            v-if="isPluginLinkOpenable"
                             type="button"
                             class="inline-flex items-center gap-1 underline"
                             @click="pluginLinks.requestLink(plugin.id, plugin.url, true)"

@@ -51,8 +51,8 @@ const pluginActions = usePluginActions()
 const plugin = computed(
     (): PluginDto | null => deviceStore.plugins.find((p) => p.id === props.pluginId) ?? null,
 )
-const pluginLink = computed(
-    () => validatePluginLinkForUi(plugin.value?.url, deviceStore.daemonClient.daemonURL)?.href,
+const isPluginLinkOpenable = computed(
+    () => validatePluginLinkForUi(plugin.value?.url, deviceStore.daemonClient.daemonURL) != null,
 )
 const pluginLinks = usePluginLinks()
 const hasUi = computed(() => deviceStore.pluginUiInfo.get(props.pluginId)?.has_ui ?? false)
@@ -319,7 +319,7 @@ onUnmounted(() => {
                             <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                             <td class="py-3 px-4">
                                 <button
-                                    v-if="pluginLink"
+                                    v-if="isPluginLinkOpenable"
                                     type="button"
                                     class="inline-flex items-center gap-1 underline"
                                     @click="pluginLinks.requestLink(plugin.id, plugin.url, true)"
