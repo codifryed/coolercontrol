@@ -20,8 +20,10 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tower_serve_static::include_file;
 
-/// Content-Security-Policy for plugin UI HTML responses.
+/// Content-Security-Policy for plugin UI responses.
 /// `connect-src 'none'` forces plugins to use the pluginFetch relay for all network access.
+/// `sandbox allow-scripts` keeps a plugin page out of the daemon's origin however it is
+/// loaded, not only inside the UI's sandboxed frame.
 /// `FramePolicy` widens `frame-ancestors` for configured origins.
 pub const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     script-src 'self' 'unsafe-inline'; \
@@ -32,7 +34,8 @@ pub const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     frame-ancestors 'self'; \
     object-src 'none'; \
     base-uri 'none'; \
-    form-action 'none'";
+    form-action 'none'; \
+    sandbox allow-scripts";
 
 pub async fn get_plugins(
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -190,12 +193,14 @@ pub async fn get_ui_files(
         .map_err(|_infallible| CCError::InternalError {
             msg: "Failed to serve file".to_string(),
         })?;
+    let headers = response.headers_mut();
+    // Every file, not only HTML: a browser also renders SVG and XML as documents, and one
+    // served without the policy would run its scripts in the daemon's origin.
+    headers.insert(
+        axum::http::HeaderName::from_static("content-security-policy"),
+        frame_policy.plugin_csp,
+    );
     if is_html {
-        let headers = response.headers_mut();
-        headers.insert(
-            axum::http::HeaderName::from_static("content-security-policy"),
-            frame_policy.plugin_csp,
-        );
         headers.insert(
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("no-cache, max-age=60"),
@@ -671,6 +676,17 @@ mod tests {
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("base-uri 'none'"));
     }
 
+    /// Goal: a plugin page never runs in the daemon's origin, where it would hold the user's
+    /// session, and cannot open a window or leave its frame. Method: the policy sandboxes
+    /// with scripts allowed and nothing else.
+    #[test]
+    fn plugin_csp_sandboxes_with_scripts_only() {
+        let sandbox = PLUGIN_CONTENT_SECURITY_POLICY
+            .split("; ")
+            .find(|directive| directive.starts_with("sandbox"));
+        assert_eq!(sandbox, Some("sandbox allow-scripts"));
+    }
+
     /// What the real handler answers each of a plugin's UI `files` with. Runs on the
     /// sidecar, as the servers do, since the file service needs its reactor. Nothing is
     /// asserted there: a panic would take the shared test sidecar down with it.
@@ -708,6 +724,7 @@ mod tests {
         std::fs::create_dir(&ui_dir).unwrap();
         std::fs::write(ui_dir.join("index.html"), "<html></html>").unwrap();
         std::fs::write(ui_dir.join("app.js"), "").unwrap();
+        std::fs::write(ui_dir.join("icon.svg"), "<svg/>").unwrap();
         let manifest = ServiceManifest {
             id: PLUGIN_ID.to_string(),
             service_type: ServiceType::Integration,
@@ -731,12 +748,13 @@ mod tests {
     /// Goal: the UI frames a plugin page, and a browser checks every ancestor, so once the UI
     /// is embedded the page must admit the same ancestors or it renders blank. Method: the
     /// real handler over a plugin on disk, with and without a configured ancestor. Without
-    /// one the policy is the baseline, byte for byte, and only HTML ever carries a policy.
+    /// one the policy is the baseline, byte for byte. Every file carries the page's policy,
+    /// since a browser renders more than HTML as a document.
     #[test]
     #[serial_test::serial(modes_file)]
     fn plugin_pages_admit_the_configured_frame_ancestors() {
         const ANCESTOR: &str = "https://cockpit.example.com:9090";
-        const FILES: [&str; 2] = ["index.html", "app.js"];
+        const FILES: [&str; 3] = ["index.html", "app.js", "icon.svg"];
         crate::rt::test_runtime(async {
             let plugin_dir = tempfile::tempdir().unwrap();
             let controller = Rc::new(controller_with_ui(plugin_dir.path()));
@@ -766,8 +784,11 @@ mod tests {
                 let csp = csp.to_str().unwrap();
                 assert!(csp.contains(&format!("; frame-ancestors 'self' {ANCESTOR}; ")));
                 assert_eq!(csp.matches("frame-ancestors").count(), 1);
-                for script in [&unframed[1], &framed[1]] {
-                    assert!(script.headers.get("content-security-policy").is_none());
+                for responses in [&unframed, &framed] {
+                    let page_csp = &responses[0].headers["content-security-policy"];
+                    for file in &responses[1..] {
+                        assert_eq!(&file.headers["content-security-policy"], page_csp);
+                    }
                 }
                 Ok(())
             })
