@@ -5,10 +5,12 @@ use heck::ToTitleCase;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Not;
 use std::sync::LazyLock;
 
 use crate::device::{
-    ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus,
+    ChannelInfo, ChannelKind, ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status,
+    TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -88,6 +90,11 @@ pub trait DeviceSupport: Debug {
     fn supported_driver(&self) -> BaseDriver;
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo;
+
+    /// Completes the info with what a device only reveals in its status. Called once, with the
+    /// device's first status. Override it for a driver with channels liquidctl does not
+    /// announce up front.
+    fn extend_info_from_status(&self, _status: &Status, _device_info: &mut DeviceInfo) {}
 
     fn get_color_channel_modes(&self, channel_name: Option<&str>) -> Vec<LightingMode>;
 
@@ -528,6 +535,25 @@ pub trait DeviceSupport: Debug {
                 ..Default::default()
             });
         }
+    }
+
+    /// Lists the flow sensor a status reports. Without it the reading has no label, and it is
+    /// the label that says the value is a flow and not a speed.
+    fn add_flow_sensor_info(&self, status: &Status, device_info: &mut DeviceInfo) {
+        let reports_flow = status
+            .channels
+            .iter()
+            .any(|channel| channel.name == FLOW_CHANNEL_NAME);
+        if reports_flow.not() {
+            return;
+        }
+        device_info
+            .channels
+            .entry(FLOW_CHANNEL_NAME.to_string())
+            .or_insert_with(|| ChannelInfo {
+                label: Some(FLOW_CHANNEL_LABEL.to_string()),
+                kind: ChannelKind::InfoOnly,
+            });
     }
 
     /// Maps a CC lighting channel name to the `liquidctl` color channel name.
@@ -1391,5 +1417,90 @@ mod tests {
             result_statuses.is_empty(),
             "expected no results, got: {result_statuses:?}"
         );
+    }
+
+    fn status_with_channels(channel_names: &[&str]) -> Status {
+        Status {
+            channels: channel_names
+                .iter()
+                .map(|channel_name| ChannelStatus {
+                    name: (*channel_name).to_string(),
+                    rpm: Some(120),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn info_with_fan1() -> DeviceInfo {
+        DeviceInfo {
+            channels: HashMap::from([(
+                "fan1".to_string(),
+                ChannelInfo {
+                    label: None,
+                    kind: ChannelKind::InfoOnly,
+                },
+            )]),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn add_flow_sensor_info_lists_a_reported_flow_sensor() {
+        // A flow reading must come with a label naming its unit, on a channel that offers
+        // no control.
+        let device_support = KrakenX3Support::new();
+        let mut device_info = info_with_fan1();
+        device_support
+            .add_flow_sensor_info(&status_with_channels(&["fan1", "flow"]), &mut device_info);
+        assert_eq!(device_info.channels.len(), 2);
+        let flow = &device_info.channels[FLOW_CHANNEL_NAME];
+        assert_eq!(flow.label.as_deref(), Some(FLOW_CHANNEL_LABEL));
+        assert!(matches!(flow.kind, ChannelKind::InfoOnly));
+    }
+
+    #[test]
+    fn add_flow_sensor_info_lists_nothing_without_a_flow_reading() {
+        // Only the status can say a device has a flow sensor, so a device that reports none
+        // must not gain a channel that never has a value.
+        let device_support = KrakenX3Support::new();
+        let mut device_info = info_with_fan1();
+        device_support
+            .add_flow_sensor_info(&status_with_channels(&["fan1", "pump"]), &mut device_info);
+        device_support.add_flow_sensor_info(&Status::default(), &mut device_info);
+        assert_eq!(device_info.channels.len(), 1);
+        assert!(device_info.channels.contains_key(FLOW_CHANNEL_NAME).not());
+    }
+
+    #[test]
+    fn add_flow_sensor_info_keeps_a_channel_already_listed() {
+        // A driver that describes its own flow channel knows it better than the shared label.
+        let device_support = KrakenX3Support::new();
+        let mut device_info = info_with_fan1();
+        device_info.channels.insert(
+            FLOW_CHANNEL_NAME.to_string(),
+            ChannelInfo {
+                label: Some("Coolant flow [L/h]".to_string()),
+                kind: ChannelKind::InfoOnly,
+            },
+        );
+        device_support.add_flow_sensor_info(&status_with_channels(&["flow"]), &mut device_info);
+        assert_eq!(
+            device_info.channels[FLOW_CHANNEL_NAME].label.as_deref(),
+            Some("Coolant flow [L/h]")
+        );
+    }
+
+    #[test]
+    fn extend_info_from_status_adds_nothing_by_default() {
+        // A driver opts in by overriding it, so one that does not must keep its info as
+        // announced, whatever its status carries.
+        let device_support = KrakenX3Support::new();
+        let mut device_info = info_with_fan1();
+        device_support
+            .extend_info_from_status(&status_with_channels(&["fan1", "flow"]), &mut device_info);
+        assert_eq!(device_info.channels.len(), 1);
+        assert!(device_info.channels.contains_key("fan1"));
     }
 }

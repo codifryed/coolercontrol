@@ -109,6 +109,18 @@ impl DeviceMapper {
             .extract_info(device_response)
     }
 
+    pub fn extend_info_from_status(
+        &self,
+        driver_type: &BaseDriver,
+        status: &Status,
+        device_info: &mut DeviceInfo,
+    ) {
+        self.supported_devices
+            .get(driver_type)
+            .expect("Device Support should already have been verified")
+            .extend_info_from_status(status, device_info);
+    }
+
     pub fn liquidctl_color_channel_name<'a>(
         &self,
         driver_type: &BaseDriver,
