@@ -1713,6 +1713,7 @@ export default {
                 delta: 'Delta',
                 avg: 'Moyenne',
                 weightedAvg: 'Moyenne Pondérée',
+                sum: 'Somme',
             },
         },
         themeMode: {

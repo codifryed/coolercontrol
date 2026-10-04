@@ -1653,6 +1653,7 @@ export default {
                 delta: 'الفرق',
                 avg: 'متوسط',
                 weightedAvg: 'متوسط مرجح',
+                sum: 'المجموع',
             },
         },
         themeMode: {

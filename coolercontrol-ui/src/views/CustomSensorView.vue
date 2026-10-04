@@ -17,10 +17,10 @@ import {
 } from '@mdi/js'
 import {
     CustomSensor,
+    CustomSensorMetric,
     CustomSensorMixFunctionType,
-    CustomSensorTempSource,
+    CustomSensorSourceData,
     CustomSensorType,
-    CustomTempSourceData,
     getCustomSensorTypeDisplayName,
     getCustomSensorMixFunctionTypeDisplayName,
 } from '@/models/CustomSensor.ts'
@@ -225,9 +225,9 @@ const fillChosenTempSources = () => {
     }
     for (const customTempSourceData of customSensor.sources) {
         for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
                 for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                    if (availableTemp.tempName === customTempSourceData.name) {
                         availableTemp.weight = customTempSourceData.weight
                         chosenTempSources.value.push(availableTemp)
                     }
@@ -245,11 +245,11 @@ const droppedSources: Array<string> = customSensor.sources
         (sourceData) =>
             !tempSources.value.some(
                 (device) =>
-                    device.deviceUID === sourceData.temp_source.device_uid &&
-                    device.temps.some((temp) => temp.tempName === sourceData.temp_source.temp_name),
+                    device.deviceUID === sourceData.deviceUID &&
+                    device.temps.some((temp) => temp.tempName === sourceData.name),
             ),
     )
-    .map((sourceData) => sourceData.temp_source.temp_name)
+    .map((sourceData) => sourceData.name)
 
 const fillChosenOffsetTempSource = () => {
     chosenOffsetTempSource.value = undefined
@@ -258,9 +258,9 @@ const fillChosenOffsetTempSource = () => {
     }
     for (const customTempSourceData of customSensor.sources) {
         for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
                 for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                    if (availableTemp.tempName === customTempSourceData.name) {
                         availableTemp.weight = customTempSourceData.weight
                         chosenOffsetTempSource.value = availableTemp
                     }
@@ -278,9 +278,9 @@ const fillChosenTimeAverageTempSource = () => {
     }
     for (const customTempSourceData of customSensor.sources) {
         for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
                 for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                    if (availableTemp.tempName === customTempSourceData.name) {
                         availableTemp.weight = customTempSourceData.weight
                         chosenTimeAverageTempSource.value = availableTemp
                     }
@@ -298,9 +298,9 @@ const fillChosenEmaTempSource = () => {
     }
     for (const customTempSourceData of customSensor.sources) {
         for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
                 for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                    if (availableTemp.tempName === customTempSourceData.name) {
                         availableTemp.weight = customTempSourceData.weight
                         chosenEmaTempSource.value = availableTemp
                     }
@@ -314,7 +314,7 @@ fillChosenEmaTempSource()
 const saveSensor = async (): Promise<void> => {
     customSensor.cs_type = selectedSensorType.value
     customSensor.mix_function = selectedMixFunction.value
-    const tempSources: Array<CustomTempSourceData> = []
+    const tempSources: Array<CustomSensorSourceData> = []
     if (customSensor.cs_type === CustomSensorType.File) {
         customSensor.offset = undefined
         customSensor.time_window_seconds = undefined
@@ -329,8 +329,10 @@ const saveSensor = async (): Promise<void> => {
         customSensor.time_window_seconds = undefined
         chosenTempSources.value.forEach((tempSource) =>
             tempSources.push(
-                new CustomTempSourceData(
-                    new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
+                CustomSensorSourceData.of(
+                    CustomSensorMetric.Temp,
+                    tempSource.deviceUID,
+                    tempSource.tempName,
                     tempSource.weight,
                 ),
             ),
@@ -344,11 +346,10 @@ const saveSensor = async (): Promise<void> => {
         customSensor.offset = selectedOffset.value
         customSensor.time_window_seconds = undefined
         tempSources.push(
-            new CustomTempSourceData(
-                new CustomSensorTempSource(
-                    chosenOffsetTempSource.value.deviceUID,
-                    chosenOffsetTempSource.value.tempName,
-                ),
+            CustomSensorSourceData.of(
+                CustomSensorMetric.Temp,
+                chosenOffsetTempSource.value.deviceUID,
+                chosenOffsetTempSource.value.tempName,
                 chosenOffsetTempSource.value.weight,
             ),
         )
@@ -361,11 +362,10 @@ const saveSensor = async (): Promise<void> => {
         customSensor.offset = undefined
         customSensor.time_window_seconds = selectedTimeWindowSeconds.value
         tempSources.push(
-            new CustomTempSourceData(
-                new CustomSensorTempSource(
-                    chosenTimeAverageTempSource.value.deviceUID,
-                    chosenTimeAverageTempSource.value.tempName,
-                ),
+            CustomSensorSourceData.of(
+                CustomSensorMetric.Temp,
+                chosenTimeAverageTempSource.value.deviceUID,
+                chosenTimeAverageTempSource.value.tempName,
                 chosenTimeAverageTempSource.value.weight,
             ),
         )
@@ -378,11 +378,10 @@ const saveSensor = async (): Promise<void> => {
         customSensor.offset = undefined
         customSensor.time_window_seconds = selectedTimeWindowSeconds.value
         tempSources.push(
-            new CustomTempSourceData(
-                new CustomSensorTempSource(
-                    chosenEmaTempSource.value.deviceUID,
-                    chosenEmaTempSource.value.tempName,
-                ),
+            CustomSensorSourceData.of(
+                CustomSensorMetric.Temp,
+                chosenEmaTempSource.value.deviceUID,
+                chosenEmaTempSource.value.tempName,
                 chosenEmaTempSource.value.weight,
             ),
         )

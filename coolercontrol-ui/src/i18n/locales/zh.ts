@@ -1601,6 +1601,7 @@ export default {
                 delta: '差值',
                 avg: '平均值',
                 weightedAvg: '加权平均',
+                sum: '总和',
             },
         },
         themeMode: {

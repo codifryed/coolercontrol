@@ -1656,6 +1656,7 @@ export default {
                 delta: '델타',
                 avg: '평균',
                 weightedAvg: '가중평균',
+                sum: '합계',
             },
         },
         themeMode: {

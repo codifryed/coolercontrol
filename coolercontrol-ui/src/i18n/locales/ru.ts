@@ -1697,6 +1697,7 @@ export default {
                 delta: 'Дельта',
                 avg: 'Среднее',
                 weightedAvg: 'Взвешенное среднее',
+                sum: 'Сумма',
             },
         },
         themeMode: {

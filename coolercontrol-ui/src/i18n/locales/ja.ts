@@ -1679,6 +1679,7 @@ export default {
                 delta: 'デルタ',
                 avg: '平均',
                 weightedAvg: '加重平均',
+                sum: '合計',
             },
         },
         themeMode: {

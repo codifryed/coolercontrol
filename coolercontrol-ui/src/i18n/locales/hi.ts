@@ -1672,6 +1672,7 @@ export default {
                 delta: 'डेल्टा',
                 avg: 'औसत',
                 weightedAvg: 'भारित औसत',
+                sum: 'योग',
             },
         },
         themeMode: {

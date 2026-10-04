@@ -1699,6 +1699,7 @@ export default {
                 delta: 'Delta',
                 avg: 'Promedio',
                 weightedAvg: 'Promedio Ponderado',
+                sum: 'Suma',
             },
         },
         themeMode: {
