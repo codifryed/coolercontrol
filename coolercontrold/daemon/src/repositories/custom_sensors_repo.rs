@@ -196,6 +196,7 @@ impl CustomSensorsRepo {
     }
 
     pub async fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
+        self.verify_metric_is_unchanged(&custom_sensor)?;
         self.verify_sensor_relationships(&custom_sensor)?;
         if let CustomSensorKind::File { file_path } = &custom_sensor.kind {
             // Make sure the file exists and its value is properly formatted
@@ -1085,6 +1086,7 @@ impl CustomSensorsRepo {
                 }
                 .into());
             }
+            self.verify_child_shares_metric(custom_sensor, &temp_source_data.name)?;
             for (child_name, parents) in self.relationships.borrow().iter() {
                 if &custom_sensor.id == child_name {
                     return Err(CCError::UserError {
@@ -1108,6 +1110,46 @@ impl CustomSensorsRepo {
                     .into());
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// A parent reads its child's value as its own metric, so the two must share it. A child
+    /// that does not exist is left to the source lookup, which reports it as missing.
+    fn verify_child_shares_metric(&self, parent: &CustomSensor, child_id: &str) -> Result<()> {
+        let sensors = self.sensors.borrow();
+        let Some(child) = sensors.iter().find(|sensor| sensor.id == child_id) else {
+            return Ok(());
+        };
+        if child.metric != parent.metric {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "Child Custom Sensor {child_id} is a {} sensor and cannot be a source of \
+                    the {} Custom Sensor {}",
+                    child.metric, parent.metric, parent.id
+                ),
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    /// The metric decides whether a sensor is a temp or a channel of the device, under the
+    /// same id. Changing it would orphan everything that refers to the sensor, so an
+    /// update must keep it. An unknown sensor is left to the update itself to report.
+    fn verify_metric_is_unchanged(&self, custom_sensor: &CustomSensor) -> Result<()> {
+        let sensors = self.sensors.borrow();
+        let Some(existing) = sensors.iter().find(|sensor| sensor.id == custom_sensor.id) else {
+            return Ok(());
+        };
+        if existing.metric != custom_sensor.metric {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "The metric of a Custom Sensor cannot be changed: {} is a {} sensor",
+                    existing.id, existing.metric
+                ),
+            }
+            .into());
         }
         Ok(())
     }
@@ -4675,6 +4717,69 @@ mod tests {
             };
             assert_eq!(kind_of("temp"), Some(FailsafeKind::Temp));
             assert_eq!(kind_of("rpm"), Some(FailsafeKind::Channel));
+        });
+    }
+
+    // A sensor's metric is fixed: an update naming another metric is refused before
+    // anything changes, and an update keeping it goes through.
+    #[test]
+    #[serial]
+    fn update_cannot_change_the_metric() {
+        cc_fs::test_runtime(async {
+            let (uid, dev) = make_mock_channel_device(1, channel_tick(1200, 40., 3600, 65.5));
+            let repo = repo_with(vec![dev]).await;
+            let fan = || temp_source(&uid, "fan1");
+            repo.set_custom_sensor(scaled("fan", CustomSensorMetric::RPM, 1., 0., fan()))
+                .await
+                .unwrap();
+
+            let as_duty = scaled("fan", CustomSensorMetric::Duty, 1., 0., fan());
+            let result = repo.update_custom_sensor(as_duty).await;
+
+            assert!(result.is_err());
+            assert_eq!(repo.sensors.borrow()[0].metric, CustomSensorMetric::RPM);
+            {
+                let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+                assert!(device.info.channels.contains_key("fan"));
+            }
+
+            let rescaled = scaled("fan", CustomSensorMetric::RPM, 2., 0., fan());
+            repo.update_custom_sensor(rescaled).await.unwrap();
+            repo.update_statuses().await.unwrap();
+            assert_eq!(current_channel_for(&repo, "fan").rpm, Some(2400));
+        });
+    }
+
+    // A parent and its child share a metric. An update cannot point a sensor at a child of
+    // another metric, which the creation backfill would not have caught.
+    #[test]
+    #[serial]
+    fn update_cannot_take_a_child_of_another_metric() {
+        cc_fs::test_runtime(async {
+            let (uid, dev) = make_mock_channel_device(1, channel_tick(1200, 40., 3600, 65.5));
+            let repo = repo_with(vec![dev]).await;
+            let fan = || temp_source(&uid, "fan1");
+            let child = |id: &str| temp_source(&repo.device_uid, id);
+            repo.set_custom_sensor(scaled("rpm_child", CustomSensorMetric::RPM, 1., 0., fan()))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(scaled(
+                "duty_child",
+                CustomSensorMetric::Duty,
+                1.,
+                0.,
+                fan(),
+            ))
+            .await
+            .unwrap();
+            let parent =
+                |child_id: &str| scaled("parent", CustomSensorMetric::RPM, 1., 0., child(child_id));
+            repo.set_custom_sensor(parent("rpm_child")).await.unwrap();
+
+            let result = repo.update_custom_sensor(parent("duty_child")).await;
+
+            assert!(result.is_err());
+            assert_eq!(repo.sensors.borrow()[2].children, vec!["rpm_child"]);
         });
     }
 
