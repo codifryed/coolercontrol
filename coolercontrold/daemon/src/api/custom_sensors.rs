@@ -82,6 +82,12 @@ pub async fn delete(
 
 fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     validate_name_string(&custom_sensor.id)?;
+    // The repository reads temperatures only, so no other metric is accepted yet.
+    if custom_sensor.metric.is_temp().not() {
+        return Err(CCError::UserError {
+            msg: format!("{} Custom Sensors are not supported", custom_sensor.metric),
+        });
+    }
     // The enum already enforces that each variant carries exactly its own fields (file_path
     // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
     // the value ranges and source cardinality the type cannot express remain here.
@@ -181,7 +187,7 @@ pub struct CSPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::CustomSensorMixFunctionType;
+    use crate::setting::{CustomSensorMetric, CustomSensorMixFunctionType};
 
     fn source() -> SensorSource {
         SensorSource {
@@ -198,6 +204,7 @@ mod tests {
     fn mix(sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "mix".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::WeightedAvg,
                 sources,
@@ -210,6 +217,7 @@ mod tests {
     fn time_average(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ta".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
@@ -222,6 +230,7 @@ mod tests {
     fn ema(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ema".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
@@ -229,6 +238,15 @@ mod tests {
             children: Vec::new(),
             parents: Vec::new(),
         }
+    }
+
+    // Only temperature sensors pass while the repository cannot read channels.
+    #[test]
+    fn rejects_a_non_temperature_metric() {
+        let mut sensor = mix(vec![source()]);
+        assert!(validate_custom_sensor(&sensor).is_ok());
+        sensor.metric = CustomSensorMetric::RPM;
+        assert!(validate_custom_sensor(&sensor).is_err());
     }
 
     // Weights 1 and 254 are the bounds and must pass.

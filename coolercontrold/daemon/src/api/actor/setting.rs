@@ -810,8 +810,8 @@ mod tests {
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, TempInfo};
     use crate::overrides::OverridesController;
     use crate::setting::{
-        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, DeviceExtensions,
-        ProfileKind, SensorSource, TempSource,
+        CCChannelSettings, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+        DeviceExtensions, ProfileKind, SensorSource, TempSource,
     };
     use crate::AllDevices;
     use std::cell::RefCell;
@@ -863,6 +863,7 @@ mod tests {
     fn mix_sensor(id: &str, source_uid: &str, source_temp: &str) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Min,
                 sources: vec![SensorSource {
@@ -1078,6 +1079,7 @@ mod tests {
         let update = settings(&[("Tctl", true)], false);
         let file_sensor = CustomSensor {
             id: "FromFile".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::File {
                 file_path: PathBuf::from("/tmp/from_file"),
             },

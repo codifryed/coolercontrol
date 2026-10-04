@@ -4,6 +4,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::Infallible;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::time::Duration;
 use strum::{Display, EnumString};
@@ -680,14 +682,45 @@ pub enum CustomSensorMixFunctionType {
     WeightedAvg,
 }
 
-/// One input of a Custom Sensor.
+/// The channel metric a Custom Sensor reads and reports. All of its sources share it.
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    EnumString,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+)]
+pub enum CustomSensorMetric {
+    #[default]
+    Temp,
+    Duty,
+    RPM,
+    Freq,
+    Watts,
+}
+
+impl CustomSensorMetric {
+    pub fn is_temp(self) -> bool {
+        self == Self::Temp
+    }
+}
+
+/// One input of a Custom Sensor. The sensor's metric says whether `name` is a temp or a
+/// channel of the device.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SensorSource {
     /// The device holding the current values.
     pub device_uid: DeviceUID,
 
-    /// The internal name of the temp on that device. NOT the label.
-    pub name: TempName,
+    /// The internal temp or channel name on that device. NOT the label.
+    pub name: String,
 
     pub weight: Weight,
 }
@@ -696,10 +729,12 @@ pub struct SensorSource {
 /// keeps the source keys that clients and stored configs use. The runtime works on
 /// [`SensorSource`] alone.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(from = "CustomSensorWire", into = "CustomSensorWire")]
+#[serde(try_from = "CustomSensorWire", into = "CustomSensorWire")]
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
     pub id: TempName,
+
+    pub metric: CustomSensorMetric,
 
     pub kind: CustomSensorKind,
 
@@ -739,35 +774,47 @@ pub enum CustomSensorKind<S = SensorSource> {
 }
 
 impl<S> CustomSensorKind<S> {
-    /// The same kind with every source converted.
-    fn map_sources<T>(self, convert: impl FnMut(S) -> T) -> CustomSensorKind<T> {
-        match self {
+    /// The same kind with every source converted, or the first conversion error.
+    fn try_map_sources<T, E>(
+        self,
+        convert: impl FnMut(S) -> Result<T, E>,
+    ) -> Result<CustomSensorKind<T>, E> {
+        let kind = match self {
             Self::Mix {
                 mix_function,
                 sources,
             } => CustomSensorKind::Mix {
                 mix_function,
-                sources: sources.into_iter().map(convert).collect(),
+                sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
             Self::File { file_path } => CustomSensorKind::File { file_path },
             Self::Offset { offset, sources } => CustomSensorKind::Offset {
                 offset,
-                sources: sources.into_iter().map(convert).collect(),
+                sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
             Self::TimeAverage {
                 time_window_seconds,
                 sources,
             } => CustomSensorKind::TimeAverage {
                 time_window_seconds,
-                sources: sources.into_iter().map(convert).collect(),
+                sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
             Self::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
             } => CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
-                sources: sources.into_iter().map(convert).collect(),
+                sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
+        };
+        Ok(kind)
+    }
+
+    /// The same kind with every source converted.
+    fn map_sources<T>(self, mut convert: impl FnMut(S) -> T) -> CustomSensorKind<T> {
+        match self.try_map_sources(|source| Ok::<T, Infallible>(convert(source))) {
+            Ok(kind) => kind,
+            Err(never) => match never {},
         }
     }
 }
@@ -802,6 +849,12 @@ struct CustomSensorWire {
     /// ID MUST be unique, as `temp_name` must be unique.
     id: TempName,
 
+    /// The channel metric the sensor reads and reports, `Temp` when absent. All sources
+    /// share it: a `Temp` sensor's sources are `temp_source`, any other metric's are
+    /// `channel_source`. It cannot change once the sensor exists.
+    #[serde(default)]
+    metric: CustomSensorMetric,
+
     /// Variant payload, flattened so its fields and the `cs_type` discriminator stay flat
     /// siblings of `id` on the wire (the legacy shape).
     #[serde(flatten)]
@@ -825,10 +878,35 @@ struct CustomSensorWire {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[schemars(rename = "CustomTempSourceData")]
+#[schemars(rename = "CustomSensorSource")]
 struct SensorSourceWire {
-    temp_source: TempSource,
+    #[serde(flatten)]
+    node: SourceNodeWire,
     weight: Weight,
+}
+
+// The key a source travels under. Temp is declared first, so it wins when a payload
+// carries both.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+enum SourceNodeWire {
+    Temp {
+        temp_source: TempSource,
+    },
+    Channel {
+        channel_source: CustomSensorChannelSource,
+    },
+}
+
+/// A channel a non-temperature Custom Sensor reads. The sensor's metric says which of the
+/// channel's values.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct CustomSensorChannelSource {
+    /// The associated device uid containing current values
+    device_uid: DeviceUID,
+
+    /// The internal name for this channel. NOT the Label.
+    channel_name: ChannelName,
 }
 
 impl SensorSource {
@@ -848,37 +926,81 @@ impl SensorSource {
     }
 }
 
-impl From<SensorSourceWire> for SensorSource {
-    fn from(wire: SensorSourceWire) -> Self {
-        Self::from_temp(wire.temp_source, wire.weight)
+impl SensorSourceWire {
+    fn of(metric: CustomSensorMetric, source: SensorSource) -> Self {
+        let weight = source.weight;
+        let node = if metric.is_temp() {
+            SourceNodeWire::Temp {
+                temp_source: TempSource {
+                    temp_name: source.name,
+                    device_uid: source.device_uid,
+                },
+            }
+        } else {
+            SourceNodeWire::Channel {
+                channel_source: CustomSensorChannelSource {
+                    device_uid: source.device_uid,
+                    channel_name: source.name,
+                },
+            }
+        };
+        Self { node, weight }
     }
-}
 
-impl From<SensorSource> for SensorSourceWire {
-    fn from(source: SensorSource) -> Self {
-        Self {
-            temp_source: source.temp_source(),
-            weight: source.weight,
+    /// The runtime source, or why the key does not fit the sensor's metric.
+    fn into_source(self, metric: CustomSensorMetric) -> Result<SensorSource, String> {
+        match self.node {
+            SourceNodeWire::Temp { temp_source } => {
+                if metric.is_temp().not() {
+                    return Err(format!(
+                        "A {metric} Custom Sensor takes channel_source sources, not temp_source"
+                    ));
+                }
+                Ok(SensorSource::from_temp(temp_source, self.weight))
+            }
+            SourceNodeWire::Channel { channel_source } => {
+                if metric.is_temp() {
+                    return Err(
+                        "A Temp Custom Sensor takes temp_source sources, not channel_source"
+                            .to_string(),
+                    );
+                }
+                Ok(SensorSource {
+                    device_uid: channel_source.device_uid,
+                    name: channel_source.channel_name,
+                    weight: self.weight,
+                })
+            }
         }
     }
 }
 
-impl From<CustomSensorWire> for CustomSensor {
-    fn from(wire: CustomSensorWire) -> Self {
-        Self {
+impl TryFrom<CustomSensorWire> for CustomSensor {
+    type Error = String;
+
+    fn try_from(wire: CustomSensorWire) -> Result<Self, Self::Error> {
+        let metric = wire.metric;
+        Ok(Self {
             id: wire.id,
-            kind: wire.kind.map_sources(SensorSource::from),
+            metric,
+            kind: wire
+                .kind
+                .try_map_sources(|source| source.into_source(metric))?,
             children: wire.children,
             parents: wire.parents,
-        }
+        })
     }
 }
 
 impl From<CustomSensor> for CustomSensorWire {
     fn from(sensor: CustomSensor) -> Self {
+        let metric = sensor.metric;
         Self {
             id: sensor.id,
-            kind: sensor.kind.map_sources(SensorSourceWire::from),
+            metric,
+            kind: sensor
+                .kind
+                .map_sources(|source| SensorSourceWire::of(metric, source)),
             children: sensor.children,
             parents: sensor.parents,
         }
@@ -1464,6 +1586,7 @@ mod tests {
     fn custom_sensor_source_keeps_its_wire_shape() {
         let sensor = CustomSensor {
             id: "mix1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Avg,
                 sources: vec![sample_source()],
@@ -1484,6 +1607,91 @@ mod tests {
         assert_eq!(parsed.sources(), &[sample_source()]);
     }
 
+    // A payload from a client that predates the metric carries none and is a temperature
+    // sensor. Responses always state the metric.
+    #[test]
+    fn custom_sensor_metric_defaults_to_temp() {
+        let payload = json!({
+            "id": "mix1",
+            "cs_type": "Mix",
+            "mix_function": "Avg",
+            "sources": [{
+                "temp_source": { "temp_name": "Temp1", "device_uid": "dev-1" },
+                "weight": 1
+            }]
+        });
+        let parsed: CustomSensor = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.metric, CustomSensorMetric::Temp);
+        assert_eq!(parsed.sources(), &[sample_source()]);
+
+        let v = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(v["metric"], json!("Temp"));
+    }
+
+    // A non-temperature sensor's sources travel under `channel_source` and read back to
+    // the same runtime source a temperature sensor would hold.
+    #[test]
+    fn custom_sensor_channel_source_round_trip() {
+        let sensor = CustomSensor {
+            id: "mix1".to_string(),
+            metric: CustomSensorMetric::RPM,
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Avg,
+                sources: vec![SensorSource {
+                    device_uid: "dev-1".to_string(),
+                    name: "fan1".to_string(),
+                    weight: 2,
+                }],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(v["metric"], json!("RPM"));
+        assert_eq!(
+            v["sources"],
+            json!([{
+                "channel_source": { "device_uid": "dev-1", "channel_name": "fan1" },
+                "weight": 2
+            }])
+        );
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.metric, CustomSensorMetric::RPM);
+        assert_eq!(parsed.sources(), sensor.sources());
+    }
+
+    // The source key must fit the metric: a temp key on a channel metric, or a channel key
+    // on a temperature sensor, is rejected at the deserialization boundary.
+    #[test]
+    fn custom_sensor_source_key_must_match_the_metric() {
+        let temp_source = json!({
+            "temp_source": { "temp_name": "Temp1", "device_uid": "dev-1" }, "weight": 1
+        });
+        let channel_source = json!({
+            "channel_source": { "device_uid": "dev-1", "channel_name": "fan1" }, "weight": 1
+        });
+        let payload = |metric: &str, source: &Value| {
+            json!({
+                "id": "x", "metric": metric, "cs_type": "Mix", "mix_function": "Avg",
+                "sources": [source]
+            })
+        };
+
+        let valid: Result<CustomSensor, _> =
+            serde_json::from_value(payload("Watts", &channel_source));
+        assert!(valid.is_ok());
+        let rpm_with_temp: Result<CustomSensor, _> =
+            serde_json::from_value(payload("RPM", &temp_source));
+        assert!(rpm_with_temp.is_err());
+        let temp_with_channel: Result<CustomSensor, _> =
+            serde_json::from_value(payload("Temp", &channel_source));
+        assert!(temp_with_channel.is_err());
+        let unknown_metric: Result<CustomSensor, _> =
+            serde_json::from_value(payload("Volts", &channel_source));
+        assert!(unknown_metric.is_err());
+    }
+
     // A Mix sensor serializes to the legacy flat shape: the cs_type tag and mix_function sit
     // beside id, sources is present, and no other variant's fields leak in. It deserializes
     // back to the Mix variant.
@@ -1491,6 +1699,7 @@ mod tests {
     fn custom_sensor_mix_round_trip() {
         let sensor = CustomSensor {
             id: "mix1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Avg,
                 sources: vec![sample_source()],
@@ -1520,6 +1729,7 @@ mod tests {
     fn custom_sensor_file_round_trip() {
         let sensor = CustomSensor {
             id: "file1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::File {
                 file_path: PathBuf::from("/tmp/temp"),
             },
@@ -1544,6 +1754,7 @@ mod tests {
     fn custom_sensor_offset_round_trip() {
         let sensor = CustomSensor {
             id: "off1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Offset {
                 offset: -7,
                 sources: vec![sample_source()],
@@ -1569,6 +1780,7 @@ mod tests {
     fn custom_sensor_time_average_round_trip() {
         let sensor = CustomSensor {
             id: "ta1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::TimeAverage {
                 time_window_seconds: 30,
                 sources: vec![sample_source()],
@@ -1597,6 +1809,7 @@ mod tests {
     fn custom_sensor_ema_round_trip() {
         let sensor = CustomSensor {
             id: "ema1".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds: 15,
                 sources: vec![sample_source()],

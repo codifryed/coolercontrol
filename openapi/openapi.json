@@ -8315,6 +8315,15 @@
             "description": "ID MUST be unique, as `temp_name` must be unique.",
             "type": "string"
           },
+          "metric": {
+            "description": "The channel metric the sensor reads and reports, `Temp` when absent. All sources\n share it: a `Temp` sensor's sources are `temp_source`, any other metric's are\n `channel_source`. It cannot change once the sensor exists.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomSensorMetric"
+              }
+            ],
+            "default": "Temp"
+          },
           "parents": {
             "description": "The Custom Sensor's parents, if any. See `children` for more details.",
             "type": "array",
@@ -8338,7 +8347,7 @@
               "sources": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CustomTempSourceData"
+                  "$ref": "#/components/schemas/CustomSensorSource"
                 }
               }
             },
@@ -8380,7 +8389,7 @@
               "sources": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CustomTempSourceData"
+                  "$ref": "#/components/schemas/CustomSensorSource"
                 }
               }
             },
@@ -8400,7 +8409,7 @@
               "sources": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CustomTempSourceData"
+                  "$ref": "#/components/schemas/CustomSensorSource"
                 }
               },
               "time_window_seconds": {
@@ -8426,7 +8435,7 @@
               "sources": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CustomTempSourceData"
+                  "$ref": "#/components/schemas/CustomSensorSource"
                 }
               },
               "time_window_seconds": {
@@ -8447,6 +8456,35 @@
           "id"
         ]
       },
+      "CustomSensorChannelSource": {
+        "description": "A channel a non-temperature Custom Sensor reads. The sensor's metric says which of the\n channel's values.",
+        "type": "object",
+        "properties": {
+          "channel_name": {
+            "description": "The internal name for this channel. NOT the Label.",
+            "type": "string"
+          },
+          "device_uid": {
+            "description": "The associated device uid containing current values",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_uid",
+          "channel_name"
+        ]
+      },
+      "CustomSensorMetric": {
+        "description": "The channel metric a Custom Sensor reads and reports. All of its sources share it.",
+        "type": "string",
+        "enum": [
+          "Temp",
+          "Duty",
+          "RPM",
+          "Freq",
+          "Watts"
+        ]
+      },
       "CustomSensorMixFunctionType": {
         "type": "string",
         "enum": [
@@ -8455,6 +8493,44 @@
           "Delta",
           "Avg",
           "WeightedAvg"
+        ]
+      },
+      "CustomSensorSource": {
+        "type": "object",
+        "properties": {
+          "weight": {
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          }
+        },
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "temp_source": {
+                "$ref": "#/components/schemas/TempSource"
+              }
+            },
+            "required": [
+              "temp_source"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel_source": {
+                "$ref": "#/components/schemas/CustomSensorChannelSource"
+              }
+            },
+            "required": [
+              "channel_source"
+            ]
+          }
+        ],
+        "required": [
+          "weight"
         ]
       },
       "CustomSensorsDto": {
@@ -8469,24 +8545,6 @@
         },
         "required": [
           "custom_sensors"
-        ]
-      },
-      "CustomTempSourceData": {
-        "type": "object",
-        "properties": {
-          "temp_source": {
-            "$ref": "#/components/schemas/TempSource"
-          },
-          "weight": {
-            "type": "integer",
-            "format": "uint8",
-            "maximum": 255,
-            "minimum": 0
-          }
-        },
-        "required": [
-          "temp_source",
-          "weight"
         ]
       },
       "DesktopNotification": {

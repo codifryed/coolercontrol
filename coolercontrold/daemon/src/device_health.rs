@@ -582,7 +582,8 @@ impl DeviceHealthController {
 mod tests {
     use super::*;
     use crate::setting::{
-        CustomSensorKind, CustomSensorMixFunctionType, FunctionUID, ProfileKind, SensorSource,
+        CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, FunctionUID,
+        ProfileKind, SensorSource,
     };
 
     #[test]
@@ -836,6 +837,7 @@ mod tests {
         let sensors = vec![
             CustomSensor {
                 id: "sensor1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Avg,
                     sources: vec![
@@ -848,6 +850,7 @@ mod tests {
             },
             CustomSensor {
                 id: "file1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::File {
                     file_path: "/tmp/x".into(),
                 },

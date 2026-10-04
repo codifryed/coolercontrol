@@ -14,9 +14,9 @@ use crate::api::devices::{apply_effective_speed_options, build_calibration_map, 
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, Function, FunctionKind,
-    FunctionUID, Offset, Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, SensorSource,
-    TempSource, DEFAULT_FUNCTION_UID,
+    CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Function,
+    FunctionKind, FunctionUID, Offset, Profile, ProfileKind, ProfileMixFunctionType, ProfileUID,
+    SensorSource, TempSource, DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
 use axum::Json;
@@ -666,6 +666,7 @@ fn resolve_radiator_source(
 fn build_delta_sensor(liquid: TempSource, ambient: TempSource) -> CustomSensor {
     CustomSensor {
         id: format!("Auto Delta {} {}", liquid.temp_name, ambient.temp_name),
+        metric: CustomSensorMetric::Temp,
         kind: CustomSensorKind::Mix {
             mix_function: CustomSensorMixFunctionType::Delta,
             sources: vec![
@@ -910,6 +911,7 @@ fn build_function(name: &str) -> Function {
 fn build_ema_sensor(source: TempSource, window_seconds: u16) -> CustomSensor {
     CustomSensor {
         id: format!("Auto EMA {} {window_seconds}s", source.temp_name),
+        metric: CustomSensorMetric::Temp,
         kind: CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds: window_seconds,
             sources: vec![SensorSource::from_temp(source, 1)],

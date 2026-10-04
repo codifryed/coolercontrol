@@ -1514,7 +1514,8 @@ mod tests {
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     use crate::repositories::repository::{DeviceLock, Repository};
     use crate::setting::{
-        CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, SensorSource,
+        CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+        SensorSource,
     };
     use serial_test::serial;
     use std::cell::RefCell;
@@ -1526,6 +1527,7 @@ mod tests {
     fn file_sensor(id: &str, file_path: PathBuf) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::File { file_path },
             children: Vec::new(),
             parents: Vec::new(),
@@ -3035,6 +3037,7 @@ mod tests {
     fn mix_sensor(id: &str, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Max,
                 sources,
@@ -3137,6 +3140,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "delta1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Delta,
                     sources: vec![
@@ -3170,6 +3174,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "off1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Offset {
                     offset: -25,
                     sources: vec![temp_source("nonexistent_device_uid", "any_temp")],
@@ -3204,6 +3209,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ta1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::TimeAverage {
                     time_window_seconds: 5,
                     sources: vec![temp_source(&source_uid, "missing")],
@@ -3238,6 +3244,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::ExponentialMovingAvg {
                     time_window_seconds: 5,
                     sources: vec![temp_source(&source_uid, "missing")],
@@ -3271,6 +3278,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema_bad".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::ExponentialMovingAvg {
                     time_window_seconds: 0,
                     sources: vec![temp_source(&source_uid, "actual")],
@@ -3308,6 +3316,7 @@ mod tests {
             repo.initialize_devices().await.unwrap();
             let sensor = CustomSensor {
                 id: "ema_ok".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::ExponentialMovingAvg {
                     time_window_seconds: 10,
                     sources: vec![temp_source(&source_uid, "cpu")],
@@ -3356,6 +3365,7 @@ mod tests {
             // path here.
             let sensor = CustomSensor {
                 id: "ta_bad".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::TimeAverage {
                     time_window_seconds: 0,
                     sources: vec![temp_source(&source_uid, "actual")],
@@ -3619,6 +3629,7 @@ mod tests {
     fn time_average_sensor(id: &str, window_seconds: u16, source: SensorSource) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::TimeAverage {
                 time_window_seconds: window_seconds,
                 sources: vec![source],
@@ -3631,6 +3642,7 @@ mod tests {
     fn ema_sensor(id: &str, window_seconds: u16, source: SensorSource) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds: window_seconds,
                 sources: vec![source],
