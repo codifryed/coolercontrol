@@ -7,6 +7,7 @@ use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::ops::Not;
 
 use super::validate_name_string;
 
@@ -142,9 +143,10 @@ fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<()
         });
     }
     for source in sources {
-        if source.weight > 254 {
+        // A weight of 0 would divide the weighted average by zero.
+        if (1..=254).contains(&source.weight).not() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a weight greater than 254".to_string(),
+                msg: "sources must have a weight between 1 and 254".to_string(),
             });
         }
         if source.temp_source.device_uid.is_empty() {
@@ -185,7 +187,7 @@ pub struct CSPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::TempSource;
+    use crate::setting::{CustomSensorMixFunctionType, TempSource};
 
     fn source() -> CustomTempSourceData {
         CustomTempSourceData {
@@ -194,6 +196,22 @@ mod tests {
                 temp_name: "cpu_temp".to_string(),
             },
             weight: 1,
+        }
+    }
+
+    fn weighted(weight: u8) -> CustomTempSourceData {
+        CustomTempSourceData { weight, ..source() }
+    }
+
+    fn mix(sources: Vec<CustomTempSourceData>) -> CustomSensor {
+        CustomSensor {
+            id: "mix".to_string(),
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::WeightedAvg,
+                sources,
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
         }
     }
 
@@ -219,6 +237,23 @@ mod tests {
             children: Vec::new(),
             parents: Vec::new(),
         }
+    }
+
+    // Weights 1 and 254 are the bounds and must pass.
+    #[test]
+    fn mix_accepts_weight_bounds() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(1), weighted(254)])).is_ok());
+    }
+
+    // A weight of 0 is rejected: it would zero the weighted average's divisor.
+    #[test]
+    fn mix_rejects_zero_weight() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(1), weighted(0)])).is_err());
+    }
+
+    #[test]
+    fn mix_rejects_weight_above_254() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(255)])).is_err());
     }
 
     // Note: "missing time_window_seconds" is no longer testable here because the type makes
