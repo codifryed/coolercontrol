@@ -907,29 +907,33 @@ impl CustomSensorsRepo {
         }
     }
 
+    // The folds start from the sources themselves: a fixed seed is only neutral inside
+    // the range it was picked for.
     fn process_mix_min(temp_data: &[TempData]) -> f64 {
-        temp_data.iter().fold(254., |acc, data| data.temp.min(acc))
+        if temp_data.is_empty() {
+            return 0.;
+        }
+        temp_data
+            .iter()
+            .fold(f64::INFINITY, |acc, data| data.temp.min(acc))
     }
 
     fn process_mix_max(temp_data: &[TempData]) -> f64 {
-        temp_data.iter().fold(0., |acc, data| data.temp.max(acc))
+        if temp_data.is_empty() {
+            return 0.;
+        }
+        temp_data
+            .iter()
+            .fold(f64::NEG_INFINITY, |acc, data| data.temp.max(acc))
     }
 
     fn process_mix_delta(temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
         }
-        let mut min = 105.;
-        let mut max = 0.;
-        for data in temp_data {
-            if data.temp < min {
-                min = data.temp;
-            }
-            if data.temp > max {
-                max = data.temp;
-            }
-        }
-        (max - min).abs()
+        let delta = Self::process_mix_max(temp_data) - Self::process_mix_min(temp_data);
+        debug_assert!(delta >= 0.);
+        delta
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -1636,6 +1640,54 @@ mod tests {
         ];
         let result = CustomSensorsRepo::process_mix_delta(&temp_data);
         assert_eq!(result, 5.0);
+    }
+
+    fn values(values: &[f64]) -> Vec<TempData> {
+        values
+            .iter()
+            .map(|&temp| TempData { temp, weight: 1.0 })
+            .collect()
+    }
+
+    // The folds must hold outside the old seed range of 0 to 254: every value above
+    // the old minimum seed, and every value below the old maximum seed of 0.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn mix_min_and_max_hold_outside_the_old_seed_range() {
+        let high = values(&[1200.0, 1500.0, 900.0]);
+        assert_eq!(CustomSensorsRepo::process_mix_min(&high), 900.0);
+        assert_eq!(CustomSensorsRepo::process_mix_max(&high), 1500.0);
+        let sub_zero = values(&[-5.0, -3.0, -12.5]);
+        assert_eq!(CustomSensorsRepo::process_mix_min(&sub_zero), -12.5);
+        assert_eq!(CustomSensorsRepo::process_mix_max(&sub_zero), -3.0);
+    }
+
+    // Delta is the spread of the sources alone. The old seeds widened it whenever every
+    // source sat above 105 or below 0.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn mix_delta_holds_outside_the_old_seed_range() {
+        assert_eq!(
+            CustomSensorsRepo::process_mix_delta(&values(&[110.0, 112.0])),
+            2.0
+        );
+        assert_eq!(
+            CustomSensorsRepo::process_mix_delta(&values(&[-5.0, -3.0])),
+            2.0
+        );
+        assert_eq!(
+            CustomSensorsRepo::process_mix_delta(&values(&[1500.0])),
+            0.0
+        );
+    }
+
+    // No data is 0 for every fold, as it already was for Delta, Avg and Max.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn mix_folds_return_zero_without_data() {
+        assert_eq!(CustomSensorsRepo::process_mix_min(&[]), 0.0);
+        assert_eq!(CustomSensorsRepo::process_mix_max(&[]), 0.0);
+        assert_eq!(CustomSensorsRepo::process_mix_delta(&[]), 0.0);
     }
 
     // Returns the minimum temperature from a vector of temperature data.
