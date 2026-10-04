@@ -14,6 +14,7 @@ use crate::device::ChannelName;
 use crate::device::DeviceName;
 use crate::device::DeviceUID;
 use crate::device::Duty;
+use crate::device::Status;
 use crate::device::Temp;
 use crate::device::TempName;
 use crate::device::UID;
@@ -710,6 +711,23 @@ pub enum CustomSensorMetric {
 impl CustomSensorMetric {
     pub fn is_temp(self) -> bool {
         self == Self::Temp
+    }
+
+    /// This metric's value of the temp or channel `name` in `status`. The last entry wins
+    /// should a name repeat. `None` when the name is absent or carries no such value.
+    pub fn read(self, status: &Status, name: &str) -> Option<f64> {
+        let channel = || status.channels.iter().rfind(|channel| channel.name == name);
+        match self {
+            Self::Temp => status
+                .temps
+                .iter()
+                .rfind(|temp| temp.name == name)
+                .map(|temp| temp.temp),
+            Self::Duty => channel()?.duty,
+            Self::RPM => channel()?.rpm.map(f64::from),
+            Self::Freq => channel()?.freq.map(f64::from),
+            Self::Watts => channel()?.watts,
+        }
     }
 
     /// The largest offset, in either direction, a Scale & Offset sensor of this metric
@@ -1877,6 +1895,47 @@ mod tests {
         }
         assert!(Scale::default().is_identity());
         assert!(Scale::try_from(1.000_001).unwrap().is_identity().not());
+    }
+
+    // Each metric reads its own value of the named temp or channel. A name that is absent,
+    // or present without that value, reads as nothing: rpm is not duty, a channel is no temp.
+    #[test]
+    fn metric_reads_its_own_value() {
+        use crate::device::{ChannelStatus, TempStatus};
+
+        let status = Status {
+            temps: vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 42.5,
+            }],
+            channels: vec![
+                ChannelStatus {
+                    name: "fan1".to_string(),
+                    rpm: Some(1200),
+                    duty: Some(40.),
+                    ..Default::default()
+                },
+                ChannelStatus {
+                    name: "cpu".to_string(),
+                    freq: Some(3600),
+                    watts: Some(65.5),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(CustomSensorMetric::Temp.read(&status, "temp1"), Some(42.5));
+        assert_eq!(CustomSensorMetric::RPM.read(&status, "fan1"), Some(1200.));
+        assert_eq!(CustomSensorMetric::Duty.read(&status, "fan1"), Some(40.));
+        assert_eq!(CustomSensorMetric::Freq.read(&status, "cpu"), Some(3600.));
+        assert_eq!(CustomSensorMetric::Watts.read(&status, "cpu"), Some(65.5));
+
+        assert_eq!(CustomSensorMetric::Watts.read(&status, "fan1"), None);
+        assert_eq!(CustomSensorMetric::RPM.read(&status, "cpu"), None);
+        assert_eq!(CustomSensorMetric::Temp.read(&status, "fan1"), None);
+        assert_eq!(CustomSensorMetric::Duty.read(&status, "temp1"), None);
+        assert_eq!(CustomSensorMetric::RPM.read(&status, "missing"), None);
     }
 
     // Temperatures keep the offset range they always had; every other metric gets the wide one.
