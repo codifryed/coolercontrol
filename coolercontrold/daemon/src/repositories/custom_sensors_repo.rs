@@ -167,6 +167,8 @@ impl CustomSensorsRepo {
 
     pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         self.verify_sensor_relationships(&custom_sensor)?;
+        // Before the backfill, which would leave a second entry in every history slot.
+        self.verify_sensor_id_is_new(&custom_sensor.id)?;
         self.fill_status_history_for_new_sensor(&custom_sensor)
             .await
             .inspect_err(|err| {
@@ -1136,6 +1138,22 @@ impl CustomSensorsRepo {
                     .into());
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn verify_sensor_id_is_new(&self, sensor_id: &str) -> Result<()> {
+        let id_is_taken = self
+            .sensors
+            .borrow()
+            .iter()
+            .any(|sensor| sensor.id == sensor_id);
+        if id_is_taken {
+            return Err(CCError::UserError {
+                msg: "Custom Sensor already exists. Use the update operation to update it."
+                    .to_string(),
+            }
+            .into());
         }
         Ok(())
     }
@@ -2708,6 +2726,37 @@ mod tests {
             assert!(result
                 .map_err(|err| err.to_string().contains("cannot have itself as a child"))
                 .unwrap_err());
+        });
+    }
+
+    // Creating a sensor under an id that is already in use is refused, and the refused
+    // attempt must not backfill: every history slot keeps exactly one entry for the id.
+    #[test]
+    #[serial]
+    fn test_duplicate_id_is_rejected_before_backfill() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            repo.initialize_devices()
+                .await
+                .expect("Failed to initialize devices");
+            repo.set_custom_sensor(mix_sensor("sensor", vec![]))
+                .await
+                .expect("Failed to set sensor");
+
+            // when:
+            let result = repo.set_custom_sensor(mix_sensor("sensor", vec![])).await;
+
+            // then:
+            assert!(result.is_err());
+            assert_eq!(repo.sensors.borrow().len(), 1);
+            let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+            assert!(device.status_history.is_empty().not());
+            for status in device.status_history.iter() {
+                let entry_count = status.temps.iter().filter(|t| t.name == "sensor").count();
+                assert_eq!(entry_count, 1);
+            }
         });
     }
 
