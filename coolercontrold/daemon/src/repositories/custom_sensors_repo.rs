@@ -440,9 +440,9 @@ impl CustomSensorsRepo {
         sensor: &CustomSensor,
         sources: &[SensorSource],
         index: usize,
-        reduce: impl Fn(&[TempData]) -> f64,
+        reduce: impl Fn(&[SourceData]) -> f64,
     ) -> Result<f64> {
-        let mut temp_data = Vec::with_capacity(sources.len());
+        let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
             let some_source_device = if source.device_uid == self.device_uid {
                 // Only used for NEW sensors, so safe for Parents too: children already have a
@@ -466,14 +466,14 @@ impl CustomSensorsRepo {
                 );
                 return Err(CCError::UserError { msg }.into());
             };
-            temp_data.push(TempData {
-                temp: value,
+            source_data.push(SourceData {
+                value,
                 weight: f64::from(source.weight),
             });
         }
-        if temp_data.is_empty() {
-            temp_data.push(TempData {
-                temp: 0.,
+        if source_data.is_empty() {
+            source_data.push(SourceData {
+                value: 0.,
                 weight: 1.,
             });
             debug!(
@@ -481,7 +481,7 @@ impl CustomSensorsRepo {
                 sensor.id
             );
         }
-        Ok(reduce(&temp_data))
+        Ok(reduce(&source_data))
     }
 
     /// Computes the current-tick value of a Mix or Scale & Offset Custom Sensor by reducing
@@ -494,9 +494,9 @@ impl CustomSensorsRepo {
         sensor: &CustomSensor,
         sources: &[SensorSource],
         values: &[SensorValue],
-        reduce: impl Fn(&[TempData]) -> f64,
+        reduce: impl Fn(&[SourceData]) -> f64,
     ) -> SensorValue {
-        let mut temp_data = Vec::with_capacity(sources.len());
+        let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
             let Some(value) = self.source_value(sensor.metric, source, values) else {
                 // Device-first with the log convention's pipe separator, matching
@@ -509,17 +509,17 @@ impl CustomSensorsRepo {
                 };
                 return self.emit_failsafe(&sensor.id, sensor.metric, &reason);
             };
-            temp_data.push(TempData {
-                temp: value,
+            source_data.push(SourceData {
+                value,
                 weight: f64::from(source.weight),
             });
         }
-        if temp_data.is_empty() {
+        if source_data.is_empty() {
             // Validation forbids this for Mix, but defensively failsafe rather than emitting a
             // misleading cool value if a malformed sensor ever slips through.
             return self.emit_failsafe(&sensor.id, sensor.metric, "no sources configured");
         }
-        self.emit_real(&sensor.id, sensor.metric, reduce(&temp_data))
+        self.emit_real(&sensor.id, sensor.metric, reduce(&source_data))
     }
 
     /// Computes one sensor's current-tick value and pushes it to `values`. `File` sensors
@@ -810,16 +810,16 @@ impl CustomSensorsRepo {
     fn process_mix(
         metric: CustomSensorMetric,
         mix_function: &CustomSensorMixFunctionType,
-        temp_data: &[TempData],
+        source_data: &[SourceData],
     ) -> f64 {
         match mix_function {
-            CustomSensorMixFunctionType::Min => Self::process_mix_min(temp_data),
-            CustomSensorMixFunctionType::Max => Self::process_mix_max(temp_data),
-            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(temp_data),
-            CustomSensorMixFunctionType::Avg => Self::process_mix_avg(temp_data),
-            CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(temp_data),
+            CustomSensorMixFunctionType::Min => Self::process_mix_min(source_data),
+            CustomSensorMixFunctionType::Max => Self::process_mix_max(source_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(source_data),
+            CustomSensorMixFunctionType::Avg => Self::process_mix_avg(source_data),
+            CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(source_data),
             CustomSensorMixFunctionType::Sum => {
-                Self::readable_temp(metric, Self::process_mix_sum(temp_data))
+                Self::readable_temp(metric, Self::process_mix_sum(source_data))
             }
         }
     }
@@ -836,64 +836,64 @@ impl CustomSensorsRepo {
 
     // The folds start from the sources themselves: a fixed seed is only neutral inside
     // the range it was picked for.
-    fn process_mix_min(temp_data: &[TempData]) -> f64 {
-        if temp_data.is_empty() {
+    fn process_mix_min(source_data: &[SourceData]) -> f64 {
+        if source_data.is_empty() {
             return 0.;
         }
-        temp_data
+        source_data
             .iter()
-            .fold(f64::INFINITY, |acc, data| data.temp.min(acc))
+            .fold(f64::INFINITY, |acc, data| data.value.min(acc))
     }
 
-    fn process_mix_max(temp_data: &[TempData]) -> f64 {
-        if temp_data.is_empty() {
+    fn process_mix_max(source_data: &[SourceData]) -> f64 {
+        if source_data.is_empty() {
             return 0.;
         }
-        temp_data
+        source_data
             .iter()
-            .fold(f64::NEG_INFINITY, |acc, data| data.temp.max(acc))
+            .fold(f64::NEG_INFINITY, |acc, data| data.value.max(acc))
     }
 
-    fn process_mix_delta(temp_data: &[TempData]) -> f64 {
-        if temp_data.is_empty() {
+    fn process_mix_delta(source_data: &[SourceData]) -> f64 {
+        if source_data.is_empty() {
             return 0.;
         }
-        let delta = Self::process_mix_max(temp_data) - Self::process_mix_min(temp_data);
+        let delta = Self::process_mix_max(source_data) - Self::process_mix_min(source_data);
         debug_assert!(delta >= 0.);
         delta
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn process_mix_avg(temp_data: &[TempData]) -> f64 {
-        if temp_data.is_empty() {
+    fn process_mix_avg(source_data: &[SourceData]) -> f64 {
+        if source_data.is_empty() {
             return 0.;
         }
-        temp_data.iter().fold(0., |acc, data| acc + data.temp) / temp_data.len() as f64
+        source_data.iter().fold(0., |acc, data| acc + data.value) / source_data.len() as f64
     }
 
-    fn process_mix_sum(temp_data: &[TempData]) -> f64 {
-        temp_data.iter().fold(0., |acc, data| acc + data.temp)
+    fn process_mix_sum(source_data: &[SourceData]) -> f64 {
+        source_data.iter().fold(0., |acc, data| acc + data.value)
     }
 
-    fn process_mix_weighted_avg(temp_data: &[TempData]) -> f64 {
-        if temp_data.is_empty() {
+    fn process_mix_weighted_avg(source_data: &[SourceData]) -> f64 {
+        if source_data.is_empty() {
             return 0.;
         }
-        temp_data
+        source_data
             .iter()
             .fold(
-                TempData {
-                    temp: 0.,
+                SourceData {
+                    value: 0.,
                     weight: 0.,
                 },
                 |mut acc, data| {
                     let total_weight = acc.weight + data.weight;
-                    acc.temp = (acc.temp * acc.weight + data.temp * data.weight) / total_weight;
+                    acc.value = (acc.value * acc.weight + data.value * data.weight) / total_weight;
                     acc.weight = total_weight;
                     acc
                 },
             )
-            .temp
+            .value
     }
 
     /// Returns the first source's value scaled, then offset, or 0 if there is no source
@@ -903,12 +903,12 @@ impl CustomSensorsRepo {
         metric: CustomSensorMetric,
         scale: Scale,
         offset: f64,
-        temp_data: &[TempData],
+        source_data: &[SourceData],
     ) -> f64 {
-        if temp_data.is_empty() {
+        if source_data.is_empty() {
             return 0.;
         }
-        Self::readable_temp(metric, temp_data[0].temp * scale.get() + offset)
+        Self::readable_temp(metric, source_data[0].value * scale.get() + offset)
     }
 
     /// Reads the current value for a File-type Custom Sensor. An unreadable / malformed file
@@ -1598,8 +1598,8 @@ impl Repository for CustomSensorsRepo {
     }
 }
 
-struct TempData {
-    temp: f64,
+struct SourceData {
+    value: f64,
     weight: f64,
 }
 
@@ -1613,7 +1613,7 @@ mod tests {
     };
     use crate::device_health::FailsafeKind;
     use crate::repositories::custom_sensors_repo::{
-        CustomSensorsRepo, SampleWindow, TempData, SAMPLE_WINDOW_MAX_SLOTS,
+        CustomSensorsRepo, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
     };
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     use crate::repositories::repository::{DeviceLock, Repository};
@@ -1642,25 +1642,25 @@ mod tests {
         Rc::new(crate::overrides::OverridesController::empty())
     }
 
-    // Calculates the delta between the minimum and maximum temperature values in the given vector of TempData.
+    // Calculates the delta between the minimum and maximum temperature values in the given vector of SourceData.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_calculate_delta() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 5.0,
+            SourceData {
+                value: 5.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 8.0,
+            SourceData {
+                value: 8.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        let result = CustomSensorsRepo::process_mix_delta(&source_data);
         assert_eq!(result, 5.0);
     }
 
@@ -1668,77 +1668,80 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_absolute_value() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 5.0,
+            SourceData {
+                value: 5.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 8.0,
+            SourceData {
+                value: 8.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        let result = CustomSensorsRepo::process_mix_delta(&source_data);
         assert_eq!(result.abs(), result);
     }
 
-    // Returns 0.0 if the given vector of TempData is empty.
+    // Returns 0.0 if the given vector of SourceData is empty.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_empty_vector() {
-        let temp_data = vec![];
-        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        let source_data = vec![];
+        let result = CustomSensorsRepo::process_mix_delta(&source_data);
         assert_eq!(result, 0.0);
     }
 
-    // Returns 0.0 if all temperature values in the given vector of TempData are the same.
+    // Returns 0.0 if all temperature values in the given vector of SourceData are the same.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_same_temperatures() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 10.0,
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 10.0,
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        let result = CustomSensorsRepo::process_mix_delta(&source_data);
         assert_eq!(result, 0.0);
     }
 
-    // Returns the difference between the only two temperature values in the given vector of TempData if it contains exactly two elements.
+    // Returns the difference between the only two temperature values in the given vector of SourceData if it contains exactly two elements.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_two_elements() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 5.0,
+            SourceData {
+                value: 5.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        let result = CustomSensorsRepo::process_mix_delta(&source_data);
         assert_eq!(result, 5.0);
     }
 
-    fn values(values: &[f64]) -> Vec<TempData> {
+    fn values(values: &[f64]) -> Vec<SourceData> {
         values
             .iter()
-            .map(|&temp| TempData { temp, weight: 1.0 })
+            .map(|&temp| SourceData {
+                value: temp,
+                weight: 1.0,
+            })
             .collect()
     }
 
@@ -1826,12 +1829,12 @@ mod tests {
     #[allow(clippy::float_cmp)]
     fn mix_sum_adds_the_sources() {
         let weighted = vec![
-            TempData {
-                temp: 20.5,
+            SourceData {
+                value: 20.5,
                 weight: 3.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 1.0,
             },
         ];
@@ -1863,21 +1866,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_minimum_temperature() {
-        let temp_data = vec![
-            TempData {
-                temp: 25.0,
+        let source_data = vec![
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 20.0,
+            SourceData {
+                value: 20.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        let result = CustomSensorsRepo::process_mix_min(&source_data);
         assert_eq!(result, 20.0);
     }
 
@@ -1885,21 +1888,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_zero_when_all_temperatures_are_zero() {
-        let temp_data = vec![
-            TempData {
-                temp: 0.0,
+        let source_data = vec![
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 0.0,
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 0.0,
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        let result = CustomSensorsRepo::process_mix_min(&source_data);
         assert_eq!(result, 0.0);
     }
 
@@ -1907,11 +1910,11 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_single_temperature_when_only_one_temperature() {
-        let temp_data = vec![TempData {
-            temp: 25.0,
+        let source_data = vec![SourceData {
+            value: 25.0,
             weight: 1.0,
         }];
-        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        let result = CustomSensorsRepo::process_mix_min(&source_data);
         assert_eq!(result, 25.0);
     }
 
@@ -1919,43 +1922,43 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_minimum_temperature_with_multiple_same_temperatures() {
-        let temp_data = vec![
-            TempData {
-                temp: 25.0,
+        let source_data = vec![
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 20.0,
+            SourceData {
+                value: 20.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 20.0,
+            SourceData {
+                value: 20.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        let result = CustomSensorsRepo::process_mix_min(&source_data);
         assert_eq!(result, 20.0);
     }
 
-    // Returns the maximum temperature value from a vector of TempData structs with positive values
+    // Returns the maximum temperature value from a vector of SourceData structs with positive values
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_from_positive_values() {
-        let temp_data = vec![
-            TempData {
-                temp: 25.0,
+        let source_data = vec![
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 28.0,
+            SourceData {
+                value: 28.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 30.0);
     }
 
@@ -1963,21 +1966,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_0_when_all_temps_are_0() {
-        let temp_data = vec![
-            TempData {
-                temp: 0.0,
+        let source_data = vec![
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 0.0,
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 0.0,
+            SourceData {
+                value: 0.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 0.0);
     }
 
@@ -1985,21 +1988,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_all_temps_are_same() {
-        let temp_data = vec![
-            TempData {
-                temp: 25.0,
+        let source_data = vec![
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 25.0,
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 25.0,
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 25.0);
     }
 
@@ -2007,8 +2010,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_0_when_vector_is_empty() {
-        let temp_data: Vec<TempData> = vec![];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let source_data: Vec<SourceData> = vec![];
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 0.0);
     }
 
@@ -2016,11 +2019,11 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_vector_has_one_element() {
-        let temp_data = vec![TempData {
-            temp: 30.0,
+        let source_data = vec![SourceData {
+            value: 30.0,
             weight: 1.0,
         }];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 30.0);
     }
 
@@ -2028,17 +2031,17 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_vector_has_two_elements_with_different_temps() {
-        let temp_data = vec![
-            TempData {
-                temp: 25.0,
+        let source_data = vec![
+            SourceData {
+                value: 25.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        let result = CustomSensorsRepo::process_mix_max(&source_data);
         assert_eq!(result, 30.0);
     }
 
@@ -2046,21 +2049,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn calculates_weighted_average() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 2.0,
             },
-            TempData {
-                temp: 20.0,
+            SourceData {
+                value: 20.0,
                 weight: 3.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 4.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&source_data);
         assert_eq!(result, 22.222_222_222_222_22);
     }
 
@@ -2068,21 +2071,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_correct_weighted_average() {
-        let temp_data = vec![
-            TempData {
-                temp: 5.0,
+        let source_data = vec![
+            SourceData {
+                value: 5.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 10.0,
+            SourceData {
+                value: 10.0,
                 weight: 2.0,
             },
-            TempData {
-                temp: 15.0,
+            SourceData {
+                value: 15.0,
                 weight: 3.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&source_data);
         assert_eq!(result, 11.666_666_666_666_666);
     }
 
@@ -2090,8 +2093,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_zero_for_empty_list() {
-        let temp_data = vec![];
-        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        let source_data = vec![];
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&source_data);
         assert_eq!(result, 0.0);
     }
 
@@ -2099,21 +2102,21 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn calculates_average_temperature_correctly() {
-        let temp_data = vec![
-            TempData {
-                temp: 10.0,
+        let source_data = vec![
+            SourceData {
+                value: 10.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 20.0,
+            SourceData {
+                value: 20.0,
                 weight: 1.0,
             },
-            TempData {
-                temp: 30.0,
+            SourceData {
+                value: 30.0,
                 weight: 1.0,
             },
         ];
-        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        let result = CustomSensorsRepo::process_mix_avg(&source_data);
         assert_eq!(result, 20.0);
     }
 
@@ -2121,8 +2124,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_zero_for_empty_vector() {
-        let temp_data = vec![];
-        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        let source_data = vec![];
+        let result = CustomSensorsRepo::process_mix_avg(&source_data);
         assert_eq!(result, 0.0);
     }
 
@@ -2130,11 +2133,11 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_single_value_for_vector_of_length_one() {
-        let temp_data = vec![TempData {
-            temp: 15.0,
+        let source_data = vec![SourceData {
+            value: 15.0,
             weight: 1.0,
         }];
-        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        let result = CustomSensorsRepo::process_mix_avg(&source_data);
         assert_eq!(result, 15.0);
     }
 
@@ -3270,7 +3273,7 @@ mod tests {
             );
 
             // Backfill skips a missing source device and falls through to the empty
-            // temp_data dummy (0); set_custom_sensor therefore succeeds.
+            // source_data dummy (0); set_custom_sensor therefore succeeds.
             repo.set_custom_sensor(sensor).await.unwrap();
             repo.update_statuses().await.unwrap();
 
@@ -3779,7 +3782,7 @@ mod tests {
     // status_history (the historical placeholder), not MISSING_TEMP_FAILSAFE. Backfill is
     // out of scope for the safety contract (Q2a) and substituting failsafe in history would
     // create phantom 100°C spikes at sensor-creation time on charts. Uses a non-existent
-    // device_uid so backfill skips the source and falls through to the empty-temp_data
+    // device_uid so backfill skips the source and falls through to the empty-source_data
     // dummy push (0); a present-device-with-missing-temp_name would error at backfill.
     #[test]
     #[serial]
