@@ -37,10 +37,11 @@ export function hardwareDevices(devices: Iterable<Device>): Device[] {
     return [...devices]
 }
 
-// Sensor names of a CustomSensors device (editor child links).
+// Sensor names of a CustomSensors device (editor child links). A temperature sensor is
+// a temp of the device, a sensor of any other metric one of its channels.
 export function customSensorNames(device: Device): string[] {
     if (device.type !== DeviceType.CUSTOM_SENSORS || device.info == null) return []
-    return [...device.info.temps.keys()]
+    return [...device.info.temps.keys(), ...device.info.channels.keys()]
 }
 
 export interface DeviceChannelLink {

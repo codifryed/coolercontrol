@@ -53,6 +53,13 @@ describe('hardwareDevices', () => {
         expect(customSensorNames(custom)).toEqual(['sensor1'])
         expect(customSensorNames(hwmon)).toEqual([])
     })
+
+    it('lists custom sensors of any metric: temps, then channels', () => {
+        const custom = fakeDevice('c1', DeviceType.CUSTOM_SENSORS, ['sensor1'], {
+            sensor_3f9a1c2e: {},
+        })
+        expect(customSensorNames(custom)).toEqual(['sensor1', 'sensor_3f9a1c2e'])
+    })
 })
 
 describe('deviceChannelLinks', () => {
