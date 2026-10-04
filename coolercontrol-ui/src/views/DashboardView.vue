@@ -41,6 +41,7 @@ import TimeChartStatsLegend from '@/components/TimeChartStatsLegend.vue'
 import SensorStatsPanel from '@/components/SensorStatsPanel.vue'
 import type { ChannelAttribute } from '@/models/ChannelAttributes.ts'
 import { limitLinesFrom, type LimitLine } from '@/components/channelAttributes.ts'
+import { isFanChannel } from '@/shell/channelUnit.ts'
 import type { WindowStatsPayload } from '@/components/chartStats.ts'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
@@ -83,7 +84,7 @@ const hasCoolingPage = computed((): boolean => {
     if (!sensorMode) return false
     for (const device of deviceStore.allDevices()) {
         if (device.uid === props.deviceUID) {
-            return device.info?.channels.get(props.channelName!)?.speed_options != null
+            return isFanChannel(device, props.channelName!, settingsStore.channelUnit)
         }
     }
     return false
@@ -488,7 +489,12 @@ const loadAttributes = async (): Promise<void> => {
 }
 loadAttributes()
 const drawableLimits = computed((): Array<LimitLine> =>
-    limitLinesFrom(attributes.value, settingsStore.frequencyPrecision, t),
+    limitLinesFrom(
+        attributes.value,
+        settingsStore.frequencyPrecision,
+        t,
+        settingsStore.channelUnit(props.deviceUID!, props.channelName!),
+    ),
 )
 const limitLines = computed((): Array<LimitLine> =>
     sensorMode && dashboard.showLimitLines ? drawableLimits.value : [],

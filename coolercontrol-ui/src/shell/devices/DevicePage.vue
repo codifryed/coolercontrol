@@ -171,7 +171,7 @@ const sensorLabel = (channelName: string): string =>
 // One complete list of the device's channels and sensors, each linking to the
 // page where it is viewed or controlled.
 const sensorLinks = computed((): DeviceSensorLink[] =>
-    device.value != null ? deviceSensorLinks(device.value) : [],
+    device.value != null ? deviceSensorLinks(device.value, settingsStore.channelUnit) : [],
 )
 const sensorLinkTarget = (
     link: DeviceSensorLink,

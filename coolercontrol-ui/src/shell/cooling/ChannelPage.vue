@@ -13,7 +13,7 @@ import {
     mdiShareVariantOutline,
     mdiSourceFork,
 } from '@mdi/js'
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfirm } from '@/shell/confirm'
 import { useToast } from '@/shell/toast'
@@ -343,6 +343,8 @@ if (channelDashboard.value.dataTypes.length > 0) {
 }
 // A chart binds its lines to its series at mount, so a changed line set needs a new chart.
 const chartKey = ref<string>(uuidV4())
+// It also reads the line's name and unit at mount, and both follow the label.
+watch(channelLabel, () => (chartKey.value = uuidV4()))
 </script>
 
 <template>
@@ -369,7 +371,7 @@ const chartKey = ref<string>(uuidV4())
                     v-if="liveRpm != null"
                     class="text-base font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ groupDigits(liveRpm) }} rpm
+                    {{ groupDigits(liveRpm) }} {{ settingsStore.rpmUnit(deviceUID, channelName) }}
                 </span>
             </div>
         </div>

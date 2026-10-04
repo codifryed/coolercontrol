@@ -111,7 +111,12 @@ export function formatAttributeNumber(attribute: ChannelAttribute): string {
     return attribute.value.toFixed(0)
 }
 
-export function formatAttributeValue(attribute: ChannelAttribute, t: Translate): string {
+// `fanUnit` is the unit the channel's label names for its fan input, when it is not a speed.
+export function formatAttributeValue(
+    attribute: ChannelAttribute,
+    t: Translate,
+    fanUnit?: string,
+): string {
     const number = groupDigits(formatAttributeNumber(attribute))
     if (attribute.kind === 'TEMP_TYPE') {
         const key = TEMP_TYPE_KEYS[attribute.value]
@@ -120,7 +125,7 @@ export function formatAttributeValue(attribute: ChannelAttribute, t: Translate):
     if (isTemperature(attribute.kind)) return `${number} ${t('common.tempUnit')}`
     if (isPower(attribute.kind)) return `${number} ${t('common.wattAbbr')}`
     if (attribute.kind === 'FAN_DIV' || attribute.kind === 'FAN_PULSES') return number
-    return `${number} ${t('common.rpmAbbr')}`
+    return `${number} ${fanUnit ?? t('common.rpmAbbr')}`
 }
 
 // The attributes worth drawing on the chart. A fan limit or temperature minimum of 0 or less is
@@ -129,6 +134,7 @@ export function limitLinesFrom(
     attributes: Array<ChannelAttribute>,
     precision: number,
     t: Translate,
+    fanUnit?: string,
 ): Array<LimitLine> {
     const lines: Array<LimitLine> = []
     for (const attribute of attributes) {
@@ -141,7 +147,7 @@ export function limitLinesFrom(
             value: isFan ? attribute.value / precision : attribute.value,
             scale: isFan ? SCALE_KEY_RPM : SCALE_KEY_PERCENT,
             severity,
-            label: `${attribute.name} ${formatAttributeValue(attribute, t)}`,
+            label: `${attribute.name} ${formatAttributeValue(attribute, t, fanUnit)}`,
         })
     }
     return lines

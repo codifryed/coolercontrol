@@ -113,11 +113,11 @@ const deviceName = (deviceUID: UID): string =>
                             </div>
                         </td>
                         <td class="legend-cell font-semibold">
-                            {{ formatStat(line.latest, line.dataType) }}
+                            {{ formatStat(line.latest, line) }}
                         </td>
-                        <td class="legend-cell">{{ formatStat(stats?.min, line.dataType) }}</td>
-                        <td class="legend-cell">{{ formatStat(stats?.max, line.dataType) }}</td>
-                        <td class="legend-cell">{{ formatStat(stats?.avg, line.dataType) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.min, line) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.max, line) }}</td>
+                        <td class="legend-cell">{{ formatStat(stats?.avg, line) }}</td>
                     </tr>
                 </tbody>
             </table>

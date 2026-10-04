@@ -415,7 +415,9 @@ impl ApiActor<SettingMessage> for SettingActor {
                 let _ = respond_to.send(result);
             }
             SettingMessage::GetOverrides { respond_to } => {
-                let _ = respond_to.send(Ok(self.overrides.document()));
+                let mut document = self.overrides.document();
+                refresh_channel_label_hints(&mut document, &self.all_devices);
+                let _ = respond_to.send(Ok(document));
             }
             SettingMessage::SetDeviceNameOverride {
                 device_uid,
@@ -577,6 +579,28 @@ impl SettingHandle {
         };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+}
+
+/// Serves each live channel's current detected label as its hint. The stored hint is written
+/// at rename time only, so a migrated override has none and an older one can be stale, yet it
+/// is a client's only view of the label an active override hides. Nothing is persisted.
+/// A live channel without a detected label serves no hint; an absent one keeps its stored hint.
+fn refresh_channel_label_hints(document: &mut OverridesDocument, all_devices: &AllDevices) {
+    for (device_uid, device_overrides) in &mut document.devices {
+        let Some(device_lock) = all_devices.get(device_uid) else {
+            continue;
+        };
+        let device = device_lock.borrow();
+        debug_assert_eq!(&device.uid, device_uid);
+        let info = &device.info;
+        for (channel_name, channel) in &mut device_overrides.channels {
+            let is_live =
+                info.temps.contains_key(channel_name) || info.channels.contains_key(channel_name);
+            if is_live {
+                channel.channel_label = info.detected_channel_label(channel_name);
+            }
+        }
     }
 }
 
@@ -781,19 +805,23 @@ fn build_orphan_error_message(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_orphan_error_message, resolve_cc_device_name, resolve_channel_setting_labels,
-        stamp_detection_memos, verify_disable_does_not_orphan_temp_sources, CCDeviceSettings,
-        CCError, CustomSensor, Profile, TempSource,
+        build_orphan_error_message, refresh_channel_label_hints, resolve_cc_device_name,
+        resolve_channel_setting_labels, stamp_detection_memos,
+        verify_disable_does_not_orphan_temp_sources, CCDeviceSettings, CCError, CustomSensor,
+        Profile, TempSource,
     };
-    use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, TempInfo};
+    use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, TempInfo};
     use crate::overrides::OverridesController;
     use crate::setting::{
         CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
         DeviceExtensions, ProfileKind,
     };
+    use crate::AllDevices;
+    use std::cell::RefCell;
     use std::collections::HashMap;
     use std::ops::Not;
     use std::path::PathBuf;
+    use std::rc::Rc;
 
     const DEVICE_A: &str = "uid_a";
     const DEVICE_B: &str = "uid_b";
@@ -1320,6 +1348,97 @@ mod tests {
                 plain.get("temp1").unwrap().label,
                 Some("Live Temp Label".to_string())
             );
+        });
+    }
+
+    #[test]
+    fn served_overrides_carry_the_live_detected_label_as_hint() {
+        // Goal: a client reads the detected label of an overridden channel from its hint, so
+        // the served document must carry the live label even when the stored hint is missing
+        // (a migrated override) or stale. Renames two channels of a live device with no hint
+        // and with an outdated one, then refreshes a copy of the document. A live channel
+        // that lost its detected label must serve no hint, unlike an absent channel.
+        crate::rt::test_runtime(async {
+            let (_tmp, overrides) = empty_overrides().await;
+            let mut info = live_info();
+            info.channels.insert(
+                "fan3".to_string(),
+                ChannelInfo {
+                    label: None,
+                    kind: ChannelKind::default(),
+                },
+            );
+            let device = Rc::new(RefCell::new(Device::new(
+                "nct6798".to_string(),
+                DeviceType::Hwmon,
+                0,
+                None,
+                info,
+                None,
+                1.0,
+            )));
+            let uid = device.borrow().uid.clone();
+            let all_devices: AllDevices = Rc::new(HashMap::from([(uid.clone(), device)]));
+            let absent_uid = "uid_absent".to_string();
+            for (device_uid, channel_name, hint) in [
+                (&uid, "fan1", None),
+                (&uid, "temp1", Some("Old Temp Label")),
+                (&uid, "fan3", Some("Flow [L/h]")),
+                (&uid, "fan9", Some("Gone Fan Label")),
+                (&absent_uid, "fan1", Some("Absent Fan Label")),
+            ] {
+                overrides
+                    .set_channel_label(
+                        device_uid,
+                        "hint",
+                        &channel_name.to_string(),
+                        hint,
+                        Some("Renamed"),
+                    )
+                    .await
+                    .unwrap();
+            }
+            let stored = overrides.document();
+
+            let mut served = stored.clone();
+            refresh_channel_label_hints(&mut served, &all_devices);
+
+            let hint = |document: &crate::overrides::OverridesDocument,
+                        device_uid: &String,
+                        channel_name: &str| {
+                document.devices[device_uid].channels[channel_name]
+                    .channel_label
+                    .clone()
+            };
+            assert_eq!(
+                hint(&served, &uid, "fan1"),
+                Some("Live Fan Label".to_string())
+            );
+            assert_eq!(
+                hint(&served, &uid, "temp1"),
+                Some("Live Temp Label".to_string())
+            );
+            assert_eq!(hint(&served, &uid, "fan3"), None);
+            assert_eq!(
+                served.devices[&uid].channels["fan3"].label,
+                Some("Renamed".to_string())
+            );
+            // Negative space: an absent channel or device keeps its stored hint, the override
+            // itself is never touched, and the stored document is left as it was.
+            assert_eq!(
+                hint(&served, &uid, "fan9"),
+                Some("Gone Fan Label".to_string())
+            );
+            assert_eq!(
+                hint(&served, &absent_uid, "fan1"),
+                Some("Absent Fan Label".to_string())
+            );
+            assert_eq!(
+                served.devices[&uid].channels["fan1"].label,
+                Some("Renamed".to_string())
+            );
+            assert_eq!(hint(&stored, &uid, "fan1"), None);
+            assert_eq!(overrides.document(), stored);
         });
     }
 }

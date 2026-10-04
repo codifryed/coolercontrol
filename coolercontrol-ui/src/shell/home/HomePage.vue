@@ -116,7 +116,7 @@ interface HealthRow {
 }
 
 const failsafeRoute = (ref: FailsafeRef): RouteLocationRaw =>
-    channelRoute(deviceStore.allDevices(), ref.device_uid, ref.name)
+    channelRoute(deviceStore.allDevices(), ref.device_uid, ref.name, settingsStore.channelUnit)
 
 const sourceRoute = (ref: SourceRef): RouteLocationRaw => {
     switch (ref.entity_type) {
@@ -286,6 +286,8 @@ const supportRows = computed((): Array<SupportRow> => {
         })
     }
     for (const ref of settingsStore.healthChannelCapabilities) {
+        // Not being drivable is no finding for a flow meter or a pressure gauge.
+        if (settingsStore.isUnitSensor(ref.device_uid, ref.channel_name)) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
         const channelName =
             deviceSettings?.sensorsAndChannels.get(ref.channel_name)?.name ?? ref.channel_name
@@ -293,7 +295,12 @@ const supportRows = computed((): Array<SupportRow> => {
             key: `capability/${ref.device_uid}/${ref.channel_name}`,
             label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
             detail: capabilityDetail(ref.verdict),
-            to: channelRoute(deviceStore.allDevices(), ref.device_uid, ref.channel_name),
+            to: channelRoute(
+                deviceStore.allDevices(),
+                ref.device_uid,
+                ref.channel_name,
+                settingsStore.channelUnit,
+            ),
         })
     }
     return rows

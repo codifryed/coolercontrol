@@ -36,6 +36,7 @@ function deps(over: Partial<IndexDeps> = {}): IndexDeps {
         devices: [device()],
         deviceLabel: (uid) => (uid === 'uid-1' ? 'My Board' : uid),
         channelLabel: (_uid, channelName) => channelName,
+        channelUnit: () => undefined,
         profiles: [],
         functions: [],
         modes: [],
@@ -67,6 +68,24 @@ describe('buildIndex', () => {
         const ids = buildIndex(deps()).map((entry) => entry.id)
         expect(ids).toContain('fan-uid-1-fan1')
         expect(ids).not.toContain('sensor-uid-1-fan1')
+    })
+
+    // A flow meter on a fan input is watched, not controlled.
+    it('indexes an uncontrollable channel in another unit as a sensor', () => {
+        const info = new DeviceInfo()
+        info.channels = new Map([
+            ['fan9', new ChannelInfo('Flow [dL/h]', new SpeedOptions(0, 100, false))],
+        ])
+        const entries = buildIndex(deps({ devices: [device({ info })], channelUnit: () => 'dL/h' }))
+        const ids = entries.map((entry) => entry.id)
+        expect(ids).not.toContain('fan-uid-1-fan9')
+        const sensor = entries.find((entry) => entry.id === 'sensor-uid-1-fan9')
+        expect(sensor?.target).toEqual({
+            route: {
+                name: 'monitoring-sensor',
+                params: { deviceUID: 'uid-1', channelName: 'fan9' },
+            },
+        })
     })
 
     it('indexes a temp as a sensor', () => {

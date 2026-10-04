@@ -22,7 +22,7 @@ const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
-const groups = computed(() => coolingChannels(deviceStore.allDevices()))
+const groups = computed(() => coolingChannels(deviceStore.allDevices(), settingsStore.channelUnit))
 
 const channels = computed(() => groups.value.flatMap((group) => group.channels))
 

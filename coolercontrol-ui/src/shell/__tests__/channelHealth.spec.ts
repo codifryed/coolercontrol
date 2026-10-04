@@ -68,6 +68,9 @@ const settings = reactive({
     homeDashboard: undefined,
     eyeCandy: false,
     frequencyPrecision: 1,
+    channelUnit: (): undefined => undefined,
+    isUnitSensor: (): boolean => false,
+    rpmUnit: (): string => 'rpm',
 })
 
 vi.mock('@/stores/SettingsStore.ts', () => ({ useSettingsStore: () => settings }))

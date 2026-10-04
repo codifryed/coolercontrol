@@ -8,6 +8,7 @@ import { type Device, DeviceType } from '@/models/Device.ts'
 import {
     customSensorNames,
     deviceChannelLinks,
+    deviceSensorLinks,
     hardwareDevices,
     sensorToggles,
 } from '../devices/devices.ts'
@@ -103,5 +104,51 @@ describe('sensorToggles', () => {
     it('does not duplicate a disabled name that is also detected', () => {
         const device = fakeDevice('d1', DeviceType.HWMON, ['temp1'], {})
         expect(sensorToggles(device, ['temp1'])).toEqual([{ channelName: 'temp1', enabled: true }])
+    })
+})
+
+describe('deviceSensorLinks', () => {
+    const device = fakeDevice('d1', DeviceType.HWMON, ['temp1'], {
+        fan1: { speed_options: { fixed_enabled: true } },
+        fan2: { speed_options: { fixed_enabled: false } },
+        led1: { lighting_modes: [{}] },
+    })
+    const kinds = (unitOf: (uid: string, channelName: string) => string | undefined) =>
+        deviceSensorLinks(device, unitOf).map((link) => [link.channelName, link.kind])
+
+    it('sends fan channels to Cooling', () => {
+        expect(kinds(() => undefined)).toEqual([
+            ['temp1', 'monitoring'],
+            ['fan1', 'cooling'],
+            ['fan2', 'cooling'],
+            ['led1', 'lighting'],
+        ])
+    })
+
+    it('sends an uncontrollable channel in another unit to Monitoring', () => {
+        expect(kinds(() => 'dL/h')).toEqual([
+            ['temp1', 'monitoring'],
+            ['fan1', 'cooling'],
+            ['fan2', 'monitoring'],
+            ['led1', 'lighting'],
+        ])
+    })
+
+    it('lists an info-only channel in another unit under Monitoring', () => {
+        const liquid = fakeDevice('d2', DeviceType.LIQUIDCTL, [], {
+            flow: {},
+            plain: {},
+            led1: { lighting_modes: [{}] },
+        })
+        const links = (unitOf: (uid: string, channelName: string) => string | undefined) =>
+            deviceSensorLinks(liquid, unitOf).map((link) => [link.channelName, link.kind])
+        // Every label names a unit here: only the channel with a reading becomes a sensor.
+        expect(
+            links((_uid, channelName) => (channelName === 'plain' ? undefined : 'dL/h')),
+        ).toEqual([
+            ['flow', 'monitoring'],
+            ['led1', 'lighting'],
+        ])
+        expect(links(() => undefined)).toEqual([['led1', 'lighting']])
     })
 })

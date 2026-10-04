@@ -16,6 +16,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { deviceChannelLinks, deviceTypeGroups, hardwareDevices } from '@/shell/devices/devices.ts'
 import { deviceTypeIcon } from '@/shell/deviceIcon.ts'
+import { isFanChannel } from '@/shell/channelUnit.ts'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
 import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
@@ -49,8 +50,8 @@ const counts = (device: Device): string => {
     const parts: string[] = []
     const temps = device.info?.temps.size ?? 0
     let fans = 0
-    for (const channelInfo of device.info?.channels.values() ?? []) {
-        if (channelInfo.speed_options != null) fans += 1
+    for (const channelName of device.info?.channels.keys() ?? []) {
+        if (isFanChannel(device, channelName, settingsStore.channelUnit)) fans += 1
     }
     const links = deviceChannelLinks(device)
     const lighting = links.filter((link) => link.kind === 'lighting').length

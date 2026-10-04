@@ -142,4 +142,19 @@ describe('attribute formatting', () => {
             `fan1_max 472${DIGIT_GROUP_SEPARATOR}800 rpm`,
         )
     })
+
+    it('shows a fan limit in the unit the channel label names', () => {
+        const limit: ChannelAttribute = { name: 'fan1_max', kind: 'FAN_MAX', value: 472_800 }
+        expect(formatAttributeValue(limit, t, 'ubar')).toBe(`472${DIGIT_GROUP_SEPARATOR}800 ubar`)
+        expect(limitLinesFrom([limit], 1, t, 'ubar')[0].label).toBe(
+            `fan1_max 472${DIGIT_GROUP_SEPARATOR}800 ubar`,
+        )
+        // Only speeds take it: a pulse count has no unit and a temperature keeps its own.
+        expect(
+            formatAttributeValue({ name: 'fan1_pulses', kind: 'FAN_PULSES', value: 2 }, t, 'ubar'),
+        ).toBe('2')
+        expect(
+            formatAttributeValue({ name: 'temp1_max', kind: 'TEMP_MAX', value: 80 }, t, 'ubar'),
+        ).toBe('80.0 °C')
+    })
 })

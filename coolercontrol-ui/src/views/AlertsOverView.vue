@@ -91,13 +91,14 @@ const sourceStateClass = (alert: Alert, index: number): string => {
     if (state === AlertState.Error) return 'text-warning'
     return ''
 }
-const valueSuffix = (metric: ChannelMetric): string => {
-    switch (metric) {
+// An RPM source takes the unit its channel's label names.
+const valueSuffix = (source: ChannelSource): string => {
+    switch (source.channel_metric) {
         case ChannelMetric.Duty:
         case ChannelMetric.Load:
             return ` ${t('common.percentUnit')}`
         case ChannelMetric.RPM:
-            return ` ${t('common.rpmAbbr')}`
+            return ` ${settingsStore.rpmUnit(source.device_uid, source.channel_name)}`
         case ChannelMetric.Freq:
             return ` ${t('common.mhzAbbr')}`
         default:
@@ -122,7 +123,7 @@ const liveValue = (source: ChannelSource): string => {
 // Phrase the thresholds as the firing condition (the inverse of the OK
 // range); min is validated >= 0, so a 0 floor cannot fire and is omitted.
 const triggerText = (alert: Alert): string => {
-    const unit = valueSuffix(alertSources(alert)[0].channel_metric)
+    const unit = valueSuffix(alertSources(alert)[0])
     const max = groupDigits(alert.max)
     if (alert.min > 0) {
         return t('views.alerts.triggersOutside', { min: groupDigits(alert.min), max, unit })
@@ -241,7 +242,7 @@ const lastLogTimes = computed(() => {
                                         class="ml-auto shrink-0 text-text-color-secondary"
                                     >
                                         {{ groupDigits(liveValue(source))
-                                        }}{{ valueSuffix(source.channel_metric) }}
+                                        }}{{ valueSuffix(source) }}
                                     </span>
                                 </div>
                             </div>

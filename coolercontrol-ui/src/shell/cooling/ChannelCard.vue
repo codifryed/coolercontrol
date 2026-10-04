@@ -198,7 +198,8 @@ const healthTooltip = computed((): string => {
                     v-if="liveRpm != null"
                     class="ml-2 text-sm font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ groupDigits(liveRpm) }} rpm
+                    {{ groupDigits(liveRpm) }}
+                    {{ settingsStore.rpmUnit(channel.deviceUID, channel.channelName) }}
                 </span>
             </div>
         </div>

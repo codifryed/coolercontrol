@@ -60,6 +60,17 @@ const { displayOf } = useLifetimeStats()
 const { formatStat, formatJitter, unitSuffix, windowLabelOf } = useStatFormat()
 
 const lines = computed((): Array<WindowLineStats> => props.payload?.lines ?? [])
+// The unit an rpm line's label names, undefined for a speed and for the other lines.
+const unitOf = (line: WindowLineStats): string | undefined =>
+    line.dataType === DataType.RPM
+        ? settingsStore.channelUnit(line.deviceUID, line.channelName)
+        : undefined
+// The panel is for one channel, so its driver limits are in that channel's unit.
+const fanUnit = computed((): string | undefined =>
+    lines.value.length === 0
+        ? undefined
+        : settingsStore.channelUnit(lines.value[0].deviceUID, lines.value[0].channelName),
+)
 const colors = useThemeColorsStore()
 
 interface AttributeMark {
@@ -176,7 +187,7 @@ const shownLines = computed((): Array<WindowLineStats> =>
 )
 const lineOptions = computed((): Array<UiToggleOption> =>
     lines.value.map((line) => ({
-        label: getLocalizedDataType(line.dataType),
+        label: unitOf(line) ?? getLocalizedDataType(line.dataType),
         value: line.lineName,
     })),
 )
@@ -197,7 +208,7 @@ const detailRows = computed((): Array<DetailRow> => {
             key: 'jitter',
             label: t('components.statsPanel.jitter'),
             help: t('components.statsPanel.jitterHelp'),
-            value: formatJitter(line.stats?.jitter, line.dataType),
+            value: formatJitter(line.stats?.jitter, line),
             warn: false,
         },
     ]
@@ -210,7 +221,9 @@ const detailRows = computed((): Array<DetailRow> => {
             warn: false,
         })
     }
-    if (line.dataType === DataType.RPM) {
+    // Stopped and stalled are a fan's states: a flow or a pressure has neither.
+    const isFan = !settingsStore.isUnitSensor(line.deviceUID, line.channelName)
+    if (line.dataType === DataType.RPM && isFan) {
         rows.push({
             key: 'stopped',
             label: t('components.statsPanel.stopped'),
@@ -238,13 +251,13 @@ const activeTimeInRange = computed((): TimeInRange | null =>
         ? null
         : (details.value.get(activeLine.value.lineName)?.timeInRange ?? null),
 )
-const formatBand = (band: TimeInRangeBand, width: number, dataType: DataType): string => {
+const formatBand = (band: TimeInRangeBand, width: number, line: WindowLineStats): string => {
     const decimals = edgeDecimals(width)
     const range = t('components.statsPanel.band', {
         from: groupDigits(band.from.toFixed(decimals)),
         to: groupDigits(band.to.toFixed(decimals)),
     })
-    return range + unitSuffix(dataType)
+    return range + unitSuffix(line)
 }
 
 const movePanel = (): void => {
@@ -320,7 +333,7 @@ const movePanel = (): void => {
                         {{ t('components.chartStats.now') }}
                     </th>
                     <td colspan="2" class="px-3 py-0.5 text-center font-semibold">
-                        {{ formatStat(line.latest, line.dataType) }}
+                        {{ formatStat(line.latest, line) }}
                     </td>
                 </tr>
                 <tr v-for="row in statRows" :key="row.key">
@@ -330,10 +343,10 @@ const movePanel = (): void => {
                         {{ t(row.label) }}
                     </th>
                     <td class="whitespace-nowrap px-2 py-0.5 text-right">
-                        {{ formatStat(line.stats?.[row.key], line.dataType) }}
+                        {{ formatStat(line.stats?.[row.key], line) }}
                     </td>
                     <td class="whitespace-nowrap pl-2 pr-3 py-0.5 text-right">
-                        {{ formatStat(displayOf(line)?.[row.key], line.dataType) }}
+                        {{ formatStat(displayOf(line)?.[row.key], line) }}
                     </td>
                 </tr>
                 <tr v-for="row in detailRows" :key="row.key">
@@ -370,7 +383,7 @@ const movePanel = (): void => {
             >
                 <template v-for="band in activeTimeInRange.bands" :key="band.from">
                     <span class="whitespace-nowrap" :class="{ 'font-semibold': band.current }">
-                        {{ formatBand(band, activeTimeInRange.width, activeLine.dataType) }}
+                        {{ formatBand(band, activeTimeInRange.width, activeLine) }}
                     </span>
                     <span
                         class="h-2 min-w-0.5 rounded-r-sm"
@@ -432,7 +445,7 @@ const movePanel = (): void => {
                                         borderColor: attributeMarks.get(attribute.name)!.color!,
                                     }"
                                 ></span>
-                                {{ formatAttributeValue(attribute, t) }}
+                                {{ formatAttributeValue(attribute, t, fanUnit) }}
                             </div>
                             <span
                                 v-if="attributeMarks.get(attribute.name)?.offChart"

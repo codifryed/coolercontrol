@@ -59,7 +59,7 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 // Mutable copy so rows are drag-sortable; rebuilt when devices change.
 const groups = ref<CoolingDeviceGroup[]>([])
 watchEffect(() => {
-    groups.value = coolingChannels(deviceStore.allDevices())
+    groups.value = coolingChannels(deviceStore.allDevices(), settingsStore.channelUnit)
 })
 
 // All channel ids of a device in current order (fans are a subset of the
@@ -129,8 +129,10 @@ const liveFor = (deviceUID: UID, channelName: string): ChannelValues | undefined
 // Fail-alert convenience, same as the Monitoring panel's fan rows.
 const hasRpm = (channel: CoolingChannel): boolean =>
     liveFor(channel.deviceUID, channel.channelName)?.rpm != null
-const liveRpm = (channel: CoolingChannel): string =>
-    groupDigits(liveFor(channel.deviceUID, channel.channelName)?.rpm ?? '')
+const liveSpeedText = (channel: CoolingChannel): string => {
+    const rpm = groupDigits(liveFor(channel.deviceUID, channel.channelName)?.rpm ?? '')
+    return `${rpm} ${settingsStore.rpmUnit(channel.deviceUID, channel.channelName)}`
+}
 
 const createFailAlert = (channel: CoolingChannel): void =>
     pushFailAlert(
@@ -301,7 +303,7 @@ const isRouteActive = useRouteActive()
                                 v-if="liveFor(channel.deviceUID, channel.channelName)?.rpm != null"
                                 class="text-sm font-numeric tabular-nums text-text-color-secondary"
                             >
-                                {{ liveRpm(channel) }} rpm
+                                {{ liveSpeedText(channel) }}
                             </span>
                         </span>
                     </RouterLink>
@@ -485,7 +487,7 @@ const isRouteActive = useRouteActive()
                                     "
                                     class="text-sm font-numeric tabular-nums text-text-color-secondary"
                                 >
-                                    {{ liveRpm(channel) }} rpm
+                                    {{ liveSpeedText(channel) }}
                                 </span>
                             </span>
                         </RouterLink>

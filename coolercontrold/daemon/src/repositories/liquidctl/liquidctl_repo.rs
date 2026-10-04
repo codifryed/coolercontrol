@@ -634,10 +634,12 @@ impl LiquidctlRepo {
         driver_locations
     }
 
+    /// Completes each device's info from its first status, which is where liquidctl reveals
+    /// the temps and whatever else a driver does not announce up front.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn update_temp_infos(&self) {
+    pub fn update_infos_from_first_status(&self) {
         for device_lock in self.devices.values() {
-            let status = {
+            let (driver_type, status) = {
                 let device = device_lock.borrow();
                 let preloaded_statuses = self.preloaded_statuses.borrow();
                 let lc_status = preloaded_statuses.get(&device.type_index);
@@ -648,18 +650,17 @@ impl LiquidctlRepo {
                     );
                     continue;
                 };
-                self.map_status(
-                    &device
-                        .lc_info
-                        .as_ref()
-                        .expect("Should always be present for LC devices")
-                        .driver_type,
-                    &device.uid,
-                    status,
-                    device.type_index,
-                )
+                let driver_type = device
+                    .lc_info
+                    .as_ref()
+                    .expect("Should always be present for LC devices")
+                    .driver_type
+                    .clone();
+                let status = self.map_status(&driver_type, &device.uid, status, device.type_index);
+                (driver_type, status)
             };
-            device_lock.borrow_mut().info.temps = status
+            let mut device = device_lock.borrow_mut();
+            device.info.temps = status
                 .temps
                 .iter()
                 .enumerate()
@@ -673,6 +674,8 @@ impl LiquidctlRepo {
                     )
                 })
                 .collect();
+            self.device_mapper
+                .extend_info_from_status(&driver_type, &status, &mut device.info);
         }
     }
 
