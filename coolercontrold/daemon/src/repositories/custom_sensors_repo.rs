@@ -900,6 +900,8 @@ impl CustomSensorsRepo {
             CustomSensorMixFunctionType::Delta => Self::process_mix_delta(temp_data),
             CustomSensorMixFunctionType::Avg => Self::process_mix_avg(temp_data),
             CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(temp_data),
+            // Kept inside the readable temp range, as Scale & Offset results are.
+            CustomSensorMixFunctionType::Sum => Self::process_mix_sum(temp_data).clamp(0., 150.),
         }
     }
 
@@ -938,6 +940,10 @@ impl CustomSensorsRepo {
             return 0.;
         }
         temp_data.iter().fold(0., |acc, data| acc + data.temp) / temp_data.len() as f64
+    }
+
+    fn process_mix_sum(temp_data: &[TempData]) -> f64 {
+        temp_data.iter().fold(0., |acc, data| acc + data.temp)
     }
 
     fn process_mix_weighted_avg(temp_data: &[TempData]) -> f64 {
@@ -1716,6 +1722,32 @@ mod tests {
             CustomSensorsRepo::process_scale_offset(Scale::default(), 5., &[]),
             0.
         );
+    }
+
+    // Sum adds every source and ignores the weights. As a temperature it is clamped to
+    // the readable range, on both ends.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn mix_sum_adds_the_sources() {
+        let weighted = vec![
+            TempData {
+                temp: 20.5,
+                weight: 3.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 1.0,
+            },
+        ];
+        assert_eq!(CustomSensorsRepo::process_mix_sum(&weighted), 50.5);
+        assert_eq!(CustomSensorsRepo::process_mix_sum(&[]), 0.0);
+
+        let sum = |temps: &[f64]| {
+            CustomSensorsRepo::process_temp_data(&CustomSensorMixFunctionType::Sum, &values(temps))
+        };
+        assert_eq!(sum(&[20.5, 30.0]), 50.5);
+        assert_eq!(sum(&[90.0, 80.0]), 150.0);
+        assert_eq!(sum(&[-5.0, 2.0]), 0.0);
     }
 
     // No data is 0 for every fold, as it already was for Delta, Avg and Max.

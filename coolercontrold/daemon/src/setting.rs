@@ -680,6 +680,7 @@ pub enum CustomSensorMixFunctionType {
     Delta,
     Avg,
     WeightedAvg,
+    Sum,
 }
 
 /// The channel metric a Custom Sensor reads and reports. All of its sources share it.

@@ -8497,7 +8497,8 @@
           "Max",
           "Delta",
           "Avg",
-          "WeightedAvg"
+          "WeightedAvg",
+          "Sum"
         ]
       },
       "CustomSensorSource": {

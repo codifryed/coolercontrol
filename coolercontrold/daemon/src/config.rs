@@ -3833,6 +3833,32 @@ mod tests {
         }
     }
 
+    // The Sum function is stored by name and reads back as Sum.
+    #[test]
+    fn custom_sensor_sum_toml_round_trip() {
+        use crate::setting::{CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType};
+
+        let mut sensor = mix_of(CustomSensorMetric::Temp, "Temp1");
+        let CustomSensorKind::Mix { mix_function, .. } = &mut sensor.kind else {
+            panic!("expected Mix");
+        };
+        *mix_function = CustomSensorMixFunctionType::Sum;
+        let config = config_from("");
+        config.set_custom_sensor(sensor).unwrap();
+
+        assert!(config
+            .document
+            .borrow()
+            .to_string()
+            .contains("mix_function = \"Sum\""));
+        let sensors = config.get_custom_sensors().unwrap();
+        assert!(matches!(
+            &sensors[0].kind,
+            CustomSensorKind::Mix { mix_function, .. }
+                if *mix_function == CustomSensorMixFunctionType::Sum
+        ));
+    }
+
     // A stored source must sit under the key of its sensor's metric. Either mismatch, and
     // an unknown metric, fail the load instead of reading a temp as a channel or back.
     #[test]
