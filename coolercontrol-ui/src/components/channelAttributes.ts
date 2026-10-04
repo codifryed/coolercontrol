@@ -108,7 +108,10 @@ export function formatAttributeNumber(attribute: ChannelAttribute): string {
         return Number.isInteger(tenths) ? attribute.value.toFixed(1) : attribute.value.toFixed(2)
     }
     if (isPower(attribute.kind)) return attribute.value.toFixed(1)
-    return attribute.value.toFixed(0)
+    // A driver's fan limit is whole. One a Custom Sensor scaled into another unit may not
+    // be, and keeps a decimal: a pressure limit of 382.8 mbar.
+    const tenths = Math.round(attribute.value * 10) / 10
+    return Number.isInteger(tenths) ? tenths.toFixed(0) : tenths.toFixed(1)
 }
 
 // `fanUnit` is the unit the channel's label names for its fan input, when it is not a speed.
