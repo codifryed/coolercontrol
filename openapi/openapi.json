@@ -2838,59 +2838,6 @@
         ]
       }
     },
-    "/custom-sensors/order": {
-      "post": {
-        "tags": [
-          "custom-sensor"
-        ],
-        "summary": "Save Custom Sensor Order",
-        "description": "Saves the order of the Custom Sensors as given.",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CustomSensorsDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "Bad Request. The request is invalid"
-          },
-          "401": {
-            "description": "Unauthorized. Invalid credentials were provided."
-          },
-          "403": {
-            "description": "Forbidden. Insufficient permissions."
-          },
-          "404": {
-            "description": "Whatever you're looking for, it's not here."
-          },
-          "500": {
-            "description": "An internal error has occurred."
-          },
-          "429": {
-            "description": "Too Many Requests. Login attempts have been rate limited."
-          },
-          "502": {
-            "description": "Bad Gateway. An error has occurred with an external library."
-          }
-        },
-        "security": [
-          {
-            "CookieAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
     "/modes": {
       "get": {
         "tags": [

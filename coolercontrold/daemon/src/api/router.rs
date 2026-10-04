@@ -790,17 +790,6 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
-        .api_route(
-            "/custom-sensors/order",
-            post_with(custom_sensors::save_order, |o| {
-                o.summary("Save Custom Sensor Order")
-                    .description("Saves the order of the Custom Sensors as given.")
-                    .tag("custom-sensor")
-                    .security_requirement("CookieAuth")
-                    .security_requirement("BearerAuth")
-            })
-            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
-        )
 }
 
 /// The system power profile integration: what the system offers, and which Mode each profile

@@ -39,20 +39,6 @@ pub async fn get(
         .map_err(handle_error)
 }
 
-/// Set the custom sensors order in the array of custom sensors
-pub async fn save_order(
-    State(AppState {
-        custom_sensor_handle,
-        ..
-    }): State<AppState>,
-    Json(cs_dto): Json<CustomSensorsDto>,
-) -> Result<(), CCError> {
-    custom_sensor_handle
-        .save_order(cs_dto.custom_sensors)
-        .await
-        .map_err(handle_error)
-}
-
 pub async fn create(
     State(AppState {
         custom_sensor_handle,

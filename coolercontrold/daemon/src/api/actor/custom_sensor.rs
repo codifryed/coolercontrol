@@ -30,10 +30,6 @@ enum CustomSensorMessage {
     GetAll {
         respond_to: oneshot::Sender<Result<Vec<CustomSensor>>>,
     },
-    SaveOrder {
-        order: Vec<CustomSensor>,
-        respond_to: oneshot::Sender<Result<()>>,
-    },
     Create {
         custom_sensor: CustomSensor,
         respond_to: oneshot::Sender<Result<()>>,
@@ -89,14 +85,6 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
             CustomSensorMessage::GetAll { respond_to } => {
                 let result = self.custom_sensors_repo.get_custom_sensors();
                 let _ = respond_to.send(Ok(result));
-            }
-            CustomSensorMessage::SaveOrder { order, respond_to } => {
-                let result = async {
-                    self.custom_sensors_repo.set_custom_sensors_order(&order)?;
-                    self.config.save_config_file().await
-                }
-                .await;
-                let _ = respond_to.send(result);
             }
             CustomSensorMessage::Create {
                 custom_sensor,
@@ -192,16 +180,6 @@ impl CustomSensorHandle {
     pub async fn get_all(&self) -> Result<Vec<CustomSensor>> {
         let (tx, rx) = oneshot::channel();
         let msg = CustomSensorMessage::GetAll { respond_to: tx };
-        let _ = self.sender.send(msg).await;
-        rx.await?
-    }
-
-    pub async fn save_order(&self, order: Vec<CustomSensor>) -> Result<()> {
-        let (tx, rx) = oneshot::channel();
-        let msg = CustomSensorMessage::SaveOrder {
-            order,
-            respond_to: tx,
-        };
         let _ = self.sender.send(msg).await;
         rx.await?
     }

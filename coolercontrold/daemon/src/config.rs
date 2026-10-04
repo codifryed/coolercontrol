@@ -2713,42 +2713,6 @@ impl Config {
         Ok(sources)
     }
 
-    /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
-    /// It uses the ID to match and reuses the existing stored custom sensor.
-    pub fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
-        let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
-        if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
-            let cs_array = custom_sensors_item
-                .as_array_of_tables()
-                .with_context(|| "Custom_Sensors should be an array of tables")?;
-            if cs_ordered.len() != cs_array.len() {
-                return Err(CCError::UserError {
-                    msg:
-                        "The number of stored custom_sensors and requested custom sensors to order \
-                    are not equal. Make sure all functions have been created/deleted"
-                            .to_string(),
-                }
-                .into());
-            }
-            let new_cs_array = new_custom_sensors_array_item
-                .as_array_of_tables_mut()
-                .unwrap();
-            for custom_sensor in cs_ordered {
-                new_cs_array.push(Self::find_custom_sensor_in_array(
-                    &custom_sensor.id,
-                    cs_array,
-                )?);
-            }
-        } else {
-            return Err(CCError::NotFound {
-                msg: "There are no stored custom sensors in the config to order.".to_string(),
-            }
-            .into());
-        }
-        self.document.borrow_mut()["custom_sensors"] = new_custom_sensors_array_item;
-        Ok(())
-    }
-
     /// Sets the given new Custom Sensor
     pub fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         let mut doc = self.document.borrow_mut();
@@ -2810,27 +2774,6 @@ impl Config {
                 Ok(())
             }
         }
-    }
-
-    fn find_custom_sensor_in_array(
-        custom_sensor_id: &String,
-        cs_array: &ArrayOfTables,
-    ) -> Result<Table> {
-        for cs_table in cs_array {
-            if cs_table
-                .get("id")
-                .with_context(|| "Custom Sensor ID should be present")?
-                .as_str()
-                .with_context(|| "Custom Sensor ID should be a string")?
-                == custom_sensor_id
-            {
-                return Ok(cs_table.clone());
-            }
-        }
-        Err(CCError::NotFound {
-            msg: "Could not find Custom Sensor ID in existing functions array.".to_string(),
-        }
-        .into())
     }
 
     /// Consumes the `CustomSensor` and returns a new `CustomSensor` Table

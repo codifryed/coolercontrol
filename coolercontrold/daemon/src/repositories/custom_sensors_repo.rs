@@ -155,16 +155,6 @@ impl CustomSensorsRepo {
         self.sensors.borrow().clone()
     }
 
-    pub fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
-        self.config.set_custom_sensor_order(custom_sensors)?;
-        self.sensors.borrow_mut().clear();
-        self.sensors.borrow_mut().extend(custom_sensors.to_vec());
-        // Order payloads carry full sensor bodies without validation; reseed the sample
-        // windows rather than trust the bodies unchanged. Reseeding is output-identical.
-        self.sample_windows.borrow_mut().clear();
-        Ok(())
-    }
-
     pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         self.verify_sensor_relationships(&custom_sensor)?;
         // Before the backfill, which would leave a second entry in every history slot.
@@ -3992,31 +3982,6 @@ mod tests {
             repo.update_statuses().await.unwrap();
             let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
             assert_eq!(current_temp_for(&repo, "ema").to_bits(), ema_ref.to_bits());
-        });
-    }
-
-    // The order endpoint replaces sensor bodies without validation, so any cached
-    // window may describe a stale source; the replace must drop all window state.
-    #[test]
-    #[serial]
-    fn order_replace_clears_windows() {
-        cc_fs::test_runtime(async {
-            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
-                name: "cpu".to_string(),
-                temp: 70.0,
-            }]);
-            let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo =
-                CustomSensorsRepo::new(test_config, vec![source_dev.clone()], test_overrides())
-                    .unwrap();
-            repo.initialize_devices().await.unwrap();
-            let sensor = time_average_sensor("avg", 5, temp_source(&source_uid, "cpu"));
-            repo.set_custom_sensor(sensor.clone()).await.unwrap();
-            push_source_tick(&source_dev, "cpu", Some(70.0));
-            repo.update_statuses().await.unwrap();
-            assert!(repo.sample_windows.borrow().is_empty().not());
-            repo.set_custom_sensors_order(&[sensor]).unwrap();
-            assert!(repo.sample_windows.borrow().is_empty());
         });
     }
 
