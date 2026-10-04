@@ -69,9 +69,9 @@ expensive to review.
 - **Mind the license.** Generated code can reproduce its training data. Make sure nothing you submit
   is incompatible with GPL-3.0-or-later.
 
-A well-written feature request or bug report is highly preferred to an agent's solution.
-Working through an AI-generated potential solution is often much more work than a maintainer
-creating it from scratch.
+A well-written feature request or bug report is highly preferred to an agent's solution. Working
+through an AI-generated potential solution is often much more work than a maintainer creating it
+from scratch.
 
 Trust is earned. If you are new here, start with a small change. Contributors with a track record
 get more latitude. Maintainers get the most: they use AI tools as well, at their own discretion,
