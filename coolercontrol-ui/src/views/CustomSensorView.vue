@@ -610,7 +610,7 @@ const saveButtonDisabled = (): boolean => {
             chosenTempSources.value.length === 0) ||
         (selectedSensorType.value === CustomSensorType.Offset &&
             chosenOffsetTempSource.value == null) ||
-        (selectedSensorType.value === CustomSensorType.File && filePath.value === null) ||
+        (selectedSensorType.value === CustomSensorType.File && !filePath.value?.trim()) ||
         (selectedSensorType.value === CustomSensorType.TimeAverage &&
             (chosenTimeAverageTempSource.value == null ||
                 selectedTimeWindowSeconds.value == null ||
