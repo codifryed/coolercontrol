@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{CustomSensor, CustomSensorKind, CustomTempSourceData};
+use crate::setting::{CustomSensor, CustomSensorKind, SensorSource};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -129,7 +129,7 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
 
 /// Validates the `sources` constraints the type cannot express: a cap that protects the API,
 /// per-source weight, and non-empty source identifiers.
-fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+fn validate_custom_sensor_sources(sources: &[SensorSource]) -> Result<(), CCError> {
     // Not a hard limit, just protects the API.
     if sources.len() > 50 {
         return Err(CCError::UserError {
@@ -143,12 +143,12 @@ fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<()
                 msg: "sources must have a weight between 1 and 254".to_string(),
             });
         }
-        if source.temp_source.device_uid.is_empty() {
+        if source.device_uid.is_empty() {
             return Err(CCError::UserError {
                 msg: "sources cannot have a temp_source with an empty device UID".to_string(),
             });
         }
-        if source.temp_source.temp_name.is_empty() {
+        if source.name.is_empty() {
             return Err(CCError::UserError {
                 msg: "sources cannot have a temp_source with an empty Temp Name".to_string(),
             });
@@ -159,7 +159,7 @@ fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<()
 
 /// Validates the variants derived from a single source: exactly one source, plus the shared
 /// source constraints.
-fn validate_single_source(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+fn validate_single_source(sources: &[SensorSource]) -> Result<(), CCError> {
     if sources.len() != 1 {
         return Err(CCError::UserError {
             msg: "Custom Sensor must have exactly 1 temp source".to_string(),
@@ -181,23 +181,21 @@ pub struct CSPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{CustomSensorMixFunctionType, TempSource};
+    use crate::setting::CustomSensorMixFunctionType;
 
-    fn source() -> CustomTempSourceData {
-        CustomTempSourceData {
-            temp_source: TempSource {
-                device_uid: "device-uid".to_string(),
-                temp_name: "cpu_temp".to_string(),
-            },
+    fn source() -> SensorSource {
+        SensorSource {
+            device_uid: "device-uid".to_string(),
+            name: "cpu_temp".to_string(),
             weight: 1,
         }
     }
 
-    fn weighted(weight: u8) -> CustomTempSourceData {
-        CustomTempSourceData { weight, ..source() }
+    fn weighted(weight: u8) -> SensorSource {
+        SensorSource { weight, ..source() }
     }
 
-    fn mix(sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn mix(sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "mix".to_string(),
             kind: CustomSensorKind::Mix {
@@ -209,7 +207,7 @@ mod tests {
         }
     }
 
-    fn time_average(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn time_average(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ta".to_string(),
             kind: CustomSensorKind::TimeAverage {
@@ -221,7 +219,7 @@ mod tests {
         }
     }
 
-    fn ema(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn ema(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ema".to_string(),
             kind: CustomSensorKind::ExponentialMovingAvg {

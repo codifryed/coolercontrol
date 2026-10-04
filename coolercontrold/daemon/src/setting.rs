@@ -680,21 +680,132 @@ pub enum CustomSensorMixFunctionType {
     WeightedAvg,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CustomTempSourceData {
-    pub temp_source: TempSource,
+/// One input of a Custom Sensor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SensorSource {
+    /// The device holding the current values.
+    pub device_uid: DeviceUID,
+
+    /// The internal name of the temp on that device. NOT the label.
+    pub name: TempName,
+
     pub weight: Weight,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+/// NOTE: serde and `JsonSchema` are bridged through the private [`CustomSensorWire`], which
+/// keeps the source keys that clients and stored configs use. The runtime works on
+/// [`SensorSource`] alone.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "CustomSensorWire", into = "CustomSensorWire")]
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
     pub id: TempName,
 
+    pub kind: CustomSensorKind,
+
+    /// Filled internally, see [`CustomSensorWire`].
+    pub children: Vec<TempName>,
+
+    pub parents: Vec<TempName>,
+}
+
+/// Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one
+/// variant is valid per sensor. Constraints the type cannot express (single source for
+/// `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,
+/// `time_window_seconds` in `1..=300`) are enforced at the API boundary in
+/// `validate_custom_sensor`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "cs_type")]
+pub enum CustomSensorKind<S = SensorSource> {
+    Mix {
+        mix_function: CustomSensorMixFunctionType,
+        sources: Vec<S>,
+    },
+    File {
+        file_path: PathBuf,
+    },
+    Offset {
+        offset: Offset,
+        sources: Vec<S>,
+    },
+    TimeAverage {
+        time_window_seconds: u16,
+        sources: Vec<S>,
+    },
+    ExponentialMovingAvg {
+        time_window_seconds: u16,
+        sources: Vec<S>,
+    },
+}
+
+impl<S> CustomSensorKind<S> {
+    /// The same kind with every source converted.
+    fn map_sources<T>(self, convert: impl FnMut(S) -> T) -> CustomSensorKind<T> {
+        match self {
+            Self::Mix {
+                mix_function,
+                sources,
+            } => CustomSensorKind::Mix {
+                mix_function,
+                sources: sources.into_iter().map(convert).collect(),
+            },
+            Self::File { file_path } => CustomSensorKind::File { file_path },
+            Self::Offset { offset, sources } => CustomSensorKind::Offset {
+                offset,
+                sources: sources.into_iter().map(convert).collect(),
+            },
+            Self::TimeAverage {
+                time_window_seconds,
+                sources,
+            } => CustomSensorKind::TimeAverage {
+                time_window_seconds,
+                sources: sources.into_iter().map(convert).collect(),
+            },
+            Self::ExponentialMovingAvg {
+                time_window_seconds,
+                sources,
+            } => CustomSensorKind::ExponentialMovingAvg {
+                time_window_seconds,
+                sources: sources.into_iter().map(convert).collect(),
+            },
+        }
+    }
+}
+
+impl CustomSensor {
+    /// The temp sources this sensor reads from. `File` sensors have none.
+    pub fn sources(&self) -> &[SensorSource] {
+        match &self.kind {
+            CustomSensorKind::Mix { sources, .. }
+            | CustomSensorKind::Offset { sources, .. }
+            | CustomSensorKind::TimeAverage { sources, .. }
+            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => sources,
+            CustomSensorKind::File { .. } => &[],
+        }
+    }
+
+    /// Mutable access to this sensor's temp sources, or `None` for `File` sensors.
+    pub fn sources_mut(&mut self) -> Option<&mut Vec<SensorSource>> {
+        match &mut self.kind {
+            CustomSensorKind::Mix { sources, .. }
+            | CustomSensorKind::Offset { sources, .. }
+            | CustomSensorKind::TimeAverage { sources, .. }
+            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => Some(sources),
+            CustomSensorKind::File { .. } => None,
+        }
+    }
+}
+
+// Wire shape of `CustomSensor` (see the NOTE on that type).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct CustomSensorWire {
+    /// ID MUST be unique, as `temp_name` must be unique.
+    id: TempName,
+
     /// Variant payload, flattened so its fields and the `cs_type` discriminator stay flat
     /// siblings of `id` on the wire (the legacy shape).
     #[serde(flatten)]
-    pub kind: CustomSensorKind,
+    kind: CustomSensorKind<SensorSourceWire>,
 
     /// The Custom Sensor's children, if any.
     ///
@@ -706,63 +817,81 @@ pub struct CustomSensor {
     /// they provide this information for clients. For POST or PUT endpoints,
     /// any values here are essentially ignored.
     #[serde(default)]
-    pub children: Vec<TempName>,
+    children: Vec<TempName>,
 
     /// The Custom Sensor's parents, if any. See `children` for more details.
     #[serde(default)]
-    pub parents: Vec<TempName>,
+    parents: Vec<TempName>,
 }
 
-/// Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one
-/// variant is valid per sensor. Constraints the type cannot express (single source for
-/// `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,
-/// `time_window_seconds` in `1..=300`) are enforced at the API boundary in
-/// `validate_custom_sensor`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "cs_type")]
-pub enum CustomSensorKind {
-    Mix {
-        mix_function: CustomSensorMixFunctionType,
-        sources: Vec<CustomTempSourceData>,
-    },
-    File {
-        file_path: PathBuf,
-    },
-    Offset {
-        offset: Offset,
-        sources: Vec<CustomTempSourceData>,
-    },
-    TimeAverage {
-        time_window_seconds: u16,
-        sources: Vec<CustomTempSourceData>,
-    },
-    ExponentialMovingAvg {
-        time_window_seconds: u16,
-        sources: Vec<CustomTempSourceData>,
-    },
+#[schemars(rename = "CustomTempSourceData")]
+struct SensorSourceWire {
+    temp_source: TempSource,
+    weight: Weight,
 }
 
-impl CustomSensor {
-    /// The temp sources this sensor reads from. `File` sensors have none.
-    pub fn sources(&self) -> &[CustomTempSourceData] {
-        match &self.kind {
-            CustomSensorKind::Mix { sources, .. }
-            | CustomSensorKind::Offset { sources, .. }
-            | CustomSensorKind::TimeAverage { sources, .. }
-            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => sources,
-            CustomSensorKind::File { .. } => &[],
+impl SensorSource {
+    pub fn from_temp(temp_source: TempSource, weight: Weight) -> Self {
+        Self {
+            device_uid: temp_source.device_uid,
+            name: temp_source.temp_name,
+            weight,
         }
     }
 
-    /// Mutable access to this sensor's temp sources, or `None` for `File` sensors.
-    pub fn sources_mut(&mut self) -> Option<&mut Vec<CustomTempSourceData>> {
-        match &mut self.kind {
-            CustomSensorKind::Mix { sources, .. }
-            | CustomSensorKind::Offset { sources, .. }
-            | CustomSensorKind::TimeAverage { sources, .. }
-            | CustomSensorKind::ExponentialMovingAvg { sources, .. } => Some(sources),
-            CustomSensorKind::File { .. } => None,
+    pub fn temp_source(&self) -> TempSource {
+        TempSource {
+            temp_name: self.name.clone(),
+            device_uid: self.device_uid.clone(),
         }
+    }
+}
+
+impl From<SensorSourceWire> for SensorSource {
+    fn from(wire: SensorSourceWire) -> Self {
+        Self::from_temp(wire.temp_source, wire.weight)
+    }
+}
+
+impl From<SensorSource> for SensorSourceWire {
+    fn from(source: SensorSource) -> Self {
+        Self {
+            temp_source: source.temp_source(),
+            weight: source.weight,
+        }
+    }
+}
+
+impl From<CustomSensorWire> for CustomSensor {
+    fn from(wire: CustomSensorWire) -> Self {
+        Self {
+            id: wire.id,
+            kind: wire.kind.map_sources(SensorSource::from),
+            children: wire.children,
+            parents: wire.parents,
+        }
+    }
+}
+
+impl From<CustomSensor> for CustomSensorWire {
+    fn from(sensor: CustomSensor) -> Self {
+        Self {
+            id: sensor.id,
+            kind: sensor.kind.map_sources(SensorSourceWire::from),
+            children: sensor.children,
+            parents: sensor.parents,
+        }
+    }
+}
+
+impl JsonSchema for CustomSensor {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("CustomSensor")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        CustomSensorWire::json_schema(generator)
     }
 }
 
@@ -1321,14 +1450,38 @@ mod tests {
         assert!(result.is_err());
     }
 
-    fn sample_source() -> CustomTempSourceData {
-        CustomTempSourceData {
-            temp_source: TempSource {
-                temp_name: "Temp1".to_string(),
-                device_uid: "dev-1".to_string(),
-            },
+    fn sample_source() -> SensorSource {
+        SensorSource {
+            name: "Temp1".to_string(),
+            device_uid: "dev-1".to_string(),
             weight: 1,
         }
+    }
+
+    // The flat runtime source travels as the nested `temp_source` key that clients and stored
+    // configs use, and reads back to the same source.
+    #[test]
+    fn custom_sensor_source_keeps_its_wire_shape() {
+        let sensor = CustomSensor {
+            id: "mix1".to_string(),
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Avg,
+                sources: vec![sample_source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let v = serde_json::to_value(&sensor).unwrap();
+        assert_eq!(
+            v["sources"],
+            json!([{
+                "temp_source": { "temp_name": "Temp1", "device_uid": "dev-1" },
+                "weight": 1
+            }])
+        );
+
+        let parsed: CustomSensor = serde_json::from_value(v).unwrap();
+        assert_eq!(parsed.sources(), &[sample_source()]);
     }
 
     // A Mix sensor serializes to the legacy flat shape: the cs_type tag and mix_function sit

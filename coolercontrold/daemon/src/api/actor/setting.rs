@@ -9,7 +9,7 @@ use crate::device::{ChannelName, DeviceInfo, DeviceName, DeviceType, DeviceUID, 
 use crate::overrides::{OverridesController, OverridesDocument};
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, CoolerControlSettings, CustomSensor, DeviceExtensions,
-    Profile, ProfileType, Setting, SettingKind, TempSource,
+    Profile, ProfileType, Setting, SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -738,11 +738,11 @@ fn verify_disable_does_not_orphan_temp_sources(
     if newly_disabled_device.not() && newly_disabled_channels.is_empty() {
         return Ok(());
     }
-    let is_broken = |source: &TempSource| -> bool {
-        if &source.device_uid != device_uid {
+    let is_broken = |source_device_uid: &DeviceUID, source_name: &str| -> bool {
+        if source_device_uid != device_uid {
             return false;
         }
-        newly_disabled_device || newly_disabled_channels.contains(source.temp_name.as_str())
+        newly_disabled_device || newly_disabled_channels.contains(source_name)
     };
     let label_for = |temp_name: &str| -> String {
         channel_labels
@@ -758,18 +758,15 @@ fn verify_disable_does_not_orphan_temp_sources(
         let Some(source) = profile.temp_source() else {
             continue;
         };
-        if is_broken(source) {
+        if is_broken(&source.device_uid, &source.temp_name) {
             broken_profiles.push((profile.name.clone(), label_for(&source.temp_name)));
         }
     }
     let mut broken_sensors: Vec<(String, String)> = Vec::with_capacity(custom_sensors.len());
     for sensor in custom_sensors {
         for sensor_source in sensor.sources() {
-            if is_broken(&sensor_source.temp_source) {
-                broken_sensors.push((
-                    sensor.id.clone(),
-                    label_for(&sensor_source.temp_source.temp_name),
-                ));
+            if is_broken(&sensor_source.device_uid, &sensor_source.name) {
+                broken_sensors.push((sensor.id.clone(), label_for(&sensor_source.name)));
             }
         }
     }
@@ -808,13 +805,13 @@ mod tests {
         build_orphan_error_message, refresh_channel_label_hints, resolve_cc_device_name,
         resolve_channel_setting_labels, stamp_detection_memos,
         verify_disable_does_not_orphan_temp_sources, CCDeviceSettings, CCError, CustomSensor,
-        Profile, TempSource,
+        Profile,
     };
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, TempInfo};
     use crate::overrides::OverridesController;
     use crate::setting::{
-        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-        DeviceExtensions, ProfileKind,
+        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, DeviceExtensions,
+        ProfileKind, SensorSource, TempSource,
     };
     use crate::AllDevices;
     use std::cell::RefCell;
@@ -868,12 +865,10 @@ mod tests {
             id: id.to_string(),
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Min,
-                sources: vec![CustomTempSourceData {
+                sources: vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        temp_name: source_temp.to_string(),
-                        device_uid: source_uid.to_string(),
-                    },
+                    name: source_temp.to_string(),
+                    device_uid: source_uid.to_string(),
                 }],
             },
             children: Vec::new(),

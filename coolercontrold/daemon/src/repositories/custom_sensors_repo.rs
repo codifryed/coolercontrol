@@ -25,8 +25,8 @@ use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
-    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, LcdSettings,
-    LightingSettings, Offset, TempSource,
+    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, LcdSettings, LightingSettings,
+    Offset, SensorSource, TempSource,
 };
 use crate::{cc_fs, VERSION};
 
@@ -277,9 +277,7 @@ impl CustomSensorsRepo {
             // Only the deleted child goes: both halves must match for a source to be
             // the one being removed. Every custom-sensor source shares `device_uid`,
             // so requiring both to differ stripped the parent's other children too.
-            sources.retain(|s| {
-                s.temp_source.device_uid != self.device_uid || s.temp_source.temp_name != child_id
-            });
+            sources.retain(|s| s.device_uid != self.device_uid || s.name != child_id);
         }
     }
 
@@ -416,13 +414,13 @@ impl CustomSensorsRepo {
     fn process_reduced_indexed(
         &self,
         id: &TempName,
-        sources: &[CustomTempSourceData],
+        sources: &[SensorSource],
         index: usize,
         reduce: impl Fn(&[TempData]) -> f64,
     ) -> Result<TempStatus> {
         let mut temp_data = Vec::with_capacity(sources.len());
         for custom_temp_source_data in sources {
-            let temp_source = &custom_temp_source_data.temp_source;
+            let temp_source = custom_temp_source_data;
             let some_temp_source = if temp_source.device_uid == self.device_uid {
                 // Only used for NEW sensors, so safe for Parents too: children already have a
                 // built status history.
@@ -437,11 +435,11 @@ impl CustomSensorsRepo {
                 .borrow()
                 .status_history
                 .get(index)
-                .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
+                .and_then(|status| Self::get_temp_from_status(&temp_source.name, status));
             let Some(temp) = some_temp else {
                 let msg = format!(
                     "Temp not found for Custom Sensor: {}:{}",
-                    temp_source.device_uid, temp_source.temp_name
+                    temp_source.device_uid, temp_source.name
                 );
                 return Err(CCError::InternalError { msg }.into());
             };
@@ -471,21 +469,21 @@ impl CustomSensorsRepo {
     fn process_reduced_current(
         &self,
         id: &TempName,
-        sources: &[CustomTempSourceData],
+        sources: &[SensorSource],
         custom_temps: &[TempStatus],
         reduce: impl Fn(&[TempData]) -> f64,
     ) -> TempStatus {
         let mut temp_data = Vec::with_capacity(sources.len());
         for custom_temp_source_data in sources {
-            let temp_source = &custom_temp_source_data.temp_source;
+            let temp_source = custom_temp_source_data;
             let Ok(Some(temp)) = self.get_temp_source_temp(temp_source, custom_temps) else {
                 // Device-first with the log convention's pipe separator, matching
                 // how the UI composes device and channel names.
                 let reason = match self.source_device_name(temp_source) {
                     Some(device_name) => {
-                        format!("source missing: {device_name} | {}", temp_source.temp_name)
+                        format!("source missing: {device_name} | {}", temp_source.name)
                     }
-                    None => format!("source missing: {}", temp_source.temp_name),
+                    None => format!("source missing: {}", temp_source.name),
                 };
                 return self.emit_failsafe(id, &reason);
             };
@@ -568,7 +566,7 @@ impl CustomSensorsRepo {
     fn process_time_average_current(
         &self,
         id: &TempName,
-        source: &CustomTempSourceData,
+        source: &SensorSource,
         window_seconds: u16,
         custom_temps: &[TempStatus],
     ) -> TempStatus {
@@ -584,7 +582,7 @@ impl CustomSensorsRepo {
     fn process_windowed_current(
         &self,
         id: &TempName,
-        source: &CustomTempSourceData,
+        source: &SensorSource,
         window_seconds: u16,
         custom_temps: &[TempStatus],
         is_ema: bool,
@@ -595,7 +593,7 @@ impl CustomSensorsRepo {
             return self.emit_failsafe(id, "invalid zero time_window_seconds");
         }
         let sample_count = Self::window_sample_count(window_seconds, self.poll_rate);
-        let temp_source = &source.temp_source;
+        let temp_source = source;
         let is_child_source = temp_source.device_uid == self.device_uid;
         if is_child_source.not() && self.all_devices.contains_key(&temp_source.device_uid).not() {
             // A removed source device failsafes immediately. Dropping the window prevents
@@ -633,13 +631,13 @@ impl CustomSensorsRepo {
     /// before this one). Callers ensure the source device exists.
     fn current_source_sample(
         &self,
-        temp_source: &TempSource,
+        temp_source: &SensorSource,
         custom_temps: &[TempStatus],
     ) -> Option<Temp> {
         if temp_source.device_uid == self.device_uid {
             return custom_temps
                 .iter()
-                .find(|t| t.name == temp_source.temp_name)
+                .find(|t| t.name == temp_source.name)
                 .map(|t| t.temp);
         }
         self.all_devices
@@ -649,7 +647,7 @@ impl CustomSensorsRepo {
                     .borrow()
                     .status_history
                     .back()
-                    .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status))
+                    .and_then(|status| Self::get_temp_from_status(&temp_source.name, status))
             })
     }
 
@@ -661,7 +659,7 @@ impl CustomSensorsRepo {
     /// divergence in a state validation mostly precludes).
     fn seed_sample_window(
         &self,
-        temp_source: &TempSource,
+        temp_source: &SensorSource,
         custom_temps: &[TempStatus],
         sample_count: usize,
     ) -> SampleWindow {
@@ -672,7 +670,7 @@ impl CustomSensorsRepo {
             samples.push_back(
                 custom_temps
                     .iter()
-                    .find(|t| t.name == temp_source.temp_name)
+                    .find(|t| t.name == temp_source.name)
                     .map(|t| t.temp),
             );
             if let Some(cs_device) = self.custom_sensor_device.as_ref() {
@@ -683,7 +681,7 @@ impl CustomSensorsRepo {
                     .rev()
                     .take(sample_count - 1)
                 {
-                    samples.push_back(Self::get_temp_from_status(&temp_source.temp_name, status));
+                    samples.push_back(Self::get_temp_from_status(&temp_source.name, status));
                 }
             }
         } else if let Some(source_device) = self.all_devices.get(&temp_source.device_uid) {
@@ -694,7 +692,7 @@ impl CustomSensorsRepo {
                 .rev()
                 .take(sample_count)
             {
-                samples.push_back(Self::get_temp_from_status(&temp_source.temp_name, status));
+                samples.push_back(Self::get_temp_from_status(&temp_source.name, status));
             }
         }
         samples.make_contiguous().reverse();
@@ -710,11 +708,11 @@ impl CustomSensorsRepo {
     fn process_time_average_indexed(
         &self,
         id: &TempName,
-        source: &CustomTempSourceData,
+        source: &SensorSource,
         index: usize,
         sample_count: usize,
     ) -> TempStatus {
-        let temps = self.collect_indexed_source_temps(&source.temp_source, index, sample_count);
+        let temps = self.collect_indexed_source_temps(source, index, sample_count);
         let mean = Self::compute_time_average(&temps).unwrap_or(0.);
         TempStatus {
             name: id.clone(),
@@ -726,7 +724,7 @@ impl CustomSensorsRepo {
     /// ending at history `index` (inclusive). Indices beyond the history's length are skipped.
     fn collect_indexed_source_temps(
         &self,
-        temp_source: &TempSource,
+        temp_source: &SensorSource,
         index: usize,
         sample_count: usize,
     ) -> Vec<Temp> {
@@ -747,7 +745,7 @@ impl CustomSensorsRepo {
         let start = end.saturating_sub(sample_count);
         for k in start..end {
             if let Some(status) = device_ref.status_history.get(k) {
-                if let Some(t) = Self::get_temp_from_status(&temp_source.temp_name, status) {
+                if let Some(t) = Self::get_temp_from_status(&temp_source.name, status) {
                     temps.push(t);
                 }
             }
@@ -824,7 +822,7 @@ impl CustomSensorsRepo {
     fn process_ema_current(
         &self,
         id: &TempName,
-        source: &CustomTempSourceData,
+        source: &SensorSource,
         window_seconds: u16,
         custom_temps: &[TempStatus],
     ) -> TempStatus {
@@ -837,12 +835,12 @@ impl CustomSensorsRepo {
     fn process_ema_indexed(
         &self,
         id: &TempName,
-        source: &CustomTempSourceData,
+        source: &SensorSource,
         index: usize,
         sample_count: usize,
     ) -> TempStatus {
         // collect_indexed_source_temps returns oldest-first, which is what compute_ema wants.
-        let temps = self.collect_indexed_source_temps(&source.temp_source, index, sample_count);
+        let temps = self.collect_indexed_source_temps(source, index, sample_count);
         let ema = Self::compute_ema(&temps, sample_count).unwrap_or(0.);
         TempStatus {
             name: id.clone(),
@@ -854,14 +852,14 @@ impl CustomSensorsRepo {
     /// Also handles retrieving the recently created temperature from child custom sensors.
     fn get_temp_source_temp(
         &self,
-        temp_source: &TempSource,
+        temp_source: &SensorSource,
         custom_temps: &[TempStatus],
     ) -> Result<Option<Temp>> {
         if temp_source.device_uid == self.device_uid {
             // parents get the child's status from the recent push to custom_temps
             return Ok(custom_temps
                 .iter()
-                .find(|temp| temp.name == temp_source.temp_name)
+                .find(|temp| temp.name == temp_source.name)
                 .map(|temp| temp.temp));
         }
         let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
@@ -872,7 +870,7 @@ impl CustomSensorsRepo {
             .borrow()
             .status_history
             .back()
-            .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status)))
+            .and_then(|status| Self::get_temp_from_status(&temp_source.name, status)))
     }
 
     fn get_temp_from_status(temp_source_name: &str, status: &Status) -> Option<f64> {
@@ -1097,10 +1095,10 @@ impl CustomSensorsRepo {
         // so this function only verifies the parent-child hierarchy.
         // The children vector is not necessarily filled at this point, so we check directly.
         for temp_source_data in custom_sensor.sources() {
-            if temp_source_data.temp_source.device_uid != self.device_uid {
+            if temp_source_data.device_uid != self.device_uid {
                 continue;
             }
-            if temp_source_data.temp_source.temp_name == custom_sensor.id {
+            if temp_source_data.name == custom_sensor.id {
                 return Err(CCError::UserError {
                     msg: format!(
                         "Custom Sensor {sensor_id} cannot have itself as a child",
@@ -1120,12 +1118,12 @@ impl CustomSensorsRepo {
                     }
                     .into());
                 }
-                if parents.contains(&temp_source_data.temp_source.temp_name) {
+                if parents.contains(&temp_source_data.name) {
                     return Err(CCError::UserError {
                         msg: format!(
                             "Child Custom Sensor {temp_source_name} is already a parent and \
                             cannot be a child of this Custom Sensor {sensor_id}",
-                            temp_source_name = temp_source_data.temp_source.temp_name,
+                            temp_source_name = temp_source_data.name,
                             sensor_id = custom_sensor.id
                         ),
                     }
@@ -1165,8 +1163,8 @@ impl CustomSensorsRepo {
             let child_names: Vec<TempName> = sensor
                 .sources()
                 .iter()
-                .filter(|data| data.temp_source.device_uid == self.device_uid)
-                .map(|data| data.temp_source.temp_name.clone())
+                .filter(|data| data.device_uid == self.device_uid)
+                .map(|data| data.name.clone())
                 .collect();
             for child_name in child_names {
                 sensor.children.push(child_name.clone());
@@ -1216,7 +1214,7 @@ impl CustomSensorsRepo {
 
     /// Resolves a source device's display name for failsafe reasons: live devices first,
     /// then the config `devices` list, which retains devices no longer detected.
-    fn source_device_name(&self, temp_source: &TempSource) -> Option<String> {
+    fn source_device_name(&self, temp_source: &SensorSource) -> Option<String> {
         if let Some(device) = self.all_devices.get(&temp_source.device_uid) {
             return Some(device.borrow().name.clone());
         }
@@ -1516,8 +1514,7 @@ mod tests {
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     use crate::repositories::repository::{DeviceLock, Repository};
     use crate::setting::{
-        CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-        TempSource,
+        CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, SensorSource,
     };
     use serial_test::serial;
     use std::cell::RefCell;
@@ -2259,22 +2256,18 @@ mod tests {
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
                 "parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
             let grandparent_sensor = mix_sensor(
                 "grandparent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "parent_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "parent_sensor".to_string(),
                 }],
             );
 
@@ -2311,12 +2304,10 @@ mod tests {
             let mut child_sensor = mix_sensor("child_sensor", vec![]);
             let parent_sensor = mix_sensor(
                 "parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
             let standalone_sensor = file_sensor("standalone_sensor", test_file);
@@ -2334,12 +2325,10 @@ mod tests {
             child_sensor
                 .sources_mut()
                 .expect("mix sensor has sources")
-                .push(CustomTempSourceData {
+                .push(SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "standalone_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "standalone_sensor".to_string(),
                 });
             let result = repo.update_custom_sensor(child_sensor).await;
 
@@ -2369,19 +2358,15 @@ mod tests {
             let parent_sensor = mix_sensor(
                 "parent_sensor",
                 vec![
-                    CustomTempSourceData {
+                    SensorSource {
                         weight: 1,
-                        temp_source: TempSource {
-                            device_uid: repo.device_uid.clone(),
-                            temp_name: "child_sensor".to_string(),
-                        },
+                        device_uid: repo.device_uid.clone(),
+                        name: "child_sensor".to_string(),
                     },
-                    CustomTempSourceData {
+                    SensorSource {
                         weight: 1,
-                        temp_source: TempSource {
-                            device_uid: repo.device_uid.clone(),
-                            temp_name: "second_child_sensor".to_string(),
-                        },
+                        device_uid: repo.device_uid.clone(),
+                        name: "second_child_sensor".to_string(),
                     },
                 ],
             );
@@ -2480,22 +2465,18 @@ mod tests {
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
                 "parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
             let second_parent_sensor = mix_sensor(
                 "second_parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
 
@@ -2535,19 +2516,15 @@ mod tests {
             let parent_sensor = mix_sensor(
                 "parent_sensor",
                 vec![
-                    CustomTempSourceData {
+                    SensorSource {
                         weight: 1,
-                        temp_source: TempSource {
-                            device_uid: repo.device_uid.clone(),
-                            temp_name: "child_sensor".to_string(),
-                        },
+                        device_uid: repo.device_uid.clone(),
+                        name: "child_sensor".to_string(),
                     },
-                    CustomTempSourceData {
+                    SensorSource {
                         weight: 1,
-                        temp_source: TempSource {
-                            device_uid: repo.device_uid.clone(),
-                            temp_name: "second_child_sensor".to_string(),
-                        },
+                        device_uid: repo.device_uid.clone(),
+                        name: "second_child_sensor".to_string(),
                     },
                 ],
             );
@@ -2591,7 +2568,7 @@ mod tests {
                         && sensor
                             .sources()
                             .iter()
-                            .any(|s| s.temp_source.temp_name == "child_sensor")
+                            .any(|s| s.name == "child_sensor")
                             .not()),
                 "Parent sensor still has child sensor"
             );
@@ -2603,7 +2580,7 @@ mod tests {
                         && sensor
                             .sources()
                             .iter()
-                            .any(|s| s.temp_source.temp_name == "second_child_sensor")),
+                            .any(|s| s.name == "second_child_sensor")),
                 "Parent sensor lost its surviving child's source"
             );
         });
@@ -2625,12 +2602,10 @@ mod tests {
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
                 "parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
 
@@ -2668,12 +2643,10 @@ mod tests {
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
                 "parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "child_sensor".to_string(),
                 }],
             );
             let second_test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
@@ -2683,12 +2656,10 @@ mod tests {
             let second_child_sensor = file_sensor("second_child_sensor", second_test_file);
             let second_parent_sensor = mix_sensor(
                 "second_parent_sensor",
-                vec![CustomTempSourceData {
+                vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        temp_name: "second_child_sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    name: "second_child_sensor".to_string(),
                 }],
             );
 
@@ -2753,13 +2724,11 @@ mod tests {
             sensor
                 .sources_mut()
                 .expect("mix sensor has sources")
-                .push(CustomTempSourceData {
+                .push(SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        device_uid: repo.device_uid.clone(),
-                        // itself:
-                        temp_name: "sensor".to_string(),
-                    },
+                    device_uid: repo.device_uid.clone(),
+                    // itself:
+                    name: "sensor".to_string(),
                 });
             let result = repo.update_custom_sensor(sensor).await;
 
@@ -3063,7 +3032,7 @@ mod tests {
             .temp
     }
 
-    fn mix_sensor(id: &str, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn mix_sensor(id: &str, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
             kind: CustomSensorKind::Mix {
@@ -3075,13 +3044,11 @@ mod tests {
         }
     }
 
-    fn temp_source(uid: &str, name: &str) -> CustomTempSourceData {
-        CustomTempSourceData {
+    fn temp_source(uid: &str, name: &str) -> SensorSource {
+        SensorSource {
             weight: 1,
-            temp_source: TempSource {
-                device_uid: uid.to_string(),
-                temp_name: name.to_string(),
-            },
+            device_uid: uid.to_string(),
+            name: name.to_string(),
         }
     }
 
@@ -3649,11 +3616,7 @@ mod tests {
 
     // ============== integration tests: windowed sensors (TimeAverage / EMA) ==============
 
-    fn time_average_sensor(
-        id: &str,
-        window_seconds: u16,
-        source: CustomTempSourceData,
-    ) -> CustomSensor {
+    fn time_average_sensor(id: &str, window_seconds: u16, source: SensorSource) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
             kind: CustomSensorKind::TimeAverage {
@@ -3665,7 +3628,7 @@ mod tests {
         }
     }
 
-    fn ema_sensor(id: &str, window_seconds: u16, source: CustomTempSourceData) -> CustomSensor {
+    fn ema_sensor(id: &str, window_seconds: u16, source: SensorSource) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
             kind: CustomSensorKind::ExponentialMovingAvg {

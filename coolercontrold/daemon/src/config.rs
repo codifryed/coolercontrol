@@ -20,12 +20,11 @@ use crate::paths;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
-    DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
-    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
-    ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
-    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT,
-    STARTUP_DELAY_SECONDS_MAX,
+    CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, DeviceExtensions, Function,
+    FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeKind, LcdModeName,
+    LcdSettings, LightingSettings, Offset, Profile, ProfileKind, ProfileMixFunctionType,
+    ProfileType, ProfileUID, SensorSource, Setting, SettingKind, TempSource, DEFAULT_FUNCTION_UID,
+    DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT, STARTUP_DELAY_SECONDS_MAX,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -2669,7 +2668,7 @@ impl Config {
 
     /// Parses the `sources` array. Any length is accepted here; per-variant cardinality is
     /// applied by callers (`parse_single_source` for the single-source variants).
-    fn parse_custom_sensor_sources(c_sensor_table: &Table) -> Result<Vec<CustomTempSourceData>> {
+    fn parse_custom_sensor_sources(c_sensor_table: &Table) -> Result<Vec<SensorSource>> {
         let mut sources = Vec::new();
         let Some(sources_item) = c_sensor_table.get("sources") else {
             return Ok(sources);
@@ -2689,20 +2688,14 @@ impl Config {
                 .ok()
                 .with_context(|| "weight must be a value between 1-254")?;
             let weight = weight_raw.clamp(1, 254);
-            sources.push(CustomTempSourceData {
-                temp_source,
-                weight,
-            });
+            sources.push(SensorSource::from_temp(temp_source, weight));
         }
         Ok(sources)
     }
 
     /// Parses `sources` and enforces exactly one element, for the variants derived from a
     /// single source.
-    fn parse_single_source(
-        c_sensor_table: &Table,
-        type_name: &str,
-    ) -> Result<Vec<CustomTempSourceData>> {
+    fn parse_single_source(c_sensor_table: &Table, type_name: &str) -> Result<Vec<SensorSource>> {
         let sources = Self::parse_custom_sensor_sources(c_sensor_table)?;
         if sources.len() != 1 {
             return Err(CCError::InternalError {
@@ -2882,7 +2875,7 @@ impl Config {
         }
     }
 
-    fn write_custom_sensor_sources(cs_table: &mut Table, sources: &[CustomTempSourceData]) {
+    fn write_custom_sensor_sources(cs_table: &mut Table, sources: &[SensorSource]) {
         let sources_array = cs_table["sources"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -2890,12 +2883,10 @@ impl Config {
         sources_array.clear();
         for source in sources {
             let mut source_table = Table::new();
-            source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
-                source.temp_source.temp_name.clone(),
-            )));
-            source_table["temp_source"]["device_uid"] = Item::Value(Value::String(Formatted::new(
-                source.temp_source.device_uid.clone(),
-            )));
+            source_table["temp_source"]["temp_name"] =
+                Item::Value(Value::String(Formatted::new(source.name.clone())));
+            source_table["temp_source"]["device_uid"] =
+                Item::Value(Value::String(Formatted::new(source.device_uid.clone())));
             source_table["weight"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(source.weight))));
             sources_array.push(source_table);
@@ -3520,16 +3511,13 @@ mod tests {
     #[test]
     fn custom_sensor_variants_toml_round_trip() {
         use crate::setting::{
-            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-            TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, SensorSource,
         };
         use std::path::PathBuf;
 
-        let source = || CustomTempSourceData {
-            temp_source: TempSource {
-                temp_name: "Temp1".to_string(),
-                device_uid: "dev-1".to_string(),
-            },
+        let source = || SensorSource {
+            name: "Temp1".to_string(),
+            device_uid: "dev-1".to_string(),
             weight: 1,
         };
         let make = |id: &str, kind: CustomSensorKind| CustomSensor {
@@ -3644,8 +3632,7 @@ offset = 5
     #[test]
     fn custom_sensor_variant_change_scrubs_stale_keys() {
         use crate::setting::{
-            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-            TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, SensorSource,
         };
         use std::path::PathBuf;
 
@@ -3670,11 +3657,9 @@ offset = 5
                 id: "s1".to_string(),
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Max,
-                    sources: vec![CustomTempSourceData {
-                        temp_source: TempSource {
-                            temp_name: "T".to_string(),
-                            device_uid: "d".to_string(),
-                        },
+                    sources: vec![SensorSource {
+                        name: "T".to_string(),
+                        device_uid: "d".to_string(),
                         weight: 1,
                     }],
                 },

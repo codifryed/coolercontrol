@@ -14,8 +14,8 @@ use crate::api::devices::{apply_effective_speed_options, build_calibration_map, 
 use crate::api::{AppState, CCError};
 use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, Temp, TempName};
 use crate::setting::{
-    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, Function,
-    FunctionKind, FunctionUID, Offset, Profile, ProfileKind, ProfileMixFunctionType, ProfileUID,
+    CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, Function, FunctionKind,
+    FunctionUID, Offset, Profile, ProfileKind, ProfileMixFunctionType, ProfileUID, SensorSource,
     TempSource, DEFAULT_FUNCTION_UID,
 };
 use axum::extract::State;
@@ -669,14 +669,8 @@ fn build_delta_sensor(liquid: TempSource, ambient: TempSource) -> CustomSensor {
         kind: CustomSensorKind::Mix {
             mix_function: CustomSensorMixFunctionType::Delta,
             sources: vec![
-                CustomTempSourceData {
-                    temp_source: liquid,
-                    weight: 1,
-                },
-                CustomTempSourceData {
-                    temp_source: ambient,
-                    weight: 1,
-                },
+                SensorSource::from_temp(liquid, 1),
+                SensorSource::from_temp(ambient, 1),
             ],
         },
         children: Vec::new(),
@@ -918,10 +912,7 @@ fn build_ema_sensor(source: TempSource, window_seconds: u16) -> CustomSensor {
         id: format!("Auto EMA {} {window_seconds}s", source.temp_name),
         kind: CustomSensorKind::ExponentialMovingAvg {
             time_window_seconds: window_seconds,
-            sources: vec![CustomTempSourceData {
-                temp_source: source,
-                weight: 1,
-            }],
+            sources: vec![SensorSource::from_temp(source, 1)],
         },
         children: Vec::new(),
         parents: Vec::new(),
@@ -2038,7 +2029,7 @@ mod tests {
         assert!(response.custom_sensors[0]
             .sources()
             .iter()
-            .any(|s| s.temp_source == liquid_temp()));
+            .any(|s| s.temp_source() == liquid_temp()));
     }
 
     /// Goal: a pump with neither CPU nor liquid temp is a user error. Method: omit both and

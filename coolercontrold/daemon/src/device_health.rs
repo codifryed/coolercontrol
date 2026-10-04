@@ -406,7 +406,7 @@ impl DeviceHealthController {
                     entity_uid: sensor.id.clone(),
                     entity_name: sensor.id.clone(),
                     channel_name: None,
-                    source: source_data.temp_source.clone(),
+                    source: source_data.temp_source(),
                     source_device_name: None,
                 });
             }
@@ -582,8 +582,7 @@ impl DeviceHealthController {
 mod tests {
     use super::*;
     use crate::setting::{
-        CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, FunctionUID,
-        ProfileKind,
+        CustomSensorKind, CustomSensorMixFunctionType, FunctionUID, ProfileKind, SensorSource,
     };
 
     #[test]
@@ -840,14 +839,8 @@ mod tests {
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Avg,
                     sources: vec![
-                        CustomTempSourceData {
-                            temp_source: source("dev1", "temp1"),
-                            weight: 1,
-                        },
-                        CustomTempSourceData {
-                            temp_source: source("dev2", "temp2"),
-                            weight: 1,
-                        },
+                        SensorSource::from_temp(source("dev1", "temp1"), 1),
+                        SensorSource::from_temp(source("dev2", "temp2"), 1),
                     ],
                 },
                 children: Vec::new(),
