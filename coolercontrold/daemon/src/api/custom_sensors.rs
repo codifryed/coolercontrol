@@ -82,12 +82,6 @@ pub async fn delete(
 
 fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     validate_name_string(&custom_sensor.id)?;
-    // The repository reads temperatures only, so no other metric is accepted yet.
-    if custom_sensor.metric.is_temp().not() {
-        return Err(CCError::UserError {
-            msg: format!("{} Custom Sensors are not supported", custom_sensor.metric),
-        });
-    }
     // The enum already enforces that each variant carries exactly its own fields (file_path
     // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
     // the value ranges and source cardinality the type cannot express remain here.
@@ -144,7 +138,7 @@ fn validate_custom_sensor_sources(sources: &[SensorSource]) -> Result<(), CCErro
     // Not a hard limit, just protects the API.
     if sources.len() > 50 {
         return Err(CCError::UserError {
-            msg: "sources cannot have more than 50 temps".to_string(),
+            msg: "a Custom Sensor cannot have more than 50 sources".to_string(),
         });
     }
     for source in sources {
@@ -156,12 +150,12 @@ fn validate_custom_sensor_sources(sources: &[SensorSource]) -> Result<(), CCErro
         }
         if source.device_uid.is_empty() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a temp_source with an empty device UID".to_string(),
+                msg: "sources cannot have an empty device UID".to_string(),
             });
         }
         if source.name.is_empty() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a temp_source with an empty Temp Name".to_string(),
+                msg: "sources cannot have an empty temp or channel name".to_string(),
             });
         }
     }
@@ -173,7 +167,7 @@ fn validate_custom_sensor_sources(sources: &[SensorSource]) -> Result<(), CCErro
 fn validate_single_source(sources: &[SensorSource]) -> Result<(), CCError> {
     if sources.len() != 1 {
         return Err(CCError::UserError {
-            msg: "Custom Sensor must have exactly 1 temp source".to_string(),
+            msg: "Custom Sensor must have exactly 1 source".to_string(),
         });
     }
     validate_custom_sensor_sources(sources)
@@ -245,13 +239,49 @@ mod tests {
         }
     }
 
-    // Only temperature sensors pass while the repository cannot read channels.
+    // Every metric is accepted, with the same rules for its sources.
     #[test]
-    fn rejects_a_non_temperature_metric() {
-        let mut sensor = mix(vec![source()]);
-        assert!(validate_custom_sensor(&sensor).is_ok());
-        sensor.metric = CustomSensorMetric::RPM;
-        assert!(validate_custom_sensor(&sensor).is_err());
+    fn accepts_every_metric() {
+        for metric in [
+            CustomSensorMetric::Temp,
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            let mut sensor = mix(vec![source()]);
+            sensor.metric = metric;
+            assert!(validate_custom_sensor(&sensor).is_ok(), "{metric}");
+            sensor.metric = metric;
+            sensor.sources_mut().unwrap().clear();
+            assert!(validate_custom_sensor(&sensor).is_err(), "{metric}");
+        }
+    }
+
+    // A non-temperature offset has the wide range: a temperature's bound is well inside
+    // it, and it ends at a million in either direction.
+    #[test]
+    fn offset_range_for_channel_metrics() {
+        for metric in [
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            for valid in [-1_000_000., -100.1, 0.5, 100.1, 1_000_000.] {
+                let mut sensor = scale_offset(valid);
+                sensor.metric = metric;
+                assert!(validate_custom_sensor(&sensor).is_ok(), "{metric} {valid}");
+            }
+            for invalid in [-1_000_000.1, 1_000_000.1, f64::NAN] {
+                let mut sensor = scale_offset(invalid);
+                sensor.metric = metric;
+                assert!(
+                    validate_custom_sensor(&sensor).is_err(),
+                    "{metric} {invalid}"
+                );
+            }
+        }
     }
 
     fn scale_offset(offset: f64) -> CustomSensor {
