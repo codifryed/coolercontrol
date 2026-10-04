@@ -30,6 +30,7 @@ use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
+use crate::repositories::custom_sensor_attributes::{attribute_forward, forward_attributes};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::rt;
 use crate::setting::{
@@ -1035,13 +1036,42 @@ impl Engine {
             }
             .into());
         }
-        let (_, repo) = self.get_device_repo(device_uid)?;
-        let attributes = repo.channel_attributes(device_uid, channel_name).await?;
+        let is_custom_sensor = device_lock.borrow().d_type == DeviceType::CustomSensors;
+        let attributes = if is_custom_sensor {
+            self.custom_sensor_attributes(device_uid, channel_name)
+                .await?
+        } else {
+            let (_, repo) = self.get_device_repo(device_uid)?;
+            repo.channel_attributes(device_uid, channel_name).await?
+        };
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         debug_assert!(attributes
             .iter()
             .all(|attribute| attribute.value.is_finite()));
         Ok(attributes)
+    }
+
+    /// A Custom Sensor with a single source carries that source's driver limits, read now
+    /// through the source's repository and passed through the sensor's scale and offset. A
+    /// source that is gone or unreadable leaves the sensor without limits, not in error.
+    async fn custom_sensor_attributes(
+        &self,
+        custom_sensors_device_uid: &UID,
+        sensor_id: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let sensors = self.config.get_custom_sensors()?;
+        let Some(forward) = attribute_forward(&sensors, custom_sensors_device_uid, sensor_id)
+        else {
+            return Ok(Vec::new());
+        };
+        let Ok((_, repo)) = self.get_device_repo(&forward.source_device_uid) else {
+            return Ok(Vec::new());
+        };
+        let source_attributes = repo
+            .channel_attributes(&forward.source_device_uid, &forward.source_name)
+            .await
+            .unwrap_or_default();
+        Ok(forward_attributes(&forward, source_attributes))
     }
 
     /// Retrieves the saved image file
