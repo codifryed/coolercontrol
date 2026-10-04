@@ -46,6 +46,7 @@ import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import EntityPageHeader from '@/components/EntityPageHeader.vue'
 import HealthWarning from '@/components/HealthWarning.vue'
 import TimeChart from '@/components/TimeChart.vue'
+import { newCustomSensorId } from '@/components/customSensorEditor.ts'
 
 interface Props {
     customSensorID?: string
@@ -82,15 +83,10 @@ const { t } = useI18n()
 
 const contextIsDirty: Ref<boolean> = ref(false)
 const shouldCreateSensor: boolean = !props.customSensorID
-const customSensorIdNumbers: Array<number> = []
 let customSensorsDeviceUID: UID = ''
 for (const device of deviceStore.allDevices()) {
     if (device.type === DeviceType.CUSTOM_SENSORS) {
         customSensorsDeviceUID = device.uid
-        for (const temp of device.status.temps) {
-            customSensorIdNumbers.push(Number(temp.name.replace(/^\D+/g, '')))
-        }
-        customSensorIdNumbers.sort()
         break
     }
 }
@@ -103,11 +99,7 @@ const deviceSettings = settingsStore.allUIDeviceSettings.get(customSensorsDevice
 const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
 const collectCustomSensor = async (): Promise<CustomSensor> => {
     if (shouldCreateSensor) {
-        const newSensorNumber =
-            customSensorIdNumbers.length === 0
-                ? 1
-                : customSensorIdNumbers[customSensorIdNumbers.length - 1] + 1
-        return new CustomSensor(`sensor${newSensorNumber}`)
+        return new CustomSensor(newCustomSensorId(new Set(customSensors.map((cs) => cs.id))))
     } else {
         const foundSensor = customSensors.find((cs) => cs.id === props.customSensorID)
         if (foundSensor == undefined) {
