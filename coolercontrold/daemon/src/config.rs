@@ -23,7 +23,7 @@ use crate::setting::{
     CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, CustomSensorType,
     DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
     LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
-    ProfileMixFunctionType, ProfileType, ProfileUID, SensorSource, Setting, SettingKind,
+    ProfileMixFunctionType, ProfileType, ProfileUID, Scale, SensorSource, Setting, SettingKind,
     TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT,
     STARTUP_DELAY_SECONDS_MAX,
 };
@@ -2626,7 +2626,8 @@ impl Config {
                 file_path: Self::parse_custom_sensor_file_path(c_sensor_table)?,
             },
             CustomSensorType::Offset => CustomSensorKind::Offset {
-                offset: Self::parse_custom_sensor_offset(c_sensor_table)?
+                scale: Self::parse_custom_sensor_scale(c_sensor_table)?,
+                offset: Self::parse_custom_sensor_offset(c_sensor_table, metric)?
                     .with_context(|| "Offset Custom Sensor must have an offset")?,
                 sources: Self::parse_single_source(c_sensor_table, metric, "Offset")?,
             },
@@ -2837,18 +2838,38 @@ impl Config {
     }
 
     /// Consumes the `CustomSensor` and returns a new `CustomSensor` Table
-    /// Parses the optional `offset` field from a custom-sensor table. Clamps to `-100..=100`.
-    fn parse_custom_sensor_offset(c_sensor_table: &Table) -> Result<Option<i8>> {
+    /// Parses the optional `offset` field from a custom-sensor table: a whole number, as
+    /// daemons before the scale wrote it, or a decimal. Clamps to the metric's limit.
+    fn parse_custom_sensor_offset(
+        c_sensor_table: &Table,
+        metric: CustomSensorMetric,
+    ) -> Result<Option<f64>> {
         let Some(offset_value) = c_sensor_table.get("offset") else {
             return Ok(None);
         };
-        let offset_raw: i8 = offset_value
-            .as_integer()
-            .with_context(|| "offset should be an integer")?
-            .try_into()
-            .ok()
-            .with_context(|| "offset must be a value between -100 and 100")?;
-        Ok(Some(offset_raw.clamp(-100, 100)))
+        let offset =
+            Self::toml_number(offset_value).with_context(|| "offset should be a number")?;
+        if offset.is_finite().not() {
+            bail!("offset must be a finite number");
+        }
+        let limit = metric.offset_limit();
+        Ok(Some(offset.clamp(-limit, limit)))
+    }
+
+    /// An absent `scale` is 1, as every Offset sensor was before the key existed.
+    fn parse_custom_sensor_scale(c_sensor_table: &Table) -> Result<Scale> {
+        let Some(scale_value) = c_sensor_table.get("scale") else {
+            return Ok(Scale::default());
+        };
+        let scale = Self::toml_number(scale_value).with_context(|| "scale should be a number")?;
+        Scale::try_from(scale).map_err(|msg| anyhow!(msg))
+    }
+
+    /// A TOML float or integer as `f64`. Values this large are refused by their range checks.
+    #[allow(clippy::cast_precision_loss)]
+    fn toml_number(item: &Item) -> Option<f64> {
+        item.as_float()
+            .or_else(|| item.as_integer().map(|integer| integer as f64))
     }
 
     /// Parses the optional `time_window_seconds` field from a custom-sensor table. Clamps to the
@@ -2889,6 +2910,7 @@ impl Config {
             "mix_function",
             "sources",
             "file_path",
+            "scale",
             "offset",
             "time_window_seconds",
         ] {
@@ -2916,10 +2938,17 @@ impl Config {
                     file_path.to_string_lossy().to_string(),
                 )));
             }
-            CustomSensorKind::Offset { offset, sources } => {
+            CustomSensorKind::Offset {
+                scale,
+                offset,
+                sources,
+            } => {
                 cs_table["cs_type"] =
                     Item::Value(Value::String(Formatted::new("Offset".to_string())));
-                cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
+                if scale.is_identity().not() {
+                    cs_table["scale"] = Item::Value(Value::Float(Formatted::new(scale.get())));
+                }
+                cs_table["offset"] = Self::custom_sensor_offset_item(metric, scale, offset);
                 Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
             CustomSensorKind::TimeAverage {
@@ -2946,6 +2975,30 @@ impl Config {
                 Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
         }
+    }
+
+    /// The stored `offset`: a decimal, or the whole number older daemons require.
+    // DOWNGRADE-COMPAT(added 5.1.0, remove 5.3.0): 5.0.x reads `offset` as a whole number
+    // from -100 to 100 and knows no `scale`. It gets one only where it computes the same
+    // value. Any other sensor gets a decimal, which 5.0.x refuses to load instead of running
+    // fan curves on an unscaled temperature.
+    #[allow(clippy::cast_possible_truncation)]
+    fn custom_sensor_offset_item(metric: CustomSensorMetric, scale: Scale, offset: f64) -> Item {
+        debug_assert!(offset.is_finite());
+        let decimal = Item::Value(Value::Float(Formatted::new(offset)));
+        if metric.is_temp().not() {
+            return decimal;
+        }
+        if scale.is_identity().not() {
+            return decimal;
+        }
+        if offset.fract() != 0. {
+            return decimal;
+        }
+        if offset.abs() > 100. {
+            return decimal;
+        }
+        Item::Value(Value::Integer(Formatted::new(offset as i64)))
     }
 
     fn write_custom_sensor_sources(
@@ -3617,7 +3670,7 @@ mod tests {
     #[test]
     fn custom_sensor_variants_toml_round_trip() {
         use crate::setting::{
-            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
             SensorSource,
         };
         use std::path::PathBuf;
@@ -3661,7 +3714,8 @@ mod tests {
             .set_custom_sensor(make(
                 "offset",
                 CustomSensorKind::Offset {
-                    offset: -7,
+                    scale: Scale::default(),
+                    offset: -7.,
                     sources: vec![source()],
                 },
             ))
@@ -3693,7 +3747,7 @@ mod tests {
         ));
         assert!(matches!(sensors[1].kind, CustomSensorKind::File { .. }));
         assert!(
-            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7)
+            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7.)
         );
         assert!(matches!(
             &sensors[3].kind,
@@ -3803,6 +3857,123 @@ mod tests {
         assert!(rpm_with_temp.get_custom_sensors().is_err());
         let unknown_metric = config_from(&document("metric = \"Volts\"", channel_source));
         assert!(unknown_metric.get_custom_sensors().is_err());
+    }
+
+    fn scale_offset_of(
+        metric: crate::setting::CustomSensorMetric,
+        scale: f64,
+        offset: f64,
+    ) -> crate::setting::CustomSensor {
+        use crate::setting::{CustomSensor, CustomSensorKind, Scale, SensorSource};
+
+        CustomSensor {
+            id: "scaled".to_string(),
+            metric,
+            kind: CustomSensorKind::Offset {
+                scale: Scale::try_from(scale).unwrap(),
+                offset,
+                sources: vec![SensorSource {
+                    name: "source".to_string(),
+                    device_uid: "dev-1".to_string(),
+                    weight: 1,
+                }],
+            },
+            children: vec![],
+            parents: vec![],
+        }
+    }
+
+    fn stored_text(sensor: crate::setting::CustomSensor) -> String {
+        let config = config_from("");
+        config.set_custom_sensor(sensor).unwrap();
+        config.document.borrow().to_string()
+    }
+
+    // The offset is stored as the whole number daemons before the scale require only when
+    // they would compute the same value: a temperature sensor, scale 1, a whole offset
+    // within their range. Then no `scale` key is stored either.
+    #[test]
+    fn custom_sensor_offset_is_whole_where_older_daemons_agree() {
+        use crate::setting::CustomSensorMetric;
+
+        for offset in [-100., -7., 0., 100.] {
+            let text = stored_text(scale_offset_of(CustomSensorMetric::Temp, 1., offset));
+            assert!(text.contains(&format!("offset = {offset:.0}\n")), "{text}");
+            assert!(text.contains("scale =").not());
+        }
+    }
+
+    // Every sensor an older daemon would compute differently stores a decimal offset,
+    // which that daemon refuses to load: a scale, a fractional offset, or another metric.
+    #[test]
+    fn custom_sensor_offset_is_decimal_where_older_daemons_differ() {
+        use crate::setting::CustomSensorMetric;
+
+        let scaled = stored_text(scale_offset_of(CustomSensorMetric::Temp, 2., 5.));
+        assert!(scaled.contains("offset = 5.0\n"), "{scaled}");
+        assert!(scaled.contains("scale = 2.0\n"), "{scaled}");
+
+        let fractional = stored_text(scale_offset_of(CustomSensorMetric::Temp, 1., 0.5));
+        assert!(fractional.contains("offset = 0.5\n"), "{fractional}");
+        assert!(fractional.contains("scale =").not());
+
+        let channel = stored_text(scale_offset_of(CustomSensorMetric::RPM, 1., 5.));
+        assert!(channel.contains("offset = 5.0\n"), "{channel}");
+
+        let pressure = stored_text(scale_offset_of(CustomSensorMetric::RPM, 0.001, 0.));
+        assert!(pressure.contains("scale = 0.001\n"), "{pressure}");
+        assert!(pressure.contains("offset = 0.0\n"), "{pressure}");
+    }
+
+    // Both stored forms of the offset read back, the scale defaults to 1, and a stored
+    // scale and decimal offset survive the round trip.
+    #[test]
+    fn custom_sensor_scale_and_offset_toml_round_trip() {
+        use crate::setting::{CustomSensorKind, CustomSensorMetric};
+
+        let read_back = |sensor: crate::setting::CustomSensor| {
+            let config = config_from("");
+            config.set_custom_sensor(sensor).unwrap();
+            let sensors = config.get_custom_sensors().unwrap();
+            let CustomSensorKind::Offset { scale, offset, .. } = sensors[0].kind.clone() else {
+                panic!("expected Offset");
+            };
+            (scale.get(), offset)
+        };
+
+        let whole = read_back(scale_offset_of(CustomSensorMetric::Temp, 1., -7.));
+        assert_eq!(whole, (1., -7.));
+        let scaled = read_back(scale_offset_of(CustomSensorMetric::RPM, 0.001, 12.5));
+        assert_eq!(scaled, (0.001, 12.5));
+    }
+
+    // Hand-edited values: an offset past the metric's limit is clamped to it, and a scale
+    // that is no usable factor fails the load.
+    #[test]
+    fn custom_sensor_scale_and_offset_are_checked_on_load() {
+        use crate::setting::CustomSensorKind;
+
+        let document = |extra: &str| {
+            format!(
+                "[[custom_sensors]]\nid = \"s\"\ncs_type = \"Offset\"\n{extra}\n\
+                 [[custom_sensors.sources]]\n\
+                 temp_source = {{ temp_name = \"t\", device_uid = \"d\" }}\nweight = 1\n"
+            )
+        };
+
+        let clamped = config_from(&document("offset = 250"))
+            .get_custom_sensors()
+            .unwrap();
+        assert!(matches!(
+            clamped[0].kind,
+            CustomSensorKind::Offset { offset, .. } if offset == 100.
+        ));
+        for bad_scale in ["scale = 0.0", "scale = nan", "scale = 1e9", "scale = \"2\""] {
+            let config = config_from(&document(&format!("offset = 1\n{bad_scale}")));
+            assert!(config.get_custom_sensors().is_err(), "{bad_scale}");
+        }
+        let non_finite = config_from(&document("offset = inf"));
+        assert!(non_finite.get_custom_sensors().is_err());
     }
 
     // A legacy persisted File row carries fields no longer part of the File variant

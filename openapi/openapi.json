@@ -2627,7 +2627,7 @@
         "summary": "Update Custom Sensor",
         "description": "Updates the Custom Sensor with the given properties. Dependent on the Custom Sensor ID.",
         "requestBody": {
-          "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+          "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
             "application/json": {
               "schema": {
@@ -2679,7 +2679,7 @@
         "summary": "Create Custom Sensor",
         "description": "Creates the given Custom Sensor",
         "requestBody": {
-          "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+          "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
           "content": {
             "application/json": {
               "schema": {
@@ -2745,7 +2745,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+            "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8300,7 +8300,7 @@
         ]
       },
       "CustomSensor": {
-        "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
+        "description": "Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one\n variant is valid per sensor. Constraints the type cannot express (single source for\n `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,\n `time_window_seconds` in `1..=300`) are enforced at the API boundary in\n `validate_custom_sensor`.",
         "type": "object",
         "properties": {
           "children": {
@@ -8374,6 +8374,7 @@
             ]
           },
           {
+            "description": "Scale & Offset: `source * scale + offset`.",
             "type": "object",
             "properties": {
               "cs_type": {
@@ -8381,10 +8382,14 @@
                 "const": "Offset"
               },
               "offset": {
-                "type": "integer",
-                "format": "int8",
-                "maximum": 127,
-                "minimum": -128
+                "type": "number",
+                "format": "double"
+              },
+              "scale": {
+                "description": "1 when absent.",
+                "type": "number",
+                "format": "double",
+                "default": 1.0
               },
               "sources": {
                 "type": "array",

@@ -710,6 +710,68 @@ impl CustomSensorMetric {
     pub fn is_temp(self) -> bool {
         self == Self::Temp
     }
+
+    /// The largest offset, in either direction, a Scale & Offset sensor of this metric
+    /// takes. Temperatures keep their range; the other metrics span far wider values.
+    pub fn offset_limit(self) -> f64 {
+        match self {
+            Self::Temp => 100.,
+            Self::Duty | Self::RPM | Self::Freq | Self::Watts => 1_000_000.,
+        }
+    }
+}
+
+/// The factor of a Scale & Offset sensor: finite, and with a magnitude inside
+/// `SCALE_MAGNITUDE_MIN..=SCALE_MAGNITUDE_MAX`, which excludes 0. Negative inverts.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "f64", into = "f64")]
+pub struct Scale(f64);
+
+pub const SCALE_MAGNITUDE_MIN: f64 = 0.000_001;
+pub const SCALE_MAGNITUDE_MAX: f64 = 1_000_000.;
+
+impl Scale {
+    pub fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Exactly 1: the value passes through as it did before the scale existed.
+    #[allow(clippy::float_cmp)]
+    pub fn is_identity(self) -> bool {
+        self.0 == 1.
+    }
+}
+
+impl Default for Scale {
+    fn default() -> Self {
+        Self(1.)
+    }
+}
+
+impl TryFrom<f64> for Scale {
+    type Error = String;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if value.is_finite().not() {
+            return Err("scale must be a finite number".to_string());
+        }
+        if (SCALE_MAGNITUDE_MIN..=SCALE_MAGNITUDE_MAX)
+            .contains(&value.abs())
+            .not()
+        {
+            return Err(format!(
+                "scale must be non-zero with a magnitude between {SCALE_MAGNITUDE_MIN} and \
+                {SCALE_MAGNITUDE_MAX}"
+            ));
+        }
+        Ok(Self(value))
+    }
+}
+
+impl From<Scale> for f64 {
+    fn from(scale: Scale) -> Self {
+        scale.0
+    }
 }
 
 /// One input of a Custom Sensor. The sensor's metric says whether `name` is a temp or a
@@ -746,7 +808,7 @@ pub struct CustomSensor {
 
 /// Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one
 /// variant is valid per sensor. Constraints the type cannot express (single source for
-/// `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` in `-100..=100`,
+/// `Offset`/`TimeAverage`/`ExponentialMovingAvg`, `offset` within the metric's limit,
 /// `time_window_seconds` in `1..=300`) are enforced at the API boundary in
 /// `validate_custom_sensor`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -759,8 +821,13 @@ pub enum CustomSensorKind<S = SensorSource> {
     File {
         file_path: PathBuf,
     },
+    /// Scale & Offset: `source * scale + offset`.
     Offset {
-        offset: Offset,
+        /// 1 when absent.
+        #[serde(default)]
+        #[schemars(with = "f64")]
+        scale: Scale,
+        offset: f64,
         sources: Vec<S>,
     },
     TimeAverage {
@@ -788,7 +855,12 @@ impl<S> CustomSensorKind<S> {
                 sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
             Self::File { file_path } => CustomSensorKind::File { file_path },
-            Self::Offset { offset, sources } => CustomSensorKind::Offset {
+            Self::Offset {
+                scale,
+                offset,
+                sources,
+            } => CustomSensorKind::Offset {
+                scale,
                 offset,
                 sources: sources.into_iter().map(convert).collect::<Result<_, E>>()?,
             },
@@ -1756,7 +1828,8 @@ mod tests {
             id: "off1".to_string(),
             metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Offset {
-                offset: -7,
+                scale: Scale::default(),
+                offset: -7.,
                 sources: vec![sample_source()],
             },
             children: Vec::new(),
@@ -1764,14 +1837,96 @@ mod tests {
         };
         let v = serde_json::to_value(&sensor).unwrap();
         assert_eq!(v["cs_type"], json!("Offset"));
-        assert_eq!(v["offset"], json!(-7));
+        assert_eq!(v["offset"], json!(-7.0));
+        assert_eq!(v["scale"], json!(1.0));
         assert!(v.get("sources").is_some());
         assert!(v.get("mix_function").is_none());
         assert!(v.get("file_path").is_none());
         assert!(v.get("time_window_seconds").is_none());
 
         let parsed: CustomSensor = serde_json::from_value(v).unwrap();
-        assert!(matches!(parsed.kind, CustomSensorKind::Offset { offset, .. } if offset == -7));
+        assert!(matches!(parsed.kind, CustomSensorKind::Offset { offset, .. } if offset == -7.));
+    }
+
+    // A scale is any finite factor whose magnitude lies between the two bounds, on either
+    // sign. Zero, anything outside the bounds and non-finite values are refused.
+    #[test]
+    fn scale_takes_only_usable_factors() {
+        for valid in [
+            1.,
+            -1.,
+            0.001,
+            SCALE_MAGNITUDE_MIN,
+            -SCALE_MAGNITUDE_MIN,
+            SCALE_MAGNITUDE_MAX,
+            -SCALE_MAGNITUDE_MAX,
+        ] {
+            assert_eq!(Scale::try_from(valid).map(Scale::get), Ok(valid));
+        }
+        for invalid in [
+            0.,
+            -0.,
+            0.000_000_9,
+            1_000_001.,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            assert!(Scale::try_from(invalid).is_err(), "{invalid}");
+        }
+        assert!(Scale::default().is_identity());
+        assert!(Scale::try_from(1.000_001).unwrap().is_identity().not());
+    }
+
+    // Temperatures keep the offset range they always had; every other metric gets the wide one.
+    #[test]
+    fn offset_limit_follows_the_metric() {
+        assert_eq!(CustomSensorMetric::Temp.offset_limit(), 100.);
+        for metric in [
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            assert_eq!(metric.offset_limit(), 1_000_000.);
+        }
+    }
+
+    // An Offset payload from before the scale carries a whole offset and no scale, and reads
+    // as scale 1. A scale and a decimal offset round-trip. An unusable scale is refused.
+    #[test]
+    fn custom_sensor_offset_scale_defaults_to_one() {
+        let payload = |extra: Value| {
+            let mut payload = json!({
+                "id": "off1",
+                "cs_type": "Offset",
+                "sources": [{
+                    "temp_source": { "temp_name": "Temp1", "device_uid": "dev-1" },
+                    "weight": 1
+                }]
+            });
+            for (key, value) in extra.as_object().unwrap() {
+                payload[key] = value.clone();
+            }
+            payload
+        };
+
+        let legacy: CustomSensor =
+            serde_json::from_value(payload(json!({ "offset": -7 }))).unwrap();
+        assert!(matches!(
+            legacy.kind,
+            CustomSensorKind::Offset { scale, offset, .. } if scale.is_identity() && offset == -7.
+        ));
+
+        let scaled: CustomSensor =
+            serde_json::from_value(payload(json!({ "scale": 0.001, "offset": 0.5 }))).unwrap();
+        let v = serde_json::to_value(&scaled).unwrap();
+        assert_eq!(v["scale"], json!(0.001));
+        assert_eq!(v["offset"], json!(0.5));
+
+        let zero_scale: Result<CustomSensor, _> =
+            serde_json::from_value(payload(json!({ "scale": 0, "offset": 1 })));
+        assert!(zero_scale.is_err());
     }
 
     // A TimeAverage sensor serializes with time_window_seconds and sources beside the tag.

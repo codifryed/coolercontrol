@@ -102,14 +102,19 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
             validate_custom_sensor_sources(sources)
         }
         CustomSensorKind::File { .. } => Ok(()),
-        CustomSensorKind::Offset { offset, sources } => {
+        CustomSensorKind::Offset {
+            offset, sources, ..
+        } => {
             validate_single_source(sources)?;
-            if (-100..=100).contains(offset) {
+            let limit = custom_sensor.metric.offset_limit();
+            // A NaN offset is in no range, so it is refused here too.
+            if (-limit..=limit).contains(offset) {
                 Ok(())
             } else {
                 Err(CCError::UserError {
-                    msg: "Custom Sensor Offset type offset must be between -100 and 100"
-                        .to_string(),
+                    msg: format!(
+                        "Custom Sensor Offset type offset must be between -{limit} and {limit}"
+                    ),
                 })
             }
         }
@@ -187,7 +192,7 @@ pub struct CSPath {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{CustomSensorMetric, CustomSensorMixFunctionType};
+    use crate::setting::{CustomSensorMetric, CustomSensorMixFunctionType, Scale};
 
     fn source() -> SensorSource {
         SensorSource {
@@ -247,6 +252,38 @@ mod tests {
         assert!(validate_custom_sensor(&sensor).is_ok());
         sensor.metric = CustomSensorMetric::RPM;
         assert!(validate_custom_sensor(&sensor).is_err());
+    }
+
+    fn scale_offset(offset: f64) -> CustomSensor {
+        CustomSensor {
+            id: "scaled".to_string(),
+            metric: CustomSensorMetric::Temp,
+            kind: CustomSensorKind::Offset {
+                scale: Scale::default(),
+                offset,
+                sources: vec![source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    // A temperature offset keeps its -100 to 100 range, decimals included. Past either
+    // bound, and a NaN, are rejected.
+    #[test]
+    fn offset_range_for_temperature() {
+        for valid in [-100., -0.5, 0., 99.9, 100.] {
+            assert!(
+                validate_custom_sensor(&scale_offset(valid)).is_ok(),
+                "{valid}"
+            );
+        }
+        for invalid in [-100.1, 100.1, 1000., f64::NAN, f64::INFINITY] {
+            assert!(
+                validate_custom_sensor(&scale_offset(invalid)).is_err(),
+                "{invalid}"
+            );
+        }
     }
 
     // Weights 1 and 254 are the bounds and must pass.

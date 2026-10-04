@@ -26,7 +26,7 @@ use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILS
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, LcdSettings, LightingSettings,
-    Offset, SensorSource, TempSource,
+    Scale, SensorSource, TempSource,
 };
 use crate::{cc_fs, VERSION};
 
@@ -338,11 +338,15 @@ impl CustomSensorsRepo {
                     status.temps.push(temp_status);
                 }
             }
-            CustomSensorKind::Offset { offset, sources } => {
+            CustomSensorKind::Offset {
+                scale,
+                offset,
+                sources,
+            } => {
                 for (index, status) in history.iter_mut().enumerate() {
                     let temp_status =
                         self.process_reduced_indexed(&sensor.id, sources, index, |data| {
-                            Self::process_offset_temp_data(*offset, data)
+                            Self::process_scale_offset(*scale, *offset, data)
                         })?;
                     status.temps.push(temp_status);
                 }
@@ -521,10 +525,14 @@ impl CustomSensorsRepo {
                     });
                 custom_temps.push(temp_status);
             }
-            CustomSensorKind::Offset { offset, sources } => {
+            CustomSensorKind::Offset {
+                scale,
+                offset,
+                sources,
+            } => {
                 let temp_status =
                     self.process_reduced_current(&sensor.id, sources, custom_temps, |data| {
-                        Self::process_offset_temp_data(*offset, data)
+                        Self::process_scale_offset(*scale, *offset, data)
                     });
                 custom_temps.push(temp_status);
             }
@@ -953,13 +961,14 @@ impl CustomSensorsRepo {
             .temp
     }
 
-    /// Returns the first source's temp with the offset applied, or 0 if there is no source
-    /// data. Clamps the result to a readable temp between 0 and 150.
-    fn process_offset_temp_data(offset: Offset, temp_data: &[TempData]) -> f64 {
+    /// Returns the first source's temp scaled, then offset, or 0 if there is no source
+    /// data. Clamps the result to a readable temp between 0 and 150. A scale of 1 leaves
+    /// the temp untouched, so the result is the same as before the scale existed.
+    fn process_scale_offset(scale: Scale, offset: f64, temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
         }
-        (temp_data[0].temp + Temp::from(offset)).clamp(0.0, 150.0)
+        (temp_data[0].temp * scale.get() + offset).clamp(0.0, 150.0)
     }
 
     /// Reads the current temp for a File-type Custom Sensor. An unreadable / malformed file
@@ -1514,7 +1523,7 @@ mod tests {
     use crate::repositories::failsafe::{MISSING_STATUS_THRESHOLD, MISSING_TEMP_FAILSAFE};
     use crate::repositories::repository::{DeviceLock, Repository};
     use crate::setting::{
-        CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+        CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
         SensorSource,
     };
     use serial_test::serial;
@@ -1667,6 +1676,45 @@ mod tests {
         assert_eq!(
             CustomSensorsRepo::process_mix_delta(&values(&[1500.0])),
             0.0
+        );
+    }
+
+    // A scale of 1 must leave temperature results bit-identical to the plain offset the
+    // sensor applied before the scale existed. Method: compare bits over a sweep.
+    #[test]
+    fn scale_offset_with_identity_scale_matches_the_plain_offset() {
+        for temp in [0., 0.1, 33.3, 59.999, 100., 149.9_f64] {
+            for offset in [-100., -7., 0., 0.5, 25., 100.] {
+                let expected = (temp + offset).clamp(0., 150.);
+                let result = CustomSensorsRepo::process_scale_offset(
+                    Scale::default(),
+                    offset,
+                    &values(&[temp]),
+                );
+                assert_eq!(result.to_bits(), expected.to_bits(), "{temp} + {offset}");
+            }
+        }
+    }
+
+    // The scale applies before the offset, a negative scale inverts, and the result stays
+    // inside the readable temperature range.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn scale_offset_scales_then_offsets() {
+        let apply = |scale: f64, offset: f64, temp: f64| {
+            CustomSensorsRepo::process_scale_offset(
+                Scale::try_from(scale).unwrap(),
+                offset,
+                &values(&[temp]),
+            )
+        };
+        assert_eq!(apply(0.5, 10., 60.), 40.);
+        assert_eq!(apply(-1., 100., 60.), 40.);
+        assert_eq!(apply(10., 0., 60.), 150.);
+        assert_eq!(apply(-1., 0., 60.), 0.);
+        assert_eq!(
+            CustomSensorsRepo::process_scale_offset(Scale::default(), 5., &[]),
+            0.
         );
     }
 
@@ -3176,7 +3224,8 @@ mod tests {
                 id: "off1".to_string(),
                 metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Offset {
-                    offset: -25,
+                    scale: Scale::default(),
+                    offset: -25.,
                     sources: vec![temp_source("nonexistent_device_uid", "any_temp")],
                 },
                 children: Vec::new(),

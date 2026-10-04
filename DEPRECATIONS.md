@@ -16,3 +16,4 @@ the removal checklist.
 | Per-stream SSE routes `/sse/{logs,status,modes,alerts,notifications}`: superseded by `GET /sse?events=`       | `daemon/src/api/sse.rs`                         | 5.0.0 | 5.2.0  |
 | `AlertLog.resolved`: superseded by `AlertLog.kind`; still written for alert-logs.json readers                 | `daemon/src/alerts.rs`                          | 5.0.0 | 5.2.0  |
 | Access-token argon2 `hash` field: 4.3.x validates tokens against it; superseded by the SHA-256 `digest`       | `daemon/src/token.rs`                           | 5.0.0 | 5.2.0  |
+| Custom sensor `offset` as a whole number: 5.0.x requires one; written where 5.0.x computes the same value     | `daemon/src/config.rs`                          | 5.1.0 | 5.3.0  |
