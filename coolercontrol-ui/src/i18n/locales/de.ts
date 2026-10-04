@@ -711,6 +711,8 @@ export default {
                 'Der Treiber antwortet nicht mehr, daher kann dieses Gerät weder ausgelesen noch gesteuert werden. Es wird regelmäßig erneut versucht.',
             missingTempSource: 'Fehlende Temperaturquelle',
             staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
+            missingSource: 'Fehlende Quelle',
+            staleSource: 'Quelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
                 'Erzeugt anhaltende Thermallast zur Validierung\nvon Lüfterkurven und Kühlprofilen.\nErgebnisse können je nach Hardware variieren.\nInstallieren Sie stress-ng für zusätzliche Backends.',

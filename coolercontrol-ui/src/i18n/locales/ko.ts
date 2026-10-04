@@ -685,6 +685,8 @@ export default {
                 '드라이버가 응답을 멈춰 이 장치를 읽거나 제어할 수 없습니다. 주기적으로 다시 시도합니다.',
             missingTempSource: '온도 소스 누락',
             staleTempSource: '온도 소스가 페일세이프 값 사용 중',
+            missingSource: '소스 누락',
+            staleSource: '소스가 페일세이프 값 사용 중',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
                 '지속적인 열 부하를 생성하여\n팬 곡선과 냉각 프로파일을 검증합니다.\n결과는 하드웨어에 따라 다를 수 있습니다.\n추가 백엔드를 위해 stress-ng를 설치하세요.',

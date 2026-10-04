@@ -715,6 +715,8 @@ export default {
                 'Le pilote ne répond plus, ce périphérique ne peut donc être ni lu ni contrôlé. Nouvelle tentative périodique.',
             missingTempSource: 'Source de température manquante',
             staleTempSource: 'La source de température utilise des valeurs de secours',
+            missingSource: 'Source manquante',
+            staleSource: 'La source utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',
             stressTestTooltip:
                 'Génère une charge thermique soutenue pour valider\nles courbes de ventilateur et les profils de refroidissement.\nLes résultats peuvent varier selon le matériel.\nInstallez stress-ng pour des backends supplémentaires.',

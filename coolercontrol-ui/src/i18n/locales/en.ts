@@ -690,6 +690,8 @@ export default {
                 'The driver stopped answering, so this device cannot be read or controlled. Retrying periodically.',
             missingTempSource: 'Missing temp source',
             staleTempSource: 'Temp source using failsafe values',
+            missingSource: 'Missing source',
+            staleSource: 'Source using failsafe values',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
                 'Generate sustained thermal load to validate\nfan curves and cooling profiles.\nResults may vary depending on hardware.\nInstall stress-ng for additional backends.',

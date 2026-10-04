@@ -701,6 +701,8 @@ export default {
                 'O controlador parou de responder, portanto este dispositivo não pode ser lido nem controlado. Tentando novamente periodicamente.',
             missingTempSource: 'Fonte de temperatura ausente',
             staleTempSource: 'A fonte de temperatura usa valores de segurança',
+            missingSource: 'Fonte ausente',
+            staleSource: 'A fonte usa valores de segurança',
             stressTest: 'Testes de estresse térmico',
             stressTestTooltip:
                 'Gera carga térmica sustentada para validar\ncurvas de ventilador e perfis de resfriamento.\nOs resultados podem variar dependendo do hardware.\nInstale stress-ng para backends adicionais.',

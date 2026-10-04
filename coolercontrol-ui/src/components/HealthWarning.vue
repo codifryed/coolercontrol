@@ -93,11 +93,20 @@ const issues = computed((): Array<string> => {
             lines.push(failsafeText(failsafeRef.reason))
         }
     }
+    // A Custom Sensor reads temps or channels, so its source is named without a metric.
+    const ofCustomSensor = (ref: SourceRef): boolean =>
+        ref.entity_type === HealthEntityType.CustomSensor
     for (const ref of settingsStore.healthMissing.filter(matchesEntity)) {
-        lines.push(sourceLine('views.appInfo.missingTempSource', ref))
+        const key = ofCustomSensor(ref)
+            ? 'views.appInfo.missingSource'
+            : 'views.appInfo.missingTempSource'
+        lines.push(sourceLine(key, ref))
     }
     for (const ref of settingsStore.healthStaleSource.filter(matchesEntity)) {
-        lines.push(sourceLine('views.appInfo.staleTempSource', ref))
+        const key = ofCustomSensor(ref)
+            ? 'views.appInfo.staleSource'
+            : 'views.appInfo.staleTempSource'
+        lines.push(sourceLine(key, ref))
     }
     return lines
 })

@@ -143,6 +143,15 @@ const entityTypeLabel = (type: HealthEntityType): string => {
     }
 }
 
+// A Custom Sensor reads temps or channels, so its source is named without a metric.
+const missingSourceText = (ref: SourceRef): string =>
+    ref.entity_type === HealthEntityType.CustomSensor
+        ? t('views.appInfo.missingSource')
+        : t('views.appInfo.missingTempSource')
+const staleSourceText = (ref: SourceRef): string =>
+    ref.entity_type === HealthEntityType.CustomSensor
+        ? t('views.appInfo.staleSource')
+        : t('views.appInfo.staleTempSource')
 const customSensorsDeviceUID = computed((): string | undefined => {
     for (const device of deviceStore.allDevices()) {
         if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid
@@ -221,7 +230,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `missing/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.missingTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${missingSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }
@@ -229,7 +238,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `stale-source/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.staleTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${staleSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }

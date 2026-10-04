@@ -662,6 +662,8 @@ export default {
             deviceUnreachableDetail: '驅動程式已停止回應，因此無法讀取或控制此裝置。正在定期重試。',
             missingTempSource: '缺少溫度來源',
             staleTempSource: '溫度來源正在使用故障保護值',
+            missingSource: '缺少資料來源',
+            staleSource: '資料來源正在使用故障保護值',
             stressTest: '熱壓力測試',
             stressTestTooltip:
                 '生成持續熱負載以驗證\n風扇曲線和冷卻配置文件。\n結果可能因硬體而異。\n安裝 stress-ng 以獲得額外的後端。',
