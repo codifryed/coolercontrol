@@ -100,7 +100,15 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
     // the value ranges and source cardinality the type cannot express remain here.
     match &custom_sensor.kind {
-        CustomSensorKind::Mix { sources, .. } => validate_custom_sensor_sources(sources),
+        CustomSensorKind::Mix { sources, .. } => {
+            // An empty Mix can only ever report its failsafe.
+            if sources.is_empty() {
+                return Err(CCError::UserError {
+                    msg: "Custom Sensor Mix type must have at least 1 source".to_string(),
+                });
+            }
+            validate_custom_sensor_sources(sources)
+        }
         CustomSensorKind::File { .. } => Ok(()),
         CustomSensorKind::Offset { offset, sources } => {
             validate_single_source(sources)?;
@@ -249,6 +257,13 @@ mod tests {
     #[test]
     fn mix_rejects_zero_weight() {
         assert!(validate_custom_sensor(&mix(vec![weighted(1), weighted(0)])).is_err());
+    }
+
+    // A Mix needs something to mix: no sources is rejected, one is enough.
+    #[test]
+    fn mix_rejects_zero_sources() {
+        assert!(validate_custom_sensor(&mix(vec![])).is_err());
+        assert!(validate_custom_sensor(&mix(vec![source()])).is_ok());
     }
 
     #[test]
