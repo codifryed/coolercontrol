@@ -911,6 +911,26 @@ mod tests {
     }
 
     #[test]
+    fn disable_channel_read_by_channel_custom_sensor_returns_err() {
+        // A non-temperature Custom Sensor reads the rpm of (DEVICE_A, "fan1"). Disabling
+        // "fan1" must reject the update, as it does for a temperature source.
+        let current = settings(&[("fan1", false)], false);
+        let update = settings(&[("fan1", true)], false);
+        let mut sensor = mix_sensor("Pressure", DEVICE_A, "fan1");
+        sensor.metric = CustomSensorMetric::RPM;
+        let result = verify_disable_does_not_orphan_temp_sources(
+            &DEVICE_A.to_string(),
+            &update,
+            &current,
+            &[],
+            &[sensor],
+            &no_labels(),
+        );
+        assert_user_error_contains(result.clone(), "Pressure");
+        assert_user_error_contains(result, "fan1");
+    }
+
+    #[test]
     fn disable_device_referenced_by_graph_profile_returns_err() {
         // A device-level disable nukes every channel; any Graph Profile pointing at
         // this device's UID is orphaned regardless of which temp it referenced.
