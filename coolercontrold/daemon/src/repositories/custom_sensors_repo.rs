@@ -1324,13 +1324,25 @@ impl Repository for CustomSensorsRepo {
             return Vec::new();
         }
         let device_uid = self.get_device_uid();
+        let sensors = self.sensors.borrow();
         failsafing
             .iter()
-            .map(|(sensor_id, reason)| FailsafeRef {
-                device_uid: device_uid.clone(),
-                name: sensor_id.clone(),
-                kind: FailsafeKind::Temp,
-                reason: reason.clone(),
+            .map(|(sensor_id, reason)| {
+                // A sensor is a temp of the device or one of its channels, by its metric.
+                let is_channel = sensors
+                    .iter()
+                    .find(|sensor| &sensor.id == sensor_id)
+                    .is_some_and(|sensor| sensor.metric.is_temp().not());
+                FailsafeRef {
+                    device_uid: device_uid.clone(),
+                    name: sensor_id.clone(),
+                    kind: if is_channel {
+                        FailsafeKind::Channel
+                    } else {
+                        FailsafeKind::Temp
+                    },
+                    reason: reason.clone(),
+                }
             })
             .collect()
     }
@@ -1557,6 +1569,7 @@ mod tests {
         ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempName,
         TempStatus, UID,
     };
+    use crate::device_health::FailsafeKind;
     use crate::repositories::custom_sensors_repo::{
         CustomSensorsRepo, SampleWindow, TempData, SAMPLE_WINDOW_MAX_SLOTS,
     };
@@ -4633,6 +4646,35 @@ mod tests {
                 assert_eq!(status.channels.len(), 1);
                 assert!(status.channels[0].watts.is_some());
             }
+        });
+    }
+
+    // The health registry is told what kind of node is failsafing: a temperature sensor is a
+    // temp of the device, a sensor of any other metric one of its channels.
+    #[test]
+    #[serial]
+    fn failsafing_reports_the_kind_of_each_sensor() {
+        cc_fs::test_runtime(async {
+            let repo = repo_with(vec![]).await;
+            let gone = || temp_source("gone_device_uid", "any");
+            repo.set_custom_sensor(mix_sensor("temp", vec![gone()]))
+                .await
+                .unwrap();
+            repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 0., gone()))
+                .await
+                .unwrap();
+            repo.update_statuses().await.unwrap();
+
+            let failsafing = repo.failsafing();
+            assert_eq!(failsafing.len(), 2);
+            let kind_of = |name: &str| {
+                failsafing
+                    .iter()
+                    .find(|reference| reference.name == name)
+                    .map(|reference| reference.kind)
+            };
+            assert_eq!(kind_of("temp"), Some(FailsafeKind::Temp));
+            assert_eq!(kind_of("rpm"), Some(FailsafeKind::Channel));
         });
     }
 
