@@ -111,8 +111,8 @@ const FAN_DIVISOR_MAX: i64 = 128;
 const FAN_PULSES_MAX: i64 = 4;
 const TEMP_TYPE_MAX: i64 = 6;
 /// 100 kW, more than any supply in one machine delivers.
-const MICROWATTS_MAX: i64 = 100_000_000_000;
-const MICROWATTS_PER_WATT: f64 = 1_000_000.0;
+pub const MICROWATTS_MAX: i64 = 100_000_000_000;
+pub const MICROWATTS_PER_WATT: f64 = 1_000_000.0;
 
 /// Every integer up to here converts to f64 exactly, and so must every accepted value.
 const F64_EXACT_INTEGER_MAX: i64 = 1 << 53;

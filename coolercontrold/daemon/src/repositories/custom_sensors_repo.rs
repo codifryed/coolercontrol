@@ -26,6 +26,8 @@ use crate::repositories::failsafe::{
     MISSING_DUTY_FAILSAFE, MISSING_FREQ_FAILSAFE, MISSING_RPM_FAILSAFE, MISSING_STATUS_THRESHOLD,
     MISSING_TEMP_FAILSAFE, MISSING_WATTS_FAILSAFE,
 };
+use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT};
+use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, LcdSettings,
@@ -34,6 +36,17 @@ use crate::setting::{
 use crate::{cc_fs, VERSION};
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
+// The largest value a File sensor takes, in the hwmon unit of its metric.
+const FILE_MILLIDEGREES_MAX: i64 = 120_000;
+const FILE_PWM_MAX: i64 = u8::MAX as i64;
+const FILE_RPM_MAX: i64 = u32::MAX as i64;
+/// What a status can carry as whole megahertz.
+const FILE_HERTZ_MAX: i64 = u32::MAX as i64 * 1_000_000;
+const HERTZ_PER_MEGAHERTZ: f64 = 1_000_000.;
+const MILLIDEGREES_PER_DEGREE: f64 = 1000.;
+// Every integer up to 2^53 converts to f64 exactly, and so must every accepted value.
+const _: () = assert!(FILE_HERTZ_MAX <= 1 << 53);
+const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 /// Upper bound on window slots: the max `time_window_seconds` (300) at the fastest
 /// `poll_rate` (0.5 s).
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
@@ -185,8 +198,8 @@ impl CustomSensorsRepo {
     pub async fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         self.verify_sensor_relationships(&custom_sensor)?;
         if let CustomSensorKind::File { file_path } = &custom_sensor.kind {
-            // Make sure the file exists and temp is properly formatted
-            Self::get_custom_sensor_file_temp(file_path).await?;
+            // Make sure the file exists and its value is properly formatted
+            Self::read_file_value(custom_sensor.metric, file_path).await?;
         }
         // A reconfigured sensor starts fresh: drop any prior failsafing state so the
         // first tick after the update logs a transition cleanly if it failsafes again.
@@ -335,7 +348,7 @@ impl CustomSensorsRepo {
         // failsafe substitution).
         let file_value = match &sensor.kind {
             CustomSensorKind::File { file_path } => {
-                Some(Self::get_custom_sensor_file_temp(file_path).await?)
+                Some(Self::read_file_value(sensor.metric, file_path).await?)
             }
             _ => None,
         };
@@ -901,18 +914,20 @@ impl CustomSensorsRepo {
     /// holds the last good value for `MISSING_STATUS_THRESHOLD` consecutive failures, then
     /// emits the metric's failsafe (and a once-per-occurrence warn log): a fan curve rides
     /// out a writer caught mid-truncate but still reacts to a genuinely lost source.
-    /// Live-tick path only; backfill reads `get_custom_sensor_file_temp` directly so it
-    /// does not interact with the failsafing-state set.
+    /// Live-tick path only; backfill reads `read_file_value` directly so it does not
+    /// interact with the failsafing-state set.
     async fn process_file_current(
         &self,
         id: &TempName,
         metric: CustomSensorMetric,
         file_path: &Path,
     ) -> SensorValue {
-        match Self::get_custom_sensor_file_temp(file_path).await {
-            Ok(value) => {
-                self.record_file_read_success(id, value);
-                self.emit_real(id, metric, value)
+        match Self::read_file_value(metric, file_path).await {
+            Ok(raw) => {
+                let sensor_value = self.emit_real(id, metric, raw);
+                // Held as reported, so a held value equals the one it stands in for.
+                self.record_file_read_success(id, sensor_value.value);
+                sensor_value
             }
             Err(_) => match self.tolerate_file_read_failure(id) {
                 Some(value) => SensorValue {
@@ -945,13 +960,14 @@ impl CustomSensorsRepo {
         state.last_good_value
     }
 
-    async fn get_custom_sensor_file_temp(file_path: &Path) -> Result<f64> {
+    /// Reads a File sensor's value: a whole number in the hwmon unit of the sensor's metric.
+    async fn read_file_value(metric: CustomSensorMetric, file_path: &Path) -> Result<f64> {
         cc_fs::read_sysfs_value(file_path)
             .await
             .map_err(Self::verify_file_exists)
             .and_then(Self::verify_file_size)
-            .and_then(Self::verify_i32)
-            .and_then(Self::verify_temp_value)
+            .and_then(Self::verify_i64)
+            .and_then(|raw| Self::convert_file_value(metric, raw))
     }
 
     fn verify_file_exists(err: Error) -> Error {
@@ -989,28 +1005,50 @@ impl CustomSensorsRepo {
     // because verify_file_size (15 byte limit, far below the 64 byte read buffer) runs
     // first in the chain. Keep that ordering.
     #[allow(clippy::needless_pass_by_value)]
-    fn verify_i32(value: cc_fs::SysfsValue) -> Result<i32> {
+    fn verify_i64(value: cc_fs::SysfsValue) -> Result<i64> {
         let user_error = |msg: String| CCError::UserError { msg }.into();
         value
             .trimmed_str()
             .map_err(|err| user_error(format!("{err}")))
             .and_then(|content| {
                 content
-                    .parse::<i32>()
+                    .parse::<i64>()
                     .map_err(|err| user_error(format!("{err}")))
             })
     }
 
-    fn verify_temp_value(temp: i32) -> Result<f64> {
-        //  temps should be in millidegrees:
-        if (0..=120_000).contains(&temp) {
-            Ok(f64::from(temp) / 1000.0f64)
-        } else {
-            Err(CCError::UserError {
-                msg: format!("File does not contain a reasonable temperature: {temp}"),
+    /// Converts a file's whole number from the hwmon unit of `metric` to the status unit:
+    /// millidegrees to degrees, rpm as is, pwm (0 to 255) to a duty percentage, microwatts
+    /// to watts, hertz to megahertz. A negative or out-of-range number is no reading.
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
+    fn convert_file_value(metric: CustomSensorMetric, raw: i64) -> Result<f64> {
+        let (raw_max, description) = match metric {
+            CustomSensorMetric::Temp => (FILE_MILLIDEGREES_MAX, "temperature"),
+            CustomSensorMetric::Duty => (FILE_PWM_MAX, "pwm value"),
+            CustomSensorMetric::RPM => (FILE_RPM_MAX, "rpm value"),
+            CustomSensorMetric::Freq => (FILE_HERTZ_MAX, "frequency in hertz"),
+            CustomSensorMetric::Watts => (MICROWATTS_MAX, "power in microwatts"),
+        };
+        if (0..=raw_max).contains(&raw).not() {
+            return Err(CCError::UserError {
+                msg: format!("File does not contain a reasonable {description}: {raw}"),
             }
-            .into())
+            .into());
         }
+        // The range check keeps every cast below exact.
+        let value = match metric {
+            CustomSensorMetric::Temp => raw as f64 / MILLIDEGREES_PER_DEGREE,
+            CustomSensorMetric::Duty => pwm_value_to_duty(raw as u8),
+            CustomSensorMetric::RPM => raw as f64,
+            CustomSensorMetric::Freq => raw as f64 / HERTZ_PER_MEGAHERTZ,
+            CustomSensorMetric::Watts => raw as f64 / MICROWATTS_PER_WATT,
+        };
+        debug_assert!(value >= 0.);
+        Ok(value)
     }
 
     fn remove_status_history_for_sensor(&self, sensor_id: &str) {
@@ -2115,7 +2153,8 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2135,7 +2174,8 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_ok());
@@ -2152,7 +2192,8 @@ mod tests {
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
 
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2175,7 +2216,8 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2200,7 +2242,8 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2220,7 +2263,8 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2230,9 +2274,11 @@ mod tests {
         });
     }
 
+    // A number past 32 bits parses now that power values need it, and is refused as a
+    // temperature by its range instead of by the parse.
     #[test]
     #[serial]
-    fn test_file_temp_invalid_too_large_for_i32() {
+    fn test_file_temp_invalid_beyond_32_bits() {
         cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
@@ -2240,12 +2286,15 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
             assert!(temp_result
-                .map_err(|err| err.to_string().contains("number too large"))
+                .map_err(|err| err
+                    .to_string()
+                    .contains("File does not contain a reasonable temperature"))
                 .unwrap_err());
         });
     }
@@ -2264,7 +2313,8 @@ mod tests {
             .await
             .unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             // println!("{temp_result:?}");
@@ -2283,7 +2333,8 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2301,7 +2352,8 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -2319,7 +2371,8 @@ mod tests {
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
-            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&test_file).await;
+            let temp_result =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
 
             // then:
             assert!(temp_result.is_err());
@@ -4580,6 +4633,139 @@ mod tests {
                 assert_eq!(status.channels.len(), 1);
                 assert!(status.channels[0].watts.is_some());
             }
+        });
+    }
+
+    // ==================== File per metric tests ====================
+
+    // Each metric's file holds a whole number in its hwmon unit and converts to the status
+    // unit: millidegrees, pwm, rpm, hertz and microwatts.
+    #[test]
+    fn convert_file_value_converts_each_hwmon_unit() {
+        let convert = |metric, raw| CustomSensorsRepo::convert_file_value(metric, raw).unwrap();
+        assert_eq!(convert(CustomSensorMetric::Temp, 30_500), 30.5);
+        assert_eq!(convert(CustomSensorMetric::Duty, 0), 0.);
+        assert_eq!(convert(CustomSensorMetric::Duty, 128), 50.);
+        assert_eq!(convert(CustomSensorMetric::Duty, 255), 100.);
+        assert_eq!(convert(CustomSensorMetric::RPM, 438_000), 438_000.);
+        assert_eq!(
+            convert(CustomSensorMetric::RPM, i64::from(u32::MAX)),
+            f64::from(u32::MAX)
+        );
+        assert_eq!(convert(CustomSensorMetric::Freq, 3_600_000_000), 3600.);
+        assert_eq!(convert(CustomSensorMetric::Freq, 499_999), 0.499_999);
+        assert_eq!(convert(CustomSensorMetric::Watts, 65_500_000), 65.5);
+        assert_eq!(
+            convert(CustomSensorMetric::Watts, 100_000_000_000),
+            100_000.
+        );
+    }
+
+    // A negative number, or one past the metric's range, is no reading for any metric.
+    #[test]
+    fn convert_file_value_rejects_out_of_range_numbers() {
+        for (metric, past_max) in [
+            (CustomSensorMetric::Temp, 120_001),
+            (CustomSensorMetric::Duty, 256),
+            (CustomSensorMetric::RPM, i64::from(u32::MAX) + 1),
+            (
+                CustomSensorMetric::Freq,
+                i64::from(u32::MAX) * 1_000_000 + 1,
+            ),
+            (CustomSensorMetric::Watts, 100_000_000_001),
+        ] {
+            assert!(CustomSensorsRepo::convert_file_value(metric, past_max).is_err());
+            assert!(CustomSensorsRepo::convert_file_value(metric, past_max - 1).is_ok());
+            assert!(CustomSensorsRepo::convert_file_value(metric, -1).is_err());
+            assert!(CustomSensorsRepo::convert_file_value(metric, 0).is_ok());
+        }
+    }
+
+    // The largest power value has 12 digits and must fit the file size cap, which a
+    // 32-bit parse would have refused.
+    #[test]
+    #[serial]
+    fn file_value_reads_a_number_beyond_32_bits() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"100000000000\n".to_vec())
+                .await
+                .unwrap();
+
+            let watts =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Watts, &test_file).await;
+            let as_temp =
+                CustomSensorsRepo::read_file_value(CustomSensorMetric::Temp, &test_file).await;
+
+            assert_eq!(watts.unwrap(), 100_000.);
+            assert!(as_temp.is_err());
+        });
+    }
+
+    // A File sensor of a channel metric reports its file's value as a channel: a frequency
+    // in hertz rounds to whole megahertz. When the file goes away the last value is held for
+    // the tolerance window, then the zero failsafe takes over.
+    #[test]
+    #[serial]
+    fn file_sensor_reports_holds_and_failsafes_a_channel_metric() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"3600500000".to_vec())
+                .await
+                .unwrap();
+            let repo = repo_with(vec![]).await;
+            let sensor = sensor_of(
+                "freq",
+                CustomSensorMetric::Freq,
+                CustomSensorKind::File {
+                    file_path: test_file.clone(),
+                },
+            );
+            repo.set_custom_sensor(sensor).await.unwrap();
+            repo.update_statuses().await.unwrap();
+            assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
+
+            cc_fs::remove_file(&test_file).await.unwrap();
+            for _ in 0..MISSING_STATUS_THRESHOLD {
+                repo.update_statuses().await.unwrap();
+                assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
+            }
+            assert!(repo.failsafing_sensors.borrow().is_empty());
+
+            repo.update_statuses().await.unwrap();
+            assert_eq!(current_channel_for(&repo, "freq").freq, Some(0));
+            assert!(repo.failsafing_sensors.borrow().contains_key("freq"));
+        });
+    }
+
+    // A File sensor is checked against its own metric when created: a pwm file holding a
+    // number past 255 is refused for a duty sensor, though it is a fine rpm.
+    #[test]
+    #[serial]
+    fn file_sensor_is_checked_against_its_metric_on_create() {
+        cc_fs::test_runtime(async {
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"1200".to_vec()).await.unwrap();
+            let repo = repo_with(vec![]).await;
+            let file = |id: &str, metric| {
+                sensor_of(
+                    id,
+                    metric,
+                    CustomSensorKind::File {
+                        file_path: test_file.clone(),
+                    },
+                )
+            };
+
+            let as_duty = repo
+                .set_custom_sensor(file("duty", CustomSensorMetric::Duty))
+                .await;
+            assert!(as_duty.is_err());
+            repo.set_custom_sensor(file("rpm", CustomSensorMetric::RPM))
+                .await
+                .unwrap();
+            repo.update_statuses().await.unwrap();
+            assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1200));
         });
     }
 }
