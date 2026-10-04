@@ -566,36 +566,51 @@ export default {
         },
         customSensors: {
             missingSourcesNotice:
-                'Les sources de température suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
+                'Les sources suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
+            metric: 'Métrique',
+            metricTooltip:
+                'Ce que le capteur mesure. Toutes ses sources la partagent.<br/><i>Remarque : la métrique ne peut plus être modifiée une fois le capteur enregistré.</i>',
+            rpmUnitHint:
+                "Cette métrique accepte aussi des valeurs dans d'autres unités. Terminez le nom du capteur par l'unité entre crochets pour l'afficher, p. ex. Pression [mbar].",
             sensorType: 'Type de Capteur',
             mixFunction: 'Fonction de Mélange',
             howCalculateValue: 'Comment calculer la valeur résultante du capteur',
-            tempFile: 'Fichier de Température',
+            sensorFile: 'Fichier du Capteur',
             filePathTooltip:
-                'Entrez le chemin absolu vers le fichier de température à utiliser pour ce capteur.\nLe fichier doit utiliser le format de données sysfs standard :\nUn nombre à virgule fixe en millidegrés Celsius.\np. ex. 80000 pour 80°C.\nLe fichier est vérifié lors de la soumission.',
+                'Entrez le chemin absolu vers le fichier à utiliser pour ce capteur.\nLe fichier doit contenir un nombre entier au format de données sysfs de la métrique.\nLe fichier est vérifié lors de la soumission.',
+            fileUnit: {
+                temp: 'Millidegrés Celsius, p. ex. 80000 pour 80°C',
+                duty: 'Valeur PWM de 0 à 255',
+                rpm: "RPM, ou un nombre entier dans l'unité indiquée par le nom du capteur",
+                freq: 'Hertz, p. ex. 3600000000 pour 3600 MHz',
+                watts: 'Microwatts, p. ex. 65000000 pour 65 W',
+            },
             browse: 'Parcourir',
             browseCustomSensorFile: 'Parcourir pour un fichier de capteur personnalisé',
-            tempSources: 'Sources de Température',
-            tempSource: 'Source de Température',
-            tempSourcesTooltip:
-                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            sources: 'Sources',
+            source: 'Source',
+            sourcesTooltip:
+                'Sources à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            scale: 'Échelle',
+            scaleTooltip:
+                "Saisissez le facteur par lequel la source est multipliée avant l'ajout du décalage.<br/><i>Remarque : un facteur négatif inverse la valeur. Il ne peut pas être 0.</i>",
             offset: 'Décalage',
             offsetTooltip:
-                'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
+                "Saisissez un décalage négatif ou positif à ajouter à la source mise à l'échelle.<br/><i>Remarque : un résultat de température est limité aux plages de température normales.</i>",
             timeWindow: 'Fenêtre de Lissage',
             timeWindowTooltip:
                 'Nombre de secondes des échantillons récents à lisser ensemble.<br/><i>Remarque : doit être compris entre 1 et 300 secondes.</i>',
             helpText: {
-                mix: 'Combine plusieurs sources de température via la fonction choisie (Min/Max/Moyenne/Delta/Moyenne Pondérée). À utiliser pour piloter les ventilateurs depuis le plus chaud de plusieurs capteurs, ou pour équilibrer entre les zones.',
-                file: 'Lit la température depuis un chemin de fichier. À utiliser pour les capteurs non détectés automatiquement par CoolerControl.',
-                offset: "Ajoute ou soustrait une valeur fixe d'une source de température. À utiliser pour calibrer une imprécision connue du capteur.",
+                mix: 'Combine plusieurs sources via la fonction choisie (Min/Max/Moyenne/Delta/Moyenne Pondérée/Somme). À utiliser pour piloter les ventilateurs depuis le plus chaud de plusieurs capteurs, pour équilibrer entre les zones ou pour additionner la consommation électrique.',
+                file: 'Lit une valeur depuis un chemin de fichier. À utiliser pour les capteurs non détectés automatiquement par CoolerControl.',
+                offset: 'Multiplie une source par un facteur, puis ajoute une valeur fixe. À utiliser pour calibrer une imprécision connue du capteur ou pour convertir une valeur dans une autre unité.',
                 timeAverage:
                     "Moyenne arithmétique sur une fenêtre temporelle fixe. La sortie est bornée par la plage d'entrée et ne dépasse jamais. Pour les ventilateurs qui doivent ignorer les pics de température brefs.",
                 exponentialMovingAvg:
                     'Moyenne pondérée favorisant les lectures récentes. Plus lisse que la Moyenne Temporelle pour la même fenêtre, mais nécessite environ 3 fois la longueur de la fenêtre pour suivre complètement un changement durable. Pour les ventilateurs qui doivent suivre les vraies tendances sans gigue.',
             },
-            tempWeights: 'Poids des Températures',
-            tempName: 'Nom de la Température',
+            sourceWeights: 'Poids des Sources',
+            sourceName: 'Nom de la Source',
             weight: 'Poids',
             saveCustomSensor: 'Enregistrer le Capteur Personnalisé',
             unsavedChanges:
@@ -1703,7 +1718,7 @@ export default {
             sensorType: {
                 mix: 'Mélange',
                 file: 'Fichier',
-                offset: 'Décalage',
+                offset: 'Échelle et Décalage',
                 timeAverage: 'Moyenne Temporelle',
                 exponentialMovingAvg: 'Moyenne Mobile Exponentielle',
             },

@@ -556,36 +556,51 @@ export default {
         },
         customSensors: {
             missingSourcesNotice:
-                'Las siguientes fuentes de temperatura ya no están presentes y se eliminarán al guardar: {sources}',
+                'Las siguientes fuentes ya no están presentes y se eliminarán al guardar: {sources}',
+            metric: 'Métrica',
+            metricTooltip:
+                'Lo que mide el sensor. Todas sus fuentes la comparten.<br/><i>Nota: La métrica no se puede cambiar una vez guardado el sensor.</i>',
+            rpmUnitHint:
+                'Esta métrica también admite valores en otras unidades. Termine el nombre del sensor con la unidad entre corchetes para mostrarla, p.ej. Presión [mbar].',
             sensorType: 'Tipo de Sensor',
             mixFunction: 'Función de Mezcla',
             howCalculateValue: 'Cómo calcular el valor resultante del sensor',
-            tempFile: 'Archivo de Temperatura',
+            sensorFile: 'Archivo del Sensor',
             filePathTooltip:
-                'Introduzca la ruta absoluta al archivo de temperatura a utilizar para este sensor.\nEl archivo debe usar el formato de datos sysfs estándar:\nUn número de punto fijo en miligrados Celsius.\np.ej. 80000 para 80°C.\nEl archivo se verifica al enviarse.',
+                'Introduzca la ruta absoluta al archivo a utilizar para este sensor.\nEl archivo debe contener un número entero en el formato de datos sysfs de la métrica.\nEl archivo se verifica al enviarse.',
+            fileUnit: {
+                temp: 'Miligrados Celsius, p.ej. 80000 para 80°C',
+                duty: 'Valor PWM de 0 a 255',
+                rpm: 'RPM, o un número entero en la unidad que indica el nombre del sensor',
+                freq: 'Hercios, p.ej. 3600000000 para 3600 MHz',
+                watts: 'Microvatios, p.ej. 65000000 para 65 W',
+            },
             browse: 'Explorar',
             browseCustomSensorFile: 'Explorar un archivo de sensor personalizado',
-            tempSources: 'Fuentes de Temperatura',
-            tempSource: 'Fuente de Temperatura',
-            tempSourcesTooltip:
-                'Fuentes de temperatura que se usarán en la función de mezcla<br/><i>Nota: Al combinar varios Sensores Personalizados solo se permiten relaciones directas de padre e hijo.<br/>Use Perfiles de Mezcla para configuraciones más complejas.</i>',
+            sources: 'Fuentes',
+            source: 'Fuente',
+            sourcesTooltip:
+                'Fuentes que se usarán en la función de mezcla<br/><i>Nota: Al combinar varios Sensores Personalizados solo se permiten relaciones directas de padre e hijo.<br/>Use Perfiles de Mezcla para configuraciones más complejas.</i>',
+            scale: 'Escala',
+            scaleTooltip:
+                'Introduzca el factor por el que se multiplica la fuente antes de sumar el desplazamiento.<br/><i>Nota: Un factor negativo invierte el valor. No puede ser 0.</i>',
             offset: 'Desplazamiento',
             offsetTooltip:
-                'Introduzca un desplazamiento negativo o positivo que se aplicará al sensor de origen.<br/><i>Nota: El valor final se limita a rangos normales de temperatura.</i>',
+                'Introduzca un desplazamiento negativo o positivo que se sumará a la fuente escalada.<br/><i>Nota: Un resultado de temperatura se limita a rangos normales de temperatura.</i>',
             timeWindow: 'Ventana de Suavizado',
             timeWindowTooltip:
                 'Cuántos segundos de muestras recientes se suavizarán juntas.<br/><i>Nota: Debe estar entre 1 y 300 segundos.</i>',
             helpText: {
-                mix: 'Combina múltiples fuentes de temperatura mediante la función elegida (Mín/Máx/Promedio/Delta/Promedio Ponderado). Use para controlar ventiladores desde el más caliente de varios sensores, o para equilibrar entre zonas.',
-                file: 'Lee la temperatura desde una ruta de archivo. Use para sensores no detectados automáticamente por CoolerControl.',
-                offset: 'Suma o resta un valor fijo a una fuente de temperatura. Use para calibrar una imprecisión conocida del sensor.',
+                mix: 'Combina múltiples fuentes mediante la función elegida (Mín/Máx/Promedio/Delta/Promedio Ponderado/Suma). Use para controlar ventiladores desde el más caliente de varios sensores, para equilibrar entre zonas o para sumar el consumo de energía.',
+                file: 'Lee un valor desde una ruta de archivo. Use para sensores no detectados automáticamente por CoolerControl.',
+                offset: 'Multiplica una fuente por un factor y luego suma un valor fijo. Use para calibrar una imprecisión conocida del sensor o para convertir un valor a otra unidad.',
                 timeAverage:
                     'Media aritmética en una ventana de tiempo fija. La salida está acotada por el rango de entrada y nunca lo excede. Para ventiladores que deben ignorar picos breves de temperatura.',
                 exponentialMovingAvg:
                     'Promedio ponderado que favorece las lecturas recientes. Más suave que el Promedio Temporal con la misma ventana, pero tarda aproximadamente 3 veces la longitud de la ventana en seguir completamente un cambio sostenido. Para ventiladores que deben seguir tendencias reales sin fluctuaciones.',
             },
-            tempWeights: 'Pesos de Temperatura',
-            tempName: 'Nombre de Temperatura',
+            sourceWeights: 'Pesos de las Fuentes',
+            sourceName: 'Nombre de la Fuente',
             weight: 'Peso',
             saveCustomSensor: 'Guardar Sensor Personalizado',
             unsavedChanges: 'Hay cambios no guardados realizados en este Sensor Personalizado.',
@@ -1689,7 +1704,7 @@ export default {
             sensorType: {
                 mix: 'Mezcla',
                 file: 'Archivo',
-                offset: 'Desplazamiento',
+                offset: 'Escala y Desplazamiento',
                 timeAverage: 'Promedio Temporal',
                 exponentialMovingAvg: 'Promedio Móvil Exponencial',
             },

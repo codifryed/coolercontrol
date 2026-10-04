@@ -21,6 +21,7 @@ import {
     CustomSensorMixFunctionType,
     CustomSensorSourceData,
     CustomSensorType,
+    getCustomSensorMetricDisplayName,
     getCustomSensorTypeDisplayName,
     getCustomSensorMixFunctionTypeDisplayName,
 } from '@/models/CustomSensor.ts'
@@ -36,6 +37,7 @@ import UiListbox from '@/shell/ui/UiListbox.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiInput from '@/shell/ui/UiInput.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
+import UiSelect from '@/shell/ui/UiSelect.vue'
 import UiTable from '@/shell/ui/UiTable.vue'
 import UiGroupedListbox from '@/shell/ui/UiGroupedListbox.vue'
 import { Dashboard, DashboardDeviceChannel } from '@/models/Dashboard.ts'
@@ -46,29 +48,21 @@ import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import EntityPageHeader from '@/components/EntityPageHeader.vue'
 import HealthWarning from '@/components/HealthWarning.vue'
 import TimeChart from '@/components/TimeChart.vue'
-import { newCustomSensorId } from '@/components/customSensorEditor.ts'
+import {
+    type AvailableSource,
+    type AvailableSourceGroup,
+    availableSources,
+    canSave,
+    liveValue,
+    newCustomSensorId,
+    offsetLimit,
+    SCALE_MAGNITUDE_MAX,
+    TIME_WINDOW_SECONDS_MAX,
+    TIME_WINDOW_SECONDS_MIN,
+} from '@/components/customSensorEditor.ts'
 
 interface Props {
     customSensorID?: string
-}
-
-interface AvailableTemp {
-    deviceUID: string // needed here as well for the dropdown selector
-    tempName: string
-    tempFrontendName: string
-    lineColor: string
-    weight: number
-    temp: string
-}
-
-interface AvailableTempSources {
-    deviceUID: string
-    deviceName: string
-    profileMinLength: number
-    profileMaxLength: number
-    tempMin: number
-    tempMax: number
-    temps: Array<AvailableTemp>
 }
 
 const props = defineProps<Props>()
@@ -123,12 +117,21 @@ const isUserName: boolean =
 // .value, not the ref: ref(existingRef) returns that same ref, which would alias
 // this to currentName and let saveNameFunction's second write undo its first.
 const sensorName: Ref<string> = ref(isUserName ? currentName.value : '')
+const selectedMetric: Ref<CustomSensorMetric> = ref(customSensor.metric)
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
+const selectedScale: Ref<number> = ref(customSensor.scale ?? 1)
 const selectedOffset: Ref<number> = ref(customSensor.offset ?? 0)
 const selectedTimeWindowSeconds: Ref<number> = ref(customSensor.time_window_seconds ?? 10)
 
 // Generate options with localized display names
+const metricOptions = computed(() => {
+    return [...$enum(CustomSensorMetric).values()].map((metric) => ({
+        value: metric,
+        label: getCustomSensorMetricDisplayName(metric),
+    }))
+})
+
 const sensorTypeOptions = computed(() => {
     return [...$enum(CustomSensorType).values()].map((type) => ({
         value: type,
@@ -160,233 +163,99 @@ const getSensorTypeHelpText = (type: CustomSensorType): string => {
     }
 }
 
-const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
-const chosenOffsetTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
-const chosenTimeAverageTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
-const chosenEmaTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
+// Scale & Offset and the two smoothing types read exactly one source.
+const isSingleSourceType = (type: CustomSensorType): boolean =>
+    type === CustomSensorType.Offset ||
+    type === CustomSensorType.TimeAverage ||
+    type === CustomSensorType.ExponentialMovingAvg
+const isSmoothingType = (type: CustomSensorType): boolean =>
+    type === CustomSensorType.TimeAverage || type === CustomSensorType.ExponentialMovingAvg
+
+const chosenMixSources: Ref<Array<AvailableSource>> = ref([])
+const chosenSingleSource: Ref<AvailableSource | undefined> = ref(undefined)
 const filePath: Ref<string> = ref(customSensor.file_path ?? '')
 
-const tempSources: Ref<Array<AvailableTempSources>> = ref([])
-const fillTempSources = async (): Promise<void> => {
-    tempSources.value.length = 0
-    for (const device of deviceStore.allDevices()) {
-        if (device.status.temps.length === 0 || device.info == undefined) {
-            continue
-        }
-        if (device.type === DeviceType.CUSTOM_SENSORS && customSensor.parents.length > 0) {
-            // skip custom sensors if it has parents/is a child - it can not also be a parent
-            continue
-        }
-        const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-        const deviceSource: AvailableTempSources = {
-            deviceUID: device.uid,
-            deviceName: deviceSettings.name,
-            profileMinLength: device.info.profile_min_length,
-            profileMaxLength: device.info.profile_max_length,
-            tempMin: device.info.temp_min,
-            tempMax: device.info.temp_max,
-            temps: [],
-        }
-        for (const temp of device.status.temps) {
-            if (device.type === DeviceType.CUSTOM_SENSORS) {
-                if (temp.name === customSensor.id) {
-                    // Cannot have itself as a temp source
-                    continue
-                }
-                const associatedCustomSensor = customSensors.find((cs) => cs.id === temp.name)
-                if (associatedCustomSensor == null) {
-                    console.error('Could not find associated Custom Sensor by: ', temp.name)
-                    continue
-                } else if (associatedCustomSensor.children.length > 0) {
-                    // If the 'potential child' custom sensor IS a parent/HAS children = do NOT show
-                    continue
-                }
-            }
-            deviceSource.temps.push({
-                deviceUID: device.uid,
-                tempName: temp.name,
-                tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
-                lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
-                weight: 1,
-                temp: temp.temp.toFixed(1),
-            })
-        }
-        if (deviceSource.temps.length === 0) {
-            continue // when all of a devices temps are hidden
-        }
-        tempSources.value.push(deviceSource)
-    }
+const sourceKey = (source: { deviceUID: string; name: string }): string =>
+    `${source.deviceUID}/${source.name}`
+const sourceGroups: Ref<Array<AvailableSourceGroup>> = ref([])
+const fillSources = (): void => {
+    sourceGroups.value = availableSources(
+        deviceStore.allDevices(),
+        selectedMetric.value,
+        customSensors,
+        customSensor,
+        (deviceUID) => settingsStore.allUIDeviceSettings.get(deviceUID),
+    )
 }
-await fillTempSources()
-const fillChosenTempSources = () => {
-    chosenTempSources.value.length = 0
-    if (selectedSensorType.value !== CustomSensorType.Mix) {
-        return
-    }
-    for (const customTempSourceData of customSensor.sources) {
-        for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
-                for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.name) {
-                        availableTemp.weight = customTempSourceData.weight
-                        chosenTempSources.value.push(availableTemp)
-                    }
-                }
-            }
-        }
-    }
-}
-fillChosenTempSources()
+fillSources()
+const allSources = computed(() => sourceGroups.value.flatMap((group) => group.sources))
+const findSource = (key: string | string[] | undefined): AvailableSource | undefined =>
+    typeof key === 'string'
+        ? allSources.value.find((candidate) => sourceKey(candidate) === key)
+        : undefined
 
-// Sources in the saved config whose target temp is gone. They are invisible in the
+// Selects the saved sources among the available ones, with their saved weights.
+const selectSavedSources = (): void => {
+    const saved: Array<AvailableSource> = []
+    for (const sourceData of customSensor.sources) {
+        const available = findSource(sourceKey(sourceData))
+        if (available == null) continue
+        available.weight = sourceData.weight
+        saved.push(available)
+    }
+    const isMix = customSensor.cs_type === CustomSensorType.Mix
+    chosenMixSources.value = isMix ? saved : []
+    chosenSingleSource.value = isMix ? undefined : saved[0]
+}
+selectSavedSources()
+
+// Sources in the saved config whose target is gone. They are invisible in the
 // pickers below and will be dropped on save.
 const droppedSources: Array<string> = customSensor.sources
-    .filter(
-        (sourceData) =>
-            !tempSources.value.some(
-                (device) =>
-                    device.deviceUID === sourceData.deviceUID &&
-                    device.temps.some((temp) => temp.tempName === sourceData.name),
-            ),
-    )
+    .filter((sourceData) => findSource(sourceKey(sourceData)) == null)
     .map((sourceData) => sourceData.name)
 
-const fillChosenOffsetTempSource = () => {
-    chosenOffsetTempSource.value = undefined
-    if (selectedSensorType.value !== CustomSensorType.Offset) {
-        return
-    }
-    for (const customTempSourceData of customSensor.sources) {
-        for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
-                for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.name) {
-                        availableTemp.weight = customTempSourceData.weight
-                        chosenOffsetTempSource.value = availableTemp
-                    }
-                }
-            }
-        }
-    }
+// Rebuilds the lists and keeps what is selected: the entries are new objects, so the
+// selection is carried over by key.
+const refreshSources = (): void => {
+    const mixWeights = new Map(
+        chosenMixSources.value.map((source) => [sourceKey(source), source.weight]),
+    )
+    const singleKey =
+        chosenSingleSource.value != null ? sourceKey(chosenSingleSource.value) : undefined
+    fillSources()
+    const mixSources = allSources.value.filter((source) => mixWeights.has(sourceKey(source)))
+    for (const source of mixSources) source.weight = mixWeights.get(sourceKey(source))!
+    chosenMixSources.value = mixSources
+    chosenSingleSource.value = findSource(singleKey)
 }
-fillChosenOffsetTempSource()
-
-const fillChosenTimeAverageTempSource = () => {
-    chosenTimeAverageTempSource.value = undefined
-    if (selectedSensorType.value !== CustomSensorType.TimeAverage) {
-        return
-    }
-    for (const customTempSourceData of customSensor.sources) {
-        for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
-                for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.name) {
-                        availableTemp.weight = customTempSourceData.weight
-                        chosenTimeAverageTempSource.value = availableTemp
-                    }
-                }
-            }
-        }
-    }
-}
-fillChosenTimeAverageTempSource()
-
-const fillChosenEmaTempSource = () => {
-    chosenEmaTempSource.value = undefined
-    if (selectedSensorType.value !== CustomSensorType.ExponentialMovingAvg) {
-        return
-    }
-    for (const customTempSourceData of customSensor.sources) {
-        for (const availableTempSource of tempSources.value) {
-            if (availableTempSource.deviceUID === customTempSourceData.deviceUID) {
-                for (const availableTemp of availableTempSource.temps) {
-                    if (availableTemp.tempName === customTempSourceData.name) {
-                        availableTemp.weight = customTempSourceData.weight
-                        chosenEmaTempSource.value = availableTemp
-                    }
-                }
-            }
-        }
-    }
-}
-fillChosenEmaTempSource()
 
 const saveSensor = async (): Promise<void> => {
-    customSensor.cs_type = selectedSensorType.value
-    customSensor.mix_function = selectedMixFunction.value
-    const tempSources: Array<CustomSensorSourceData> = []
-    if (customSensor.cs_type === CustomSensorType.File) {
-        customSensor.offset = undefined
-        customSensor.time_window_seconds = undefined
-        customSensor.file_path = filePath.value
-    } else if (customSensor.cs_type === CustomSensorType.Mix) {
-        if (chosenTempSources.value == null || chosenTempSources.value.length === 0) {
-            console.error('No temp sources selected')
-            return
-        }
-        customSensor.file_path = undefined
-        customSensor.offset = undefined
-        customSensor.time_window_seconds = undefined
-        chosenTempSources.value.forEach((tempSource) =>
-            tempSources.push(
-                CustomSensorSourceData.of(
-                    CustomSensorMetric.Temp,
-                    tempSource.deviceUID,
-                    tempSource.tempName,
-                    tempSource.weight,
-                ),
-            ),
-        )
-    } else if (customSensor.cs_type === CustomSensorType.Offset) {
-        if (chosenOffsetTempSource.value == null) {
-            console.error('No offset temp source selected')
-            return
-        }
-        customSensor.file_path = undefined
-        customSensor.offset = selectedOffset.value
-        customSensor.time_window_seconds = undefined
-        tempSources.push(
-            CustomSensorSourceData.of(
-                CustomSensorMetric.Temp,
-                chosenOffsetTempSource.value.deviceUID,
-                chosenOffsetTempSource.value.tempName,
-                chosenOffsetTempSource.value.weight,
-            ),
-        )
-    } else if (customSensor.cs_type === CustomSensorType.TimeAverage) {
-        if (chosenTimeAverageTempSource.value == null) {
-            console.error('No time-average temp source selected')
-            return
-        }
-        customSensor.file_path = undefined
-        customSensor.offset = undefined
-        customSensor.time_window_seconds = selectedTimeWindowSeconds.value
-        tempSources.push(
-            CustomSensorSourceData.of(
-                CustomSensorMetric.Temp,
-                chosenTimeAverageTempSource.value.deviceUID,
-                chosenTimeAverageTempSource.value.tempName,
-                chosenTimeAverageTempSource.value.weight,
-            ),
-        )
-    } else if (customSensor.cs_type === CustomSensorType.ExponentialMovingAvg) {
-        if (chosenEmaTempSource.value == null) {
-            console.error('No EMA temp source selected')
-            return
-        }
-        customSensor.file_path = undefined
-        customSensor.offset = undefined
-        customSensor.time_window_seconds = selectedTimeWindowSeconds.value
-        tempSources.push(
-            CustomSensorSourceData.of(
-                CustomSensorMetric.Temp,
-                chosenEmaTempSource.value.deviceUID,
-                chosenEmaTempSource.value.tempName,
-                chosenEmaTempSource.value.weight,
-            ),
-        )
+    if (saveButtonDisabled()) {
+        console.error('The Custom Sensor is incomplete')
+        return
     }
-    customSensor.sources = tempSources
+    const type = selectedSensorType.value
+    const metric = selectedMetric.value
+    customSensor.metric = metric
+    customSensor.cs_type = type
+    customSensor.mix_function = selectedMixFunction.value
+    customSensor.file_path = type === CustomSensorType.File ? filePath.value : undefined
+    const isScaleOffset = type === CustomSensorType.Offset
+    customSensor.scale = isScaleOffset ? selectedScale.value : undefined
+    customSensor.offset = isScaleOffset ? selectedOffset.value : undefined
+    customSensor.time_window_seconds = isSmoothingType(type)
+        ? selectedTimeWindowSeconds.value
+        : undefined
+    let chosenSources: Array<AvailableSource> = []
+    if (type === CustomSensorType.Mix) {
+        chosenSources = chosenMixSources.value
+    } else if (isSingleSourceType(type) && chosenSingleSource.value != null) {
+        chosenSources = [chosenSingleSource.value]
+    }
+    customSensor.sources = chosenSources.map((source) =>
+        CustomSensorSourceData.of(metric, source.deviceUID, source.name, source.weight),
+    )
 
     if (shouldCreateSensor) {
         const successful = await settingsStore.saveCustomSensor(customSensor)
@@ -467,17 +336,27 @@ const deleteSensor = (): void => {
         },
     })
 }
-const updateTemps = () => {
-    for (const tempDevice of tempSources.value) {
-        for (const availableTemp of tempDevice.temps) {
-            availableTemp.temp =
-                deviceStore.currentDeviceStatus
-                    .get(availableTemp.deviceUID)!
-                    .get(availableTemp.tempName)!.temp || '0.0'
+const updateValues = () => {
+    for (const group of sourceGroups.value) {
+        for (const source of group.sources) {
+            const values = deviceStore.currentDeviceStatus.get(source.deviceUID)?.get(source.name)
+            source.value = liveValue(selectedMetric.value, values) ?? source.value
         }
     }
 }
 
+const changeMetric = (value: string | undefined): void => {
+    if (value == null || value === selectedMetric.value) {
+        return // do not update on unselect
+    }
+    selectedMetric.value = value as CustomSensorMetric
+    // A source of the previous metric is no source of this one.
+    fillSources()
+    chosenMixSources.value = []
+    chosenSingleSource.value = undefined
+    const limit = offsetLimit(selectedMetric.value)
+    selectedOffset.value = Math.min(limit, Math.max(-limit, selectedOffset.value))
+}
 const changeSensorType = (value: string | undefined): void => {
     if (value == null) {
         return // do not update on unselect
@@ -491,43 +370,69 @@ const changeMixFunction = (value: string | undefined): void => {
     selectedMixFunction.value = value as CustomSensorMixFunctionType
 }
 
-const tempKey = (temp: AvailableTemp): string => `${temp.deviceUID}/${temp.tempName}`
-const allTemps = computed(() => tempSources.value.flatMap((source) => source.temps))
-const tempGroups = computed(() =>
-    tempSources.value.map((source) => ({
-        label: source.deviceName,
-        options: source.temps.map((temp) => ({
-            label: temp.tempFrontendName,
-            value: tempKey(temp),
-            color: temp.lineColor,
-            rightText: `${temp.temp} ${t('common.tempUnit')}`,
+// The unit a source's value is shown in. An rpm source may name its own.
+const sourceUnit = (source: AvailableSource): string => {
+    switch (selectedMetric.value) {
+        case CustomSensorMetric.Temp:
+            return t('common.tempUnit')
+        case CustomSensorMetric.Duty:
+            return t('common.percentUnit')
+        case CustomSensorMetric.RPM:
+            return settingsStore.rpmUnit(source.deviceUID, source.name)
+        case CustomSensorMetric.Freq:
+            return t('common.mhzAbbr')
+        case CustomSensorMetric.Watts:
+            return t('common.wattAbbr')
+        default:
+            return ''
+    }
+}
+// What a File sensor of the chosen metric expects in its file.
+const fileUnitText = computed((): string => {
+    switch (selectedMetric.value) {
+        case CustomSensorMetric.Temp:
+            return t('views.customSensors.fileUnit.temp')
+        case CustomSensorMetric.Duty:
+            return t('views.customSensors.fileUnit.duty')
+        case CustomSensorMetric.RPM:
+            return t('views.customSensors.fileUnit.rpm')
+        case CustomSensorMetric.Freq:
+            return t('views.customSensors.fileUnit.freq')
+        case CustomSensorMetric.Watts:
+            return t('views.customSensors.fileUnit.watts')
+        default:
+            return ''
+    }
+})
+const offsetMax = computed(() => offsetLimit(selectedMetric.value))
+
+const sourceOptionGroups = computed(() =>
+    sourceGroups.value.map((group) => ({
+        label: group.deviceName,
+        options: group.sources.map((source) => ({
+            label: source.frontendName,
+            value: sourceKey(source),
+            color: source.lineColor,
+            rightText: `${source.value} ${sourceUnit(source)}`,
         })),
     })),
 )
-const findTemp = (key: string | string[] | undefined): AvailableTemp | undefined =>
-    typeof key === 'string'
-        ? allTemps.value.find((candidate) => tempKey(candidate) === key)
-        : undefined
-const chosenTempSourceKeys = computed<string[] | string | undefined>({
-    get: () => chosenTempSources.value.map(tempKey),
+const chosenMixSourceKeys = computed<string[] | string | undefined>({
+    get: () => chosenMixSources.value.map(sourceKey),
     set: (keys) => {
         if (!Array.isArray(keys)) return
-        chosenTempSources.value = keys
-            .map((key) => findTemp(key))
-            .filter((temp): temp is AvailableTemp => temp != null)
+        chosenMixSources.value = keys
+            .map((key) => findSource(key))
+            .filter((source): source is AvailableSource => source != null)
     },
 })
-const singleTempKeyModel = (source: Ref<AvailableTemp | undefined>) =>
-    computed<string | string[] | undefined>({
-        get: () => (source.value != null ? tempKey(source.value) : undefined),
-        set: (key) => {
-            const temp = findTemp(key)
-            if (temp != null) source.value = temp
-        },
-    })
-const chosenOffsetTempSourceKey = singleTempKeyModel(chosenOffsetTempSource)
-const chosenTimeAverageTempSourceKey = singleTempKeyModel(chosenTimeAverageTempSource)
-const chosenEmaTempSourceKey = singleTempKeyModel(chosenEmaTempSource)
+const chosenSingleSourceKey = computed<string | string[] | undefined>({
+    get: () => (chosenSingleSource.value != null ? sourceKey(chosenSingleSource.value) : undefined),
+    set: (key) => {
+        const source = findSource(key)
+        if (source != null) chosenSingleSource.value = source
+    },
+})
 
 const createNewDashboard = (): Dashboard => {
     const dash = new Dashboard(customSensor.id)
@@ -603,46 +508,37 @@ const fileBrowse = async (): Promise<void> => {
     filePath.value = await ipc.filePathDialog(t('views.customSensors.selectCustomSensorFile'))
 }
 
-const saveButtonDisabled = (): boolean => {
-    return (
-        (selectedSensorType.value === CustomSensorType.Mix &&
-            chosenTempSources.value.length === 0) ||
-        (selectedSensorType.value === CustomSensorType.Offset &&
-            chosenOffsetTempSource.value == null) ||
-        (selectedSensorType.value === CustomSensorType.File && !filePath.value?.trim()) ||
-        (selectedSensorType.value === CustomSensorType.TimeAverage &&
-            (chosenTimeAverageTempSource.value == null ||
-                selectedTimeWindowSeconds.value == null ||
-                selectedTimeWindowSeconds.value < 1 ||
-                selectedTimeWindowSeconds.value > 300)) ||
-        (selectedSensorType.value === CustomSensorType.ExponentialMovingAvg &&
-            (chosenEmaTempSource.value == null ||
-                selectedTimeWindowSeconds.value == null ||
-                selectedTimeWindowSeconds.value < 1 ||
-                selectedTimeWindowSeconds.value > 300))
-    )
-}
+const saveButtonDisabled = (): boolean =>
+    !canSave({
+        type: selectedSensorType.value,
+        metric: selectedMetric.value,
+        mixSourceCount: chosenMixSources.value.length,
+        hasSingleSource: chosenSingleSource.value != null,
+        filePath: filePath.value,
+        scale: selectedScale.value,
+        offset: selectedOffset.value,
+        timeWindowSeconds: selectedTimeWindowSeconds.value,
+    })
 
 onMounted(async () => {
     watch(rawStore.currentDeviceStatus, () => {
-        updateTemps()
+        updateValues()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {
-        await fillTempSources()
-        fillChosenTempSources()
+        refreshSources()
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true })()
     })
     watch(
         [
+            selectedMetric,
             selectedSensorType,
             selectedMixFunction,
             filePath,
-            chosenTempSources,
+            chosenMixSources,
+            selectedScale,
             selectedOffset,
-            chosenOffsetTempSource,
             selectedTimeWindowSeconds,
-            chosenTimeAverageTempSource,
-            chosenEmaTempSource,
+            chosenSingleSource,
         ],
         () => {
             contextIsDirty.value = true
@@ -728,6 +624,31 @@ onMounted(async () => {
                 <div class="w-full flex flex-col lg:flex-row">
                     <div class="mt-0 lg:mr-4 w-full max-w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            {{ t('views.customSensors.metric') }}
+                        </small>
+                        <!-- The metric decides whether the sensor is a temp or a channel of
+                             its device, so it is fixed once the sensor exists. -->
+                        <div
+                            v-tooltip.top="{
+                                escape: false,
+                                value: t('views.customSensors.metricTooltip'),
+                            }"
+                        >
+                            <UiSelect
+                                :model-value="selectedMetric"
+                                :options="metricOptions"
+                                :disabled="!shouldCreateSensor"
+                                class="w-full"
+                                @update:model-value="changeMetric"
+                            />
+                        </div>
+                        <p
+                            v-if="selectedMetric === CustomSensorMetric.RPM"
+                            class="ml-3 mt-1 text-sm text-text-color-secondary"
+                        >
+                            {{ t('views.customSensors.rpmUnitHint') }}
+                        </p>
+                        <small class="ml-3 mt-4 block font-light text-sm text-text-color-secondary">
                             {{ t('views.customSensors.sensorType') }}
                         </small>
                         <UiListbox
@@ -768,6 +689,23 @@ onMounted(async () => {
                         class="flex flex-col mt-1 w-full max-w-96 mb-28"
                     >
                         <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
+                            {{ t('views.customSensors.scale') }}
+                        </small>
+                        <div
+                            class="rounded-lg bg-bg-two p-3 flex justify-center"
+                            v-tooltip.top="{
+                                escape: false,
+                                value: t('views.customSensors.scaleTooltip'),
+                            }"
+                        >
+                            <UiNumberInput
+                                v-model="selectedScale"
+                                :min="-SCALE_MAGNITUDE_MAX"
+                                :max="SCALE_MAGNITUDE_MAX"
+                                :step="0.1"
+                            />
+                        </div>
+                        <small class="ml-3 mt-4 mb-1 font-light text-sm text-text-color-secondary">
                             {{ t('views.customSensors.offset') }}
                         </small>
                         <div
@@ -777,14 +715,15 @@ onMounted(async () => {
                                 value: t('views.customSensors.offsetTooltip'),
                             }"
                         >
-                            <UiNumberInput v-model="selectedOffset" :min="-100" :max="100" />
+                            <UiNumberInput
+                                v-model="selectedOffset"
+                                :min="-offsetMax"
+                                :max="offsetMax"
+                            />
                         </div>
                     </div>
                     <div
-                        v-if="
-                            selectedSensorType === CustomSensorType.TimeAverage ||
-                            selectedSensorType === CustomSensorType.ExponentialMovingAvg
-                        "
+                        v-if="isSmoothingType(selectedSensorType)"
                         class="flex flex-col mt-1 w-full max-w-96 mb-28"
                     >
                         <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
@@ -799,8 +738,8 @@ onMounted(async () => {
                         >
                             <UiNumberInput
                                 v-model="selectedTimeWindowSeconds"
-                                :min="1"
-                                :max="300"
+                                :min="TIME_WINDOW_SECONDS_MIN"
+                                :max="TIME_WINDOW_SECONDS_MAX"
                                 :suffix="t('common.secondAbbr')"
                             />
                         </div>
@@ -810,15 +749,18 @@ onMounted(async () => {
                         class="flex flex-col w-full max-w-96 mt-1"
                     >
                         <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempFile') }}
+                            {{ t('views.customSensors.sensorFile') }}
                         </small>
                         <UiInput
                             v-model="filePath"
                             class="w-full"
-                            placeholder="/tmp/your_temp_file"
+                            placeholder="/tmp/your_sensor_file"
                             :class="{ '!border-error': !filePath }"
                             v-tooltip.top="t('views.customSensors.filePathTooltip')"
                         />
+                        <p class="ml-3 mt-1 text-sm text-text-color-secondary">
+                            {{ fileUnitText }}
+                        </p>
                         <div v-if="deviceStore.isQtApp()">
                             <UiButton
                                 class="mt-2 w-full"
@@ -838,45 +780,44 @@ onMounted(async () => {
                 </div>
                 <div
                     v-if="selectedSensorType === CustomSensorType.Mix"
-                    class="flex flex-col lg:flex-row mt-0 w-full"
+                    class="flex flex-col lg:flex-row mt-4 w-full"
                 >
                     <div class="w-full max-w-xl lg:mr-4">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempSources') }}
+                            {{ t('views.customSensors.sources') }}
                         </small>
                         <UiGroupedListbox
-                            v-model="chosenTempSourceKeys"
+                            v-model="chosenMixSourceKeys"
                             class="w-full max-h-[28rem]"
-                            :groups="tempGroups"
+                            :groups="sourceOptionGroups"
                             filter
                             :filter-placeholder="t('common.search')"
                             multiple
-                            :invalid="chosenTempSources == null || chosenTempSources.length === 0"
+                            :invalid="chosenMixSources.length === 0"
                             v-tooltip.top="{
                                 escape: false,
-                                value: t('views.customSensors.tempSourcesTooltip'),
+                                value: t('views.customSensors.sourcesTooltip'),
                             }"
                         />
                     </div>
                     <div
                         v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
                         class="w-full max-w-xl mt-4 lg:mt-0"
-                        v-tooltip.top="t('views.customSensors.tempWeights')"
+                        v-tooltip.top="t('views.customSensors.sourceWeights')"
                     >
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempWeights') }}
+                            {{ t('views.customSensors.sourceWeights') }}
                         </small>
                         <UiTable bordered>
                             <template #head>
                                 <tr>
-                                    <th class="w-full">{{ t('views.customSensors.tempName') }}</th>
+                                    <th class="w-full">
+                                        {{ t('views.customSensors.sourceName') }}
+                                    </th>
                                     <th>{{ t('views.customSensors.weight') }}</th>
                                 </tr>
                             </template>
-                            <tr
-                                v-for="source in chosenTempSources"
-                                :key="`${source.deviceUID}/${source.tempName}`"
-                            >
+                            <tr v-for="source in chosenMixSources" :key="sourceKey(source)">
                                 <td>
                                     <div class="flex items-center gap-2">
                                         <svg-icon
@@ -886,7 +827,7 @@ onMounted(async () => {
                                             class="shrink-0"
                                             :style="{ color: source.lineColor }"
                                         />
-                                        {{ source.tempFrontendName }}
+                                        {{ source.frontendName }}
                                     </div>
                                 </td>
                                 <td>
@@ -896,58 +837,22 @@ onMounted(async () => {
                         </UiTable>
                     </div>
                 </div>
-                <!--Need a separate model for single-selection temp source-->
+                <!--The single-source types share one selection-->
                 <div
-                    v-if="selectedSensorType === CustomSensorType.Offset"
+                    v-if="isSingleSourceType(selectedSensorType)"
                     class="flex flex-col lg:flex-row mt-0 w-full"
                 >
                     <div class="w-full max-w-xl lg:mr-4">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempSource') }}
+                            {{ t('views.customSensors.source') }}
                         </small>
                         <UiGroupedListbox
-                            v-model="chosenOffsetTempSourceKey"
+                            v-model="chosenSingleSourceKey"
                             class="w-full mt-1 max-h-[28rem]"
-                            :groups="tempGroups"
+                            :groups="sourceOptionGroups"
                             filter
                             :filter-placeholder="t('common.search')"
-                            :invalid="chosenOffsetTempSource == null"
-                        />
-                    </div>
-                </div>
-                <div
-                    v-if="selectedSensorType === CustomSensorType.TimeAverage"
-                    class="flex flex-col lg:flex-row mt-0 w-full"
-                >
-                    <div class="w-full max-w-xl lg:mr-4">
-                        <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempSource') }}
-                        </small>
-                        <UiGroupedListbox
-                            v-model="chosenTimeAverageTempSourceKey"
-                            class="w-full mt-1 max-h-[28rem]"
-                            :groups="tempGroups"
-                            filter
-                            :filter-placeholder="t('common.search')"
-                            :invalid="chosenTimeAverageTempSource == null"
-                        />
-                    </div>
-                </div>
-                <div
-                    v-if="selectedSensorType === CustomSensorType.ExponentialMovingAvg"
-                    class="flex flex-col lg:flex-row mt-0 w-full"
-                >
-                    <div class="w-full max-w-xl lg:mr-4">
-                        <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            {{ t('views.customSensors.tempSource') }}
-                        </small>
-                        <UiGroupedListbox
-                            v-model="chosenEmaTempSourceKey"
-                            class="w-full mt-1 max-h-[28rem]"
-                            :groups="tempGroups"
-                            filter
-                            :filter-placeholder="t('common.search')"
-                            :invalid="chosenEmaTempSource == null"
+                            :invalid="chosenSingleSource == null"
                         />
                     </div>
                 </div>
