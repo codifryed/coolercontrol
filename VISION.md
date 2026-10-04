@@ -20,6 +20,12 @@ integrates with liquidctl drivers. Hardware drivers are made available by upstre
 generally avoids interacting directly with hardware devices and is too large a scope for this
 project.
 
+CC is driver-general software. It follows the HWMon ABI, looks for solutions that work for
+every driver, and generally avoids logic that matches a specific driver or device. Device-specific
+logic and lookup tables grow with every device Linux supports, and their upkeep is more than a small
+team can carry (see [Maintainability](#maintainability)). The same holds for the API: its models
+stay generic, so the programs built on it do not have to follow each driver's particulars.
+
 ## LCD and Lighting
 
 CoolerControl holds the connection to the devices it monitors. USB access is serial, so the daemon
