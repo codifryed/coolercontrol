@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { type Device, DeviceType, type UID } from '@/models/Device.ts'
+import type { MenuOrderIds } from '@/models/UISettings.ts'
 import { isUnitSensor, type ChannelUnitOf } from '@/shell/channelUnit.ts'
+import { orderedByGroup } from '@/shell/panelOrder.ts'
 
 // Canonical device-type ordering for the Devices section (panel and landing).
 export const DEVICE_TYPE_ORDER: DeviceType[] = [
@@ -38,10 +40,12 @@ export function hardwareDevices(devices: Iterable<Device>): Device[] {
 }
 
 // Sensor names of a CustomSensors device (editor child links). A temperature sensor is
-// a temp of the device, a sensor of any other metric one of its channels.
-export function customSensorNames(device: Device): string[] {
+// a temp of the device, a sensor of any other metric one of its channels. The saved
+// order is applied across both, as the device store only sorts each map on its own.
+export function customSensorNames(device: Device, menuOrder: MenuOrderIds[]): string[] {
     if (device.type !== DeviceType.CUSTOM_SENSORS || device.info == null) return []
-    return [...device.info.temps.keys(), ...device.info.channels.keys()]
+    const names = [...device.info.temps.keys(), ...device.info.channels.keys()]
+    return orderedByGroup(menuOrder, device.uid, names, (name) => `${device.uid}_${name}`)
 }
 
 export interface DeviceChannelLink {

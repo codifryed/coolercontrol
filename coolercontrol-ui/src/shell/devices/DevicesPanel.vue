@@ -66,7 +66,7 @@ watchEffect(() => {
     const map = new Map<UID, string[]>()
     for (const device of devicesList.value) {
         if (device.type === DeviceType.CUSTOM_SENSORS) {
-            map.set(device.uid, customSensorNames(device))
+            map.set(device.uid, customSensorNames(device, settingsStore.menuOrder))
         }
     }
     sensorNamesByDevice.value = map
