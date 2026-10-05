@@ -335,6 +335,7 @@ mod tests {
         assert!(validate_custom_sensor(&mix(vec![source()])).is_ok());
     }
 
+    // A weight above 254 is rejected: 255 is past the upper bound.
     #[test]
     fn mix_rejects_weight_above_254() {
         assert!(validate_custom_sensor(&mix(vec![weighted(255)])).is_err());
