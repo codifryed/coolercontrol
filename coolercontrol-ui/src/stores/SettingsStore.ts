@@ -30,6 +30,7 @@ import {
     surfaceTintFor,
     SYSTEM_THEME_ID,
     type SystemPalette,
+    systemPaletteFrom,
     THEME_CSS_VAR_NAMES,
     THEME_TOKEN_KEYS,
     THEME_TOKEN_VARS,
@@ -418,7 +419,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 // set up system palette messaging
                 const isSystemPaletteMessage = (data: {
                     type: string
-                }): data is { type: 'coolercontrol:palette'; palette: string } =>
+                }): data is { type: 'coolercontrol:palette'; palette: SystemPalette } =>
                     data.type === 'coolercontrol:palette'
                 const handleSystemPalette = (e: MessageEvent<{ type: string }>) => {
                     const messageOrigin = new URL(e.origin)
@@ -431,7 +432,7 @@ export const useSettingsStore = defineStore('settings', () => {
                         return
                     }
                     if (isSystemPaletteMessage(e.data)) {
-                        const palette = parseSystemPalette(e.data.palette)
+                        const palette = systemPaletteFrom(e.data.palette)
                         if (palette) {
                             systemPalette.value = palette
                             applyThemeMode()

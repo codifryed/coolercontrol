@@ -491,11 +491,6 @@ export interface SystemPalette {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/
 
-/**
- * Parses what the Qt app sends. Anything malformed is dropped rather than let
- * through to a CSS variable, since this is the one palette the UI does not ship
- * and cannot check at build time. Null when nothing usable survives.
- */
 export const parseSystemPalette = (json: string): SystemPalette | null => {
     let raw: unknown
     try {
@@ -503,6 +498,15 @@ export const parseSystemPalette = (json: string): SystemPalette | null => {
     } catch {
         return null
     }
+    return systemPaletteFrom(raw)
+}
+
+/**
+ * Parses what the Qt app sends. Anything malformed is dropped rather than let
+ * through to a CSS variable, since this is the one palette the UI does not ship
+ * and cannot check at build time. Null when nothing usable survives.
+ */
+export const systemPaletteFrom = (raw: unknown): SystemPalette | null => {
     if (raw == null || typeof raw !== 'object') return null
     const source = raw as Record<string, unknown>
     const palette: SystemPalette = {}
