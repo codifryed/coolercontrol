@@ -32,8 +32,10 @@ import {
     HealthEntityType,
     type SourceRef,
     failsafeKey,
+    missingSourceKey,
     sourceKey,
     sourceTempDisplayName,
+    staleSourceKey,
 } from '@/models/DeviceHealth.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -143,15 +145,8 @@ const entityTypeLabel = (type: HealthEntityType): string => {
     }
 }
 
-// A Custom Sensor reads temps or channels, so its source is named without a metric.
-const missingSourceText = (ref: SourceRef): string =>
-    ref.entity_type === HealthEntityType.CustomSensor
-        ? t('views.appInfo.missingSource')
-        : t('views.appInfo.missingTempSource')
-const staleSourceText = (ref: SourceRef): string =>
-    ref.entity_type === HealthEntityType.CustomSensor
-        ? t('views.appInfo.staleSource')
-        : t('views.appInfo.staleTempSource')
+const missingSourceText = (ref: SourceRef): string => t(missingSourceKey(ref))
+const staleSourceText = (ref: SourceRef): string => t(staleSourceKey(ref))
 const customSensorsDeviceUID = computed((): string | undefined => {
     for (const device of deviceStore.allDevices()) {
         if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid

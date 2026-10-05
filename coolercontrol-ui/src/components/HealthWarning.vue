@@ -12,7 +12,13 @@ import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType } from '@/models/Device.ts'
-import { HealthEntityType, SourceRef, sourceTempDisplayName } from '@/models/DeviceHealth.ts'
+import {
+    HealthEntityType,
+    SourceRef,
+    missingSourceKey,
+    sourceTempDisplayName,
+    staleSourceKey,
+} from '@/models/DeviceHealth.ts'
 import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 // Inline warning listing an entity's current device-health issues (failsafe,
@@ -93,20 +99,11 @@ const issues = computed((): Array<string> => {
             lines.push(failsafeText(failsafeRef.reason))
         }
     }
-    // A Custom Sensor reads temps or channels, so its source is named without a metric.
-    const ofCustomSensor = (ref: SourceRef): boolean =>
-        ref.entity_type === HealthEntityType.CustomSensor
     for (const ref of settingsStore.healthMissing.filter(matchesEntity)) {
-        const key = ofCustomSensor(ref)
-            ? 'views.appInfo.missingSource'
-            : 'views.appInfo.missingTempSource'
-        lines.push(sourceLine(key, ref))
+        lines.push(sourceLine(missingSourceKey(ref), ref))
     }
     for (const ref of settingsStore.healthStaleSource.filter(matchesEntity)) {
-        const key = ofCustomSensor(ref)
-            ? 'views.appInfo.staleSource'
-            : 'views.appInfo.staleTempSource'
-        lines.push(sourceLine(key, ref))
+        lines.push(sourceLine(staleSourceKey(ref), ref))
     }
     return lines
 })
