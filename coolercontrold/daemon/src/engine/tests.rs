@@ -490,6 +490,103 @@ mod engine_tests {
         )
     }
 
+    /// A hwmon mock reporting the limits of a fan input that reads microbar.
+    fn pressure_limit_repos() -> Repositories {
+        use crate::device::ChannelAttributeKind;
+
+        let attribute = |name: &str, kind, value| ChannelAttribute {
+            name: name.to_string(),
+            kind,
+            value,
+        };
+        Repositories {
+            hwmon: Some(Rc::new(MockRepository {
+                device_type: DeviceType::Hwmon,
+                set_speeds: Rc::new(RefCell::new(Vec::new())),
+                applied_profiles: Rc::new(RefCell::new(Vec::new())),
+                should_fail: Rc::new(Cell::new(false)),
+                attributes: vec![
+                    attribute("fan1_min", ChannelAttributeKind::FanMin, 382_800.),
+                    attribute("fan1_max", ChannelAttributeKind::FanMax, 472_800.),
+                    attribute("fan1_pulses", ChannelAttributeKind::FanPulses, 2.),
+                ],
+            })),
+            ..Default::default()
+        }
+    }
+
+    /// A config holding two RPM sensors of `fan1`: "pressure" scaling by 0.001, and "mix".
+    fn pressure_sensor_config(hwmon_uid: &DeviceUID) -> Rc<Config> {
+        use crate::setting::{
+            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
+            SensorSource,
+        };
+
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let fan = || SensorSource {
+            device_uid: hwmon_uid.clone(),
+            name: "fan1".to_string(),
+            weight: 1,
+        };
+        let sensor = |id: &str, kind| CustomSensor {
+            id: id.to_string(),
+            metric: CustomSensorMetric::RPM,
+            kind,
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let pressure = CustomSensorKind::Offset {
+            scale: Scale::try_from(0.001).unwrap(),
+            offset: 0.,
+            sources: vec![fan()],
+        };
+        let mix = CustomSensorKind::Mix {
+            mix_function: CustomSensorMixFunctionType::Max,
+            sources: vec![fan()],
+        };
+        config
+            .set_custom_sensor(sensor("pressure", pressure))
+            .unwrap();
+        config.set_custom_sensor(sensor("mix", mix)).unwrap();
+        config
+    }
+
+    /// An engine over a hwmon device with `fan1` and the custom sensors device beside it.
+    /// Returns the engine, the custom sensors device uid and the hwmon device uid.
+    fn pressure_sensor_engine() -> (Engine, DeviceUID, DeviceUID) {
+        let info_with = |channels: &[&str]| DeviceInfo {
+            channels: channels
+                .iter()
+                .map(|name| ((*name).to_string(), ChannelInfo::default()))
+                .collect(),
+            ..Default::default()
+        };
+        let device = |name: &str, d_type, info| {
+            Device::new(name.to_string(), d_type, 0, None, info, None, 1.0)
+        };
+        let leakshield = device("Leakshield", DeviceType::Hwmon, info_with(&["fan1"]));
+        let custom_sensors = device(
+            "Custom Sensors",
+            DeviceType::CustomSensors,
+            info_with(&["pressure", "mix"]),
+        );
+        let hwmon_uid = leakshield.uid.clone();
+        let cs_uid = custom_sensors.uid.clone();
+        let all_devices = Rc::new(HashMap::from([
+            (hwmon_uid.clone(), Rc::new(RefCell::new(leakshield))),
+            (cs_uid.clone(), Rc::new(RefCell::new(custom_sensors))),
+        ]));
+        let engine = Engine::new(
+            all_devices,
+            &Rc::new(pressure_limit_repos()),
+            pressure_sensor_config(&hwmon_uid),
+            Rc::new(crate::calibration::CalibrationStore::empty()),
+            Rc::new(crate::calibration::FanStateMap::new()),
+            Rc::new(crate::overrides::OverridesController::empty()),
+        );
+        (engine, cs_uid, hwmon_uid)
+    }
+
     #[test]
     #[serial]
     fn custom_sensor_attributes_forward_the_source_limits() {
@@ -498,93 +595,7 @@ mod engine_tests {
         // hwmon mock reporting fan limits in microbar, a sensor scaling by 0.001, and the
         // custom sensors device beside it.
         cc_fs::test_runtime(async {
-            use crate::device::ChannelAttributeKind;
-            use crate::setting::{
-                CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
-                Scale, SensorSource,
-            };
-
-            let attribute = |name: &str, kind, value| ChannelAttribute {
-                name: name.to_string(),
-                kind,
-                value,
-            };
-            let repos = Repositories {
-                hwmon: Some(Rc::new(MockRepository {
-                    device_type: DeviceType::Hwmon,
-                    set_speeds: Rc::new(RefCell::new(Vec::new())),
-                    applied_profiles: Rc::new(RefCell::new(Vec::new())),
-                    should_fail: Rc::new(Cell::new(false)),
-                    attributes: vec![
-                        attribute("fan1_min", ChannelAttributeKind::FanMin, 382_800.),
-                        attribute("fan1_max", ChannelAttributeKind::FanMax, 472_800.),
-                        attribute("fan1_pulses", ChannelAttributeKind::FanPulses, 2.),
-                    ],
-                })),
-                ..Default::default()
-            };
-            let info_with = |channels: &[&str]| DeviceInfo {
-                channels: channels
-                    .iter()
-                    .map(|name| ((*name).to_string(), ChannelInfo::default()))
-                    .collect(),
-                ..Default::default()
-            };
-            let device = |name: &str, d_type, info| {
-                Device::new(name.to_string(), d_type, 0, None, info, None, 1.0)
-            };
-            let leakshield = device("Leakshield", DeviceType::Hwmon, info_with(&["fan1"]));
-            let custom_sensors = device(
-                "Custom Sensors",
-                DeviceType::CustomSensors,
-                info_with(&["pressure", "mix"]),
-            );
-            let hwmon_uid = leakshield.uid.clone();
-            let cs_uid = custom_sensors.uid.clone();
-            let all_devices = Rc::new(HashMap::from([
-                (hwmon_uid.clone(), Rc::new(RefCell::new(leakshield))),
-                (cs_uid.clone(), Rc::new(RefCell::new(custom_sensors))),
-            ]));
-            let config = Rc::new(Config::init_default_config().unwrap());
-            let fan = || SensorSource {
-                device_uid: hwmon_uid.clone(),
-                name: "fan1".to_string(),
-                weight: 1,
-            };
-            let sensor = |id: &str, kind| CustomSensor {
-                id: id.to_string(),
-                metric: CustomSensorMetric::RPM,
-                kind,
-                children: Vec::new(),
-                parents: Vec::new(),
-            };
-            config
-                .set_custom_sensor(sensor(
-                    "pressure",
-                    CustomSensorKind::Offset {
-                        scale: Scale::try_from(0.001).unwrap(),
-                        offset: 0.,
-                        sources: vec![fan()],
-                    },
-                ))
-                .unwrap();
-            config
-                .set_custom_sensor(sensor(
-                    "mix",
-                    CustomSensorKind::Mix {
-                        mix_function: CustomSensorMixFunctionType::Max,
-                        sources: vec![fan()],
-                    },
-                ))
-                .unwrap();
-            let engine = Engine::new(
-                all_devices,
-                &Rc::new(repos),
-                config,
-                Rc::new(crate::calibration::CalibrationStore::empty()),
-                Rc::new(crate::calibration::FanStateMap::new()),
-                Rc::new(crate::overrides::OverridesController::empty()),
-            );
+            let (engine, cs_uid, hwmon_uid) = pressure_sensor_engine();
 
             let limits = engine
                 .channel_attributes(&cs_uid, "pressure")
