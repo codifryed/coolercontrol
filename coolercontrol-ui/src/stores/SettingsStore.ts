@@ -24,7 +24,6 @@ import {
     UISettingsDTO,
 } from '@/models/UISettings'
 import {
-    getCockpitSystemPalette,
     hexToTriplet,
     installedTheme,
     parseSystemPalette,
@@ -416,21 +415,33 @@ export const useSettingsStore = defineStore('settings', () => {
             contrastQuery.addEventListener('change', applyThemeMode)
             if (window.parent !== window) {
                 // embedded in frame/iframe
-                // set up cockpit system palette
-                const onMessage = (e: MessageEvent) => {
-                    if (e.data === 'setup-cockpit-system-palette') {
-                        window.removeEventListener('message', onMessage)
-                        function applyCockpitSystemPalette() {
-                            systemPalette.value = getCockpitSystemPalette()
+                // set up system palette messaging
+                const isSystemPaletteMessage = (data: {
+                    type: string
+                }): data is { type: 'coolercontrol:palette'; palette: string } =>
+                    data.type === 'coolercontrol:palette'
+                const handleSystemPalette = (e: MessageEvent<{ type: string }>) => {
+                    const messageOrigin = new URL(e.origin)
+                    const myOrigin = new URL(window.origin)
+                    // allow different port or path, ignore if different hostname or protocol
+                    if (
+                        messageOrigin.protocol !== myOrigin.protocol ||
+                        messageOrigin.hostname !== myOrigin.hostname
+                    ) {
+                        return
+                    }
+                    if (isSystemPaletteMessage(e.data)) {
+                        const palette = parseSystemPalette(e.data.palette)
+                        if (palette) {
+                            systemPalette.value = palette
                             applyThemeMode()
+                        } else {
+                            console.error('failed to parse palette:', e.data.palette)
                         }
-                        colorSchemeQuery.addEventListener('change', applyCockpitSystemPalette)
-                        contrastQuery.addEventListener('change', applyCockpitSystemPalette)
-                        applyCockpitSystemPalette()
                     }
                 }
-                window.addEventListener('message', onMessage)
-                window.parent.postMessage('ready-for-system-palette', '*')
+                window.addEventListener('message', handleSystemPalette)
+                window.parent.postMessage({ type: 'coolercontrol:palette-request' }, '*')
             }
         }
         themeMode.value = uiSettings.themeMode
