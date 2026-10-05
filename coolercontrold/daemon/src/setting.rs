@@ -9,6 +9,7 @@ use std::ops::Not;
 use std::path::PathBuf;
 use std::time::Duration;
 use strum::{Display, EnumString};
+use thiserror::Error;
 
 use crate::device::ChannelName;
 use crate::device::DeviceName;
@@ -767,21 +768,38 @@ impl Default for Scale {
     }
 }
 
+/// Why a Custom Sensor value read from the API or the config file is refused.
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum CustomSensorError {
+    #[error("scale must be a finite number")]
+    ScaleNotFinite,
+
+    #[error(
+        "scale must be non-zero with a magnitude between {} and {}",
+        SCALE_MAGNITUDE_MIN,
+        SCALE_MAGNITUDE_MAX
+    )]
+    ScaleOutOfRange,
+
+    #[error("A {metric} Custom Sensor takes channel_source sources, not temp_source")]
+    TempSourceOnChannelMetric { metric: CustomSensorMetric },
+
+    #[error("A Temp Custom Sensor takes temp_source sources, not channel_source")]
+    ChannelSourceOnTemp,
+}
+
 impl TryFrom<f64> for Scale {
-    type Error = String;
+    type Error = CustomSensorError;
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         if value.is_finite().not() {
-            return Err("scale must be a finite number".to_string());
+            return Err(CustomSensorError::ScaleNotFinite);
         }
         if (SCALE_MAGNITUDE_MIN..=SCALE_MAGNITUDE_MAX)
             .contains(&value.abs())
             .not()
         {
-            return Err(format!(
-                "scale must be non-zero with a magnitude between {SCALE_MAGNITUDE_MIN} and \
-                {SCALE_MAGNITUDE_MAX}"
-            ));
+            return Err(CustomSensorError::ScaleOutOfRange);
         }
         Ok(Self(value))
     }
@@ -1039,22 +1057,17 @@ impl SensorSourceWire {
     }
 
     /// The runtime source, or why the key does not fit the sensor's metric.
-    fn into_source(self, metric: CustomSensorMetric) -> Result<SensorSource, String> {
+    fn into_source(self, metric: CustomSensorMetric) -> Result<SensorSource, CustomSensorError> {
         match self.node {
             SourceNodeWire::Temp { temp_source } => {
                 if metric.is_temp().not() {
-                    return Err(format!(
-                        "A {metric} Custom Sensor takes channel_source sources, not temp_source"
-                    ));
+                    return Err(CustomSensorError::TempSourceOnChannelMetric { metric });
                 }
                 Ok(SensorSource::from_temp(temp_source, self.weight))
             }
             SourceNodeWire::Channel { channel_source } => {
                 if metric.is_temp() {
-                    return Err(
-                        "A Temp Custom Sensor takes temp_source sources, not channel_source"
-                            .to_string(),
-                    );
+                    return Err(CustomSensorError::ChannelSourceOnTemp);
                 }
                 Ok(SensorSource {
                     device_uid: channel_source.device_uid,
@@ -1067,7 +1080,7 @@ impl SensorSourceWire {
 }
 
 impl TryFrom<CustomSensorWire> for CustomSensor {
-    type Error = String;
+    type Error = CustomSensorError;
 
     fn try_from(wire: CustomSensorWire) -> Result<Self, Self::Error> {
         let metric = wire.metric;
@@ -1895,6 +1908,32 @@ mod tests {
         }
         assert!(Scale::default().is_identity());
         assert!(Scale::try_from(1.000_001).unwrap().is_identity().not());
+    }
+
+    // The typed errors read as the messages the API and the config loader have always
+    // reported. Method: compare each variant's text, taking two from the code that raises
+    // them.
+    #[test]
+    fn custom_sensor_errors_keep_their_messages() {
+        assert_eq!(
+            Scale::try_from(f64::NAN).unwrap_err().to_string(),
+            "scale must be a finite number"
+        );
+        assert_eq!(
+            Scale::try_from(0.).unwrap_err().to_string(),
+            "scale must be non-zero with a magnitude between 0.000001 and 1000000"
+        );
+        assert_eq!(
+            CustomSensorError::TempSourceOnChannelMetric {
+                metric: CustomSensorMetric::RPM
+            }
+            .to_string(),
+            "A RPM Custom Sensor takes channel_source sources, not temp_source"
+        );
+        assert_eq!(
+            CustomSensorError::ChannelSourceOnTemp.to_string(),
+            "A Temp Custom Sensor takes temp_source sources, not channel_source"
+        );
     }
 
     // Each metric reads its own value of the named temp or channel. A name that is absent,

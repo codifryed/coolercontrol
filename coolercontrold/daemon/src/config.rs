@@ -2862,7 +2862,7 @@ impl Config {
             return Ok(Scale::default());
         };
         let scale = Self::toml_number(scale_value).with_context(|| "scale should be a number")?;
-        Scale::try_from(scale).map_err(|msg| anyhow!(msg))
+        Ok(Scale::try_from(scale)?)
     }
 
     /// A TOML float or integer as `f64`. Values this large are refused by their range checks.
