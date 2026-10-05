@@ -1073,11 +1073,11 @@ impl CustomSensorsRepo {
         // exactly one) is now enforced by the type, the API validator, and the config reader,
         // so this function only verifies the parent-child hierarchy.
         // The children vector is not necessarily filled at this point, so we check directly.
-        for temp_source_data in custom_sensor.sources() {
-            if temp_source_data.device_uid != self.device_uid {
+        for source in custom_sensor.sources() {
+            if source.device_uid != self.device_uid {
                 continue;
             }
-            if temp_source_data.name == custom_sensor.id {
+            if source.name == custom_sensor.id {
                 return Err(CCError::UserError {
                     msg: format!(
                         "Custom Sensor {sensor_id} cannot have itself as a child",
@@ -1086,7 +1086,7 @@ impl CustomSensorsRepo {
                 }
                 .into());
             }
-            self.verify_child_shares_metric(custom_sensor, &temp_source_data.name)?;
+            self.verify_child_shares_metric(custom_sensor, &source.name)?;
             for (child_name, parents) in self.relationships.borrow().iter() {
                 if &custom_sensor.id == child_name {
                     return Err(CCError::UserError {
@@ -1098,12 +1098,12 @@ impl CustomSensorsRepo {
                     }
                     .into());
                 }
-                if parents.contains(&temp_source_data.name) {
+                if parents.contains(&source.name) {
                     return Err(CCError::UserError {
                         msg: format!(
-                            "Child Custom Sensor {temp_source_name} is already a parent and \
+                            "Child Custom Sensor {source_name} is already a parent and \
                             cannot be a child of this Custom Sensor {sensor_id}",
-                            temp_source_name = temp_source_data.name,
+                            source_name = source.name,
                             sensor_id = custom_sensor.id
                         ),
                     }
@@ -1234,11 +1234,11 @@ impl CustomSensorsRepo {
 
     /// Resolves a source device's display name for failsafe reasons: live devices first,
     /// then the config `devices` list, which retains devices no longer detected.
-    fn source_device_name(&self, temp_source: &SensorSource) -> Option<String> {
-        if let Some(device) = self.all_devices.get(&temp_source.device_uid) {
+    fn source_device_name(&self, source: &SensorSource) -> Option<String> {
+        if let Some(device) = self.all_devices.get(&source.device_uid) {
             return Some(device.borrow().name.clone());
         }
-        self.config.device_name(&temp_source.device_uid)
+        self.config.device_name(&source.device_uid)
     }
 
     /// What a sensor reports when its source is lost: a critical temperature, so a fan curve

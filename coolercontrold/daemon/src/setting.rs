@@ -929,7 +929,7 @@ impl<S> CustomSensorKind<S> {
 }
 
 impl CustomSensor {
-    /// The temp sources this sensor reads from. `File` sensors have none.
+    /// The sources this sensor reads from. `File` sensors have none.
     pub fn sources(&self) -> &[SensorSource] {
         match &self.kind {
             CustomSensorKind::Mix { sources, .. }
@@ -940,7 +940,7 @@ impl CustomSensor {
         }
     }
 
-    /// Mutable access to this sensor's temp sources, or `None` for `File` sensors.
+    /// Mutable access to this sensor's sources, or `None` for `File` sensors.
     pub fn sources_mut(&mut self) -> Option<&mut Vec<SensorSource>> {
         match &mut self.kind {
             CustomSensorKind::Mix { sources, .. }
