@@ -2897,14 +2897,10 @@ impl Config {
         new_custom_sensor
     }
 
-    fn add_custom_sensor_properties_to_custom_sensor_table(
-        custom_sensor: CustomSensor,
-        cs_table: &mut Table,
-    ) {
-        cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
-        // Scrub every variant-specific key first so a variant change on update (e.g. a File
-        // sensor re-saved as Mix) cannot leave a stale field behind. The active variant
-        // rewrites only the keys it owns.
+    /// Scrubs every variant-specific key so a variant change on update (e.g. a File sensor
+    /// re-saved as Mix) cannot leave a stale field behind, then writes the metric. The
+    /// active variant rewrites only the keys it owns.
+    fn reset_custom_sensor_keys(cs_table: &mut Table, metric: CustomSensorMetric) {
         for key in [
             "metric",
             "mix_function",
@@ -2916,11 +2912,19 @@ impl Config {
         ] {
             cs_table.remove(key);
         }
-        let metric = custom_sensor.metric;
         // Left out for temperature, so a sensor older daemons can run is written as before.
         if metric.is_temp().not() {
             cs_table["metric"] = Item::Value(Value::String(Formatted::new(metric.to_string())));
         }
+    }
+
+    fn add_custom_sensor_properties_to_custom_sensor_table(
+        custom_sensor: CustomSensor,
+        cs_table: &mut Table,
+    ) {
+        cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
+        let metric = custom_sensor.metric;
+        Self::reset_custom_sensor_keys(cs_table, metric);
         match custom_sensor.kind {
             CustomSensorKind::Mix {
                 mix_function,
