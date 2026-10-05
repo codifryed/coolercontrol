@@ -183,8 +183,8 @@ onMounted(async () => {
     deviceStore.connectToQtIPC()
 
     if (window.parent !== window) {
-        // notify parent window, e.g. Cockpit, that UI has started loading
-        window.parent.postMessage('loadstart', '*')
+        // notify parent window that UI has started loading
+        window.parent.postMessage({ type: 'coolercontrol:load-start' }, '*')
     }
 
     // Add theme change event listener
@@ -274,7 +274,7 @@ onMounted(async () => {
             settingsStore.pushTrayPinnedSensors()
         } else if (window.parent !== window) {
             // notify parent window, e.g. Cockpit, that UI has finished loading
-            window.parent.postMessage('loadend', '*')
+            window.parent.postMessage({ type: 'coolercontrol:load-end' }, '*')
         }
     }
     // Fire-and-forget: SW manages its own SSE connection independently.
