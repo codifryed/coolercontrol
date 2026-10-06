@@ -31,12 +31,12 @@ import {
     surfaceTintFor,
     SYSTEM_THEME_ID,
     type SystemPalette,
-    systemPaletteFrom,
     THEME_CSS_VAR_NAMES,
     THEME_TOKEN_KEYS,
     THEME_TOKEN_VARS,
     themeCssVars,
 } from '@/shell/themes.ts'
+import { requestEmbedderPalette } from '@/shell/embed.ts'
 import type { Color, UID } from '@/models/Device'
 import { Device } from '@/models/Device'
 import setDefaultSensorAndChannelColors from '@/stores/DeviceColorCreator'
@@ -231,8 +231,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
     const themeMode: Ref<string> = ref(ThemeMode.SYSTEM)
-    // The desktop's own colors, pushed by the Qt app. Null in a browser and on any
-    // desktop that publishes none, and read only while themeMode is System.
+    // Colors from outside the UI: the desktop's, pushed by the Qt app, or an
+    // embedding page's. Null in a plain browser tab and on any desktop that
+    // publishes none, and read only while themeMode is System.
     const systemPalette: Ref<SystemPalette | null> = ref(null)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
@@ -427,36 +428,6 @@ export const useSettingsStore = defineStore('settings', () => {
             const contrastQuery = window.matchMedia('(prefers-contrast: more)')
             colorSchemeQuery.addEventListener('change', applyThemeMode)
             contrastQuery.addEventListener('change', applyThemeMode)
-            if (window.parent !== window) {
-                // embedded in frame/iframe
-                // set up system palette messaging
-                const isSystemPaletteMessage = (data: {
-                    type: string
-                }): data is { type: 'coolercontrol:palette'; palette: SystemPalette } =>
-                    data.type === 'coolercontrol:palette'
-                const handleSystemPalette = (e: MessageEvent<{ type: string }>) => {
-                    const messageOrigin = new URL(e.origin)
-                    const myOrigin = new URL(window.origin)
-                    // allow different port or path, ignore if different hostname or protocol
-                    if (
-                        messageOrigin.protocol !== myOrigin.protocol ||
-                        messageOrigin.hostname !== myOrigin.hostname
-                    ) {
-                        return
-                    }
-                    if (isSystemPaletteMessage(e.data)) {
-                        const palette = systemPaletteFrom(e.data.palette)
-                        if (palette) {
-                            systemPalette.value = palette
-                            applyThemeMode()
-                        } else {
-                            console.error('failed to parse palette:', e.data.palette)
-                        }
-                    }
-                }
-                window.addEventListener('message', handleSystemPalette)
-                window.parent.postMessage({ type: 'coolercontrol:palette-request' }, '*')
-            }
         }
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
@@ -1555,6 +1526,18 @@ export const useSettingsStore = defineStore('settings', () => {
         )
     }
 
+    /**
+     * Lets a page that shows the UI in a frame supply the System palette. Meant
+     * to run before the login: the theme is System until the saved one loads, so
+     * the login dialog and the loading screen wear the palette too.
+     */
+    function followEmbedderPalette(): void {
+        requestEmbedderPalette((palette) => {
+            systemPalette.value = palette
+            applyThemeMode()
+        })
+    }
+
     function applyThemeMode(): void {
         document.documentElement.classList.remove('high-contrast-dark')
         document.documentElement.classList.remove('high-contrast-light')
@@ -2015,6 +1998,7 @@ export const useSettingsStore = defineStore('settings', () => {
         applyMissingDelta,
         applyStaleSourceDelta,
         applyThemeMode,
+        followEmbedderPalette,
         applyInterfaceFont,
         applyLanguage,
         tags,

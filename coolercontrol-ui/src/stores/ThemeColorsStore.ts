@@ -65,25 +65,7 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
             ?.setAttribute('content', `rgb(${rawVar('--colors-bg-two')})`)
     }
 
-    const reLoadThemeColors = () => {
-        themeColors.value.accent = getStyle('--colors-accent')
-        themeColors.value.bg_one = getStyle('--colors-bg-one')
-        themeColors.value.bg_two = getStyle('--colors-bg-two')
-        themeColors.value.border = getStyle('--colors-border-one')
-        themeColors.value.text_color = getStyle('--colors-text-color')
-        themeColors.value.text_color_secondary = getStyle('--colors-text-color-secondary')
-        applyContrastVars()
-    }
-
-    // Theme-mode switches toggle a class on <html>; watch it so the contrast
-    // foregrounds recompute even when reLoadThemeColors isn't called explicitly.
-    applyContrastVars()
-    new MutationObserver(applyContrastVars).observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class'],
-    })
-
-    const themeColors = ref({
+    const readThemeColors = () => ({
         accent: getStyle('--colors-accent'),
         bg_one: getStyle('--colors-bg-one'),
         bg_two: getStyle('--colors-bg-two'),
@@ -96,6 +78,24 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
         red: getStyle('--colors-error'),
         yellow: getStyle('--colors-warning'),
         info: getStyle('--colors-info'),
+    })
+
+    // Charts draw on a canvas and cannot use the CSS variables, so they read
+    // this copy when they are built.
+    const themeColors = ref(readThemeColors())
+
+    const reLoadThemeColors = () => {
+        Object.assign(themeColors.value, readThemeColors())
+        applyContrastVars()
+    }
+
+    // Theme-mode switches toggle a class on <html>; watch it so the copy above and
+    // the contrast foregrounds follow, whoever made the switch. This store is
+    // created before the saved theme is applied, so the first read is never enough.
+    applyContrastVars()
+    new MutationObserver(reLoadThemeColors).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
     })
 
     function hexToRgb(hex: string): Array<number> {
