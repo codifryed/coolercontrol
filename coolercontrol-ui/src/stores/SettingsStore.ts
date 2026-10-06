@@ -1180,7 +1180,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 severity: 'error',
                 summary: t('common.error'),
                 detail: response.error,
-                life: 4000,
+                // A refusal names everything that still uses the sensor.
+                life: 8000,
             })
         }
     }
