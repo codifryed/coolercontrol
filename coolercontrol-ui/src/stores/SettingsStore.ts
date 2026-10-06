@@ -31,6 +31,7 @@ import {
     surfaceTintFor,
     SYSTEM_THEME_ID,
     type SystemPalette,
+    systemPaletteFrom,
     THEME_CSS_VAR_NAMES,
     THEME_TOKEN_KEYS,
     THEME_TOKEN_VARS,
@@ -419,6 +420,42 @@ export const useSettingsStore = defineStore('settings', () => {
                 })
             } catch (err: any) {
                 console.error('Failed to get desktop setting: ', err)
+            }
+        } else {
+            // browser UI
+            const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+            const contrastQuery = window.matchMedia('(prefers-contrast: more)')
+            colorSchemeQuery.addEventListener('change', applyThemeMode)
+            contrastQuery.addEventListener('change', applyThemeMode)
+            if (window.parent !== window) {
+                // embedded in frame/iframe
+                // set up system palette messaging
+                const isSystemPaletteMessage = (data: {
+                    type: string
+                }): data is { type: 'coolercontrol:palette'; palette: SystemPalette } =>
+                    data.type === 'coolercontrol:palette'
+                const handleSystemPalette = (e: MessageEvent<{ type: string }>) => {
+                    const messageOrigin = new URL(e.origin)
+                    const myOrigin = new URL(window.origin)
+                    // allow different port or path, ignore if different hostname or protocol
+                    if (
+                        messageOrigin.protocol !== myOrigin.protocol ||
+                        messageOrigin.hostname !== myOrigin.hostname
+                    ) {
+                        return
+                    }
+                    if (isSystemPaletteMessage(e.data)) {
+                        const palette = systemPaletteFrom(e.data.palette)
+                        if (palette) {
+                            systemPalette.value = palette
+                            applyThemeMode()
+                        } else {
+                            console.error('failed to parse palette:', e.data.palette)
+                        }
+                    }
+                }
+                window.addEventListener('message', handleSystemPalette)
+                window.parent.postMessage({ type: 'coolercontrol:palette-request' }, '*')
             }
         }
         themeMode.value = uiSettings.themeMode
