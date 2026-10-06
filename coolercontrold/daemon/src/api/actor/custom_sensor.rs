@@ -314,6 +314,7 @@ mod tests {
         actor: CustomSensorActor,
         repo: Rc<CustomSensorsRepo>,
         modes: Rc<ModeController>,
+        _overrides_dir: tempfile::TempDir,
     }
 
     impl Harness {
@@ -349,7 +350,10 @@ mod tests {
     /// Alert on the sensor, `has_parent` a second sensor that reads nothing else.
     async fn harness(alert_watches: bool, has_parent: bool) -> Harness {
         let config = Rc::new(Config::init_default_config().unwrap());
-        let overrides = Rc::new(OverridesController::empty());
+        // The delete writes the overrides file, so it gets a directory of its own.
+        let overrides_dir = tempfile::tempdir().unwrap();
+        let overrides_file = overrides_dir.path().join("overrides.toml");
+        let overrides = Rc::new(OverridesController::init_from(overrides_file).await);
         let mut repo =
             CustomSensorsRepo::new(Rc::clone(&config), vec![], Rc::clone(&overrides)).unwrap();
         repo.initialize_devices().await.unwrap();
@@ -392,7 +396,12 @@ mod tests {
             alerts,
             Rc::clone(&modes),
         );
-        Harness { actor, repo, modes }
+        Harness {
+            actor,
+            repo,
+            modes,
+            _overrides_dir: overrides_dir,
+        }
     }
 
     #[test]
