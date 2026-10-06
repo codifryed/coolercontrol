@@ -73,6 +73,10 @@ make dev
     `brace-expansion` 5.0.8+ carries the fix and only `minimatch` 10 can consume it: 5.0.8 exports
     an object instead of a function, so forcing it under an older `minimatch` clears the audit but
     breaks at runtime with `expand is not a function`.
+  - `postcss-selector-parser: ^7.1.6` because `tailwindcss` 3 and its `postcss-nested` still declare
+    `^6.1.x`, and the fix for GHSA-rj75-hqrm-r3gf shipped only in 7.1.6, with no 6.x backport.
+    `vite build` output is byte-identical under 6.1.4 and 7.1.6, but Tailwind 3 was never released
+    against 7.x, so suspect this first if generated CSS looks wrong. Drop it with Tailwind 4.
 - `npm-run-all2` replaces the unmaintained `npm-run-all`, which held `minimatch` 3 and with it the
   same vulnerable `brace-expansion`. Same `run-s` and `run-p` binaries, no script changes.
 
