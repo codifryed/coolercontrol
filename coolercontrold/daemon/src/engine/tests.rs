@@ -685,6 +685,31 @@ mod engine_tests {
 
     #[test]
     #[serial]
+    fn custom_sensor_users_skips_a_same_named_temp_of_another_device() {
+        // Goal: a Profile on another device's temp must not block deleting a Custom Sensor
+        // of the same name. Liquidctl temps are named `sensor1` like older sensor ids.
+        // Method: one Profile reading `sensor1` of the mock device, none reading the sensor.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+            let liquidctl_uid = h.device.borrow().uid.clone();
+            create_graph_profile_with_temp_source(
+                &h.config,
+                vec![(30.0, 50), (70.0, 100)],
+                custom_sensor_temp(&liquidctl_uid, "sensor1"),
+            );
+
+            let users = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(users.is_empty(), "{users:?}");
+        });
+    }
+
+    #[test]
+    #[serial]
     fn test_no_application_without_settings() {
         cc_fs::test_runtime(async {
             // Given

@@ -1496,12 +1496,13 @@ impl Engine {
     ) -> Result<Vec<String>> {
         debug_assert!(cs_device_uid.is_empty().not());
         debug_assert!(custom_sensor_id.is_empty().not());
+        // The device is part of the match: other devices name temps like Custom Sensors do.
+        let is_sensor = |source: &TempSource| {
+            source.device_uid == cs_device_uid && source.temp_name == custom_sensor_id
+        };
         let mut users = Vec::new();
         for profile in self.config.get_profiles().await? {
-            let reads_sensor = profile
-                .temp_source()
-                .is_some_and(|source| source.temp_name == custom_sensor_id);
-            if reads_sensor {
+            if profile.temp_source().is_some_and(is_sensor) {
                 users.push(format!("Profile \"{}\"", profile.name));
             }
         }
@@ -1509,10 +1510,7 @@ impl Engine {
             let SettingKind::Lcd { lcd } = &setting.kind else {
                 continue;
             };
-            let shows_sensor = lcd.temp_source().is_some_and(|source| {
-                source.device_uid == cs_device_uid && source.temp_name == custom_sensor_id
-            });
-            if shows_sensor {
+            if lcd.temp_source().is_some_and(is_sensor) {
                 users.push(format!(
                     "LCD of {}",
                     self.device_display_name(cs_device_uid)
