@@ -520,13 +520,19 @@ export const systemPaletteFrom = (raw: unknown): SystemPalette | null => {
         const candidate = source.tokens as Record<string, unknown>
         // A half-filled palette would draw desktop colors over ours, which reads
         // worse than either on its own, so a single bad token drops the set.
-        const complete = THEME_TOKEN_KEYS.every(
-            (key) => typeof candidate[key] === 'string' && HEX_COLOR.test(candidate[key] as string),
+        const refused = THEME_TOKEN_KEYS.filter(
+            (key) =>
+                !(typeof candidate[key] === 'string' && HEX_COLOR.test(candidate[key] as string)),
         )
-        if (complete) {
+        if (refused.length === 0) {
             palette.tokens = Object.fromEntries(
                 THEME_TOKEN_KEYS.map((key) => [key, candidate[key]]),
             ) as unknown as ThemeTokens
+        } else {
+            // Whoever sent the set sees only a stock theme, so name what to fix.
+            console.warn(
+                `System palette tokens ignored, each needs a lowercase #rrggbb color: ${refused.join(', ')}`,
+            )
         }
     }
     return Object.keys(palette).length > 0 ? palette : null
