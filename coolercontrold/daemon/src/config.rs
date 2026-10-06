@@ -2985,7 +2985,9 @@ impl Config {
     // DOWNGRADE-COMPAT(added 5.1.0, remove 5.3.0): 5.0.x reads `offset` as a whole number
     // from -100 to 100 and knows no `scale`. It gets one only where it computes the same
     // value. Any other sensor gets a decimal, which 5.0.x refuses to load instead of running
-    // fan curves on an unscaled temperature.
+    // fan curves on an unscaled temperature. No shim covers the rest of what 5.0.x does not
+    // know: it refuses the whole config for a `Sum` mix or a `channel_source` source, and
+    // ignores `metric`, so it loads a `File` sensor of another metric as a temperature.
     #[allow(clippy::cast_possible_truncation)]
     fn custom_sensor_offset_item(metric: CustomSensorMetric, scale: Scale, offset: f64) -> Item {
         debug_assert!(offset.is_finite());
