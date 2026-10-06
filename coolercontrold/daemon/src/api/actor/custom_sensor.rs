@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::alerts::AlertController;
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
@@ -24,6 +25,7 @@ struct CustomSensorActor {
     engine: Rc<Engine>,
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
+    alert_controller: Rc<AlertController>,
 }
 
 enum CustomSensorMessage {
@@ -55,6 +57,7 @@ impl CustomSensorActor {
         engine: Rc<Engine>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        alert_controller: Rc<AlertController>,
     ) -> Self {
         Self {
             receiver,
@@ -62,6 +65,7 @@ impl CustomSensorActor {
             engine,
             config,
             overrides,
+            alert_controller,
         }
     }
 }
@@ -122,10 +126,16 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
             } => {
                 let result = async {
                     let cs_device_uid = self.custom_sensors_repo.get_device_uid();
-                    let users = self
+                    let mut users = self
                         .engine
                         .custom_sensor_users(&cs_device_uid, &custom_sensor_id)
                         .await?;
+                    users.extend(
+                        self.alert_controller
+                            .alerts_watching(&cs_device_uid, &custom_sensor_id)
+                            .into_iter()
+                            .map(|name| format!("Alert \"{name}\"")),
+                    );
                     let sensor_label = self.overrides.resolve_channel_label(
                         &cs_device_uid,
                         &custom_sensor_id,
@@ -195,12 +205,19 @@ impl CustomSensorHandle {
         engine: Rc<Engine>,
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
+        alert_controller: Rc<AlertController>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor =
-            CustomSensorActor::new(receiver, custom_sensors_repo, engine, config, overrides);
+        let actor = CustomSensorActor::new(
+            receiver,
+            custom_sensors_repo,
+            engine,
+            config,
+            overrides,
+            alert_controller,
+        );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

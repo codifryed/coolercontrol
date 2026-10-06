@@ -692,6 +692,7 @@ async fn create_app_state<'s>(
         engine.clone(),
         config.clone(),
         overrides_controller.clone(),
+        alert_controller.clone(),
         cancel_token.clone(),
         main_scope,
     );
