@@ -644,6 +644,45 @@ mod engine_tests {
         });
     }
 
+    const CUSTOM_SENSORS_UID: &str = "custom-sensors-uid";
+
+    fn custom_sensor_temp(device_uid: &str, temp_name: &str) -> TempSource {
+        TempSource {
+            device_uid: device_uid.to_string(),
+            temp_name: temp_name.to_string(),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_users_names_the_profile_reading_it() {
+        // Goal: the delete guard learns which Profile reads a Custom Sensor, so the refusal
+        // can name it. Method: ask before and after a Profile takes the sensor as its temp
+        // source.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+
+            let unused = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+            create_graph_profile_with_temp_source(
+                &h.config,
+                vec![(30.0, 50), (70.0, 100)],
+                custom_sensor_temp(CUSTOM_SENSORS_UID, "sensor1"),
+            );
+            let used = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(unused.is_empty());
+            assert_eq!(used, vec!["Profile \"Test Profile\"".to_string()]);
+        });
+    }
+
     #[test]
     #[serial]
     fn test_no_application_without_settings() {

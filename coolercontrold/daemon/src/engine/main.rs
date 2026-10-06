@@ -1487,46 +1487,50 @@ impl Engine {
         }
     }
 
-    pub async fn custom_sensor_deleted(
+    /// The Profiles and LCD settings that read the Custom Sensor, each named for the user.
+    /// Empty when none does.
+    pub async fn custom_sensor_users(
         &self,
         cs_device_uid: &str,
         custom_sensor_id: &str,
-    ) -> Result<()> {
-        let affects_profiles = self
-            .config
-            .get_profiles()
-            .await
-            .unwrap_or(Vec::new())
-            .iter()
-            .any(|profile| {
-                profile.temp_source().is_some()
-                    && profile.temp_source().unwrap().temp_name == custom_sensor_id
-            });
-        let affects_lcd_settings =
-            self.config
-                .get_device_settings(cs_device_uid)?
-                .iter()
-                .any(|setting| {
-                    let SettingKind::Lcd { lcd } = &setting.kind else {
-                        return false;
-                    };
-                    let Some(temp_source) = lcd.temp_source() else {
-                        return false;
-                    };
-                    temp_source.device_uid == cs_device_uid
-                        && temp_source.temp_name == custom_sensor_id
-                });
-        if affects_profiles || affects_lcd_settings {
-            Err(CCError::UserError {
-                msg: format!(
-                    "Custom Sensor with ID:{custom_sensor_id} is being used by another setting.
-                    Please remove the custom sensor from your settings before deleting."
-                ),
+    ) -> Result<Vec<String>> {
+        debug_assert!(cs_device_uid.is_empty().not());
+        debug_assert!(custom_sensor_id.is_empty().not());
+        let mut users = Vec::new();
+        for profile in self.config.get_profiles().await? {
+            let reads_sensor = profile
+                .temp_source()
+                .is_some_and(|source| source.temp_name == custom_sensor_id);
+            if reads_sensor {
+                users.push(format!("Profile \"{}\"", profile.name));
             }
-            .into())
-        } else {
-            Ok(())
         }
+        for setting in self.config.get_device_settings(cs_device_uid)? {
+            let SettingKind::Lcd { lcd } = &setting.kind else {
+                continue;
+            };
+            let shows_sensor = lcd.temp_source().is_some_and(|source| {
+                source.device_uid == cs_device_uid && source.temp_name == custom_sensor_id
+            });
+            if shows_sensor {
+                users.push(format!(
+                    "LCD of {}",
+                    self.device_display_name(cs_device_uid)
+                ));
+            }
+        }
+        Ok(users)
+    }
+
+    /// The name the user knows a device by, also for one that is not connected.
+    fn device_display_name(&self, device_uid: &str) -> String {
+        let device_uid = device_uid.to_string();
+        let raw_name = self.all_devices.get(&device_uid).map_or_else(
+            || "a disconnected device".to_string(),
+            |device| device.borrow().name.clone(),
+        );
+        self.overrides
+            .resolve_device_name(&device_uid, None, &raw_name)
     }
 
     async fn get_ordered_member_profiles(
