@@ -476,8 +476,9 @@ export const THEME_CSS_VAR_NAMES: string[] = [
 export const SYSTEM_THEME_ID = 'system'
 
 /**
- * The desktop's own colors, as the Qt app reads them. A browser tab has none, and
- * neither does a desktop that publishes nothing.
+ * Colors from outside the UI: the desktop's own, as the Qt app reads them, or
+ * those of a page that shows the UI in a frame (see `shell/embed.ts`). A plain
+ * browser tab has none, and neither does a desktop that publishes nothing.
  *
  * `tokens` arrives all or nothing. KDE writes its resolved palette to a file any
  * process can read, so the whole set is available there; everywhere else only an
@@ -491,6 +492,7 @@ export interface SystemPalette {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/
 
+/** Parses what the Qt app sends: the palette as JSON text. */
 export const parseSystemPalette = (json: string): SystemPalette | null => {
     let raw: unknown
     try {
@@ -502,9 +504,9 @@ export const parseSystemPalette = (json: string): SystemPalette | null => {
 }
 
 /**
- * Parses what the Qt app sends. Anything malformed is dropped rather than let
- * through to a CSS variable, since this is the one palette the UI does not ship
- * and cannot check at build time. Null when nothing usable survives.
+ * Checks a palette from outside the UI. Anything malformed is dropped rather
+ * than let through to a CSS variable, since these are the palettes the UI does
+ * not ship and cannot check at build time. Null when nothing usable survives.
  */
 export const systemPaletteFrom = (raw: unknown): SystemPalette | null => {
     if (raw == null || typeof raw !== 'object') return null

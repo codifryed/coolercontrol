@@ -231,8 +231,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
     const themeMode: Ref<string> = ref(ThemeMode.SYSTEM)
-    // The desktop's own colors, pushed by the Qt app. Null in a browser and on any
-    // desktop that publishes none, and read only while themeMode is System.
+    // Colors from outside the UI: the desktop's, pushed by the Qt app, or an
+    // embedding page's. Null in a plain browser tab and on any desktop that
+    // publishes none, and read only while themeMode is System.
     const systemPalette: Ref<SystemPalette | null> = ref(null)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
