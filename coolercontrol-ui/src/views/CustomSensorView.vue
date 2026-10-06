@@ -576,8 +576,10 @@ onMounted(async () => {
                 />
             </template>
             <template #actions>
+                <!-- The margin sets it apart from delete and save, which belong together. -->
                 <UiButton
                     v-if="!shouldCreateSensor"
+                    class="mr-6"
                     variant="outline"
                     v-tooltip.top="t('layout.shell.coolingPage.fullChart')"
                     @click="router.push(fullChartRoute)"
