@@ -1664,7 +1664,8 @@ mod tests {
         Rc::new(crate::overrides::OverridesController::empty())
     }
 
-    // Calculates the delta between the minimum and maximum temperature values in the given vector of SourceData.
+    // Calculates the delta between the minimum and maximum temperature values in the given
+    // vector of SourceData.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_calculate_delta() {
@@ -1739,7 +1740,8 @@ mod tests {
         assert_eq!(result, 0.0);
     }
 
-    // Returns the difference between the only two temperature values in the given vector of SourceData if it contains exactly two elements.
+    // Returns the difference between the only two temperature values in the given vector of
+    // SourceData if it contains exactly two elements.
     #[test]
     #[allow(clippy::float_cmp)]
     fn test_two_elements() {
@@ -1962,7 +1964,8 @@ mod tests {
         assert_eq!(result, 20.0);
     }
 
-    // Returns the maximum temperature value from a vector of SourceData structs with positive values
+    // Returns the maximum temperature value from a vector of SourceData structs with positive
+    // values
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_from_positive_values() {
@@ -2049,7 +2052,8 @@ mod tests {
         assert_eq!(result, 30.0);
     }
 
-    // Returns the maximum temperature value when the vector has two elements with different temperature values
+    // Returns the maximum temperature value when the vector has two elements with different
+    // temperature values
     #[test]
     #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_vector_has_two_elements_with_different_temps() {
