@@ -515,6 +515,11 @@ export default {
             reloadFailed: 'فشل في إعادة تحميل ملف البيان',
             serviceLogs: 'سجلات الخدمة',
             commandCopied: 'تم نسخ الأمر إلى الحافظة',
+            openLinkHeader: 'فتح رابط خارجي؟',
+            openLinkMessage: 'هذا الرابط مصدره الإضافة {plugin} وسيُفتح في متصفحك:',
+            openLink: 'فتح الرابط',
+            linkBlocked: 'تم حظر الرابط',
+            linkBlockedDetail: 'يمكن للإضافة فتح روابط الويب المؤدية إلى مواقع أخرى فقط.',
         },
         add: {
             profile: 'ملف شخصي',

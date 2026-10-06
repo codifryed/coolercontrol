@@ -498,6 +498,11 @@ export default {
             reloadFailed: '重新加载清单失败',
             serviceLogs: '服务日志',
             commandCopied: '命令已复制到剪贴板',
+            openLinkHeader: '打开外部链接？',
+            openLinkMessage: '此链接来自插件 {plugin}，将在浏览器中打开：',
+            openLink: '打开链接',
+            linkBlocked: '链接已阻止',
+            linkBlockedDetail: '插件只能打开指向其他网站的网页链接。',
         },
         add: {
             profile: '配置文件',

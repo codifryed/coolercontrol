@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import { useToast } from '@/shell/toast'
 import { PluginDto } from '@/models/Plugins.ts'
 import { validatePluginLinkForUi } from '@/composables/pluginLinkValidation.ts'
+import { usePluginLinks } from '@/composables/usePluginLinks.ts'
 
 const deviceStore = useDeviceStore()
 const toast = useToast()
@@ -22,7 +23,9 @@ const { t } = useI18n()
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const plugin: PluginDto = dialogRef.value.data.plugin
 const isManaged: boolean = dialogRef.value.data.isManaged ?? false
-const pluginLink = validatePluginLinkForUi(plugin.url, deviceStore.daemonClient.daemonURL)?.href
+const isPluginLinkOpenable =
+    validatePluginLinkForUi(plugin.url, deviceStore.daemonClient.daemonURL) != null
+const pluginLinks = usePluginLinks()
 
 const copyCommand = (text: string): void => {
     if (navigator.clipboard?.writeText) {
@@ -91,12 +94,11 @@ const fallbackCopy = (text: string): void => {
                 <tr v-if="plugin.url" :class="{ 'border-b border-border-one': isManaged }">
                     <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                     <td class="py-3 px-4">
-                        <a
-                            v-if="pluginLink"
+                        <button
+                            v-if="isPluginLinkOpenable"
+                            type="button"
                             class="inline-flex items-center gap-1 underline"
-                            :href="pluginLink"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            @click="pluginLinks.requestLink(plugin.id, plugin.url, true)"
                         >
                             <svg-icon
                                 type="mdi"
@@ -104,7 +106,7 @@ const fallbackCopy = (text: string): void => {
                                 :size="deviceStore.getREMSize(1)"
                             />
                             {{ t('layout.settings.plugins.pluginUrl') }}
-                        </a>
+                        </button>
                         <!-- Not a link the UI may open, so it is shown rather than followed. -->
                         <code v-else class="select-all break-all">{{ plugin.url }}</code>
                     </td>

@@ -195,6 +195,22 @@ const restartPlugin = async () => {
     return _pluginRestarted
 }
 
+/* Ask CoolerControl to open an external link in a new browser tab. The user confirms each
+   link first. Only absolute http(s) links to another host are opened.
+   Plain <a href> links to another host go through this automatically.
+   Call it from a click on the page: a request that no recent click preceded is ignored. */
+const openLink = (url) => {
+    const message = { type: 'openLink', url: String(url) }
+    const targetOrigin = document.location.origin
+    try {
+        // Tells CoolerControl whether a click on this page preceded the request.
+        window.parent.postMessage(message, { targetOrigin, includeUserActivation: true })
+    } catch {
+        // A browser without the options form reads the object as a bad origin.
+        window.parent.postMessage(message, targetOrigin)
+    }
+}
+
 // Data Exchange Functions
 /////////////////////////////////////////////////////////////
 
@@ -293,4 +309,19 @@ const runPluginScript = (mainPluginFunction, loadParentStyle = true) => {
     })()
 }
 
+// The plugin page is sandboxed and cannot open a tab itself, so a click on a link to another
+// host is handed to CoolerControl. Links within the plugin's own pages are left alone.
+const _routeExternalLink = (clickEvent) => {
+    // Not framed, as in standalone development: the page can follow its own links.
+    if (window.parent === window) return
+    if (clickEvent.defaultPrevented || clickEvent.button !== 0) return
+    const anchor = clickEvent.target?.closest?.('a[href]')
+    if (anchor == null) return
+    if (anchor.protocol !== 'http:' && anchor.protocol !== 'https:') return
+    if (anchor.host === document.location.host) return
+    clickEvent.preventDefault()
+    openLink(anchor.href)
+}
+
 window.addEventListener('message', _processMessages)
+document.addEventListener('click', _routeExternalLink)

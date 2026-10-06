@@ -525,6 +525,12 @@ export default {
             reloadFailed: 'Не удалось перечитать манифест',
             serviceLogs: 'Журналы сервиса',
             commandCopied: 'Команда скопирована в буфер обмена',
+            openLinkHeader: 'Открыть внешнюю ссылку?',
+            openLinkMessage:
+                'Эта ссылка получена от плагина {plugin} и откроется в вашем браузере:',
+            openLink: 'Открыть ссылку',
+            linkBlocked: 'Ссылка заблокирована',
+            linkBlockedDetail: 'Плагин может открывать только веб-ссылки на другие сайты.',
         },
         add: {
             profile: 'Профиль',

@@ -525,6 +525,11 @@ export default {
             reloadFailed: 'Error al recargar el manifiesto',
             serviceLogs: 'Registros del servicio',
             commandCopied: 'Comando copiado al portapapeles',
+            openLinkHeader: '¿Abrir enlace externo?',
+            openLinkMessage: 'Este enlace proviene del plugin {plugin} y se abre en su navegador:',
+            openLink: 'Abrir enlace',
+            linkBlocked: 'Enlace bloqueado',
+            linkBlockedDetail: 'Un plugin solo puede abrir enlaces web a otros sitios.',
         },
         add: {
             profile: 'Perfil',

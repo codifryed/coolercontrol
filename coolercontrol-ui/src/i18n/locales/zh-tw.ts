@@ -498,6 +498,11 @@ export default {
             reloadFailed: '重新載入資訊清單失敗',
             serviceLogs: '服務日誌',
             commandCopied: '命令已複製到剪貼簿',
+            openLinkHeader: '開啟外部連結？',
+            openLinkMessage: '此連結來自外掛 {plugin}，將在瀏覽器中開啟：',
+            openLink: '開啟連結',
+            linkBlocked: '連結已封鎖',
+            linkBlockedDetail: '外掛只能開啟指向其他網站的網頁連結。',
         },
         add: {
             profile: '設定檔',

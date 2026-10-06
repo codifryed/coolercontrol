@@ -516,6 +516,11 @@ export default {
             reloadFailed: '매니페스트 다시 불러오기 실패',
             serviceLogs: '서비스 로그',
             commandCopied: '명령이 클립보드에 복사됨',
+            openLinkHeader: '외부 링크를 여시겠습니까?',
+            openLinkMessage: '이 링크는 {plugin} 플러그인에서 제공한 것이며 브라우저에서 열립니다:',
+            openLink: '링크 열기',
+            linkBlocked: '링크 차단됨',
+            linkBlockedDetail: '플러그인은 다른 사이트로 연결되는 웹 링크만 열 수 있습니다.',
         },
         add: {
             profile: '프로파일',

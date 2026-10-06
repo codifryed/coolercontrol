@@ -519,6 +519,11 @@ export default {
             reloadFailed: 'मैनिफेस्ट पुनः लोड करने में विफल',
             serviceLogs: 'सेवा लॉग',
             commandCopied: 'कमांड क्लिपबोर्ड पर कॉपी किया गया',
+            openLinkHeader: 'बाहरी लिंक खोलें?',
+            openLinkMessage: 'यह लिंक प्लगइन {plugin} से आया है और आपके ब्राउज़र में खुलेगा:',
+            openLink: 'लिंक खोलें',
+            linkBlocked: 'लिंक अवरुद्ध',
+            linkBlockedDetail: 'प्लगइन केवल अन्य साइटों के वेब लिंक खोल सकता है।',
         },
         add: {
             profile: 'प्रोफाइल',

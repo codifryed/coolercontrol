@@ -8,14 +8,15 @@ const comparableHostname = (hostname: string): string => hostname.toLowerCase().
 
 /**
  * Validate a link supplied by a plugin before the UI opens it. Returns the parsed URL, or
- * null if it must not be opened. Open and show the returned URL, never the raw string.
+ * null if it must not be opened. Use the returned URL, never the raw string.
  *
  * Only absolute http(s) URLs without credentials are taken. A link to one of `ownHostnames`
  * is refused on any port: opened from the UI it is a same-site navigation, so the session
  * cookie, which is not scoped to a port, would go with it.
  *
  * Only the first hop is checked, so a returned URL is not cookie-safe to open from the UI:
- * an external host can redirect to an own hostname, and the session cookie follows.
+ * an external host can redirect to an own hostname, and the session cookie follows. Open it
+ * through `usePluginLinks`, whose opener frame keeps every hop cross-site.
  */
 export function validatePluginLink(raw: unknown, ownHostnames: readonly string[]): URL | null {
     if (typeof raw !== 'string' || raw.length > PLUGIN_LINK_LENGTH_MAX) {
