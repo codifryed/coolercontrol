@@ -6,6 +6,7 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
 use crate::engine::main::Engine;
+use crate::modes::ModeController;
 use crate::overrides::OverridesController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::setting::CustomSensor;
@@ -26,6 +27,7 @@ struct CustomSensorActor {
     config: Rc<Config>,
     overrides: Rc<OverridesController>,
     alert_controller: Rc<AlertController>,
+    mode_controller: Rc<ModeController>,
 }
 
 enum CustomSensorMessage {
@@ -58,6 +60,7 @@ impl CustomSensorActor {
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
         alert_controller: Rc<AlertController>,
+        mode_controller: Rc<ModeController>,
     ) -> Self {
         Self {
             receiver,
@@ -66,6 +69,7 @@ impl CustomSensorActor {
             config,
             overrides,
             alert_controller,
+            mode_controller,
         }
     }
 }
@@ -158,6 +162,16 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                             {custom_sensor_id}: {err}"
                         );
                     }
+                    if let Err(err) = self
+                        .mode_controller
+                        .custom_sensor_deleted(&cs_device_uid, &custom_sensor_id)
+                        .await
+                    {
+                        warn!(
+                            "Failed to save the Modes without deleted sensor \
+                            {custom_sensor_id}: {err}"
+                        );
+                    }
                     save_result
                 }
                 .await;
@@ -206,6 +220,7 @@ impl CustomSensorHandle {
         config: Rc<Config>,
         overrides: Rc<OverridesController>,
         alert_controller: Rc<AlertController>,
+        mode_controller: Rc<ModeController>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
@@ -217,6 +232,7 @@ impl CustomSensorHandle {
             config,
             overrides,
             alert_controller,
+            mode_controller,
         );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
