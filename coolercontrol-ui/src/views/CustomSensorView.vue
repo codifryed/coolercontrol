@@ -692,7 +692,7 @@ onMounted(async () => {
                             {{ t('views.customSensors.scale') }}
                         </small>
                         <div
-                            class="rounded-lg bg-bg-two p-3 flex justify-center"
+                            class="rounded-lg border border-border-one bg-bg-two p-3 flex justify-center"
                             v-tooltip.top="{
                                 escape: false,
                                 value: t('views.customSensors.scaleTooltip'),
@@ -709,7 +709,7 @@ onMounted(async () => {
                             {{ t('views.customSensors.offset') }}
                         </small>
                         <div
-                            class="rounded-lg bg-bg-two p-3 flex justify-center"
+                            class="rounded-lg border border-border-one bg-bg-two p-3 flex justify-center"
                             v-tooltip.top="{
                                 escape: false,
                                 value: t('views.customSensors.offsetTooltip'),
@@ -730,7 +730,7 @@ onMounted(async () => {
                             {{ t('views.customSensors.timeWindow') }}
                         </small>
                         <div
-                            class="rounded-lg bg-bg-two p-3 flex justify-center"
+                            class="rounded-lg border border-border-one bg-bg-two p-3 flex justify-center"
                             v-tooltip.top="{
                                 escape: false,
                                 value: t('views.customSensors.timeWindowTooltip'),
