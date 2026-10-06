@@ -1506,17 +1506,21 @@ impl Engine {
                 users.push(format!("Profile \"{}\"", profile.name));
             }
         }
-        for setting in self.config.get_device_settings(cs_device_uid)? {
-            let SettingKind::Lcd { lcd } = &setting.kind else {
-                continue;
-            };
-            if lcd.temp_source().is_some_and(is_sensor) {
-                users.push(format!(
-                    "LCD of {}",
-                    self.device_display_name(cs_device_uid)
-                ));
+        // Every device with saved settings, connected or not: an LCD setting is applied
+        // again when its device returns.
+        let mut lcd_users = Vec::new();
+        for (device_uid, settings) in self.config.get_all_devices_settings()? {
+            let shows_sensor = settings.iter().any(|setting| {
+                matches!(&setting.kind, SettingKind::Lcd { lcd }
+                    if lcd.temp_source().is_some_and(is_sensor))
+            });
+            if shows_sensor {
+                lcd_users.push(format!("LCD of {}", self.device_display_name(&device_uid)));
             }
         }
+        // The settings map has no order of its own.
+        lcd_users.sort_unstable();
+        users.append(&mut lcd_users);
         Ok(users)
     }
 

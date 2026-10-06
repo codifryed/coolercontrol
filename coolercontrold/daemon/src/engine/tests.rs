@@ -17,8 +17,8 @@ mod engine_tests {
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionKind, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
-        ProfileUID, Setting, SettingKind, TempSource,
+        Function, FunctionKind, FunctionUID, LcdModeKind, LcdSettings, LightingSettings, Profile,
+        ProfileKind, ProfileUID, Setting, SettingKind, TempSource,
     };
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
@@ -705,6 +705,56 @@ mod engine_tests {
                 .unwrap();
 
             assert!(users.is_empty(), "{users:?}");
+        });
+    }
+
+    fn lcd_showing(temp_source: TempSource) -> Setting {
+        Setting {
+            channel_name: "lcd".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    brightness: None,
+                    orientation: None,
+                    colors: Vec::new(),
+                    mode: LcdModeKind::Temp {
+                        temp_source: Some(temp_source),
+                    },
+                },
+            },
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_users_names_the_lcd_of_another_device() {
+        // Goal: an LCD setting lives under the device that has the screen, never under the
+        // Custom Sensors device, and must still block the delete. Method: the mock device's
+        // LCD shows first a temp of its own with the sensor's name, then the sensor.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+            let lcd_device_uid = h.device.borrow().uid.clone();
+
+            h.config.set_device_setting(
+                &lcd_device_uid,
+                &lcd_showing(custom_sensor_temp(&lcd_device_uid, "sensor1")),
+            );
+            let own_temp = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+            h.config.set_device_setting(
+                &lcd_device_uid,
+                &lcd_showing(custom_sensor_temp(CUSTOM_SENSORS_UID, "sensor1")),
+            );
+            let the_sensor = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(own_temp.is_empty(), "{own_temp:?}");
+            assert_eq!(the_sensor, vec!["LCD of Test Device".to_string()]);
         });
     }
 
