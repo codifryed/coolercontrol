@@ -15,7 +15,7 @@ import {
 } from '@mdi/js'
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { type RouteLocationRaw, useRouter } from 'vue-router'
+import type { RouteLocationRaw } from 'vue-router'
 import { useConfirm } from '@/shell/confirm'
 import { useToast } from '@/shell/toast'
 import { useCalibrationConversion } from '@/composables/useCalibrationConversion.ts'
@@ -47,6 +47,7 @@ import {
     isFlowExpandable,
     type FlowNode,
 } from '@/shell/cooling/controlFlow.ts'
+import MonitoringButton from '@/components/MonitoringButton.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
 import UiGroupedSelect from '@/shell/ui/UiGroupedSelect.vue'
@@ -61,7 +62,6 @@ const ProfileEditor = defineAsyncComponent(() => import('@/views/ProfileView.vue
 const props = defineProps<{ deviceUID: UID; channelName: string }>()
 
 const { t } = useI18n()
-const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const deviceStore = useDeviceStore()
@@ -345,7 +345,7 @@ if (channelDashboard.value.dataTypes.length > 0) {
 }
 // A chart binds its lines to its series at mount, so a changed line set needs a new chart.
 const chartKey = ref<string>(uuidV4())
-// The channel's page under Monitoring, linked from the header and from the chart.
+// The channel's page under Monitoring, linked from the chart.
 const fullChartRoute: RouteLocationRaw = {
     name: 'monitoring-sensor',
     params: { deviceUID: props.deviceUID, channelName: props.channelName },
@@ -380,14 +380,7 @@ watch(channelLabel, () => (chartKey.value = uuidV4()))
                 >
                     {{ groupDigits(liveRpm) }} {{ settingsStore.rpmUnit(deviceUID, channelName) }}
                 </span>
-                <UiButton
-                    variant="outline"
-                    v-tooltip.top="t('layout.shell.coolingPage.fullChart')"
-                    @click="router.push(fullChartRoute)"
-                >
-                    <svg-icon type="mdi" :path="mdiChartLine" :size="16" />
-                    {{ t('layout.shell.monitoring') }}
-                </UiButton>
+                <MonitoringButton :device-u-i-d="deviceUID" :channel-name="channelName" />
             </div>
         </div>
 

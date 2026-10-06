@@ -53,6 +53,7 @@ import { useI18n } from 'vue-i18n'
 import EntityTitleRename from '@/components/EntityTitleRename.vue'
 import EntityPageHeader from '@/components/EntityPageHeader.vue'
 import HealthWarning from '@/components/HealthWarning.vue'
+import MonitoringButton from '@/components/MonitoringButton.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import {
     type AvailableSource,
@@ -474,7 +475,7 @@ const chartMinutesChanged = (value: number): void => {
     singleDashboard.value.timeRangeSeconds = value * 60
 }
 const chartKey: Ref<string> = ref(uuidV4())
-// The sensor's page under Monitoring, linked from the header and from the chart.
+// The sensor's page under Monitoring, linked from the chart.
 const fullChartRoute: RouteLocationRaw = {
     name: 'monitoring-sensor',
     params: { deviceUID: customSensorsDeviceUID, channelName: customSensor.id },
@@ -577,16 +578,12 @@ onMounted(async () => {
             </template>
             <template #actions>
                 <!-- The margin sets it apart from delete and save, which belong together. -->
-                <UiButton
+                <MonitoringButton
                     v-if="!shouldCreateSensor"
                     class="mr-6"
-                    variant="outline"
-                    v-tooltip.top="t('layout.shell.coolingPage.fullChart')"
-                    @click="router.push(fullChartRoute)"
-                >
-                    <svg-icon type="mdi" :path="mdiChartLine" :size="deviceStore.getREMSize(1.1)" />
-                    <span class="ml-1">{{ t('layout.shell.monitoring') }}</span>
-                </UiButton>
+                    :device-u-i-d="customSensorsDeviceUID"
+                    :channel-name="customSensor.id"
+                />
                 <UiButton
                     v-if="!shouldCreateSensor"
                     variant="ghost"
