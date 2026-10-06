@@ -20,12 +20,12 @@ use crate::paths;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, CustomSensorType,
-    DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
-    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
-    ProfileMixFunctionType, ProfileType, ProfileUID, Scale, SensorSource, Setting, SettingKind,
-    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT,
-    STARTUP_DELAY_SECONDS_MAX,
+    CustomSensorError, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+    CustomSensorType, DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID,
+    LcdCarouselSettings, LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile,
+    ProfileKind, ProfileMixFunctionType, ProfileType, ProfileUID, Scale, SensorSource, Setting,
+    SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    DEVICE_LISTENER_ENABLED_DEFAULT, STARTUP_DELAY_SECONDS_MAX,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -2728,14 +2728,14 @@ impl Config {
         let has_channel_source = source_table.contains_key("channel_source");
         if metric.is_temp() {
             if has_channel_source {
-                bail!("A Temp Custom Sensor takes temp_source sources, not channel_source");
+                return Err(CustomSensorError::ChannelSourceOnTemp.into());
             }
             let temp_source = Self::get_temp_source(source_table)?
                 .with_context(|| "TempSource should always be present for Custom Sensor Sources")?;
             return Ok((temp_source.device_uid, temp_source.temp_name));
         }
         if has_temp_source {
-            bail!("A {metric} Custom Sensor takes channel_source sources, not temp_source");
+            return Err(CustomSensorError::TempSourceOnChannelMetric { metric }.into());
         }
         let channel_source_table = source_table
             .get("channel_source")
@@ -3869,6 +3869,8 @@ mod tests {
     // an unknown metric, fail the load instead of reading a temp as a channel or back.
     #[test]
     fn custom_sensor_source_key_must_match_the_metric() {
+        use crate::setting::{CustomSensorError, CustomSensorMetric};
+
         let temp_source = "temp_source = { temp_name = \"t\", device_uid = \"d\" }";
         let channel_source = "channel_source = { device_uid = \"d\", channel_name = \"c\" }";
         let document = |metric_line: &str, source_line: &str| {
@@ -3884,9 +3886,23 @@ mod tests {
         assert!(valid_channel.get_custom_sensors().is_ok());
 
         let temp_with_channel = config_from(&document("", channel_source));
-        assert!(temp_with_channel.get_custom_sensors().is_err());
+        assert_eq!(
+            temp_with_channel
+                .get_custom_sensors()
+                .unwrap_err()
+                .downcast_ref::<CustomSensorError>(),
+            Some(&CustomSensorError::ChannelSourceOnTemp)
+        );
         let rpm_with_temp = config_from(&document("metric = \"RPM\"", temp_source));
-        assert!(rpm_with_temp.get_custom_sensors().is_err());
+        assert_eq!(
+            rpm_with_temp
+                .get_custom_sensors()
+                .unwrap_err()
+                .downcast_ref::<CustomSensorError>(),
+            Some(&CustomSensorError::TempSourceOnChannelMetric {
+                metric: CustomSensorMetric::RPM
+            })
+        );
         let unknown_metric = config_from(&document("metric = \"Volts\"", channel_source));
         assert!(unknown_metric.get_custom_sensors().is_err());
     }
