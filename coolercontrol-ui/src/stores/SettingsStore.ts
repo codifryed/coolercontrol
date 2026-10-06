@@ -31,12 +31,12 @@ import {
     surfaceTintFor,
     SYSTEM_THEME_ID,
     type SystemPalette,
-    systemPaletteFrom,
     THEME_CSS_VAR_NAMES,
     THEME_TOKEN_KEYS,
     THEME_TOKEN_VARS,
     themeCssVars,
 } from '@/shell/themes.ts'
+import { requestEmbedderPalette } from '@/shell/embed.ts'
 import type { Color, UID } from '@/models/Device'
 import { Device } from '@/models/Device'
 import setDefaultSensorAndChannelColors from '@/stores/DeviceColorCreator'
@@ -427,36 +427,10 @@ export const useSettingsStore = defineStore('settings', () => {
             const contrastQuery = window.matchMedia('(prefers-contrast: more)')
             colorSchemeQuery.addEventListener('change', applyThemeMode)
             contrastQuery.addEventListener('change', applyThemeMode)
-            if (window.parent !== window) {
-                // embedded in frame/iframe
-                // set up system palette messaging
-                const isSystemPaletteMessage = (data: {
-                    type: string
-                }): data is { type: 'coolercontrol:palette'; palette: SystemPalette } =>
-                    data.type === 'coolercontrol:palette'
-                const handleSystemPalette = (e: MessageEvent<{ type: string }>) => {
-                    const messageOrigin = new URL(e.origin)
-                    const myOrigin = new URL(window.origin)
-                    // allow different port or path, ignore if different hostname or protocol
-                    if (
-                        messageOrigin.protocol !== myOrigin.protocol ||
-                        messageOrigin.hostname !== myOrigin.hostname
-                    ) {
-                        return
-                    }
-                    if (isSystemPaletteMessage(e.data)) {
-                        const palette = systemPaletteFrom(e.data.palette)
-                        if (palette) {
-                            systemPalette.value = palette
-                            applyThemeMode()
-                        } else {
-                            console.error('failed to parse palette:', e.data.palette)
-                        }
-                    }
-                }
-                window.addEventListener('message', handleSystemPalette)
-                window.parent.postMessage({ type: 'coolercontrol:palette-request' }, '*')
-            }
+            requestEmbedderPalette((palette) => {
+                systemPalette.value = palette
+                applyThemeMode()
+            })
         }
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
