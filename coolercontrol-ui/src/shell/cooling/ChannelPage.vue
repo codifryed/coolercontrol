@@ -573,9 +573,14 @@ watch(channelLabel, () => (chartKey.value = uuidV4()))
         <ChannelVerdictNotice v-else :device-u-i-d="deviceUID" :channel-name="channelName" />
 
         <!-- relative lifts this above the ProfileEditor's empty overhang box,
-             which otherwise swallows pointer events on the link and chart top. -->
+             which otherwise swallows pointer events on the chart top. -->
         <div class="relative shrink-0" style="--time-chart-height: 24rem">
-            <div class="mb-1 flex justify-center">
+            <TimeChart
+                :key="chartKey"
+                :dashboard="channelDashboard"
+                @line-set-changed="chartKey = uuidV4()"
+            />
+            <div class="mt-1 flex justify-center">
                 <RouterLink
                     :to="fullChartRoute"
                     class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-text-color-secondary outline-none hover:bg-surface-hover hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
@@ -584,11 +589,6 @@ watch(channelLabel, () => (chartKey.value = uuidV4()))
                     {{ t('layout.shell.coolingPage.fullChart') }}
                 </RouterLink>
             </div>
-            <TimeChart
-                :key="chartKey"
-                :dashboard="channelDashboard"
-                @line-set-changed="chartKey = uuidV4()"
-            />
         </div>
     </div>
 </template>

@@ -882,7 +882,12 @@ onMounted(async () => {
                     style="--time-chart-height: 24rem"
                     @wheel.capture="onChartWheelCapture"
                 >
-                    <div class="mb-1 flex justify-center">
+                    <TimeChart
+                        :key="chartKey"
+                        :dashboard="singleDashboard"
+                        @line-set-changed="chartKey = uuidV4()"
+                    />
+                    <div class="mt-1 flex justify-center">
                         <RouterLink
                             :to="fullChartRoute"
                             class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-text-color-secondary outline-none hover:bg-surface-hover hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
@@ -891,11 +896,6 @@ onMounted(async () => {
                             {{ t('layout.shell.coolingPage.fullChart') }}
                         </RouterLink>
                     </div>
-                    <TimeChart
-                        :key="chartKey"
-                        :dashboard="singleDashboard"
-                        @line-set-changed="chartKey = uuidV4()"
-                    />
                 </div>
             </ScrollAreaViewport>
             <ScrollAreaScrollbar
