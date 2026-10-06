@@ -31,7 +31,13 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
+import {
+    onBeforeRouteLeave,
+    onBeforeRouteUpdate,
+    type RouteLocationRaw,
+    RouterLink,
+    useRouter,
+} from 'vue-router'
 import { useConfirm } from '@/shell/confirm'
 import UiListbox from '@/shell/ui/UiListbox.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
@@ -468,6 +474,11 @@ const chartMinutesChanged = (value: number): void => {
     singleDashboard.value.timeRangeSeconds = value * 60
 }
 const chartKey: Ref<string> = ref(uuidV4())
+// The sensor's page under Monitoring, linked from the header and from the chart.
+const fullChartRoute: RouteLocationRaw = {
+    name: 'monitoring-sensor',
+    params: { deviceUID: customSensorsDeviceUID, channelName: customSensor.id },
+}
 
 // The chart canvas consumes plain wheel events for zoom; stop them in the
 // capture phase so the page keeps scrolling. Ctrl+wheel still zooms.
@@ -565,6 +576,15 @@ onMounted(async () => {
                 />
             </template>
             <template #actions>
+                <UiButton
+                    v-if="!shouldCreateSensor"
+                    variant="outline"
+                    v-tooltip.top="t('layout.shell.coolingPage.fullChart')"
+                    @click="router.push(fullChartRoute)"
+                >
+                    <svg-icon type="mdi" :path="mdiChartLine" :size="deviceStore.getREMSize(1.1)" />
+                    <span class="ml-1">{{ t('layout.shell.monitoring') }}</span>
+                </UiButton>
                 <UiButton
                     v-if="!shouldCreateSensor"
                     variant="ghost"
@@ -864,13 +884,7 @@ onMounted(async () => {
                 >
                     <div class="mb-1 flex justify-center">
                         <RouterLink
-                            :to="{
-                                name: 'monitoring-sensor',
-                                params: {
-                                    deviceUID: customSensorsDeviceUID,
-                                    channelName: customSensor.id,
-                                },
-                            }"
+                            :to="fullChartRoute"
                             class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-text-color-secondary outline-none hover:bg-surface-hover hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
                         >
                             <svg-icon type="mdi" :path="mdiChartLine" :size="16" />

@@ -15,6 +15,7 @@ import {
 } from '@mdi/js'
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { type RouteLocationRaw, useRouter } from 'vue-router'
 import { useConfirm } from '@/shell/confirm'
 import { useToast } from '@/shell/toast'
 import { useCalibrationConversion } from '@/composables/useCalibrationConversion.ts'
@@ -60,6 +61,7 @@ const ProfileEditor = defineAsyncComponent(() => import('@/views/ProfileView.vue
 const props = defineProps<{ deviceUID: UID; channelName: string }>()
 
 const { t } = useI18n()
+const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
 const deviceStore = useDeviceStore()
@@ -343,6 +345,11 @@ if (channelDashboard.value.dataTypes.length > 0) {
 }
 // A chart binds its lines to its series at mount, so a changed line set needs a new chart.
 const chartKey = ref<string>(uuidV4())
+// The channel's page under Monitoring, linked from the header and from the chart.
+const fullChartRoute: RouteLocationRaw = {
+    name: 'monitoring-sensor',
+    params: { deviceUID: props.deviceUID, channelName: props.channelName },
+}
 // It also reads the line's name and unit at mount, and both follow the label.
 watch(channelLabel, () => (chartKey.value = uuidV4()))
 </script>
@@ -373,6 +380,14 @@ watch(channelLabel, () => (chartKey.value = uuidV4()))
                 >
                     {{ groupDigits(liveRpm) }} {{ settingsStore.rpmUnit(deviceUID, channelName) }}
                 </span>
+                <UiButton
+                    variant="outline"
+                    v-tooltip.top="t('layout.shell.coolingPage.fullChart')"
+                    @click="router.push(fullChartRoute)"
+                >
+                    <svg-icon type="mdi" :path="mdiChartLine" :size="16" />
+                    {{ t('layout.shell.monitoring') }}
+                </UiButton>
             </div>
         </div>
 
@@ -562,7 +577,7 @@ watch(channelLabel, () => (chartKey.value = uuidV4()))
         <div class="relative shrink-0" style="--time-chart-height: 24rem">
             <div class="mb-1 flex justify-center">
                 <RouterLink
-                    :to="{ name: 'monitoring-sensor', params: { deviceUID, channelName } }"
+                    :to="fullChartRoute"
                     class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-text-color-secondary outline-none hover:bg-surface-hover hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     <svg-icon type="mdi" :path="mdiChartLine" :size="16" />
