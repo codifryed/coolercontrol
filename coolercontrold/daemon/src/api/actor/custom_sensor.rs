@@ -5,6 +5,7 @@ use crate::alerts::AlertController;
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
+use crate::device::ChannelName;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
@@ -72,6 +73,53 @@ impl CustomSensorActor {
             mode_controller,
         }
     }
+
+    /// Deletes the sensor unless something still reads it, then clears what other
+    /// controllers stored about it.
+    async fn delete(&self, custom_sensor_id: &ChannelName) -> Result<()> {
+        let cs_device_uid = self.custom_sensors_repo.get_device_uid();
+        let mut users = self
+            .engine
+            .custom_sensor_users(&cs_device_uid, custom_sensor_id)
+            .await?;
+        users.extend(
+            self.alert_controller
+                .alerts_watching(&cs_device_uid, custom_sensor_id)
+                .into_iter()
+                .map(|name| format!("Alert \"{name}\"")),
+        );
+        let sensor_label =
+            self.overrides
+                .resolve_channel_label(&cs_device_uid, custom_sensor_id, None);
+        verify_not_in_use(&sensor_label, &users)?;
+        self.custom_sensors_repo
+            .delete_custom_sensor(custom_sensor_id)?;
+        let save_result = self.config.save_config_file().await;
+        // Cascade regardless of the save outcome: the sensor is
+        // already gone from the repo and IDs are recycled, so a
+        // future sensor reusing this ID must not inherit its name.
+        if let Err(err) = self
+            .overrides
+            .remove_channel(&cs_device_uid, custom_sensor_id)
+            .await
+        {
+            warn!(
+                "Failed to remove name override for deleted sensor \
+                {custom_sensor_id}: {err}"
+            );
+        }
+        if let Err(err) = self
+            .mode_controller
+            .custom_sensor_deleted(&cs_device_uid, custom_sensor_id)
+            .await
+        {
+            warn!(
+                "Failed to save the Modes without deleted sensor \
+                {custom_sensor_id}: {err}"
+            );
+        }
+        save_result
+    }
 }
 
 impl ApiActor<CustomSensorMessage> for CustomSensorActor {
@@ -128,53 +176,7 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                 custom_sensor_id,
                 respond_to,
             } => {
-                let result = async {
-                    let cs_device_uid = self.custom_sensors_repo.get_device_uid();
-                    let mut users = self
-                        .engine
-                        .custom_sensor_users(&cs_device_uid, &custom_sensor_id)
-                        .await?;
-                    users.extend(
-                        self.alert_controller
-                            .alerts_watching(&cs_device_uid, &custom_sensor_id)
-                            .into_iter()
-                            .map(|name| format!("Alert \"{name}\"")),
-                    );
-                    let sensor_label = self.overrides.resolve_channel_label(
-                        &cs_device_uid,
-                        &custom_sensor_id,
-                        None,
-                    );
-                    verify_not_in_use(&sensor_label, &users)?;
-                    self.custom_sensors_repo
-                        .delete_custom_sensor(&custom_sensor_id)?;
-                    let save_result = self.config.save_config_file().await;
-                    // Cascade regardless of the save outcome: the sensor is
-                    // already gone from the repo and IDs are recycled, so a
-                    // future sensor reusing this ID must not inherit its name.
-                    if let Err(err) = self
-                        .overrides
-                        .remove_channel(&cs_device_uid, &custom_sensor_id)
-                        .await
-                    {
-                        warn!(
-                            "Failed to remove name override for deleted sensor \
-                            {custom_sensor_id}: {err}"
-                        );
-                    }
-                    if let Err(err) = self
-                        .mode_controller
-                        .custom_sensor_deleted(&cs_device_uid, &custom_sensor_id)
-                        .await
-                    {
-                        warn!(
-                            "Failed to save the Modes without deleted sensor \
-                            {custom_sensor_id}: {err}"
-                        );
-                    }
-                    save_result
-                }
-                .await;
+                let result = self.delete(&custom_sensor_id).await;
                 let _ = respond_to.send(result);
             }
         }
