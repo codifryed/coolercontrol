@@ -296,9 +296,12 @@ npm_audit:
 
 # dependabot-gitlab's npm job (config in .gitlab/dependabot.yml). The component gates it on a
 # PACKAGE_MANAGER_SET schedule variable; replacing its rules lets the one daily schedule run it.
+# Allowed to fail: an advisory with no fixed release fails the run, and nothing in dependabot.yml
+# can skip it. npm_audit is the gate, with its expiring ignores in osv-scanner.toml.
 npm:
   variables:
     DIRECTORY: /coolercontrol-ui
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
