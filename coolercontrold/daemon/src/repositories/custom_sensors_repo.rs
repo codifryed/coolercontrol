@@ -236,8 +236,14 @@ impl CustomSensorsRepo {
         self.validate_parents_can_drop_child(&parents, custom_sensor_id)?;
         // Persist before mutating: a failed config write must not leave the in-memory
         // parents already stripped, which would report a different value until restart.
+        let parents_stripped = self.parents_without_child(&parents, custom_sensor_id);
         self.config.delete_custom_sensor(custom_sensor_id)?;
-        self.drop_child_from_parents(&parents, custom_sensor_id);
+        // The config must lose the source too, or a restart reloads a parent reading a
+        // sensor that no longer exists, which failsafes on every tick.
+        for parent in &parents_stripped {
+            self.config.update_custom_sensor(parent.clone())?;
+        }
+        self.replace_sensors(parents_stripped);
         Self::remove_status_history_for_sensor(self, custom_sensor_id);
         self.sensors
             .borrow_mut()
@@ -286,23 +292,39 @@ impl CustomSensorsRepo {
         Ok(())
     }
 
-    /// Strips `child_id` from every parent. Only reached once every parent has been
-    /// approved, so it cannot fail partway and leave the set half-updated.
-    fn drop_child_from_parents(&self, parents: &[ParentName], child_id: &str) {
-        let mut sensors = self.sensors.borrow_mut();
+    /// Every parent as it is once `child_id` is gone. Only reached once every parent has
+    /// been approved, so each one is found and keeps a child.
+    fn parents_without_child(&self, parents: &[ParentName], child_id: &str) -> Vec<CustomSensor> {
+        let sensors = self.sensors.borrow();
+        let mut parents_stripped = Vec::with_capacity(parents.len());
         for parent_name in parents {
-            let Some(parent) = sensors.iter_mut().find(|s| &s.id == parent_name) else {
+            let Some(parent) = sensors.iter().find(|s| &s.id == parent_name) else {
                 debug_assert!(false, "parent vanished between validation and mutation");
                 continue;
             };
+            let mut parent = parent.clone();
             parent.children.retain(|c| c != child_id);
-            let Some(sources) = parent.sources_mut() else {
+            debug_assert!(parent.children.is_empty().not());
+            if let Some(sources) = parent.sources_mut() {
+                // Only the deleted child goes: both halves must match for a source to be
+                // the one being removed. Every custom-sensor source shares `device_uid`,
+                // so requiring both to differ stripped the parent's other children too.
+                sources.retain(|s| s.device_uid != self.device_uid || s.name != child_id);
+            }
+            parents_stripped.push(parent);
+        }
+        parents_stripped
+    }
+
+    /// Swaps each given sensor in for the stored one with its id.
+    fn replace_sensors(&self, replacements: Vec<CustomSensor>) {
+        let mut sensors = self.sensors.borrow_mut();
+        for replacement in replacements {
+            let Some(sensor) = sensors.iter_mut().find(|s| s.id == replacement.id) else {
+                debug_assert!(false, "replaced sensor vanished");
                 continue;
             };
-            // Only the deleted child goes: both halves must match for a source to be
-            // the one being removed. Every custom-sensor source shares `device_uid`,
-            // so requiring both to differ stripped the parent's other children too.
-            sources.retain(|s| s.device_uid != self.device_uid || s.name != child_id);
+            *sensor = replacement;
         }
     }
 
@@ -2704,7 +2726,8 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_config = Rc::new(Config::init_default_config().unwrap());
-            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            let mut repo =
+                CustomSensorsRepo::new(Rc::clone(&test_config), vec![], test_overrides()).unwrap();
             repo.initialize_devices()
                 .await
                 .expect("Failed to initialize devices");
@@ -2783,6 +2806,18 @@ mod tests {
                             .any(|s| s.name == "second_child_sensor")),
                 "Parent sensor lost its surviving child's source"
             );
+            // A restart loads the config, so it must hold the stripped parent too.
+            let saved_sensors = test_config.get_custom_sensors().unwrap();
+            let saved_parent = saved_sensors
+                .iter()
+                .find(|sensor| sensor.id == "parent_sensor")
+                .expect("Parent sensor missing from the config");
+            let saved_source_names: Vec<&str> = saved_parent
+                .sources()
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect();
+            assert_eq!(saved_source_names, ["second_child_sensor"]);
         });
     }
 
