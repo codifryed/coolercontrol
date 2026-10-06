@@ -715,10 +715,7 @@ impl ModeController {
                     let SettingKind::Lcd { lcd } = &setting.kind else {
                         continue;
                     };
-                    let shows_temp = lcd.temp_source().is_some_and(|source| {
-                        source.device_uid == temp_device_uid && source.temp_name == temp_name
-                    });
-                    if shows_temp {
+                    if lcd.shows_temp(temp_device_uid, temp_name) {
                         settings_to_delete.push((
                             mode.uid.clone(),
                             device_uid.clone(),

@@ -1512,7 +1512,7 @@ impl Engine {
         for (device_uid, settings) in self.config.get_all_devices_settings()? {
             let shows_sensor = settings.iter().any(|setting| {
                 matches!(&setting.kind, SettingKind::Lcd { lcd }
-                    if lcd.temp_source().is_some_and(is_sensor))
+                    if lcd.shows_temp(cs_device_uid, custom_sensor_id))
             });
             if shows_sensor {
                 lcd_users.push(format!("LCD of {}", self.device_display_name(&device_uid)));

@@ -188,6 +188,13 @@ impl LcdSettings {
         }
     }
 
+    /// Whether this is a `Temp` mode showing that temp. The device is part of the match:
+    /// devices name their temps alike.
+    pub fn shows_temp(&self, device_uid: &str, temp_name: &str) -> bool {
+        self.temp_source()
+            .is_some_and(|source| source.device_uid == device_uid && source.temp_name == temp_name)
+    }
+
     /// The carousel settings, if this is a `Carousel` mode with them set.
     pub fn carousel(&self) -> Option<&LcdCarouselSettings> {
         match &self.mode {
@@ -1287,6 +1294,22 @@ mod tests {
 
         let parsed: LcdSettings = serde_json::from_value(v).unwrap();
         assert!(matches!(parsed.mode, LcdModeKind::Temp { .. }));
+    }
+
+    // Goal: an LCD shows a temp only when both the device and the name match, and only in
+    // Temp mode. Method: one Temp LCD asked about its own temp and each near miss.
+    #[test]
+    fn lcd_shows_temp_matches_device_and_name() {
+        let showing = lcd(LcdModeKind::Temp {
+            temp_source: Some(lcd_temp_source()),
+        });
+        let unset = lcd(LcdModeKind::Temp { temp_source: None });
+
+        assert!(showing.shows_temp("dev-1", "Temp1"));
+        assert!(showing.shows_temp("dev-2", "Temp1").not());
+        assert!(showing.shows_temp("dev-1", "Temp2").not());
+        assert!(unset.shows_temp("dev-1", "Temp1").not());
+        assert!(lcd(LcdModeKind::Liquid).shows_temp("dev-1", "Temp1").not());
     }
 
     // A Carousel LcdSettings carries `carousel` under the `carousel` tag.
