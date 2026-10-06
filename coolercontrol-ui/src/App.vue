@@ -184,6 +184,7 @@ onMounted(async () => {
     deviceStore.connectToQtIPC()
 
     notifyEmbedder('load-start')
+    settingsStore.followEmbedderPalette()
 
     // Add theme change event listener
     window.addEventListener('theme-changed', () => {

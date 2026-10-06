@@ -428,10 +428,6 @@ export const useSettingsStore = defineStore('settings', () => {
             const contrastQuery = window.matchMedia('(prefers-contrast: more)')
             colorSchemeQuery.addEventListener('change', applyThemeMode)
             contrastQuery.addEventListener('change', applyThemeMode)
-            requestEmbedderPalette((palette) => {
-                systemPalette.value = palette
-                applyThemeMode()
-            })
         }
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
@@ -1530,6 +1526,18 @@ export const useSettingsStore = defineStore('settings', () => {
         )
     }
 
+    /**
+     * Lets a page that shows the UI in a frame supply the System palette. Meant
+     * to run before the login: the theme is System until the saved one loads, so
+     * the login dialog and the loading screen wear the palette too.
+     */
+    function followEmbedderPalette(): void {
+        requestEmbedderPalette((palette) => {
+            systemPalette.value = palette
+            applyThemeMode()
+        })
+    }
+
     function applyThemeMode(): void {
         document.documentElement.classList.remove('high-contrast-dark')
         document.documentElement.classList.remove('high-contrast-light')
@@ -1990,6 +1998,7 @@ export const useSettingsStore = defineStore('settings', () => {
         applyMissingDelta,
         applyStaleSourceDelta,
         applyThemeMode,
+        followEmbedderPalette,
         applyInterfaceFont,
         applyLanguage,
         tags,
