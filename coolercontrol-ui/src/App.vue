@@ -8,6 +8,7 @@ import { RouterView, useRouter } from 'vue-router'
 import { startupRouteName } from '@/shell/sections.ts'
 import { sortEntitiesByTree } from '@/shell/libraryFolders.ts'
 import { TOUR_STEPS } from '@/shell/tour.ts'
+import { notifyEmbedder } from '@/shell/embed.ts'
 import { buildQtStrings } from '@/shell/qtStrings.ts'
 import { useToolWizards } from '@/composables/useToolWizards.ts'
 import { Ref, onMounted, ref, inject, nextTick } from 'vue'
@@ -182,10 +183,7 @@ emitter.on('start-tour', startTour)
 onMounted(async () => {
     deviceStore.connectToQtIPC()
 
-    if (window.parent !== window) {
-        // notify parent window that UI has started loading
-        window.parent.postMessage({ type: 'coolercontrol:load-start' }, '*')
-    }
+    notifyEmbedder('load-start')
 
     // Add theme change event listener
     window.addEventListener('theme-changed', () => {
@@ -272,9 +270,8 @@ onMounted(async () => {
             ipc.setTranslations?.(JSON.stringify(buildQtStrings(t)))
             // Seed the tray's sensor list. The watch only fires on later changes.
             settingsStore.pushTrayPinnedSensors()
-        } else if (window.parent !== window) {
-            // notify parent window, e.g. Cockpit, that UI has finished loading
-            window.parent.postMessage({ type: 'coolercontrol:load-end' }, '*')
+        } else {
+            notifyEmbedder('load-end')
         }
     }
     // Fire-and-forget: SW manages its own SSE connection independently.

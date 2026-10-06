@@ -12,6 +12,18 @@ import { type SystemPalette, systemPaletteFrom } from '@/shell/themes.ts'
 /** True inside another page's frame. False in a browser tab and in the Qt app. */
 const isEmbedded = (): boolean => window.parent !== window
 
+/** The moments of startup an embedding page is told about. */
+export type EmbedNotice = 'load-start' | 'palette-request' | 'load-end'
+
+/**
+ * Tells the embedding page how far startup has come. Sent to any origin: the
+ * message is a constant, and only a page the daemon allows can be the parent.
+ * Does nothing outside a frame.
+ */
+export const notifyEmbedder = (notice: EmbedNotice): void => {
+    if (isEmbedded()) window.parent.postMessage({ type: `coolercontrol:${notice}` }, '*')
+}
+
 /**
  * Whether a message is the embedding page's. Any window can post here, the UI's
  * own plugin frames included, so the sender has to be the page directly above,
@@ -50,5 +62,5 @@ export const requestEmbedderPalette = (apply: (palette: SystemPalette) => void):
         }
         apply(palette)
     })
-    window.parent.postMessage({ type: 'coolercontrol:palette-request' }, '*')
+    notifyEmbedder('palette-request')
 }

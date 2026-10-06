@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requestEmbedderPalette } from '../embed.ts'
+import { notifyEmbedder, requestEmbedderPalette } from '../embed.ts'
 
 const PALETTE = {
     variant: 'dark',
@@ -68,9 +68,23 @@ describe('embedding page messages', () => {
         vi.restoreAllMocks()
     })
 
+    /// Goal: the notices an integration listens for keep their names and shape.
+    it.each([
+        ['load-start', 'coolercontrol:load-start'],
+        ['palette-request', 'coolercontrol:palette-request'],
+        ['load-end', 'coolercontrol:load-end'],
+    ] as const)('tells the embedding page of %s', (notice, type) => {
+        embed()
+        notifyEmbedder(notice)
+
+        expect(embedder.postMessage).toHaveBeenCalledTimes(1)
+        expect(embedder.postMessage).toHaveBeenCalledWith({ type }, '*')
+    })
+
     /// Goal: a browser tab and the Qt app are not embedded, and stay silent.
     it('does nothing outside a frame', () => {
         const post = vi.spyOn(window, 'postMessage')
+        notifyEmbedder('load-start')
         requestEmbedderPalette(apply)
         receive({ type: 'coolercontrol:palette', palette: PALETTE }, { source: window })
 
