@@ -874,6 +874,31 @@ mod tests {
         }
     }
 
+    /// For tests of other modules, which cannot reach the fields.
+    impl ModeController {
+        /// A controller whose one Mode holds a single setting: an LCD showing the temp.
+        pub fn for_test_showing_on_lcd(
+            config: &Rc<Config>,
+            temp_device_uid: &str,
+            temp_name: &str,
+        ) -> Self {
+            let (all_devices, device_uid) = devices_offering("fan1");
+            let controller = mode_controller(&all_devices, config);
+            let setting = lcd_showing(temp_device_uid, temp_name);
+            let mode = Mode {
+                uid: "lcd-mode".to_string(),
+                name: "lcd-mode".to_string(),
+                all_device_settings: HashMap::from([(
+                    device_uid,
+                    HashMap::from([(setting.channel_name.clone(), setting)]),
+                )]),
+            };
+            controller.mode_order.borrow_mut().push(mode.uid.clone());
+            controller.modes.borrow_mut().insert(mode.uid.clone(), mode);
+            controller
+        }
+    }
+
     /// Runs `clear_active_modes` with a subscribed `ModeHandle` and returns what it broadcast.
     async fn clear_and_receive_broadcast(controller: &Rc<ModeController>) -> Option<ActiveMode> {
         let cancel_token = CancellationToken::new();

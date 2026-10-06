@@ -3258,6 +3258,27 @@ mod tests {
         }
     }
 
+    /// For tests of other modules, which cannot reach the fields.
+    impl AlertController {
+        /// A controller whose one alert, named `Alert-watching`, watches the channel.
+        pub fn for_test_watching(device_uid: &str, channel_name: &str) -> Self {
+            let registry = Rc::new(DiagnosisRegistry::new());
+            let controller = make_test_controller(make_test_device(&[], 30.0), &registry);
+            let mut alert = make_alert("watching", 0.0, 100.0, AlertState::Inactive);
+            alert.channel_sources = vec![ChannelSource {
+                device_uid: device_uid.to_string(),
+                channel_name: channel_name.to_string(),
+                channel_metric: ChannelMetric::Temp,
+            }];
+            alert.normalize_sources();
+            controller
+                .alerts
+                .borrow_mut()
+                .insert(alert.uid.clone(), alert);
+            controller
+        }
+    }
+
     /// An RPM alert over the given fan channels with warmup 0 (two-tick fire).
     fn rpm_alert(device_uid: &str, channels: &[&str], min: f64, max: f64) -> Alert {
         let mut alert = make_alert("rpm-alert", min, max, AlertState::Inactive);

@@ -291,6 +291,14 @@ impl CustomSensorHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::{CalibrationStore, FanStateMap};
+    use crate::cc_fs;
+    use crate::repositories::repository::{Repositories, Repository};
+    use crate::setting::{
+        CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, SensorSource,
+    };
+    use serial_test::serial;
+    use std::collections::HashMap;
     use std::ops::Not;
 
     fn refusal(result: Result<()>) -> String {
@@ -298,6 +306,140 @@ mod tests {
             Ok(CCError::UserError { msg }) => msg,
             other => panic!("expected a user error, got {other:?}"),
         }
+    }
+
+    const SENSOR_ID: &str = "sensor1";
+
+    struct Harness {
+        actor: CustomSensorActor,
+        repo: Rc<CustomSensorsRepo>,
+        modes: Rc<ModeController>,
+    }
+
+    impl Harness {
+        fn has_sensor(&self) -> bool {
+            self.repo.get_custom_sensor(SENSOR_ID).is_ok()
+        }
+
+        fn mode_has_lcd_setting(&self) -> bool {
+            let modes = self.modes.get_modes();
+            assert_eq!(modes.len(), 1);
+            modes[0].all_device_settings.is_empty().not()
+        }
+    }
+
+    fn mix_sensor(id: &str, source_device_uid: &str, source_name: &str) -> CustomSensor {
+        CustomSensor {
+            id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Max,
+                sources: vec![SensorSource {
+                    device_uid: source_device_uid.to_string(),
+                    name: source_name.to_string(),
+                    weight: 1,
+                }],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    /// An actor over one Custom Sensor that a Mode shows on an LCD. `alert_watches` adds an
+    /// Alert on the sensor, `has_parent` a second sensor that reads nothing else.
+    async fn harness(alert_watches: bool, has_parent: bool) -> Harness {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let overrides = Rc::new(OverridesController::empty());
+        let mut repo =
+            CustomSensorsRepo::new(Rc::clone(&config), vec![], Rc::clone(&overrides)).unwrap();
+        repo.initialize_devices().await.unwrap();
+        let cs_device_uid = repo.get_device_uid();
+        // A source on a device that is not there still makes a valid sensor.
+        repo.set_custom_sensor(mix_sensor(SENSOR_ID, "missing-device", "temp1"))
+            .await
+            .unwrap();
+        if has_parent {
+            repo.set_custom_sensor(mix_sensor("parent", &cs_device_uid, SENSOR_ID))
+                .await
+                .unwrap();
+        }
+        let repo = Rc::new(repo);
+        let engine = Rc::new(Engine::new(
+            Rc::new(HashMap::new()),
+            &Rc::new(Repositories::default()),
+            Rc::clone(&config),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+            Rc::clone(&overrides),
+        ));
+        let watched_channel = if alert_watches { SENSOR_ID } else { "other" };
+        let alerts = Rc::new(AlertController::for_test_watching(
+            &cs_device_uid,
+            watched_channel,
+        ));
+        let modes = Rc::new(ModeController::for_test_showing_on_lcd(
+            &config,
+            &cs_device_uid,
+            SENSOR_ID,
+        ));
+        let (_sender, receiver) = mpsc::channel(1);
+        let actor = CustomSensorActor::new(
+            receiver,
+            Rc::clone(&repo),
+            engine,
+            config,
+            overrides,
+            alerts,
+            Rc::clone(&modes),
+        );
+        Harness { actor, repo, modes }
+    }
+
+    #[test]
+    #[serial(modes_file)]
+    fn a_watching_alert_refuses_the_delete() {
+        // Goal: the delete asks the Alerts too, and a refusal leaves the sensor and the
+        // Modes alone. Method: one Alert on the sensor, delete, read both back.
+        cc_fs::test_runtime(async {
+            let h = harness(true, false).await;
+
+            let message = refusal(h.actor.delete(&SENSOR_ID.to_string()).await);
+
+            assert!(message.contains("Alert \"Alert-watching\""), "{message}");
+            assert!(h.has_sensor());
+            assert!(h.mode_has_lcd_setting());
+        });
+    }
+
+    #[test]
+    #[serial(modes_file)]
+    fn a_delete_strips_the_sensor_from_mode_lcd_settings() {
+        // Goal: a Mode must not keep an LCD setting showing a sensor that is gone.
+        // Method: nothing uses the sensor but a Mode's LCD, delete, read the Mode back.
+        cc_fs::test_runtime(async {
+            let h = harness(false, false).await;
+
+            h.actor.delete(&SENSOR_ID.to_string()).await.unwrap();
+
+            assert!(h.has_sensor().not());
+            assert!(h.mode_has_lcd_setting().not());
+        });
+    }
+
+    #[test]
+    #[serial(modes_file)]
+    fn a_delete_the_repo_refuses_strips_no_mode() {
+        // Goal: the Modes are only stripped once the sensor is really deleted. Method: the
+        // guard passes, but the repo refuses for the parent that reads this sensor alone.
+        cc_fs::test_runtime(async {
+            let h = harness(false, true).await;
+
+            let message = refusal(h.actor.delete(&SENSOR_ID.to_string()).await);
+
+            assert!(message.contains("only has this one child"), "{message}");
+            assert!(h.has_sensor());
+            assert!(h.mode_has_lcd_setting());
+        });
     }
 
     #[test]
