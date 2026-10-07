@@ -25,7 +25,10 @@ readonly ORIGIN=CoolerControl
 readonly LABEL=CoolerControl
 readonly DISTRIBUTION=stable
 readonly COMPONENT=main
-readonly ARCHITECTURES=amd64,arm64
+# Nothing is built for armhf or i386. They are the foreign architectures multiarch hosts enable
+# (Steam, 64-bit Raspberry Pi OS), and apt prints a notice on every update for one that the
+# Release file does not name. Their indexes carry only the architecture independent packages.
+readonly ARCHITECTURES=amd64,arm64,armhf,i386
 # How many versions of each package stay installable. Users need a rollback target, especially
 # across a major release.
 readonly DEFAULT_KEEP=3

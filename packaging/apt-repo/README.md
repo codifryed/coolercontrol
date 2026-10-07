@@ -21,6 +21,11 @@ cannot hold both. Path prefixes are the same approach download.docker.com uses.
 
 Both trees are published for `amd64` and `arm64`. Architecture never affects which tree a user gets.
 
+`Release` also names `armhf` and `i386`, which nothing is built for. Those are the foreign
+architectures multiarch hosts enable (i386 for Steam and Wine, armhf on 64-bit Raspberry Pi OS), and
+apt prints a "doesn't support architecture" notice on every update for a configured architecture the
+repository does not name. Their indexes hold only the architecture independent packages.
+
 The `/ubuntu` tree carries no `arm64` build of `coolercontrol` or `coolercontrold` yet. Those were
 never built: CI produces jammy amd64 only, and the arm64 debs on the Debian side are bookworm
 builds. Its `binary-arm64` index is therefore valid but empty of the two main packages, and an arm64
