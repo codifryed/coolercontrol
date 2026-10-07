@@ -1,5 +1,8 @@
 variables:
   IMAGE_VERSION: v4
+  # apt-publish keeps its own tag. The sibling package repositories pull it too, and every
+  # publish rewrites Release, so all publishers have to run the same script.
+  APT_PUBLISH_IMAGE_VERSION: v3
   CARGO_HOME: '${CI_PROJECT_DIR}/.cargo'
   PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.pip'
   NPM_CONFIG_CACHE: '${CI_PROJECT_DIR}/.npm'
@@ -1345,7 +1348,7 @@ upload_package_ubuntu_beta:
 # apt-repo-publish serializes them, so running them in parallel is safe.
 upload_package_r2_debian:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${APT_PUBLISH_IMAGE_VERSION}
   variables:
     # setup.sh and the keys belong to this project, so publish them from the tagged commit
     # rather than from whatever copies the image happens to carry. Only this job and its ubuntu
@@ -1369,7 +1372,7 @@ upload_package_r2_debian:
 
 upload_package_r2_ubuntu:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:${APT_PUBLISH_IMAGE_VERSION}
   variables:
     APT_REPO_SHARE: $CI_PROJECT_DIR/packaging/apt-repo
   dependencies:

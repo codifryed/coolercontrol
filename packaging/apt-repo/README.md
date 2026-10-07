@@ -63,6 +63,12 @@ Architecture independent packages (the DKMS modules, liquidctl) are published to
 The publish script is baked into `registry.gitlab.com/coolercontrol/coolercontrol/apt-publish` as
 `/usr/local/bin/apt-repo-publish`, together with the keyring and `setup.sh`.
 
+The image is tagged `v3`, apart from the build images (`APT_PUBLISH_IMAGE_VERSION` in
+`.gitlab-ci.yml`, `apt_publish_image_tag` in `make/docker.mk`). The sibling package repositories pin
+that tag too, and every publish rewrites `Release` for the trees it touches, so a publisher left on
+another tag would undo an index change made by the rest. A change to the publish script takes effect
+once the image is rebuilt and pushed.
+
 ```sh
 apt-repo-publish --repo debian|ubuntu|both [--keep N] <deb>...
 ```
