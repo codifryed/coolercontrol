@@ -26,6 +26,10 @@ architectures multiarch hosts enable (i386 for Steam and Wine, armhf on 64-bit R
 apt prints a "doesn't support architecture" notice on every update for a configured architecture the
 repository does not name. Their indexes hold only the architecture independent packages.
 
+Entries written by `setup.sh` and the postinst pin `Architectures` to the native one, so those hosts
+do not fetch the extra index. Entries written by 5.0.0 and 5.0.1 have no such field and rely on the
+`Release` list above.
+
 The `/ubuntu` tree carries no `arm64` build of `coolercontrol` or `coolercontrold` yet. Those were
 never built: CI produces jammy amd64 only, and the arm64 debs on the Debian side are bookworm
 builds. Its `binary-arm64` index is therefore valid but empty of the two main packages, and an arm64

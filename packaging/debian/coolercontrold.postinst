@@ -73,6 +73,7 @@ transition() {
         [ -f "${KEYRING}" ] || return 0
         entry=$(tr '\n' ' ' <"${old}" 2>/dev/null)
         tree=$(pick_tree_from_entry "${entry}")
+        arch=$(dpkg --print-architecture) || return 0
     fi
 
     # apt ignores unknown extensions, so renaming is enough to retire the old entry. This happens
@@ -82,13 +83,14 @@ transition() {
 
     [ "${transitioned}" -eq 0 ] || return 0
 
-    # No Architectures field: apt takes the supported set from our signed Release file and skips
-    # the rest, so listing them here only makes every machine fetch the other one's index.
+    # The native architecture only. Without the field a multiarch host asks for every foreign
+    # architecture too, and apt prints a notice for each one the repository does not name.
     cat >"${SOURCES}" <<EOF
 Types: deb
 URIs: ${REPO_URL}/${tree}
 Suites: stable
 Components: main
+Architectures: ${arch}
 Signed-By: ${KEYRING}
 EOF
     echo "CoolerControl: apt now reads ${REPO_URL}/${tree}"
