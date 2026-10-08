@@ -23,6 +23,8 @@ const TEMP_SANITY_MIN: f64 = 0.0;
 const TEMP_SANITY_MAX: f64 = 140.0;
 macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($arg)*) }}; }
 static THINKPAD_GPU_ENXIO_LOGGED: AtomicBool = AtomicBool::new(false);
+static TAS2764_ENODATA_LOGGED: AtomicBool = AtomicBool::new(false);
+const DEVICE_NAME_TAS2764: &str = "tas2764";
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(
@@ -170,6 +172,13 @@ fn temp_status_from(
                     temp: 0.0,
                 });
             }
+            if is_tas2764_unsampled(&driver.name, &err) {
+                log_tas2764_unsampled_once(&temp_path());
+                return Some(TempStatus {
+                    name: channel.name.clone(),
+                    temp: 0.0,
+                });
+            }
             if log_enabled!(log::Level::Debug) {
                 warn!(
                     "Could not read temp value at {} ; {err}",
@@ -277,6 +286,10 @@ async fn sensor_is_usable(
                 log_thinkpad_gpu_powerdown_once(&channel_name, None, &temp_path);
                 return true;
             }
+            if is_tas2764_unsampled(driver_name, &err) {
+                log_tas2764_unsampled_once(&temp_path);
+                return true;
+            }
             debug!(
                 "Error reading temperature value from: {} ; {err}",
                 temp_path.display()
@@ -331,6 +344,28 @@ fn log_thinkpad_gpu_powerdown_once(
             "ThinkPad hwmon temp channel '{channel_name}' (label={label}) at {} \
              returned ENXIO. Treating as 0.0 C; expected when no dedicated GPU \
              is present or it is powered down.",
+            temp_path.display()
+        );
+    }
+}
+
+fn is_tas2764_unsampled(driver_name: &str, err: &anyhow::Error) -> bool {
+    if driver_name != DEVICE_NAME_TAS2764 {
+        return false;
+    }
+    err.downcast_ref::<Error>()
+        .and_then(Error::raw_os_error)
+        .is_some_and(|errno| errno == libc::ENODATA)
+}
+
+fn log_tas2764_unsampled_once(temp_path: &Path) {
+    if TAS2764_ENODATA_LOGGED
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+        info!(
+            "TAS2764 speaker amplifier temp at {} has no sample since the amplifier powered up. \
+             Treating as 0.0 C until audio plays.",
             temp_path.display()
         );
     }
@@ -877,6 +912,35 @@ mod tests {
         // is rejected, so we never substitute 0 on unrelated failures.
         let err = anyhow::anyhow!("something else went wrong");
         assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &err).not());
+    }
+
+    #[test]
+    fn tas2764_enodata_is_an_unsampled_amplifier_and_nothing_else_is() {
+        let enodata = || -> anyhow::Error { Error::from_raw_os_error(libc::ENODATA).into() };
+        let eio: anyhow::Error = Error::from_raw_os_error(libc::EIO).into();
+        assert!(is_tas2764_unsampled("tas2764", &enodata()));
+        assert!(is_tas2764_unsampled("tas2764", &eio).not());
+        assert!(is_tas2764_unsampled("nct6798", &enodata()).not());
+        assert!(is_tas2764_unsampled(devices::DEVICE_NAME_THINK_PAD, &enodata()).not());
+        assert!(is_tas2764_unsampled("tas2764", &anyhow::anyhow!("not an io error")).not());
+    }
+
+    #[test]
+    fn an_unsampled_tas2764_reads_zero_instead_of_failing() {
+        let channel = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number: 1,
+            name: "temp1".to_string(),
+            ..Default::default()
+        };
+        let driver_named = |name: &str| HwmonDriverInfo {
+            name: name.to_string(),
+            ..Default::default()
+        };
+        let enodata = || Err(Error::from_raw_os_error(libc::ENODATA).into());
+        let status = temp_status_from(&driver_named("tas2764"), &channel, enodata()).unwrap();
+        assert_eq!(status.temp, 0.0);
+        assert!(temp_status_from(&driver_named("nct6798"), &channel, enodata()).is_none());
     }
 
     #[test]
