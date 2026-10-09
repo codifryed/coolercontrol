@@ -301,8 +301,6 @@ async fn dispatch_core(
         return Ok(DispatchOutcome::Done(AppliedDuty::Skipped));
     }
 
-    // Read in place: `store.get` would clone the calibration, curves
-    // included, on every duty write.
     let Some(plan) = store.dispatch_plan(&key, true_duty) else {
         writer
             .write_device_duty(&device_uid, &channel_name, true_duty)
