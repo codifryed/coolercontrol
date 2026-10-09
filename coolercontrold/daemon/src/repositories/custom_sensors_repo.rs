@@ -18,7 +18,7 @@ use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, Temp, TempInfo, TempName, TempStatus, UID,
+    DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus, UID,
 };
 use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::overrides::OverridesController;
@@ -62,7 +62,7 @@ type ParentId = CustomSensorId;
 /// is window bookkeeping, not a data-plane sentinel: the folds skip those slots.
 struct SampleWindow {
     /// Oldest first, bounded by `sample_count`.
-    samples: VecDeque<Option<Temp>>,
+    samples: VecDeque<Option<f64>>,
     /// Window size this state was built for. A mismatch (sensor setting change) forces a
     /// reseed from history.
     sample_count: usize,
@@ -70,7 +70,7 @@ struct SampleWindow {
 
 impl SampleWindow {
     /// Appends the current tick's sample, evicting the oldest once the window is full.
-    fn push(&mut self, sample: Option<Temp>) {
+    fn push(&mut self, sample: Option<f64>) {
         debug_assert!(self.sample_count >= 1);
         debug_assert!(self.sample_count <= SAMPLE_WINDOW_MAX_SLOTS);
         if self.samples.len() == self.sample_count {
@@ -707,7 +707,7 @@ impl CustomSensorsRepo {
         sample_count: usize,
     ) -> SampleWindow {
         debug_assert!(sample_count >= 1);
-        let mut samples: VecDeque<Option<Temp>> = VecDeque::with_capacity(sample_count);
+        let mut samples: VecDeque<Option<f64>> = VecDeque::with_capacity(sample_count);
         // Collect newest-first as the old walk did, then reverse into window order.
         if source.device_uid == self.device_uid {
             samples.push_back(Self::child_value(metric, &source.name, values));
@@ -749,8 +749,8 @@ impl CustomSensorsRepo {
         source: &SensorSource,
         index: usize,
         sample_count: usize,
-    ) -> Vec<Temp> {
-        let mut samples: Vec<Temp> = Vec::with_capacity(sample_count);
+    ) -> Vec<f64> {
+        let mut samples: Vec<f64> = Vec::with_capacity(sample_count);
         let some_source_device = if source.device_uid == self.device_uid {
             // Children must exist before parents, so child status_history is already filled
             // by the time fill_status_history_for_new_sensor runs for the parent.
@@ -794,8 +794,8 @@ impl CustomSensorsRepo {
     /// Returns the arithmetic mean of the samples in iteration order, or `None` if empty.
     /// Pure function — callers compose their own sample collection.
     #[allow(clippy::cast_precision_loss)]
-    fn compute_time_average_iter(samples: impl Iterator<Item = Temp>) -> Option<Temp> {
-        let mut sum: Temp = 0.0;
+    fn compute_time_average_iter(samples: impl Iterator<Item = f64>) -> Option<f64> {
+        let mut sum: f64 = 0.0;
         let mut count: usize = 0;
         for sample in samples {
             sum += sample;
@@ -804,11 +804,11 @@ impl CustomSensorsRepo {
         if count == 0 {
             return None;
         }
-        Some(sum / count as Temp)
+        Some(sum / count as f64)
     }
 
     /// Slice form of `compute_time_average_iter`, kept for the back-fill path and tests.
-    fn compute_time_average(samples: &[Temp]) -> Option<Temp> {
+    fn compute_time_average(samples: &[f64]) -> Option<f64> {
         Self::compute_time_average_iter(samples.iter().copied())
     }
 
@@ -818,12 +818,12 @@ impl CustomSensorsRepo {
     /// with the first sample and iteratively updated. Returns `None` if `samples` is empty.
     /// Pure function — callers compose their own sample collection and ordering.
     #[allow(clippy::cast_precision_loss)]
-    fn compute_ema_iter(samples: impl Iterator<Item = Temp>, period: usize) -> Option<Temp> {
+    fn compute_ema_iter(samples: impl Iterator<Item = f64>, period: usize) -> Option<f64> {
         debug_assert!(period >= 1);
         let alpha = 2.0 / (period as f64 + 1.0);
         debug_assert!(alpha > 0.0);
         debug_assert!(alpha <= 1.0);
-        let mut ema: Option<Temp> = None;
+        let mut ema: Option<f64> = None;
         for value in samples {
             ema = Some(match ema {
                 Some(previous) => (value - previous).mul_add(alpha, previous),
@@ -834,7 +834,7 @@ impl CustomSensorsRepo {
     }
 
     /// Slice form of `compute_ema_iter`, kept for the back-fill path and tests.
-    fn compute_ema(samples: &[Temp], period: usize) -> Option<Temp> {
+    fn compute_ema(samples: &[f64], period: usize) -> Option<f64> {
         Self::compute_ema_iter(samples.iter().copied(), period)
     }
 
