@@ -79,9 +79,13 @@ impl CustomSensorActor {
     async fn delete(&self, custom_sensor_id: &ChannelName) -> Result<()> {
         let cs_device_uid = self.custom_sensors_repo.get_device_uid();
         let mut users = self
-            .engine
-            .custom_sensor_users(&cs_device_uid, custom_sensor_id)
-            .await?;
+            .custom_sensors_repo
+            .sensors_reading_only(custom_sensor_id);
+        users.extend(
+            self.engine
+                .custom_sensor_users(&cs_device_uid, custom_sensor_id)
+                .await?,
+        );
         users.extend(
             self.alert_controller
                 .alerts_watching(&cs_device_uid, custom_sensor_id)
@@ -351,7 +355,8 @@ mod tests {
     }
 
     /// An actor over one Custom Sensor that a Mode shows on an LCD. `alert_watches` adds an
-    /// Alert on the sensor, `has_parent` a second sensor that reads nothing else.
+    /// Alert on the sensor, `has_parent` a second sensor, named "Smooth", that reads nothing
+    /// else.
     async fn harness(alert_watches: bool, has_parent: bool) -> Harness {
         let config = Rc::new(Config::init_default_config().unwrap());
         // The delete writes the overrides file, so it gets a directory of its own.
@@ -368,6 +373,16 @@ mod tests {
             .unwrap();
         if has_parent {
             repo.set_custom_sensor(mix_sensor("parent", &cs_device_uid, SENSOR_ID))
+                .await
+                .unwrap();
+            overrides
+                .set_channel_label(
+                    &cs_device_uid,
+                    "Custom Sensors",
+                    &"parent".to_string(),
+                    None,
+                    Some("Smooth"),
+                )
                 .await
                 .unwrap();
         }
@@ -441,15 +456,20 @@ mod tests {
 
     #[test]
     #[serial(modes_file)]
-    fn a_delete_the_repo_refuses_strips_no_mode() {
-        // Goal: the Modes are only stripped once the sensor is really deleted. Method: the
-        // guard passes, but the repo refuses for the parent that reads this sensor alone.
+    fn a_sensor_reading_it_alone_refuses_the_delete() {
+        // Goal: the delete asks the other Custom Sensors too, names the one it would leave
+        // without a source by its label, and leaves the sensor and the Modes alone.
+        // Method: a second sensor reads only this one, delete, read the refusal and both.
         cc_fs::test_runtime(async {
             let h = harness(false, true).await;
 
             let message = refusal(h.actor.delete(&SENSOR_ID.to_string()).await);
 
-            assert!(message.contains("only has this one child"), "{message}");
+            assert_eq!(
+                message,
+                "Custom Sensor \"sensor1\" is in use by: Custom Sensor \"Smooth\". \
+                Remove it from them before deleting."
+            );
             assert!(h.has_sensor());
             assert!(h.mode_has_lcd_setting());
         });

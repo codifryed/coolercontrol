@@ -228,15 +228,60 @@ impl CustomSensorsRepo {
         Ok(())
     }
 
+    /// The sensors that read `custom_sensor_id` and nothing else, each named for the user.
+    /// Deleting it would leave them without a source, so they refuse the delete.
+    pub fn sensors_reading_only(&self, custom_sensor_id: &str) -> Vec<String> {
+        self.parents_left_without_source(custom_sensor_id)
+            .iter()
+            .map(|parent_id| format!("Custom Sensor \"{}\"", self.sensor_label(parent_id)))
+            .collect()
+    }
+
+    /// The parents whose every source is `child_id`.
+    fn parents_left_without_source(&self, child_id: &str) -> Vec<ParentName> {
+        let relationships = self.relationships.borrow();
+        let Some(parents) = relationships.get(child_id) else {
+            return Vec::new();
+        };
+        let sensors = self.sensors.borrow();
+        parents
+            .iter()
+            .filter(|parent_id| {
+                let Some(parent) = sensors.iter().find(|s| &s.id == *parent_id) else {
+                    debug_assert!(false, "a relationship names a parent that does not exist");
+                    return false;
+                };
+                parent
+                    .sources()
+                    .iter()
+                    .all(|s| s.device_uid == self.device_uid && s.name == child_id)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Deletes the sensor and strips it from the parents that read other sources too. The
+    /// caller has asked everything that may use the sensor, [`Self::sensors_reading_only`]
+    /// included, and refused the delete if anything does.
     pub fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
-        // checks are already made to make sure this sensor isn't in use by a Profile.
+        // Checked here too: a parent left without a source would failsafe on every tick.
+        let stranded = self.sensors_reading_only(custom_sensor_id);
+        if stranded.is_empty().not() {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "Custom Sensor \"{}\" is the only source of: {}",
+                    self.sensor_label(custom_sensor_id),
+                    stranded.join(", ")
+                ),
+            }
+            .into());
+        }
         let parents = self
             .relationships
             .borrow()
             .get(custom_sensor_id)
             .cloned()
             .unwrap_or_default();
-        self.validate_parents_can_drop_child(&parents, custom_sensor_id)?;
         // Persist before mutating: a failed config write must not leave the in-memory
         // parents already stripped, which would report a different value until restart.
         let parents_stripped = self.parents_without_child(&parents, custom_sensor_id);
@@ -263,40 +308,8 @@ impl CustomSensorsRepo {
         Ok(())
     }
 
-    /// Every parent must be able to give up this child. Checked before any parent is
-    /// touched: rejecting partway through the loop used to leave earlier parents already
-    /// stripped in memory while the config write never ran.
-    fn validate_parents_can_drop_child(
-        &self,
-        parents: &[ParentName],
-        child_id: &str,
-    ) -> Result<()> {
-        let sensors = self.sensors.borrow();
-        for parent_name in parents {
-            let Some(parent) = sensors.iter().find(|s| &s.id == parent_name) else {
-                return Err(CCError::InternalError {
-                    msg: format!(
-                        "Parent sensor {parent_name} for Custom Sensor {child_id} not found"
-                    ),
-                }
-                .into());
-            };
-            if parent.children.len() < 2 {
-                return Err(CCError::UserError {
-                    msg: format!(
-                        "Parent sensor {parent_name} for Custom Sensor {child_id} \
-                        only has this one child. The parent must first be deleted before \
-                        deleting this Custom Sensor."
-                    ),
-                }
-                .into());
-            }
-        }
-        Ok(())
-    }
-
-    /// Every parent as it is once `child_id` is gone. Only reached once every parent has
-    /// been approved, so each one is found and keeps a child.
+    /// Every parent as it is once `child_id` is gone. Only reached once no parent is left
+    /// without a source, so each one is found and keeps one.
     fn parents_without_child(&self, parents: &[ParentName], child_id: &str) -> Vec<CustomSensor> {
         let sensors = self.sensors.borrow();
         let mut parents_stripped = Vec::with_capacity(parents.len());
@@ -307,13 +320,13 @@ impl CustomSensorsRepo {
             };
             let mut parent = parent.clone();
             parent.children.retain(|c| c != child_id);
-            debug_assert!(parent.children.is_empty().not());
             if let Some(sources) = parent.sources_mut() {
                 // Only the deleted child goes: both halves must match for a source to be
                 // the one being removed. Every custom-sensor source shares `device_uid`,
                 // so requiring both to differ stripped the parent's other children too.
                 sources.retain(|s| s.device_uid != self.device_uid || s.name != child_id);
             }
+            debug_assert!(parent.sources().is_empty().not());
             parents_stripped.push(parent);
         }
         parents_stripped
@@ -2905,10 +2918,11 @@ mod tests {
             let result = repo.delete_custom_sensor("child_sensor");
 
             // then:
-            assert!(result.is_err());
-            assert!(result
-                .map_err(|err| err.to_string().contains("only has this one child"))
-                .unwrap_err());
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Custom Sensor \"child_sensor\" is the only source of: \
+                Custom Sensor \"parent_sensor\""
+            );
         });
     }
 
@@ -5014,6 +5028,81 @@ mod tests {
                 "Liquid (sensor_1a2b3c4d)"
             );
             assert_eq!(repo.sensor_log_name("sensor_5e6f7a8b"), "sensor_5e6f7a8b");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn sensors_reading_only_names_the_parents_a_delete_would_strand() {
+        // Goal: only a parent with no other source stands in the way of a delete, and the
+        // user is told which one by its label. Method: one child under a parent that reads
+        // it alone and under one that reads a device temp too; then a sensor nothing reads.
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.,
+            }]);
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![source_dev]).await;
+            let uid = repo.device_uid.clone();
+            let on_device = || temp_source(&source_uid, "temp1");
+            let on_child = || temp_source(&uid, "child");
+            for sensor in [
+                mix_sensor("child", vec![on_device()]),
+                mix_sensor("alone", vec![on_child()]),
+                mix_sensor("shared", vec![on_device(), on_child()]),
+            ] {
+                repo.set_custom_sensor(sensor).await.unwrap();
+            }
+            name_channel(&overrides, &uid, "alone", "Liquid Smooth").await;
+
+            assert_eq!(
+                repo.sensors_reading_only("child"),
+                ["Custom Sensor \"Liquid Smooth\""]
+            );
+            assert!(repo.sensors_reading_only("alone").is_empty());
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[allow(clippy::float_cmp)]
+    fn delete_leaves_a_parent_its_device_source() {
+        // Goal: a parent that reads a device besides the deleted sensor keeps working on
+        // the device alone, in memory and in the config. Method: a parent on a device temp
+        // and one child, delete the child, read the parent's sources and its next value.
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.,
+            }]);
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(Rc::clone(&test_config), vec![source_dev], test_overrides())
+                    .unwrap();
+            repo.initialize_devices().await.unwrap();
+            let on_device = || temp_source(&source_uid, "temp1");
+            repo.set_custom_sensor(mix_sensor("child", vec![on_device()]))
+                .await
+                .unwrap();
+            let on_child = temp_source(&repo.device_uid, "child");
+            repo.set_custom_sensor(mix_sensor("parent", vec![on_device(), on_child]))
+                .await
+                .unwrap();
+
+            repo.delete_custom_sensor("child").unwrap();
+
+            let source_names = |sensors: &[CustomSensor]| -> Vec<String> {
+                let parent = sensors.iter().find(|s| s.id == "parent").unwrap();
+                parent.sources().iter().map(|s| s.name.clone()).collect()
+            };
+            assert_eq!(source_names(&repo.sensors.borrow()), ["temp1"]);
+            assert_eq!(
+                source_names(&test_config.get_custom_sensors().unwrap()),
+                ["temp1"]
+            );
+            repo.update_statuses().await.unwrap();
+            assert_eq!(current_temp_for(&repo, "parent"), 40.);
         });
     }
 
