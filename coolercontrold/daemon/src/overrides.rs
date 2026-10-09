@@ -334,6 +334,13 @@ impl OverridesController {
         self.chain_device_name(device_uid, detected, raw_name)
     }
 
+    /// Device display name for text that reaches log lines: plain like
+    /// [`Self::resolve_device_name`], and sanitized.
+    pub fn resolve_device_label(&self, device_uid: &DeviceUID, raw_name: &str) -> String {
+        let name = self.chain_device_name(device_uid, None, raw_name);
+        sanitize_for_log(&name).into_owned()
+    }
+
     /// Channel display label: override > detected > raw. Plain, not the
     /// `Resolved (raw)` log form, and sanitized because it reaches log lines.
     pub fn resolve_channel_label(
@@ -1141,6 +1148,32 @@ mod tests {
             assert_eq!(
                 controller.log_channel_name(&uid, "fan1"),
                 "Front Intake (fan1)"
+            );
+        });
+    }
+
+    #[test]
+    fn device_labels_resolve_override_then_raw_and_are_sanitized() {
+        // Goal: refusal text names a device as the user does and leaks no control
+        // characters. Method: a raw driver name carrying an escape, then an override.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+
+            // A driver-reported name is never validated.
+            assert_eq!(
+                controller.resolve_device_label(&uid, "Kraken\u{1b}[31m\nX"),
+                "Kraken[31mX"
+            );
+
+            controller
+                .set_device_name(&uid, HINT, Some("Radiator Hub"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.resolve_device_label(&uid, "Kraken"),
+                "Radiator Hub"
             );
         });
     }

@@ -1531,8 +1531,8 @@ impl Engine {
             || "a disconnected device".to_string(),
             |device| device.borrow().name.clone(),
         );
-        self.overrides
-            .resolve_device_name(&device_uid, None, &raw_name)
+        // Sanitized: the name lands in a refusal, which is logged.
+        self.overrides.resolve_device_label(&device_uid, &raw_name)
     }
 
     async fn get_ordered_member_profiles(
