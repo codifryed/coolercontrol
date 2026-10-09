@@ -38,7 +38,7 @@ const activate = async (modeUID: string): Promise<void> => {
 }
 
 // Only the active profile is pushed, so each visit fetches the profiles the system offers now.
-onMounted(() => settingsStore.loadPowerProfiles())
+onMounted(() => settingsStore.refreshAvailablePowerProfiles())
 
 // Only shown when the daemon actually reached a power profile daemon over D-Bus. On a system
 // without one (TLP only, or none at all) there is nothing to map, so the card stays hidden.

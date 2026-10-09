@@ -868,6 +868,18 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     /**
+     * Refetches only the profiles the system offers. The active profile and the mapping have
+     * their own writers, which a response that was already under way must not overwrite.
+     */
+    async function refreshAvailablePowerProfiles(): Promise<void> {
+        console.debug('Refreshing available Power Profiles')
+        const state = await deviceStore.daemonClient.getPowerProfiles()
+        // A failed request keeps what is shown: an empty list would hide the mapping card.
+        if (state == null) return
+        powerProfilesAvailable.value = state.available
+    }
+
+    /**
      * Persists the power profile to Mode mapping. Profiles mapped to nothing are dropped, so
      * clearing a row removes it rather than storing an empty UID the daemon would reject.
      */
@@ -1896,6 +1908,7 @@ export const useSettingsStore = defineStore('settings', () => {
         powerProfileActive,
         powerProfileModes,
         loadPowerProfiles,
+        refreshAvailablePowerProfiles,
         savePowerProfileModes,
         applySystemEvent,
         modeActivePrevious,

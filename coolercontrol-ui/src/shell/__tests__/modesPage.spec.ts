@@ -7,6 +7,7 @@ import { createI18n } from 'vue-i18n'
 import en from '@/i18n/locales/en.ts'
 
 const loadPowerProfiles = vi.fn(() => Promise.resolve())
+const refreshAvailablePowerProfiles = vi.fn(() => Promise.resolve())
 
 vi.mock('@/stores/SettingsStore.ts', () => ({
     useSettingsStore: () => ({
@@ -18,6 +19,7 @@ vi.mock('@/stores/SettingsStore.ts', () => ({
         powerProfileModes: {},
         ccSettings: { apply_on_boot: true },
         loadPowerProfiles,
+        refreshAvailablePowerProfiles,
     }),
 }))
 
@@ -38,6 +40,7 @@ const mountPage = async () => {
 
 beforeEach(() => {
     loadPowerProfiles.mockClear()
+    refreshAvailablePowerProfiles.mockClear()
 })
 
 describe('ModesPage power profiles', () => {
@@ -45,10 +48,17 @@ describe('ModesPage power profiles', () => {
     // offering other profiles reaches the page by fetching them again on a visit.
     it('fetches the offered profiles on every visit', async () => {
         const firstVisit = await mountPage()
-        expect(loadPowerProfiles).toHaveBeenCalledTimes(1)
+        expect(refreshAvailablePowerProfiles).toHaveBeenCalledTimes(1)
 
         firstVisit.unmount()
         await mountPage()
-        expect(loadPowerProfiles).toHaveBeenCalledTimes(2)
+        expect(refreshAvailablePowerProfiles).toHaveBeenCalledTimes(2)
+    })
+
+    // The full load also assigns the active profile and the mapping, which an event or a save
+    // can have made newer than the response.
+    it('does not reload the active profile or the mapping on a visit', async () => {
+        await mountPage()
+        expect(loadPowerProfiles).not.toHaveBeenCalled()
     })
 })
