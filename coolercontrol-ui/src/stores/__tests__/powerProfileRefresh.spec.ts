@@ -62,6 +62,33 @@ describe('power profile refresh', () => {
         expect(store.powerProfileModes).toEqual({ balanced: 'mode-1' })
     })
 
+    /// Goal: when the load at startup failed, the mapping card must not show an empty mapping
+    /// over the one the daemon holds, since one edit would then save over the rest.
+    it('loads the whole state when the first load failed', async () => {
+        const getPowerProfiles = vi.spyOn(DaemonClient.prototype, 'getPowerProfiles')
+        const store = settingsStore()
+        getPowerProfiles.mockResolvedValueOnce(undefined)
+        await store.loadPowerProfiles()
+
+        getPowerProfiles.mockResolvedValueOnce(
+            state(['power-saver', 'balanced'], 'balanced', { balanced: 'mode-1' }),
+        )
+        await store.refreshAvailablePowerProfiles()
+
+        expect(store.powerProfilesAvailable).toEqual(['power-saver', 'balanced'])
+        expect(store.powerProfileActive).toBe('balanced')
+        expect(store.powerProfileModes).toEqual({ balanced: 'mode-1' })
+
+        // From here on the refresh is back to the list alone.
+        store.applySystemEvent({ kind: 'power_profile', value: 'power-saver', previous: null })
+        getPowerProfiles.mockResolvedValueOnce(state(['balanced'], 'balanced', {}))
+        await store.refreshAvailablePowerProfiles()
+
+        expect(store.powerProfilesAvailable).toEqual(['balanced'])
+        expect(store.powerProfileActive).toBe('power-saver')
+        expect(store.powerProfileModes).toEqual({ balanced: 'mode-1' })
+    })
+
     /// Goal: a failed request is not a system without profiles, so the list on screen stays.
     it('keeps the offered profiles on a failed fetch', async () => {
         const getPowerProfiles = vi.spyOn(DaemonClient.prototype, 'getPowerProfiles')

@@ -65,7 +65,11 @@ import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/mode
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
-import { PowerProfileModesDTO, SystemEventDTO } from '@/models/PowerProfile.ts'
+import {
+    PowerProfileModesDTO,
+    PowerProfileStateDTO,
+    SystemEventDTO,
+} from '@/models/PowerProfile.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
@@ -121,6 +125,8 @@ export const useSettingsStore = defineStore('settings', () => {
     const powerProfilesAvailable: Ref<Array<string>> = ref([])
     const powerProfileActive: Ref<string | undefined> = ref()
     const powerProfileModes: Ref<Record<string, UID>> = ref({})
+    // Unset until the whole state has arrived once: until then the mapping is unknown, not empty.
+    let powerProfilesLoaded = false
     const modeActivePrevious: Ref<UID | undefined> = ref()
 
     const modeInEdit: Ref<UID | undefined> = ref()
@@ -862,21 +868,32 @@ export const useSettingsStore = defineStore('settings', () => {
         const state = await deviceStore.daemonClient.getPowerProfiles()
         // A failed request keeps what is shown: an empty list would hide the mapping card.
         if (state == null) return
+        applyPowerProfileState(state)
+    }
+
+    function applyPowerProfileState(state: PowerProfileStateDTO): void {
         powerProfilesAvailable.value = state.available
         powerProfileActive.value = state.active ?? undefined
         powerProfileModes.value = state.modes
+        powerProfilesLoaded = true
     }
 
     /**
      * Refetches only the profiles the system offers. The active profile and the mapping have
      * their own writers, which a response that was already under way must not overwrite.
+     * Until a first load has succeeded there is nothing newer to overwrite, and the whole
+     * state is taken: a mapping left empty would be saved over the one the daemon holds.
      */
     async function refreshAvailablePowerProfiles(): Promise<void> {
         console.debug('Refreshing available Power Profiles')
         const state = await deviceStore.daemonClient.getPowerProfiles()
         // A failed request keeps what is shown: an empty list would hide the mapping card.
         if (state == null) return
-        powerProfilesAvailable.value = state.available
+        if (powerProfilesLoaded) {
+            powerProfilesAvailable.value = state.available
+        } else {
+            applyPowerProfileState(state)
+        }
     }
 
     /**
