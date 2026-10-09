@@ -28,7 +28,7 @@
 // pedantic similar_names would hurt readability.
 #![allow(clippy::similar_names)]
 
-use super::curve::{Calibration, MappedDuty};
+use super::curve::MappedDuty;
 use super::state::{ChannelEntry, FanState, FanStateMap};
 use super::store::CalibrationStore;
 use super::ChannelKey;
@@ -295,24 +295,17 @@ async fn dispatch_core(
         return Ok(DispatchOutcome::Done(AppliedDuty::Skipped));
     }
 
-    let calibration = store.get(&key);
-    let mapping = calibration
-        .as_ref()
-        .and_then(|cal| cal.true_to_device(true_duty));
-    let Some(mapped) = mapping else {
+    // Read in place: `store.get` would clone the calibration, curves
+    // included, on every duty write.
+    let Some(plan) = store.dispatch_plan(&key, true_duty) else {
         writer
             .write_device_duty(&device_uid, &channel_name, true_duty)
             .await?;
         return Ok(DispatchOutcome::Done(AppliedDuty::Unmapped));
     };
+    let mapped = plan.mapped;
     debug_assert!(mapped.kick <= 100);
     debug_assert!(mapped.sustain <= 100);
-    let kick_duration_ms = calibration
-        .as_ref()
-        .map_or(0, Calibration::kick_duration_ms_effective);
-    let walk_enabled = calibration
-        .as_ref()
-        .is_none_or(Calibration::walk_after_kick_enabled);
 
     if true_duty == 0 {
         handle_write_zero(state, writer, key, device_uid, channel_name).await?;
@@ -336,10 +329,10 @@ async fn dispatch_core(
             )
             .await?;
             Ok(DispatchOutcome::SustainPending {
-                kick_duration_ms,
+                kick_duration_ms: plan.kick_duration_ms,
                 kick_duty: mapped.kick,
                 sustain_duty: mapped.sustain,
-                walk_enabled,
+                walk_enabled: plan.walk_after_kick,
                 key,
                 device_uid,
                 channel_name,
