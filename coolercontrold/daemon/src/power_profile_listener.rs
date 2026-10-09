@@ -281,6 +281,12 @@ fn is_new_profile(current: Option<&str>, signalled: &str) -> bool {
     signalled.is_empty().not() && current != Some(signalled)
 }
 
+/// What a read of `ActiveProfile` is worth. A blank name is treated like a failed read here
+/// too, so the profile we hold stays.
+fn named_profile(read: Option<String>) -> Option<String> {
+    read.filter(|profile| profile.is_empty().not())
+}
+
 /// Why `watch` gave up an established connection.
 #[derive(Debug, PartialEq, Eq)]
 enum WatchEnd {
@@ -405,10 +411,12 @@ impl Listener {
     /// owner of the bus name is the only sign of a restart.
     async fn watch(&mut self, link: &mut Link, returning: bool) -> WatchEnd {
         let proxy = &link.proxy;
-        let observed = proxy
-            .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
-            .await
-            .ok();
+        let observed = named_profile(
+            proxy
+                .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
+                .await
+                .ok(),
+        );
         self.log_return(returning, observed.as_deref());
         // Deliberately not cleared while disconnected: a client hides the feature on an empty
         // list, which would put an existing mapping out of reach for the length of an outage.
@@ -1055,6 +1063,35 @@ mod tests {
         assert!(is_new_profile(Some("balanced"), "balanced").not());
         assert!(is_new_profile(Some("balanced"), "performance"));
         assert!(is_new_profile(None, "performance"));
+    }
+
+    /// Goal: a blank `ActiveProfile` read on a connect must count as a failed read. It must not
+    /// replace the profile we hold, nor look like a change to act on and broadcast.
+    /// Methodology: pass a blank, a failed and a named read through, then feed the blank one to
+    /// the reconnect decision and to the shared state, and read both back.
+    #[test]
+    fn a_blank_profile_read_counts_as_a_failed_read() {
+        assert_eq!(named_profile(Some(String::new())), None);
+        assert_eq!(named_profile(None), None);
+        assert_eq!(
+            named_profile(Some("balanced".to_string())).as_deref(),
+            Some("balanced")
+        );
+
+        let blank = named_profile(Some(String::new()));
+        assert_eq!(
+            reconnect_action(true, Some("balanced"), blank.as_deref()),
+            Reconnect::Unchanged,
+            "A blank read on a reconnect is not a profile change"
+        );
+        let profiles = PowerProfiles::default();
+        profiles.set_observed(None, Some("balanced".to_string()));
+        profiles.set_observed(None, blank);
+        assert_eq!(
+            profiles.snapshot().active.as_deref(),
+            Some("balanced"),
+            "The profile held stays"
+        );
     }
 
     const STARTUP_PROFILE: &str = "performance";
