@@ -28,7 +28,7 @@ pub use diagnoser::{
     DiagnosisProgress, DiagnosisSettings, HottestTemp, SettingsSnapshot, SnapshotKind,
     CALIBRATION_TEMP_HINT,
 };
-pub use dispatch::{dispatch, AppliedDuty, DutyWriter, RepoWriter};
+pub use dispatch::{dispatch, DutyWriter, RepoWriter};
 pub use registry::DiagnosisRegistry;
 pub use state::FanStateMap;
 // Parameter and return types of `FanStateMap`'s public entry/replace
