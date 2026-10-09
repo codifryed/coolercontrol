@@ -28,7 +28,7 @@
 // pedantic similar_names would hurt readability.
 #![allow(clippy::similar_names)]
 
-use super::curve::MappedDuty;
+use super::curve::{DispatchPlan, MappedDuty};
 use super::state::{ChannelEntry, FanState, FanStateMap};
 use super::store::CalibrationStore;
 use super::ChannelKey;
@@ -303,9 +303,8 @@ async fn dispatch_core(
             .await?;
         return Ok(DispatchOutcome::Done(AppliedDuty::Unmapped));
     };
-    let mapped = plan.mapped;
-    debug_assert!(mapped.kick <= 100);
-    debug_assert!(mapped.sustain <= 100);
+    debug_assert!(plan.mapped.kick <= 100);
+    debug_assert!(plan.mapped.sustain <= 100);
 
     if true_duty == 0 {
         handle_write_zero(state, writer, key, device_uid, channel_name).await?;
@@ -313,7 +312,30 @@ async fn dispatch_core(
             device_duty: 0,
         }));
     }
+    dispatch_mapped(
+        state,
+        writer,
+        plan,
+        key,
+        device_uid,
+        channel_name,
+        true_duty,
+    )
+    .await
+}
 
+/// Non-zero write on a smooth calibration: kick from `Off`, retarget a kick
+/// in flight, or write the sustain duty when `On`.
+async fn dispatch_mapped(
+    state: &Rc<FanStateMap>,
+    writer: &Rc<dyn DutyWriter>,
+    plan: DispatchPlan,
+    key: ChannelKey,
+    device_uid: DeviceUID,
+    channel_name: ChannelName,
+    true_duty: Duty,
+) -> Result<DispatchOutcome> {
+    let mapped = plan.mapped;
     let entry = state.entry(&key);
     match entry.state {
         FanState::Off => {
