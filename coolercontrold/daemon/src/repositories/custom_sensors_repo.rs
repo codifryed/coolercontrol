@@ -186,7 +186,10 @@ impl CustomSensorsRepo {
         self.fill_status_history_for_new_sensor(&custom_sensor)
             .await
             .inspect_err(|err| {
-                error!("Failed to fill status history for new Custom Sensor: {err}");
+                error!(
+                    "Failed to fill status history for new Custom Sensor {}: {err}",
+                    self.sensor_log_name(&custom_sensor.id)
+                );
             })?;
         self.config.set_custom_sensor(custom_sensor.clone())?;
         self.sensors.borrow_mut().push(custom_sensor);
@@ -501,7 +504,7 @@ impl CustomSensorsRepo {
             });
             debug!(
                 "No source data found for Custom Sensor: {}. Filling with zeros",
-                sensor.id
+                self.sensor_log_name(&sensor.id)
             );
         }
         Ok(reduce(&source_data))
@@ -1226,7 +1229,10 @@ impl CustomSensorsRepo {
             {
                 child_sensor.parents.extend(parents.iter().cloned());
             } else {
-                error!("Custom Sensor Child: {child_name} not found!");
+                error!(
+                    "Custom Sensor Child: {} not found!",
+                    self.sensor_log_name(child_name)
+                );
             }
         }
     }
@@ -1285,6 +1291,11 @@ impl CustomSensorsRepo {
     fn sensor_label(&self, sensor_id: &str) -> String {
         self.overrides
             .resolve_channel_label(&self.device_uid, sensor_id, None)
+    }
+
+    /// A sensor for a log line, which keeps the id the config file uses: `Label (id)`.
+    fn sensor_log_name(&self, sensor_id: &str) -> String {
+        self.overrides.log_channel_name(&self.device_uid, sensor_id)
     }
 
     /// Several sensors by label, each quoted, for a message that lists them.
@@ -1377,7 +1388,7 @@ impl CustomSensorsRepo {
             let unit = if metric.is_temp() { "°C" } else { "" };
             warn!(
                 "Custom Sensor {} entering failsafe ({value}{unit}): {reason}",
-                self.overrides.log_channel_name(&self.device_uid, sensor_id)
+                self.sensor_log_name(sensor_id)
             );
         }
         SensorValue {
@@ -1398,7 +1409,7 @@ impl CustomSensorsRepo {
         if self.clear_failsafing_sensor(sensor_id) {
             info!(
                 "Custom Sensor {} recovered from failsafe",
-                self.overrides.log_channel_name(&self.device_uid, sensor_id)
+                self.sensor_log_name(sensor_id)
             );
         }
         SensorValue {
@@ -1501,7 +1512,7 @@ impl Repository for CustomSensorsRepo {
                 self.sensors
                     .borrow()
                     .iter()
-                    .map(|d| d.id.clone())
+                    .map(|sensor| self.sensor_log_name(&sensor.id))
                     .collect::<Vec<String>>()
             );
         }
@@ -4985,6 +4996,24 @@ mod tests {
                 failsafing[0].reason,
                 "source missing: Radiator Hub | Coolant"
             );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn a_log_line_names_a_sensor_by_label_and_id() {
+        // Goal: a log line names a sensor as the user does and keeps the id, which is what
+        // the config file holds. Method: name one of two sensors, read both log names.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![]).await;
+            name_channel(&overrides, &repo.device_uid, "sensor_1a2b3c4d", "Liquid").await;
+
+            assert_eq!(
+                repo.sensor_log_name("sensor_1a2b3c4d"),
+                "Liquid (sensor_1a2b3c4d)"
+            );
+            assert_eq!(repo.sensor_log_name("sensor_5e6f7a8b"), "sensor_5e6f7a8b");
         });
     }
 

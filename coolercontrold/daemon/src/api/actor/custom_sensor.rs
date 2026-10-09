@@ -92,6 +92,10 @@ impl CustomSensorActor {
             self.overrides
                 .resolve_channel_label(&cs_device_uid, custom_sensor_id, None);
         verify_not_in_use(&sensor_label, &users)?;
+        // Read before the delete drops the label.
+        let sensor_log_name = self
+            .overrides
+            .log_channel_name(&cs_device_uid, custom_sensor_id);
         self.custom_sensors_repo
             .delete_custom_sensor(custom_sensor_id)?;
         let save_result = self.config.save_config_file().await;
@@ -105,7 +109,7 @@ impl CustomSensorActor {
         {
             warn!(
                 "Failed to remove name override for deleted sensor \
-                {custom_sensor_id}: {err}"
+                {sensor_log_name}: {err}"
             );
         }
         if let Err(err) = self
@@ -115,7 +119,7 @@ impl CustomSensorActor {
         {
             warn!(
                 "Failed to save the Modes without deleted sensor \
-                {custom_sensor_id}: {err}"
+                {sensor_log_name}: {err}"
             );
         }
         save_result
