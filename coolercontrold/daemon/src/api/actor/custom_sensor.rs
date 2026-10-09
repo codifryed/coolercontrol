@@ -321,6 +321,7 @@ mod tests {
     struct Harness {
         actor: CustomSensorActor,
         repo: Rc<CustomSensorsRepo>,
+        config: Rc<Config>,
         modes: Rc<ModeController>,
         _overrides_dir: tempfile::TempDir,
     }
@@ -410,7 +411,7 @@ mod tests {
             receiver,
             Rc::clone(&repo),
             engine,
-            config,
+            Rc::clone(&config),
             overrides,
             alerts,
             Rc::clone(&modes),
@@ -418,6 +419,7 @@ mod tests {
         Harness {
             actor,
             repo,
+            config,
             modes,
             _overrides_dir: overrides_dir,
         }
@@ -470,6 +472,27 @@ mod tests {
                 "Custom Sensor \"sensor1\" is in use by: Custom Sensor \"Smooth\". \
                 Remove it from them before deleting."
             );
+            assert!(h.has_sensor());
+            assert!(h.mode_has_lcd_setting());
+        });
+    }
+
+    #[test]
+    #[serial(modes_file)]
+    fn a_delete_the_repo_fails_strips_no_mode() {
+        // Goal: the Modes are stripped only once the sensor is really gone, as a failed
+        // delete leaves a sensor the LCD still shows. Method: nothing uses the sensor, so
+        // the guard passes, but the config has lost it, so the repo delete fails.
+        cc_fs::test_runtime(async {
+            let h = harness(false, false).await;
+            h.config.delete_custom_sensor(SENSOR_ID).unwrap();
+
+            let result = h.actor.delete(&SENSOR_ID.to_string()).await;
+
+            assert!(matches!(
+                result.unwrap_err().downcast::<CCError>(),
+                Ok(CCError::NotFound { .. })
+            ));
             assert!(h.has_sensor());
             assert!(h.mode_has_lcd_setting());
         });
