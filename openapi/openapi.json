@@ -8312,7 +8312,7 @@
             }
           },
           "id": {
-            "description": "ID MUST be unique, as `temp_name` must be unique.",
+            "description": "The ID MUST be unique: it names the sensor's temp or, for any other metric, its channel\n on the Custom Sensors device.",
             "type": "string"
           },
           "metric": {

@@ -840,7 +840,7 @@ pub struct SensorSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "CustomSensorWire", into = "CustomSensorWire")]
 pub struct CustomSensor {
-    /// ID MUST be unique, as `temp_name` must be unique.
+    /// Unique among the Custom Sensors, see [`CustomSensorId`].
     pub id: CustomSensorId,
 
     pub metric: CustomSensorMetric,
@@ -965,7 +965,8 @@ impl CustomSensor {
 // Wire shape of `CustomSensor` (see the NOTE on that type).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct CustomSensorWire {
-    /// ID MUST be unique, as `temp_name` must be unique.
+    /// The ID MUST be unique: it names the sensor's temp or, for any other metric, its channel
+    /// on the Custom Sensors device.
     id: CustomSensorId,
 
     /// The channel metric the sensor reads and reports, `Temp` when absent. All sources
