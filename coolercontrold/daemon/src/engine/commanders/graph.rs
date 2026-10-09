@@ -293,11 +293,7 @@ impl GraphProfileCommander {
     /// The duty is logged after the write, because only the dispatch knows
     /// which device duty a calibrated channel was given.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
-        let (device_type, device_name) = {
-            // this will block if reference is held, thus clone()
-            let device_lock = self.all_devices[device_uid].borrow();
-            (device_lock.d_type, device_lock.name.clone())
-        };
+        let device_type = self.all_devices[device_uid].borrow().d_type;
         let Some(writer) = self.duty_writers_by_type.get(&device_type) else {
             return;
         };
@@ -324,34 +320,37 @@ impl GraphProfileCommander {
                 applied.describe(duty_to_set)
             );
         }
-        self.log_write_outcome(device_uid, &device_name, channel_name, write_result.err());
+        self.log_write_outcome(device_uid, channel_name, duty_to_set, write_result.err());
     }
 
     /// Logs the start and the end of a run of failing duty writes for one device channel, and
     /// nothing in between. The device and channel are named here because the error alone does not
-    /// carry them, which made the untargeted spam hard to attribute to a specific cooler.
+    /// carry them, which made the untargeted spam hard to attribute to a specific cooler. The name
+    /// is resolved only where a line is emitted, so a healthy channel pays nothing for it.
     fn log_write_outcome(
         &self,
         device_uid: &UID,
-        device_name: &str,
         channel_name: &str,
+        duty: Duty,
         write_error: Option<anyhow::Error>,
     ) {
         let mut write_failure_log = self.write_failure_log.borrow_mut();
         let Some(err) = write_error else {
             if write_failure_log.record_success(device_uid, channel_name) {
                 info!(
-                    "Applying duties to {device_name}:{device_uid} channel {channel_name} \
-                    is working again."
+                    "Applying duties to {} is working again.",
+                    self.calibration_store
+                        .log_device_channel(device_uid, channel_name)
                 );
             }
             return;
         };
         if write_failure_log.record_failure(device_uid, channel_name) {
             warn!(
-                "Error applying Graph/Mix Profile calculated duty to \
-                {device_name}:{device_uid} channel {channel_name} - {err}. \
-                Further failures for this channel are suppressed until it recovers."
+                "Error applying Graph/Mix Profile calculated duty of {duty}% to {} - {err}. \
+                Further failures for this channel are suppressed until it recovers.",
+                self.calibration_store
+                    .log_device_channel(device_uid, channel_name)
             );
         }
     }
