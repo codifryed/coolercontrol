@@ -273,6 +273,14 @@ fn reconnect_action(seeded: bool, current: Option<&str>, observed: Option<&str>)
     }
 }
 
+/// Whether a signalled `ActiveProfile` is one to act on.
+///
+/// A blank name is treated like a failed read, so the profile we hold stays. The property cache
+/// can also replay the value we already hold.
+fn is_new_profile(current: Option<&str>, signalled: &str) -> bool {
+    signalled.is_empty().not() && current != Some(signalled)
+}
+
 /// Why `watch` gave up an established connection.
 #[derive(Debug, PartialEq, Eq)]
 enum WatchEnd {
@@ -456,8 +464,7 @@ impl Listener {
             warn!("Failed to read the changed ActiveProfile value.");
             return;
         };
-        // The property cache can replay the value we already hold.
-        if self.current.as_deref() == Some(profile.as_str()) {
+        if is_new_profile(self.current.as_deref(), &profile).not() {
             return;
         }
         self.apply(profile).await;
@@ -764,13 +771,22 @@ async fn available_profiles(proxy: &Proxy<'static>) -> Option<Vec<String>> {
 
 /// Picks the names out of the `Profiles` array of dicts.
 fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
-    profiles
+    let names: Vec<String> = profiles
         .iter()
         .filter_map(|entry| entry.get(PROFILE_NAME_KEY))
         .filter_map(|value| String::try_from(value.clone()).ok())
         // A blank name can never match a mapping, and would only show up as an empty picker row.
         .filter(|profile| profile.is_empty().not())
-        .collect()
+        .collect();
+    debug_assert!(
+        names.iter().all(|name| name.is_empty().not()),
+        "A blank name must never reach the list"
+    );
+    debug_assert!(
+        names.len() <= profiles.len(),
+        "Every name comes from one entry"
+    );
+    names
 }
 
 #[cfg(test)]
@@ -1027,6 +1043,18 @@ mod tests {
 
         assert_eq!(profile_names(&profiles), ["power-saver", "balanced"]);
         assert!(profile_names(&[]).is_empty());
+    }
+
+    /// Goal: a blank `ActiveProfile` from the bus must be ignored like a failed read, so the
+    /// profile we hold stays, and a replayed value must not be handled twice.
+    /// Methodology: ask about a blank, a replayed and a new profile, with and without a held one.
+    #[test]
+    fn only_a_new_named_profile_is_acted_on() {
+        assert!(is_new_profile(Some("balanced"), "").not());
+        assert!(is_new_profile(None, "").not());
+        assert!(is_new_profile(Some("balanced"), "balanced").not());
+        assert!(is_new_profile(Some("balanced"), "performance"));
+        assert!(is_new_profile(None, "performance"));
     }
 
     const STARTUP_PROFILE: &str = "performance";
