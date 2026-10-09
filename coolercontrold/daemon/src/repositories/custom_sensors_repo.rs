@@ -1328,7 +1328,7 @@ impl CustomSensorsRepo {
     }
 
     /// Several sensors by label, each quoted, for a message that lists them.
-    fn quoted_sensor_labels(&self, sensor_ids: &[TempName]) -> String {
+    fn quoted_sensor_labels(&self, sensor_ids: &[ParentName]) -> String {
         sensor_ids
             .iter()
             .map(|sensor_id| format!("\"{}\"", self.sensor_label(sensor_id)))
