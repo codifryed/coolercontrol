@@ -37,7 +37,7 @@ use crate::repositories::repository::Repository;
 use crate::rt;
 use anyhow::Result;
 use async_trait::async_trait;
-use log::warn;
+use log::{debug, warn};
 use std::fmt;
 use std::rc::Rc;
 use std::time::Duration;
@@ -496,11 +496,14 @@ pub async fn complete_kick(
         }
     };
     if let Some(duty) = target {
+        debug!("Calibration kick finished:: {log_label} | settling at device duty: {duty}%");
         if let Err(err) = writer
             .write_device_duty(device_uid, channel_name, duty)
             .await
         {
-            warn!("Calibration sustain write failed for {log_label} - {err}");
+            warn!(
+                "Calibration sustain write of device duty {duty}% failed for {log_label} - {err}"
+            );
         }
     }
 }
@@ -581,11 +584,12 @@ async fn write_walk_step(
     log_label: &str,
     duty: Duty,
 ) {
+    debug!("Calibration walk-down:: {log_label} | device duty: {duty}%");
     if let Err(err) = writer
         .write_device_duty(device_uid, channel_name, duty)
         .await
     {
-        warn!("Calibration walk-down write failed for {log_label} - {err}");
+        warn!("Calibration walk-down write of device duty {duty}% failed for {log_label} - {err}");
     }
 }
 
