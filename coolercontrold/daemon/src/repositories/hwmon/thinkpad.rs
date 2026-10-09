@@ -57,7 +57,7 @@ async fn set_manual_duty(
     .await
     .map_err(|err| {
         anyhow!(
-            "Error on {}:{} for duty {speed_fixed} - {err}",
+            "Error on {}:{} for device duty {speed_fixed}% - {err}",
             hwmon_driver.name,
             channel_info.name
         )

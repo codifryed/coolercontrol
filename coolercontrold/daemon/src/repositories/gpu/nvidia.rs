@@ -178,7 +178,8 @@ impl GpuNVidia {
                 .await
                 .map_err(|err| {
                     anyhow!(
-                        "Error settings fan duty of {speed_fixed} on Nvidia GPU #{}:{channel_name} - {err}",
+                        "Error setting device duty of {speed_fixed}% on Nvidia GPU \
+                         #{}:{channel_name} - {err}",
                         nvidia_gpu_info.gpu_index
                     )
                 })

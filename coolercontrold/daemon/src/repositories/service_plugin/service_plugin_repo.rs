@@ -1181,7 +1181,8 @@ impl Repository for ServicePluginRepo {
             }
         }
         debug!(
-            "Applying Service Plugin device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; \
+             Device Duty: {speed_fixed}%"
         );
         let result = device_service
             .client
@@ -1246,7 +1247,8 @@ impl Repository for ServicePluginRepo {
             }
         }
         debug!(
-            "Applying Service Plugin device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; \
+             Speed Profile (device duty): {speed_profile:?}"
         );
         let result = device_service
             .client
