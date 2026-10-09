@@ -1917,7 +1917,7 @@ async fn run_one_pending_write(
     }
     debug!(
         "Applying HWMON device: {driver_name} channel: {channel_name}; \
-         Fixed Speed: {}",
+         Device Duty: {}%",
         pending.target_duty
     );
     let result = apply_pwm_duty_write(
@@ -2006,7 +2006,7 @@ async fn apply_pwm_duty_write(
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error on {}:{channel_name} for duty {target_duty} - {err}",
+                    "Error on {}:{channel_name} for device duty {target_duty}% - {err}",
                     driver.name
                 )
             })
@@ -2552,7 +2552,8 @@ impl Repository for HwmonRepo {
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
         debug!(
-            "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+            "Applying HWMON device: {device_uid} channel: {channel_name}; \
+             Speed Profile (device duty): {speed_profile:?}"
         );
         let result = auto_curve::apply_curve(
             &hwmon_driver.path,
@@ -2565,7 +2566,8 @@ impl Repository for HwmonRepo {
         .await
         .map_err(|err| {
             anyhow!(
-                "Error on {}:{channel_name} for speed profile {speed_profile:?} - {err}",
+                "Error on {}:{channel_name} for speed profile (device duty) \
+                 {speed_profile:?} - {err}",
                 hwmon_driver.name
             )
         });

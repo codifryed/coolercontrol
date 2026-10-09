@@ -1712,13 +1712,14 @@ impl Repository for LiquidctlRepo {
     ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
         debug!(
-            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; \
+             Device Duty: {speed_fixed}%"
         );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                    "Error on {}:{channel_name} for device duty {speed_fixed}% - {err}",
                     cached_device_data.driver_type
                 )
             })
@@ -1732,7 +1733,8 @@ impl Repository for LiquidctlRepo {
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         debug!(
-            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; \
+             Speed Profile (device duty): {speed_profile:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(

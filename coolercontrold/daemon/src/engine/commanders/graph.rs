@@ -287,16 +287,11 @@ impl GraphProfileCommander {
     /// uncalibrated channels unchanged. The writer is looked up from the
     /// pre-built `duty_writers_by_type` cache so the hot path has no clones or
     /// allocations.
+    ///
+    /// The duty is logged after the write, because only the dispatch knows
+    /// which device duty a calibrated channel was given.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
-        let (device_type, device_name) = {
-            // this will block if reference is held, thus clone()
-            let device_lock = self.all_devices[device_uid].borrow();
-            (device_lock.d_type, device_lock.name.clone())
-        };
-        debug!(
-            "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
-            channel: {channel_name}; DUTY: {duty_to_set}"
-        );
+        let device_type = self.all_devices[device_uid].borrow().d_type;
         let Some(writer) = self.duty_writers_by_type.get(&device_type) else {
             return;
         };
@@ -309,34 +304,54 @@ impl GraphProfileCommander {
             duty_to_set,
         )
         .await;
-        self.log_write_outcome(device_uid, &device_name, channel_name, write_result.err());
+        if let Ok(applied) = &write_result {
+            let outcome = if applied.was_skipped() {
+                "Not applied"
+            } else {
+                "Applied"
+            };
+            debug!(
+                "{outcome} scheduled Speed Profile:: {} | Duty: {}",
+                self.calibration_store
+                    .log_device_channel(device_uid, channel_name),
+                applied.describe(duty_to_set)
+            );
+            if applied.was_skipped() {
+                // Nothing was written, so a run of failures has not ended.
+                return;
+            }
+        }
+        self.log_write_outcome(device_uid, channel_name, duty_to_set, write_result.err());
     }
 
     /// Logs the start and the end of a run of failing duty writes for one device channel, and
     /// nothing in between. The device and channel are named here because the error alone does not
-    /// carry them, which made the untargeted spam hard to attribute to a specific cooler.
+    /// carry them, which made the untargeted spam hard to attribute to a specific cooler. The name
+    /// is resolved only where a line is emitted, so a healthy channel pays nothing for it.
     fn log_write_outcome(
         &self,
         device_uid: &UID,
-        device_name: &str,
         channel_name: &str,
+        duty: Duty,
         write_error: Option<anyhow::Error>,
     ) {
         let mut write_failure_log = self.write_failure_log.borrow_mut();
         let Some(err) = write_error else {
             if write_failure_log.record_success(device_uid, channel_name) {
                 info!(
-                    "Applying duties to {device_name}:{device_uid} channel {channel_name} \
-                    is working again."
+                    "Applying duties to {} is working again.",
+                    self.calibration_store
+                        .log_device_channel(device_uid, channel_name)
                 );
             }
             return;
         };
         if write_failure_log.record_failure(device_uid, channel_name) {
             warn!(
-                "Error applying Graph/Mix Profile calculated duty to \
-                {device_name}:{device_uid} channel {channel_name} - {err}. \
-                Further failures for this channel are suppressed until it recovers."
+                "Error applying Graph/Mix Profile calculated duty of {duty}% to {} - {err}. \
+                Further failures for this channel are suppressed until it recovers.",
+                self.calibration_store
+                    .log_device_channel(device_uid, channel_name)
             );
         }
     }
@@ -413,11 +428,93 @@ impl GraphProfileCommander {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::DutyWriter;
+    use crate::device::{Device, DeviceInfo, DeviceType};
+    use async_trait::async_trait;
+    use std::cell::Cell;
 
     const DEVICE: &str = "device-uid";
     const OTHER_DEVICE: &str = "other-device-uid";
     const FAN: &str = "fan1";
     const PUMP: &str = "pump";
+
+    /// Fails every write while `failing` is set.
+    struct ToggleWriter {
+        failing: Rc<Cell<bool>>,
+    }
+
+    #[async_trait(?Send)]
+    impl DutyWriter for ToggleWriter {
+        async fn write_device_duty(&self, _: &UID, _: &str, _: Duty) -> Result<()> {
+            if self.failing.get() {
+                return Err(anyhow!("simulated failure"));
+            }
+            Ok(())
+        }
+    }
+
+    /// A commander over one hwmon device, its UID, and the writer's failure switch.
+    fn commander_with_toggle_writer() -> (GraphProfileCommander, UID, Rc<Cell<bool>>) {
+        let device = Device::new(
+            "nct6687".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        let device_uid = device.uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(
+            device_uid.clone(),
+            Rc::new(RefCell::new(device)),
+        )]));
+        let failing = Rc::new(Cell::new(true));
+        let writer: Rc<dyn DutyWriter> = Rc::new(ToggleWriter {
+            failing: Rc::clone(&failing),
+        });
+        let commander = GraphProfileCommander::new(
+            all_devices,
+            HashMap::from([(DeviceType::Hwmon, writer)]),
+            Rc::new(Config::init_default_config().unwrap()),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+        );
+        (commander, device_uid, failing)
+    }
+
+    #[test]
+    fn a_skipped_dispatch_does_not_end_a_run_of_failures() {
+        // Goal: a channel under diagnosis takes no write, so a dispatch that skips it says nothing
+        // about whether writes work again.
+        // Method: start a failure run, skip a dispatch under diagnosis, then let a write through.
+        crate::rt::test_runtime(async {
+            let (commander, device_uid, failing) = commander_with_toggle_writer();
+            let is_failing = || {
+                commander
+                    .write_failure_log
+                    .borrow()
+                    .failing_channels_by_device
+                    .get(&device_uid)
+                    .is_some_and(|channels| channels.contains(FAN))
+            };
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing());
+
+            let key = (device_uid.clone(), FAN.to_string());
+            commander
+                .fan_state_map
+                .set_under_diagnosis(key.clone(), true);
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing());
+
+            // Negative space: a write that goes through still ends the run.
+            commander.fan_state_map.set_under_diagnosis(key, false);
+            failing.set(false);
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing().not());
+        });
+    }
 
     #[test]
     fn a_run_of_failures_logs_once_and_recovery_logs_once() {

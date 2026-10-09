@@ -179,6 +179,17 @@ pub struct MappedDuty {
     pub sustain: Duty,
 }
 
+/// Everything one duty write reads from a calibration. Small and `Copy`, so
+/// the dispatcher takes it out of the store without cloning the curves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DispatchPlan {
+    pub mapped: MappedDuty,
+    /// How long an Off->Kicking write holds the kick duty.
+    pub kick_duration_ms: u32,
+    /// Whether that kick steps down to sustain or drops in one write.
+    pub walk_after_kick: bool,
+}
+
 impl Calibration {
     /// Maps true-duty to (kick, sustain). `None` for stepped channels.
     pub fn true_to_device(&self, true_duty: Duty) -> Option<MappedDuty> {
@@ -186,6 +197,17 @@ impl Calibration {
             return None;
         }
         Some(self.true_to_device_smooth(true_duty))
+    }
+
+    /// The forward map together with the resolved kick settings, for the
+    /// dispatcher. `None` for stepped channels.
+    pub fn dispatch_plan(&self, true_duty: Duty) -> Option<DispatchPlan> {
+        let mapped = self.true_to_device(true_duty)?;
+        Some(DispatchPlan {
+            mapped,
+            kick_duration_ms: self.kick_duration_ms_effective(),
+            walk_after_kick: self.walk_after_kick_enabled(),
+        })
     }
 
     /// Resolved kick-boost decision. Honors `kick_boost_override` when

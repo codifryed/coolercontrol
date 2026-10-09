@@ -238,10 +238,16 @@ impl Engine {
                     speed_fixed,
                 )
                 .await
-                .inspect(|()| {
+                .map(|applied| {
+                    let outcome = if applied.was_skipped() {
+                        "Not applied"
+                    } else {
+                        "Successfully applied"
+                    };
                     info!(
-                        "Successfully applied:: {} | Fixed Speed: {speed_fixed}",
-                        self.log_device_channel(device_uid, channel_name)
+                        "{outcome}:: {} | Fixed Speed: {}",
+                        self.log_device_channel(device_uid, channel_name),
+                        applied.describe(speed_fixed)
                     );
                 })
             }
@@ -376,6 +382,13 @@ impl Engine {
             self.log_device_channel(device_uid, channel_name),
             mapped_profile.is_some()
         );
+        if let Some(device_profile) = &mapped_profile {
+            debug!(
+                "Calibration mapped hardware internal profile:: {} | true duty: \
+                 {speed_profile:?} | device duty: {device_profile:?}",
+                self.log_device_channel(device_uid, channel_name)
+            );
+        }
         repo.apply_setting_speed_profile(
             device_uid,
             channel_name,
@@ -2404,7 +2417,7 @@ impl DiagnosisHost for Engine {
 
     fn emit_progress(&self, progress: DiagnosisProgress) {
         debug!(
-            "Calibration progress for {}:{} phase={:?} percent={}% duty={:?} rpm={:?}",
+            "Calibration progress for {}:{} phase={:?} percent={}% device_duty={:?} rpm={:?}",
             progress.device_uid,
             progress.channel_name,
             progress.phase,

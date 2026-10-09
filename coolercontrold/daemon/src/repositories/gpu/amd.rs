@@ -924,7 +924,7 @@ impl GpuAMD {
                     .await
                     .map_err(|err| {
                         anyhow!(
-                            "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
+                            "Error setting PMFW device duty of {fixed_speed}% on {} - {err}",
                             amd_driver_info.hwmon.name
                         )
                     })
@@ -963,7 +963,7 @@ impl GpuAMD {
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                    "Error on {}:{channel_name} for device duty {fixed_speed}% - {err}",
                     amd_driver_info.hwmon.name
                 )
             })
@@ -1160,7 +1160,7 @@ impl GpuAMD {
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error settings PMFW fan curve of {speed_profile:?} on {} - {err}",
+                    "Error setting PMFW fan curve (device duty) of {speed_profile:?} on {} - {err}",
                     amd_driver_info.hwmon.name
                 )
             })

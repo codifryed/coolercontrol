@@ -493,7 +493,8 @@ impl Repository for GpuRepo {
         speed_fixed: u8,
     ) -> Result<()> {
         debug!(
-            "Applying GPU device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+            "Applying GPU device: {device_uid} channel: {channel_name}; \
+             Device Duty: {speed_fixed}%"
         );
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
@@ -545,7 +546,8 @@ impl Repository for GpuRepo {
             ));
         }
         debug!(
-            "Applying GPU device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+            "Applying GPU device: {device_uid} channel: {channel_name}; \
+             Speed Profile (device duty): {speed_profile:?}"
         );
         let _device_permit = self
             .get_amd_permit_with_write_timeout(device_uid, channel_name)
