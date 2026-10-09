@@ -316,6 +316,10 @@ impl GraphProfileCommander {
                     .log_device_channel(device_uid, channel_name),
                 applied.describe(duty_to_set)
             );
+            if applied.was_skipped() {
+                // Nothing was written, so a run of failures has not ended.
+                return;
+            }
         }
         self.log_write_outcome(device_uid, channel_name, duty_to_set, write_result.err());
     }
@@ -424,11 +428,93 @@ impl GraphProfileCommander {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::DutyWriter;
+    use crate::device::{Device, DeviceInfo, DeviceType};
+    use async_trait::async_trait;
+    use std::cell::Cell;
 
     const DEVICE: &str = "device-uid";
     const OTHER_DEVICE: &str = "other-device-uid";
     const FAN: &str = "fan1";
     const PUMP: &str = "pump";
+
+    /// Fails every write while `failing` is set.
+    struct ToggleWriter {
+        failing: Rc<Cell<bool>>,
+    }
+
+    #[async_trait(?Send)]
+    impl DutyWriter for ToggleWriter {
+        async fn write_device_duty(&self, _: &UID, _: &str, _: Duty) -> Result<()> {
+            if self.failing.get() {
+                return Err(anyhow!("simulated failure"));
+            }
+            Ok(())
+        }
+    }
+
+    /// A commander over one hwmon device, its UID, and the writer's failure switch.
+    fn commander_with_toggle_writer() -> (GraphProfileCommander, UID, Rc<Cell<bool>>) {
+        let device = Device::new(
+            "nct6687".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        let device_uid = device.uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(
+            device_uid.clone(),
+            Rc::new(RefCell::new(device)),
+        )]));
+        let failing = Rc::new(Cell::new(true));
+        let writer: Rc<dyn DutyWriter> = Rc::new(ToggleWriter {
+            failing: Rc::clone(&failing),
+        });
+        let commander = GraphProfileCommander::new(
+            all_devices,
+            HashMap::from([(DeviceType::Hwmon, writer)]),
+            Rc::new(Config::init_default_config().unwrap()),
+            Rc::new(CalibrationStore::empty()),
+            Rc::new(FanStateMap::new()),
+        );
+        (commander, device_uid, failing)
+    }
+
+    #[test]
+    fn a_skipped_dispatch_does_not_end_a_run_of_failures() {
+        // Goal: a channel under diagnosis takes no write, so a dispatch that skips it says nothing
+        // about whether writes work again.
+        // Method: start a failure run, skip a dispatch under diagnosis, then let a write through.
+        crate::rt::test_runtime(async {
+            let (commander, device_uid, failing) = commander_with_toggle_writer();
+            let is_failing = || {
+                commander
+                    .write_failure_log
+                    .borrow()
+                    .failing_channels_by_device
+                    .get(&device_uid)
+                    .is_some_and(|channels| channels.contains(FAN))
+            };
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing());
+
+            let key = (device_uid.clone(), FAN.to_string());
+            commander
+                .fan_state_map
+                .set_under_diagnosis(key.clone(), true);
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing());
+
+            // Negative space: a write that goes through still ends the run.
+            commander.fan_state_map.set_under_diagnosis(key, false);
+            failing.set(false);
+            commander.set_device_speed(&device_uid, FAN, 40).await;
+            assert!(is_failing().not());
+        });
+    }
 
     #[test]
     fn a_run_of_failures_logs_once_and_recovery_logs_once() {
