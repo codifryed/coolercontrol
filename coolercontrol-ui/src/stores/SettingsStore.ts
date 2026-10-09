@@ -860,6 +860,8 @@ export const useSettingsStore = defineStore('settings', () => {
     async function loadPowerProfiles(): Promise<void> {
         console.debug('Loading Power Profiles')
         const state = await deviceStore.daemonClient.getPowerProfiles()
+        // A failed request keeps what is shown: an empty list would hide the mapping card.
+        if (state == null) return
         powerProfilesAvailable.value = state.available
         powerProfileActive.value = state.active ?? undefined
         powerProfileModes.value = state.modes

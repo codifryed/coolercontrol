@@ -553,15 +553,16 @@ export default class DaemonClient {
 
     /**
      * Retrieves the system power profiles, the active one, and the profile to Mode mapping.
+     * Undefined when the request fails, which is not the same as a daemon offering no profiles.
      */
-    async getPowerProfiles(): Promise<PowerProfileStateDTO> {
+    async getPowerProfiles(): Promise<PowerProfileStateDTO | undefined> {
         try {
             const response = await this.getClient().get('/power-profiles')
             this.logDaemonResponse(response, 'Get Power Profiles')
             return plainToInstance(PowerProfileStateDTO, response.data as object)
         } catch (err) {
             this.logError(err)
-            return new PowerProfileStateDTO()
+            return undefined
         }
     }
 
