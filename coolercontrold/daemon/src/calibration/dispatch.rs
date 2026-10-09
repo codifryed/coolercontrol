@@ -125,6 +125,12 @@ pub enum AppliedDuty {
 }
 
 impl AppliedDuty {
+    /// A channel under diagnosis takes no write, so it must not read as
+    /// applied.
+    pub fn was_skipped(self) -> bool {
+        self == Self::Skipped
+    }
+
     /// Log form of this outcome for the `true_duty` that was dispatched:
     /// the true duty, then the device duty wherever a calibration mapped it.
     pub fn describe(self, true_duty: Duty) -> AppliedDutyLog {

@@ -12,11 +12,10 @@ use std::time::Duration as StdDuration;
 use crate::api::actor::{CalibrationBatchEntry, CalibrationBatchStatus, CalibrationStatus};
 use crate::api::CCError;
 use crate::calibration::{
-    self, others_over_limit_note, AppliedDuty, BatchBeginError, BatchEntry, BatchEntryPhase,
-    Calibration, CalibrationAlertGate, CalibrationBatchState, CalibrationEntry, CalibrationStore,
-    ChannelKey, DiagnosisFailure, DiagnosisHost, DiagnosisProgress, DiagnosisRegistry,
-    DiagnosisSettings, FanStateMap, HottestTemp, RepoWriter, SettingsSnapshot, SnapshotKind,
-    CALIBRATION_TEMP_HINT,
+    self, others_over_limit_note, BatchBeginError, BatchEntry, BatchEntryPhase, Calibration,
+    CalibrationAlertGate, CalibrationBatchState, CalibrationEntry, CalibrationStore, ChannelKey,
+    DiagnosisFailure, DiagnosisHost, DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings,
+    FanStateMap, HottestTemp, RepoWriter, SettingsSnapshot, SnapshotKind, CALIBRATION_TEMP_HINT,
 };
 use crate::config::Config;
 use crate::device::{
@@ -240,8 +239,7 @@ impl Engine {
                 )
                 .await
                 .map(|applied| {
-                    // A channel under diagnosis takes no write, so it must not read as applied.
-                    let outcome = if applied == AppliedDuty::Skipped {
+                    let outcome = if applied.was_skipped() {
                         "Not applied"
                     } else {
                         "Successfully applied"

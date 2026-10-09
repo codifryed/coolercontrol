@@ -6,9 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
-use crate::calibration::{
-    self, effective_speed_options, AppliedDuty, CalibrationStore, FanStateMap,
-};
+use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::engine::main::DutyWritersByType;
@@ -307,8 +305,7 @@ impl GraphProfileCommander {
         )
         .await;
         if let Ok(applied) = &write_result {
-            // A channel under diagnosis takes no write, so it must not read as applied.
-            let outcome = if *applied == AppliedDuty::Skipped {
+            let outcome = if applied.was_skipped() {
                 "Not applied"
             } else {
                 "Applied"
