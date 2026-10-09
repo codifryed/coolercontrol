@@ -2419,7 +2419,7 @@ impl DiagnosisHost for Engine {
 
     fn emit_progress(&self, progress: DiagnosisProgress) {
         debug!(
-            "Calibration progress for {}:{} phase={:?} percent={}% duty={:?} rpm={:?}",
+            "Calibration progress for {}:{} phase={:?} percent={}% device_duty={:?} rpm={:?}",
             progress.device_uid,
             progress.channel_name,
             progress.phase,
