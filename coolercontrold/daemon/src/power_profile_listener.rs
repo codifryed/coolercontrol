@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 use zbus::proxy::{Builder as ProxyBuilder, CacheProperties};
+use zbus::zvariant::OwnedValue;
 use zbus::{Connection, Proxy};
 
 /// `power-profiles-daemon` and the `tuned-ppd` shim both publish this interface. The freedesktop
@@ -133,16 +134,30 @@ impl PowerProfiles {
         );
     }
 
-    /// Records what the listener found on the bus. Called on every connect, so a reconnect
-    /// refills the list once the power profile daemon comes back.
-    pub fn set_observed(&self, available: Vec<String>, active: Option<String>) {
+    /// Records what a connect found on the bus. A value that could not be read keeps the one
+    /// already held: a single failed read must not blank the list, which is how a client decides
+    /// to hide the feature.
+    pub fn set_observed(&self, available: Option<Vec<String>>, active: Option<String>) {
         debug_assert!(
-            available.iter().all(|profile| profile.is_empty().not()),
+            available
+                .iter()
+                .flatten()
+                .all(|profile| profile.is_empty().not()),
             "Blank profile names are dropped while decoding"
         );
+        debug_assert!(
+            active
+                .as_ref()
+                .is_none_or(|profile| profile.is_empty().not()),
+            "A blank profile name can never match a real profile"
+        );
         let mut state = self.write_state();
-        state.available = available;
-        state.active = active;
+        if active.is_some() {
+            state.active = active;
+        }
+        if let Some(available) = available {
+            state.available = available;
+        }
     }
 
     pub fn set_active(&self, active: Option<String>) {
@@ -286,9 +301,8 @@ impl Listener {
             .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
             .await
             .ok();
-        // Refilled on every connect. Deliberately not cleared while disconnected: a client hides
-        // the feature on an empty list, which would put an existing mapping out of reach for the
-        // length of a power profile daemon restart.
+        // Deliberately not cleared while disconnected: a client hides the feature on an empty
+        // list, which would put an existing mapping out of reach for the length of an outage.
         self.profiles
             .set_observed(available_profiles(proxy).await, observed.clone());
         let mut changes = proxy
@@ -544,16 +558,21 @@ async fn is_served(
         .is_ok())
 }
 
-/// Reads the profile names the daemon offers. An unreadable list is not fatal: the mapping still
-/// works, a client just has nothing to populate a picker with.
-async fn available_profiles(proxy: &Proxy<'static>) -> Vec<String> {
+/// Reads the profile names the daemon offers, `None` when the list cannot be read. That is not
+/// fatal: the mapping still works, and a client keeps whatever list it had.
+async fn available_profiles(proxy: &Proxy<'static>) -> Option<Vec<String>> {
     let Ok(profiles) = proxy
-        .get_property::<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>(PROFILES_PROPERTY)
+        .get_property::<Vec<HashMap<String, OwnedValue>>>(PROFILES_PROPERTY)
         .await
     else {
         warn!("Could not read the list of available power profiles.");
-        return Vec::new();
+        return None;
     };
+    Some(profile_names(&profiles))
+}
+
+/// Picks the names out of the `Profiles` array of dicts.
+fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
     profiles
         .iter()
         .filter_map(|entry| entry.get(PROFILE_NAME_KEY))
@@ -664,6 +683,74 @@ mod tests {
             Reconnect::Unchanged,
             "A daemon that will not report its profile must not look like a change"
         );
+    }
+
+    fn profile_list(names: &[&str]) -> Vec<String> {
+        names.iter().map(ToString::to_string).collect()
+    }
+
+    /// Goal: one failed read must not blank the list of offered profiles or the active profile.
+    /// A client hides the feature on an empty list, so a read that races a restarting daemon
+    /// would otherwise put an existing mapping out of reach.
+    /// Methodology: record a full observation, then ones where either value could not be read,
+    /// and read the snapshot back after each.
+    #[test]
+    fn an_unreadable_value_keeps_the_one_already_held() {
+        let profiles = PowerProfiles::default();
+        profiles.set_observed(
+            Some(profile_list(&["power-saver", "balanced"])),
+            Some("balanced".to_string()),
+        );
+
+        profiles.set_observed(None, None);
+        let snapshot = profiles.snapshot();
+        assert_eq!(snapshot.available, ["power-saver", "balanced"]);
+        assert_eq!(snapshot.active.as_deref(), Some("balanced"));
+
+        profiles.set_observed(None, Some("power-saver".to_string()));
+        let snapshot = profiles.snapshot();
+        assert_eq!(
+            snapshot.available,
+            ["power-saver", "balanced"],
+            "An unreadable list keeps the one held"
+        );
+        assert_eq!(snapshot.active.as_deref(), Some("power-saver"));
+
+        profiles.set_observed(Some(profile_list(&["balanced"])), None);
+        let snapshot = profiles.snapshot();
+        assert_eq!(snapshot.available, ["balanced"]);
+        assert_eq!(
+            snapshot.active.as_deref(),
+            Some("power-saver"),
+            "An unreadable active profile keeps the one held"
+        );
+    }
+
+    /// Goal: `Profiles` is an array of dicts of which only the names are wanted, and one entry
+    /// without a usable name must not cost the rest of the list.
+    /// Methodology: decode entries shaped like the ones `power-profiles-daemon` sends, mixed
+    /// with one that has no name, one whose name is not a string, and one whose name is blank.
+    #[test]
+    fn profile_names_are_decoded_and_unusable_entries_skipped() {
+        fn owned(value: zbus::zvariant::Value<'_>) -> OwnedValue {
+            value.try_to_owned().unwrap()
+        }
+        fn named(name: &str) -> HashMap<String, OwnedValue> {
+            HashMap::from([
+                (PROFILE_NAME_KEY.to_string(), owned(name.into())),
+                ("Driver".to_string(), owned("placeholder".into())),
+            ])
+        }
+        let profiles = [
+            named("power-saver"),
+            HashMap::from([("Driver".to_string(), owned("placeholder".into()))]),
+            HashMap::from([(PROFILE_NAME_KEY.to_string(), owned(7_u32.into()))]),
+            named(""),
+            named("balanced"),
+        ];
+
+        assert_eq!(profile_names(&profiles), ["power-saver", "balanced"]);
+        assert!(profile_names(&[]).is_empty());
     }
 
     const STARTUP_PROFILE: &str = "performance";
@@ -975,6 +1062,7 @@ mod tests {
             panic!("No power profile daemon answered on the system bus.");
         };
         let active = active.expect("ActiveProfile must be readable");
+        let available = available.expect("Profiles must be readable");
         assert!(
             available.contains(&active),
             "The active profile '{active}' must appear in the available list {available:?}"
