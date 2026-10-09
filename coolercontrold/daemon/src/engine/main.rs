@@ -384,6 +384,13 @@ impl Engine {
             self.log_device_channel(device_uid, channel_name),
             mapped_profile.is_some()
         );
+        if let Some(device_profile) = &mapped_profile {
+            debug!(
+                "Calibration mapped hardware internal profile:: {} | true duty: \
+                 {speed_profile:?} | device duty: {device_profile:?}",
+                self.log_device_channel(device_uid, channel_name)
+            );
+        }
         repo.apply_setting_speed_profile(
             device_uid,
             channel_name,
