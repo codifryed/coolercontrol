@@ -11,6 +11,10 @@
 //! - **Mid-kick adjust**: writes that arrive while `Kicking` only update the
 //!   pending sustain target, they do not re-kick.
 //!
+//! [`dispatch`] reports which of these it did as an [`AppliedDuty`], so the
+//! caller's log line can show the device duty beside the true duty it came
+//! from.
+//!
 //! The deferred path uses `tokio::task::spawn_local` rather than a
 //! `moro_local::Scope` because dispatch is called from inside an
 //! already-spawned scope task, and re-entering the scope panics with
@@ -34,6 +38,7 @@ use crate::rt;
 use anyhow::Result;
 use async_trait::async_trait;
 use log::warn;
+use std::fmt;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -101,12 +106,69 @@ impl DutyWriter for RepoWriter {
     }
 }
 
+/// What one dispatch did with the true duty it was handed. Every duty here
+/// is a device duty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppliedDuty {
+    /// Uncalibrated or stepped channel: the duty was written unchanged.
+    Unmapped,
+    /// Calibrated channel: `device_duty` was written.
+    Mapped { device_duty: Duty },
+    /// Calibrated channel starting from rest: `kick` was written, and
+    /// `sustain` follows once the kick window and its walk-down end.
+    Kick { kick: Duty, sustain: Duty },
+    /// Calibrated channel with a kick in flight: nothing was written, the
+    /// kick now settles at `sustain`.
+    Retargeted { sustain: Duty },
+    /// Channel under diagnosis: nothing was written.
+    Skipped,
+}
+
+impl AppliedDuty {
+    /// Log form of this outcome for the `true_duty` that was dispatched:
+    /// the true duty, then the device duty wherever a calibration mapped it.
+    pub fn describe(self, true_duty: Duty) -> AppliedDutyLog {
+        AppliedDutyLog {
+            applied: self,
+            true_duty,
+        }
+    }
+}
+
+/// `Display` adapter from [`AppliedDuty::describe`], so both callers share
+/// one wording and nothing is formatted unless the line is emitted.
+pub struct AppliedDutyLog {
+    applied: AppliedDuty,
+    true_duty: Duty,
+}
+
+impl fmt::Display for AppliedDutyLog {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let true_duty = self.true_duty;
+        match self.applied {
+            AppliedDuty::Unmapped => write!(f, "{true_duty}%"),
+            AppliedDuty::Mapped { device_duty } => {
+                write!(f, "{true_duty}% true duty (device duty: {device_duty}%)")
+            }
+            AppliedDuty::Kick { kick, sustain } => write!(
+                f,
+                "{true_duty}% true duty (device duty: {kick}% kick, then {sustain}%)"
+            ),
+            AppliedDuty::Retargeted { sustain } => write!(
+                f,
+                "{true_duty}% true duty (device duty: {sustain}% after the kick)"
+            ),
+            AppliedDuty::Skipped => write!(f, "{true_duty}% | calibration in progress"),
+        }
+    }
+}
+
 /// Outcome of the synchronous part of a dispatch. Returned by
 /// `dispatch_core`; the public `dispatch` entry point uses it to
 /// decide whether to schedule a deferred sustain write.
 enum DispatchOutcome {
     /// All work completed; no follow-up needed.
-    Done,
+    Done(AppliedDuty),
     /// The kick was written and the channel is now `Kicking`. A
     /// deferred task must, after `kick_duration_ms`, run the walk-down
     /// via `complete_kick_with_walk` starting at `kick_duty`. When
@@ -115,6 +177,7 @@ enum DispatchOutcome {
     SustainPending {
         kick_duration_ms: u32,
         kick_duty: Duty,
+        sustain_duty: Duty,
         walk_enabled: bool,
         key: ChannelKey,
         device_uid: DeviceUID,
@@ -122,7 +185,25 @@ enum DispatchOutcome {
     },
 }
 
-/// Apply a user-facing `true_duty` to the channel.
+impl DispatchOutcome {
+    /// What the synchronous part did, in the form `dispatch` reports.
+    fn applied(&self) -> AppliedDuty {
+        match *self {
+            Self::Done(applied) => applied,
+            Self::SustainPending {
+                kick_duty,
+                sustain_duty,
+                ..
+            } => AppliedDuty::Kick {
+                kick: kick_duty,
+                sustain: sustain_duty,
+            },
+        }
+    }
+}
+
+/// Apply a user-facing `true_duty` to the channel, and report what was
+/// written for it.
 ///
 /// On a smooth-curve channel transitioning out of `Off`, the kick
 /// duty is written immediately and a deferred sustain-write task is
@@ -146,11 +227,13 @@ pub async fn dispatch(
     device_uid: DeviceUID,
     channel_name: ChannelName,
     true_duty: Duty,
-) -> Result<()> {
+) -> Result<AppliedDuty> {
     let outcome = dispatch_core(state, store, writer, device_uid, channel_name, true_duty).await?;
+    let applied = outcome.applied();
     if let DispatchOutcome::SustainPending {
         kick_duration_ms,
         kick_duty,
+        sustain_duty: _,
         walk_enabled,
         key,
         device_uid,
@@ -190,7 +273,7 @@ pub async fn dispatch(
             }
         });
     }
-    Ok(())
+    Ok(applied)
 }
 
 /// Synchronous dispatch logic. Performs the immediate hardware write
@@ -209,7 +292,7 @@ async fn dispatch_core(
     let key: ChannelKey = (device_uid.clone(), channel_name.clone());
 
     if state.is_under_diagnosis(&key) {
-        return Ok(DispatchOutcome::Done);
+        return Ok(DispatchOutcome::Done(AppliedDuty::Skipped));
     }
 
     let calibration = store.get(&key);
@@ -220,8 +303,10 @@ async fn dispatch_core(
         writer
             .write_device_duty(&device_uid, &channel_name, true_duty)
             .await?;
-        return Ok(DispatchOutcome::Done);
+        return Ok(DispatchOutcome::Done(AppliedDuty::Unmapped));
     };
+    debug_assert!(mapped.kick <= 100);
+    debug_assert!(mapped.sustain <= 100);
     let kick_duration_ms = calibration
         .as_ref()
         .map_or(0, Calibration::kick_duration_ms_effective);
@@ -231,7 +316,9 @@ async fn dispatch_core(
 
     if true_duty == 0 {
         handle_write_zero(state, writer, key, device_uid, channel_name).await?;
-        return Ok(DispatchOutcome::Done);
+        return Ok(DispatchOutcome::Done(AppliedDuty::Mapped {
+            device_duty: 0,
+        }));
     }
 
     let entry = state.entry(&key);
@@ -251,6 +338,7 @@ async fn dispatch_core(
             Ok(DispatchOutcome::SustainPending {
                 kick_duration_ms,
                 kick_duty: mapped.kick,
+                sustain_duty: mapped.sustain,
                 walk_enabled,
                 key,
                 device_uid,
@@ -259,7 +347,9 @@ async fn dispatch_core(
         }
         FanState::Kicking { .. } => {
             update_kick_target(state, key, entry, mapped.sustain, true_duty);
-            Ok(DispatchOutcome::Done)
+            Ok(DispatchOutcome::Done(AppliedDuty::Retargeted {
+                sustain: mapped.sustain,
+            }))
         }
         FanState::On => {
             write_sustain_on(
@@ -273,7 +363,9 @@ async fn dispatch_core(
                 channel_name,
             )
             .await?;
-            Ok(DispatchOutcome::Done)
+            Ok(DispatchOutcome::Done(AppliedDuty::Mapped {
+                device_duty: mapped.sustain,
+            }))
         }
     }
 }
@@ -628,7 +720,7 @@ mod tests {
             let state = Rc::new(FanStateMap::new());
             let store = CalibrationStore::empty();
             let (writer, writes) = MockWriter::make();
-            dispatch(
+            let applied = dispatch(
                 &state,
                 &store,
                 &writer,
@@ -638,6 +730,7 @@ mod tests {
             )
             .await
             .expect("ok");
+            assert_eq!(applied, AppliedDuty::Unmapped);
             assert_eq!(
                 writes.borrow().as_slice(),
                 &[("dev-a".to_string(), "fan1".to_string(), 42)]
@@ -656,7 +749,7 @@ mod tests {
             let store = CalibrationStore::empty();
             store.insert_unsaved(k("dev-a", "fan1"), stepped_cal());
             let (writer, writes) = MockWriter::make();
-            dispatch(
+            let applied = dispatch(
                 &state,
                 &store,
                 &writer,
@@ -666,6 +759,7 @@ mod tests {
             )
             .await
             .expect("ok");
+            assert_eq!(applied, AppliedDuty::Unmapped);
             assert_eq!(writes.borrow().len(), 1);
             assert_eq!(writes.borrow()[0].2, 42);
             assert_eq!(state.entry(&k("dev-a", "fan1")).state, FanState::Off);
@@ -683,7 +777,7 @@ mod tests {
             let store = CalibrationStore::empty();
             store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
             let (writer, writes) = MockWriter::make();
-            dispatch(
+            let applied = dispatch(
                 &state,
                 &store,
                 &writer,
@@ -693,6 +787,8 @@ mod tests {
             )
             .await
             .expect("ok");
+            // Reported as skipped, so a caller does not log it as applied.
+            assert_eq!(applied, AppliedDuty::Skipped);
             assert!(writes.borrow().is_empty());
         });
     }
@@ -711,7 +807,7 @@ mod tests {
                     let store = CalibrationStore::empty();
                     store.insert_unsaved(k("dev-a", "fan1"), smooth_cal());
                     let (writer, writes) = MockWriter::make();
-                    dispatch(
+                    let applied = dispatch(
                         &state,
                         &store,
                         &writer,
@@ -729,6 +825,15 @@ mod tests {
                     let kick_written = writes.borrow()[0].2;
                     let mapped = smooth_cal().true_to_device(50).expect("smooth");
                     assert_eq!(kick_written, mapped.kick);
+                    // The report carries both device duties: the kick just
+                    // written and the sustain the deferred task will write.
+                    assert_eq!(
+                        applied,
+                        AppliedDuty::Kick {
+                            kick: mapped.kick,
+                            sustain: mapped.sustain
+                        }
+                    );
                     let entry = state.entry(&k("dev-a", "fan1"));
                     assert_eq!(
                         entry.state,
@@ -764,7 +869,7 @@ mod tests {
                     )
                     .await
                     .expect("kick");
-                    dispatch(
+                    let applied = dispatch(
                         &state,
                         &store,
                         &writer,
@@ -774,6 +879,7 @@ mod tests {
                     )
                     .await
                     .expect("zero");
+                    assert_eq!(applied, AppliedDuty::Mapped { device_duty: 0 });
                     let log = writes.borrow().clone();
                     assert_eq!(log.len(), 2);
                     assert_eq!(log[1].2, 0);
@@ -821,7 +927,7 @@ mod tests {
                     .await
                     .expect("kick");
                     assert_eq!(writes.borrow().len(), 1);
-                    dispatch(
+                    let applied = dispatch(
                         &state,
                         &store,
                         &writer,
@@ -833,6 +939,12 @@ mod tests {
                     .expect("mid-kick update");
                     assert_eq!(writes.borrow().len(), 1, "no extra hardware write");
                     let expected_sustain = cal.true_to_device(70).expect("smooth").sustain;
+                    assert_eq!(
+                        applied,
+                        AppliedDuty::Retargeted {
+                            sustain: expected_sustain
+                        }
+                    );
                     assert_eq!(
                         state.entry(&k("dev-a", "fan1")).state,
                         FanState::Kicking {
@@ -881,7 +993,7 @@ mod tests {
                     let store = CalibrationStore::empty();
                     store.insert_unsaved(key.clone(), smooth_cal());
                     let (writer, writes) = MockWriter::make();
-                    dispatch(
+                    let applied = dispatch(
                         &state,
                         &store,
                         &writer,
@@ -892,6 +1004,12 @@ mod tests {
                     .await
                     .expect("ok");
                     let expected = smooth_cal().true_to_device(80).expect("smooth").sustain;
+                    assert_eq!(
+                        applied,
+                        AppliedDuty::Mapped {
+                            device_duty: expected
+                        }
+                    );
                     assert_eq!(writes.borrow().len(), 1);
                     assert_eq!(writes.borrow()[0].2, expected);
                     assert_eq!(state.entry(&key).state, FanState::On);

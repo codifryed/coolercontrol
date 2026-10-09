@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
-use crate::calibration::{self, effective_speed_options, CalibrationStore, FanStateMap};
+use crate::calibration::{
+    self, effective_speed_options, AppliedDuty, CalibrationStore, FanStateMap,
+};
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::engine::main::DutyWritersByType;
@@ -287,16 +289,15 @@ impl GraphProfileCommander {
     /// uncalibrated channels unchanged. The writer is looked up from the
     /// pre-built `duty_writers_by_type` cache so the hot path has no clones or
     /// allocations.
+    ///
+    /// The duty is logged after the write, because only the dispatch knows
+    /// which device duty a calibrated channel was given.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
             let device_lock = self.all_devices[device_uid].borrow();
             (device_lock.d_type, device_lock.name.clone())
         };
-        debug!(
-            "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
-            channel: {channel_name}; DUTY: {duty_to_set}"
-        );
         let Some(writer) = self.duty_writers_by_type.get(&device_type) else {
             return;
         };
@@ -309,6 +310,20 @@ impl GraphProfileCommander {
             duty_to_set,
         )
         .await;
+        if let Ok(applied) = &write_result {
+            // A channel under diagnosis takes no write, so it must not read as applied.
+            let outcome = if *applied == AppliedDuty::Skipped {
+                "Not applied"
+            } else {
+                "Applied"
+            };
+            debug!(
+                "{outcome} scheduled Speed Profile:: {} | Duty: {}",
+                self.calibration_store
+                    .log_device_channel(device_uid, channel_name),
+                applied.describe(duty_to_set)
+            );
+        }
         self.log_write_outcome(device_uid, &device_name, channel_name, write_result.err());
     }
 

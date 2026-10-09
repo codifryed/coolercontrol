@@ -12,10 +12,11 @@ use std::time::Duration as StdDuration;
 use crate::api::actor::{CalibrationBatchEntry, CalibrationBatchStatus, CalibrationStatus};
 use crate::api::CCError;
 use crate::calibration::{
-    self, others_over_limit_note, BatchBeginError, BatchEntry, BatchEntryPhase, Calibration,
-    CalibrationAlertGate, CalibrationBatchState, CalibrationEntry, CalibrationStore, ChannelKey,
-    DiagnosisFailure, DiagnosisHost, DiagnosisProgress, DiagnosisRegistry, DiagnosisSettings,
-    FanStateMap, HottestTemp, RepoWriter, SettingsSnapshot, SnapshotKind, CALIBRATION_TEMP_HINT,
+    self, others_over_limit_note, AppliedDuty, BatchBeginError, BatchEntry, BatchEntryPhase,
+    Calibration, CalibrationAlertGate, CalibrationBatchState, CalibrationEntry, CalibrationStore,
+    ChannelKey, DiagnosisFailure, DiagnosisHost, DiagnosisProgress, DiagnosisRegistry,
+    DiagnosisSettings, FanStateMap, HottestTemp, RepoWriter, SettingsSnapshot, SnapshotKind,
+    CALIBRATION_TEMP_HINT,
 };
 use crate::config::Config;
 use crate::device::{
@@ -238,10 +239,17 @@ impl Engine {
                     speed_fixed,
                 )
                 .await
-                .inspect(|()| {
+                .map(|applied| {
+                    // A channel under diagnosis takes no write, so it must not read as applied.
+                    let outcome = if applied == AppliedDuty::Skipped {
+                        "Not applied"
+                    } else {
+                        "Successfully applied"
+                    };
                     info!(
-                        "Successfully applied:: {} | Fixed Speed: {speed_fixed}",
-                        self.log_device_channel(device_uid, channel_name)
+                        "{outcome}:: {} | Fixed Speed: {}",
+                        self.log_device_channel(device_uid, channel_name),
+                        applied.describe(speed_fixed)
                     );
                 })
             }
