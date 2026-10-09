@@ -483,8 +483,9 @@ impl CustomSensorsRepo {
                 .and_then(|status| sensor.metric.read(status, &source.name));
             let Some(value) = some_value else {
                 let msg = format!(
-                    "Source not found for Custom Sensor: {}:{} has no {} value",
-                    source.device_uid, source.name, sensor.metric
+                    "Source not found for Custom Sensor: \"{}\" has no {} value",
+                    self.source_label(source),
+                    sensor.metric
                 );
                 return Err(CCError::UserError { msg }.into());
             };
@@ -521,14 +522,7 @@ impl CustomSensorsRepo {
         let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
             let Some(value) = self.source_value(sensor.metric, source, values) else {
-                // Device-first with the log convention's pipe separator, matching
-                // how the UI composes device and channel names.
-                let reason = match self.source_device_name(source) {
-                    Some(device_name) => {
-                        format!("source missing: {device_name} | {}", source.name)
-                    }
-                    None => format!("source missing: {}", source.name),
-                };
+                let reason = format!("source missing: {}", self.source_label(source));
                 return self.emit_failsafe(&sensor.id, sensor.metric, &reason);
             };
             source_data.push(SourceData {
@@ -1102,8 +1096,8 @@ impl CustomSensorsRepo {
             if source.name == custom_sensor.id {
                 return Err(CCError::UserError {
                     msg: format!(
-                        "Custom Sensor {sensor_id} cannot have itself as a child",
-                        sensor_id = custom_sensor.id
+                        "Custom Sensor \"{}\" cannot have itself as a child",
+                        self.sensor_label(&custom_sensor.id)
                     ),
                 }
                 .into());
@@ -1113,10 +1107,10 @@ impl CustomSensorsRepo {
                 if &custom_sensor.id == child_name {
                     return Err(CCError::UserError {
                         msg: format!(
-                            "The Custom Sensor {sensor_id} is already a child of {parents} and \
-                            cannot become a parent",
-                            sensor_id = custom_sensor.id,
-                            parents = parents.join(", ")
+                            "The Custom Sensor \"{}\" is already a child of {} and cannot \
+                            become a parent",
+                            self.sensor_label(&custom_sensor.id),
+                            self.quoted_sensor_labels(parents)
                         ),
                     }
                     .into());
@@ -1124,10 +1118,10 @@ impl CustomSensorsRepo {
                 if parents.contains(&source.name) {
                     return Err(CCError::UserError {
                         msg: format!(
-                            "Child Custom Sensor {source_name} is already a parent and \
-                            cannot be a child of this Custom Sensor {sensor_id}",
-                            source_name = source.name,
-                            sensor_id = custom_sensor.id
+                            "Child Custom Sensor \"{}\" is already a parent and cannot be \
+                            a child of this Custom Sensor \"{}\"",
+                            self.sensor_label(&source.name),
+                            self.sensor_label(&custom_sensor.id)
                         ),
                     }
                     .into());
@@ -1147,9 +1141,12 @@ impl CustomSensorsRepo {
         if child.metric != parent.metric {
             return Err(CCError::UserError {
                 msg: format!(
-                    "Child Custom Sensor {child_id} is a {} sensor and cannot be a source of \
-                    the {} Custom Sensor {}",
-                    child.metric, parent.metric, parent.id
+                    "Child Custom Sensor \"{}\" is a {} sensor and cannot be a source of \
+                    the {} Custom Sensor \"{}\"",
+                    self.sensor_label(child_id),
+                    child.metric,
+                    parent.metric,
+                    self.sensor_label(&parent.id)
                 ),
             }
             .into());
@@ -1168,8 +1165,9 @@ impl CustomSensorsRepo {
         if existing.metric != custom_sensor.metric {
             return Err(CCError::UserError {
                 msg: format!(
-                    "The metric of a Custom Sensor cannot be changed: {} is a {} sensor",
-                    existing.id, existing.metric
+                    "The metric of a Custom Sensor cannot be changed: \"{}\" is a {} sensor",
+                    self.sensor_label(&existing.id),
+                    existing.metric
                 ),
             }
             .into());
@@ -1255,13 +1253,47 @@ impl CustomSensorsRepo {
             .is_some()
     }
 
-    /// Resolves a source device's display name for failsafe reasons: live devices first,
-    /// then the config `devices` list, which retains devices no longer detected.
+    /// A source's device as the driver names it: live devices first, then the config
+    /// `devices` list, which retains devices no longer detected.
     fn source_device_name(&self, source: &SensorSource) -> Option<String> {
         if let Some(device) = self.all_devices.get(&source.device_uid) {
             return Some(device.borrow().name.clone());
         }
         self.config.device_name(&source.device_uid)
+    }
+
+    /// A source in the user's names, as the UI composes them: `Device | Channel`, or the
+    /// channel alone when nothing names the device. For text shown to the user.
+    fn source_label(&self, source: &SensorSource) -> String {
+        let raw_device_name = self
+            .source_device_name(source)
+            .or_else(|| self.overrides.known_device_name(&source.device_uid));
+        match raw_device_name {
+            Some(raw_device_name) => self.overrides.resolve_device_channel(
+                &source.device_uid,
+                &raw_device_name,
+                &source.name,
+            ),
+            None => self
+                .overrides
+                .resolve_channel_label(&source.device_uid, &source.name, None),
+        }
+    }
+
+    /// A sensor in the name the user gave it, for text shown to them. Its id until they
+    /// name it.
+    fn sensor_label(&self, sensor_id: &str) -> String {
+        self.overrides
+            .resolve_channel_label(&self.device_uid, sensor_id, None)
+    }
+
+    /// Several sensors by label, each quoted, for a message that lists them.
+    fn quoted_sensor_labels(&self, sensor_ids: &[TempName]) -> String {
+        sensor_ids
+            .iter()
+            .map(|sensor_id| format!("\"{}\"", self.sensor_label(sensor_id)))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// What a sensor reports when its source is lost: a critical temperature, so a fan curve
@@ -1635,6 +1667,7 @@ mod tests {
         TempStatus, UID,
     };
     use crate::device_health::FailsafeKind;
+    use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
         CustomSensorsRepo, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,
     };
@@ -1661,8 +1694,8 @@ mod tests {
         }
     }
 
-    fn test_overrides() -> Rc<crate::overrides::OverridesController> {
-        Rc::new(crate::overrides::OverridesController::empty())
+    fn test_overrides() -> Rc<OverridesController> {
+        Rc::new(OverridesController::empty())
     }
 
     // Calculates the delta between the minimum and maximum temperature values in the given
@@ -2562,7 +2595,10 @@ mod tests {
             // then: the refusal names the sensor that reads the child, not the child twice.
             let message = result.unwrap_err().to_string();
             assert!(message.contains("cannot become a parent"), "{message}");
-            assert!(message.contains("a child of parent_sensor"), "{message}");
+            assert!(
+                message.contains("a child of \"parent_sensor\""),
+                "{message}"
+            );
         });
     }
 
@@ -4822,6 +4858,133 @@ mod tests {
 
             assert!(result.is_err());
             assert_eq!(repo.sensors.borrow()[2].children, vec!["rpm_child"]);
+        });
+    }
+
+    // ==================== label tests ====================
+
+    /// A repo over `devices` whose overrides are kept in `dir`, so a test can name things.
+    async fn named_repo(
+        dir: &tempfile::TempDir,
+        devices: Vec<DeviceLock>,
+    ) -> (CustomSensorsRepo, Rc<OverridesController>) {
+        let overrides =
+            Rc::new(OverridesController::init_from(dir.path().join("overrides.toml")).await);
+        let test_config = Rc::new(Config::init_default_config().unwrap());
+        let mut repo = CustomSensorsRepo::new(test_config, devices, Rc::clone(&overrides)).unwrap();
+        repo.initialize_devices().await.unwrap();
+        (repo, overrides)
+    }
+
+    async fn name_channel(
+        overrides: &OverridesController,
+        device_uid: &UID,
+        channel_name: &str,
+        label: &str,
+    ) {
+        overrides
+            .set_channel_label(
+                device_uid,
+                "hint",
+                &channel_name.to_string(),
+                None,
+                Some(label),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn a_refused_change_names_sensors_by_their_labels() {
+        // Goal: a refusal tells the user which sensors it is about in the names they gave
+        // them, as an id means nothing to them. Method: name a parent and its child, ask
+        // the child to take a source of its own, read the refusal.
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![]).await;
+            let uid = repo.device_uid.clone();
+            for id in ["child", "other"] {
+                repo.set_custom_sensor(mix_sensor(id, vec![]))
+                    .await
+                    .unwrap();
+            }
+            repo.set_custom_sensor(mix_sensor("parent", vec![temp_source(&uid, "child")]))
+                .await
+                .unwrap();
+            name_channel(&overrides, &uid, "child", "Liquid").await;
+            name_channel(&overrides, &uid, "parent", "Liquid Smooth").await;
+
+            let reading_other = mix_sensor("child", vec![temp_source(&uid, "other")]);
+            let result = repo.update_custom_sensor(reading_other).await;
+
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "The Custom Sensor \"Liquid\" is already a child of \"Liquid Smooth\" and \
+                cannot become a parent"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn a_source_without_a_value_is_refused_in_the_users_names() {
+        // Goal: creating a sensor on a source that reports no such value says which source,
+        // by the device name the user set and not by its uid. Method: rename a device, ask
+        // for a temp it does not have.
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.,
+            }]);
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![source_dev]).await;
+            overrides
+                .set_device_name(&source_uid, "hint", Some("Radiator Hub"))
+                .await
+                .unwrap();
+
+            let on_absent_temp = mix_sensor("mix1", vec![temp_source(&source_uid, "temp9")]);
+            let result = repo.set_custom_sensor(on_absent_temp).await;
+
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Source not found for Custom Sensor: \"Radiator Hub | temp9\" has no Temp value"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn a_missing_source_is_reported_in_the_users_names() {
+        // Goal: the failsafe reason is shown in the UI, so it names the lost source as the
+        // user named it. Method: a sensor on a renamed temp of a renamed device, the temp
+        // stops reporting, read the reason after a tick.
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.,
+            }]);
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![Rc::clone(&source_dev)]).await;
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "temp1")]))
+                .await
+                .unwrap();
+            overrides
+                .set_device_name(&source_uid, "hint", Some("Radiator Hub"))
+                .await
+                .unwrap();
+            name_channel(&overrides, &source_uid, "temp1", "Coolant").await;
+            source_dev.borrow_mut().set_status(Status::default());
+
+            repo.update_statuses().await.unwrap();
+
+            let failsafing = repo.failsafing();
+            assert_eq!(failsafing.len(), 1);
+            assert_eq!(
+                failsafing[0].reason,
+                "source missing: Radiator Hub | Coolant"
+            );
         });
     }
 

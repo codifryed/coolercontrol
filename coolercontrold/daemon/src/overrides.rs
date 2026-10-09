@@ -346,6 +346,23 @@ impl OverridesController {
         sanitize_for_log(&label).into_owned()
     }
 
+    /// Display form of a device and channel pair for text shown to the user:
+    /// `Device | Channel`, plain like [`Self::resolve_channel_label`] and sanitized the same.
+    /// `raw_device_name` is the caller's own name for the device.
+    pub fn resolve_device_channel(
+        &self,
+        device_uid: &DeviceUID,
+        raw_device_name: &str,
+        channel_name: &str,
+    ) -> String {
+        let device_name = self.chain_device_name(device_uid, None, raw_device_name);
+        format!(
+            "{} | {}",
+            sanitize_for_log(&device_name),
+            self.resolve_channel_label(device_uid, channel_name, None)
+        )
+    }
+
     /// Log display form of a device name: `Resolved (raw)` when the chain answers something
     /// other than the raw name, plain raw otherwise.
     pub fn log_device_name(&self, device_uid: &DeviceUID, raw_name: &str) -> String {
@@ -1048,6 +1065,35 @@ mod tests {
             assert_eq!(
                 absent_controller.log_device_channel(&uid, "fan1"),
                 "nct6798 | fan1"
+            );
+        });
+    }
+
+    #[test]
+    fn device_channel_display_form_uses_the_users_names() {
+        // Goal: text shown to the user names a device and channel as the UI does, without
+        // the raw keys of the log form. Method: no override first, then one for each half.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            let uid = DEVICE_UID.to_string();
+
+            assert_eq!(
+                controller.resolve_device_channel(&uid, "nct6798", "fan1"),
+                "nct6798 | fan1"
+            );
+
+            controller
+                .set_device_name(&uid, HINT, Some("Motherboard"))
+                .await
+                .unwrap();
+            controller
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.resolve_device_channel(&uid, "nct6798", "fan1"),
+                "Motherboard | Front Intake"
             );
         });
     }
