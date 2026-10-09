@@ -22,6 +22,9 @@ use crate::device::UID;
 
 pub type ProfileUID = UID;
 pub type FunctionUID = UID;
+/// A Custom Sensor's id. It names the sensor's temp or, for any other metric, its
+/// channel on the Custom Sensors device.
+pub type CustomSensorId = String;
 pub type R = u8;
 pub type G = u8;
 pub type B = u8;
@@ -838,16 +841,16 @@ pub struct SensorSource {
 #[serde(try_from = "CustomSensorWire", into = "CustomSensorWire")]
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
-    pub id: TempName,
+    pub id: CustomSensorId,
 
     pub metric: CustomSensorMetric,
 
     pub kind: CustomSensorKind,
 
     /// Filled internally, see [`CustomSensorWire`].
-    pub children: Vec<TempName>,
+    pub children: Vec<CustomSensorId>,
 
-    pub parents: Vec<TempName>,
+    pub parents: Vec<CustomSensorId>,
 }
 
 /// Variant-specific payload of a `CustomSensor`, internally tagged on `cs_type`. Exactly one
@@ -963,7 +966,7 @@ impl CustomSensor {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct CustomSensorWire {
     /// ID MUST be unique, as `temp_name` must be unique.
-    id: TempName,
+    id: CustomSensorId,
 
     /// The channel metric the sensor reads and reports, `Temp` when absent. All sources
     /// share it: a `Temp` sensor's sources are `temp_source`, any other metric's are
@@ -986,11 +989,11 @@ struct CustomSensorWire {
     /// they provide this information for clients. For POST or PUT endpoints,
     /// any values here are essentially ignored.
     #[serde(default)]
-    children: Vec<TempName>,
+    children: Vec<CustomSensorId>,
 
     /// The Custom Sensor's parents, if any. See `children` for more details.
     #[serde(default)]
-    parents: Vec<TempName>,
+    parents: Vec<CustomSensorId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

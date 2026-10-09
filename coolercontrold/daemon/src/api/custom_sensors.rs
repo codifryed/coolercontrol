@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{CustomSensor, CustomSensorKind, SensorSource};
+use crate::setting::{CustomSensor, CustomSensorId, CustomSensorKind, SensorSource};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -180,7 +180,7 @@ pub struct CustomSensorsDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CSPath {
-    custom_sensor_id: String,
+    custom_sensor_id: CustomSensorId,
 }
 
 #[cfg(test)]

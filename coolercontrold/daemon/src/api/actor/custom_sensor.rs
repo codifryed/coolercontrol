@@ -5,12 +5,11 @@ use crate::alerts::AlertController;
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
-use crate::device::ChannelName;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::overrides::OverridesController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::setting::CustomSensor;
+use crate::setting::{CustomSensor, CustomSensorId};
 use anyhow::Result;
 use log::warn;
 use moro_local::Scope;
@@ -33,7 +32,7 @@ struct CustomSensorActor {
 
 enum CustomSensorMessage {
     Get {
-        custom_sensor_id: String,
+        custom_sensor_id: CustomSensorId,
         respond_to: oneshot::Sender<Result<CustomSensor>>,
     },
     GetAll {
@@ -48,7 +47,7 @@ enum CustomSensorMessage {
         respond_to: oneshot::Sender<Result<()>>,
     },
     Delete {
-        custom_sensor_id: String,
+        custom_sensor_id: CustomSensorId,
         respond_to: oneshot::Sender<Result<()>>,
     },
 }
@@ -76,7 +75,7 @@ impl CustomSensorActor {
 
     /// Deletes the sensor unless something still reads it, then clears what other
     /// controllers stored about it.
-    async fn delete(&self, custom_sensor_id: &ChannelName) -> Result<()> {
+    async fn delete(&self, custom_sensor_id: &CustomSensorId) -> Result<()> {
         let cs_device_uid = self.custom_sensors_repo.get_device_uid();
         let mut users = self
             .custom_sensors_repo
@@ -248,7 +247,7 @@ impl CustomSensorHandle {
         Self { sender }
     }
 
-    pub async fn get(&self, custom_sensor_id: String) -> Result<CustomSensor> {
+    pub async fn get(&self, custom_sensor_id: CustomSensorId) -> Result<CustomSensor> {
         let (tx, rx) = oneshot::channel();
         let msg = CustomSensorMessage::Get {
             custom_sensor_id,
@@ -285,7 +284,7 @@ impl CustomSensorHandle {
         rx.await?
     }
 
-    pub async fn delete(&self, custom_sensor_id: String) -> Result<()> {
+    pub async fn delete(&self, custom_sensor_id: CustomSensorId) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = CustomSensorMessage::Delete {
             custom_sensor_id,

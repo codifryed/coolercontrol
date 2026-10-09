@@ -30,8 +30,8 @@ use crate::repositories::hwmon::attributes::{MICROWATTS_MAX, MICROWATTS_PER_WATT
 use crate::repositories::hwmon::fans::pwm_value_to_duty;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
-    CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, LcdSettings,
-    LightingSettings, Scale, SensorSource, TempSource,
+    CustomSensor, CustomSensorId, CustomSensorKind, CustomSensorMetric,
+    CustomSensorMixFunctionType, LcdSettings, LightingSettings, Scale, SensorSource, TempSource,
 };
 use crate::{cc_fs, VERSION};
 
@@ -52,9 +52,9 @@ const _: () = assert!(MICROWATTS_MAX <= 1 << 53);
 const SAMPLE_WINDOW_MAX_SLOTS: usize = 600;
 
 type CustomSensors = RefCell<Vec<CustomSensor>>;
-type Relationships = RefCell<HashMap<ChildName, Vec<ParentName>>>;
-type ChildName = TempName;
-type ParentName = TempName;
+type Relationships = RefCell<HashMap<ChildId, Vec<ParentId>>>;
+type ChildId = CustomSensorId;
+type ParentId = CustomSensorId;
 
 /// Rolling per-tick source-sample window for one `TimeAverage`/`ExponentialMovingAvg`
 /// sensor. One slot per tick, oldest first; `None` when the source had no reading that
@@ -99,13 +99,13 @@ pub struct CustomSensorsRepo {
     /// processed), mapped to the reason they entered failsafe. Membership drives
     /// once-per-occurrence entry / recovery logging so a flaky or misconfigured source
     /// does not flood the log every poll; the reason is surfaced via `failsafing()`.
-    failsafing_sensors: RefCell<HashMap<String, String>>,
+    failsafing_sensors: RefCell<HashMap<CustomSensorId, String>>,
     /// Rolling sample windows for `TimeAverage`/`ExponentialMovingAvg` sensors, keyed by
     /// sensor id. Lets each tick fetch only the current source sample instead of
     /// rescanning up to `SAMPLE_WINDOW_MAX_SLOTS` history entries per sensor.
-    sample_windows: RefCell<HashMap<TempName, SampleWindow>>,
+    sample_windows: RefCell<HashMap<CustomSensorId, SampleWindow>>,
     /// Transient read state for `File` sensors. See [`FileReadState`].
-    file_read_state: RefCell<HashMap<TempName, FileReadState>>,
+    file_read_state: RefCell<HashMap<CustomSensorId, FileReadState>>,
 }
 
 /// The held value is emitted for up to `MISSING_STATUS_THRESHOLD` consecutive failures, so one
@@ -120,7 +120,7 @@ struct FileReadState {
 /// One Custom Sensor's value for a tick, already bounded for its metric, so a parent sensor
 /// reads exactly what the status reports.
 struct SensorValue {
-    id: TempName,
+    id: CustomSensorId,
     metric: CustomSensorMetric,
     value: f64,
 }
@@ -238,7 +238,7 @@ impl CustomSensorsRepo {
     }
 
     /// The parents whose every source is `child_id`.
-    fn parents_left_without_source(&self, child_id: &str) -> Vec<ParentName> {
+    fn parents_left_without_source(&self, child_id: &str) -> Vec<ParentId> {
         let relationships = self.relationships.borrow();
         let Some(parents) = relationships.get(child_id) else {
             return Vec::new();
@@ -310,11 +310,11 @@ impl CustomSensorsRepo {
 
     /// Every parent as it is once `child_id` is gone. Only reached once no parent is left
     /// without a source, so each one is found and keeps one.
-    fn parents_without_child(&self, parents: &[ParentName], child_id: &str) -> Vec<CustomSensor> {
+    fn parents_without_child(&self, parents: &[ParentId], child_id: &str) -> Vec<CustomSensor> {
         let sensors = self.sensors.borrow();
         let mut parents_stripped = Vec::with_capacity(parents.len());
-        for parent_name in parents {
-            let Some(parent) = sensors.iter().find(|s| &s.id == parent_name) else {
+        for parent_id in parents {
+            let Some(parent) = sensors.iter().find(|s| &s.id == parent_id) else {
                 debug_assert!(false, "parent vanished between validation and mutation");
                 continue;
             };
@@ -561,7 +561,7 @@ impl CustomSensorsRepo {
         &self,
         sensor: &CustomSensor,
         values: &mut Vec<SensorValue>,
-        file_sensors: &mut Vec<(TempName, CustomSensorMetric, PathBuf)>,
+        file_sensors: &mut Vec<(CustomSensorId, CustomSensorMetric, PathBuf)>,
     ) {
         let metric = sensor.metric;
         let value = match &sensor.kind {
@@ -950,7 +950,7 @@ impl CustomSensorsRepo {
     /// interact with the failsafing-state set.
     async fn process_file_current(
         &self,
-        id: &TempName,
+        id: &CustomSensorId,
         metric: CustomSensorMetric,
         file_path: &Path,
     ) -> SensorValue {
@@ -973,7 +973,7 @@ impl CustomSensorsRepo {
     }
 
     /// Clears the failure run and holds `value` as the value to emit if the next reads fail.
-    fn record_file_read_success(&self, id: &TempName, value: f64) {
+    fn record_file_read_success(&self, id: &CustomSensorId, value: f64) {
         let mut states = self.file_read_state.borrow_mut();
         let state = states.entry(id.clone()).or_default();
         state.consecutive_failures = 0;
@@ -982,7 +982,7 @@ impl CustomSensorsRepo {
 
     /// Returns the held value while inside the tolerance window, or `None` once the run
     /// of failures passes `MISSING_STATUS_THRESHOLD` and the caller must failsafe.
-    fn tolerate_file_read_failure(&self, id: &TempName) -> Option<f64> {
+    fn tolerate_file_read_failure(&self, id: &CustomSensorId) -> Option<f64> {
         let mut states = self.file_read_state.borrow_mut();
         let state = states.entry(id.clone()).or_default();
         state.consecutive_failures = state.consecutive_failures.saturating_add(1);
@@ -1118,8 +1118,8 @@ impl CustomSensorsRepo {
                 .into());
             }
             self.verify_child_shares_metric(custom_sensor, &source.name)?;
-            for (child_name, parents) in self.relationships.borrow().iter() {
-                if &custom_sensor.id == child_name {
+            for (child_id, parents) in self.relationships.borrow().iter() {
+                if &custom_sensor.id == child_id {
                     return Err(CCError::UserError {
                         msg: format!(
                             "The Custom Sensor \"{}\" is already a child of {} and cannot \
@@ -1216,34 +1216,34 @@ impl CustomSensorsRepo {
             sensor.parents.clear();
             // Collect first so the borrow of the sources is released before we mutate
             // sensor.children. Only sources on the Custom Sensors device create relationships.
-            let child_names: Vec<TempName> = sensor
+            let child_ids: Vec<ChildId> = sensor
                 .sources()
                 .iter()
                 .filter(|data| data.device_uid == self.device_uid)
                 .map(|data| data.name.clone())
                 .collect();
-            for child_name in child_names {
-                sensor.children.push(child_name.clone());
+            for child_id in child_ids {
+                sensor.children.push(child_id.clone());
                 self.relationships
                     .borrow_mut()
-                    .entry(child_name)
+                    .entry(child_id)
                     .or_default()
                     .push(sensor.id.clone());
             }
         }
         // add parent relationships to children
-        for (child_name, parents) in self.relationships.borrow().iter() {
+        for (child_id, parents) in self.relationships.borrow().iter() {
             if let Some(child_sensor) = self
                 .sensors
                 .borrow_mut()
                 .iter_mut()
-                .find(|s| &s.id == child_name)
+                .find(|s| &s.id == child_id)
             {
                 child_sensor.parents.extend(parents.iter().cloned());
             } else {
                 error!(
                     "Custom Sensor Child: {} not found!",
-                    self.sensor_log_name(child_name)
+                    self.sensor_log_name(child_id)
                 );
             }
         }
@@ -1328,7 +1328,7 @@ impl CustomSensorsRepo {
     }
 
     /// Several sensors by label, each quoted, for a message that lists them.
-    fn quoted_sensor_labels(&self, sensor_ids: &[ParentName]) -> String {
+    fn quoted_sensor_labels(&self, sensor_ids: &[ParentId]) -> String {
         sensor_ids
             .iter()
             .map(|sensor_id| format!("\"{}\"", self.sensor_label(sensor_id)))
@@ -1612,7 +1612,7 @@ impl Repository for CustomSensorsRepo {
         let start_update = Instant::now();
         let sensor_count = self.sensors.borrow().len();
         let mut values: Vec<SensorValue> = Vec::with_capacity(sensor_count);
-        let mut file_sensors: Vec<(TempName, CustomSensorMetric, PathBuf)> = Vec::new();
+        let mut file_sensors: Vec<(CustomSensorId, CustomSensorMetric, PathBuf)> = Vec::new();
         // Children and standalone sensors first, so parents can read child values this tick.
         self.sensors
             .borrow()
