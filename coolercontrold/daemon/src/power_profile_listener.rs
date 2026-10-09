@@ -14,9 +14,12 @@ use std::env;
 use std::ops::Not;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, sleep_until, timeout, Instant};
 use tokio_util::sync::CancellationToken;
-use zbus::proxy::{Builder as ProxyBuilder, CacheProperties};
+use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
+use zbus::proxy::{Builder as ProxyBuilder, CacheProperties, OwnerChangedStream, PropertyChanged};
+use zbus::zvariant::OwnedValue;
 use zbus::{Connection, Proxy};
 
 /// `power-profiles-daemon` and the `tuned-ppd` shim both publish this interface. The freedesktop
@@ -34,10 +37,16 @@ const PROFILE_NAME_KEY: &str = "Profile";
 /// listener forever. On timeout we retry rather than run deaf for the rest of the session.
 const DBUS_SETUP_TIMEOUT_S: u64 = 5;
 
-/// How long to wait before trying the bus again. The power profile daemon can be restarted,
-/// installed, or stopped at any time, so absence is never permanent. Long enough that a daemon
-/// in a restart loop cannot spin this listener.
+/// How long to wait before looking for a power profile daemon again while none is reachable. One
+/// can be installed, started, or stopped at any time, so absence is never permanent.
 const RECONNECT_DELAY_S: u64 = 30;
+
+/// How long a released bus name may stay unowned before the daemon counts as gone. A restart has
+/// the name back within a second or two, and is then handled without a word in the log.
+const RETURN_GRACE_S: u64 = 10;
+
+// The grace is the quick path. Past it the retry loop takes over, so it must not outlast a retry.
+const _: () = assert!(RETURN_GRACE_S < RECONNECT_DELAY_S);
 
 /// A point-in-time view of the power profile integration, for API consumers.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]
@@ -56,6 +65,22 @@ struct PowerProfileState {
     available: Vec<String>,
     active: Option<String>,
     modes: HashMap<String, UID>,
+}
+
+impl PowerProfileState {
+    /// Swaps in a list of offered profiles. True when it differs from the one held, order
+    /// included, since the order is what a client renders.
+    fn replace_available(&mut self, available: Vec<String>) -> bool {
+        debug_assert!(
+            available.iter().all(|profile| profile.is_empty().not()),
+            "Blank profile names are dropped while decoding"
+        );
+        if self.available == available {
+            return false;
+        }
+        self.available = available;
+        true
+    }
 }
 
 /// Shared state for the power profile integration: what the listener has observed, plus the
@@ -131,16 +156,29 @@ impl PowerProfiles {
         );
     }
 
-    /// Records what the listener found on the bus. Called on every connect, so a reconnect
-    /// refills the list once the power profile daemon comes back.
-    pub fn set_observed(&self, available: Vec<String>, active: Option<String>) {
+    /// Records what a connect found on the bus. A value that could not be read keeps the one
+    /// already held: a single failed read must not blank the list, which is how a client decides
+    /// to hide the feature. Returns true when the list of offered profiles changed.
+    pub fn set_observed(&self, available: Option<Vec<String>>, active: Option<String>) -> bool {
         debug_assert!(
-            available.iter().all(|profile| profile.is_empty().not()),
-            "Blank profile names are dropped while decoding"
+            active
+                .as_ref()
+                .is_none_or(|profile| profile.is_empty().not()),
+            "A blank profile name can never match a real profile"
         );
         let mut state = self.write_state();
-        state.available = available;
-        state.active = active;
+        if active.is_some() {
+            state.active = active;
+        }
+        let Some(available) = available else {
+            return false;
+        };
+        state.replace_available(available)
+    }
+
+    /// Records the profiles the daemon offers now. Returns true when the list changed.
+    pub fn set_available(&self, available: Vec<String>) -> bool {
+        self.write_state().replace_available(available)
     }
 
     pub fn set_active(&self, active: Option<String>) {
@@ -235,8 +273,86 @@ fn reconnect_action(seeded: bool, current: Option<&str>, observed: Option<&str>)
     }
 }
 
-/// Runs on the sidecar: keeps a connection to the power profile daemon and reacts to
-/// `ActiveProfile` changes until shutdown.
+/// Whether a signalled `ActiveProfile` is one to act on.
+///
+/// A blank name is treated like a failed read, so the profile we hold stays. The property cache
+/// can also replay the value we already hold.
+fn is_new_profile(current: Option<&str>, signalled: &str) -> bool {
+    signalled.is_empty().not() && current != Some(signalled)
+}
+
+/// What a read of `ActiveProfile` is worth. A blank name is treated like a failed read here
+/// too, so the profile we hold stays.
+fn named_profile(read: Option<String>) -> Option<String> {
+    read.filter(|profile| profile.is_empty().not())
+}
+
+/// Why `watch` gave up an established connection.
+#[derive(Debug, PartialEq, Eq)]
+enum WatchEnd {
+    /// This daemon is shutting down.
+    Shutdown,
+    /// A new power profile daemon instance owns the bus name, so everything has to be read again.
+    Restarted,
+    /// The power profile daemon went away and stayed away.
+    Gone,
+}
+
+/// What became of the bus name of the power profile daemon we are connected to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OwnerEvent {
+    /// A daemon owns the name: a new instance, or a replacement that took it over.
+    Acquired,
+    /// Nobody owns the name any more.
+    Released,
+    /// A released name stayed unowned for the whole grace period.
+    GraceExpired,
+    /// The bus stopped reporting owners, so the connection itself is gone.
+    StreamEnded,
+}
+
+/// What `watch` does about an `OwnerEvent`.
+#[derive(Debug, PartialEq, Eq)]
+enum OwnerStep {
+    /// Nothing changes, a running grace period included.
+    Continue,
+    /// Start the grace period: a restart has the name back within moments.
+    AwaitReturn,
+    /// A new instance answers. What it offers may differ, so connect again.
+    Reconnect,
+    /// The daemon is gone for now: hand over to the retry loop.
+    GiveUp,
+}
+
+fn owner_step(awaiting_return: bool, event: OwnerEvent) -> OwnerStep {
+    match event {
+        OwnerEvent::Acquired => OwnerStep::Reconnect,
+        OwnerEvent::Released => {
+            if awaiting_return {
+                // A repeated release must not stretch the grace period.
+                OwnerStep::Continue
+            } else {
+                OwnerStep::AwaitReturn
+            }
+        }
+        OwnerEvent::GraceExpired => {
+            debug_assert!(awaiting_return, "Only a running grace period can expire");
+            OwnerStep::GiveUp
+        }
+        OwnerEvent::StreamEnded => OwnerStep::GiveUp,
+    }
+}
+
+/// Resolves at `deadline`, and never when there is none.
+async fn until(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Runs on the sidecar: keeps a connection to the power profile daemon, reacts to `ActiveProfile`
+/// changes, and keeps the list of offered profiles current, until shutdown.
 struct Listener {
     system_event_handle: SystemEventHandle,
     mode_handle: ModeHandle,
@@ -259,16 +375,27 @@ impl Listener {
         let mut outage = OutageLog::default();
         loop {
             match connect().await {
-                ConnectOutcome::Connected(connection, proxy) => {
-                    outage.connected();
-                    let shutting_down = self.watch(&proxy).await;
-                    let _ = connection.close().await;
-                    if shutting_down {
-                        return;
+                ConnectOutcome::Connected(mut link) => {
+                    let returning = outage.connected();
+                    let end = self.watch(&mut link, returning).await;
+                    let _ = link.connection.close().await;
+                    match end {
+                        WatchEnd::Shutdown => return,
+                        // No delay, the new instance may offer other profiles. This cannot spin:
+                        // every pass needs the bus to report another new owner.
+                        WatchEnd::Restarted => continue,
+                        WatchEnd::Gone => outage.gone(),
                     }
-                    outage.lost();
                 }
-                ConnectOutcome::NotConnected(reason) => outage.not_connected(&reason),
+                ConnectOutcome::NotConnected(reason) => {
+                    if self.seeded {
+                        // A daemon that answered before and cannot be reached now is gone, even
+                        // when it went between the bus reporting it and this connect.
+                        outage.gone();
+                    } else {
+                        outage.not_connected(&reason);
+                    }
+                }
             }
             tokio::select! {
                 () = self.run_token.cancelled() => return,
@@ -277,57 +404,105 @@ impl Listener {
         }
     }
 
-    /// Watches `ActiveProfile` on an established connection. Returns true when the daemon is
-    /// shutting down, false when the connection dropped and has to be re-established.
-    async fn watch(&mut self, proxy: &Proxy<'static>) -> bool {
-        let observed = proxy
-            .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
-            .await
-            .ok();
-        // Refilled on every connect. Deliberately not cleared while disconnected: a client hides
-        // the feature on an empty list, which would put an existing mapping out of reach for the
-        // length of a power profile daemon restart.
-        self.profiles
+    /// Watches an established connection until it has to be given up: on shutdown, when a new
+    /// daemon instance takes the bus name, or when the daemon stays away.
+    ///
+    /// The property streams never end, not even when the daemon behind them is gone, so the
+    /// owner of the bus name is the only sign of a restart.
+    async fn watch(&mut self, link: &mut Link, returning: bool) -> WatchEnd {
+        let proxy = &link.proxy;
+        let observed = named_profile(
+            proxy
+                .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
+                .await
+                .ok(),
+        );
+        self.log_return(returning, observed.as_deref());
+        // Deliberately not cleared while disconnected: a client hides the feature on an empty
+        // list, which would put an existing mapping out of reach for the length of an outage.
+        let changed = self
+            .profiles
             .set_observed(available_profiles(proxy).await, observed.clone());
-        let mut changes = proxy
+        self.log_available(changed);
+        let mut active_changes = proxy
             .receive_property_changed::<String>(ACTIVE_PROFILE_PROPERTY)
             .await;
+        // A daemon can change what it offers without restarting.
+        let mut profiles_changes = proxy
+            .receive_property_changed::<OwnedValue>(PROFILES_PROPERTY)
+            .await;
         self.catch_up(observed).await;
+        debug_assert!(self.seeded, "Every connect leaves the listener seeded");
+        let mut return_deadline: Option<Instant> = None;
         loop {
-            tokio::select! {
-                () = self.run_token.cancelled() => return true,
-                Some(change) = changes.next() => {
-                    let Ok(profile) = change.get().await else {
-                        warn!("Failed to read the changed ActiveProfile value.");
-                        continue;
-                    };
-                    // The property cache can replay the value we already hold.
-                    if self.current.as_deref() == Some(profile.as_str()) {
-                        continue;
-                    }
-                    self.apply(profile).await;
+            // Biased so the owner is looked at first: once it changed, anything still in the
+            // property cache is from the previous instance.
+            let owner_event = tokio::select! {
+                biased;
+                () = self.run_token.cancelled() => return WatchEnd::Shutdown,
+                owner = link.owner_changes.next() => match owner {
+                    Some(Some(_)) => OwnerEvent::Acquired,
+                    Some(None) => OwnerEvent::Released,
+                    None => OwnerEvent::StreamEnded,
                 },
-                else => return false,
+                () = until(return_deadline) => OwnerEvent::GraceExpired,
+                Some(change) = active_changes.next() => {
+                    self.on_active_change(change).await;
+                    continue;
+                },
+                Some(_) = profiles_changes.next() => {
+                    self.refresh_available(proxy).await;
+                    continue;
+                },
+            };
+            match owner_step(return_deadline.is_some(), owner_event) {
+                OwnerStep::Continue => {}
+                OwnerStep::AwaitReturn => {
+                    return_deadline = Some(Instant::now() + Duration::from_secs(RETURN_GRACE_S));
+                }
+                OwnerStep::Reconnect => return WatchEnd::Restarted,
+                OwnerStep::GiveUp => return WatchEnd::Gone,
             }
         }
+    }
+
+    /// Handles a signalled `ActiveProfile`.
+    async fn on_active_change(&mut self, change: PropertyChanged<'_, String>) {
+        let Ok(profile) = change.get().await else {
+            warn!("Failed to read the changed ActiveProfile value.");
+            return;
+        };
+        if is_new_profile(self.current.as_deref(), &profile).not() {
+            return;
+        }
+        self.apply(profile).await;
+    }
+
+    /// Handles a signalled `Profiles`: the daemon offers a different set of profiles now.
+    async fn refresh_available(&self, proxy: &Proxy<'static>) {
+        let Some(available) = available_profiles(proxy).await else {
+            return;
+        };
+        let changed = self.profiles.set_available(available);
+        self.log_available(changed);
     }
 
     /// Reconciles what the daemon reports on connect with what we last acted on.
     async fn catch_up(&mut self, observed: Option<String>) {
         let action = reconnect_action(self.seeded, self.current.as_deref(), observed.as_deref());
-        let reported = observed.clone().unwrap_or_else(|| "unknown".to_string());
         match action {
             Reconnect::Seed => {
+                info!(
+                    "DBUS power profile listener connected. Active profile: {}",
+                    observed.as_deref().unwrap_or("unknown")
+                );
                 self.seeded = true;
                 self.current = observed;
-                info!("DBUS power profile listener connected. Active profile: {reported}");
                 self.activate_startup_mode().await;
             }
-            Reconnect::Unchanged => {
-                info!("DBUS power profile listener reconnected. Active profile: {reported}");
-            }
+            // A restarted daemon on the profile it had before changes nothing.
+            Reconnect::Unchanged => {}
             Reconnect::Changed => {
-                info!("DBUS power profile listener reconnected. Active profile: {reported}");
                 let Some(profile) = observed else {
                     debug_assert!(false, "Changed is only reachable with an observed profile");
                     return;
@@ -408,14 +583,53 @@ impl Listener {
             error!("Failed to activate Mode {mode_uid} for the new power profile: {err}");
         }
     }
+
+    /// Reports the end of an outage, but only of one that was reported: a restart handled within
+    /// the grace period was not. The first connect has a line of its own.
+    fn log_return(&self, returning: bool, observed: Option<&str>) {
+        if returning.not() {
+            return;
+        }
+        if self.seeded.not() {
+            return;
+        }
+        info!(
+            "The power profile daemon is back. Active profile: {}",
+            observed.unwrap_or("unknown")
+        );
+    }
+
+    /// Says so when the offered profiles changed. Filling the list on the first connect is not a
+    /// change.
+    fn log_available(&self, changed: bool) {
+        if changed.not() {
+            return;
+        }
+        if self.seeded.not() {
+            return;
+        }
+        info!(
+            "Available power profiles changed: {}",
+            self.profiles.snapshot().available.join(", ")
+        );
+    }
+}
+
+/// An established connection to the power profile daemon.
+struct Link {
+    connection: Connection,
+    proxy: Proxy<'static>,
+    /// Owner changes of the bus name the proxy is bound to.
+    owner_changes: OwnerChangedStream<'static>,
 }
 
 enum ConnectOutcome {
-    Connected(Connection, Proxy<'static>),
+    /// Boxed: the owner stream makes a link far larger than any reason for having none.
+    Connected(Box<Link>),
     NotConnected(NoConnection),
 }
 
-/// Why a connect attempt produced no proxy.
+/// Why a connect attempt produced no link.
 enum NoConnection {
     /// No power profile daemon owns either bus name.
     Absent,
@@ -455,19 +669,20 @@ struct OutageLog {
 }
 
 impl OutageLog {
-    fn connected(&mut self) {
-        self.reported = false;
+    /// Ends the outage. True when it had been reported, which makes its end worth a line too.
+    fn connected(&mut self) -> bool {
+        std::mem::take(&mut self.reported)
     }
 
-    /// A daemon that answered and then went away is a change the user did not ask for, so unlike
-    /// a first connect that never worked, this warns.
-    fn lost(&mut self) {
+    /// Modes stop following the power profile while the daemon is away, and bringing it back is
+    /// in the user's hands, so unlike a daemon that was never there, this warns.
+    fn gone(&mut self) {
         if self.reported {
             return;
         }
         warn!(
-            "Lost the connection to the power profile daemon. Retrying every \
-             {RECONNECT_DELAY_S}s."
+            "The power profile daemon is no longer reachable on DBUS. Modes will not follow power \
+             profile changes until it returns."
         );
         self.reported = true;
     }
@@ -481,7 +696,7 @@ impl OutageLog {
     }
 }
 
-/// Connects and returns a proxy for whichever bus name is actually served.
+/// Connects and returns a link to whichever bus name is actually served.
 async fn connect() -> ConnectOutcome {
     let setup = async {
         let connection = Connection::system().await?;
@@ -495,25 +710,46 @@ async fn connect() -> ConnectOutcome {
             // Only a name that just answered gets a cached proxy, which
             // `receive_property_changed` needs to produce values.
             let proxy = Proxy::new(&connection, bus_name, object_path, bus_name).await?;
-            return Ok::<_, zbus::Error>(Some((connection, proxy)));
+            // Subscribed before anything is read through the proxy, so a restart cannot fall
+            // between a read and the watch for it.
+            let owner_changes = proxy.receive_owner_changed().await?;
+            return Ok::<_, zbus::Error>(Some(Link {
+                connection,
+                proxy,
+                owner_changes,
+            }));
         }
         Ok(None)
     };
     match timeout(Duration::from_secs(DBUS_SETUP_TIMEOUT_S), setup).await {
-        Ok(Ok(Some((connection, proxy)))) => ConnectOutcome::Connected(connection, proxy),
+        Ok(Ok(Some(link))) => ConnectOutcome::Connected(Box::new(link)),
         Ok(Ok(None)) => ConnectOutcome::NotConnected(NoConnection::Absent),
         Ok(Err(err)) => ConnectOutcome::NotConnected(NoConnection::Failed(err)),
         Err(_) => ConnectOutcome::NotConnected(NoConnection::TimedOut),
     }
 }
 
-/// Whether `bus_name` answers for the power profile interface. Caching is off so an unowned name
-/// fails on a plain `Get`: the default lazy cache makes zbus warn about `GetAll` on every retry.
+/// Whether `bus_name` answers for the power profile interface.
+///
+/// The bus is asked for an owner first. A call sent to an unowned name makes the bus start the
+/// daemon behind it, and this listener only ever observes. The probe itself reads uncached: the
+/// default lazy cache makes zbus warn about `GetAll` when a name does not serve the interface.
 async fn is_served(
     connection: &Connection,
     bus_name: &'static str,
     object_path: &'static str,
 ) -> Result<bool, zbus::Error> {
+    let bus = DBusProxy::builder(connection)
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?;
+    if bus
+        .name_has_owner(BusName::try_from(bus_name)?)
+        .await?
+        .not()
+    {
+        return Ok(false);
+    }
     // The interface name matches the bus name for both variants.
     let probe: Proxy<'static> = ProxyBuilder::new(connection)
         .destination(bus_name)?
@@ -528,23 +764,37 @@ async fn is_served(
         .is_ok())
 }
 
-/// Reads the profile names the daemon offers. An unreadable list is not fatal: the mapping still
-/// works, a client just has nothing to populate a picker with.
-async fn available_profiles(proxy: &Proxy<'static>) -> Vec<String> {
+/// Reads the profile names the daemon offers, `None` when the list cannot be read. That is not
+/// fatal: the mapping still works, and a client keeps whatever list it had.
+async fn available_profiles(proxy: &Proxy<'static>) -> Option<Vec<String>> {
     let Ok(profiles) = proxy
-        .get_property::<Vec<HashMap<String, zbus::zvariant::OwnedValue>>>(PROFILES_PROPERTY)
+        .get_property::<Vec<HashMap<String, OwnedValue>>>(PROFILES_PROPERTY)
         .await
     else {
         warn!("Could not read the list of available power profiles.");
-        return Vec::new();
+        return None;
     };
-    profiles
+    Some(profile_names(&profiles))
+}
+
+/// Picks the names out of the `Profiles` array of dicts.
+fn profile_names(profiles: &[HashMap<String, OwnedValue>]) -> Vec<String> {
+    let names: Vec<String> = profiles
         .iter()
         .filter_map(|entry| entry.get(PROFILE_NAME_KEY))
         .filter_map(|value| String::try_from(value.clone()).ok())
         // A blank name can never match a mapping, and would only show up as an empty picker row.
         .filter(|profile| profile.is_empty().not())
-        .collect()
+        .collect();
+    debug_assert!(
+        names.iter().all(|name| name.is_empty().not()),
+        "A blank name must never reach the list"
+    );
+    debug_assert!(
+        names.len() <= profiles.len(),
+        "Every name comes from one entry"
+    );
+    names
 }
 
 #[cfg(test)]
@@ -647,6 +897,200 @@ mod tests {
             reconnect_action(true, Some("balanced"), None),
             Reconnect::Unchanged,
             "A daemon that will not report its profile must not look like a change"
+        );
+    }
+
+    /// Goal: a restarted power profile daemon must be read again at once, one that stays away
+    /// must be left to the retry loop, and a repeated release must not stretch the grace period.
+    /// Methodology: run the decision for every owner event, with and without a grace period
+    /// running.
+    #[test]
+    fn owner_events_decide_between_waiting_reconnecting_and_giving_up() {
+        assert_eq!(
+            owner_step(false, OwnerEvent::Released),
+            OwnerStep::AwaitReturn,
+            "A released name starts the grace period"
+        );
+        assert_eq!(
+            owner_step(true, OwnerEvent::Released),
+            OwnerStep::Continue,
+            "A repeated release leaves the running grace period alone"
+        );
+
+        assert_eq!(
+            owner_step(true, OwnerEvent::Acquired),
+            OwnerStep::Reconnect,
+            "A daemon back within the grace period is read again"
+        );
+        assert_eq!(
+            owner_step(false, OwnerEvent::Acquired),
+            OwnerStep::Reconnect,
+            "A replacement that takes the name over without a gap is read again too"
+        );
+
+        assert_eq!(
+            owner_step(true, OwnerEvent::GraceExpired),
+            OwnerStep::GiveUp,
+            "A daemon that stays away is left to the retry loop"
+        );
+        assert_eq!(
+            owner_step(false, OwnerEvent::StreamEnded),
+            OwnerStep::GiveUp,
+            "A bus that stops reporting owners cannot be watched any longer"
+        );
+        assert_eq!(
+            owner_step(true, OwnerEvent::StreamEnded),
+            OwnerStep::GiveUp,
+            "Nor can it be waited on for the daemon to return"
+        );
+    }
+
+    fn profile_list(names: &[&str]) -> Vec<String> {
+        names.iter().map(ToString::to_string).collect()
+    }
+
+    /// Goal: one failed read must not blank the list of offered profiles or the active profile.
+    /// A client hides the feature on an empty list, so a read that races a restarting daemon
+    /// would otherwise put an existing mapping out of reach.
+    /// Methodology: record a full observation, then ones where either value could not be read,
+    /// and read the snapshot back after each.
+    #[test]
+    fn an_unreadable_value_keeps_the_one_already_held() {
+        let profiles = PowerProfiles::default();
+        profiles.set_observed(
+            Some(profile_list(&["power-saver", "balanced"])),
+            Some("balanced".to_string()),
+        );
+
+        assert!(
+            profiles.set_observed(None, None).not(),
+            "Nothing read means nothing changed"
+        );
+        let snapshot = profiles.snapshot();
+        assert_eq!(snapshot.available, ["power-saver", "balanced"]);
+        assert_eq!(snapshot.active.as_deref(), Some("balanced"));
+
+        profiles.set_observed(None, Some("power-saver".to_string()));
+        let snapshot = profiles.snapshot();
+        assert_eq!(
+            snapshot.available,
+            ["power-saver", "balanced"],
+            "An unreadable list keeps the one held"
+        );
+        assert_eq!(snapshot.active.as_deref(), Some("power-saver"));
+
+        profiles.set_observed(Some(profile_list(&["balanced"])), None);
+        let snapshot = profiles.snapshot();
+        assert_eq!(snapshot.available, ["balanced"]);
+        assert_eq!(
+            snapshot.active.as_deref(),
+            Some("power-saver"),
+            "An unreadable active profile keeps the one held"
+        );
+    }
+
+    /// Goal: a power profile daemon restarted with another set of profiles must replace the list
+    /// held, and only a real difference counts as a change, since that is what gets reported.
+    /// Methodology: record the same list twice, then one more profile, then the same names in
+    /// another order, through both setters, and read the answer and the snapshot back.
+    #[test]
+    fn only_a_different_list_of_profiles_counts_as_a_change() {
+        let two = profile_list(&["power-saver", "balanced"]);
+        let three = profile_list(&["power-saver", "balanced", "performance"]);
+        let reordered = profile_list(&["performance", "balanced", "power-saver"]);
+        let profiles = PowerProfiles::default();
+
+        assert!(
+            profiles.set_available(two.clone()),
+            "Filling an empty list is a change"
+        );
+        assert!(
+            profiles.set_available(two.clone()).not(),
+            "The same list again is not"
+        );
+        assert!(
+            profiles.set_observed(Some(two), None).not(),
+            "Nor is it when a reconnect reads it"
+        );
+
+        assert!(
+            profiles.set_observed(Some(three.clone()), None),
+            "A daemon back with one more profile is a change"
+        );
+        assert_eq!(profiles.snapshot().available, three);
+
+        assert!(
+            profiles.set_available(reordered.clone()),
+            "The order is what a client renders, so it counts"
+        );
+        assert_eq!(profiles.snapshot().available, reordered);
+    }
+
+    /// Goal: `Profiles` is an array of dicts of which only the names are wanted, and one entry
+    /// without a usable name must not cost the rest of the list.
+    /// Methodology: decode entries shaped like the ones `power-profiles-daemon` sends, mixed
+    /// with one that has no name, one whose name is not a string, and one whose name is blank.
+    #[test]
+    fn profile_names_are_decoded_and_unusable_entries_skipped() {
+        fn owned(value: zbus::zvariant::Value<'_>) -> OwnedValue {
+            value.try_to_owned().unwrap()
+        }
+        fn named(name: &str) -> HashMap<String, OwnedValue> {
+            HashMap::from([
+                (PROFILE_NAME_KEY.to_string(), owned(name.into())),
+                ("Driver".to_string(), owned("placeholder".into())),
+            ])
+        }
+        let profiles = [
+            named("power-saver"),
+            HashMap::from([("Driver".to_string(), owned("placeholder".into()))]),
+            HashMap::from([(PROFILE_NAME_KEY.to_string(), owned(7_u32.into()))]),
+            named(""),
+            named("balanced"),
+        ];
+
+        assert_eq!(profile_names(&profiles), ["power-saver", "balanced"]);
+        assert!(profile_names(&[]).is_empty());
+    }
+
+    /// Goal: a blank `ActiveProfile` from the bus must be ignored like a failed read, so the
+    /// profile we hold stays, and a replayed value must not be handled twice.
+    /// Methodology: ask about a blank, a replayed and a new profile, with and without a held one.
+    #[test]
+    fn only_a_new_named_profile_is_acted_on() {
+        assert!(is_new_profile(Some("balanced"), "").not());
+        assert!(is_new_profile(None, "").not());
+        assert!(is_new_profile(Some("balanced"), "balanced").not());
+        assert!(is_new_profile(Some("balanced"), "performance"));
+        assert!(is_new_profile(None, "performance"));
+    }
+
+    /// Goal: a blank `ActiveProfile` read on a connect must count as a failed read. It must not
+    /// replace the profile we hold, nor look like a change to act on and broadcast.
+    /// Methodology: pass a blank, a failed and a named read through, then feed the blank one to
+    /// the reconnect decision and to the shared state, and read both back.
+    #[test]
+    fn a_blank_profile_read_counts_as_a_failed_read() {
+        assert_eq!(named_profile(Some(String::new())), None);
+        assert_eq!(named_profile(None), None);
+        assert_eq!(
+            named_profile(Some("balanced".to_string())).as_deref(),
+            Some("balanced")
+        );
+
+        let blank = named_profile(Some(String::new()));
+        assert_eq!(
+            reconnect_action(true, Some("balanced"), blank.as_deref()),
+            Reconnect::Unchanged,
+            "A blank read on a reconnect is not a profile change"
+        );
+        let profiles = PowerProfiles::default();
+        profiles.set_observed(None, Some("balanced".to_string()));
+        profiles.set_observed(None, blank);
+        assert_eq!(
+            profiles.snapshot().active.as_deref(),
+            Some("balanced"),
+            "The profile held stays"
         );
     }
 
@@ -940,15 +1384,16 @@ mod tests {
         let observed = crate::rt::test_runtime(async {
             crate::sidecar::handle()
                 .run(|| async {
-                    let ConnectOutcome::Connected(connection, proxy) = connect().await else {
+                    let ConnectOutcome::Connected(link) = connect().await else {
                         return None;
                     };
-                    let active = proxy
+                    let active = link
+                        .proxy
                         .get_property::<String>(ACTIVE_PROFILE_PROPERTY)
                         .await
                         .ok();
-                    let available = available_profiles(&proxy).await;
-                    let _ = connection.close().await;
+                    let available = available_profiles(&link.proxy).await;
+                    let _ = link.connection.close().await;
                     Some((active, available))
                 })
                 .await
@@ -959,6 +1404,7 @@ mod tests {
             panic!("No power profile daemon answered on the system bus.");
         };
         let active = active.expect("ActiveProfile must be readable");
+        let available = available.expect("Profiles must be readable");
         assert!(
             available.contains(&active),
             "The active profile '{active}' must appear in the available list {available:?}"
@@ -1002,10 +1448,12 @@ mod tests {
     }
 
     /// Goal: the retry runs every 30s for the life of the daemon, so an outage must be reported
-    /// once: it stays marked as reported until the connection is back, however it began.
-    /// Methodology: drive the outage state through a daemon that was never there, then one that
-    /// answered and went away, and read the mark after each step. The log lines themselves are
-    /// not asserted.
+    /// once: it stays marked as reported until the connection is back, however it began. Its end
+    /// is reported only if the outage was, so a restart handled within the grace period leaves
+    /// no line at either end.
+    /// Methodology: drive the outage state through a daemon that was never there, one that
+    /// answered and stayed away, and a connect with no outage before it, and read the mark and
+    /// the answer of `connected` after each step. The log lines themselves are not asserted.
     #[test]
     fn an_outage_stays_reported_until_the_connection_returns() {
         let mut outage = OutageLog::default();
@@ -1022,16 +1470,27 @@ mod tests {
         outage.not_connected(&NoConnection::TimedOut);
         assert!(outage.reported, "A retry leaves the outage reported");
 
-        outage.connected();
+        assert!(
+            outage.connected(),
+            "The end of a reported outage is reported too"
+        );
         assert!(outage.reported.not(), "A connection ends the outage");
 
-        outage.lost();
-        assert!(outage.reported, "A lost connection reports a new outage");
+        outage.gone();
+        assert!(
+            outage.reported,
+            "A daemon that stays away reports a new outage"
+        );
         outage.not_connected(&NoConnection::Absent);
         assert!(outage.reported, "A failed reconnect leaves it reported");
 
-        outage.connected();
+        assert!(outage.connected(), "Its end is reported as well");
         assert!(outage.reported.not(), "A reconnect ends that outage too");
+
+        assert!(
+            outage.connected().not(),
+            "A restart handled within the grace period was never reported, nor is its end"
+        );
     }
 
     /// Goal: `CC_DBUS` gates this listener the same way it gates the sleep listener, so one
