@@ -12,7 +12,7 @@ import {
     mdiBookmarkMinusOutline,
     mdiBookmarkMultipleOutline,
 } from '@mdi/js'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useToolWizards } from '@/composables/useToolWizards.ts'
@@ -36,6 +36,9 @@ const { openModeWizard } = useToolWizards()
 const activate = async (modeUID: string): Promise<void> => {
     await settingsStore.activateMode(modeUID)
 }
+
+// Only the active profile is pushed, so each visit fetches the profiles the system offers now.
+onMounted(() => settingsStore.loadPowerProfiles())
 
 // Only shown when the daemon actually reached a power profile daemon over D-Bus. On a system
 // without one (TLP only, or none at all) there is nothing to map, so the card stays hidden.
