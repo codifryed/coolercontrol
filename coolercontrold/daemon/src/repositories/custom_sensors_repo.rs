@@ -538,8 +538,7 @@ impl CustomSensorsRepo {
         let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
             let Some(value) = self.source_value(sensor.metric, source, values) else {
-                let reason = format!("source missing: {}", self.source_label(source));
-                return self.emit_failsafe(&sensor.id, sensor.metric, &reason);
+                return self.emit_source_missing_failsafe(sensor, source);
             };
             source_data.push(SourceData {
                 value,
@@ -1387,6 +1386,29 @@ impl CustomSensorsRepo {
         }
     }
 
+    /// Failsafes a sensor whose source is gone. The reason names the source, and is built
+    /// on entry only: this runs on every tick for as long as the source stays missing.
+    fn emit_source_missing_failsafe(
+        &self,
+        sensor: &CustomSensor,
+        source: &SensorSource,
+    ) -> SensorValue {
+        if self.failsafing_sensors.borrow().contains_key(&sensor.id) {
+            return Self::failsafe_sensor_value(&sensor.id, sensor.metric);
+        }
+        let reason = format!("source missing: {}", self.source_label(source));
+        self.emit_failsafe(&sensor.id, sensor.metric, &reason)
+    }
+
+    /// The value a failsafing sensor reports.
+    fn failsafe_sensor_value(sensor_id: &str, metric: CustomSensorMetric) -> SensorValue {
+        SensorValue {
+            id: sensor_id.to_string(),
+            metric,
+            value: Self::failsafe_value(metric),
+        }
+    }
+
     /// Builds the failsafe value and emits the entry log line on the first occurrence.
     /// `reason` is included in the log so a future operator can tell the cs_type-specific
     /// cause apart (for example "all sources missing" vs "file unreadable").
@@ -1396,19 +1418,16 @@ impl CustomSensorsRepo {
         metric: CustomSensorMetric,
         reason: &str,
     ) -> SensorValue {
-        let value = Self::failsafe_value(metric);
+        let sensor_value = Self::failsafe_sensor_value(sensor_id, metric);
         if self.note_failsafing_sensor(sensor_id, reason) {
+            let value = sensor_value.value;
             let unit = if metric.is_temp() { "°C" } else { "" };
             warn!(
                 "Custom Sensor {} entering failsafe ({value}{unit}): {reason}",
                 self.sensor_log_name(sensor_id)
             );
         }
-        SensorValue {
-            id: sensor_id.to_string(),
-            metric,
-            value,
-        }
+        sensor_value
     }
 
     /// Wraps a computed value as the sensor reports it and emits the recovery log line on the
