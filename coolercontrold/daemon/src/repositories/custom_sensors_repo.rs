@@ -1298,6 +1298,23 @@ impl CustomSensorsRepo {
         }
     }
 
+    /// A source for a log line, which keeps the names the config file uses:
+    /// `Device (raw) | Channel (raw)`.
+    fn source_log_name(&self, source: &SensorSource) -> String {
+        let Some(raw_device_name) = self.source_device_name(source) else {
+            return self
+                .overrides
+                .log_device_channel(&source.device_uid, &source.name);
+        };
+        format!(
+            "{} | {}",
+            self.overrides
+                .log_device_name(&source.device_uid, &raw_device_name),
+            self.overrides
+                .log_channel_name(&source.device_uid, &source.name)
+        )
+    }
+
     /// A sensor in the name the user gave it, for text shown to them. Its id until they
     /// name it.
     fn sensor_label(&self, sensor_id: &str) -> String {
@@ -1386,8 +1403,9 @@ impl CustomSensorsRepo {
         }
     }
 
-    /// Failsafes a sensor whose source is gone. The reason names the source, and is built
-    /// on entry only: this runs on every tick for as long as the source stays missing.
+    /// Failsafes a sensor whose source is gone. The reason names the source, for the user
+    /// by its labels and for the log with its raw keys. Both are built on entry only: this
+    /// runs on every tick for as long as the source stays missing.
     fn emit_source_missing_failsafe(
         &self,
         sensor: &CustomSensor,
@@ -1397,7 +1415,8 @@ impl CustomSensorsRepo {
             return Self::failsafe_sensor_value(&sensor.id, sensor.metric);
         }
         let reason = format!("source missing: {}", self.source_label(source));
-        self.emit_failsafe(&sensor.id, sensor.metric, &reason)
+        let log_reason = format!("source missing: {}", self.source_log_name(source));
+        self.emit_failsafe_logged(&sensor.id, sensor.metric, &reason, &log_reason)
     }
 
     /// The value a failsafing sensor reports.
@@ -1418,12 +1437,23 @@ impl CustomSensorsRepo {
         metric: CustomSensorMetric,
         reason: &str,
     ) -> SensorValue {
+        self.emit_failsafe_logged(sensor_id, metric, reason, reason)
+    }
+
+    /// As [`Self::emit_failsafe`], for a reason the log words differently than the UI.
+    fn emit_failsafe_logged(
+        &self,
+        sensor_id: &str,
+        metric: CustomSensorMetric,
+        reason: &str,
+        log_reason: &str,
+    ) -> SensorValue {
         let sensor_value = Self::failsafe_sensor_value(sensor_id, metric);
         if self.note_failsafing_sensor(sensor_id, reason) {
             let value = sensor_value.value;
             let unit = if metric.is_temp() { "°C" } else { "" };
             warn!(
-                "Custom Sensor {} entering failsafe ({value}{unit}): {reason}",
+                "Custom Sensor {} entering failsafe ({value}{unit}): {log_reason}",
                 self.sensor_log_name(sensor_id)
             );
         }
@@ -5028,6 +5058,39 @@ mod tests {
             assert_eq!(
                 failsafing[0].reason,
                 "source missing: Radiator Hub | Coolant"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn a_log_line_names_a_source_by_labels_and_raw_names() {
+        // Goal: a log line about a lost source keeps the device and channel names the
+        // config file holds beside the user's own. Method: rename a device and its temp,
+        // read the source's log name, then that of a source on a device nothing knows.
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.,
+            }]);
+            let dir = tempfile::tempdir().unwrap();
+            let (repo, overrides) = named_repo(&dir, vec![source_dev]).await;
+            let source = temp_source(&source_uid, "temp1");
+            assert_eq!(repo.source_log_name(&source), "MockSource | temp1");
+
+            overrides
+                .set_device_name(&source_uid, "hint", Some("Radiator Hub"))
+                .await
+                .unwrap();
+            name_channel(&overrides, &source_uid, "temp1", "Coolant").await;
+
+            assert_eq!(
+                repo.source_log_name(&source),
+                "Radiator Hub (MockSource) | Coolant (temp1)"
+            );
+            assert_eq!(
+                repo.source_log_name(&temp_source("gone-device", "temp2")),
+                "unknown device (gone-device) | temp2"
             );
         });
     }
