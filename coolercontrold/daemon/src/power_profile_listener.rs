@@ -16,6 +16,8 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Duration;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
+use zbus::fdo::DBusProxy;
+use zbus::names::BusName;
 use zbus::proxy::{Builder as ProxyBuilder, CacheProperties};
 use zbus::{Connection, Proxy};
 
@@ -507,13 +509,27 @@ async fn connect() -> ConnectOutcome {
     }
 }
 
-/// Whether `bus_name` answers for the power profile interface. Caching is off so an unowned name
-/// fails on a plain `Get`: the default lazy cache makes zbus warn about `GetAll` on every retry.
+/// Whether `bus_name` answers for the power profile interface.
+///
+/// The bus is asked for an owner first. A call sent to an unowned name makes the bus start the
+/// daemon behind it, and this listener only ever observes. The probe itself reads uncached: the
+/// default lazy cache makes zbus warn about `GetAll` when a name does not serve the interface.
 async fn is_served(
     connection: &Connection,
     bus_name: &'static str,
     object_path: &'static str,
 ) -> Result<bool, zbus::Error> {
+    let bus = DBusProxy::builder(connection)
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?;
+    if bus
+        .name_has_owner(BusName::try_from(bus_name)?)
+        .await?
+        .not()
+    {
+        return Ok(false);
+    }
     // The interface name matches the bus name for both variants.
     let probe: Proxy<'static> = ProxyBuilder::new(connection)
         .destination(bus_name)?
