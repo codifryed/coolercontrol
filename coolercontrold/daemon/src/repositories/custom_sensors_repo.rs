@@ -1113,9 +1113,10 @@ impl CustomSensorsRepo {
                 if &custom_sensor.id == child_name {
                     return Err(CCError::UserError {
                         msg: format!(
-                            "The Custom Sensor {sensor_id} is already a child of {child_name} and \
+                            "The Custom Sensor {sensor_id} is already a child of {parents} and \
                             cannot become a parent",
-                            sensor_id = custom_sensor.id
+                            sensor_id = custom_sensor.id,
+                            parents = parents.join(", ")
                         ),
                     }
                     .into());
@@ -2558,11 +2559,10 @@ mod tests {
                 });
             let result = repo.update_custom_sensor(child_sensor).await;
 
-            // then:
-            assert!(result.is_err());
-            assert!(result
-                .map_err(|err| err.to_string().contains("cannot become a parent"))
-                .unwrap_err());
+            // then: the refusal names the sensor that reads the child, not the child twice.
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("cannot become a parent"), "{message}");
+            assert!(message.contains("a child of parent_sensor"), "{message}");
         });
     }
 
