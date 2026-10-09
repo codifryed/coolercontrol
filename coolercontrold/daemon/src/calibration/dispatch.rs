@@ -412,8 +412,8 @@ async fn handle_write_zero(
 }
 
 /// Start a kick: set state to `Kicking` and write `kick_duty`. Returns
-/// to the caller, which schedules the deferred sustain write. No clones
-/// or spawns inside this helper.
+/// to the caller, which schedules the deferred sustain write. A failed
+/// write returns the channel to `Off`. No spawns inside this helper.
 async fn start_kick(
     state: &Rc<FanStateMap>,
     writer: &Rc<dyn DutyWriter>,
@@ -434,9 +434,25 @@ async fn start_kick(
             commanded_true_duty: Some(true_duty),
         },
     );
-    writer
+    let written = writer
         .write_device_duty(device_uid, channel_name, mapped.kick)
-        .await
+        .await;
+    if written.is_err() {
+        // The caller schedules no sustain task on an error, so nothing else leaves `Kicking`.
+        // Skipped when the entry moved on during the write (write-zero, diagnosis start).
+        let current = state.entry(key);
+        if current.state.is_kicking() {
+            state.replace(
+                key.clone(),
+                ChannelEntry {
+                    state: FanState::Off,
+                    under_diagnosis: current.under_diagnosis,
+                    commanded_true_duty: prior.commanded_true_duty,
+                },
+            );
+        }
+    }
+    written
 }
 
 /// While `Kicking`, only the pending sustain target is updated; the
@@ -653,6 +669,16 @@ mod tests {
             });
             (writer, writes)
         }
+
+        /// Like `make`, but the first write fails.
+        fn make_failing_first() -> (Rc<dyn DutyWriter>, Rc<RefCell<Vec<(String, String, Duty)>>>) {
+            let writes = Rc::new(RefCell::new(Vec::new()));
+            let writer: Rc<dyn DutyWriter> = Rc::new(Self {
+                writes: Rc::clone(&writes),
+                fail_next: Rc::new(RefCell::new(true)),
+            });
+            (writer, writes)
+        }
     }
 
     #[async_trait(?Send)]
@@ -860,6 +886,68 @@ mod tests {
                     let entry = state.entry(&k("dev-a", "fan1"));
                     assert_eq!(
                         entry.state,
+                        FanState::Kicking {
+                            sustain_target: mapped.sustain
+                        }
+                    );
+                })
+                .await;
+        });
+    }
+
+    #[test]
+    fn failed_kick_write_returns_to_off_and_next_dispatch_kicks() {
+        crate::rt::test_runtime(async {
+            // Goal: a kick write that fails must not strand the channel in
+            // Kicking, where no deferred task would ever leave it. The channel
+            // returns to Off and the next dispatch kicks again.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async {
+                    let state = Rc::new(FanStateMap::new());
+                    let store = CalibrationStore::empty();
+                    let key = k("dev-a", "fan1");
+                    store.insert_unsaved(key.clone(), smooth_cal());
+                    let (writer, writes) = MockWriter::make_failing_first();
+                    let mapped = smooth_cal().true_to_device(50).expect("smooth");
+
+                    let failed = dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await;
+                    assert!(failed.is_err());
+                    assert!(writes.borrow().is_empty());
+                    // The prior entry is back: the failed duty was never commanded.
+                    assert_eq!(state.entry(&key), ChannelEntry::default_off());
+
+                    let applied = dispatch(
+                        &state,
+                        &store,
+                        &writer,
+                        "dev-a".to_string(),
+                        "fan1".to_string(),
+                        50,
+                    )
+                    .await
+                    .expect("retry kicks");
+                    assert_eq!(
+                        applied,
+                        AppliedDuty::Kick {
+                            kick: mapped.kick,
+                            sustain: mapped.sustain
+                        }
+                    );
+                    assert_eq!(
+                        writes.borrow().as_slice(),
+                        &[("dev-a".to_string(), "fan1".to_string(), mapped.kick)]
+                    );
+                    assert_eq!(
+                        state.entry(&key).state,
                         FanState::Kicking {
                             sustain_target: mapped.sustain
                         }
