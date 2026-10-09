@@ -61,6 +61,22 @@ struct PowerProfileState {
     modes: HashMap<String, UID>,
 }
 
+impl PowerProfileState {
+    /// Swaps in a list of offered profiles. True when it differs from the one held, order
+    /// included, since the order is what a client renders.
+    fn replace_available(&mut self, available: Vec<String>) -> bool {
+        debug_assert!(
+            available.iter().all(|profile| profile.is_empty().not()),
+            "Blank profile names are dropped while decoding"
+        );
+        if self.available == available {
+            return false;
+        }
+        self.available = available;
+        true
+    }
+}
+
 /// Shared state for the power profile integration: what the listener has observed, plus the
 /// profile to Mode mapping.
 ///
@@ -136,15 +152,8 @@ impl PowerProfiles {
 
     /// Records what a connect found on the bus. A value that could not be read keeps the one
     /// already held: a single failed read must not blank the list, which is how a client decides
-    /// to hide the feature.
-    pub fn set_observed(&self, available: Option<Vec<String>>, active: Option<String>) {
-        debug_assert!(
-            available
-                .iter()
-                .flatten()
-                .all(|profile| profile.is_empty().not()),
-            "Blank profile names are dropped while decoding"
-        );
+    /// to hide the feature. Returns true when the list of offered profiles changed.
+    pub fn set_observed(&self, available: Option<Vec<String>>, active: Option<String>) -> bool {
         debug_assert!(
             active
                 .as_ref()
@@ -155,9 +164,15 @@ impl PowerProfiles {
         if active.is_some() {
             state.active = active;
         }
-        if let Some(available) = available {
-            state.available = available;
-        }
+        let Some(available) = available else {
+            return false;
+        };
+        state.replace_available(available)
+    }
+
+    /// Records the profiles the daemon offers now. Returns true when the list changed.
+    pub fn set_available(&self, available: Vec<String>) -> bool {
+        self.write_state().replace_available(available)
     }
 
     pub fn set_active(&self, active: Option<String>) {
@@ -303,16 +318,22 @@ impl Listener {
             .ok();
         // Deliberately not cleared while disconnected: a client hides the feature on an empty
         // list, which would put an existing mapping out of reach for the length of an outage.
-        self.profiles
+        let changed = self
+            .profiles
             .set_observed(available_profiles(proxy).await, observed.clone());
-        let mut changes = proxy
+        self.log_available(changed);
+        let mut active_changes = proxy
             .receive_property_changed::<String>(ACTIVE_PROFILE_PROPERTY)
+            .await;
+        // A daemon can change what it offers without restarting.
+        let mut profiles_changes = proxy
+            .receive_property_changed::<OwnedValue>(PROFILES_PROPERTY)
             .await;
         self.catch_up(observed).await;
         loop {
             tokio::select! {
                 () = self.run_token.cancelled() => return true,
-                Some(change) = changes.next() => {
+                Some(change) = active_changes.next() => {
                     let Ok(profile) = change.get().await else {
                         warn!("Failed to read the changed ActiveProfile value.");
                         continue;
@@ -323,9 +344,19 @@ impl Listener {
                     }
                     self.apply(profile).await;
                 },
+                Some(_) = profiles_changes.next() => self.refresh_available(proxy).await,
                 else => return false,
             }
         }
+    }
+
+    /// Handles a signalled `Profiles`: the daemon offers a different set of profiles now.
+    async fn refresh_available(&self, proxy: &Proxy<'static>) {
+        let Some(available) = available_profiles(proxy).await else {
+            return;
+        };
+        let changed = self.profiles.set_available(available);
+        self.log_available(changed);
     }
 
     /// Reconciles what the daemon reports on connect with what we last acted on.
@@ -423,6 +454,21 @@ impl Listener {
         if let Err(err) = self.mode_handle.activate(mode_uid.clone()).await {
             error!("Failed to activate Mode {mode_uid} for the new power profile: {err}");
         }
+    }
+
+    /// Says so when the offered profiles changed. Filling the list on the first connect is not a
+    /// change.
+    fn log_available(&self, changed: bool) {
+        if changed.not() {
+            return;
+        }
+        if self.seeded.not() {
+            return;
+        }
+        info!(
+            "Available power profiles changed: {}",
+            self.profiles.snapshot().available.join(", ")
+        );
     }
 }
 
@@ -702,7 +748,10 @@ mod tests {
             Some("balanced".to_string()),
         );
 
-        profiles.set_observed(None, None);
+        assert!(
+            profiles.set_observed(None, None).not(),
+            "Nothing read means nothing changed"
+        );
         let snapshot = profiles.snapshot();
         assert_eq!(snapshot.available, ["power-saver", "balanced"]);
         assert_eq!(snapshot.active.as_deref(), Some("balanced"));
@@ -724,6 +773,43 @@ mod tests {
             Some("power-saver"),
             "An unreadable active profile keeps the one held"
         );
+    }
+
+    /// Goal: a power profile daemon restarted with another set of profiles must replace the list
+    /// held, and only a real difference counts as a change, since that is what gets reported.
+    /// Methodology: record the same list twice, then one more profile, then the same names in
+    /// another order, through both setters, and read the answer and the snapshot back.
+    #[test]
+    fn only_a_different_list_of_profiles_counts_as_a_change() {
+        let two = profile_list(&["power-saver", "balanced"]);
+        let three = profile_list(&["power-saver", "balanced", "performance"]);
+        let reordered = profile_list(&["performance", "balanced", "power-saver"]);
+        let profiles = PowerProfiles::default();
+
+        assert!(
+            profiles.set_available(two.clone()),
+            "Filling an empty list is a change"
+        );
+        assert!(
+            profiles.set_available(two.clone()).not(),
+            "The same list again is not"
+        );
+        assert!(
+            profiles.set_observed(Some(two), None).not(),
+            "Nor is it when a reconnect reads it"
+        );
+
+        assert!(
+            profiles.set_observed(Some(three.clone()), None),
+            "A daemon back with one more profile is a change"
+        );
+        assert_eq!(profiles.snapshot().available, three);
+
+        assert!(
+            profiles.set_available(reordered.clone()),
+            "The order is what a client renders, so it counts"
+        );
+        assert_eq!(profiles.snapshot().available, reordered);
     }
 
     /// Goal: `Profiles` is an array of dicts of which only the names are wanted, and one entry
