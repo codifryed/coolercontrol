@@ -8,8 +8,8 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceInfo, DeviceName, DeviceType, DeviceUID, UID};
 use crate::overrides::{OverridesController, OverridesDocument};
 use crate::setting::{
-    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, CustomSensor, DeviceExtensions,
-    Profile, ProfileType, Setting, SettingKind, TempSource,
+    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorId,
+    DeviceExtensions, Profile, ProfileType, Setting, SettingKind,
 };
 use crate::AllDevices;
 use anyhow::Result;
@@ -366,8 +366,14 @@ impl ApiActor<SettingMessage> for SettingActor {
                     // temp_source or a Custom Sensor source on a newly-disabled channel/device.
                     let profiles = self.config.get_profiles().await?;
                     let custom_sensors = self.config.get_custom_sensors()?;
-                    let channel_labels =
-                        build_temp_channel_labels(&self.all_devices, &device_uid, &update);
+                    let channel_labels = build_temp_channel_labels(
+                        &self.all_devices,
+                        &self.overrides,
+                        &device_uid,
+                        &update,
+                    );
+                    let sensor_labels =
+                        custom_sensor_labels(&self.all_devices, &self.overrides, &custom_sensors);
                     verify_disable_does_not_orphan_temp_sources(
                         &device_uid,
                         &update,
@@ -375,6 +381,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                         &profiles,
                         &custom_sensors,
                         &channel_labels,
+                        &sensor_labels,
                     )?;
                     self.config.set_cc_settings_for_device(&device_uid, &update);
                     // check for disabled devices and channels and remove their settings:
@@ -674,33 +681,64 @@ fn stamp_detection_memos(
 }
 
 /// Build a `temp_name` -> human label map for the device being acted upon.
-/// Pulls from the live device's `TempInfo` / `ChannelInfo`, then overlays any
-/// user-supplied label coming in on the update so the most recent label wins.
-/// Falls back to an empty map when the device is not registered (blacklisted
-/// devices may still own settings without a live record).
+/// The user's own label wins. Below it come the label on the incoming update and
+/// the live device's `TempInfo` / `ChannelInfo`. A name nothing labels maps to itself.
+/// Falls back to the update's channels alone when the device is not registered
+/// (blacklisted devices may still own settings without a live record).
 fn build_temp_channel_labels(
     all_devices: &AllDevices,
+    overrides: &OverridesController,
     device_uid: &DeviceUID,
     update: &CCDeviceSettings,
 ) -> HashMap<String, String> {
-    let mut labels = HashMap::with_capacity(16);
+    let mut detected: HashMap<String, Option<String>> = HashMap::with_capacity(16);
     if let Some(device_lock) = all_devices.get(device_uid) {
         let lock = device_lock.borrow();
         for (name, info) in &lock.info.temps {
-            labels.insert(name.clone(), info.label.clone());
+            detected.insert(name.clone(), Some(info.label.clone()));
         }
         for (name, info) in &lock.info.channels {
-            if let Some(label) = info.label.as_ref() {
-                labels.insert(name.clone(), label.clone());
+            let label = detected.entry(name.clone()).or_default();
+            if info.label.is_some() {
+                label.clone_from(&info.label);
             }
         }
     }
     for (name, settings) in &update.channel_settings {
-        if let Some(label) = settings.label.as_ref().filter(|l| l.is_empty().not()) {
-            labels.insert(name.clone(), label.clone());
+        let label = detected.entry(name.clone()).or_default();
+        if let Some(update_label) = settings.label.as_ref().filter(|l| l.is_empty().not()) {
+            *label = Some(update_label.clone());
         }
     }
-    labels
+    detected
+        .into_iter()
+        .map(|(name, label)| {
+            let label = overrides.resolve_channel_label(device_uid, &name, label);
+            (name, label)
+        })
+        .collect()
+}
+
+/// Each Custom Sensor's label by its id, for a refusal that names sensors. A sensor the
+/// user has not named keeps its id.
+fn custom_sensor_labels(
+    all_devices: &AllDevices,
+    overrides: &OverridesController,
+    custom_sensors: &[CustomSensor],
+) -> HashMap<CustomSensorId, String> {
+    let cs_device_uid = all_devices.iter().find_map(|(device_uid, device)| {
+        (device.borrow().d_type == DeviceType::CustomSensors).then(|| device_uid.clone())
+    });
+    let Some(cs_device_uid) = cs_device_uid else {
+        return HashMap::new();
+    };
+    custom_sensors
+        .iter()
+        .map(|sensor| {
+            let label = overrides.resolve_channel_label(&cs_device_uid, &sensor.id, None);
+            (sensor.id.clone(), label)
+        })
+        .collect()
 }
 
 /// Reject a `CCDeviceSettings` update if applying it would orphan any saved
@@ -711,8 +749,8 @@ fn build_temp_channel_labels(
 /// the user's existing problem and do not block unrelated edits.
 ///
 /// `channel_labels` maps each `temp_name` on the device being disabled to its
-/// human label; the error message uses the label when present and falls back
-/// to the raw name otherwise.
+/// human label, `sensor_labels` each Custom Sensor id to the sensor's. The error
+/// message uses the label when present and falls back to the raw name otherwise.
 fn verify_disable_does_not_orphan_temp_sources(
     device_uid: &DeviceUID,
     update: &CCDeviceSettings,
@@ -720,6 +758,7 @@ fn verify_disable_does_not_orphan_temp_sources(
     profiles: &[Profile],
     custom_sensors: &[CustomSensor],
     channel_labels: &HashMap<String, String>,
+    sensor_labels: &HashMap<CustomSensorId, String>,
 ) -> Result<(), CCError> {
     let newly_disabled_device = update.disable && current.disable.not();
     let already_disabled: HashSet<&str> = current
@@ -738,11 +777,11 @@ fn verify_disable_does_not_orphan_temp_sources(
     if newly_disabled_device.not() && newly_disabled_channels.is_empty() {
         return Ok(());
     }
-    let is_broken = |source: &TempSource| -> bool {
-        if &source.device_uid != device_uid {
+    let is_broken = |source_device_uid: &DeviceUID, source_name: &str| -> bool {
+        if source_device_uid != device_uid {
             return false;
         }
-        newly_disabled_device || newly_disabled_channels.contains(source.temp_name.as_str())
+        newly_disabled_device || newly_disabled_channels.contains(source_name)
     };
     let label_for = |temp_name: &str| -> String {
         channel_labels
@@ -758,18 +797,16 @@ fn verify_disable_does_not_orphan_temp_sources(
         let Some(source) = profile.temp_source() else {
             continue;
         };
-        if is_broken(source) {
+        if is_broken(&source.device_uid, &source.temp_name) {
             broken_profiles.push((profile.name.clone(), label_for(&source.temp_name)));
         }
     }
     let mut broken_sensors: Vec<(String, String)> = Vec::with_capacity(custom_sensors.len());
     for sensor in custom_sensors {
         for sensor_source in sensor.sources() {
-            if is_broken(&sensor_source.temp_source) {
-                broken_sensors.push((
-                    sensor.id.clone(),
-                    label_for(&sensor_source.temp_source.temp_name),
-                ));
+            if is_broken(&sensor_source.device_uid, &sensor_source.name) {
+                let sensor_label = sensor_labels.get(&sensor.id).unwrap_or(&sensor.id);
+                broken_sensors.push((sensor_label.clone(), label_for(&sensor_source.name)));
             }
         }
     }
@@ -795,8 +832,8 @@ fn build_orphan_error_message(
     }
     if broken_sensors.is_empty().not() {
         msg.push_str("\n  Custom Sensors:");
-        for (id, channel) in broken_sensors {
-            let _ = write!(msg, "\n    - \"{id}\" -> channel \"{channel}\"");
+        for (name, channel) in broken_sensors {
+            let _ = write!(msg, "\n    - \"{name}\" -> channel \"{channel}\"");
         }
     }
     msg
@@ -805,16 +842,16 @@ fn build_orphan_error_message(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_orphan_error_message, refresh_channel_label_hints, resolve_cc_device_name,
-        resolve_channel_setting_labels, stamp_detection_memos,
-        verify_disable_does_not_orphan_temp_sources, CCDeviceSettings, CCError, CustomSensor,
-        Profile, TempSource,
+        build_orphan_error_message, build_temp_channel_labels, custom_sensor_labels,
+        refresh_channel_label_hints, resolve_cc_device_name, resolve_channel_setting_labels,
+        stamp_detection_memos, verify_disable_does_not_orphan_temp_sources, CCDeviceSettings,
+        CCError, CustomSensor, Profile,
     };
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, TempInfo};
     use crate::overrides::OverridesController;
     use crate::setting::{
-        CCChannelSettings, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-        DeviceExtensions, ProfileKind,
+        CCChannelSettings, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+        DeviceExtensions, ProfileKind, SensorSource, TempSource,
     };
     use crate::AllDevices;
     use std::cell::RefCell;
@@ -866,14 +903,13 @@ mod tests {
     fn mix_sensor(id: &str, source_uid: &str, source_temp: &str) -> CustomSensor {
         CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::Mix {
                 mix_function: CustomSensorMixFunctionType::Min,
-                sources: vec![CustomTempSourceData {
+                sources: vec![SensorSource {
                     weight: 1,
-                    temp_source: TempSource {
-                        temp_name: source_temp.to_string(),
-                        device_uid: source_uid.to_string(),
-                    },
+                    name: source_temp.to_string(),
+                    device_uid: source_uid.to_string(),
                 }],
             },
             children: Vec::new(),
@@ -909,9 +945,31 @@ mod tests {
             &profiles,
             &[],
             &no_labels(),
+            &no_labels(),
         );
         assert_user_error_contains(result.clone(), "CPU Curve");
         assert_user_error_contains(result, "Tctl");
+    }
+
+    #[test]
+    fn disable_channel_read_by_channel_custom_sensor_returns_err() {
+        // A non-temperature Custom Sensor reads the rpm of (DEVICE_A, "fan1"). Disabling
+        // "fan1" must reject the update, as it does for a temperature source.
+        let current = settings(&[("fan1", false)], false);
+        let update = settings(&[("fan1", true)], false);
+        let mut sensor = mix_sensor("Pressure", DEVICE_A, "fan1");
+        sensor.metric = CustomSensorMetric::RPM;
+        let result = verify_disable_does_not_orphan_temp_sources(
+            &DEVICE_A.to_string(),
+            &update,
+            &current,
+            &[],
+            &[sensor],
+            &no_labels(),
+            &no_labels(),
+        );
+        assert_user_error_contains(result.clone(), "Pressure");
+        assert_user_error_contains(result, "fan1");
     }
 
     #[test]
@@ -927,6 +985,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
             &no_labels(),
         );
         assert_user_error_contains(result, "GPU Aggressive");
@@ -946,6 +1005,7 @@ mod tests {
             &[],
             &sensors,
             &no_labels(),
+            &no_labels(),
         );
         assert_user_error_contains(result, "MyMix");
     }
@@ -962,6 +1022,7 @@ mod tests {
             &current,
             &[],
             &sensors,
+            &no_labels(),
             &no_labels(),
         );
         assert_user_error_contains(result, "MyMix");
@@ -980,6 +1041,7 @@ mod tests {
             &current,
             &profiles,
             &sensors,
+            &no_labels(),
             &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
@@ -1009,6 +1071,7 @@ mod tests {
             &profiles,
             &sensors,
             &no_labels(),
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -1026,6 +1089,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
             &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
@@ -1045,6 +1109,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
             &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
@@ -1071,6 +1136,7 @@ mod tests {
             &profiles,
             &[],
             &no_labels(),
+            &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
     }
@@ -1083,6 +1149,7 @@ mod tests {
         let update = settings(&[("Tctl", true)], false);
         let file_sensor = CustomSensor {
             id: "FromFile".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::File {
                 file_path: PathBuf::from("/tmp/from_file"),
             },
@@ -1095,6 +1162,7 @@ mod tests {
             &current,
             &[],
             &[file_sensor],
+            &no_labels(),
             &no_labels(),
         );
         assert!(result.is_ok(), "unexpected error: {result:?}");
@@ -1116,6 +1184,7 @@ mod tests {
             &current,
             &profiles,
             &[],
+            &no_labels(),
             &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
@@ -1144,6 +1213,7 @@ mod tests {
             &profiles,
             &sensors,
             &labels,
+            &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
             panic!("expected UserError, got {result:?}");
@@ -1173,11 +1243,121 @@ mod tests {
             &profiles,
             &[],
             &no_labels(),
+            &no_labels(),
         );
         let Err(CCError::UserError { msg }) = result else {
             panic!("expected UserError, got {result:?}");
         };
         assert!(msg.contains("\"Tctl\""), "raw temp_name missing: {msg}");
+    }
+
+    #[test]
+    fn error_message_names_a_custom_sensor_by_its_label() {
+        // Goal: the refusal names a Custom Sensor as the user named it, as its id means
+        // nothing to them. Method: one sensor with a label, one without, read the message.
+        let current = settings(&[("Tctl", false)], false);
+        let update = settings(&[("Tctl", true)], false);
+        let sensors = vec![
+            mix_sensor("sensor_1a2b3c4d", DEVICE_A, "Tctl"),
+            mix_sensor("sensor_5e6f7a8b", DEVICE_A, "Tctl"),
+        ];
+        let sensor_labels =
+            HashMap::from([("sensor_1a2b3c4d".to_string(), "Liquid Delta".to_string())]);
+        let result = verify_disable_does_not_orphan_temp_sources(
+            &DEVICE_A.to_string(),
+            &update,
+            &current,
+            &[],
+            &sensors,
+            &no_labels(),
+            &sensor_labels,
+        );
+        let Err(CCError::UserError { msg }) = result else {
+            panic!("expected UserError, got {result:?}");
+        };
+        assert!(
+            msg.contains("- \"Liquid Delta\" -> channel \"Tctl\""),
+            "{msg}"
+        );
+        assert!(msg.contains("sensor_1a2b3c4d").not(), "{msg}");
+        assert!(msg.contains("- \"sensor_5e6f7a8b\" -> channel"), "{msg}");
+    }
+
+    /// A one-device map holding `info`, with the device's uid.
+    fn one_device(d_type: DeviceType, info: DeviceInfo) -> (String, AllDevices) {
+        let device = Device::new("device".to_string(), d_type, 1, None, info, None, 1.0);
+        let uid = device.uid.clone();
+        let all_devices: AllDevices = Rc::new(HashMap::from([(
+            uid.clone(),
+            Rc::new(RefCell::new(device)),
+        )]));
+        (uid, all_devices)
+    }
+
+    #[test]
+    fn channel_labels_prefer_the_users_own() {
+        // Goal: the refusal names a channel as the user renamed it, then as the driver
+        // labels it, and a channel the driver does not label can still carry the user's
+        // name. Method: a device with a labelled temp and fan and an unlabelled fan, the
+        // temp and the unlabelled fan renamed, read the map.
+        crate::rt::test_runtime(async {
+            let (_tmp, overrides) = empty_overrides().await;
+            let mut info = live_info();
+            info.channels.insert(
+                "fan2".to_string(),
+                ChannelInfo {
+                    label: None,
+                    kind: ChannelKind::default(),
+                },
+            );
+            let (uid, all_devices) = one_device(DeviceType::Hwmon, info);
+            for (channel_name, label) in [("temp1", "Coolant"), ("fan2", "Rear")] {
+                overrides
+                    .set_channel_label(&uid, "hint", &channel_name.to_string(), None, Some(label))
+                    .await
+                    .unwrap();
+            }
+
+            let labels =
+                build_temp_channel_labels(&all_devices, &overrides, &uid, &settings(&[], false));
+
+            assert_eq!(labels.get("temp1").map(String::as_str), Some("Coolant"));
+            assert_eq!(
+                labels.get("fan1").map(String::as_str),
+                Some("Live Fan Label")
+            );
+            assert_eq!(labels.get("fan2").map(String::as_str), Some("Rear"));
+        });
+    }
+
+    #[test]
+    fn custom_sensor_labels_fall_back_to_the_id() {
+        // Goal: a sensor the user named is known by that name, one they did not by its
+        // id. Method: two sensors, one named, read the map.
+        crate::rt::test_runtime(async {
+            let (_tmp, overrides) = empty_overrides().await;
+            let (cs_uid, all_devices) =
+                one_device(DeviceType::CustomSensors, DeviceInfo::default());
+            overrides
+                .set_channel_label(
+                    &cs_uid,
+                    "hint",
+                    &"sensor_1a2b3c4d".to_string(),
+                    None,
+                    Some("Liquid Delta"),
+                )
+                .await
+                .unwrap();
+            let sensors = [
+                mix_sensor("sensor_1a2b3c4d", DEVICE_A, "Tctl"),
+                mix_sensor("sensor_5e6f7a8b", DEVICE_A, "Tctl"),
+            ];
+
+            let labels = custom_sensor_labels(&all_devices, &overrides, &sensors);
+
+            assert_eq!(labels["sensor_1a2b3c4d"], "Liquid Delta");
+            assert_eq!(labels["sensor_5e6f7a8b"], "sensor_5e6f7a8b");
+        });
     }
 
     #[test]

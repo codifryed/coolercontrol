@@ -32,8 +32,10 @@ import {
     HealthEntityType,
     type SourceRef,
     failsafeKey,
+    missingSourceKey,
     sourceKey,
     sourceTempDisplayName,
+    staleSourceKey,
 } from '@/models/DeviceHealth.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -143,6 +145,8 @@ const entityTypeLabel = (type: HealthEntityType): string => {
     }
 }
 
+const missingSourceText = (ref: SourceRef): string => t(missingSourceKey(ref))
+const staleSourceText = (ref: SourceRef): string => t(staleSourceKey(ref))
 const customSensorsDeviceUID = computed((): string | undefined => {
     for (const device of deviceStore.allDevices()) {
         if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid
@@ -221,7 +225,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `missing/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.missingTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${missingSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }
@@ -229,7 +233,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `stale-source/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.staleTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${staleSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }

@@ -99,6 +99,20 @@ describe('attribute formatting', () => {
         expect(formatAttributeNumber(nct6687Fan[1])).toBe('1505')
     })
 
+    it('keeps the decimal of a fan limit a custom sensor scaled into another unit', () => {
+        // The Leakshield's pressure limit in microbar, scaled by 0.001 to millibar.
+        const scaled: ChannelAttribute = {
+            name: 'fan1_min',
+            kind: 'FAN_MIN',
+            value: 382_800 * 0.001,
+        }
+
+        expect(formatAttributeNumber(scaled)).toBe('382.8')
+        expect(formatAttributeValue(scaled, t, 'mbar')).toBe('382.8 mbar')
+        // Float noise on a whole value does not grow a decimal.
+        expect(formatAttributeNumber({ ...scaled, value: 500.000000001 })).toBe('500')
+    })
+
     it('labels every kind and spells out known sensor types', () => {
         expect(attributeLabel('TEMP_CRIT', t)).toBe('Critical')
         expect(attributeLabel('FAN_PULSES', t)).not.toContain('MISSING')

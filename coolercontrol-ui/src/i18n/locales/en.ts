@@ -547,36 +547,51 @@ export default {
         },
         customSensors: {
             missingSourcesNotice:
-                'The following temp sources are no longer present and will be removed when saving: {sources}',
+                'The following sources are no longer present and will be removed when saving: {sources}',
+            metric: 'Metric',
+            metricTooltip:
+                'What the sensor measures. All of its sources share it.<br/><i>Note: The metric cannot be changed once the sensor is saved.</i>',
+            rpmUnitHint:
+                'This metric also holds values in other units. End the sensor name with the unit in brackets to show it, e.g. Pressure [mbar].',
             sensorType: 'Sensor Type',
             mixFunction: 'Mix Function',
             howCalculateValue: 'How to calculate the resulting sensor value',
-            tempFile: 'Temperature File',
+            sensorFile: 'Sensor File',
             filePathTooltip:
-                'Enter the absolute path to the temperature file to use for this sensor.\nThe file must use the sysfs data format standard:\nA fixed point number in millidegrees Celsius.\ne.g. 80000 for 80°C.\nThe file is verified upon submission.',
+                'Enter the absolute path to the file to use for this sensor.\nThe file must hold a whole number in the sysfs data format of the metric.\nThe file is verified upon submission.',
+            fileUnit: {
+                temp: 'Millidegrees Celsius, e.g. 80000 for 80°C',
+                duty: 'PWM value from 0 to 255',
+                rpm: 'RPM, or a whole number in the unit the sensor name gives',
+                freq: 'Hertz, e.g. 3600000000 for 3600 MHz',
+                watts: 'Microwatts, e.g. 65000000 for 65 W',
+            },
             browse: 'Browse',
             browseCustomSensorFile: 'Browse for a custom sensor file',
-            tempSources: 'Temp Sources',
-            tempSource: 'Temp Source',
-            tempSourcesTooltip:
-                'Temperature sources to be used in the mix function<br/><i>Note: Only direct parent-child relationships are allowed<br/>when combining multiple Custom Sensors.<br/>Use Mix Profiles for more complex setups.</i>',
+            sources: 'Sources',
+            source: 'Source',
+            sourcesTooltip:
+                'Sources to be used in the mix function<br/><i>Note: Only direct parent-child relationships are allowed<br/>when combining multiple Custom Sensors.<br/>Use Mix Profiles for more complex setups.</i>',
+            scale: 'Scale',
+            scaleTooltip:
+                'Enter the factor the source is multiplied by<br/>before the offset is added.<br/><i>Note: A negative factor inverts the value. It cannot be 0.</i>',
             offset: 'Offset Amount',
             offsetTooltip:
-                'Enter the negative or positive offset amount to<br/>apply to the source sensor.<br/><i>Note: The final value will is limited to<br/>normal temperature ranges.</i>',
+                'Enter the negative or positive amount to<br/>add to the scaled source.<br/><i>Note: A temperature result is limited to<br/>normal temperature ranges.</i>',
             timeWindow: 'Smoothing Window',
             timeWindowTooltip:
                 'How many seconds of recent samples to smooth together.<br/><i>Note: Must be between 1 and 300 seconds.</i>',
             helpText: {
-                mix: 'Combines multiple temperature sources via the chosen function (Min/Max/Avg/Delta/WeightedAvg). Use to drive fans from the hottest of several sensors, or to balance between zones.',
-                file: 'Reads temperature from a file path. Use for sensors not auto-detected by CoolerControl.',
-                offset: 'Adds or subtracts a fixed value from a temperature source. Use to calibrate a known sensor inaccuracy.',
+                mix: 'Combines multiple sources via the chosen function (Min/Max/Avg/Delta/WeightedAvg/Sum). Use to drive fans from the hottest of several sensors, to balance between zones, or to total power draw.',
+                file: 'Reads a value from a file path. Use for sensors not auto-detected by CoolerControl.',
+                offset: 'Multiplies a source by a factor, then adds a fixed value. Use to calibrate a known sensor inaccuracy, or to convert a value to another unit.',
                 timeAverage:
                     'Arithmetic mean over a fixed time window. Output is bounded by the input range, never overshoots. For fans that should ignore brief temperature spikes.',
                 exponentialMovingAvg:
                     'Weighted average favoring recent readings. Smoother than Time Average for the same window, but takes roughly 3x the window length to fully follow a sustained change. For fans that should track real trends without jitter.',
             },
-            tempWeights: 'Temp Weights',
-            tempName: 'Temp Name',
+            sourceWeights: 'Source Weights',
+            sourceName: 'Source Name',
             weight: 'Weight',
             saveCustomSensor: 'Save Custom Sensor',
             unsavedChanges: 'There are unsaved changes made to this Custom Sensor.',
@@ -675,6 +690,8 @@ export default {
                 'The driver stopped answering, so this device cannot be read or controlled. Retrying periodically.',
             missingTempSource: 'Missing temp source',
             staleTempSource: 'Temp source using failsafe values',
+            missingSource: 'Missing source',
+            staleSource: 'Source using failsafe values',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
                 'Generate sustained thermal load to validate\nfan curves and cooling profiles.\nResults may vary depending on hardware.\nInstall stress-ng for additional backends.',
@@ -1659,7 +1676,7 @@ export default {
             sensorType: {
                 mix: 'Mix',
                 file: 'File',
-                offset: 'Offset',
+                offset: 'Scale & Offset',
                 timeAverage: 'Time Average',
                 exponentialMovingAvg: 'Exponential Moving Average',
             },
@@ -1669,6 +1686,7 @@ export default {
                 delta: 'Delta',
                 avg: 'Average',
                 weightedAvg: 'Weighted Average',
+                sum: 'Sum',
             },
         },
         themeMode: {

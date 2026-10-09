@@ -9,23 +9,23 @@ use std::rc::Rc;
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, TableLike, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::{ChannelName, Duty, Temp, UID};
+use crate::device::{ChannelName, DeviceUID, Duty, Temp, UID};
 use crate::paths;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorKind, CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData,
-    DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID, LcdCarouselSettings,
-    LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile, ProfileKind,
-    ProfileMixFunctionType, ProfileType, ProfileUID, Setting, SettingKind, TempSource,
-    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID, DEVICE_LISTENER_ENABLED_DEFAULT,
-    STARTUP_DELAY_SECONDS_MAX,
+    CustomSensorError, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+    CustomSensorType, DeviceExtensions, Function, FunctionKind, FunctionType, FunctionUID,
+    LcdCarouselSettings, LcdModeKind, LcdModeName, LcdSettings, LightingSettings, Offset, Profile,
+    ProfileKind, ProfileMixFunctionType, ProfileType, ProfileUID, Scale, SensorSource, Setting,
+    SettingKind, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    DEVICE_LISTENER_ENABLED_DEFAULT, STARTUP_DELAY_SECONDS_MAX,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -443,7 +443,8 @@ impl Config {
                 continue;
             };
             for source in sources.iter_mut() {
-                rewrites += Self::repoint_temp_source(source, legacy, current);
+                rewrites += Self::repoint_source(source, "temp_source", legacy, current);
+                rewrites += Self::repoint_source(source, "channel_source", legacy, current);
             }
         }
         rewrites
@@ -479,13 +480,15 @@ impl Config {
     /// Rewrites a `temp_source.device_uid` in place when it points at `legacy`. Both tables
     /// are taken as `TableLike` so an inline `temp_source` or a nested `lcd` both work.
     fn repoint_temp_source(table: &mut dyn TableLike, legacy: &str, current: &str) -> usize {
-        let Some(temp_source) = table
-            .get_mut("temp_source")
-            .and_then(Item::as_table_like_mut)
-        else {
+        Self::repoint_source(table, "temp_source", legacy, current)
+    }
+
+    /// Rewrites the `device_uid` of the source stored under `key`, when it points at `legacy`.
+    fn repoint_source(table: &mut dyn TableLike, key: &str, legacy: &str, current: &str) -> usize {
+        let Some(source) = table.get_mut(key).and_then(Item::as_table_like_mut) else {
             return 0;
         };
-        let Some(device_uid) = temp_source.get_mut("device_uid") else {
+        let Some(device_uid) = source.get_mut("device_uid") else {
             return 0;
         };
         if device_uid.as_str() != Some(legacy) {
@@ -2611,40 +2614,54 @@ impl Config {
             .with_context(|| "Sensor type should be present")?
             .as_str()
             .with_context(|| "Sensor type should be a string")?;
+        let metric = Self::parse_custom_sensor_metric(c_sensor_table)?;
         let kind = match CustomSensorType::from_str(cs_type_str)
             .with_context(|| "Sensor type should be a valid member")?
         {
             CustomSensorType::Mix => CustomSensorKind::Mix {
                 mix_function: Self::parse_mix_function(c_sensor_table)?,
-                sources: Self::parse_custom_sensor_sources(c_sensor_table)?,
+                sources: Self::parse_custom_sensor_sources(c_sensor_table, metric)?,
             },
             CustomSensorType::File => CustomSensorKind::File {
                 file_path: Self::parse_custom_sensor_file_path(c_sensor_table)?,
             },
             CustomSensorType::Offset => CustomSensorKind::Offset {
-                offset: Self::parse_custom_sensor_offset(c_sensor_table)?
+                scale: Self::parse_custom_sensor_scale(c_sensor_table)?,
+                offset: Self::parse_custom_sensor_offset(c_sensor_table, metric)?
                     .with_context(|| "Offset Custom Sensor must have an offset")?,
-                sources: Self::parse_single_source(c_sensor_table, "Offset")?,
+                sources: Self::parse_single_source(c_sensor_table, metric, "Offset")?,
             },
             CustomSensorType::TimeAverage => CustomSensorKind::TimeAverage {
                 time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
                     .with_context(|| "TimeAverage Custom Sensor must have time_window_seconds")?,
-                sources: Self::parse_single_source(c_sensor_table, "TimeAverage")?,
+                sources: Self::parse_single_source(c_sensor_table, metric, "TimeAverage")?,
             },
             CustomSensorType::ExponentialMovingAvg => CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds: Self::parse_time_window_seconds(c_sensor_table)?
                     .with_context(|| {
                         "ExponentialMovingAvg Custom Sensor must have time_window_seconds"
                     })?,
-                sources: Self::parse_single_source(c_sensor_table, "ExponentialMovingAvg")?,
+                sources: Self::parse_single_source(c_sensor_table, metric, "ExponentialMovingAvg")?,
             },
         };
         Ok(CustomSensor {
             id,
+            metric,
             kind,
             children: vec![],
             parents: vec![],
         })
+    }
+
+    /// An absent `metric` is a temperature sensor, as every sensor was before the key existed.
+    fn parse_custom_sensor_metric(c_sensor_table: &Table) -> Result<CustomSensorMetric> {
+        let Some(metric_value) = c_sensor_table.get("metric") else {
+            return Ok(CustomSensorMetric::Temp);
+        };
+        let metric_str = metric_value
+            .as_str()
+            .with_context(|| "metric should be a string")?;
+        CustomSensorMetric::from_str(metric_str).with_context(|| "metric should be a valid member")
     }
 
     fn parse_mix_function(c_sensor_table: &Table) -> Result<CustomSensorMixFunctionType> {
@@ -2668,8 +2685,12 @@ impl Config {
     }
 
     /// Parses the `sources` array. Any length is accepted here; per-variant cardinality is
-    /// applied by callers (`parse_single_source` for the single-source variants).
-    fn parse_custom_sensor_sources(c_sensor_table: &Table) -> Result<Vec<CustomTempSourceData>> {
+    /// applied by callers (`parse_single_source` for the single-source variants). Each source
+    /// must sit under the key of the sensor's metric and no other.
+    fn parse_custom_sensor_sources(
+        c_sensor_table: &Table,
+        metric: CustomSensorMetric,
+    ) -> Result<Vec<SensorSource>> {
         let mut sources = Vec::new();
         let Some(sources_item) = c_sensor_table.get("sources") else {
             return Ok(sources);
@@ -2678,8 +2699,7 @@ impl Config {
             .as_array_of_tables()
             .with_context(|| "custom_sensors.sources should be an array")?;
         for source_data_table in sources_array {
-            let temp_source = Self::get_temp_source(source_data_table)?
-                .with_context(|| "TempSource should always be present for Custom Sensor Sources")?;
+            let (device_uid, name) = Self::parse_custom_sensor_source(source_data_table, metric)?;
             let weight_raw: u8 = source_data_table
                 .get("weight")
                 .with_context(|| "weight should be present")?
@@ -2689,64 +2709,69 @@ impl Config {
                 .ok()
                 .with_context(|| "weight must be a value between 1-254")?;
             let weight = weight_raw.clamp(1, 254);
-            sources.push(CustomTempSourceData {
-                temp_source,
+            sources.push(SensorSource {
+                device_uid,
+                name,
                 weight,
             });
         }
         Ok(sources)
     }
 
+    /// Reads one source's device uid and name from the key of the sensor's metric:
+    /// `temp_source` for temperature, `channel_source` otherwise.
+    fn parse_custom_sensor_source(
+        source_table: &Table,
+        metric: CustomSensorMetric,
+    ) -> Result<(DeviceUID, String)> {
+        let has_temp_source = source_table.contains_key("temp_source");
+        let has_channel_source = source_table.contains_key("channel_source");
+        if metric.is_temp() {
+            if has_channel_source {
+                return Err(CustomSensorError::ChannelSourceOnTemp.into());
+            }
+            let temp_source = Self::get_temp_source(source_table)?
+                .with_context(|| "TempSource should always be present for Custom Sensor Sources")?;
+            return Ok((temp_source.device_uid, temp_source.temp_name));
+        }
+        if has_temp_source {
+            return Err(CustomSensorError::TempSourceOnChannelMetric { metric }.into());
+        }
+        let channel_source_table = source_table
+            .get("channel_source")
+            .with_context(|| "channel_source should be present for this Custom Sensor's Sources")?
+            .as_inline_table()
+            .with_context(|| "channel_source should be an inline table")?;
+        let device_uid = channel_source_table
+            .get("device_uid")
+            .with_context(|| "channel_source must have device_uid and channel_name set")?
+            .as_str()
+            .with_context(|| "device_uid should be a String")?
+            .to_string();
+        let channel_name = channel_source_table
+            .get("channel_name")
+            .with_context(|| "channel_source must have device_uid and channel_name set")?
+            .as_str()
+            .with_context(|| "channel_name should be a String")?
+            .to_string();
+        Ok((device_uid, channel_name))
+    }
+
     /// Parses `sources` and enforces exactly one element, for the variants derived from a
     /// single source.
     fn parse_single_source(
         c_sensor_table: &Table,
+        metric: CustomSensorMetric,
         type_name: &str,
-    ) -> Result<Vec<CustomTempSourceData>> {
-        let sources = Self::parse_custom_sensor_sources(c_sensor_table)?;
+    ) -> Result<Vec<SensorSource>> {
+        let sources = Self::parse_custom_sensor_sources(c_sensor_table, metric)?;
         if sources.len() != 1 {
             return Err(CCError::InternalError {
-                msg: format!("{type_name} Custom Sensor must have exactly one temp source"),
+                msg: format!("{type_name} Custom Sensor must have exactly one source"),
             }
             .into());
         }
         Ok(sources)
-    }
-
-    /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
-    /// It uses the ID to match and reuses the existing stored custom sensor.
-    pub fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
-        let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
-        if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
-            let cs_array = custom_sensors_item
-                .as_array_of_tables()
-                .with_context(|| "Custom_Sensors should be an array of tables")?;
-            if cs_ordered.len() != cs_array.len() {
-                return Err(CCError::UserError {
-                    msg:
-                        "The number of stored custom_sensors and requested custom sensors to order \
-                    are not equal. Make sure all functions have been created/deleted"
-                            .to_string(),
-                }
-                .into());
-            }
-            let new_cs_array = new_custom_sensors_array_item
-                .as_array_of_tables_mut()
-                .unwrap();
-            for custom_sensor in cs_ordered {
-                new_cs_array.push(Self::find_custom_sensor_in_array(
-                    &custom_sensor.id,
-                    cs_array,
-                )?);
-            }
-        } else {
-            return Err(CCError::NotFound {
-                msg: "There are no stored custom sensors in the config to order.".to_string(),
-            }
-            .into());
-        }
-        self.document.borrow_mut()["custom_sensors"] = new_custom_sensors_array_item;
-        Ok(())
     }
 
     /// Sets the given new Custom Sensor
@@ -2812,40 +2837,39 @@ impl Config {
         }
     }
 
-    fn find_custom_sensor_in_array(
-        custom_sensor_id: &String,
-        cs_array: &ArrayOfTables,
-    ) -> Result<Table> {
-        for cs_table in cs_array {
-            if cs_table
-                .get("id")
-                .with_context(|| "Custom Sensor ID should be present")?
-                .as_str()
-                .with_context(|| "Custom Sensor ID should be a string")?
-                == custom_sensor_id
-            {
-                return Ok(cs_table.clone());
-            }
-        }
-        Err(CCError::NotFound {
-            msg: "Could not find Custom Sensor ID in existing functions array.".to_string(),
-        }
-        .into())
-    }
-
     /// Consumes the `CustomSensor` and returns a new `CustomSensor` Table
-    /// Parses the optional `offset` field from a custom-sensor table. Clamps to `-100..=100`.
-    fn parse_custom_sensor_offset(c_sensor_table: &Table) -> Result<Option<i8>> {
+    /// Parses the optional `offset` field from a custom-sensor table: a whole number, as
+    /// daemons before the scale wrote it, or a decimal. Clamps to the metric's limit.
+    fn parse_custom_sensor_offset(
+        c_sensor_table: &Table,
+        metric: CustomSensorMetric,
+    ) -> Result<Option<f64>> {
         let Some(offset_value) = c_sensor_table.get("offset") else {
             return Ok(None);
         };
-        let offset_raw: i8 = offset_value
-            .as_integer()
-            .with_context(|| "offset should be an integer")?
-            .try_into()
-            .ok()
-            .with_context(|| "offset must be a value between -100 and 100")?;
-        Ok(Some(offset_raw.clamp(-100, 100)))
+        let offset =
+            Self::toml_number(offset_value).with_context(|| "offset should be a number")?;
+        if offset.is_finite().not() {
+            bail!("offset must be a finite number");
+        }
+        let limit = metric.offset_limit();
+        Ok(Some(offset.clamp(-limit, limit)))
+    }
+
+    /// An absent `scale` is 1, as every Offset sensor was before the key existed.
+    fn parse_custom_sensor_scale(c_sensor_table: &Table) -> Result<Scale> {
+        let Some(scale_value) = c_sensor_table.get("scale") else {
+            return Ok(Scale::default());
+        };
+        let scale = Self::toml_number(scale_value).with_context(|| "scale should be a number")?;
+        Ok(Scale::try_from(scale)?)
+    }
+
+    /// A TOML float or integer as `f64`. Values this large are refused by their range checks.
+    #[allow(clippy::cast_precision_loss)]
+    fn toml_number(item: &Item) -> Option<f64> {
+        item.as_float()
+            .or_else(|| item.as_integer().map(|integer| integer as f64))
     }
 
     /// Parses the optional `time_window_seconds` field from a custom-sensor table. Clamps to the
@@ -2873,23 +2897,34 @@ impl Config {
         new_custom_sensor
     }
 
-    fn add_custom_sensor_properties_to_custom_sensor_table(
-        custom_sensor: CustomSensor,
-        cs_table: &mut Table,
-    ) {
-        cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
-        // Scrub every variant-specific key first so a variant change on update (e.g. a File
-        // sensor re-saved as Mix) cannot leave a stale field behind. The active variant
-        // rewrites only the keys it owns.
+    /// Scrubs every variant-specific key so a variant change on update (e.g. a File sensor
+    /// re-saved as Mix) cannot leave a stale field behind, then writes the metric. The
+    /// active variant rewrites only the keys it owns.
+    fn reset_custom_sensor_keys(cs_table: &mut Table, metric: CustomSensorMetric) {
         for key in [
+            "metric",
             "mix_function",
             "sources",
             "file_path",
+            "scale",
             "offset",
             "time_window_seconds",
         ] {
             cs_table.remove(key);
         }
+        // Left out for temperature, so a sensor older daemons can run is written as before.
+        if metric.is_temp().not() {
+            cs_table["metric"] = Item::Value(Value::String(Formatted::new(metric.to_string())));
+        }
+    }
+
+    fn add_custom_sensor_properties_to_custom_sensor_table(
+        custom_sensor: CustomSensor,
+        cs_table: &mut Table,
+    ) {
+        cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
+        let metric = custom_sensor.metric;
+        Self::reset_custom_sensor_keys(cs_table, metric);
         match custom_sensor.kind {
             CustomSensorKind::Mix {
                 mix_function,
@@ -2898,7 +2933,7 @@ impl Config {
                 cs_table["cs_type"] = Item::Value(Value::String(Formatted::new("Mix".to_string())));
                 cs_table["mix_function"] =
                     Item::Value(Value::String(Formatted::new(mix_function.to_string())));
-                Self::write_custom_sensor_sources(cs_table, &sources);
+                Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
             CustomSensorKind::File { file_path } => {
                 cs_table["cs_type"] =
@@ -2907,11 +2942,18 @@ impl Config {
                     file_path.to_string_lossy().to_string(),
                 )));
             }
-            CustomSensorKind::Offset { offset, sources } => {
+            CustomSensorKind::Offset {
+                scale,
+                offset,
+                sources,
+            } => {
                 cs_table["cs_type"] =
                     Item::Value(Value::String(Formatted::new("Offset".to_string())));
-                cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
-                Self::write_custom_sensor_sources(cs_table, &sources);
+                if scale.is_identity().not() {
+                    cs_table["scale"] = Item::Value(Value::Float(Formatted::new(scale.get())));
+                }
+                cs_table["offset"] = Self::custom_sensor_offset_item(metric, scale, offset);
+                Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
             CustomSensorKind::TimeAverage {
                 time_window_seconds,
@@ -2922,7 +2964,7 @@ impl Config {
                 cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
                     i64::from(time_window_seconds),
                 )));
-                Self::write_custom_sensor_sources(cs_table, &sources);
+                Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
             CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
@@ -2934,12 +2976,42 @@ impl Config {
                 cs_table["time_window_seconds"] = Item::Value(Value::Integer(Formatted::new(
                     i64::from(time_window_seconds),
                 )));
-                Self::write_custom_sensor_sources(cs_table, &sources);
+                Self::write_custom_sensor_sources(cs_table, metric, &sources);
             }
         }
     }
 
-    fn write_custom_sensor_sources(cs_table: &mut Table, sources: &[CustomTempSourceData]) {
+    /// The stored `offset`: a decimal, or the whole number older daemons require.
+    // DOWNGRADE-COMPAT(added 5.1.0, remove 5.3.0): 5.0.x reads `offset` as a whole number
+    // from -100 to 100 and knows no `scale`. It gets one only where it computes the same
+    // value. Any other sensor gets a decimal, which 5.0.x refuses to load instead of running
+    // fan curves on an unscaled temperature. No shim covers the rest of what 5.0.x does not
+    // know: it refuses the whole config for a `Sum` mix or a `channel_source` source, and
+    // ignores `metric`, so it loads a `File` sensor of another metric as a temperature.
+    #[allow(clippy::cast_possible_truncation)]
+    fn custom_sensor_offset_item(metric: CustomSensorMetric, scale: Scale, offset: f64) -> Item {
+        debug_assert!(offset.is_finite());
+        let decimal = Item::Value(Value::Float(Formatted::new(offset)));
+        if metric.is_temp().not() {
+            return decimal;
+        }
+        if scale.is_identity().not() {
+            return decimal;
+        }
+        if offset.fract() != 0. {
+            return decimal;
+        }
+        if offset.abs() > 100. {
+            return decimal;
+        }
+        Item::Value(Value::Integer(Formatted::new(offset as i64)))
+    }
+
+    fn write_custom_sensor_sources(
+        cs_table: &mut Table,
+        metric: CustomSensorMetric,
+        sources: &[SensorSource],
+    ) {
         let sources_array = cs_table["sources"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -2947,12 +3019,15 @@ impl Config {
         sources_array.clear();
         for source in sources {
             let mut source_table = Table::new();
-            source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
-                source.temp_source.temp_name.clone(),
-            )));
-            source_table["temp_source"]["device_uid"] = Item::Value(Value::String(Formatted::new(
-                source.temp_source.device_uid.clone(),
-            )));
+            let name = Item::Value(Value::String(Formatted::new(source.name.clone())));
+            let device_uid = Item::Value(Value::String(Formatted::new(source.device_uid.clone())));
+            if metric.is_temp() {
+                source_table["temp_source"]["temp_name"] = name;
+                source_table["temp_source"]["device_uid"] = device_uid;
+            } else {
+                source_table["channel_source"]["device_uid"] = device_uid;
+                source_table["channel_source"]["channel_name"] = name;
+            }
             source_table["weight"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(source.weight))));
             sources_array.push(source_table);
@@ -3191,6 +3266,30 @@ mod tests {
         assert!(doc.contains(&format!("[settings.{CURRENT_UID}]")));
         assert!(doc.contains("SSD OS"), "the settings payload must survive");
         assert_eq!(doc.matches(CURRENT_UID).count(), 3);
+    }
+
+    // Goal: a non-temperature custom sensor keeps its source across the migration. Its
+    // source sits under `channel_source`, which the temp_source repoint does not see.
+    #[test]
+    fn migrate_device_uid_repoints_custom_sensor_channel_sources() {
+        let document = format!(
+            "[[custom_sensors]]\nid = \"sensor2\"\nmetric = \"RPM\"\n\n\
+             [[custom_sensors.sources]]\n\
+             channel_source = {{ device_uid = \"{LEGACY_UID}\", channel_name = \"fan1\" }}\n\
+             weight = 1\n\n\
+             [[custom_sensors.sources]]\n\
+             channel_source = {{ device_uid = \"{OTHER_UID}\", channel_name = \"fan1\" }}\n\
+             weight = 1\n"
+        );
+        let config = config_from(&document);
+
+        let rewrites = config.migrate_device_uid(LEGACY_UID, CURRENT_UID);
+
+        let doc = config.document.borrow().to_string();
+        assert_eq!(rewrites, 1);
+        assert!(doc.contains(LEGACY_UID).not());
+        assert_eq!(doc.matches(CURRENT_UID).count(), 1);
+        assert_eq!(doc.matches(OTHER_UID).count(), 1);
     }
 
     // Goal: an LCD on a DIFFERENT device showing the migrated drive's temp keeps working.
@@ -3577,20 +3676,19 @@ mod tests {
     #[test]
     fn custom_sensor_variants_toml_round_trip() {
         use crate::setting::{
-            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-            TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
+            SensorSource,
         };
         use std::path::PathBuf;
 
-        let source = || CustomTempSourceData {
-            temp_source: TempSource {
-                temp_name: "Temp1".to_string(),
-                device_uid: "dev-1".to_string(),
-            },
+        let source = || SensorSource {
+            name: "Temp1".to_string(),
+            device_uid: "dev-1".to_string(),
             weight: 1,
         };
         let make = |id: &str, kind: CustomSensorKind| CustomSensor {
             id: id.to_string(),
+            metric: CustomSensorMetric::Temp,
             kind,
             children: vec![],
             parents: vec![],
@@ -3622,7 +3720,8 @@ mod tests {
             .set_custom_sensor(make(
                 "offset",
                 CustomSensorKind::Offset {
-                    offset: -7,
+                    scale: Scale::default(),
+                    offset: -7.,
                     sources: vec![source()],
                 },
             ))
@@ -3654,7 +3753,7 @@ mod tests {
         ));
         assert!(matches!(sensors[1].kind, CustomSensorKind::File { .. }));
         assert!(
-            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7)
+            matches!(&sensors[2].kind, CustomSensorKind::Offset { offset, .. } if *offset == -7.)
         );
         assert!(matches!(
             &sensors[3].kind,
@@ -3668,6 +3767,261 @@ mod tests {
             panic!("expected ExponentialMovingAvg");
         };
         assert_eq!(*time_window_seconds, 15);
+    }
+
+    fn mix_of(
+        metric: crate::setting::CustomSensorMetric,
+        source_name: &str,
+    ) -> crate::setting::CustomSensor {
+        use crate::setting::{
+            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, SensorSource,
+        };
+
+        CustomSensor {
+            id: "mix".to_string(),
+            metric,
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Avg,
+                sources: vec![SensorSource {
+                    name: source_name.to_string(),
+                    device_uid: "dev-1".to_string(),
+                    weight: 1,
+                }],
+            },
+            children: vec![],
+            parents: vec![],
+        }
+    }
+
+    // A temperature sensor is stored exactly as before the metric existed: no `metric` key
+    // and its source under `temp_source`, so an older daemon reads the same file.
+    #[test]
+    fn custom_sensor_temperature_table_has_no_metric_key() {
+        use crate::setting::CustomSensorMetric;
+
+        let config = config_from("");
+        config
+            .set_custom_sensor(mix_of(CustomSensorMetric::Temp, "Temp1"))
+            .unwrap();
+
+        let doc = config.document.borrow().to_string();
+        assert!(doc.contains("metric").not());
+        assert!(doc.contains("channel_source").not());
+        assert!(doc.contains(r#"temp_source = { temp_name = "Temp1", device_uid = "dev-1" }"#));
+    }
+
+    // Every other metric is stored with its `metric` key and its source under
+    // `channel_source`, and reads back to the same sensor.
+    #[test]
+    fn custom_sensor_metric_toml_round_trip() {
+        use crate::setting::CustomSensorMetric;
+
+        for metric in [
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            let config = config_from("");
+            config.set_custom_sensor(mix_of(metric, "fan1")).unwrap();
+
+            let doc = config.document.borrow().to_string();
+            assert!(doc.contains(&format!("metric = \"{metric}\"")));
+            assert!(doc.contains("temp_source").not());
+            assert!(
+                doc.contains(r#"channel_source = { device_uid = "dev-1", channel_name = "fan1" }"#)
+            );
+
+            let sensors = config.get_custom_sensors().unwrap();
+            assert_eq!(sensors.len(), 1);
+            assert_eq!(sensors[0].metric, metric);
+            assert_eq!(sensors[0].sources(), mix_of(metric, "fan1").sources());
+        }
+    }
+
+    // The Sum function is stored by name and reads back as Sum.
+    #[test]
+    fn custom_sensor_sum_toml_round_trip() {
+        use crate::setting::{CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType};
+
+        let mut sensor = mix_of(CustomSensorMetric::Temp, "Temp1");
+        let CustomSensorKind::Mix { mix_function, .. } = &mut sensor.kind else {
+            panic!("expected Mix");
+        };
+        *mix_function = CustomSensorMixFunctionType::Sum;
+        let config = config_from("");
+        config.set_custom_sensor(sensor).unwrap();
+
+        assert!(config
+            .document
+            .borrow()
+            .to_string()
+            .contains("mix_function = \"Sum\""));
+        let sensors = config.get_custom_sensors().unwrap();
+        assert!(matches!(
+            &sensors[0].kind,
+            CustomSensorKind::Mix { mix_function, .. }
+                if *mix_function == CustomSensorMixFunctionType::Sum
+        ));
+    }
+
+    // A stored source must sit under the key of its sensor's metric. Either mismatch, and
+    // an unknown metric, fail the load instead of reading a temp as a channel or back.
+    #[test]
+    fn custom_sensor_source_key_must_match_the_metric() {
+        use crate::setting::{CustomSensorError, CustomSensorMetric};
+
+        let temp_source = "temp_source = { temp_name = \"t\", device_uid = \"d\" }";
+        let channel_source = "channel_source = { device_uid = \"d\", channel_name = \"c\" }";
+        let document = |metric_line: &str, source_line: &str| {
+            format!(
+                "[[custom_sensors]]\nid = \"s\"\ncs_type = \"Mix\"\nmix_function = \"Avg\"\n\
+                 {metric_line}\n[[custom_sensors.sources]]\n{source_line}\nweight = 1\n"
+            )
+        };
+
+        let valid_temp = config_from(&document("", temp_source));
+        assert!(valid_temp.get_custom_sensors().is_ok());
+        let valid_channel = config_from(&document("metric = \"RPM\"", channel_source));
+        assert!(valid_channel.get_custom_sensors().is_ok());
+
+        let temp_with_channel = config_from(&document("", channel_source));
+        assert_eq!(
+            temp_with_channel
+                .get_custom_sensors()
+                .unwrap_err()
+                .downcast_ref::<CustomSensorError>(),
+            Some(&CustomSensorError::ChannelSourceOnTemp)
+        );
+        let rpm_with_temp = config_from(&document("metric = \"RPM\"", temp_source));
+        assert_eq!(
+            rpm_with_temp
+                .get_custom_sensors()
+                .unwrap_err()
+                .downcast_ref::<CustomSensorError>(),
+            Some(&CustomSensorError::TempSourceOnChannelMetric {
+                metric: CustomSensorMetric::RPM
+            })
+        );
+        let unknown_metric = config_from(&document("metric = \"Volts\"", channel_source));
+        assert!(unknown_metric.get_custom_sensors().is_err());
+    }
+
+    fn scale_offset_of(
+        metric: crate::setting::CustomSensorMetric,
+        scale: f64,
+        offset: f64,
+    ) -> crate::setting::CustomSensor {
+        use crate::setting::{CustomSensor, CustomSensorKind, Scale, SensorSource};
+
+        CustomSensor {
+            id: "scaled".to_string(),
+            metric,
+            kind: CustomSensorKind::Offset {
+                scale: Scale::try_from(scale).unwrap(),
+                offset,
+                sources: vec![SensorSource {
+                    name: "source".to_string(),
+                    device_uid: "dev-1".to_string(),
+                    weight: 1,
+                }],
+            },
+            children: vec![],
+            parents: vec![],
+        }
+    }
+
+    fn stored_text(sensor: crate::setting::CustomSensor) -> String {
+        let config = config_from("");
+        config.set_custom_sensor(sensor).unwrap();
+        config.document.borrow().to_string()
+    }
+
+    // The offset is stored as the whole number daemons before the scale require only when
+    // they would compute the same value: a temperature sensor, scale 1, a whole offset
+    // within their range. Then no `scale` key is stored either.
+    #[test]
+    fn custom_sensor_offset_is_whole_where_older_daemons_agree() {
+        use crate::setting::CustomSensorMetric;
+
+        for offset in [-100., -7., 0., 100.] {
+            let text = stored_text(scale_offset_of(CustomSensorMetric::Temp, 1., offset));
+            assert!(text.contains(&format!("offset = {offset:.0}\n")), "{text}");
+            assert!(text.contains("scale =").not());
+        }
+    }
+
+    // Every sensor an older daemon would compute differently stores a decimal offset,
+    // which that daemon refuses to load: a scale, a fractional offset, or another metric.
+    #[test]
+    fn custom_sensor_offset_is_decimal_where_older_daemons_differ() {
+        use crate::setting::CustomSensorMetric;
+
+        let scaled = stored_text(scale_offset_of(CustomSensorMetric::Temp, 2., 5.));
+        assert!(scaled.contains("offset = 5.0\n"), "{scaled}");
+        assert!(scaled.contains("scale = 2.0\n"), "{scaled}");
+
+        let fractional = stored_text(scale_offset_of(CustomSensorMetric::Temp, 1., 0.5));
+        assert!(fractional.contains("offset = 0.5\n"), "{fractional}");
+        assert!(fractional.contains("scale =").not());
+
+        let channel = stored_text(scale_offset_of(CustomSensorMetric::RPM, 1., 5.));
+        assert!(channel.contains("offset = 5.0\n"), "{channel}");
+
+        let pressure = stored_text(scale_offset_of(CustomSensorMetric::RPM, 0.001, 0.));
+        assert!(pressure.contains("scale = 0.001\n"), "{pressure}");
+        assert!(pressure.contains("offset = 0.0\n"), "{pressure}");
+    }
+
+    // Both stored forms of the offset read back, the scale defaults to 1, and a stored
+    // scale and decimal offset survive the round trip.
+    #[test]
+    fn custom_sensor_scale_and_offset_toml_round_trip() {
+        use crate::setting::{CustomSensorKind, CustomSensorMetric};
+
+        let read_back = |sensor: crate::setting::CustomSensor| {
+            let config = config_from("");
+            config.set_custom_sensor(sensor).unwrap();
+            let sensors = config.get_custom_sensors().unwrap();
+            let CustomSensorKind::Offset { scale, offset, .. } = sensors[0].kind.clone() else {
+                panic!("expected Offset");
+            };
+            (scale.get(), offset)
+        };
+
+        let whole = read_back(scale_offset_of(CustomSensorMetric::Temp, 1., -7.));
+        assert_eq!(whole, (1., -7.));
+        let scaled = read_back(scale_offset_of(CustomSensorMetric::RPM, 0.001, 12.5));
+        assert_eq!(scaled, (0.001, 12.5));
+    }
+
+    // Hand-edited values: an offset past the metric's limit is clamped to it, and a scale
+    // that is no usable factor fails the load.
+    #[test]
+    fn custom_sensor_scale_and_offset_are_checked_on_load() {
+        use crate::setting::CustomSensorKind;
+
+        let document = |extra: &str| {
+            format!(
+                "[[custom_sensors]]\nid = \"s\"\ncs_type = \"Offset\"\n{extra}\n\
+                 [[custom_sensors.sources]]\n\
+                 temp_source = {{ temp_name = \"t\", device_uid = \"d\" }}\nweight = 1\n"
+            )
+        };
+
+        let clamped = config_from(&document("offset = 250"))
+            .get_custom_sensors()
+            .unwrap();
+        assert!(matches!(
+            clamped[0].kind,
+            CustomSensorKind::Offset { offset, .. } if offset == 100.
+        ));
+        for bad_scale in ["scale = 0.0", "scale = nan", "scale = 1e9", "scale = \"2\""] {
+            let config = config_from(&document(&format!("offset = 1\n{bad_scale}")));
+            assert!(config.get_custom_sensors().is_err(), "{bad_scale}");
+        }
+        let non_finite = config_from(&document("offset = inf"));
+        assert!(non_finite.get_custom_sensors().is_err());
     }
 
     // A legacy persisted File row carries fields no longer part of the File variant
@@ -3701,8 +4055,8 @@ offset = 5
     #[test]
     fn custom_sensor_variant_change_scrubs_stale_keys() {
         use crate::setting::{
-            CustomSensor, CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData,
-            TempSource,
+            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType,
+            SensorSource,
         };
         use std::path::PathBuf;
 
@@ -3715,6 +4069,7 @@ offset = 5
         config
             .set_custom_sensor(CustomSensor {
                 id: "s1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::File {
                     file_path: PathBuf::from("/tmp/x"),
                 },
@@ -3725,13 +4080,12 @@ offset = 5
         config
             .update_custom_sensor(CustomSensor {
                 id: "s1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Max,
-                    sources: vec![CustomTempSourceData {
-                        temp_source: TempSource {
-                            temp_name: "T".to_string(),
-                            device_uid: "d".to_string(),
-                        },
+                    sources: vec![SensorSource {
+                        name: "T".to_string(),
+                        device_uid: "d".to_string(),
                         weight: 1,
                     }],
                 },

@@ -13,10 +13,10 @@ import {
     mdiPinOutline,
     mdiPlus,
     mdiTelevision,
-    mdiThermometer,
 } from '@mdi/js'
 import { VueDraggable } from 'vue-draggable-plus'
 import { computed, ref, watchEffect } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import {
     type Color,
@@ -35,6 +35,7 @@ import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { customSensorNames, deviceChannelLinks, hardwareDevices } from '@/shell/devices/devices.ts'
 import { deviceTypeIcon } from '@/shell/deviceIcon.ts'
+import { channelKind, channelKindIcon } from '@/shell/channelIcon.ts'
 import { pinId } from '@/shell/cooling/channels.ts'
 import { setDeviceChildrenSubset, setTopLevelOrder } from '@/shell/panelOrder.ts'
 import { useRouteActive } from '@/shell/routeActive.ts'
@@ -43,6 +44,7 @@ import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colorStore = useThemeColorsStore()
 
@@ -64,7 +66,7 @@ watchEffect(() => {
     const map = new Map<UID, string[]>()
     for (const device of devicesList.value) {
         if (device.type === DeviceType.CUSTOM_SENSORS) {
-            map.set(device.uid, customSensorNames(device))
+            map.set(device.uid, customSensorNames(device, settingsStore.menuOrder))
         }
     }
     sensorNamesByDevice.value = map
@@ -156,6 +158,16 @@ const deviceTarget = (deviceUID: UID): RouteLocationRaw => ({
     name: 'devices-device',
     params: { deviceUID },
 })
+// A custom sensor shows the icon of what it measures.
+const sensorIcon = (device: Device, sensorName: string): string =>
+    channelKindIcon(
+        channelKind(
+            device,
+            sensorName,
+            currentDeviceStatus.value.get(device.uid)?.get(sensorName),
+            settingsStore.channelUnit,
+        ),
+    )
 const customSensorTarget = (customSensorID: string): RouteLocationRaw => ({
     name: 'device-custom-sensor',
     params: { customSensorID },
@@ -281,7 +293,7 @@ const isRouteActive = useRouteActive()
                             >
                                 <svg-icon
                                     type="mdi"
-                                    :path="mdiThermometer"
+                                    :path="sensorIcon(device, sensorName)"
                                     :size="18"
                                     class="shrink-0"
                                     :style="{

@@ -526,36 +526,51 @@ export default {
             applySetting: '應用設置',
         },
         customSensors: {
-            missingSourcesNotice: '以下溫度來源已不存在，儲存時將被移除: {sources}',
+            missingSourcesNotice: '以下資料來源已不存在，儲存時將被移除: {sources}',
+            metric: '指標',
+            metricTooltip:
+                '感測器測量的內容。它的所有資料來源共用該指標。<br/><i>注意：感測器儲存後無法變更指標。</i>',
+            rpmUnitHint:
+                '該指標也可用於其他單位的數值。在感測器名稱結尾加上方括號中的單位即可顯示，例如 壓力 [mbar]。',
             sensorType: '傳感器類型',
             mixFunction: '混合函數',
             howCalculateValue: '如何計算結果傳感器值',
-            tempFile: '溫度文件',
+            sensorFile: '感測器檔案',
             filePathTooltip:
-                '輸入要用於此傳感器的溫度文件的絕對路徑。\n該文件必須使用sysfs數據格式標準：\n以毫攝氏度為單位的定點數。\n例如，80℃為80000。\n該文件在提交時進行驗證。',
+                '輸入要用於此感測器的檔案的絕對路徑。\n該檔案必須包含一個符合該指標 sysfs 資料格式的整數。\n該檔案在提交時進行驗證。',
+            fileUnit: {
+                temp: '毫攝氏度，例如 80℃ 為 80000',
+                duty: '0 到 255 的 PWM 值',
+                rpm: 'RPM，或以感測器名稱所示單位表示的整數',
+                freq: '赫茲，例如 3600 MHz 為 3600000000',
+                watts: '微瓦，例如 65 W 為 65000000',
+            },
             browse: '瀏覽',
             browseCustomSensorFile: '瀏覽自定義傳感器文件',
-            tempSources: '溫度源',
-            tempSource: '溫度源',
-            tempSourcesTooltip:
-                '在混合函數中使用的溫度源<br/><i>注意：當組合多個自定義傳感器時，只允許直接的父子關係。<br/>較為複雜的設定請使用混合設定檔。</i>',
+            sources: '資料來源',
+            source: '資料來源',
+            sourcesTooltip:
+                '在混合函數中使用的資料來源<br/><i>注意：當組合多個自訂感測器時，只允許直接的父子關係。<br/>較為複雜的設定請使用混合設定檔。</i>',
+            scale: '縮放',
+            scaleTooltip:
+                '輸入在加上偏移量之前與資料來源相乘的係數。<br/><i>注意：負係數會反轉數值。不能為 0。</i>',
             offset: '偏移量',
             offsetTooltip:
-                '輸入要套用至來源傳感器的負值或正值偏移量。<br/><i>注意：最終數值將被限制在正常的溫度範圍內。</i>',
+                '輸入要加到縮放後資料來源上的負值或正值偏移量。<br/><i>注意：溫度結果將被限制在正常的溫度範圍內。</i>',
             timeWindow: '平滑視窗',
             timeWindowTooltip:
                 '將最近多少秒的樣本一起平滑。<br/><i>注意：必須在 1 到 300 秒之間。</i>',
             helpText: {
-                mix: '透過所選函式（最小值/最大值/平均值/差值/加權平均值）組合多個溫度源。用於根據多個感測器中最熱的一個驅動風扇，或在區域之間平衡。',
-                file: '從檔案路徑讀取溫度。用於 CoolerControl 未自動偵測到的感測器。',
-                offset: '從溫度源加減一個固定值。用於校準已知的感測器誤差。',
+                mix: '透過所選函式（最小值/最大值/平均值/差值/加權平均值/總和）組合多個資料來源。用於根據多個感測器中最熱的一個驅動風扇、在區域之間平衡，或加總功耗。',
+                file: '從檔案路徑讀取數值。用於 CoolerControl 未自動偵測到的感測器。',
+                offset: '將資料來源乘以一個係數，再加上一個固定值。用於校準已知的感測器誤差，或將數值換算為其他單位。',
                 timeAverage:
                     '固定時間視窗內的算術平均值。輸出受輸入範圍限制，從不超調。適用於應忽略短暫溫度峰值的風扇。',
                 exponentialMovingAvg:
                     '偏重於最近讀數的加權平均值。同樣視窗下比時間平均更平滑，但需要大約 3 倍視窗長度才能完全跟隨持續變化。適用於應追蹤真實趨勢而無抖動的風扇。',
             },
-            tempWeights: '溫度權重',
-            tempName: '溫度名稱',
+            sourceWeights: '資料來源權重',
+            sourceName: '資料來源名稱',
             weight: '權重',
             saveCustomSensor: '保存自定義傳感器',
             unsavedChanges: '此自定義傳感器有未保存的更改。',
@@ -647,6 +662,8 @@ export default {
             deviceUnreachableDetail: '驅動程式已停止回應，因此無法讀取或控制此裝置。正在定期重試。',
             missingTempSource: '缺少溫度來源',
             staleTempSource: '溫度來源正在使用故障保護值',
+            missingSource: '缺少資料來源',
+            staleSource: '資料來源正在使用故障保護值',
             stressTest: '熱壓力測試',
             stressTestTooltip:
                 '生成持續熱負載以驗證\n風扇曲線和冷卻配置文件。\n結果可能因硬體而異。\n安裝 stress-ng 以獲得額外的後端。',
@@ -1592,7 +1609,7 @@ export default {
             sensorType: {
                 mix: '混合',
                 file: '文件',
-                offset: '偏移',
+                offset: '縮放與偏移',
                 timeAverage: '時間平均',
                 exponentialMovingAvg: '指數移動平均',
             },
@@ -1602,6 +1619,7 @@ export default {
                 delta: '差值',
                 avg: '平均值',
                 weightedAvg: '加權平均',
+                sum: '總和',
             },
         },
         themeMode: {

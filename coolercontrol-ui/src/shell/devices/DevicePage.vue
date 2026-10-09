@@ -94,7 +94,9 @@ const infoRows = computed((): Array<[string, string]> => {
 // Hardware settings, ported from the extension-settings popover.
 const isLiquidctl = computed(() => device.value?.type === DeviceType.LIQUIDCTL)
 const isCustomSensors = computed(() => device.value?.type === DeviceType.CUSTOM_SENSORS)
-const sensorNames = computed(() => (device.value != null ? customSensorNames(device.value) : []))
+const sensorNames = computed(() =>
+    device.value != null ? customSensorNames(device.value, settingsStore.menuOrder) : [],
+)
 const sensorDotColor = (channelName: string): string =>
     settingsStore.allUIDeviceSettings.get(props.deviceUID)?.sensorsAndChannels.get(channelName)
         ?.color || 'rgb(var(--colors-text-color))'

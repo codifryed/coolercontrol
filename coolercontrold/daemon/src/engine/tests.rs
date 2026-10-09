@@ -11,14 +11,14 @@ mod engine_tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
-        ChannelInfo, ChannelKind, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty,
-        SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, UID,
+        ChannelAttribute, ChannelInfo, ChannelKind, ChannelName, Device, DeviceInfo, DeviceType,
+        DeviceUID, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionKind, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileKind,
-        ProfileUID, Setting, SettingKind, TempSource,
+        Function, FunctionKind, FunctionUID, LcdModeKind, LcdSettings, LightingSettings, Profile,
+        ProfileKind, ProfileUID, Setting, SettingKind, TempSource,
     };
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
@@ -35,10 +35,20 @@ mod engine_tests {
         set_speeds: Rc<RefCell<Vec<u8>>>,
         applied_profiles: Rc<RefCell<Vec<Vec<(Temp, Duty)>>>>,
         should_fail: Rc<Cell<bool>>,
+        /// What the driver reports for any channel.
+        attributes: Vec<ChannelAttribute>,
     }
 
     #[async_trait(?Send)]
     impl Repository for MockRepository {
+        async fn channel_attributes(
+            &self,
+            _device_uid: &UID,
+            _channel_name: &str,
+        ) -> Result<Vec<ChannelAttribute>> {
+            Ok(self.attributes.clone())
+        }
+
         fn device_type(&self) -> DeviceType {
             self.device_type
         }
@@ -158,6 +168,7 @@ mod engine_tests {
             set_speeds: Rc::clone(&set_speeds),
             applied_profiles: Rc::clone(&applied_profiles),
             should_fail: Rc::clone(&should_fail),
+            attributes: Vec::new(),
         });
         repos.hwmon = Some(mock_repo);
 
@@ -479,6 +490,130 @@ mod engine_tests {
         )
     }
 
+    /// A hwmon mock reporting the limits of a fan input that reads microbar.
+    fn pressure_limit_repos() -> Repositories {
+        use crate::device::ChannelAttributeKind;
+
+        let attribute = |name: &str, kind, value| ChannelAttribute {
+            name: name.to_string(),
+            kind,
+            value,
+        };
+        Repositories {
+            hwmon: Some(Rc::new(MockRepository {
+                device_type: DeviceType::Hwmon,
+                set_speeds: Rc::new(RefCell::new(Vec::new())),
+                applied_profiles: Rc::new(RefCell::new(Vec::new())),
+                should_fail: Rc::new(Cell::new(false)),
+                attributes: vec![
+                    attribute("fan1_min", ChannelAttributeKind::FanMin, 382_800.),
+                    attribute("fan1_max", ChannelAttributeKind::FanMax, 472_800.),
+                    attribute("fan1_pulses", ChannelAttributeKind::FanPulses, 2.),
+                ],
+            })),
+            ..Default::default()
+        }
+    }
+
+    /// A config holding two RPM sensors of `fan1`: "pressure" scaling by 0.001, and "mix".
+    fn pressure_sensor_config(hwmon_uid: &DeviceUID) -> Rc<Config> {
+        use crate::setting::{
+            CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
+            SensorSource,
+        };
+
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let fan = || SensorSource {
+            device_uid: hwmon_uid.clone(),
+            name: "fan1".to_string(),
+            weight: 1,
+        };
+        let sensor = |id: &str, kind| CustomSensor {
+            id: id.to_string(),
+            metric: CustomSensorMetric::RPM,
+            kind,
+            children: Vec::new(),
+            parents: Vec::new(),
+        };
+        let pressure = CustomSensorKind::Offset {
+            scale: Scale::try_from(0.001).unwrap(),
+            offset: 0.,
+            sources: vec![fan()],
+        };
+        let mix = CustomSensorKind::Mix {
+            mix_function: CustomSensorMixFunctionType::Max,
+            sources: vec![fan()],
+        };
+        config
+            .set_custom_sensor(sensor("pressure", pressure))
+            .unwrap();
+        config.set_custom_sensor(sensor("mix", mix)).unwrap();
+        config
+    }
+
+    /// An engine over a hwmon device with `fan1` and the custom sensors device beside it.
+    /// Returns the engine, the custom sensors device uid and the hwmon device uid.
+    fn pressure_sensor_engine() -> (Engine, DeviceUID, DeviceUID) {
+        let info_with = |channels: &[&str]| DeviceInfo {
+            channels: channels
+                .iter()
+                .map(|name| ((*name).to_string(), ChannelInfo::default()))
+                .collect(),
+            ..Default::default()
+        };
+        let device = |name: &str, d_type, info| {
+            Device::new(name.to_string(), d_type, 0, None, info, None, 1.0)
+        };
+        let leakshield = device("Leakshield", DeviceType::Hwmon, info_with(&["fan1"]));
+        let custom_sensors = device(
+            "Custom Sensors",
+            DeviceType::CustomSensors,
+            info_with(&["pressure", "mix"]),
+        );
+        let hwmon_uid = leakshield.uid.clone();
+        let cs_uid = custom_sensors.uid.clone();
+        let all_devices = Rc::new(HashMap::from([
+            (hwmon_uid.clone(), Rc::new(RefCell::new(leakshield))),
+            (cs_uid.clone(), Rc::new(RefCell::new(custom_sensors))),
+        ]));
+        let engine = Engine::new(
+            all_devices,
+            &Rc::new(pressure_limit_repos()),
+            pressure_sensor_config(&hwmon_uid),
+            Rc::new(crate::calibration::CalibrationStore::empty()),
+            Rc::new(crate::calibration::FanStateMap::new()),
+            Rc::new(crate::overrides::OverridesController::empty()),
+        );
+        (engine, cs_uid, hwmon_uid)
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_attributes_forward_the_source_limits() {
+        // Goal: a Scale & Offset Custom Sensor answers the attributes request with its
+        // source's driver limits in its own unit, and a Mix sensor with none. Method: a
+        // hwmon mock reporting fan limits in microbar, a sensor scaling by 0.001, and the
+        // custom sensors device beside it.
+        cc_fs::test_runtime(async {
+            let (engine, cs_uid, hwmon_uid) = pressure_sensor_engine();
+
+            let limits = engine
+                .channel_attributes(&cs_uid, "pressure")
+                .await
+                .unwrap();
+            let of_mix = engine.channel_attributes(&cs_uid, "mix").await.unwrap();
+            let of_source = engine.channel_attributes(&hwmon_uid, "fan1").await.unwrap();
+
+            assert_eq!(limits.len(), 2);
+            assert_eq!(limits[0].name, "fan1_min");
+            assert!((limits[0].value - 382.8).abs() < 1e-9);
+            assert_eq!(limits[1].name, "fan1_max");
+            assert!((limits[1].value - 472.8).abs() < 1e-9);
+            assert!(of_mix.is_empty());
+            assert_eq!(of_source.len(), 3);
+        });
+    }
+
     #[test]
     #[serial]
     fn channel_attributes_not_found_for_unknown_device_or_channel() {
@@ -506,6 +641,120 @@ mod engine_tests {
             assert!(known.unwrap().is_empty());
             assert!(is_not_found(&unknown_channel), "{unknown_channel:?}");
             assert!(is_not_found(&unknown_device), "{unknown_device:?}");
+        });
+    }
+
+    const CUSTOM_SENSORS_UID: &str = "custom-sensors-uid";
+
+    fn custom_sensor_temp(device_uid: &str, temp_name: &str) -> TempSource {
+        TempSource {
+            device_uid: device_uid.to_string(),
+            temp_name: temp_name.to_string(),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_users_names_the_profile_reading_it() {
+        // Goal: the delete guard learns which Profile reads a Custom Sensor, so the refusal
+        // can name it. Method: ask before and after a Profile takes the sensor as its temp
+        // source.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+
+            let unused = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+            create_graph_profile_with_temp_source(
+                &h.config,
+                vec![(30.0, 50), (70.0, 100)],
+                custom_sensor_temp(CUSTOM_SENSORS_UID, "sensor1"),
+            );
+            let used = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(unused.is_empty());
+            assert_eq!(used, vec!["Profile \"Test Profile\"".to_string()]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_users_skips_a_same_named_temp_of_another_device() {
+        // Goal: a Profile on another device's temp must not block deleting a Custom Sensor
+        // of the same name. Liquidctl temps are named `sensor1` like older sensor ids.
+        // Method: one Profile reading `sensor1` of the mock device, none reading the sensor.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+            let liquidctl_uid = h.device.borrow().uid.clone();
+            create_graph_profile_with_temp_source(
+                &h.config,
+                vec![(30.0, 50), (70.0, 100)],
+                custom_sensor_temp(&liquidctl_uid, "sensor1"),
+            );
+
+            let users = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(users.is_empty(), "{users:?}");
+        });
+    }
+
+    fn lcd_showing(temp_source: TempSource) -> Setting {
+        Setting {
+            channel_name: "lcd".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    brightness: None,
+                    orientation: None,
+                    colors: Vec::new(),
+                    mode: LcdModeKind::Temp {
+                        temp_source: Some(temp_source),
+                    },
+                },
+            },
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn custom_sensor_users_names_the_lcd_of_another_device() {
+        // Goal: an LCD setting lives under the device that has the screen, never under the
+        // Custom Sensors device, and must still block the delete. Method: the mock device's
+        // LCD shows first a temp of its own with the sensor's name, then the sensor.
+        cc_fs::test_runtime(async {
+            let h = setup_harness();
+            let lcd_device_uid = h.device.borrow().uid.clone();
+
+            h.config.set_device_setting(
+                &lcd_device_uid,
+                &lcd_showing(custom_sensor_temp(&lcd_device_uid, "sensor1")),
+            );
+            let own_temp = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+            h.config.set_device_setting(
+                &lcd_device_uid,
+                &lcd_showing(custom_sensor_temp(CUSTOM_SENSORS_UID, "sensor1")),
+            );
+            let the_sensor = h
+                .engine
+                .custom_sensor_users(CUSTOM_SENSORS_UID, "sensor1")
+                .await
+                .unwrap();
+
+            assert!(own_temp.is_empty(), "{own_temp:?}");
+            assert_eq!(the_sensor, vec!["LCD of Test Device".to_string()]);
         });
     }
 

@@ -526,36 +526,51 @@ export default {
             applySetting: '应用设置',
         },
         customSensors: {
-            missingSourcesNotice: '以下温度源已不存在，保存时将被移除: {sources}',
+            missingSourcesNotice: '以下数据源已不存在，保存时将被移除: {sources}',
+            metric: '指标',
+            metricTooltip:
+                '传感器测量的内容。它的所有数据源共用该指标。<br/><i>注意：传感器保存后无法更改指标。</i>',
+            rpmUnitHint:
+                '该指标也可用于其他单位的数值。在传感器名称末尾加上方括号中的单位即可显示，例如 压力 [mbar]。',
             sensorType: '传感器类型',
             mixFunction: '混合函数',
             howCalculateValue: '如何计算结果传感器值',
-            tempFile: '温度文件',
+            sensorFile: '传感器文件',
             filePathTooltip:
-                '输入要用于此传感器的温度文件的绝对路径。\n该文件必须使用sysfs数据格式标准：\n以毫摄氏度为单位的定点数。\n例如，80℃为80000。\n该文件在提交时进行验证。',
+                '输入要用于此传感器的文件的绝对路径。\n该文件必须包含一个符合该指标 sysfs 数据格式的整数。\n该文件在提交时进行验证。',
+            fileUnit: {
+                temp: '毫摄氏度，例如 80℃ 为 80000',
+                duty: '0 到 255 的 PWM 值',
+                rpm: 'RPM，或以传感器名称所示单位表示的整数',
+                freq: '赫兹，例如 3600 MHz 为 3600000000',
+                watts: '微瓦，例如 65 W 为 65000000',
+            },
             browse: '浏览',
             browseCustomSensorFile: '浏览自定义传感器文件',
-            tempSources: '温度源',
-            tempSource: '温度源',
-            tempSourcesTooltip:
-                '在混合函数中使用的温度源<br/><i>注意：当组合多个自定义传感器时，只允许直接的父子关系。<br/>更复杂的配置请使用混合配置文件。</i>',
+            sources: '数据源',
+            source: '数据源',
+            sourcesTooltip:
+                '在混合函数中使用的数据源<br/><i>注意：当组合多个自定义传感器时，只允许直接的父子关系。<br/>更复杂的配置请使用混合配置文件。</i>',
+            scale: '缩放',
+            scaleTooltip:
+                '输入在加上偏移量之前与数据源相乘的系数。<br/><i>注意：负系数会反转数值。不能为 0。</i>',
             offset: '偏移量',
             offsetTooltip:
-                '输入要应用于源传感器的负或正偏移量。<br/><i>注意：最终值会被限制在正常的温度范围内。</i>',
+                '输入要加到缩放后数据源上的负或正偏移量。<br/><i>注意：温度结果会被限制在正常的温度范围内。</i>',
             timeWindow: '平滑窗口',
             timeWindowTooltip:
                 '将最近多少秒的样本一起平滑。<br/><i>注意：必须在 1 到 300 秒之间。</i>',
             helpText: {
-                mix: '通过所选函数（最小值/最大值/平均值/差值/加权平均值）组合多个温度源。用于根据多个传感器中最热的一个驱动风扇，或在区域之间平衡。',
-                file: '从文件路径读取温度。用于 CoolerControl 未自动检测到的传感器。',
-                offset: '从温度源加减一个固定值。用于校准已知的传感器误差。',
+                mix: '通过所选函数（最小值/最大值/平均值/差值/加权平均值/总和）组合多个数据源。用于根据多个传感器中最热的一个驱动风扇、在区域之间平衡，或汇总功耗。',
+                file: '从文件路径读取数值。用于 CoolerControl 未自动检测到的传感器。',
+                offset: '将数据源乘以一个系数，再加上一个固定值。用于校准已知的传感器误差，或将数值换算为其他单位。',
                 timeAverage:
                     '固定时间窗口内的算术平均值。输出受输入范围限制，从不超调。适用于应忽略短暂温度峰值的风扇。',
                 exponentialMovingAvg:
                     '偏重于最近读数的加权平均值。同样窗口下比时间平均更平滑，但需要大约 3 倍窗口长度才能完全跟随持续变化。适用于应跟踪真实趋势而无抖动的风扇。',
             },
-            tempWeights: '温度权重',
-            tempName: '温度名称',
+            sourceWeights: '数据源权重',
+            sourceName: '数据源名称',
             weight: '权重',
             saveCustomSensor: '保存自定义传感器',
             unsavedChanges: '此自定义传感器有未保存的更改。',
@@ -647,6 +662,8 @@ export default {
             deviceUnreachableDetail: '驱动程序已停止响应，因此无法读取或控制此设备。正在定期重试。',
             missingTempSource: '缺少温度源',
             staleTempSource: '温度源正在使用故障保护值',
+            missingSource: '缺少数据源',
+            staleSource: '数据源正在使用故障保护值',
             stressTest: '热压力测试',
             stressTestTooltip:
                 '生成持续热负载以验证\n风扇曲线和冷却配置文件。\n结果可能因硬件而异。\n安装 stress-ng 以获得额外的后端。',
@@ -1591,7 +1608,7 @@ export default {
             sensorType: {
                 mix: '混合',
                 file: '文件',
-                offset: '偏移',
+                offset: '缩放与偏移',
                 timeAverage: '时间平均',
                 exponentialMovingAvg: '指数移动平均',
             },
@@ -1601,6 +1618,7 @@ export default {
                 delta: '差值',
                 avg: '平均值',
                 weightedAvg: '加权平均',
+                sum: '总和',
             },
         },
         themeMode: {

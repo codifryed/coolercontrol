@@ -50,8 +50,24 @@ describe('hardwareDevices', () => {
         const hwmon = fakeDevice('d1', DeviceType.HWMON, [], {})
         const custom = fakeDevice('c1', DeviceType.CUSTOM_SENSORS, ['sensor1'], {})
         expect(hardwareDevices([hwmon, custom]).map((d) => d.uid)).toEqual(['d1', 'c1'])
-        expect(customSensorNames(custom)).toEqual(['sensor1'])
-        expect(customSensorNames(hwmon)).toEqual([])
+        expect(customSensorNames(custom, [])).toEqual(['sensor1'])
+        expect(customSensorNames(hwmon, [])).toEqual([])
+    })
+
+    it('lists custom sensors of any metric: temps, then channels', () => {
+        const custom = fakeDevice('c1', DeviceType.CUSTOM_SENSORS, ['sensor1'], {
+            sensor_3f9a1c2e: {},
+        })
+        expect(customSensorNames(custom, [])).toEqual(['sensor1', 'sensor_3f9a1c2e'])
+    })
+
+    it('keeps a saved order that crosses metrics, unsaved sensors last', () => {
+        const custom = fakeDevice('c1', DeviceType.CUSTOM_SENSORS, ['temp1', 'temp2'], {
+            rpm1: {},
+            rpm2: {},
+        })
+        const menuOrder = [{ id: 'c1', children: ['c1_rpm1', 'c1_temp1'] }]
+        expect(customSensorNames(custom, menuOrder)).toEqual(['rpm1', 'temp1', 'temp2', 'rpm2'])
     })
 })
 

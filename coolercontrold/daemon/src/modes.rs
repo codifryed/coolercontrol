@@ -682,6 +682,51 @@ impl ModeController {
         }
         settings_to_delete
     }
+
+    /// Drops the LCD settings that show a deleted Custom Sensor from every Mode, as
+    /// `profile_deleted` does for a Profile. Such a channel resets when its Mode is next
+    /// applied, where the kept setting would bring the dead source back into the config.
+    pub async fn custom_sensor_deleted(
+        &self,
+        cs_device_uid: &str,
+        custom_sensor_id: &str,
+    ) -> Result<()> {
+        let settings_to_delete = self.search_for_lcd_showing(cs_device_uid, custom_sensor_id);
+        if settings_to_delete.is_empty() {
+            return Ok(());
+        }
+        self.remove_affected_settings(settings_to_delete);
+        self.save_modes_data().await
+    }
+
+    /// The mode UID, device UID and channel name of every LCD setting that shows the temp.
+    fn search_for_lcd_showing(
+        &self,
+        temp_device_uid: &str,
+        temp_name: &str,
+    ) -> Vec<(String, String, String)> {
+        debug_assert!(temp_device_uid.is_empty().not());
+        debug_assert!(temp_name.is_empty().not());
+        let mut settings_to_delete = Vec::new();
+        let modes = self.modes.borrow();
+        for mode in modes.values() {
+            for (device_uid, device_settings) in &mode.all_device_settings {
+                for (channel_name, setting) in device_settings {
+                    let SettingKind::Lcd { lcd } = &setting.kind else {
+                        continue;
+                    };
+                    if lcd.shows_temp(temp_device_uid, temp_name) {
+                        settings_to_delete.push((
+                            mode.uid.clone(),
+                            device_uid.clone(),
+                            channel_name.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        settings_to_delete
+    }
 }
 
 /// Whether the device currently offers the channel.
@@ -771,7 +816,7 @@ mod tests {
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, DeviceType, SpeedOptions};
     use crate::overrides::OverridesController;
     use crate::repositories::repository::Repositories;
-    use crate::setting::Setting;
+    use crate::setting::{LcdModeKind, LcdSettings, Setting, TempSource};
     use serial_test::serial;
     use tokio_util::sync::CancellationToken;
 
@@ -826,6 +871,31 @@ mod tests {
         }
     }
 
+    /// For tests of other modules, which cannot reach the fields.
+    impl ModeController {
+        /// A controller whose one Mode holds a single setting: an LCD showing the temp.
+        pub fn for_test_showing_on_lcd(
+            config: &Rc<Config>,
+            temp_device_uid: &str,
+            temp_name: &str,
+        ) -> Self {
+            let (all_devices, device_uid) = devices_offering("fan1");
+            let controller = mode_controller(&all_devices, config);
+            let setting = lcd_showing(temp_device_uid, temp_name);
+            let mode = Mode {
+                uid: "lcd-mode".to_string(),
+                name: "lcd-mode".to_string(),
+                all_device_settings: HashMap::from([(
+                    device_uid,
+                    HashMap::from([(setting.channel_name.clone(), setting)]),
+                )]),
+            };
+            controller.mode_order.borrow_mut().push(mode.uid.clone());
+            controller.modes.borrow_mut().insert(mode.uid.clone(), mode);
+            controller
+        }
+    }
+
     /// Runs `clear_active_modes` with a subscribed `ModeHandle` and returns what it broadcast.
     async fn clear_and_receive_broadcast(controller: &Rc<ModeController>) -> Option<ActiveMode> {
         let cancel_token = CancellationToken::new();
@@ -850,6 +920,78 @@ mod tests {
             channel_name: channel_name.to_string(),
             kind: SettingKind::SpeedFixed { speed_fixed: 50 },
         }
+    }
+
+    fn lcd_showing(temp_device_uid: &str, temp_name: &str) -> Setting {
+        Setting {
+            channel_name: "lcd".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    brightness: None,
+                    orientation: None,
+                    colors: Vec::new(),
+                    mode: LcdModeKind::Temp {
+                        temp_source: Some(TempSource {
+                            device_uid: temp_device_uid.to_string(),
+                            temp_name: temp_name.to_string(),
+                        }),
+                    },
+                },
+            },
+        }
+    }
+
+    /// Goal: a Mode must not keep an LCD setting that shows a deleted Custom Sensor, or
+    /// applying the Mode would write the dead source back into the config. Everything else
+    /// in the Modes stays, including an LCD showing a same-named temp of another device.
+    /// Methodology: three Modes over one device, delete the sensor, read the Modes back.
+    #[test]
+    #[serial(modes_file)]
+    fn deleting_a_custom_sensor_strips_its_lcd_settings_from_modes() {
+        cc_fs::test_runtime(async {
+            let (all_devices, device_uid) = devices_offering("fan1");
+            let config = Rc::new(Config::init_default_config().unwrap());
+            let controller = mode_controller(&all_devices, &config);
+            let insert_mode = |uid: &str, settings: Vec<Setting>| {
+                let channel_settings = settings
+                    .into_iter()
+                    .map(|setting| (setting.channel_name.clone(), setting))
+                    .collect();
+                controller.modes.borrow_mut().insert(
+                    uid.to_string(),
+                    Mode {
+                        uid: uid.to_string(),
+                        name: uid.to_string(),
+                        all_device_settings: HashMap::from([(
+                            device_uid.clone(),
+                            channel_settings,
+                        )]),
+                    },
+                );
+            };
+            insert_mode(
+                "with-fan",
+                vec![fixed_speed("fan1"), lcd_showing("cs", "sensor1")],
+            );
+            insert_mode("lcd-only", vec![lcd_showing("cs", "sensor1")]);
+            insert_mode("other-device", vec![lcd_showing(&device_uid, "sensor1")]);
+
+            controller
+                .custom_sensor_deleted("cs", "sensor1")
+                .await
+                .unwrap();
+
+            let modes = controller.modes.borrow();
+            let with_fan = &modes["with-fan"].all_device_settings[&device_uid];
+            assert!(with_fan.contains_key("fan1"), "Other settings are kept");
+            assert!(with_fan.contains_key("lcd").not());
+            assert!(
+                modes["lcd-only"].all_device_settings.is_empty(),
+                "A device left without settings is dropped from the Mode"
+            );
+            let other_device = &modes["other-device"].all_device_settings[&device_uid];
+            assert!(other_device.contains_key("lcd"));
+        });
     }
 
     /// Goal: deleting a Mode must take its power profile mapping with it, in both the config

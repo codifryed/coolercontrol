@@ -561,36 +561,51 @@ export default {
         },
         customSensors: {
             missingSourcesNotice:
-                'Die folgenden Temperaturquellen sind nicht mehr vorhanden und werden beim Speichern entfernt: {sources}',
+                'Die folgenden Quellen sind nicht mehr vorhanden und werden beim Speichern entfernt: {sources}',
+            metric: 'Messgröße',
+            metricTooltip:
+                'Was der Sensor misst. Alle seine Quellen teilen sie.<br/><i>Hinweis: Die Messgröße kann nach dem Speichern des Sensors nicht mehr geändert werden.</i>',
+            rpmUnitHint:
+                'Diese Messgröße nimmt auch Werte in anderen Einheiten auf. Beenden Sie den Sensornamen mit der Einheit in eckigen Klammern, um sie anzuzeigen, z.B. Druck [mbar].',
             sensorType: 'Sensortyp',
             mixFunction: 'Mix-Funktion',
             howCalculateValue: 'Wie der resultierende Sensorwert berechnet werden soll',
-            tempFile: 'Temperaturdatei',
+            sensorFile: 'Sensordatei',
             filePathTooltip:
-                'Geben Sie den absoluten Pfad zur Temperaturdatei ein, die für diesen Sensor verwendet werden soll.\nDie Datei muss das sysfs-Datenformat-Standard verwenden:\nEine Festkommazahl in Milligrad Celsius.\nz.B. 80000 für 80°C.\nDie Datei wird bei der Übermittlung überprüft.',
+                'Geben Sie den absoluten Pfad zur Datei ein, die für diesen Sensor verwendet werden soll.\nDie Datei muss eine ganze Zahl im sysfs-Datenformat der Messgröße enthalten.\nDie Datei wird bei der Übermittlung überprüft.',
+            fileUnit: {
+                temp: 'Milligrad Celsius, z.B. 80000 für 80°C',
+                duty: 'PWM-Wert von 0 bis 255',
+                rpm: 'RPM oder eine ganze Zahl in der Einheit, die der Sensorname nennt',
+                freq: 'Hertz, z.B. 3600000000 für 3600 MHz',
+                watts: 'Mikrowatt, z.B. 65000000 für 65 W',
+            },
             browse: 'Durchsuchen',
             browseCustomSensorFile: 'Nach einer benutzerdefinierten Sensordatei suchen',
-            tempSources: 'Temp-Quellen',
-            tempSource: 'Temp-Quelle',
-            tempSourcesTooltip:
-                'Temperaturquellen, die in der Mischfunktion verwendet werden sollen<br/><i>Hinweis: Beim Kombinieren mehrerer benutzerdefinierter Sensoren sind nur direkte Eltern-Kind-Beziehungen erlaubt.<br/>Verwenden Sie Mix-Profile für komplexere Setups.</i>',
+            sources: 'Quellen',
+            source: 'Quelle',
+            sourcesTooltip:
+                'Quellen, die in der Mischfunktion verwendet werden sollen<br/><i>Hinweis: Beim Kombinieren mehrerer benutzerdefinierter Sensoren sind nur direkte Eltern-Kind-Beziehungen erlaubt.<br/>Verwenden Sie Mix-Profile für komplexere Setups.</i>',
+            scale: 'Skalierung',
+            scaleTooltip:
+                'Geben Sie den Faktor ein, mit dem die Quelle multipliziert wird, bevor der Versatz addiert wird.<br/><i>Hinweis: Ein negativer Faktor kehrt den Wert um. Er darf nicht 0 sein.</i>',
             offset: 'Versatz',
             offsetTooltip:
-                'Geben Sie einen negativen oder positiven Versatz ein, der auf den Quellsensor angewendet wird.<br/><i>Hinweis: Der Endwert wird auf normale Temperaturbereiche begrenzt.</i>',
+                'Geben Sie einen negativen oder positiven Versatz ein, der zur skalierten Quelle addiert wird.<br/><i>Hinweis: Ein Temperaturergebnis wird auf normale Temperaturbereiche begrenzt.</i>',
             timeWindow: 'Glättungsfenster',
             timeWindowTooltip:
                 'Wie viele Sekunden der jüngsten Stichproben zusammen geglättet werden sollen.<br/><i>Hinweis: Muss zwischen 1 und 300 Sekunden liegen.</i>',
             helpText: {
-                mix: 'Kombiniert mehrere Temperaturquellen mit der gewählten Funktion (Min/Max/Mittel/Differenz/Gewichtetes Mittel). Zur Steuerung von Lüftern nach dem heißesten mehrerer Sensoren oder zum Ausgleich zwischen Zonen.',
-                file: 'Liest die Temperatur aus einem Dateipfad. Für Sensoren, die nicht automatisch von CoolerControl erkannt werden.',
-                offset: 'Addiert oder subtrahiert einen festen Wert von einer Temperaturquelle. Zur Kalibrierung einer bekannten Sensorungenauigkeit.',
+                mix: 'Kombiniert mehrere Quellen mit der gewählten Funktion (Min/Max/Mittel/Differenz/Gewichtetes Mittel/Summe). Zur Steuerung von Lüftern nach dem heißesten mehrerer Sensoren, zum Ausgleich zwischen Zonen oder zum Summieren der Leistungsaufnahme.',
+                file: 'Liest einen Wert aus einem Dateipfad. Für Sensoren, die nicht automatisch von CoolerControl erkannt werden.',
+                offset: 'Multipliziert eine Quelle mit einem Faktor und addiert dann einen festen Wert. Zur Kalibrierung einer bekannten Sensorungenauigkeit oder zur Umrechnung in eine andere Einheit.',
                 timeAverage:
                     'Arithmetisches Mittel über ein festes Zeitfenster. Die Ausgabe ist durch den Eingangsbereich begrenzt und überschießt nie. Für Lüfter, die kurze Temperaturspitzen ignorieren sollen.',
                 exponentialMovingAvg:
                     'Gewichtetes Mittel mit Bevorzugung neuerer Messwerte. Glatter als der zeitliche Durchschnitt bei gleicher Fenstergröße, benötigt jedoch etwa das 3-fache der Fensterlänge, um einer dauerhaften Änderung vollständig zu folgen. Für Lüfter, die echte Trends ohne Jitter verfolgen sollen.',
             },
-            tempWeights: 'Temp-Gewichtungen',
-            tempName: 'Temp-Name',
+            sourceWeights: 'Quellen-Gewichtungen',
+            sourceName: 'Quellenname',
             weight: 'Gewichtung',
             saveCustomSensor: 'Benutzerdefinierten Sensor speichern',
             unsavedChanges:
@@ -696,6 +711,8 @@ export default {
                 'Der Treiber antwortet nicht mehr, daher kann dieses Gerät weder ausgelesen noch gesteuert werden. Es wird regelmäßig erneut versucht.',
             missingTempSource: 'Fehlende Temperaturquelle',
             staleTempSource: 'Temperaturquelle verwendet Failsafe-Werte',
+            missingSource: 'Fehlende Quelle',
+            staleSource: 'Quelle verwendet Failsafe-Werte',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
                 'Erzeugt anhaltende Thermallast zur Validierung\nvon Lüfterkurven und Kühlprofilen.\nErgebnisse können je nach Hardware variieren.\nInstallieren Sie stress-ng für zusätzliche Backends.',
@@ -1702,7 +1719,7 @@ export default {
             sensorType: {
                 mix: 'Mix',
                 file: 'Datei',
-                offset: 'Versatz',
+                offset: 'Skalierung & Versatz',
                 timeAverage: 'Zeitlicher Durchschnitt',
                 exponentialMovingAvg: 'Exponentieller gleitender Durchschnitt',
             },
@@ -1712,6 +1729,7 @@ export default {
                 delta: 'Delta',
                 avg: 'Durchschnitt',
                 weightedAvg: 'Gewichteter Durchschnitt',
+                sum: 'Summe',
             },
         },
         themeMode: {

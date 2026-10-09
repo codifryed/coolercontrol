@@ -334,6 +334,13 @@ impl OverridesController {
         self.chain_device_name(device_uid, detected, raw_name)
     }
 
+    /// Device display name for text that reaches log lines: plain like
+    /// [`Self::resolve_device_name`], and sanitized.
+    pub fn resolve_device_label(&self, device_uid: &DeviceUID, raw_name: &str) -> String {
+        let name = self.chain_device_name(device_uid, None, raw_name);
+        sanitize_for_log(&name).into_owned()
+    }
+
     /// Channel display label: override > detected > raw. Plain, not the
     /// `Resolved (raw)` log form, and sanitized because it reaches log lines.
     pub fn resolve_channel_label(
@@ -344,6 +351,23 @@ impl OverridesController {
     ) -> String {
         let label = self.chain_channel_label(device_uid, channel_name, detected);
         sanitize_for_log(&label).into_owned()
+    }
+
+    /// Display form of a device and channel pair for text shown to the user:
+    /// `Device | Channel`, plain like [`Self::resolve_channel_label`] and sanitized the same.
+    /// `raw_device_name` is the caller's own name for the device.
+    pub fn resolve_device_channel(
+        &self,
+        device_uid: &DeviceUID,
+        raw_device_name: &str,
+        channel_name: &str,
+    ) -> String {
+        let device_name = self.chain_device_name(device_uid, None, raw_device_name);
+        format!(
+            "{} | {}",
+            sanitize_for_log(&device_name),
+            self.resolve_channel_label(device_uid, channel_name, None)
+        )
     }
 
     /// Log display form of a device name: `Resolved (raw)` when the chain answers something
@@ -1053,6 +1077,35 @@ mod tests {
     }
 
     #[test]
+    fn device_channel_display_form_uses_the_users_names() {
+        // Goal: text shown to the user names a device and channel as the UI does, without
+        // the raw keys of the log form. Method: no override first, then one for each half.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+            let uid = DEVICE_UID.to_string();
+
+            assert_eq!(
+                controller.resolve_device_channel(&uid, "nct6798", "fan1"),
+                "nct6798 | fan1"
+            );
+
+            controller
+                .set_device_name(&uid, HINT, Some("Motherboard"))
+                .await
+                .unwrap();
+            controller
+                .set_channel_label(&uid, HINT, &"fan1".to_string(), None, Some("Front Intake"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.resolve_device_channel(&uid, "nct6798", "fan1"),
+                "Motherboard | Front Intake"
+            );
+        });
+    }
+
+    #[test]
     fn device_log_name_marks_a_uid_no_layer_knows() {
         // Goal: the one case nothing can name reads as an unknown device, and never pastes a
         // 64 character hash into the log line.
@@ -1095,6 +1148,32 @@ mod tests {
             assert_eq!(
                 controller.log_channel_name(&uid, "fan1"),
                 "Front Intake (fan1)"
+            );
+        });
+    }
+
+    #[test]
+    fn device_labels_resolve_override_then_raw_and_are_sanitized() {
+        // Goal: refusal text names a device as the user does and leaks no control
+        // characters. Method: a raw driver name carrying an escape, then an override.
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+            let uid = DEVICE_UID.to_string();
+            let controller = OverridesController::init_from(overrides_path(&tmp)).await;
+
+            // A driver-reported name is never validated.
+            assert_eq!(
+                controller.resolve_device_label(&uid, "Kraken\u{1b}[31m\nX"),
+                "Kraken[31mX"
+            );
+
+            controller
+                .set_device_name(&uid, HINT, Some("Radiator Hub"))
+                .await
+                .unwrap();
+            assert_eq!(
+                controller.resolve_device_label(&uid, "Kraken"),
+                "Radiator Hub"
             );
         });
     }

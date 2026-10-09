@@ -30,6 +30,7 @@ use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
+use crate::repositories::custom_sensor_attributes::{attribute_forward, forward_attributes};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::rt;
 use crate::setting::{
@@ -1035,13 +1036,42 @@ impl Engine {
             }
             .into());
         }
-        let (_, repo) = self.get_device_repo(device_uid)?;
-        let attributes = repo.channel_attributes(device_uid, channel_name).await?;
+        let is_custom_sensor = device_lock.borrow().d_type == DeviceType::CustomSensors;
+        let attributes = if is_custom_sensor {
+            self.custom_sensor_attributes(device_uid, channel_name)
+                .await?
+        } else {
+            let (_, repo) = self.get_device_repo(device_uid)?;
+            repo.channel_attributes(device_uid, channel_name).await?
+        };
         debug_assert!(attributes.len() <= MAX_CHANNEL_ATTRIBUTES);
         debug_assert!(attributes
             .iter()
             .all(|attribute| attribute.value.is_finite()));
         Ok(attributes)
+    }
+
+    /// A Custom Sensor with a single source carries that source's driver limits, read now
+    /// through the source's repository and passed through the sensor's scale and offset. A
+    /// source that is gone or unreadable leaves the sensor without limits, not in error.
+    async fn custom_sensor_attributes(
+        &self,
+        custom_sensors_device_uid: &UID,
+        sensor_id: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        let sensors = self.config.get_custom_sensors()?;
+        let Some(forward) = attribute_forward(&sensors, custom_sensors_device_uid, sensor_id)
+        else {
+            return Ok(Vec::new());
+        };
+        let Ok((_, repo)) = self.get_device_repo(&forward.source_device_uid) else {
+            return Ok(Vec::new());
+        };
+        let source_attributes = repo
+            .channel_attributes(&forward.source_device_uid, &forward.source_name)
+            .await
+            .unwrap_or_default();
+        Ok(forward_attributes(&forward, source_attributes))
     }
 
     /// Retrieves the saved image file
@@ -1457,46 +1487,52 @@ impl Engine {
         }
     }
 
-    pub async fn custom_sensor_deleted(
+    /// The Profiles and LCD settings that read the Custom Sensor, each named for the user.
+    /// Empty when none does.
+    pub async fn custom_sensor_users(
         &self,
         cs_device_uid: &str,
         custom_sensor_id: &str,
-    ) -> Result<()> {
-        let affects_profiles = self
-            .config
-            .get_profiles()
-            .await
-            .unwrap_or(Vec::new())
-            .iter()
-            .any(|profile| {
-                profile.temp_source().is_some()
-                    && profile.temp_source().unwrap().temp_name == custom_sensor_id
-            });
-        let affects_lcd_settings =
-            self.config
-                .get_device_settings(cs_device_uid)?
-                .iter()
-                .any(|setting| {
-                    let SettingKind::Lcd { lcd } = &setting.kind else {
-                        return false;
-                    };
-                    let Some(temp_source) = lcd.temp_source() else {
-                        return false;
-                    };
-                    temp_source.device_uid == cs_device_uid
-                        && temp_source.temp_name == custom_sensor_id
-                });
-        if affects_profiles || affects_lcd_settings {
-            Err(CCError::UserError {
-                msg: format!(
-                    "Custom Sensor with ID:{custom_sensor_id} is being used by another setting.
-                    Please remove the custom sensor from your settings before deleting."
-                ),
+    ) -> Result<Vec<String>> {
+        debug_assert!(cs_device_uid.is_empty().not());
+        debug_assert!(custom_sensor_id.is_empty().not());
+        // The device is part of the match: other devices name temps like Custom Sensors do.
+        let is_sensor = |source: &TempSource| {
+            source.device_uid == cs_device_uid && source.temp_name == custom_sensor_id
+        };
+        let mut users = Vec::new();
+        for profile in self.config.get_profiles().await? {
+            if profile.temp_source().is_some_and(is_sensor) {
+                users.push(format!("Profile \"{}\"", profile.name));
             }
-            .into())
-        } else {
-            Ok(())
         }
+        // Every device with saved settings, connected or not: an LCD setting is applied
+        // again when its device returns.
+        let mut lcd_users = Vec::new();
+        for (device_uid, settings) in self.config.get_all_devices_settings()? {
+            let shows_sensor = settings.iter().any(|setting| {
+                matches!(&setting.kind, SettingKind::Lcd { lcd }
+                    if lcd.shows_temp(cs_device_uid, custom_sensor_id))
+            });
+            if shows_sensor {
+                lcd_users.push(format!("LCD of {}", self.device_display_name(&device_uid)));
+            }
+        }
+        // The settings map has no order of its own.
+        lcd_users.sort_unstable();
+        users.append(&mut lcd_users);
+        Ok(users)
+    }
+
+    /// The name the user knows a device by, also for one that is not connected.
+    fn device_display_name(&self, device_uid: &str) -> String {
+        let device_uid = device_uid.to_string();
+        let raw_name = self.all_devices.get(&device_uid).map_or_else(
+            || "a disconnected device".to_string(),
+            |device| device.borrow().name.clone(),
+        );
+        // Sanitized: the name lands in a refusal, which is logged.
+        self.overrides.resolve_device_label(&device_uid, &raw_name)
     }
 
     async fn get_ordered_member_profiles(

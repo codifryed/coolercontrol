@@ -12,7 +12,13 @@ import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType } from '@/models/Device.ts'
-import { HealthEntityType, SourceRef, sourceTempDisplayName } from '@/models/DeviceHealth.ts'
+import {
+    HealthEntityType,
+    SourceRef,
+    missingSourceKey,
+    sourceTempDisplayName,
+    staleSourceKey,
+} from '@/models/DeviceHealth.ts'
 import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 // Inline warning listing an entity's current device-health issues (failsafe,
@@ -94,10 +100,10 @@ const issues = computed((): Array<string> => {
         }
     }
     for (const ref of settingsStore.healthMissing.filter(matchesEntity)) {
-        lines.push(sourceLine('views.appInfo.missingTempSource', ref))
+        lines.push(sourceLine(missingSourceKey(ref), ref))
     }
     for (const ref of settingsStore.healthStaleSource.filter(matchesEntity)) {
-        lines.push(sourceLine('views.appInfo.staleTempSource', ref))
+        lines.push(sourceLine(staleSourceKey(ref), ref))
     }
     return lines
 })
