@@ -52,6 +52,24 @@ describe('channel verdicts', () => {
         }
     })
 
+    it('sends an Apple device to the Apple page instead', () => {
+        // These fans have no pwm file, so the laptops anchor describes
+        // hardware they are not. Every other device keeps the general anchor.
+        const general = verdictDocsLink(ChannelVerdict.PwmReadOnly)
+        const intel = verdictDocsLink(ChannelVerdict.PwmReadOnly, 'applesmc')
+        const silicon = verdictDocsLink(ChannelVerdict.NotSupportedByDriver, 'macsmc_hwmon')
+        expect(intel).toBe('https://docs.coolercontrol.org/devices/apple.html#intel-macs')
+        expect(silicon).toBe('https://docs.coolercontrol.org/devices/apple.html#apple-silicon')
+        expect(verdictDocsLink(ChannelVerdict.PwmReadOnly, 'nct6798')).toBe(general)
+        // A name that happens to be an Object property must not match either.
+        expect(verdictDocsLink(ChannelVerdict.PwmReadOnly, 'constructor')).toBe(general)
+    })
+
+    it('gives an Apple device no link where the verdict has none', () => {
+        expect(verdictDocsLink(ChannelVerdict.Controllable, 'applesmc')).toBeUndefined()
+        expect(verdictDocsLink(ChannelVerdict.Unverifiable, 'macsmc_hwmon')).toBeUndefined()
+    })
+
     it('never names a kernel module in a verdict string', () => {
         // The app asserts observations; the docs assert remedies. A module name
         // baked into the binary goes stale and can contradict the maintainers.

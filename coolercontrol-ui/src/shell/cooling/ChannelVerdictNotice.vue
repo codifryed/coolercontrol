@@ -16,10 +16,12 @@ import {
     FOUND_SOMETHING_THAT_WORKS,
     verdictDocsLink,
 } from '@/models/DeviceHealth.ts'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 const props = defineProps<{ deviceUID: UID; channelName: string }>()
 const { t } = useI18n()
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
 const verdictRef = computed(() => settingsStore.channelVerdict(props.deviceUID, props.channelName))
@@ -68,8 +70,17 @@ const evidenceParts = computed<Array<string>>(() => {
     return parts
 })
 
+// The kernel's name for the device, never the user's label for it: the docs
+// are picked by driver.
+const deviceName = computed<string | undefined>(() => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === props.deviceUID) return device.name
+    }
+    return undefined
+})
+
 const docsLink = computed<string | undefined>(() =>
-    verdictRef.value ? verdictDocsLink(verdictRef.value.verdict) : undefined,
+    verdictRef.value ? verdictDocsLink(verdictRef.value.verdict, deviceName.value) : undefined,
 )
 </script>
 
