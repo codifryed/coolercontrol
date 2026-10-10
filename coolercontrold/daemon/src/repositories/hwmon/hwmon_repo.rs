@@ -288,6 +288,8 @@ bitflags! {
         const NON_RPM_UNIT = 1 << 4;
         // Specialities
         const APPLE_SMC = 1 << 15;
+        /// An Apple driver exposes a control file for this fan and registered it read-only.
+        const APPLE_SMC_READ_ONLY = 1 << 16;
     }
 }
 
@@ -392,6 +394,10 @@ impl HwmonChannelCapabilities {
 
     pub fn is_apple_smc(&self) -> bool {
         self.contains(HwmonChannelCapabilities::APPLE_SMC)
+    }
+
+    pub fn is_apple_smc_read_only(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::APPLE_SMC_READ_ONLY)
     }
 
     /// A status carries a duty for this channel: read from `pwmN`, or derived from the fan's
@@ -7185,6 +7191,44 @@ mod verdict_publish_tests {
             assert_eq!(permanent[0].verdict, ChannelVerdict::NoPwm);
             assert_eq!(permanent[0].channel_name, "fan9");
             assert_eq!(permanent[0].device_uid, "dev-uid");
+        });
+    }
+
+    /// Goal: an Apple fan its driver locked reaches the registry as read-only, with no pwm
+    /// evidence for the UI to list. Method: publish a `macsmc_hwmon` driver whose fan was
+    /// detected with a read-only control file, and read the verdicts back.
+    #[test]
+    #[serial]
+    fn publishes_a_read_only_verdict_for_a_locked_apple_fan() {
+        cc_fs::test_runtime(async {
+            let hardware_support = Rc::new(HardwareSupportController::init(None, true).await);
+            let repo = HwmonRepo::new(
+                Rc::new(Config::init_default_config().unwrap()),
+                vec![],
+                Rc::new(crate::overrides::OverridesController::empty()),
+            )
+            .with_hardware_support(Rc::clone(&hardware_support));
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    name: "fan1".to_string(),
+                    caps: HwmonChannelCapabilities::RPM
+                        | HwmonChannelCapabilities::APPLE_SMC_READ_ONLY,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            repo.publish_channel_verdicts(&"dev-uid".to_string(), &driver);
+            let (permanent, current) = hardware_support.partitioned_verdicts();
+
+            assert!(current.is_empty(), "unexpected current-state verdicts");
+            assert_eq!(permanent.len(), 1, "expected one published verdict");
+            assert_eq!(permanent[0].verdict, ChannelVerdict::PwmReadOnly);
+            assert_eq!(permanent[0].evidence, None);
+            assert_eq!(permanent[0].channel_name, "fan1");
         });
     }
 }

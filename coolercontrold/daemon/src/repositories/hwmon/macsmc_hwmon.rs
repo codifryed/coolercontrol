@@ -225,10 +225,7 @@ fn fan_control_is_off(base_path: &Path, channels: &[HwmonChannelInfo]) -> bool {
     channels
         .iter()
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
-        .any(|channel| {
-            cc_fs::metadata(base_path.join(format_fan_target!(channel.number)))
-                .is_ok_and(|metadata| metadata.permissions().readonly())
-        })
+        .any(|channel| apple::is_read_only(&base_path.join(format_fan_target!(channel.number))))
 }
 
 /// The fan's limits, or `None` when they cannot be read or do not form a range. Hardware lies,

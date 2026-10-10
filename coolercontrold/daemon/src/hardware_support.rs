@@ -59,7 +59,8 @@ pub enum ChannelVerdict {
     NotSupportedByDriver,
     /// The driver exposes no `pwmN` for this channel.
     NoPwm,
-    /// `pwmN` exists but the driver cleared its write bit.
+    /// `pwmN` exists but the driver cleared its write bit. An Apple driver's own control file
+    /// in that state gets this verdict too, without evidence.
     PwmReadOnly,
     /// Probe proved writes are accepted and the fan never responded.
     IgnoresDuty,
@@ -188,6 +189,17 @@ pub fn diagnose_driver_channel(controllable: bool) -> ChannelDiagnosis {
         } else {
             ChannelVerdict::NotSupportedByDriver
         },
+        evidence: None,
+    }
+}
+
+/// The diagnosis for a driver that exposes a fan's control file read-only, where that file is
+/// not a `pwmN`.
+///
+/// Carries no evidence, for the reason `diagnose_driver_channel` gives.
+pub fn diagnose_read_only_driver_channel() -> ChannelDiagnosis {
+    ChannelDiagnosis {
+        verdict: ChannelVerdict::PwmReadOnly,
         evidence: None,
     }
 }

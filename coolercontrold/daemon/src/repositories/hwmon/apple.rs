@@ -10,6 +10,7 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
+use crate::hardware_support::{self, ChannelDiagnosis};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::apple_smc_7_3::AppleSmc73;
 use crate::repositories::hwmon::device_io::DeviceIo;
@@ -98,11 +99,42 @@ impl AppleDriver {
     /// Every fan the driver exposes, including ones the user has disabled. An error is the
     /// caller's to log: the repository does, the hardware report does not.
     pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
-        match self {
+        let mut fans = match self {
             Self::IntelLegacy => AppleMacSMC::init_fans(base_path, io).await,
             Self::IntelLinux73 => AppleSmc73::init_fans(base_path, io).await,
             Self::Silicon => MacSmcHwmon::init_fans(base_path, io).await,
+        }?;
+        for fan in &mut fans {
+            // A fan that can be driven has no read-only control file, so only the rest are asked.
+            if fan.caps.is_fan_controllable() {
+                continue;
+            }
+            let read_only_files = self.read_only_control_files(base_path, fan.number);
+            if read_only_files.is_empty().not() {
+                fan.caps
+                    .insert(HwmonChannelCapabilities::APPLE_SMC_READ_ONLY);
+            }
         }
+        Ok(fans)
+    }
+
+    /// The files the daemon writes to control one fan, as the text either side of its number.
+    fn control_files(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::IntelLegacy => &[("fan", "_output"), ("fan", "_manual")],
+            Self::IntelLinux73 => &[("fan", "_target"), ("pwm", "_enable")],
+            Self::Silicon => &[("fan", "_target")],
+        }
+    }
+
+    /// The names of one fan's control files that the driver registered read-only. Any one of
+    /// them keeps the fan from being controlled.
+    pub fn read_only_control_files(self, base_path: &Path, channel_number: u8) -> Vec<String> {
+        self.control_files()
+            .iter()
+            .map(|(prefix, suffix)| format!("{prefix}{channel_number}{suffix}"))
+            .filter(|file_name| is_read_only(&base_path.join(file_name)))
+            .collect()
     }
 
     /// The driver's own files for one fan, as `fanN_<suffix>`. They carry the state `pwmN` and
@@ -243,6 +275,31 @@ pub fn file_number(file_name: &str, prefix: &str, suffix: &str) -> Option<u8> {
         .ok()
 }
 
+/// The diagnosis of an Apple driver's fan, or `None` for any other device.
+///
+/// These fans are judged by the driver's own control files and carry no pwm evidence: no Apple
+/// driver has a `pwmN`, so its absence says nothing about them.
+pub fn diagnose_fan(device_name: &str, channel: &HwmonChannelInfo) -> Option<ChannelDiagnosis> {
+    if matches!(device_name, DEVICE_NAME_APPLE_SMC | DEVICE_NAME_MAC_SMC).not() {
+        return None;
+    }
+    debug_assert!(
+        (channel.caps.is_fan_controllable() && channel.caps.is_apple_smc_read_only()).not(),
+        "a fan with a read-only control file cannot be controllable"
+    );
+    if channel.caps.is_apple_smc_read_only() {
+        return Some(hardware_support::diagnose_read_only_driver_channel());
+    }
+    Some(hardware_support::diagnose_driver_channel(
+        channel.caps.is_fan_controllable(),
+    ))
+}
+
+/// Whether the driver registered the file read-only. A missing file is not read-only.
+pub fn is_read_only(path: &Path) -> bool {
+    cc_fs::metadata(path).is_ok_and(|metadata| metadata.permissions().readonly())
+}
+
 /// Whether the driver registered the file writable. Running as root, the mode bits are the
 /// whole answer.
 pub fn is_writable(path: &Path) -> bool {
@@ -317,8 +374,11 @@ pub async fn read_fan_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hardware_support::ChannelVerdict;
     use crate::repositories::hwmon::hwmon_repo::{HwmonChannelCapabilities, HwmonChannelType};
     use serial_test::serial;
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
     use uuid::Uuid;
 
@@ -457,6 +517,144 @@ mod tests {
                 assert!(from_missing.is_err(), "{driver:?}");
             }
         });
+    }
+
+    /// The files of a fan the driver can control, and the control files among them.
+    fn complete_fan(
+        driver: AppleDriver,
+    ) -> (
+        &'static [(&'static str, &'static str)],
+        &'static [&'static str],
+    ) {
+        match driver {
+            AppleDriver::IntelLegacy => (
+                &[
+                    ("fan1_input", "2500"),
+                    ("fan1_output", "2500"),
+                    ("fan1_manual", "0"),
+                    ("fan1_min", "600"),
+                    ("fan1_max", "6200"),
+                ],
+                &["fan1_output", "fan1_manual"],
+            ),
+            AppleDriver::IntelLinux73 => (
+                &[
+                    ("fan1_input", "2500"),
+                    ("fan1_target", "2500"),
+                    ("pwm1_enable", "2"),
+                    ("fan1_min", "600"),
+                    ("fan1_max", "6200"),
+                ],
+                &["fan1_target", "pwm1_enable"],
+            ),
+            AppleDriver::Silicon => (
+                &[
+                    ("fan1_input", "1500"),
+                    ("fan1_target", "0"),
+                    ("fan1_min", "1499"),
+                    ("fan1_max", "5348"),
+                ],
+                &["fan1_target"],
+            ),
+        }
+    }
+
+    /// Whether fan1 was detected controllable, whether it was recorded read-only, and which of
+    /// its control files are read-only now.
+    async fn fan1_state(
+        driver: AppleDriver,
+        dir: &Path,
+        io: &DeviceIo,
+    ) -> (bool, bool, Vec<String>) {
+        let fans = driver.init_fans(dir, io).await.unwrap();
+        assert_eq!(fans.len(), 1, "{driver:?}");
+        (
+            fans[0].caps.is_fan_controllable(),
+            fans[0].caps.is_apple_smc_read_only(),
+            driver.read_only_control_files(dir, 1),
+        )
+    }
+
+    /// Goal: a fan the driver locked is told apart from one it offers no control for, since
+    /// the two mean different things to the user. Method: for every driver a complete fan,
+    /// then each of its control files read-only in turn, then each one missing.
+    #[test]
+    #[serial]
+    fn a_read_only_control_file_is_recorded_on_the_fan() {
+        cc_fs::test_runtime(async {
+            let base = test_dir();
+            let io = DeviceIo::default();
+            let mut complete = Vec::new();
+            let mut locked = Vec::new();
+            let mut missing = Vec::new();
+            for driver in [
+                AppleDriver::IntelLegacy,
+                AppleDriver::IntelLinux73,
+                AppleDriver::Silicon,
+            ] {
+                let (files, control_files) = complete_fan(driver);
+                let dir = base.join(format!("{driver:?}"));
+                seed(&dir, files).await;
+                complete.push((driver, fan1_state(driver, &dir, &io).await));
+                for control_file in control_files {
+                    let path = dir.join(control_file);
+                    cc_fs::set_permissions(&path, Permissions::from_mode(0o444))
+                        .await
+                        .unwrap();
+                    locked.push((driver, *control_file, fan1_state(driver, &dir, &io).await));
+                    cc_fs::remove_file(&path).await.unwrap();
+                    missing.push((driver, *control_file, fan1_state(driver, &dir, &io).await));
+                    seed(&dir, files).await;
+                }
+            }
+
+            cc_fs::remove_dir_all(&base).await.unwrap();
+            for (driver, state) in complete {
+                assert_eq!(state, (true, false, vec![]), "{driver:?}");
+            }
+            for (driver, file, state) in locked {
+                let expected = (false, true, vec![file.to_string()]);
+                assert_eq!(state, expected, "{driver:?} with {file} read-only");
+            }
+            for (driver, file, state) in missing {
+                assert_eq!(state, (false, false, vec![]), "{driver:?} without {file}");
+            }
+        });
+    }
+
+    /// Goal: an Apple fan's verdict comes from its driver's own control and never carries pwm
+    /// evidence, and no other device is judged this way. Method: a fan in each state under
+    /// both Apple names, and the same fans under another name.
+    #[test]
+    fn an_apple_fan_is_diagnosed_without_pwm_evidence() {
+        let fan = |caps: HwmonChannelCapabilities| HwmonChannelInfo {
+            caps,
+            ..apple_fan(1, Path::new("/unused"))
+        };
+        let states = [
+            (
+                apple_fan(1, Path::new("/unused")),
+                ChannelVerdict::Controllable,
+            ),
+            (
+                fan(HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::APPLE_SMC_READ_ONLY),
+                ChannelVerdict::PwmReadOnly,
+            ),
+            (
+                fan(HwmonChannelCapabilities::RPM),
+                ChannelVerdict::NotSupportedByDriver,
+            ),
+        ];
+
+        for (channel, verdict) in &states {
+            let expected = Some(ChannelDiagnosis {
+                verdict: *verdict,
+                evidence: None,
+            });
+            assert_eq!(diagnose_fan("applesmc", channel), expected);
+            assert_eq!(diagnose_fan("macsmc_hwmon", channel), expected);
+            assert_eq!(diagnose_fan("nct6798", channel), None);
+        }
     }
 
     /// Goal: shutdown leaves a fan the daemon never drove alone, and returns one it took.

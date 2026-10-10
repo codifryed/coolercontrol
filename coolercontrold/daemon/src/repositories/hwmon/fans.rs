@@ -9,7 +9,7 @@ use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
     HwmonDriverInfo,
 };
-use crate::repositories::hwmon::{auto_curve, devices, probe};
+use crate::repositories::hwmon::{apple, auto_curve, devices, probe};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, log_enabled, trace, warn};
@@ -66,12 +66,11 @@ pub fn diagnose_fan_channel(
     firmware_override_observed: bool,
 ) -> ChannelDiagnosis {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
-    if channel.caps.has_pwm().not() && channel.caps.is_fan_controllable() {
-        // Apple SMC fans are driven through `fanN_output` or `fanN_target`, not `pwmN`, so the
-        // pwm-shaped evidence below would condemn a channel we are writing to.
-        // There is no pwm file to state facts about, so the diagnosis carries
-        // none rather than four misleading booleans.
-        return hardware_support::diagnose_driver_channel(true);
+    if let Some(diagnosis) = apple::diagnose_fan(hwmon_name, channel) {
+        // Apple fans are driven through `fanN_output` or `fanN_target`, not `pwmN`, so the
+        // pwm-shaped evidence below would condemn a channel we are writing to, and would blame
+        // a read-only one on a file its driver never has.
+        return diagnosis;
     }
     let evidence = ChannelEvidence {
         has_pwm: channel.caps.has_pwm(),
@@ -99,7 +98,16 @@ pub fn log_uncontrollable_channel(
     if diagnosis.verdict.is_controllable() {
         return;
     }
-    let evidence = diagnosis.evidence.clone().unwrap_or_default();
+    let Some(evidence) = diagnosis.evidence.as_ref() else {
+        // A driver-level verdict has no pwm facts to print.
+        info!(
+            "Fan channel {} at {} is not controllable: {:?}",
+            channel.name,
+            base_path.display(),
+            diagnosis.verdict,
+        );
+        return;
+    };
     info!(
         "Fan channel {} at {} is not controllable: {:?} (pwm: {}, writable: {}, rpm: {})",
         channel.name,
@@ -2413,6 +2421,35 @@ mod tests {
         assert_eq!(diagnosis.verdict, ChannelVerdict::Controllable);
         // No pwm file means no pwm facts to report, not four false ones.
         assert!(diagnosis.evidence.is_none());
+    }
+
+    /// Goal: an Apple fan that cannot be driven is not blamed on a missing `pwmN`, a file its
+    /// driver never has. Method: a fan whose control file is read-only and one with no control
+    /// at all, under an Apple name.
+    #[test]
+    fn an_uncontrollable_apple_fan_is_not_judged_by_pwm() {
+        let read_only = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: "fan1".to_string(),
+            caps: HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::APPLE_SMC_READ_ONLY,
+            ..Default::default()
+        };
+        let speed_only = HwmonChannelInfo {
+            caps: HwmonChannelCapabilities::RPM,
+            ..read_only.clone()
+        };
+
+        let read_only_diagnosis = diagnose_fan_channel("macsmc_hwmon", &read_only, false);
+        let speed_only_diagnosis = diagnose_fan_channel("applesmc", &speed_only, false);
+
+        assert_eq!(read_only_diagnosis.verdict, ChannelVerdict::PwmReadOnly);
+        assert!(read_only_diagnosis.evidence.is_none());
+        assert_eq!(
+            speed_only_diagnosis.verdict,
+            ChannelVerdict::NotSupportedByDriver
+        );
+        assert!(speed_only_diagnosis.evidence.is_none());
     }
 
     /// Goal: the negative space of the case above. A fan that only reports
