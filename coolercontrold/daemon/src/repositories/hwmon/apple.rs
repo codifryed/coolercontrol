@@ -5,7 +5,8 @@
 //! module.
 //!
 //! Each driver has its own sysfs files and its own way of taking and returning control, so each
-//! has its own module. Nothing here knows those files: this only decides which module applies.
+//! has its own module. This file decides which module applies, remembers which fans the daemon
+//! has taken, and holds the few file helpers the modules share.
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
