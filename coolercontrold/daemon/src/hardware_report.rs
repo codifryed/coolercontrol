@@ -73,6 +73,10 @@ const _: () = assert!(DEVICE_READ_BUDGET.as_millis() < REPORT_READ_BUDGET.as_mil
 /// and it is the one thing an all-or-nothing timeout cannot produce.
 const UNRESPONSIVE_NOTE: &str = "did not answer in time, the driver may be stuck";
 
+/// Follows the value of a control file its driver registered read-only. No space, so each
+/// `name=value` in the raw state stays one word.
+const READ_ONLY_MARK: &str = "(read-only)";
+
 /// One hwmon device as the report sees it.
 struct ReportDevice {
     path: PathBuf,
@@ -573,7 +577,7 @@ async fn channel_lines(device: &ReportDevice) -> String {
             lines,
             "    {}: verdict={} {state} writable={} label={}{hidden}",
             fan.name,
-            verdict_label(verdict),
+            verdict_text(fan, verdict),
             fan.caps.is_fan_controllable(),
             fan.label.as_deref().unwrap_or("-")
         );
@@ -585,19 +589,34 @@ async fn channel_lines(device: &ReportDevice) -> String {
 /// that distinguishes a driver-defined mode from a documented one, and it is
 /// what a maintainer asks for first.
 ///
-/// An Apple device adds its driver's own fan files, which carry that state there.
+/// An Apple device adds its driver's own fan files, which carry that state there. A control
+/// file its driver registered read-only is marked, since that is why the fan cannot be driven.
 async fn raw_state(device: &ReportDevice, number: u8) -> String {
     let base_path = &device.path;
-    let pwm = read_attribute(base_path, &format!("pwm{number}")).await;
-    let pwm_enable = read_attribute(base_path, &format!("pwm{number}_enable")).await;
-    let rpm = read_attribute(base_path, &format!("fan{number}_input")).await;
-    let mut state = format!("pwm={pwm} pwm_enable={pwm_enable} rpm={rpm}");
-    let Some(apple_driver) = apple::detect(&device.name, base_path) else {
-        return state;
-    };
-    for suffix in apple_driver.fan_attribute_suffixes() {
-        let value = read_attribute(base_path, &format!("fan{number}_{suffix}")).await;
-        let _ = write!(state, " {suffix}={value}");
+    let apple_driver = apple::detect(&device.name, base_path);
+    let read_only = apple_driver.map_or_else(Vec::new, |apple_driver| {
+        apple_driver.read_only_control_files(base_path, number)
+    });
+    let mut files = vec![
+        ("pwm", format!("pwm{number}")),
+        ("pwm_enable", format!("pwm{number}_enable")),
+        ("rpm", format!("fan{number}_input")),
+    ];
+    if let Some(apple_driver) = apple_driver {
+        for suffix in apple_driver.fan_attribute_suffixes() {
+            files.push((suffix, format!("fan{number}_{suffix}")));
+        }
+    }
+    let mut state = String::with_capacity(files.len() * 16);
+    for (label, file_name) in &files {
+        let value = read_attribute(base_path, file_name).await;
+        let mark = if read_only.contains(file_name) {
+            READ_ONLY_MARK
+        } else {
+            ""
+        };
+        let separator = if state.is_empty() { "" } else { " " };
+        let _ = write!(state, "{separator}{label}={value}{mark}");
     }
     state
 }
@@ -639,7 +658,7 @@ async fn channel_notes(
     if verdict.is_controllable().not() {
         notes.push(format!(
             "{} ({})",
-            verdict_label(verdict),
+            verdict_text(fan, verdict),
             raw_state(device, fan.number).await
         ));
     }
@@ -908,6 +927,15 @@ fn trim_to_budget(report: String) -> String {
     trimmed
 }
 
+/// The verdict in the report's words. An Apple fan has no `pwmN`, so its read-only verdict
+/// names the fan control, and the raw state beside it marks the file.
+fn verdict_text(fan: &HwmonChannelInfo, verdict: ChannelVerdict) -> &'static str {
+    if verdict == ChannelVerdict::PwmReadOnly && fan.caps.is_apple_smc_read_only() {
+        return "fan control is read-only";
+    }
+    verdict_label(verdict)
+}
+
 fn verdict_label(verdict: ChannelVerdict) -> &'static str {
     match verdict {
         ChannelVerdict::Controllable => "controllable",
@@ -975,6 +1003,8 @@ fn available_or_not(value: bool) -> &'static str {
 mod tests {
     use super::*;
     use serial_test::serial;
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
 
     /// Goal: the compact report stays pasteable into Discord *after* the UI
     /// wraps it in a code fence. Method: feed the trimmer a report far over the
@@ -1443,6 +1473,79 @@ mod tests {
             assert!(apple_fans.is_empty());
             assert!(apple_silicon_fans.is_empty());
             assert!(plain_fans.is_empty());
+        });
+    }
+
+    /// Goal: the report gives the reason an Apple fan cannot be driven in its driver's own
+    /// terms, and marks the file behind it. Method: per driver a fan with one control file
+    /// read-only, and an Intel fan with no mode file at all, as the summary reads them.
+    #[test]
+    #[serial]
+    fn a_locked_apple_fan_names_its_read_only_file() {
+        crate::rt::test_runtime(async {
+            let base = temp_dir();
+            let limits = [
+                ("fan1_input", "1500"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ];
+            let cases: [(&str, &str, &[(&str, &str)], Option<&str>); 4] = [
+                (
+                    "silicon",
+                    "macsmc_hwmon",
+                    &[("fan1_target", "0")],
+                    Some("fan1_target"),
+                ),
+                (
+                    "intel",
+                    "applesmc",
+                    &[("fan1_output", "1500"), ("fan1_manual", "0")],
+                    Some("fan1_manual"),
+                ),
+                (
+                    "intel_7_3",
+                    "applesmc",
+                    &[("fan1_target", "1500"), ("pwm1_enable", "2")],
+                    Some("pwm1_enable"),
+                ),
+                (
+                    "intel_no_mode",
+                    "applesmc",
+                    &[("fan1_output", "1500")],
+                    None,
+                ),
+            ];
+
+            let mut notes = Vec::with_capacity(cases.len());
+            for (dir_name, name, files, read_only) in cases {
+                let dir = base.join(dir_name);
+                seed_files(&dir, &limits).await;
+                seed_files(&dir, files).await;
+                if let Some(file) = read_only {
+                    cc_fs::set_permissions(dir.join(file), Permissions::from_mode(0o444))
+                        .await
+                        .unwrap();
+                }
+                let device = ReportDevice {
+                    path: dir.clone(),
+                    fans: read_fans(&dir, name).await,
+                    ..report_device(name, None)
+                };
+                notes.push(summary_notes(&device).await);
+            }
+
+            cc_fs::remove_dir_all(&base).await.unwrap();
+            let expected = [
+                "    fan1: fan control is read-only (pwm=- pwm_enable=- rpm=1500 \
+                 target=0(read-only) min=1499 max=5348)\n",
+                "    fan1: fan control is read-only (pwm=- pwm_enable=- rpm=1500 output=1500 \
+                 manual=0(read-only) min=1499 max=5348)\n",
+                "    fan1: fan control is read-only (pwm=- pwm_enable=2(read-only) rpm=1500 \
+                 target=1500 min=1499 max=5348)\n",
+                "    fan1: the driver in use exposes no control (pwm=- pwm_enable=- rpm=1500 \
+                 output=1500 manual=- min=1499 max=5348)\n",
+            ];
+            assert_eq!(notes, expected);
         });
     }
 
