@@ -24,8 +24,9 @@ use crate::repositories::hwmon::hwmon_repo::{
     HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use anyhow::{Context, Result};
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -54,6 +55,9 @@ pub struct AppleSmc73 {
     path: PathBuf,
     /// Every controllable fan, by fan number.
     fans: HashMap<u8, FanInfo>,
+    /// Set once the first failed `fanN_min` write has been logged.
+    #[serde(skip)]
+    min_failure_logged: Cell<bool>,
 }
 
 impl AppleSmc73 {
@@ -82,6 +86,7 @@ impl AppleSmc73 {
         Self {
             path: path.to_path_buf(),
             fans,
+            min_failure_logged: Cell::new(false),
         }
     }
 
@@ -141,8 +146,10 @@ impl AppleSmc73 {
         Ok(apple::fan_channels(base_path, fan_caps).await)
     }
 
-    /// Writes the fan's minimum, when one is known, and then its mode. Both writes are always
-    /// attempted, and the first failure is the one reported.
+    /// Writes the fan's minimum, when one is known, and then its mode.
+    ///
+    /// Only the mode decides the result, as in the module for the older driver: a fan whose
+    /// minimum cannot be written is still switched, and must still be given its duty.
     async fn write_mode(
         &self,
         channel_number: u8,
@@ -151,16 +158,22 @@ impl AppleSmc73 {
         io: &DeviceIo,
     ) -> Result<()> {
         debug_assert!(pwm_enable == PWM_ENABLE_MANUAL || pwm_enable == PWM_ENABLE_AUTOMATIC);
-        let min_written = match min_rpm {
-            Some(min_rpm) => {
-                let min_path = self.path.join(format_fan_min!(channel_number));
-                apple::write_number(&min_path, min_rpm, io).await
+        if let Some(min_rpm) = min_rpm {
+            let min_path = self.path.join(format_fan_min!(channel_number));
+            if let Err(err) = apple::write_number(&min_path, min_rpm, io).await {
+                self.log_first_min_failure(&err);
             }
-            None => Ok(()),
-        };
+        }
         let enable_path = self.path.join(format_pwm_enable!(channel_number));
-        let mode_written = apple::write_number(&enable_path, pwm_enable, io).await;
-        min_written.and(mode_written)
+        apple::write_number(&enable_path, pwm_enable, io).await
+    }
+
+    /// Said once: every later switch would fail the same way, and there is nothing to act on.
+    fn log_first_min_failure(&self, err: &anyhow::Error) {
+        if self.min_failure_logged.replace(true) {
+            return;
+        }
+        info!("{err}. The firmware's minimum fan speed stays in force.");
     }
 }
 
@@ -399,6 +412,45 @@ mod tests {
             assert!(returned.is_ok());
             assert_eq!(returned_min, "2000");
             assert_eq!(returned_mode, "2");
+        });
+    }
+
+    /// Goal: a minimum that cannot be written does not fail the switch to manual or back, as
+    /// with the older driver. A failed switch keeps the engine from ever setting a duty, which
+    /// would leave the fan in manual at a stale target. Method: a controllable fan whose
+    /// `fan1_min` becomes a directory, which no write can land on, then both switches and a
+    /// duty.
+    #[test]
+    #[serial]
+    fn a_failed_minimum_write_does_not_fail_the_mode_switch() {
+        cc_fs::test_runtime(async {
+            let dir = seed_fan().await;
+            let io = DeviceIo::default();
+            let (handler, _) = handler_for(&dir, &io).await;
+            cc_fs::remove_file(dir.join("fan1_min")).await.unwrap();
+            cc_fs::create_dir_all(dir.join("fan1_min")).await.unwrap();
+
+            let taken = handler.set_to_manual_control(1, &io).await;
+            let taken_mode = read(&dir, "pwm1_enable").await;
+            let half = handler.set_fan_duty(1, 50, &io).await;
+            let half_target = read(&dir, "fan1_target").await;
+            let returned = handler.set_to_auto_control(1, &io).await;
+            let returned_mode = read(&dir, "pwm1_enable").await;
+            cc_fs::remove_file(dir.join("pwm1_enable")).await.unwrap();
+            cc_fs::create_dir_all(dir.join("pwm1_enable"))
+                .await
+                .unwrap();
+            let mode_failure = handler.set_to_manual_control(1, &io).await;
+
+            cc_fs::remove_dir_all(&dir).await.unwrap();
+            assert!(taken.is_ok(), "{taken:?}");
+            assert_eq!(taken_mode, "1");
+            assert!(half.is_ok());
+            assert_eq!(half_target, "3100");
+            assert!(returned.is_ok(), "{returned:?}");
+            assert_eq!(returned_mode, "2");
+            assert!(handler.min_failure_logged.get());
+            assert!(mode_failure.is_err());
         });
     }
 
