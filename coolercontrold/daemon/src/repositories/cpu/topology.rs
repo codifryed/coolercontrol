@@ -694,6 +694,8 @@ mod tests {
         assert!(parse_freqs("").is_empty());
     }
 
+    /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board
+    /// model. Method: an M1 Max cpuinfo parsed without a board model, then with one.
     #[test]
     fn apple_silicon_is_named_by_its_device_tree_model() {
         let model = "Apple MacBook Pro (16-inch, M1 Max, 2021)";

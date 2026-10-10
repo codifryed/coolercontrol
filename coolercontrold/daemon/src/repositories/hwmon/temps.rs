@@ -914,6 +914,8 @@ mod tests {
         assert!(is_thinkpad_gpu_powerdown(devices::DEVICE_NAME_THINK_PAD, &err).not());
     }
 
+    /// Goal: only ENODATA from a `tas2764` counts as an amplifier that has not sampled yet.
+    /// Method: that error against another errno, other drivers, and a non-io error.
     #[test]
     fn tas2764_enodata_is_an_unsampled_amplifier_and_nothing_else_is() {
         let enodata = || -> anyhow::Error { Error::from_raw_os_error(libc::ENODATA).into() };
@@ -925,6 +927,8 @@ mod tests {
         assert!(is_tas2764_unsampled("tas2764", &anyhow::anyhow!("not an io error")).not());
     }
 
+    /// Goal: an unsampled `tas2764` gives a 0 degree status and stays listed, while the same
+    /// error drops any other driver's channel. Method: an ENODATA read under both driver names.
     #[test]
     fn an_unsampled_tas2764_reads_zero_instead_of_failing() {
         let channel = HwmonChannelInfo {

@@ -244,6 +244,8 @@ mod tests {
     const M1_MAX_COMPATIBLE: &[u8] = b"apple,j316c\0apple,t6001\0apple,arm-platform\0";
     const M1_MAX_MODEL: &[u8] = b"Apple MacBook Pro (16-inch, M1 Max, 2021)\0";
 
+    /// Goal: an Apple Silicon machine is named by its device tree model. Method: the
+    /// `compatible` and `model` properties of an M1 Max, as the kernel exposes them.
     #[test]
     fn an_apple_silicon_device_tree_names_the_board() {
         assert_eq!(
@@ -252,6 +254,8 @@ mod tests {
         );
     }
 
+    /// Goal: only an Apple Silicon device tree yields a name, and never an empty one. Method:
+    /// another board's properties, a near miss of the Apple platform string, and an empty model.
     #[test]
     fn any_other_device_tree_is_left_alone() {
         let raspberry_pi = b"raspberrypi,5-model-b\0brcm,bcm2712\0";
@@ -311,6 +315,9 @@ mod tests {
         assert!(package_freqs(&[]).is_empty());
     }
 
+    /// Goal: clusters are named by kind from their top frequencies, numbered only when a kind
+    /// has more than one, and given no kind when all are alike. Method: the top frequencies of
+    /// machines with one and two clusters of each kind, and of two equal clusters.
     #[test]
     fn clusters_are_named_by_their_kind() {
         assert_eq!(
