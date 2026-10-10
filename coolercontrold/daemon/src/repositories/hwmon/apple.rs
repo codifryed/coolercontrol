@@ -64,6 +64,15 @@ impl AppleDriver {
         }
     }
 
+    /// The driver's own files for one fan, as `fanN_<suffix>`. They carry the state `pwmN` and
+    /// `pwmN_enable` carry elsewhere, so the hardware report prints them.
+    pub fn fan_attribute_suffixes(self) -> &'static [&'static str] {
+        match self {
+            Self::IntelLegacy => &["output", "manual", "min", "max"],
+            Self::Silicon => &["target", "min", "max"],
+        }
+    }
+
     /// The handler for the fans that were kept. Repository init only: this is also where a
     /// device says why its fans cannot be controlled.
     pub async fn fans(
