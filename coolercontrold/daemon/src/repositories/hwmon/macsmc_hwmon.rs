@@ -22,8 +22,8 @@ use crate::repositories::hwmon::hwmon_repo::{
 use anyhow::{Context, Result};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use std::cell::Cell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 
@@ -48,6 +48,10 @@ pub struct MacSmcHwmon {
     /// Set once the first hand-back at 0% has been logged.
     #[serde(skip)]
     hand_back_logged: Cell<bool>,
+    /// Fans given an in-range target this session. From then on the driver knows what the SMC
+    /// is doing with the fan, so a bare `0` lands.
+    #[serde(skip)]
+    synced_fans: RefCell<HashSet<u8>>,
 }
 
 impl MacSmcHwmon {
@@ -77,6 +81,7 @@ impl MacSmcHwmon {
             path: path.to_path_buf(),
             fans,
             hand_back_logged: Cell::new(false),
+            synced_fans: RefCell::new(HashSet::with_capacity(channels.len())),
         }
     }
 
@@ -99,11 +104,11 @@ impl MacSmcHwmon {
                 self.path.display()
             )
         })?;
-        let rpm = rpm_from_duty(*limits, duty);
-        if rpm == FIRMWARE_TARGET {
+        let targets = duty_targets(*limits, duty, self.is_synced(channel_number));
+        if targets[1] == Some(FIRMWARE_TARGET) {
             self.log_first_hand_back(channel_number);
         }
-        self.write_target(channel_number, rpm, io).await
+        self.write_targets(channel_number, targets, io).await
     }
 
     /// Returns the fan to the firmware.
@@ -112,13 +117,8 @@ impl MacSmcHwmon {
     /// is reloaded, and the SMC does not. A target at the minimum first makes the two agree, so
     /// the `0` that follows always lands.
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
-        let mut result = Ok(());
         let targets = hand_back_targets(self.fans.get(&channel_number));
-        for rpm in targets.into_iter().flatten() {
-            // Both writes are always attempted, and the first failure is the one reported.
-            result = result.and(self.write_target(channel_number, rpm, io).await);
-        }
-        result
+        self.write_targets(channel_number, targets, io).await
     }
 
     /// Every fan the driver exposes, including ones the user has disabled.
@@ -166,6 +166,25 @@ impl MacSmcHwmon {
         );
     }
 
+    fn is_synced(&self, channel_number: u8) -> bool {
+        self.synced_fans.borrow().contains(&channel_number)
+    }
+
+    /// Writes the targets in order. Every write is attempted, and the first failure is the one
+    /// reported.
+    async fn write_targets(
+        &self,
+        channel_number: u8,
+        targets: [Option<RPM>; 2],
+        io: &DeviceIo,
+    ) -> Result<()> {
+        let mut result = Ok(());
+        for rpm in targets.into_iter().flatten() {
+            result = result.and(self.write_target(channel_number, rpm, io).await);
+        }
+        result
+    }
+
     async fn write_target(&self, channel_number: u8, rpm: RPM, io: &DeviceIo) -> Result<()> {
         debug_assert!(
             rpm == FIRMWARE_TARGET
@@ -176,7 +195,11 @@ impl MacSmcHwmon {
             "the driver rejects a target outside the fan's limits"
         );
         let target_path = self.path.join(format_fan_target!(channel_number));
-        apple::write_number(&target_path, rpm, io).await
+        apple::write_number(&target_path, rpm, io).await?;
+        if rpm != FIRMWARE_TARGET {
+            self.synced_fans.borrow_mut().insert(channel_number);
+        }
+        Ok(())
     }
 }
 
@@ -240,6 +263,21 @@ async fn read_limits(base_path: &Path, channel_number: u8, io: &DeviceIo) -> Opt
 /// limits there is no in-range target to write first, so only the `0` is left.
 fn hand_back_targets(limits: Option<&FanLimits>) -> [Option<RPM>; 2] {
     [limits.map(|limits| limits.min_rpm), Some(FIRMWARE_TARGET)]
+}
+
+/// The targets a duty is written as, in the order they are written.
+///
+/// The driver ignores a bare `0`, and still reports success, unless it believes the fan is
+/// manual. After a reload or an unclean stop it does not, while the SMC may still hold the fan.
+/// So the first 0% of a session is the whole hand-back, and a plain `0` serves once synced.
+fn duty_targets(limits: FanLimits, duty: Duty, is_synced: bool) -> [Option<RPM>; 2] {
+    let rpm = rpm_from_duty(limits, duty);
+    if rpm == FIRMWARE_TARGET {
+        if is_synced.not() {
+            return hand_back_targets(Some(&limits));
+        }
+    }
+    [None, Some(rpm)]
 }
 
 /// Maps a duty onto the fan's range. 0% is the firmware target: the driver takes no speed below
@@ -447,6 +485,58 @@ mod tests {
             assert_eq!(zero_target, "0");
             assert!(handler.hand_back_logged.get());
             assert!(unknown_fan.is_err());
+        });
+    }
+
+    /// Goal: the first 0% of a session is the whole hand-back, since the driver may have
+    /// forgotten a fan the SMC still holds, and a plain `0` follows once an in-range target has
+    /// landed. A hand-back that failed is written in full again. Method: the targets planned
+    /// before each duty on fake fans, since a plain file only keeps the last value: 0% twice,
+    /// 0% after 50%, and 0% twice on a target no write can land on.
+    #[test]
+    #[serial]
+    fn the_first_zero_of_a_session_is_a_whole_hand_back() {
+        cc_fs::test_runtime(async {
+            let io = DeviceIo::default();
+            let planned = |handler: &MacSmcHwmon| duty_targets(M1_MAX, 0, handler.is_synced(1));
+            let idle_dir = seed_fan(1, "3000").await;
+            let (idle, _) = handler_for(&idle_dir, &io).await;
+            let driven_dir = seed_fan(1, "0").await;
+            let (driven, _) = handler_for(&driven_dir, &io).await;
+            let broken_dir = seed_fan(1, "3000").await;
+            let (broken, _) = handler_for(&broken_dir, &io).await;
+            cc_fs::remove_file(broken_dir.join("fan1_target"))
+                .await
+                .unwrap();
+            cc_fs::create_dir_all(broken_dir.join("fan1_target"))
+                .await
+                .unwrap();
+
+            let first_zero = planned(&idle);
+            let first_result = idle.set_fan_duty(1, 0, &io).await;
+            let repeated_zero = planned(&idle);
+            let repeated_result = idle.set_fan_duty(1, 0, &io).await;
+            let idle_target = read_target(&idle_dir, 1).await;
+
+            driven.set_fan_duty(1, 50, &io).await.unwrap();
+            let zero_after_duty = planned(&driven);
+
+            let failed_result = broken.set_fan_duty(1, 0, &io).await;
+            let zero_after_failure = planned(&broken);
+
+            for dir in [idle_dir, driven_dir, broken_dir] {
+                cc_fs::remove_dir_all(&dir).await.unwrap();
+            }
+            assert_eq!(first_zero, [Some(1499), Some(0)]);
+            assert!(first_result.is_ok());
+            assert_eq!(repeated_zero, [None, Some(0)]);
+            assert!(repeated_result.is_ok());
+            assert_eq!(idle_target, "0");
+            assert_eq!(zero_after_duty, [None, Some(0)]);
+            assert!(failed_result.is_err());
+            assert_eq!(zero_after_failure, [Some(1499), Some(0)]);
+            assert_eq!(duty_targets(M1_MAX, 50, false), [None, Some(3424)]);
+            assert_eq!(duty_targets(M1_MAX, 50, true), [None, Some(3424)]);
         });
     }
 
