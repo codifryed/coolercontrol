@@ -6645,6 +6645,35 @@ mod init_timeout_tests {
         )
     }
 
+    /// A fake Apple device taken through detection as the repository does it, with the fans
+    /// and the handler its driver finds in `files`.
+    async fn seed_apple_driver(
+        name: &str,
+        dir: &Path,
+        files: impl Iterator<Item = (&str, &str)>,
+    ) -> HwmonDriverInfo {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in files {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        let io = DeviceIo::default();
+        let apple_driver = apple::detect(name, dir).unwrap();
+        let channels = apple_driver.init_fans(dir, &io).await.unwrap();
+        let apple_fans = apple_driver.fans(dir, &channels, &io).await;
+        HwmonDriverInfo {
+            name: name.to_string(),
+            path: dir.to_path_buf(),
+            channels,
+            u_id: format!("test-uid-{}", dir.display()),
+            apple_fans: Some(apple_fans),
+            ..Default::default()
+        }
+        .with_read_registry()
+        .await
+    }
+
     /// Goal: an Apple fan's duty is in the device's first status and in its failsafe values,
     /// for every Apple driver. Before, the first status came from the generic reader, which
     /// only knows `pwmN`, so the duty appeared one poll late and the failsafe never had one.
@@ -6654,7 +6683,6 @@ mod init_timeout_tests {
     fn map_into_model_gives_apple_fans_a_duty_from_the_first_status() {
         cc_fs::test_runtime(async {
             let base = setup_dir().await;
-            let io = DeviceIo::default();
             let intel_limits = [
                 ("fan1_input", "3100"),
                 ("fan1_min", "2000"),
@@ -6687,27 +6715,8 @@ mod init_timeout_tests {
             ];
             let mut drivers = Vec::with_capacity(devices.len());
             for (name, dir_name, control_files, limit_files) in devices {
-                let dir = base.join(dir_name);
-                cc_fs::create_dir_all(&dir).await.unwrap();
-                for (file, value) in control_files.into_iter().chain(limit_files) {
-                    cc_fs::write(dir.join(file), value.as_bytes().to_vec())
-                        .await
-                        .unwrap();
-                }
-                let apple_driver = apple::detect(name, &dir).unwrap();
-                let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
-                let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
-                let driver = HwmonDriverInfo {
-                    name: name.to_string(),
-                    path: dir,
-                    channels,
-                    u_id: format!("test-uid-{dir_name}"),
-                    apple_fans: Some(apple_fans),
-                    ..Default::default()
-                }
-                .with_read_registry()
-                .await;
-                drivers.push(driver);
+                let files = control_files.into_iter().chain(limit_files);
+                drivers.push(seed_apple_driver(name, &base.join(dir_name), files).await);
             }
 
             let mut repo = empty_repo();
