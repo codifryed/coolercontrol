@@ -862,13 +862,22 @@ impl HwmonRepo {
                     continue;
                 }
             };
-            if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
-                &hwmon_driver.path,
-                channel_info,
-                &hwmon_driver.io,
-            )
-            .await
-            {
+            let reset = match &hwmon_driver.apple_fans {
+                Some(apple_fans) => {
+                    apple_fans
+                        .release_fan(channel_info.number, &hwmon_driver.io)
+                        .await
+                }
+                None => {
+                    fans::set_pwm_enable_to_default_or_auto(
+                        &hwmon_driver.path,
+                        channel_info,
+                        &hwmon_driver.io,
+                    )
+                    .await
+                }
+            };
+            if let Err(err) = reset {
                 error!(
                     "Shutdown reset failed for {}:{}: {err}",
                     hwmon_driver.name, channel_info.name
@@ -5971,6 +5980,10 @@ mod shutdown_tests {
             io,
             ..Default::default()
         };
+        insert_driver(repo, type_index, driver);
+    }
+
+    fn insert_driver(repo: &mut HwmonRepo, type_index: TypeIndex, driver: HwmonDriverInfo) -> UID {
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -5986,8 +5999,99 @@ mod shutdown_tests {
         repo.delay_logged.insert(type_index, Cell::new(0));
         repo.preload_in_flight
             .insert(type_index, Rc::new(Cell::new(false)));
-        repo.devices
-            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+        repo.devices.insert(
+            uid.clone(),
+            (Rc::new(RefCell::new(device)), Rc::new(driver)),
+        );
+        uid
+    }
+
+    /// A fake `applesmc` device another tool holds in manual, as the daemon would find it.
+    async fn insert_applesmc_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        dir: &Path,
+    ) -> UID {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in [
+            ("fan1_input", "3100"),
+            ("fan1_min", "2000"),
+            ("fan1_max", "6200"),
+            ("fan1_manual", "1"),
+        ] {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        let channels = vec![HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: "fan1".to_string(),
+            caps: HwmonChannelCapabilities::APPLE_SMC
+                | HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::RPM,
+            rpm_path: Some(dir.join("fan1_input")),
+            ..Default::default()
+        }];
+        let apple_fans = apple::detect("applesmc")
+            .unwrap()
+            .fans(dir, &channels, "applesmc")
+            .await;
+        let driver = HwmonDriverInfo {
+            name: "applesmc".to_string(),
+            path: dir.to_path_buf(),
+            channels,
+            u_id: format!("test-uid-applesmc-{type_index}"),
+            apple_fans: Some(apple_fans),
+            ..Default::default()
+        };
+        insert_driver(repo, type_index, driver)
+    }
+
+    /// Goal: stopping the daemon returns an Apple fan it was driving to automatic with its
+    /// minimum restored, and leaves one it never drove alone. Before, shutdown only reset
+    /// `pwmN_enable`, which these drivers do not have. Method: two fake `applesmc` devices in
+    /// manual, only one taken through the repository.
+    #[test]
+    #[serial]
+    fn shutdown_returns_only_the_apple_fans_the_daemon_took() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_taken = base.join("taken");
+            let dir_untouched = base.join("untouched");
+            let mut repo = empty_repo();
+            let uid_taken = insert_applesmc_device(&mut repo, 1, &dir_taken).await;
+            insert_applesmc_device(&mut repo, 2, &dir_untouched).await;
+            repo.apply_setting_manual_control(&uid_taken, "fan1")
+                .await
+                .unwrap();
+            let min_while_manual = cc_fs::read_sysfs(dir_taken.join("fan1_min")).await.unwrap();
+
+            let result = repo.shutdown().await;
+
+            let read = async |dir: &Path, file: &str| {
+                cc_fs::read_sysfs(dir.join(file))
+                    .await
+                    .unwrap()
+                    .trim()
+                    .to_owned()
+            };
+            let taken_manual = read(&dir_taken, "fan1_manual").await;
+            let taken_min = read(&dir_taken, "fan1_min").await;
+            let untouched_manual = read(&dir_untouched, "fan1_manual").await;
+            let _ = cc_fs::remove_dir_all(&base).await;
+            assert!(result.is_ok(), "shutdown should succeed: {result:?}");
+            assert_eq!(min_while_manual.trim(), "0");
+            assert_eq!(
+                taken_manual, "0",
+                "a fan the daemon drove returns to automatic"
+            );
+            assert_eq!(taken_min, "2000", "with its minimum restored");
+            assert_eq!(
+                untouched_manual, "1",
+                "a fan the daemon never drove is left alone"
+            );
+        });
     }
 
     fn empty_repo() -> HwmonRepo {

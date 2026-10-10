@@ -14,6 +14,8 @@ use crate::repositories::hwmon::devices::DEVICE_NAMES_APPLE;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -26,7 +28,16 @@ pub enum AppleDriver {
 
 /// The fan handler of one Apple device, built once its channels are settled.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AppleFans {
+pub struct AppleFans {
+    handler: AppleHandler,
+    /// Fans the daemon has taken over. Shutdown returns only these, so a fan left to the
+    /// firmware or to another tool is not written to.
+    #[serde(skip)]
+    taken_fans: RefCell<HashSet<u8>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum AppleHandler {
     IntelLegacy(AppleMacSMC),
 }
 
@@ -52,10 +63,14 @@ impl AppleDriver {
         channels: &Vec<HwmonChannelInfo>,
         device_name: &str,
     ) -> AppleFans {
-        match self {
+        let handler = match self {
             Self::IntelLegacy => {
-                AppleFans::IntelLegacy(AppleMacSMC::new(base_path, channels, device_name).await)
+                AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels, device_name).await)
             }
+        };
+        AppleFans {
+            handler,
+            taken_fans: RefCell::new(HashSet::with_capacity(channels.len())),
         }
     }
 }
@@ -66,8 +81,8 @@ impl AppleFans {
         driver: &Rc<HwmonDriverInfo>,
         channel: &HwmonChannelInfo,
     ) -> Option<ChannelStatus> {
-        match self {
-            Self::IntelLegacy(smc) => smc.read_one_fan_status(driver, channel).await,
+        match &self.handler {
+            AppleHandler::IntelLegacy(smc) => smc.read_one_fan_status(driver, channel).await,
         }
     }
 
@@ -76,33 +91,99 @@ impl AppleFans {
         driver: &Rc<HwmonDriverInfo>,
         channel: &HwmonChannelInfo,
     ) -> Option<Option<u32>> {
-        match self {
-            Self::IntelLegacy(smc) => smc.read_one_fan_rpm_only(driver, channel).await,
+        match &self.handler {
+            AppleHandler::IntelLegacy(smc) => smc.read_one_fan_rpm_only(driver, channel).await,
         }
     }
 
     pub async fn set_fan_duty(&self, channel_number: u8, duty: Duty, io: &DeviceIo) -> Result<()> {
-        match self {
-            Self::IntelLegacy(smc) => smc.set_fan_duty(channel_number, duty, io).await,
+        self.mark_taken(channel_number);
+        match &self.handler {
+            AppleHandler::IntelLegacy(smc) => smc.set_fan_duty(channel_number, duty, io).await,
         }
     }
 
     pub async fn set_to_manual_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
-        match self {
-            Self::IntelLegacy(smc) => smc.set_to_manual_control(channel_number, io).await,
+        self.mark_taken(channel_number);
+        match &self.handler {
+            AppleHandler::IntelLegacy(smc) => smc.set_to_manual_control(channel_number, io).await,
         }
     }
 
+    /// Returns the fan to automatic control, whoever holds it. This is the user's reset, so it
+    /// also recovers a fan an earlier run left in manual.
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
-        match self {
-            Self::IntelLegacy(smc) => smc.set_to_auto_control(channel_number, io).await,
+        let result = match &self.handler {
+            AppleHandler::IntelLegacy(smc) => smc.set_to_auto_control(channel_number, io).await,
+        };
+        if result.is_ok() {
+            self.taken_fans.borrow_mut().remove(&channel_number);
         }
+        result
+    }
+
+    /// Returns the fan to automatic control if the daemon took it, for shutdown. A fan the
+    /// daemon never drove is left exactly as it is.
+    pub async fn release_fan(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
+        if self.is_taken(channel_number) {
+            self.set_to_auto_control(channel_number, io).await
+        } else {
+            Ok(())
+        }
+    }
+
+    fn is_taken(&self, channel_number: u8) -> bool {
+        self.taken_fans.borrow().contains(&channel_number)
+    }
+
+    /// Marked before the write, since a write that fails part way has still changed the fan.
+    fn mark_taken(&self, channel_number: u8) {
+        self.taken_fans.borrow_mut().insert(channel_number);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cc_fs;
+    use crate::repositories::hwmon::hwmon_repo::{HwmonChannelCapabilities, HwmonChannelType};
+    use serial_test::serial;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    async fn seed(dir: &Path, files: &[(&str, &str)]) {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in files {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+    }
+
+    async fn read(dir: &Path, file: &str) -> String {
+        cc_fs::read_sysfs(dir.join(file))
+            .await
+            .unwrap()
+            .trim()
+            .to_owned()
+    }
+
+    fn apple_fan(number: u8, dir: &Path) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            name: format!("fan{number}"),
+            caps: HwmonChannelCapabilities::APPLE_SMC
+                | HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::RPM,
+            rpm_path: Some(dir.join(format!("fan{number}_input"))),
+            ..Default::default()
+        }
+    }
+
+    fn test_dir() -> PathBuf {
+        PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()))
+    }
 
     /// Goal: only Apple drivers get an Apple handler. Method: the Apple names and an ordinary
     /// motherboard chip.
@@ -112,5 +193,91 @@ mod tests {
         assert_eq!(detect("macsmc-hwmon"), Some(AppleDriver::IntelLegacy));
         assert_eq!(detect("nct6798"), None);
         assert_eq!(detect(""), None);
+    }
+
+    /// Goal: shutdown leaves a fan the daemon never drove alone, and returns one it took.
+    /// Method: an `applesmc` fan another tool holds in manual. Releasing it writes nothing
+    /// until the daemon has taken manual control itself, and nothing again once returned.
+    #[test]
+    #[serial]
+    fn release_only_returns_fans_the_daemon_took() {
+        cc_fs::test_runtime(async {
+            let dir = test_dir();
+            let files = [
+                ("fan1_input", "3100"),
+                ("fan1_min", "2000"),
+                ("fan1_max", "6200"),
+                ("fan1_manual", "0"),
+            ];
+            seed(&dir, &files).await;
+            let io = DeviceIo::default();
+            let apple_fans = AppleDriver::IntelLegacy
+                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc")
+                .await;
+            let held_by_another_tool = [("fan1_min", "0"), ("fan1_manual", "1")];
+            seed(&dir, &held_by_another_tool).await;
+
+            let untouched = apple_fans.release_fan(1, &io).await;
+            let untouched_manual = read(&dir, "fan1_manual").await;
+            let untouched_min = read(&dir, "fan1_min").await;
+
+            apple_fans.set_to_manual_control(1, &io).await.unwrap();
+            let taken = apple_fans.release_fan(1, &io).await;
+            let taken_manual = read(&dir, "fan1_manual").await;
+            let taken_min = read(&dir, "fan1_min").await;
+
+            seed(&dir, &held_by_another_tool).await;
+            let returned = apple_fans.release_fan(1, &io).await;
+            let returned_manual = read(&dir, "fan1_manual").await;
+            cc_fs::remove_dir_all(&dir).await.unwrap();
+
+            assert!(untouched.is_ok());
+            assert_eq!(untouched_manual, "1");
+            assert_eq!(untouched_min, "0");
+            assert!(taken.is_ok());
+            assert_eq!(taken_manual, "0");
+            assert_eq!(taken_min, "2000");
+            assert!(returned.is_ok());
+            assert_eq!(returned_manual, "1");
+        });
+    }
+
+    /// Goal: a duty write alone counts as taking the fan, and the user's reset returns a fan
+    /// whether or not the daemon took it. Method: write a duty then release, and reset a fan
+    /// that was never driven.
+    #[test]
+    #[serial]
+    fn a_duty_write_takes_the_fan_and_a_reset_always_returns_it() {
+        cc_fs::test_runtime(async {
+            let dir = test_dir();
+            let files = [
+                ("fan1_input", "3100"),
+                ("fan1_min", "2000"),
+                ("fan1_max", "6200"),
+                ("fan1_manual", "1"),
+                ("fan1_output", "0"),
+            ];
+            seed(&dir, &files).await;
+            let io = DeviceIo::default();
+            let apple_fans = AppleDriver::IntelLegacy
+                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc")
+                .await;
+
+            let reset = apple_fans.set_to_auto_control(1, &io).await;
+            let reset_manual = read(&dir, "fan1_manual").await;
+
+            seed(&dir, &[("fan1_manual", "1")]).await;
+            apple_fans.set_fan_duty(1, 50, &io).await.unwrap();
+            let released = apple_fans.release_fan(1, &io).await;
+            let released_manual = read(&dir, "fan1_manual").await;
+            let fan_output = read(&dir, "fan1_output").await;
+            cc_fs::remove_dir_all(&dir).await.unwrap();
+
+            assert!(reset.is_ok());
+            assert_eq!(reset_manual, "0");
+            assert_eq!(fan_output, "3100");
+            assert!(released.is_ok());
+            assert_eq!(released_manual, "0");
+        });
     }
 }
