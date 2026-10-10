@@ -2426,17 +2426,23 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        let result = if let Some(apple_fans) = &hwmon_driver.apple_fans {
-            apple_fans
-                .set_to_auto_control(channel_info.number, &hwmon_driver.io)
+        let result = match &hwmon_driver.apple_fans {
+            // A read-only Apple fan was never taken, so there is nothing to hand back, and its
+            // driver would refuse the write.
+            Some(_) if channel_info.caps.is_apple_smc().not() => Ok(()),
+            Some(apple_fans) => {
+                apple_fans
+                    .set_to_auto_control(channel_info.number, &hwmon_driver.io)
+                    .await
+            }
+            None => {
+                fans::set_pwm_enable_to_default_or_auto(
+                    &hwmon_driver.path,
+                    channel_info,
+                    &hwmon_driver.io,
+                )
                 .await
-        } else {
-            fans::set_pwm_enable_to_default_or_auto(
-                &hwmon_driver.path,
-                channel_info,
-                &hwmon_driver.io,
-            )
-            .await
+            }
         };
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -6194,6 +6200,55 @@ mod shutdown_tests {
                 untouched_manual, "1",
                 "a fan the daemon never drove is left alone"
             );
+        });
+    }
+
+    /// Goal: resetting a read-only Apple fan succeeds and writes nothing. A fan saved as
+    /// Unmanaged is reset at every start, and with `fan_control` off the driver would refuse
+    /// the write. Method: a fake `macsmc_hwmon` fan with a read-only target holding a value
+    /// the reset must not replace.
+    #[test]
+    #[serial]
+    fn reset_leaves_a_read_only_apple_fan_alone() {
+        cc_fs::test_runtime(async {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            cc_fs::create_dir_all(&dir).await.unwrap();
+            for (file, value) in [
+                ("fan1_target", "1234"),
+                ("fan1_input", "1520"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ] {
+                cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let read_only = std::fs::Permissions::from_mode(0o444);
+            cc_fs::set_permissions(dir.join("fan1_target"), read_only)
+                .await
+                .unwrap();
+            let io = DeviceIo::default();
+            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
+            let channels = apple_driver.init_fans(&dir, &io).await;
+            let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                path: dir.clone(),
+                channels,
+                u_id: "test-uid-macsmc-read-only".to_string(),
+                apple_fans: Some(apple_fans),
+                ..Default::default()
+            };
+            let mut repo = empty_repo();
+            let uid = insert_driver(&mut repo, 1, driver);
+
+            let result = repo.apply_setting_reset(&uid, "fan1").await;
+
+            let target = cc_fs::read_sysfs(dir.join("fan1_target")).await.unwrap();
+            let _ = cc_fs::remove_dir_all(&dir).await;
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(target.trim(), "1234");
         });
     }
 

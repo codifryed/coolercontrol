@@ -67,7 +67,7 @@ pub fn diagnose_fan_channel(
 ) -> ChannelDiagnosis {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
     if channel.caps.has_pwm().not() && channel.caps.is_fan_controllable() {
-        // Apple SMC fans are driven through `fanN_output`, not `pwmN`, so the
+        // Apple SMC fans are driven through `fanN_output` or `fanN_target`, not `pwmN`, so the
         // pwm-shaped evidence below would condemn a channel we are writing to.
         // There is no pwm file to state facts about, so the diagnosis carries
         // none rather than four misleading booleans.
