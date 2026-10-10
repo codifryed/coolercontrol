@@ -2229,9 +2229,7 @@ impl Repository for HwmonRepo {
                 DrivetempState::default()
             };
             let apple_fans = match apple_driver {
-                Some(apple_driver) => {
-                    Some(apple_driver.fans(&path, &channels, &device_name, &io).await)
-                }
+                Some(apple_driver) => Some(apple_driver.fans(&path, &channels, &io).await),
                 None => None,
             };
             // Detection is done with this device's channel set, so the per-tick pass can stop
@@ -5289,9 +5287,7 @@ mod slow_device_tests {
             let io = DeviceIo::default();
             let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC).unwrap();
             let channels = apple_driver.init_fans(&dir, &io).await;
-            let apple_fans = apple_driver
-                .fans(&dir, &channels, devices::DEVICE_NAME_MAC_SMC, &io)
-                .await;
+            let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
             let driver = HwmonDriverInfo {
                 name: devices::DEVICE_NAME_MAC_SMC.to_string(),
                 path: dir.clone(),
@@ -6118,7 +6114,7 @@ mod shutdown_tests {
         }];
         let apple_fans = apple::detect("applesmc")
             .unwrap()
-            .fans(dir, &channels, "applesmc", &DeviceIo::default())
+            .fans(dir, &channels, &DeviceIo::default())
             .await;
         let driver = HwmonDriverInfo {
             name: "applesmc".to_string(),

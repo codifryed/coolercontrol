@@ -70,12 +70,11 @@ impl AppleDriver {
         self,
         base_path: &Path,
         channels: &Vec<HwmonChannelInfo>,
-        device_name: &str,
         io: &DeviceIo,
     ) -> AppleFans {
         let handler = match self {
             Self::IntelLegacy => {
-                AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels, device_name).await)
+                AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels).await)
             }
             Self::Silicon => {
                 MacSmcHwmon::log_fan_control_off(base_path, channels);
@@ -246,7 +245,7 @@ mod tests {
             seed(&dir, &files).await;
             let io = DeviceIo::default();
             let apple_fans = AppleDriver::IntelLegacy
-                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc", &io)
+                .fans(&dir, &vec![apple_fan(1, &dir)], &io)
                 .await;
             let held_by_another_tool = [("fan1_min", "0"), ("fan1_manual", "1")];
             seed(&dir, &held_by_another_tool).await;
@@ -294,7 +293,7 @@ mod tests {
             seed(&dir, &files).await;
             let io = DeviceIo::default();
             let apple_fans = AppleDriver::IntelLegacy
-                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc", &io)
+                .fans(&dir, &vec![apple_fan(1, &dir)], &io)
                 .await;
 
             let reset = apple_fans.set_to_auto_control(1, &io).await;
