@@ -10,6 +10,7 @@
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+use crate::repositories::hwmon::apple_smc_7_3::AppleSmc73;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
 use crate::repositories::hwmon::fans;
@@ -31,6 +32,8 @@ use std::rc::Rc;
 pub enum AppleDriver {
     /// `applesmc` on Intel Macs, with the `fanN_manual` files it had before Linux 7.3.
     IntelLegacy,
+    /// `applesmc` on Intel Macs, with the `pwmN_enable` files it has from Linux 7.3.
+    IntelLinux73,
     /// `macsmc_hwmon` on Apple Silicon.
     Silicon,
 }
@@ -48,15 +51,45 @@ pub struct AppleFans {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AppleHandler {
     IntelLegacy(AppleMacSMC),
+    IntelLinux73(AppleSmc73),
     Silicon(MacSmcHwmon),
 }
 
 /// The Apple driver behind a hwmon device, or `None` for every other device.
-pub fn detect(device_name: &str) -> Option<AppleDriver> {
+pub fn detect(device_name: &str, base_path: &Path) -> Option<AppleDriver> {
     match device_name {
-        DEVICE_NAME_APPLE_SMC => Some(AppleDriver::IntelLegacy),
+        DEVICE_NAME_APPLE_SMC => Some(detect_intel(base_path)),
         DEVICE_NAME_MAC_SMC => Some(AppleDriver::Silicon),
         _ => None,
+    }
+}
+
+/// Which generation of `applesmc` this is.
+///
+/// Decided by the files the driver exposes and never by the kernel version, so a backported
+/// driver is handled right. Only a positive match is the newer driver: anything else stays with
+/// the module that has always handled `applesmc`.
+fn detect_intel(base_path: &Path) -> AppleDriver {
+    let Ok(entries) = cc_fs::read_dir(base_path) else {
+        return AppleDriver::IntelLegacy;
+    };
+    let mut has_pwm_enable = false;
+    for entry in entries.flatten() {
+        let os_file_name = entry.file_name();
+        let Some(file_name) = os_file_name.to_str() else {
+            continue;
+        };
+        if file_number(file_name, "fan", "_manual").is_some() {
+            return AppleDriver::IntelLegacy;
+        }
+        if file_number(file_name, "pwm", "_enable").is_some() {
+            has_pwm_enable = true;
+        }
+    }
+    if has_pwm_enable {
+        AppleDriver::IntelLinux73
+    } else {
+        AppleDriver::IntelLegacy
     }
 }
 
@@ -65,6 +98,7 @@ impl AppleDriver {
     pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
         match self {
             Self::IntelLegacy => AppleMacSMC::init_fans(base_path, io).await,
+            Self::IntelLinux73 => AppleSmc73::init_fans(base_path, io).await,
             Self::Silicon => MacSmcHwmon::init_fans(base_path, io).await,
         }
     }
@@ -74,7 +108,7 @@ impl AppleDriver {
     pub fn fan_attribute_suffixes(self) -> &'static [&'static str] {
         match self {
             Self::IntelLegacy => &["output", "manual", "min", "max"],
-            Self::Silicon => &["target", "min", "max"],
+            Self::IntelLinux73 | Self::Silicon => &["target", "min", "max"],
         }
     }
 
@@ -89,6 +123,9 @@ impl AppleDriver {
         let handler = match self {
             Self::IntelLegacy => {
                 AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels).await)
+            }
+            Self::IntelLinux73 => {
+                AppleHandler::IntelLinux73(AppleSmc73::new(base_path, channels, io).await)
             }
             Self::Silicon => {
                 MacSmcHwmon::log_fan_control_off(base_path, channels);
@@ -110,6 +147,7 @@ impl AppleFans {
     ) -> Option<ChannelStatus> {
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.read_one_fan_status(driver, channel).await,
+            AppleHandler::IntelLinux73(smc) => smc.read_one_fan_status(driver, channel).await,
             AppleHandler::Silicon(smc) => smc.read_one_fan_status(driver, channel).await,
         }
     }
@@ -121,7 +159,9 @@ impl AppleFans {
     ) -> Option<Option<u32>> {
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.read_one_fan_rpm_only(driver, channel).await,
-            AppleHandler::Silicon(_) => fans::read_one_fan_rpm_only(driver, channel).await,
+            AppleHandler::IntelLinux73(_) | AppleHandler::Silicon(_) => {
+                fans::read_one_fan_rpm_only(driver, channel).await
+            }
         }
     }
 
@@ -129,6 +169,7 @@ impl AppleFans {
         self.mark_taken(channel_number);
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_fan_duty(channel_number, duty, io).await,
+            AppleHandler::IntelLinux73(smc) => smc.set_fan_duty(channel_number, duty, io).await,
             AppleHandler::Silicon(smc) => smc.set_fan_duty(channel_number, duty, io).await,
         }
     }
@@ -137,6 +178,7 @@ impl AppleFans {
         self.mark_taken(channel_number);
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_to_manual_control(channel_number, io).await,
+            AppleHandler::IntelLinux73(smc) => smc.set_to_manual_control(channel_number, io).await,
             // Nothing to switch: the first in-range target is what takes the fan.
             AppleHandler::Silicon(_) => Ok(()),
         }
@@ -147,6 +189,7 @@ impl AppleFans {
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let result = match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_to_auto_control(channel_number, io).await,
+            AppleHandler::IntelLinux73(smc) => smc.set_to_auto_control(channel_number, io).await,
             AppleHandler::Silicon(smc) => smc.set_to_auto_control(channel_number, io).await,
         };
         if result.is_ok() {
@@ -172,7 +215,7 @@ impl AppleFans {
     /// reads 0% exactly like one the firmware runs. Skipping the 0% write would leave it held.
     pub fn read_back_tracks_target(&self) -> bool {
         match &self.handler {
-            AppleHandler::IntelLegacy(_) => true,
+            AppleHandler::IntelLegacy(_) | AppleHandler::IntelLinux73(_) => true,
             AppleHandler::Silicon(_) => false,
         }
     }
@@ -325,15 +368,59 @@ mod tests {
     }
 
     /// Goal: only Apple drivers get an Apple handler. Method: the Apple names and an ordinary
-    /// motherboard chip.
+    /// motherboard chip, with a directory that cannot be read.
     #[test]
     fn only_apple_drivers_are_detected() {
-        assert_eq!(detect("applesmc"), Some(AppleDriver::IntelLegacy));
-        assert_eq!(detect("macsmc_hwmon"), Some(AppleDriver::Silicon));
+        let nowhere = Path::new("/nonexistent");
+        assert_eq!(detect("applesmc", nowhere), Some(AppleDriver::IntelLegacy));
+        assert_eq!(detect("macsmc_hwmon", nowhere), Some(AppleDriver::Silicon));
         // The platform driver's name, which no hwmon device carries.
-        assert_eq!(detect("macsmc-hwmon"), None);
-        assert_eq!(detect("nct6798"), None);
-        assert_eq!(detect(""), None);
+        assert_eq!(detect("macsmc-hwmon", nowhere), None);
+        assert_eq!(detect("nct6798", nowhere), None);
+        assert_eq!(detect("", nowhere), None);
+    }
+
+    /// Goal: the two generations of `applesmc` are told apart by their files, and only a
+    /// positive match is the newer one. Method: the fan files of each generation, a directory
+    /// with both mode files, and one with neither. Other drivers' files do not matter.
+    #[test]
+    #[serial]
+    fn applesmc_generations_are_told_apart_by_their_files() {
+        cc_fs::test_runtime(async {
+            let base = test_dir();
+            let before_7_3 = base.join("before");
+            let from_7_3 = base.join("from");
+            let both = base.join("both");
+            let neither = base.join("neither");
+            let silicon = base.join("silicon");
+            seed(&before_7_3, &[("fan1_manual", "0"), ("fan1_output", "0")]).await;
+            seed(&from_7_3, &[("pwm1_enable", "2"), ("fan1_target", "0")]).await;
+            seed(&both, &[("pwm1_enable", "2"), ("fan1_manual", "0")]).await;
+            seed(&neither, &[("fan1_input", "2000")]).await;
+            seed(&silicon, &[("pwm1_enable", "2"), ("fan1_target", "0")]).await;
+
+            let detected = [
+                detect("applesmc", &before_7_3),
+                detect("applesmc", &from_7_3),
+                detect("applesmc", &both),
+                detect("applesmc", &neither),
+                detect("macsmc_hwmon", &silicon),
+                detect("nct6798", &from_7_3),
+            ];
+
+            cc_fs::remove_dir_all(&base).await.unwrap();
+            assert_eq!(
+                detected,
+                [
+                    Some(AppleDriver::IntelLegacy),
+                    Some(AppleDriver::IntelLinux73),
+                    Some(AppleDriver::IntelLegacy),
+                    Some(AppleDriver::IntelLegacy),
+                    Some(AppleDriver::Silicon),
+                    None,
+                ]
+            );
+        });
     }
 
     /// Goal: shutdown leaves a fan the daemon never drove alone, and returns one it took.

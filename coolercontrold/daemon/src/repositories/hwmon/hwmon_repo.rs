@@ -2173,7 +2173,7 @@ impl Repository for HwmonRepo {
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
-            let apple_driver = apple::detect(&device_name);
+            let apple_driver = apple::detect(&device_name, &path);
             let fans = if let Some(apple_driver) = apple_driver {
                 apple_driver.init_fans(&path, &io).await
             } else {
@@ -5309,7 +5309,7 @@ mod slow_device_tests {
                     .unwrap();
             }
             let io = DeviceIo::default();
-            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC).unwrap();
+            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
             let channels = apple_driver.init_fans(&dir, &io).await;
             let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
             let driver = HwmonDriverInfo {
@@ -6136,7 +6136,7 @@ mod shutdown_tests {
             rpm_path: Some(dir.join("fan1_input")),
             ..Default::default()
         }];
-        let apple_fans = apple::detect("applesmc")
+        let apple_fans = apple::detect("applesmc", dir)
             .unwrap()
             .fans(dir, &channels, &DeviceIo::default())
             .await;
@@ -6591,42 +6591,62 @@ mod init_timeout_tests {
     }
 
     /// Goal: an Apple fan's duty is in the device's first status and in its failsafe values,
-    /// for both drivers. Before, the first status came from the generic reader, which only
-    /// knows `pwmN`, so the duty appeared one poll late and the failsafe never had one.
-    /// Method: a fake `applesmc` and a fake `macsmc_hwmon` device through the init mapping.
+    /// for every Apple driver. Before, the first status came from the generic reader, which
+    /// only knows `pwmN`, so the duty appeared one poll late and the failsafe never had one.
+    /// Method: a fake device per driver through detection and the init mapping.
     #[test]
     #[serial]
     fn map_into_model_gives_apple_fans_a_duty_from_the_first_status() {
         cc_fs::test_runtime(async {
             let base = setup_dir().await;
             let io = DeviceIo::default();
-            let mut drivers = Vec::with_capacity(2);
-            let devices = [
-                ("applesmc", "fan1_output", [("3100", "2000", "6200")]),
-                ("macsmc_hwmon", "fan1_target", [("3424", "1499", "5348")]),
+            let intel_limits = [
+                ("fan1_input", "3100"),
+                ("fan1_min", "2000"),
+                ("fan1_max", "6200"),
             ];
-            for (name, control_file, [(input, min, max)]) in devices {
-                let dir = base.join(name);
+            let silicon_limits = [
+                ("fan1_input", "3424"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ];
+            let devices = [
+                (
+                    "applesmc",
+                    "before_7_3",
+                    [("fan1_output", "0"), ("fan1_manual", "0")],
+                    intel_limits,
+                ),
+                (
+                    "applesmc",
+                    "from_7_3",
+                    [("fan1_target", "0"), ("pwm1_enable", "2")],
+                    intel_limits,
+                ),
+                (
+                    "macsmc_hwmon",
+                    "silicon",
+                    [("fan1_target", "0"), ("fan1_label", "Fan")],
+                    silicon_limits,
+                ),
+            ];
+            let mut drivers = Vec::with_capacity(devices.len());
+            for (name, dir_name, control_files, limit_files) in devices {
+                let dir = base.join(dir_name);
                 cc_fs::create_dir_all(&dir).await.unwrap();
-                for (file, value) in [
-                    (control_file, "0"),
-                    ("fan1_manual", "0"),
-                    ("fan1_input", input),
-                    ("fan1_min", min),
-                    ("fan1_max", max),
-                ] {
+                for (file, value) in control_files.into_iter().chain(limit_files) {
                     cc_fs::write(dir.join(file), value.as_bytes().to_vec())
                         .await
                         .unwrap();
                 }
-                let apple_driver = apple::detect(name).unwrap();
+                let apple_driver = apple::detect(name, &dir).unwrap();
                 let channels = apple_driver.init_fans(&dir, &io).await;
                 let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
                 let driver = HwmonDriverInfo {
                     name: name.to_string(),
                     path: dir,
                     channels,
-                    u_id: format!("test-uid-{name}"),
+                    u_id: format!("test-uid-{dir_name}"),
                     apple_fans: Some(apple_fans),
                     ..Default::default()
                 }
@@ -6642,17 +6662,22 @@ mod init_timeout_tests {
 
             teardown_dir(&base).await;
             assert!(result.is_ok());
-            assert_eq!(repo.devices.len(), 2);
+            assert_eq!(repo.devices.len(), 3);
             let preloaded = repo.preloaded_statuses.borrow();
             let first_duty = |type_index: TypeIndex| preloaded[&type_index].0[0].duty;
             assert_eq!(first_duty(1), Some(50.0), "applesmc: 3100 of 6200 rpm");
             assert_eq!(
                 first_duty(2),
                 Some(50.0),
+                "applesmc from 7.3: 3100 of 6200 rpm"
+            );
+            assert_eq!(
+                first_duty(3),
+                Some(50.0),
                 "macsmc_hwmon: halfway from min to max"
             );
             let failsafes = repo.failsafe_statuses.borrow();
-            for type_index in [1, 2] {
+            for type_index in [1, 2, 3] {
                 let failsafe = failsafes[&type_index].channel_failsafes.get("fan1");
                 assert_eq!(failsafe.and_then(|status| status.duty), Some(0.0));
             }

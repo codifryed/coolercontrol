@@ -592,7 +592,7 @@ async fn raw_state(device: &ReportDevice, number: u8) -> String {
     let pwm_enable = read_attribute(base_path, &format!("pwm{number}_enable")).await;
     let rpm = read_attribute(base_path, &format!("fan{number}_input")).await;
     let mut state = format!("pwm={pwm} pwm_enable={pwm_enable} rpm={rpm}");
-    let Some(apple_driver) = apple::detect(&device.name) else {
+    let Some(apple_driver) = apple::detect(&device.name, base_path) else {
         return state;
     };
     for suffix in apple_driver.fan_attribute_suffixes() {
@@ -776,7 +776,7 @@ async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
     // Inline on purpose: the report is a one-shot scan with no tick to protect, so a device that
     // stalls here delays only the report that asked for it.
     let io = DeviceIo::default();
-    let fans = match apple::detect(name) {
+    let fans = match apple::detect(name, path) {
         Some(apple_driver) => apple_driver.init_fans(path, &io).await,
         None => fans::init_fans(path, name, &io).await.unwrap_or_default(),
     };
@@ -1436,6 +1436,7 @@ mod tests {
         crate::rt::test_runtime(async {
             let base = temp_dir();
             let intel = base.join("applesmc");
+            let intel_7_3 = base.join("applesmc_7_3");
             let silicon = base.join("macsmc_hwmon");
             let plain = base.join("nct6798");
             let fan_files = [
@@ -1445,13 +1446,16 @@ mod tests {
             ];
             seed_files(&intel, &fan_files).await;
             seed_files(&intel, &[("fan1_output", "3100"), ("fan1_manual", "1")]).await;
+            seed_files(&intel_7_3, &fan_files).await;
+            seed_files(&intel_7_3, &[("fan1_target", "3100"), ("pwm1_enable", "1")]).await;
             seed_files(&silicon, &fan_files).await;
             seed_files(&silicon, &[("fan1_target", "0")]).await;
             seed_files(&plain, &[("fan1_input", "900")]).await;
 
-            let mut lines = Vec::with_capacity(3);
+            let mut lines = Vec::with_capacity(4);
             for (dir, name) in [
                 (&intel, "applesmc"),
+                (&intel_7_3, "applesmc"),
                 (&silicon, "macsmc_hwmon"),
                 (&plain, "nct6798"),
             ] {
@@ -1464,25 +1468,18 @@ mod tests {
             }
 
             cc_fs::remove_dir_all(&base).await.unwrap();
-            assert!(
-                lines[0].contains("verdict=controllable")
-                    && lines[0].contains("rpm=3100 output=3100 manual=1 min=2000 max=6200")
-                    && lines[0].contains("writable=true"),
-                "{}",
-                lines[0]
-            );
-            assert!(
-                lines[1].contains("verdict=controllable")
-                    && lines[1].contains("rpm=3100 target=0 min=2000 max=6200")
-                    && lines[1].contains("writable=true"),
-                "{}",
-                lines[1]
-            );
-            assert!(
-                lines[2].contains("pwm=- pwm_enable=- rpm=900 writable=false"),
-                "{}",
-                lines[2]
-            );
+            let expected = [
+                "fan1: verdict=controllable pwm=- pwm_enable=- rpm=3100 output=3100 manual=1 \
+                 min=2000 max=6200 writable=true",
+                "fan1: verdict=controllable pwm=- pwm_enable=1 rpm=3100 target=3100 min=2000 \
+                 max=6200 writable=true",
+                "fan1: verdict=controllable pwm=- pwm_enable=- rpm=3100 target=0 min=2000 \
+                 max=6200 writable=true",
+                "pwm=- pwm_enable=- rpm=900 writable=false",
+            ];
+            for (line, expected) in lines.iter().zip(expected) {
+                assert!(line.contains(expected), "expected `{expected}` in:\n{line}");
+            }
         });
     }
 
