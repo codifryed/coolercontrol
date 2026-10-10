@@ -10,8 +10,10 @@
 use crate::device::{ChannelStatus, Duty};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::device_io::DeviceIo;
-use crate::repositories::hwmon::devices::DEVICE_NAMES_APPLE;
+use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
+use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
+use crate::repositories::hwmon::macsmc_hwmon::MacSmcHwmon;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -24,6 +26,8 @@ use std::rc::Rc;
 pub enum AppleDriver {
     /// `applesmc` on Intel Macs, with the `fanN_manual` files it had before Linux 7.3.
     IntelLegacy,
+    /// `macsmc_hwmon` on Apple Silicon.
+    Silicon,
 }
 
 /// The fan handler of one Apple device, built once its channels are settled.
@@ -39,13 +43,16 @@ pub struct AppleFans {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AppleHandler {
     IntelLegacy(AppleMacSMC),
+    Silicon(MacSmcHwmon),
 }
 
 /// The Apple driver behind a hwmon device, or `None` for every other device.
 pub fn detect(device_name: &str) -> Option<AppleDriver> {
-    DEVICE_NAMES_APPLE
-        .contains(&device_name)
-        .then_some(AppleDriver::IntelLegacy)
+    match device_name {
+        DEVICE_NAME_APPLE_SMC => Some(AppleDriver::IntelLegacy),
+        DEVICE_NAME_MAC_SMC => Some(AppleDriver::Silicon),
+        _ => None,
+    }
 }
 
 impl AppleDriver {
@@ -53,19 +60,26 @@ impl AppleDriver {
     pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
         match self {
             Self::IntelLegacy => AppleMacSMC::init_fans(base_path, io).await,
+            Self::Silicon => MacSmcHwmon::init_fans(base_path, io).await,
         }
     }
 
-    /// The handler for the fans that were kept.
+    /// The handler for the fans that were kept. Repository init only: this is also where a
+    /// device says why its fans cannot be controlled.
     pub async fn fans(
         self,
         base_path: &Path,
         channels: &Vec<HwmonChannelInfo>,
         device_name: &str,
+        io: &DeviceIo,
     ) -> AppleFans {
         let handler = match self {
             Self::IntelLegacy => {
                 AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels, device_name).await)
+            }
+            Self::Silicon => {
+                MacSmcHwmon::log_fan_control_off(base_path, channels);
+                AppleHandler::Silicon(MacSmcHwmon::new(base_path, channels, io).await)
             }
         };
         AppleFans {
@@ -83,6 +97,7 @@ impl AppleFans {
     ) -> Option<ChannelStatus> {
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.read_one_fan_status(driver, channel).await,
+            AppleHandler::Silicon(smc) => smc.read_one_fan_status(driver, channel).await,
         }
     }
 
@@ -93,6 +108,7 @@ impl AppleFans {
     ) -> Option<Option<u32>> {
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.read_one_fan_rpm_only(driver, channel).await,
+            AppleHandler::Silicon(_) => fans::read_one_fan_rpm_only(driver, channel).await,
         }
     }
 
@@ -100,6 +116,7 @@ impl AppleFans {
         self.mark_taken(channel_number);
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_fan_duty(channel_number, duty, io).await,
+            AppleHandler::Silicon(smc) => smc.set_fan_duty(channel_number, duty, io).await,
         }
     }
 
@@ -107,6 +124,8 @@ impl AppleFans {
         self.mark_taken(channel_number);
         match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_to_manual_control(channel_number, io).await,
+            // Nothing to switch: the first in-range target is what takes the fan.
+            AppleHandler::Silicon(_) => Ok(()),
         }
     }
 
@@ -115,6 +134,7 @@ impl AppleFans {
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
         let result = match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_to_auto_control(channel_number, io).await,
+            AppleHandler::Silicon(smc) => smc.set_to_auto_control(channel_number, io).await,
         };
         if result.is_ok() {
             self.taken_fans.borrow_mut().remove(&channel_number);
@@ -129,6 +149,18 @@ impl AppleFans {
             self.set_to_auto_control(channel_number, io).await
         } else {
             Ok(())
+        }
+    }
+
+    /// Whether the duty read back can stand in for the last one written, which is what lets the
+    /// writer skip a write that would change nothing.
+    ///
+    /// Not on Apple Silicon: the duty is derived from the speed, so a fan held at its minimum
+    /// reads 0% exactly like one the firmware runs. Skipping the 0% write would leave it held.
+    pub fn read_back_tracks_target(&self) -> bool {
+        match &self.handler {
+            AppleHandler::IntelLegacy(_) => true,
+            AppleHandler::Silicon(_) => false,
         }
     }
 
@@ -190,7 +222,9 @@ mod tests {
     #[test]
     fn only_apple_drivers_are_detected() {
         assert_eq!(detect("applesmc"), Some(AppleDriver::IntelLegacy));
-        assert_eq!(detect("macsmc-hwmon"), Some(AppleDriver::IntelLegacy));
+        assert_eq!(detect("macsmc_hwmon"), Some(AppleDriver::Silicon));
+        // The platform driver's name, which no hwmon device carries.
+        assert_eq!(detect("macsmc-hwmon"), None);
         assert_eq!(detect("nct6798"), None);
         assert_eq!(detect(""), None);
     }
@@ -212,7 +246,7 @@ mod tests {
             seed(&dir, &files).await;
             let io = DeviceIo::default();
             let apple_fans = AppleDriver::IntelLegacy
-                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc")
+                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc", &io)
                 .await;
             let held_by_another_tool = [("fan1_min", "0"), ("fan1_manual", "1")];
             seed(&dir, &held_by_another_tool).await;
@@ -260,7 +294,7 @@ mod tests {
             seed(&dir, &files).await;
             let io = DeviceIo::default();
             let apple_fans = AppleDriver::IntelLegacy
-                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc")
+                .fans(&dir, &vec![apple_fan(1, &dir)], "applesmc", &io)
                 .await;
 
             let reset = apple_fans.set_to_auto_control(1, &io).await;

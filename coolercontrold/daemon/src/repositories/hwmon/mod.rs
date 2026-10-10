@@ -12,6 +12,7 @@ mod drivetemp;
 pub mod fans;
 pub mod freqs;
 pub mod hwmon_repo;
+pub mod macsmc_hwmon;
 mod pci_ids;
 pub mod power;
 pub mod power_cap;

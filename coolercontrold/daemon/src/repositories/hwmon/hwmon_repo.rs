@@ -1963,8 +1963,14 @@ fn consume_force_flag(mailbox: &WriterMailbox, channel_name: &str) -> bool {
 
 /// True when the channel's preloaded duty already equals
 /// `target_duty`; a missing entry returns false (proceed with write).
+/// Always false for a driver whose read-back cannot vouch for the last write.
 fn current_duty_matches_target(task: &WriterTask, channel_name: &str, target_duty: Duty) -> bool {
     debug_assert!(target_duty <= 100, "caller must validate target_duty");
+    if let Some(apple_fans) = &task.driver.apple_fans {
+        if apple_fans.read_back_tracks_target().not() {
+            return false;
+        }
+    }
     let map = task.preloaded_statuses.borrow();
     let Some((channels, _)) = map.get(&task.type_index) else {
         return false;
@@ -2223,7 +2229,9 @@ impl Repository for HwmonRepo {
                 DrivetempState::default()
             };
             let apple_fans = match apple_driver {
-                Some(apple_driver) => Some(apple_driver.fans(&path, &channels, &device_name).await),
+                Some(apple_driver) => {
+                    Some(apple_driver.fans(&path, &channels, &device_name, &io).await)
+                }
                 None => None,
             };
             // Detection is done with this device's channel set, so the per-tick pass can stop
@@ -4878,6 +4886,17 @@ mod slow_device_tests {
         }
         .with_read_registry()
         .await;
+        install_driver(repo, type_index, driver, slow, cached_entries)
+    }
+
+    /// `install_device` for a driver the test built itself.
+    fn install_driver(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver: HwmonDriverInfo,
+        slow: bool,
+        cached_entries: Vec<(&str, Duty, Instant)>,
+    ) -> UID {
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -5244,6 +5263,70 @@ mod slow_device_tests {
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: a write to an Apple Silicon fan is never skipped. Its duty is derived from its
+    /// speed, so a fan held at its minimum reads 0% exactly like one the firmware runs, and
+    /// skipping the 0% write would leave it held. Method: a fake `macsmc_hwmon` fan held at
+    /// its minimum, a preloaded duty of 0, then a 0% write that must reach the target file.
+    #[test]
+    #[serial]
+    fn an_apple_silicon_write_is_never_skipped() {
+        cc_fs::test_runtime(async {
+            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            cc_fs::create_dir_all(&dir).await.unwrap();
+            for (file, value) in [
+                ("fan1_target", "1499"),
+                ("fan1_input", "1499"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ] {
+                cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let io = DeviceIo::default();
+            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC).unwrap();
+            let channels = apple_driver.init_fans(&dir, &io).await;
+            let apple_fans = apple_driver
+                .fans(&dir, &channels, devices::DEVICE_NAME_MAC_SMC, &io)
+                .await;
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                path: dir.clone(),
+                channels,
+                u_id: "test-uid-macsmc".to_string(),
+                apple_fans: Some(apple_fans),
+                ..Default::default()
+            }
+            .with_read_registry()
+            .await;
+            let mut repo = empty_repo();
+            let uid = install_driver(&mut repo, TEST_TYPE_INDEX, driver, false, vec![]);
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(0.0),
+                        rpm: Some(1499),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+
+            enqueue_write(&repo, &uid, "fan1", 0)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let target = cc_fs::read_sysfs(&dir.join("fan1_target")).await.unwrap();
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&dir).await;
+            assert_eq!(target.trim(), "0", "the fan must be handed to the firmware");
         });
     }
 
@@ -6035,7 +6118,7 @@ mod shutdown_tests {
         }];
         let apple_fans = apple::detect("applesmc")
             .unwrap()
-            .fans(dir, &channels, "applesmc")
+            .fans(dir, &channels, "applesmc", &DeviceIo::default())
             .await;
         let driver = HwmonDriverInfo {
             name: "applesmc".to_string(),

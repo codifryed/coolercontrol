@@ -2315,7 +2315,7 @@ mod tests {
             ..Default::default()
         };
 
-        let diagnosis = diagnose_fan_channel("macsmc-hwmon", &channel, false);
+        let diagnosis = diagnose_fan_channel("macsmc_hwmon", &channel, false);
 
         assert_eq!(diagnosis.verdict, ChannelVerdict::Controllable);
         // No pwm file means no pwm facts to report, not four false ones.
