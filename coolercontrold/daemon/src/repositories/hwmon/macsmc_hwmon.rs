@@ -13,13 +13,14 @@
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
+use crate::repositories::hwmon::apple;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
     HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
-use anyhow::{anyhow, Context, Result};
-use log::{error, info, log_enabled};
+use anyhow::{Context, Result};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -29,7 +30,6 @@ use std::path::{Path, PathBuf};
 /// The target that returns a fan to the firmware.
 const FIRMWARE_TARGET: RPM = 0;
 macro_rules! format_fan_target { ($($arg:tt)*) => {{ format!("fan{}_target", $($arg)*) }}; }
-macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_min { ($($arg:tt)*) => {{ format!("fan{}_min", $($arg)*) }}; }
 macro_rules! format_fan_max { ($($arg:tt)*) => {{ format!("fan{}_max", $($arg)*) }}; }
 
@@ -80,37 +80,15 @@ impl MacSmcHwmon {
         }
     }
 
-    /// The fan's speed, and the duty that speed stands for when the fan is controllable.
-    ///
-    /// One read serves both, as the driver reports no duty. `None` when the speed cannot be
-    /// read, so the failsafe can stand in for the whole channel.
     pub async fn read_one_fan_status(
         &self,
         driver: &HwmonDriverInfo,
         channel: &HwmonChannelInfo,
     ) -> Option<ChannelStatus> {
-        debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
-        debug_assert!(channel.caps.has_rpm());
-        let rpm = fans::get_fan_rpm(
-            &driver.io,
-            &driver.path,
-            &channel.number,
-            &channel.caps,
-            channel.rpm_path.as_deref(),
-            channel.read_slot.rpm,
-            log_enabled!(log::Level::Debug),
-        )
-        .await?;
-        let duty = channel
-            .caps
-            .is_apple_smc()
-            .then(|| self.duty_from_rpm(channel.number, rpm));
-        Some(ChannelStatus {
-            name: channel.name.clone(),
-            rpm: Some(rpm),
-            duty,
-            ..Default::default()
+        apple::read_fan_status(driver, channel, |rpm| {
+            self.duty_from_rpm(channel.number, rpm)
         })
+        .await
     }
 
     /// Sets the fan's speed, or hands it back to the firmware at 0%.
@@ -193,14 +171,7 @@ impl MacSmcHwmon {
             "the driver rejects a target outside the fan's limits"
         );
         let target_path = self.path.join(format_fan_target!(channel_number));
-        io.write_value(&target_path, rpm.to_string().into_bytes())
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Unable to set Fan Target value {rpm} for {} Reason: {err}",
-                    target_path.display()
-                )
-            })
+        apple::write_number(&target_path, rpm, io).await
     }
 }
 
@@ -212,21 +183,7 @@ async fn detect_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannel
         detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
         fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
     }
-    let mut fans = Vec::with_capacity(fan_caps.len());
-    for (channel_number, caps) in fan_caps {
-        debug_assert!(caps.has_rpm());
-        fans.push(HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: channel_number,
-            name: fans::get_fan_channel_name(channel_number),
-            label: fans::get_fan_channel_label(base_path, &channel_number).await,
-            rpm_path: Some(base_path.join(format_fan_input!(channel_number))),
-            caps,
-            ..Default::default()
-        });
-    }
-    fans.sort_by_key(|fan| fan.number);
-    Ok(fans)
+    Ok(apple::fan_channels(base_path, fan_caps).await)
 }
 
 /// Marks the fan behind a `fanN_target` file as controllable, when the driver would accept a
@@ -237,10 +194,10 @@ async fn detect_controllable_fan(
     fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
     io: &DeviceIo,
 ) {
-    let Some(channel_number) = target_file_fan_number(file_name) else {
+    let Some(channel_number) = apple::file_number(file_name, "fan", "_target") else {
         return;
     };
-    if target_is_writable(base_path, channel_number).not() {
+    if apple::is_writable(&base_path.join(format_fan_target!(channel_number))).not() {
         return; // `fan_control` is off.
     }
     if read_limits(base_path, channel_number, io).await.is_none() {
@@ -268,23 +225,8 @@ async fn detect_controllable_fan(
     caps.insert(HwmonChannelCapabilities::RPM);
 }
 
-/// The fan number of a `fanN_target` file name, or `None` for any other file.
-fn target_file_fan_number(file_name: &str) -> Option<u8> {
-    file_name
-        .strip_prefix("fan")?
-        .strip_suffix("_target")?
-        .parse()
-        .ok()
-}
-
-/// Running as root, the mode bits are the whole answer: the driver registers the file read-only
-/// unless `fan_control` is set.
-fn target_is_writable(base_path: &Path, channel_number: u8) -> bool {
-    cc_fs::metadata(base_path.join(format_fan_target!(channel_number)))
-        .is_ok_and(|metadata| metadata.permissions().readonly().not())
-}
-
-/// True when a fan has a target file the driver registered read-only.
+/// True when a fan has a target file the driver registered read-only, which it does unless
+/// `fan_control` is set.
 fn fan_control_is_off(base_path: &Path, channels: &[HwmonChannelInfo]) -> bool {
     channels
         .iter()
@@ -298,16 +240,9 @@ fn fan_control_is_off(base_path: &Path, channels: &[HwmonChannelInfo]) -> bool {
 /// The fan's limits, or `None` when they cannot be read or do not form a range. Hardware lies,
 /// and a duty can only be mapped onto a real range.
 async fn read_limits(base_path: &Path, channel_number: u8, io: &DeviceIo) -> Option<FanLimits> {
-    let min_rpm = read_rpm(&base_path.join(format_fan_min!(channel_number)), io).await?;
-    let max_rpm = read_rpm(&base_path.join(format_fan_max!(channel_number)), io).await?;
+    let min_rpm = apple::read_rpm(&base_path.join(format_fan_min!(channel_number)), io).await?;
+    let max_rpm = apple::read_rpm(&base_path.join(format_fan_max!(channel_number)), io).await?;
     (min_rpm < max_rpm).then_some(FanLimits { min_rpm, max_rpm })
-}
-
-async fn read_rpm(path: &Path, io: &DeviceIo) -> Option<RPM> {
-    io.read_one(None, path)
-        .await
-        .and_then(fans::check_parsing_32)
-        .ok()
 }
 
 /// The targets that return a fan to the firmware, in the order they are written. Without known
@@ -364,7 +299,7 @@ mod tests {
         cc_fs::create_dir_all(&dir).await.unwrap();
         for (file, value) in [
             (format_fan_target!(fan), target),
-            (format_fan_input!(fan), "1520"),
+            (format!("fan{fan}_input"), "1520"),
             (format_fan_min!(fan), "1499"),
             (format_fan_max!(fan), "5348"),
         ] {
@@ -410,19 +345,6 @@ mod tests {
         assert_eq!(duty_from_rpm(M1_MAX, 3424), 50.);
         assert_eq!(duty_from_rpm(M1_MAX, 5348), 100.);
         assert_eq!(duty_from_rpm(M1_MAX, 6000), 100.);
-    }
-
-    /// Goal: only `fanN_target` names a controllable fan. Method: its neighbours in the
-    /// directory, and names that only resemble it.
-    #[test]
-    fn only_a_target_file_names_a_fan() {
-        assert_eq!(target_file_fan_number("fan1_target"), Some(1));
-        assert_eq!(target_file_fan_number("fan12_target"), Some(12));
-        assert_eq!(target_file_fan_number("fan1_input"), None);
-        assert_eq!(target_file_fan_number("fan_target"), None);
-        assert_eq!(target_file_fan_number("fanx_target"), None);
-        assert_eq!(target_file_fan_number("pwm1_target"), None);
-        assert_eq!(target_file_fan_number("fan300_target"), None);
     }
 
     /// Goal: a hand-back syncs the driver with an in-range target before the `0`, and still

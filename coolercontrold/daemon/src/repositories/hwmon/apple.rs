@@ -7,17 +7,22 @@
 //! Each driver has its own sysfs files and its own way of taking and returning control, so each
 //! has its own module. Nothing here knows those files: this only decides which module applies.
 
-use crate::device::{ChannelStatus, Duty};
+use crate::cc_fs;
+use crate::device::{ChannelStatus, Duty, RPM};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
 use crate::repositories::hwmon::fans;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
 use crate::repositories::hwmon::macsmc_hwmon::MacSmcHwmon;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use log::log_enabled;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -182,10 +187,90 @@ impl AppleFans {
     }
 }
 
+/// The number in a `<prefix>N<suffix>` file name, such as `fan2_target`, or `None` for any
+/// other file.
+pub fn file_number(file_name: &str, prefix: &str, suffix: &str) -> Option<u8> {
+    file_name
+        .strip_prefix(prefix)?
+        .strip_suffix(suffix)?
+        .parse()
+        .ok()
+}
+
+/// Whether the driver registered the file writable. Running as root, the mode bits are the
+/// whole answer.
+pub fn is_writable(path: &Path) -> bool {
+    cc_fs::metadata(path).is_ok_and(|metadata| metadata.permissions().readonly().not())
+}
+
+pub async fn read_rpm(path: &Path, io: &DeviceIo) -> Option<RPM> {
+    io.read_one(None, path)
+        .await
+        .and_then(fans::check_parsing_32)
+        .ok()
+}
+
+pub async fn write_number(path: &Path, value: u32, io: &DeviceIo) -> Result<()> {
+    io.write_value(path, value.to_string().into_bytes())
+        .await
+        .map_err(|err| anyhow!("Unable to write {value} to {}: {err}", path.display()))
+}
+
+/// The channels of the fans found, in fan order. Every one has a readable speed.
+pub async fn fan_channels(
+    base_path: &Path,
+    fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+) -> Vec<HwmonChannelInfo> {
+    let mut fans = Vec::with_capacity(fan_caps.len());
+    for (channel_number, caps) in fan_caps {
+        debug_assert!(caps.has_rpm());
+        fans.push(HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: channel_number,
+            name: fans::get_fan_channel_name(channel_number),
+            label: fans::get_fan_channel_label(base_path, &channel_number).await,
+            rpm_path: Some(base_path.join(format!("fan{channel_number}_input"))),
+            caps,
+            ..Default::default()
+        });
+    }
+    fans.sort_by_key(|fan| fan.number);
+    fans
+}
+
+/// A fan's speed, and the duty that speed stands for when the fan is controllable.
+///
+/// One read serves both, as these drivers report no duty. `None` when the speed cannot be read,
+/// so the failsafe can stand in for the whole channel.
+pub async fn read_fan_status(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+    duty_from_rpm: impl FnOnce(RPM) -> f64,
+) -> Option<ChannelStatus> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+    debug_assert!(channel.caps.has_rpm());
+    let rpm = fans::get_fan_rpm(
+        &driver.io,
+        &driver.path,
+        &channel.number,
+        &channel.caps,
+        channel.rpm_path.as_deref(),
+        channel.read_slot.rpm,
+        log_enabled!(log::Level::Debug),
+    )
+    .await?;
+    let duty = channel.caps.is_apple_smc().then(|| duty_from_rpm(rpm));
+    Some(ChannelStatus {
+        name: channel.name.clone(),
+        rpm: Some(rpm),
+        duty,
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cc_fs;
     use crate::repositories::hwmon::hwmon_repo::{HwmonChannelCapabilities, HwmonChannelType};
     use serial_test::serial;
     use std::path::PathBuf;
@@ -223,6 +308,20 @@ mod tests {
 
     fn test_dir() -> PathBuf {
         PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()))
+    }
+
+    /// Goal: only a file of the exact shape names a fan. Method: a target file's neighbours in
+    /// the directory, and names that only resemble it.
+    #[test]
+    fn only_a_matching_file_name_carries_a_fan_number() {
+        assert_eq!(file_number("fan1_target", "fan", "_target"), Some(1));
+        assert_eq!(file_number("fan12_target", "fan", "_target"), Some(12));
+        assert_eq!(file_number("pwm2_enable", "pwm", "_enable"), Some(2));
+        assert_eq!(file_number("fan1_input", "fan", "_target"), None);
+        assert_eq!(file_number("fan_target", "fan", "_target"), None);
+        assert_eq!(file_number("fanx_target", "fan", "_target"), None);
+        assert_eq!(file_number("pwm1_target", "fan", "_target"), None);
+        assert_eq!(file_number("fan300_target", "fan", "_target"), None);
     }
 
     /// Goal: only Apple drivers get an Apple handler. Method: the Apple names and an ordinary
