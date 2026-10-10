@@ -65,6 +65,24 @@ describe('channel verdicts', () => {
         expect(verdictDocsLink(ChannelVerdict.PwmReadOnly, 'constructor')).toBe(general)
     })
 
+    it('keeps the Apple page for a device the user renamed', () => {
+        // The daemon sends the user's label as the device name, so only the
+        // driver's name still says what the device is.
+        const general = verdictDocsLink(ChannelVerdict.PwmReadOnly)
+        const verdict = ChannelVerdict.PwmReadOnly
+        const intel = 'https://docs.coolercontrol.org/devices/apple.html#intel-macs'
+        const silicon = 'https://docs.coolercontrol.org/devices/apple.html#apple-silicon'
+        expect(verdictDocsLink(verdict, 'applesmc', 'MacBook Fans')).toBe(intel)
+        // The Apple Silicon driver's name has a hyphen, its hwmon name does not.
+        expect(verdictDocsLink(verdict, 'macsmc-hwmon', 'Mac Studio')).toBe(silicon)
+        // Without a known driver name the device name still decides.
+        expect(verdictDocsLink(verdict, undefined, 'macsmc_hwmon')).toBe(silicon)
+        expect(verdictDocsLink(verdict, 'platform', 'applesmc')).toBe(intel)
+        expect(verdictDocsLink(verdict, undefined, 'MacBook Fans')).toBe(general)
+        expect(verdictDocsLink(verdict, 'nct6775', 'nct6798')).toBe(general)
+        expect(verdictDocsLink(ChannelVerdict.Controllable, 'applesmc', 'x')).toBeUndefined()
+    })
+
     it('gives an Apple device no link where the verdict has none', () => {
         expect(verdictDocsLink(ChannelVerdict.Controllable, 'applesmc')).toBeUndefined()
         expect(verdictDocsLink(ChannelVerdict.Unverifiable, 'macsmc_hwmon')).toBeUndefined()

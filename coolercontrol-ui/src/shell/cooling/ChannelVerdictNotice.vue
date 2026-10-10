@@ -70,18 +70,16 @@ const evidenceParts = computed<Array<string>>(() => {
     return parts
 })
 
-// The kernel's name for the device, never the user's label for it: the docs
-// are picked by driver.
-const deviceName = computed<string | undefined>(() => {
+// The docs are picked by the kernel driver's name. The device's name may be
+// the user's own label for it, so it is only the fallback.
+const docsLink = computed<string | undefined>(() => {
+    if (verdictRef.value == null) return undefined
     for (const device of deviceStore.allDevices()) {
-        if (device.uid === props.deviceUID) return device.name
+        if (device.uid !== props.deviceUID) continue
+        return verdictDocsLink(verdictRef.value.verdict, device.info?.driver_info.name, device.name)
     }
-    return undefined
+    return verdictDocsLink(verdictRef.value.verdict)
 })
-
-const docsLink = computed<string | undefined>(() =>
-    verdictRef.value ? verdictDocsLink(verdictRef.value.verdict, deviceName.value) : undefined,
-)
 </script>
 
 <template>
