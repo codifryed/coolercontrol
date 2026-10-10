@@ -2177,6 +2177,7 @@ impl Repository for HwmonRepo {
                 error!("Error initializing Hwmon Fans: {err}");
                 Vec::new()
             });
+            fans::log_unreadable_fan_speeds(&path, &fans, &io).await;
             // Recorded for both branches, so the report's hidden count is not
             // silently zero on Apple hardware the user has disabled fans on.
             for fan in &fans {

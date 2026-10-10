@@ -111,6 +111,42 @@ pub fn log_uncontrollable_channel(
     );
 }
 
+/// Says why a fan's speed is missing. Repository init only, for the same reason as
+/// `log_uncontrollable_channel`: detection stays quiet because the hardware report runs it too.
+pub async fn log_unreadable_fan_speeds(base_path: &Path, fans: &[HwmonChannelInfo], io: &DeviceIo) {
+    let caps = HwmonChannelCapabilities::empty();
+    for channel_number in unread_fan_inputs(base_path, fans) {
+        // Detection could not read this one. Reading it again, aloud, gives the reason.
+        let _ = get_fan_rpm(io, base_path, &channel_number, &caps, None, None, true).await;
+    }
+}
+
+/// The fans whose speed file is there and was not readable at detection, in fan order. Detection
+/// gives a fan its speed whenever the file reads, so a file without one is a file that did not.
+fn unread_fan_inputs(base_path: &Path, fans: &[HwmonChannelInfo]) -> Vec<u8> {
+    let Ok(regex_fan_input_file) = Regex::new(PATTERN_FAN_INPUT_FILE_NUMBER) else {
+        return Vec::new();
+    };
+    let Ok(dir_entries) = cc_fs::read_dir(base_path) else {
+        return Vec::new();
+    };
+    let mut channel_numbers: Vec<u8> = dir_entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let os_file_name = entry.file_name();
+            let captures = regex_fan_input_file.captures(os_file_name.to_str()?)?;
+            captures.name("number")?.as_str().parse().ok()
+        })
+        .filter(|channel_number| {
+            fans.iter()
+                .any(|fan| fan.number == *channel_number && fan.caps.has_rpm())
+                .not()
+        })
+        .collect();
+    channel_numbers.sort_unstable();
+    channel_numbers
+}
+
 /// Detects if a fan has pwm capability and pwm-write capabilities.
 async fn detect_pwm(
     base_path: &Path,
@@ -176,9 +212,9 @@ pub async fn detect_rpm(
     })
     .await
     .is_err()
-        // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
-        // including the warning.
-        && get_fan_rpm(io, base_path, &channel_number, &caps, Some(&rpm_path), None, true)
+        // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say.
+        // Quiet: the hardware report detects too. `log_unreadable_fan_speeds` warns at start.
+        && get_fan_rpm(io, base_path, &channel_number, &caps, Some(&rpm_path), None, false)
             .await
             .is_none()
     {
@@ -1109,6 +1145,63 @@ mod tests {
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
             assert!(fans[0].caps.is_fan_controllable());
+        });
+    }
+
+    /// Detection is quiet, so the start-up warning has to find by itself the speeds detection
+    /// could not read. Detects a device with a readable speed, unreadable ones with and
+    /// without a pwm, and files that only look like a speed, then asks which are unread.
+    #[test]
+    #[serial]
+    fn only_a_speed_detection_could_not_read_is_unread() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let dir = &ctx.test_base_path;
+            for (name, value) in [
+                ("fan1_input", "1200"),
+                ("fan2_input", "not a number"),
+                ("pwm3", "128"),
+                ("fan3_input", "not a number"),
+                ("fan10_input", ""),
+                ("fan4_label", "no speed file"),
+                ("temp1_input", "not a number"),
+            ] {
+                cc_fs::write(dir.join(name), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+
+            let fans = init_fans(dir, "Test Driver", &DeviceIo::default())
+                .await
+                .unwrap();
+            let unread = unread_fan_inputs(dir, &fans);
+            let unread_with_no_fans = unread_fan_inputs(dir, &[]);
+
+            teardown(&ctx).await;
+            let detected: Vec<(u8, bool)> = fans
+                .iter()
+                .map(|fan| (fan.number, fan.caps.has_rpm()))
+                .collect();
+            assert_eq!(detected, [(1, true), (3, false)]);
+            assert_eq!(unread, [2, 3, 10]);
+            assert_eq!(unread_with_no_fans, [1, 2, 3, 10]);
+        });
+    }
+
+    /// A device that is gone has nothing to warn about, and must not fail the start-up that
+    /// asks. Asks about a directory that does not exist.
+    #[test]
+    #[serial]
+    fn a_missing_device_has_no_unread_speeds() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let missing = ctx.test_base_path.join("missing");
+
+            let unread = unread_fan_inputs(&missing, &[]);
+            log_unreadable_fan_speeds(&missing, &[], &DeviceIo::default()).await;
+
+            teardown(&ctx).await;
+            assert!(unread.is_empty());
         });
     }
 
