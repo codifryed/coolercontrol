@@ -123,6 +123,7 @@ impl AppleDriver {
     ) -> AppleFans {
         let handler = match self {
             Self::IntelLegacy => {
+                AppleMacSMC::log_fan_limits(base_path, channels).await;
                 AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels).await)
             }
             Self::IntelLinux73 => {

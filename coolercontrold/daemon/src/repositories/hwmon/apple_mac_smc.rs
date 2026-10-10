@@ -11,7 +11,7 @@ use crate::repositories::hwmon::hwmon_repo::{
     HwmonDriverInfo,
 };
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error, info, log_enabled, warn};
+use log::{debug, error, log_enabled, warn};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -73,6 +73,8 @@ impl AppleMacSMC {
 
     /// Returns every detected fan, including ones the user has disabled. The
     /// caller drops those, so both hwmon branches record the same exclusions.
+    ///
+    /// Says nothing about a fan it cannot control: the hardware report calls this too.
     pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
         Self::init_apple_fans(base_path, io)
             .await
@@ -80,6 +82,22 @@ impl AppleMacSMC {
                 error!("Error initializing Apple Mac SMC Fans: {err}");
                 Vec::new()
             })
+    }
+
+    /// Says why a fan cannot be controlled, or cannot be stopped. Repository init only, so it
+    /// is logged once per start and never by a hardware report.
+    pub async fn log_fan_limits(base_path: &Path, channels: &[HwmonChannelInfo]) {
+        for channel in channels {
+            if channel.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            if channel.caps.is_apple_smc() {
+                let _ = Self::fan_min_is_writable(base_path, channel.number);
+            } else if cc_fs::metadata(base_path.join(format_fan_output!(channel.number))).is_ok() {
+                // Detection turned this fan down. Asking again, aloud, names what is missing.
+                let _ = Self::is_controllable(base_path, channel.number, true).await;
+            }
+        }
     }
 
     async fn init_apple_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
@@ -117,40 +135,13 @@ impl AppleMacSMC {
             .context("Number Group should exist")?
             .as_str()
             .parse()?;
-        if Self::fan_output_is_writable(base_path, channel_number).not() {
-            return Ok(()); // skip if fan_output file isn't writable
-        }
-        // Detection reads each attribute once, so this cache closes with the probe.
-        if fans::get_fan_rpm(
-            &DeviceIo::default(),
-            base_path,
-            &channel_number,
-            &HwmonChannelCapabilities::empty(),
-            None,
-            None,
-            true,
-        )
-        .await
-        .is_none()
-        {
-            return Ok(()); // skip if fan_input file isn't readable (no indicator of speed)
-        }
-        if Self::fan_manual_is_writable(base_path, channel_number).not() {
-            return Ok(()); // skip if fan_manual file isn't writable
-        }
-        if Self::get_fan_max(base_path, channel_number, true)
+        // Quiet: the hardware report detects too. `log_fan_limits` gives the reason at start.
+        if Self::is_controllable(base_path, channel_number, false)
             .await
-            .is_none()
+            .not()
         {
-            return Ok(()); // skip if fan_max file isn't readable
+            return Ok(());
         }
-        if Self::get_fan_min(base_path, channel_number, true)
-            .await
-            .is_none()
-        {
-            return Ok(()); // skip if fan_min file isn't readable
-        }
-        let _ = Self::fan_min_is_writable(base_path, channel_number); // check for writability
         let caps = fan_caps
             .entry(channel_number)
             .or_insert(HwmonChannelCapabilities::empty());
@@ -163,18 +154,52 @@ impl AppleMacSMC {
         Ok(())
     }
 
-    fn fan_output_is_writable(base_path: &Path, channel_number: u8) -> bool {
+    /// Whether the fan behind a `fanN_output` file has everything control needs. With
+    /// `log_error`, says what is missing.
+    async fn is_controllable(base_path: &Path, channel_number: u8, log_error: bool) -> bool {
+        if Self::fan_output_is_writable(base_path, channel_number, log_error).not() {
+            return false;
+        }
+        // Detection reads each attribute once, so this cache closes with the probe.
+        let rpm = fans::get_fan_rpm(
+            &DeviceIo::default(),
+            base_path,
+            &channel_number,
+            &HwmonChannelCapabilities::empty(),
+            None,
+            None,
+            log_error,
+        )
+        .await;
+        if rpm.is_none() {
+            return false; // no indicator of speed
+        }
+        if Self::fan_manual_is_writable(base_path, channel_number, log_error).not() {
+            return false;
+        }
+        // Both limits are needed to map a duty onto a speed.
+        Self::get_fan_max(base_path, channel_number, log_error)
+            .await
+            .is_some()
+            && Self::get_fan_min(base_path, channel_number, log_error)
+                .await
+                .is_some()
+    }
+
+    fn fan_output_is_writable(base_path: &Path, channel_number: u8, log_error: bool) -> bool {
         let output_path = base_path.join(format_fan_output!(channel_number));
         let output_writable = cc_fs::metadata(&output_path)
             .inspect_err(|_| {
-                error!(
-                    "Fan_output file metadata is not readable: {}",
-                    output_path.display()
-                );
+                if log_error {
+                    error!(
+                        "Fan_output file metadata is not readable: {}",
+                        output_path.display()
+                    );
+                }
             })
             // This check should be sufficient, as we're running as root:
             .is_ok_and(|att| att.permissions().readonly().not());
-        if output_writable.not() {
+        if log_error && output_writable.not() {
             warn!(
                 "Apple SMC fan at {} is NOT writable - \
             Fan control is not currently supported by the installed driver.",
@@ -184,18 +209,20 @@ impl AppleMacSMC {
         output_writable
     }
 
-    fn fan_manual_is_writable(base_path: &Path, channel_number: u8) -> bool {
+    fn fan_manual_is_writable(base_path: &Path, channel_number: u8, log_error: bool) -> bool {
         let manual_path = base_path.join(format_fan_manual!(channel_number));
         let manual_writable = cc_fs::metadata(&manual_path)
             .inspect_err(|_| {
-                error!(
-                    "Fan_manual file metadata is not readable: {}",
-                    manual_path.display()
-                );
+                if log_error {
+                    error!(
+                        "Fan_manual file metadata is not readable: {}",
+                        manual_path.display()
+                    );
+                }
             })
             // This check should be sufficient, as we're running as root:
             .is_ok_and(|att| att.permissions().readonly().not());
-        if manual_writable.not() {
+        if log_error && manual_writable.not() {
             warn!(
                 "Apple SMC fan manual at {} is NOT writable - \
             Fan control is not currently supported by the installed driver.",
@@ -235,12 +262,6 @@ impl AppleMacSMC {
         for (channel_number, fan_cap) in fan_caps {
             let channel_name = fans::get_fan_channel_name(channel_number);
             let label = fans::get_fan_channel_label(base_path, &channel_number).await;
-            if fan_cap.is_non_controllable_rpm_fan() {
-                info!(
-                    "Uncontrollable RPM-only fan found at {}/fan{channel_number}_input",
-                    base_path.display()
-                );
-            }
             let rpm_path = fan_cap
                 .has_rpm()
                 .then(|| base_path.join(format_fan_input!(channel_number)));
@@ -531,10 +552,19 @@ mod tests {
     use super::*;
     use crate::repositories::hwmon::drivetemp;
     use serial_test::serial;
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+    const COMPLETE_FAN: [(&str, &str); 5] = [
+        ("fan1_output", "2500"),
+        ("fan1_input", "2500"),
+        ("fan1_manual", "0"),
+        ("fan1_min", "600"),
+        ("fan1_max", "6500"),
+    ];
 
     struct HwmonFileContext {
         test_base_path: PathBuf,
@@ -843,6 +873,84 @@ mod tests {
             teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(fan_caps.is_empty());
+        });
+    }
+
+    /// The verdict on fan1 asked quietly, as detection does, and aloud, as the start-up log
+    /// does.
+    async fn both_verdicts(dir: &Path) -> (bool, bool) {
+        (
+            AppleMacSMC::is_controllable(dir, 1, false).await,
+            AppleMacSMC::is_controllable(dir, 1, true).await,
+        )
+    }
+
+    /// A fan is controllable only with every one of its files, and detection must reach the
+    /// same verdict as the start-up log that explains it. Takes one file at a time away from
+    /// a complete fan and asks both ways.
+    #[test]
+    #[serial]
+    fn a_fan_missing_any_file_is_not_controllable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let dir = &ctx.test_base_path;
+            for (name, value) in COMPLETE_FAN {
+                cc_fs::write(dir.join(name), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+
+            let complete = both_verdicts(dir).await;
+            let mut incomplete = Vec::with_capacity(COMPLETE_FAN.len());
+            for (name, value) in COMPLETE_FAN {
+                cc_fs::remove_file(dir.join(name)).await.unwrap();
+                incomplete.push((name, both_verdicts(dir).await));
+                cc_fs::write(dir.join(name), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let restored = both_verdicts(dir).await;
+
+            teardown(&ctx).await;
+            assert_eq!(complete, (true, true));
+            for (name, verdicts) in incomplete {
+                assert_eq!(verdicts, (false, false), "without {name}");
+            }
+            assert_eq!(restored, (true, true));
+        });
+    }
+
+    /// The driver marks a file it will not take writes on as read-only, and control needs to
+    /// write both the speed and the mode. Locks each of the two in turn.
+    #[test]
+    #[serial]
+    fn a_fan_with_a_read_only_control_file_is_not_controllable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let dir = &ctx.test_base_path;
+            for (name, value) in COMPLETE_FAN {
+                cc_fs::write(dir.join(name), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+
+            let mut locked = Vec::with_capacity(2);
+            for name in ["fan1_output", "fan1_manual"] {
+                cc_fs::set_permissions(dir.join(name), Permissions::from_mode(0o444))
+                    .await
+                    .unwrap();
+                locked.push((name, both_verdicts(dir).await));
+                cc_fs::set_permissions(dir.join(name), Permissions::from_mode(0o644))
+                    .await
+                    .unwrap();
+            }
+            let unlocked = both_verdicts(dir).await;
+
+            teardown(&ctx).await;
+            for (name, verdicts) in locked {
+                assert_eq!(verdicts, (false, false), "with {name} read-only");
+            }
+            assert_eq!(unlocked, (true, true));
         });
     }
 
@@ -1356,7 +1464,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
+            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1373,7 +1481,7 @@ mod tests {
             let test_base_path = &ctx.test_base_path;
 
             // when:
-            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
+            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1393,7 +1501,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
+            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1410,7 +1518,7 @@ mod tests {
             let test_base_path = &ctx.test_base_path;
 
             // when:
-            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
+            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;

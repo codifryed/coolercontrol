@@ -399,11 +399,6 @@ impl HwmonChannelCapabilities {
     pub fn reports_duty(&self) -> bool {
         self.has_pwm() || self.is_apple_smc()
     }
-
-    pub fn is_non_controllable_rpm_fan(&self) -> bool {
-        self.contains(HwmonChannelCapabilities::RPM)
-            && !self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
-    }
 }
 
 /// Indicated support for hwmon auto curves (firmware profiles)
