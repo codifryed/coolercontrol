@@ -44,12 +44,16 @@ pub struct CpuTopology {
 }
 
 impl CpuTopology {
-    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
-    /// is what the caller needs before it can build any CPU device at all.
+    /// Parses cpuinfo text with no board model to fall back on. Test-only: production always
+    /// passes what the device tree says.
+    #[cfg(test)]
     pub fn parse(cpu_info_data: &str) -> Result<Self> {
         Self::parse_with_board_model(cpu_info_data, None)
     }
 
+    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
+    /// is what the caller needs before it can build any CPU device at all. When cpuinfo names no
+    /// model, as on Apple Silicon, the fallback board model stands in.
     pub fn parse_with_board_model(
         cpu_info_data: &str,
         fallback_board_model: Option<&str>,

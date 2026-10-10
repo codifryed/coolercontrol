@@ -70,6 +70,7 @@ pub struct CpuRepo {
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
     apple_silicon: bool,
+    clusters: Vec<apple_silicon::Cluster>,
     cluster_freqs: RefCell<Vec<ChannelStatus>>,
 }
 
@@ -80,6 +81,7 @@ impl CpuRepo {
             overrides,
             devices: HashMap::new(),
             apple_silicon: false,
+            clusters: Vec::new(),
             cluster_freqs: RefCell::new(Vec::new()),
             topology: CpuTopology::default(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
@@ -160,6 +162,9 @@ impl CpuRepo {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let apple_silicon_model = apple_silicon::board_model().await;
         self.apple_silicon = apple_silicon_model.is_some();
+        if self.apple_silicon {
+            self.clusters = apple_silicon::find_clusters().await;
+        }
         self.topology =
             CpuTopology::parse_with_board_model(&cpu_info_data, apple_silicon_model.as_deref())?;
         trace!("CPU topology: {:?}", self.topology);
@@ -316,9 +321,9 @@ impl CpuRepo {
     /// The frequencies of every package, read fresh from cpuinfo.
     async fn collect_freq(&self, cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
         if self.apple_silicon {
-            self.cluster_freqs
-                .replace(apple_silicon::collect_cluster_freqs().await);
-            return apple_silicon::collect_freqs().await;
+            let (cpu_freqs, cluster_freqs) = apple_silicon::read_freqs(&self.clusters).await;
+            self.cluster_freqs.replace(cluster_freqs);
+            return cpu_freqs;
         }
         let Ok(cpu_info_data) = cc_fs::read_txt(cpuinfo_path).await else {
             return HashMap::new();
@@ -786,9 +791,7 @@ impl CpuRepo {
         let mut channels = self
             .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs)
             .await;
-        channels.extend(apple_silicon::cluster_channels(
-            &self.cluster_freqs.borrow(),
-        ));
+        channels.extend(apple_silicon::cluster_channels(&self.clusters));
         Some(HwmonDriverInfo {
             name: apple_silicon::DRIVER_NAME.to_owned(),
             path: PathBuf::from(apple_silicon::CPU_SYSFS_PATH),
