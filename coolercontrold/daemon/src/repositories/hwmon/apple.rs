@@ -222,6 +222,11 @@ impl AppleFans {
     /// Returns the fan to automatic control, whoever holds it. This is the user's reset, so it
     /// also recovers a fan an earlier run left in manual.
     pub async fn set_to_auto_control(&self, channel_number: u8, io: &DeviceIo) -> Result<()> {
+        // The Apple Silicon hand-back writes a speed first, which takes a fan the firmware was
+        // running. If the rest then fails the fan is held, so shutdown must try it again.
+        if matches!(self.handler, AppleHandler::Silicon(_)) {
+            self.mark_taken(channel_number);
+        }
         let result = match &self.handler {
             AppleHandler::IntelLegacy(smc) => smc.set_to_auto_control(channel_number, io).await,
             AppleHandler::IntelLinux73(smc) => smc.set_to_auto_control(channel_number, io).await,
@@ -701,6 +706,49 @@ mod tests {
             assert_eq!(taken_min, "2000");
             assert!(returned.is_ok());
             assert_eq!(returned_manual, "1");
+        });
+    }
+
+    /// Goal: an Apple Silicon reset that fails leaves the fan recorded as taken, so shutdown
+    /// tries the hand-back again, and one that succeeds leaves nothing to return. Method: a fan
+    /// the daemon never drove, reset while its target is a directory, which no write can land
+    /// on. Then the file is put back and the fan released twice.
+    #[test]
+    #[serial]
+    fn a_failed_silicon_reset_is_retried_at_shutdown() {
+        cc_fs::test_runtime(async {
+            let dir = test_dir();
+            let (files, _) = complete_fan(AppleDriver::Silicon);
+            seed(&dir, files).await;
+            let io = DeviceIo::default();
+            let apple_fans = AppleDriver::Silicon
+                .fans(&dir, &vec![apple_fan(1, &dir)], &io)
+                .await;
+            let target_path = dir.join("fan1_target");
+            cc_fs::remove_file(&target_path).await.unwrap();
+            cc_fs::create_dir_all(&target_path).await.unwrap();
+
+            let failed_reset = apple_fans.set_to_auto_control(1, &io).await;
+            let taken_after_failure = apple_fans.is_taken(1);
+
+            cc_fs::remove_dir_all(&target_path).await.unwrap();
+            seed(&dir, &[("fan1_target", "1499")]).await;
+            let retried = apple_fans.release_fan(1, &io).await;
+            let retried_target = read(&dir, "fan1_target").await;
+            let taken_after_retry = apple_fans.is_taken(1);
+
+            seed(&dir, &[("fan1_target", "3000")]).await;
+            let released_again = apple_fans.release_fan(1, &io).await;
+            let untouched_target = read(&dir, "fan1_target").await;
+            cc_fs::remove_dir_all(&dir).await.unwrap();
+
+            assert!(failed_reset.is_err());
+            assert!(taken_after_failure);
+            assert!(retried.is_ok());
+            assert_eq!(retried_target, "0");
+            assert!(taken_after_retry.not());
+            assert!(released_again.is_ok());
+            assert_eq!(untouched_target, "3000");
         });
     }
 
