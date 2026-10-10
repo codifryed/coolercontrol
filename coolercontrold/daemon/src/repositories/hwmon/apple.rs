@@ -95,8 +95,9 @@ fn detect_intel(base_path: &Path) -> AppleDriver {
 }
 
 impl AppleDriver {
-    /// Every fan the driver exposes, including ones the user has disabled.
-    pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
+    /// Every fan the driver exposes, including ones the user has disabled. An error is the
+    /// caller's to log: the repository does, the hardware report does not.
+    pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         match self {
             Self::IntelLegacy => AppleMacSMC::init_fans(base_path, io).await,
             Self::IntelLinux73 => AppleSmc73::init_fans(base_path, io).await,
@@ -422,6 +423,39 @@ mod tests {
                     None,
                 ]
             );
+        });
+    }
+
+    /// Goal: a device that cannot be read is the caller's to report, since the repository logs
+    /// it and the hardware report must not. Method: every driver against a directory that is
+    /// missing, and against an empty one for contrast.
+    #[test]
+    #[serial]
+    fn an_unreadable_device_is_an_error_for_the_caller() {
+        cc_fs::test_runtime(async {
+            let base = test_dir();
+            let empty = base.join("empty");
+            let missing = base.join("missing");
+            seed(&empty, &[]).await;
+            let io = DeviceIo::default();
+            let drivers = [
+                AppleDriver::IntelLegacy,
+                AppleDriver::IntelLinux73,
+                AppleDriver::Silicon,
+            ];
+
+            let mut results = Vec::with_capacity(drivers.len());
+            for driver in drivers {
+                let from_empty = driver.init_fans(&empty, &io).await;
+                let from_missing = driver.init_fans(&missing, &io).await;
+                results.push((driver, from_empty, from_missing));
+            }
+
+            cc_fs::remove_dir_all(&base).await.unwrap();
+            for (driver, from_empty, from_missing) in results {
+                assert!(from_empty.is_ok_and(|fans| fans.is_empty()), "{driver:?}");
+                assert!(from_missing.is_err(), "{driver:?}");
+            }
         });
     }
 

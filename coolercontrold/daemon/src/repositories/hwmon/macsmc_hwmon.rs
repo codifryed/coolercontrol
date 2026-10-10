@@ -123,12 +123,17 @@ impl MacSmcHwmon {
 
     /// Every fan the driver exposes, including ones the user has disabled.
     ///
-    /// Says nothing about a fan it cannot control: the hardware report calls this too.
-    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
-        detect_fans(base_path, io).await.unwrap_or_else(|err| {
-            error!("Error initializing macsmc_hwmon fans: {err}");
-            Vec::new()
-        })
+    /// Says nothing about a fan it cannot control, and leaves an error to the caller: the
+    /// hardware report calls this too.
+    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
+        let mut fan_caps = HashMap::new();
+        for entry in cc_fs::read_dir(base_path)? {
+            let os_file_name = entry?.file_name();
+            let file_name = os_file_name.to_str().context("File Name should be a str")?;
+            detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
+            fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
+        }
+        Ok(apple::fan_channels(base_path, fan_caps).await)
     }
 
     /// Says why this device's fans are read-only. Repository init only, so it is logged once
@@ -173,17 +178,6 @@ impl MacSmcHwmon {
         let target_path = self.path.join(format_fan_target!(channel_number));
         apple::write_number(&target_path, rpm, io).await
     }
-}
-
-async fn detect_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
-    let mut fan_caps = HashMap::new();
-    for entry in cc_fs::read_dir(base_path)? {
-        let os_file_name = entry?.file_name();
-        let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
-        fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
-    }
-    Ok(apple::fan_channels(base_path, fan_caps).await)
 }
 
 /// Marks the fan behind a `fanN_target` file as controllable, when the driver would accept a
@@ -319,7 +313,7 @@ mod tests {
     }
 
     async fn handler_for(dir: &Path, io: &DeviceIo) -> (MacSmcHwmon, Vec<HwmonChannelInfo>) {
-        let channels = MacSmcHwmon::init_fans(dir, io).await;
+        let channels = MacSmcHwmon::init_fans(dir, io).await.unwrap();
         (MacSmcHwmon::new(dir, &channels, io).await, channels)
     }
 
@@ -421,8 +415,8 @@ mod tests {
                 .unwrap();
             let io = DeviceIo::default();
 
-            let inverted_fans = MacSmcHwmon::init_fans(&inverted, &io).await;
-            let unbounded_fans = MacSmcHwmon::init_fans(&unbounded, &io).await;
+            let inverted_fans = MacSmcHwmon::init_fans(&inverted, &io).await.unwrap();
+            let unbounded_fans = MacSmcHwmon::init_fans(&unbounded, &io).await.unwrap();
 
             cc_fs::remove_dir_all(&inverted).await.unwrap();
             cc_fs::remove_dir_all(&unbounded).await.unwrap();

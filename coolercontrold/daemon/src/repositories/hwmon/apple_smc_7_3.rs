@@ -128,12 +128,17 @@ impl AppleSmc73 {
 
     /// Every fan the driver exposes, including ones the user has disabled.
     ///
-    /// Says nothing about a fan it cannot control: the hardware report calls this too.
-    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
-        detect_fans(base_path, io).await.unwrap_or_else(|err| {
-            error!("Error initializing applesmc fans: {err}");
-            Vec::new()
-        })
+    /// Says nothing about a fan it cannot control, and leaves an error to the caller: the
+    /// hardware report calls this too.
+    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
+        let mut fan_caps = HashMap::new();
+        for entry in cc_fs::read_dir(base_path)? {
+            let os_file_name = entry?.file_name();
+            let file_name = os_file_name.to_str().context("File Name should be a str")?;
+            detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
+            fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
+        }
+        Ok(apple::fan_channels(base_path, fan_caps).await)
     }
 
     /// Writes the fan's minimum, when one is known, and then its mode. Both writes are always
@@ -157,17 +162,6 @@ impl AppleSmc73 {
         let mode_written = apple::write_number(&enable_path, pwm_enable, io).await;
         min_written.and(mode_written)
     }
-}
-
-async fn detect_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
-    let mut fan_caps = HashMap::new();
-    for entry in cc_fs::read_dir(base_path)? {
-        let os_file_name = entry?.file_name();
-        let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
-        fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
-    }
-    Ok(apple::fan_channels(base_path, fan_caps).await)
 }
 
 /// Marks the fan behind a `fanN_target` file as controllable, when its mode can be switched and
@@ -282,7 +276,7 @@ mod tests {
     }
 
     async fn handler_for(dir: &Path, io: &DeviceIo) -> (AppleSmc73, Vec<HwmonChannelInfo>) {
-        let channels = AppleSmc73::init_fans(dir, io).await;
+        let channels = AppleSmc73::init_fans(dir, io).await.unwrap();
         (AppleSmc73::new(dir, &channels, io).await, channels)
     }
 
@@ -357,8 +351,8 @@ mod tests {
                 .unwrap();
             let io = DeviceIo::default();
 
-            let fixed_mode_fans = AppleSmc73::init_fans(&fixed_mode, &io).await;
-            let no_maximum_fans = AppleSmc73::init_fans(&no_maximum, &io).await;
+            let fixed_mode_fans = AppleSmc73::init_fans(&fixed_mode, &io).await.unwrap();
+            let no_maximum_fans = AppleSmc73::init_fans(&no_maximum, &io).await.unwrap();
 
             cc_fs::remove_dir_all(&fixed_mode).await.unwrap();
             cc_fs::remove_dir_all(&no_maximum).await.unwrap();

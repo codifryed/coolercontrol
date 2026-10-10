@@ -2169,16 +2169,14 @@ impl Repository for HwmonRepo {
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
             let apple_driver = apple::detect(&device_name, &path);
-            let fans = if let Some(apple_driver) = apple_driver {
-                apple_driver.init_fans(&path, &io).await
-            } else {
-                fans::init_fans(&path, &device_name, &io)
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!("Error initializing Hwmon Fans: {err}");
-                        Vec::new()
-                    })
+            let detected_fans = match apple_driver {
+                Some(apple_driver) => apple_driver.init_fans(&path, &io).await,
+                None => fans::init_fans(&path, &device_name, &io).await,
             };
+            let fans = detected_fans.unwrap_or_else(|err| {
+                error!("Error initializing Hwmon Fans: {err}");
+                Vec::new()
+            });
             // Recorded for both branches, so the report's hidden count is not
             // silently zero on Apple hardware the user has disabled fans on.
             for fan in &fans {
@@ -5311,7 +5309,7 @@ mod slow_device_tests {
             }
             let io = DeviceIo::default();
             let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
-            let channels = apple_driver.init_fans(&dir, &io).await;
+            let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
             let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
             let driver = HwmonDriverInfo {
                 name: devices::DEVICE_NAME_MAC_SMC.to_string(),
@@ -6225,7 +6223,7 @@ mod shutdown_tests {
                 .unwrap();
             let io = DeviceIo::default();
             let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
-            let channels = apple_driver.init_fans(&dir, &io).await;
+            let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
             let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
             let driver = HwmonDriverInfo {
                 name: devices::DEVICE_NAME_MAC_SMC.to_string(),
@@ -6690,7 +6688,7 @@ mod init_timeout_tests {
                         .unwrap();
                 }
                 let apple_driver = apple::detect(name, &dir).unwrap();
-                let channels = apple_driver.init_fans(&dir, &io).await;
+                let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
                 let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
                 let driver = HwmonDriverInfo {
                     name: name.to_string(),

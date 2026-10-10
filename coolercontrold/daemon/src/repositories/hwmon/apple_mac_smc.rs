@@ -71,19 +71,6 @@ impl AppleMacSMC {
         }
     }
 
-    /// Returns every detected fan, including ones the user has disabled. The
-    /// caller drops those, so both hwmon branches record the same exclusions.
-    ///
-    /// Says nothing about a fan it cannot control: the hardware report calls this too.
-    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
-        Self::init_apple_fans(base_path, io)
-            .await
-            .unwrap_or_else(|err| {
-                error!("Error initializing Apple Mac SMC Fans: {err}");
-                Vec::new()
-            })
-    }
-
     /// Says why a fan cannot be controlled, or cannot be stopped. Repository init only, so it
     /// is logged once per start and never by a hardware report.
     pub async fn log_fan_limits(base_path: &Path, channels: &[HwmonChannelInfo]) {
@@ -100,7 +87,12 @@ impl AppleMacSMC {
         }
     }
 
-    async fn init_apple_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
+    /// Returns every detected fan, including ones the user has disabled. The
+    /// caller drops those, so both hwmon branches record the same exclusions.
+    ///
+    /// Says nothing about a fan it cannot control, and leaves an error to the caller: the
+    /// hardware report calls this too.
+    pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let dir_entries = cc_fs::read_dir(base_path)?;
         let mut fan_caps = HashMap::new();
         for entry in dir_entries {
@@ -993,7 +985,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::init_apple_fans(test_base_path, &DeviceIo::default()).await;
+            let result = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1032,7 +1024,9 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let channels = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default()).await;
+            let channels = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default())
+                .await
+                .unwrap();
 
             // then:
             teardown(&ctx).await;

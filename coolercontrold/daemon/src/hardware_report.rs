@@ -778,9 +778,11 @@ async fn read_fans(path: &Path, name: &str) -> Vec<HwmonChannelInfo> {
     let io = DeviceIo::default();
     let fans = match apple::detect(name, path) {
         Some(apple_driver) => apple_driver.init_fans(path, &io).await,
-        None => fans::init_fans(path, name, &io).await.unwrap_or_default(),
+        None => fans::init_fans(path, name, &io).await,
     };
-    fans.into_iter()
+    // Quiet on an error: the daemon logged it when it started.
+    fans.unwrap_or_default()
+        .into_iter()
         .filter(|channel| channel.hwmon_type == HwmonChannelType::Fan)
         .collect()
 }
@@ -1423,6 +1425,24 @@ mod tests {
             cc_fs::remove_dir_all(&base).await.unwrap();
             assert_eq!(from_entry.as_deref(), Some("applesmc"));
             assert_eq!(from_device_dir.as_deref(), Some("applesmc"));
+        });
+    }
+
+    /// Goal: a device the report cannot read has no fans to show, and the report says nothing
+    /// more, since the reason was the daemon's to log at start. Method: an Apple device of
+    /// each kind and a plain one, all with their directory gone.
+    #[test]
+    fn an_unreadable_device_has_no_fans() {
+        crate::rt::test_runtime(async {
+            let missing = temp_dir().join("missing");
+
+            let apple_fans = read_fans(&missing, "applesmc").await;
+            let apple_silicon_fans = read_fans(&missing, "macsmc_hwmon").await;
+            let plain_fans = read_fans(&missing, "nct6798").await;
+
+            assert!(apple_fans.is_empty());
+            assert!(apple_silicon_fans.is_empty());
+            assert!(plain_fans.is_empty());
         });
     }
 
