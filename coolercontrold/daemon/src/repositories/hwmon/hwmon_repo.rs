@@ -67,10 +67,10 @@ use crate::hardware_support::{ChannelExclusion, HardwareSupportController, Hwmon
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
-use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+use crate::repositories::hwmon::apple::{self, AppleFans};
 use crate::repositories::hwmon::chip_name::ChipName;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
-use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
     attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
@@ -417,7 +417,8 @@ pub struct HwmonDriverInfo {
     pub channels: Vec<HwmonChannelInfo>,
     #[serde(flatten)]
     pub drivetemp: DrivetempState,
-    pub apple_smc: AppleMacSMC,
+    /// Set when an Apple driver's own fan files stand in for the standard hwmon ones.
+    pub apple_fans: Option<AppleFans>,
     /// Descriptors held open for this device's per-tick attributes. Lives here so it shares the
     /// driver's lifetime: dropping the driver info closes them, and the channel set detected with
     /// it bounds how many there can be.
@@ -1008,7 +1009,7 @@ impl HwmonRepo {
                 return;
             }
             // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
-            if driver.apple_smc.detected {
+            if driver.apple_fans.is_some() {
                 for &channel in &typed_channels {
                     if self.shutdown_token.is_cancelled() {
                         return;
@@ -1647,10 +1648,9 @@ async fn read_one_fan_status_for(
     driver: &Rc<HwmonDriverInfo>,
     channel: &HwmonChannelInfo,
 ) -> Option<ChannelStatus> {
-    if driver.apple_smc.detected {
-        driver.apple_smc.read_one_fan_status(driver, channel).await
-    } else {
-        fans::read_one_fan_status(driver, channel).await
+    match &driver.apple_fans {
+        Some(apple_fans) => apple_fans.read_one_fan_status(driver, channel).await,
+        None => fans::read_one_fan_status(driver, channel).await,
     }
 }
 
@@ -1659,13 +1659,9 @@ async fn read_one_fan_rpm_only_for(
     driver: &Rc<HwmonDriverInfo>,
     channel: &HwmonChannelInfo,
 ) -> Option<Option<u32>> {
-    if driver.apple_smc.detected {
-        driver
-            .apple_smc
-            .read_one_fan_rpm_only(driver, channel)
-            .await
-    } else {
-        fans::read_one_fan_rpm_only(driver, channel).await
+    match &driver.apple_fans {
+        Some(apple_fans) => apple_fans.read_one_fan_rpm_only(driver, channel).await,
+        None => fans::read_one_fan_rpm_only(driver, channel).await,
     }
 }
 
@@ -1996,9 +1992,8 @@ async fn apply_pwm_duty_write(
     };
     if driver.name == devices::DEVICE_NAME_THINK_PAD {
         thinkpad::apply_speed_fixed(config, driver, channel_info, target_duty).await
-    } else if driver.apple_smc.detected {
-        driver
-            .apple_smc
+    } else if let Some(apple_fans) = &driver.apple_fans {
+        apple_fans
             .set_fan_duty(channel_info.number, target_duty, &driver.io)
             .await
     } else {
@@ -2139,8 +2134,9 @@ impl Repository for HwmonRepo {
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
-            let fans = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::init_fans(&path, &io).await
+            let apple_driver = apple::detect(&device_name);
+            let fans = if let Some(apple_driver) = apple_driver {
+                apple_driver.init_fans(&path, &io).await
             } else {
                 fans::init_fans(&path, &device_name, &io)
                     .await
@@ -2217,10 +2213,9 @@ impl Repository for HwmonRepo {
             } else {
                 DrivetempState::default()
             };
-            let apple_smc = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::new(&path, &channels, &device_name).await
-            } else {
-                AppleMacSMC::not_applicable()
+            let apple_fans = match apple_driver {
+                Some(apple_driver) => Some(apple_driver.fans(&path, &channels, &device_name).await),
+                None => None,
             };
             // Detection is done with this device's channel set, so the per-tick pass can stop
             // sending paths and address the worker's table by slot from here on.
@@ -2239,7 +2234,7 @@ impl Repository for HwmonRepo {
                 u_id,
                 channels,
                 drivetemp,
-                apple_smc,
+                apple_fans,
                 io,
             };
             hwmon_drivers.push(hwmon_driver_info);
@@ -2392,9 +2387,8 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        let result = if hwmon_driver.apple_smc.detected {
-            hwmon_driver
-                .apple_smc
+        let result = if let Some(apple_fans) = &hwmon_driver.apple_fans {
+            apple_fans
                 .set_to_auto_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
@@ -2428,9 +2422,8 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        let result = if hwmon_driver.apple_smc.detected {
-            hwmon_driver
-                .apple_smc
+        let result = if let Some(apple_fans) = &hwmon_driver.apple_fans {
+            apple_fans
                 .set_to_manual_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
@@ -2775,7 +2768,7 @@ mod preload_tests {
                 u_id: String::new(),
                 channels,
                 drivetemp: DrivetempState::default(),
-                apple_smc: AppleMacSMC::default(),
+                apple_fans: None,
                 io,
             }
             .with_read_registry()
@@ -3977,7 +3970,6 @@ mod coalescer_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
     use uuid::Uuid;
@@ -4034,7 +4026,7 @@ mod coalescer_tests {
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()
@@ -4806,7 +4798,6 @@ mod slow_device_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
     use uuid::Uuid;
@@ -4873,7 +4864,7 @@ mod slow_device_tests {
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()
@@ -5715,7 +5706,6 @@ mod prepare_for_sleep_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -5762,7 +5752,7 @@ mod prepare_for_sleep_tests {
             channels,
             u_id: format!("test-uid-thinkpad-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         };
         let device = Device::new(
@@ -5904,7 +5894,6 @@ mod shutdown_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -5978,7 +5967,7 @@ mod shutdown_tests {
             channels,
             u_id: format!("test-uid-{driver_name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             io,
             ..Default::default()
         };
@@ -6318,7 +6307,6 @@ mod synthesize_initial_statuses_tests {
 mod init_timeout_tests {
     use super::*;
     use crate::cc_fs;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -6352,7 +6340,7 @@ mod init_timeout_tests {
             path: base.to_path_buf(),
             channels,
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()

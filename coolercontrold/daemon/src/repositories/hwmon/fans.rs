@@ -1802,7 +1802,7 @@ mod tests {
             u_id: String::new(),
             channels,
             drivetemp: drivetemp::DrivetempState::default(),
-            apple_smc: crate::repositories::hwmon::apple_mac_smc::AppleMacSMC::default(),
+            apple_fans: None,
             io: DeviceIo::default(),
         }
         .with_read_registry()

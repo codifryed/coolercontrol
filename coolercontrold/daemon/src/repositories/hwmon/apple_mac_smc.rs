@@ -80,10 +80,6 @@ impl AppleMacSMC {
         }
     }
 
-    pub fn not_applicable() -> Self {
-        Self::default()
-    }
-
     /// Returns every detected fan, including ones the user has disabled. The
     /// caller drops those, so both hwmon branches record the same exclusions.
     pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Vec<HwmonChannelInfo> {
@@ -1350,7 +1346,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
@@ -1446,17 +1442,6 @@ mod tests {
             assert_eq!(fan_info.max_rpm, DEFAULT_MAX_FAN_SPEED);
             assert_eq!(fan_info.default_min_rpm, DEFAULT_MIN_FAN_SPEED);
         });
-    }
-
-    #[test]
-    #[serial]
-    fn test_not_applicable() {
-        // when:
-        let apple_smc = AppleMacSMC::not_applicable();
-
-        // then:
-        assert!(!apple_smc.detected);
-        assert!(apple_smc.fans.is_empty());
     }
 
     #[test]
@@ -1939,7 +1924,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
@@ -1990,7 +1975,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
@@ -2082,7 +2067,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
@@ -2168,7 +2153,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels,
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
@@ -2204,7 +2189,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels: vec![],
                 drivetemp: drivetemp::DrivetempState::default(),
-                apple_smc: AppleMacSMC::not_applicable(),
+                apple_fans: None,
                 io: DeviceIo::default(),
             });
 
