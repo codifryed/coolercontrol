@@ -181,13 +181,14 @@ export class DeviceHealthDTO {
  */
 const DOCS_BASE = 'https://docs.coolercontrol.org/hardware-support.html'
 
+const APPLE_DOCS = 'https://docs.coolercontrol.org/devices/apple.html'
+
 /**
  * Devices with a docs page of their own, by the kernel driver's name and by
  * the hwmon name. Their fans are not driven through a pwm file, so the general
  * anchors do not describe them. A Map, not an object: a name must never match
  * an inherited property.
  */
-const APPLE_DOCS = 'https://docs.coolercontrol.org/devices/apple.html'
 const DEVICE_DOCS: ReadonlyMap<string, string> = new Map([
     ['applesmc', `${APPLE_DOCS}#intel-macs`],
     // The Apple Silicon driver is named with a hyphen, its hwmon device is not.
