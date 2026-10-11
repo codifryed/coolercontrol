@@ -11,9 +11,10 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import UiTable from '@/shell/ui/UiTable.vue'
 import UiTag from '@/shell/ui/UiTag.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { usePluginActions } from '@/composables/usePluginActions.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { getPluginStatusDisplayName, PluginStatus } from '@/models/Plugins.ts'
 
 const STATUS_POLL_INTERVAL_MS = 30_000
@@ -21,14 +22,14 @@ const STATUS_POLL_INTERVAL_MS = 30_000
 const deviceStore = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
+const { statuses, refreshStatuses } = usePluginActions()
 
-const pluginStatuses = ref<Map<string, PluginStatus>>(new Map())
 let statusPollTimer: ReturnType<typeof setInterval> | undefined
 
 const pluginsList = computed(() => {
     return deviceStore.plugins.map((plugin) => ({
         ...plugin,
-        status: pluginStatuses.value.get(plugin.id) ?? PluginStatus.Unmanaged,
+        status: statuses.value.get(plugin.id)?.status ?? PluginStatus.Unmanaged,
     }))
 })
 
@@ -52,24 +53,14 @@ const statusDisplayName = (status: PluginStatus, disabled: boolean): string => {
     return getPluginStatusDisplayName(status)
 }
 
-const loadStatuses = async (): Promise<void> => {
-    const statuses = new Map<string, PluginStatus>()
-    for (const plugin of deviceStore.plugins) {
-        if (plugin.disabled) continue
-        const statusDto = await deviceStore.daemonClient.getPluginStatus(plugin.id)
-        statuses.set(plugin.id, statusDto.status as PluginStatus)
-    }
-    pluginStatuses.value = statuses
-}
-
 const onRowSelect = (plugin: { id: string }) => {
     router.push({ name: 'plugin-page', params: { pluginId: plugin.id } })
 }
 
 onMounted(async () => {
     await deviceStore.loadAllPlugins()
-    await loadStatuses()
-    statusPollTimer = setInterval(loadStatuses, STATUS_POLL_INTERVAL_MS)
+    await refreshStatuses()
+    statusPollTimer = setInterval(refreshStatuses, STATUS_POLL_INTERVAL_MS)
 })
 
 onUnmounted(() => {

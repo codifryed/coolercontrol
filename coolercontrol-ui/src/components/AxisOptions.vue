@@ -28,7 +28,8 @@ const { t } = useI18n()
 const precision = settingsStore.frequencyPrecision
 const freqIsMhz = precision === 1
 const freqStepSize = 100.0 / precision
-const freqMaxLimit = 100_000 / precision
+// A fan input can carry another unit: the Leakshield's pressure reaches 6 553 500.
+const freqMaxLimit = 10_000_000 / precision
 const freqScaledMin: Ref<number> = ref(props.dashboard.frequencyMin / precision)
 const freqScaledMax: Ref<number> = ref(props.dashboard.frequencyMax / precision)
 

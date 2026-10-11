@@ -6,7 +6,7 @@
 //! each change. Wire format is `Vec<CalibrationEntry>` since JSON
 //! object keys can't be tuples.
 
-use super::curve::Calibration;
+use super::curve::{Calibration, DispatchPlan};
 use super::ChannelKey;
 use crate::cc_fs;
 use crate::device::{ChannelName, DeviceUID, Duty, Temp, RPM};
@@ -115,6 +115,16 @@ impl CalibrationStore {
             out.push((k.clone(), v.clone()));
         }
         out
+    }
+
+    /// What one duty write needs from this channel's calibration. `None`
+    /// for uncalibrated or stepped channels, so the caller writes the duty
+    /// unchanged. This runs on every duty write, so it reads in place:
+    /// `get` would clone the calibration with both of its curves.
+    pub fn dispatch_plan(&self, key: &ChannelKey, true_duty: Duty) -> Option<DispatchPlan> {
+        let map = self.calibrations.borrow();
+        let calibration = map.get(key)?;
+        calibration.dispatch_plan(true_duty)
     }
 
     /// `None` for uncalibrated, stepped, or non-mappable channels.
@@ -532,6 +542,48 @@ mod tests {
         stepped.curve_kind = CurveKind::Stepped;
         store.insert_unsaved(key.clone(), stepped);
         assert!(store.map_curve_points(&key, &points).is_none());
+    }
+
+    #[test]
+    fn dispatch_plan_carries_the_map_and_the_resolved_kick_settings() {
+        // Goal: the dispatcher reads everything for one write from this
+        // single call, so it must agree with the calibration's own forward
+        // map and honour the user's kick overrides. Checked against the
+        // same fixture, first without overrides and then with both set.
+        let store = CalibrationStore::empty();
+        let key: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        let calibration = sample_calibration();
+        store.insert_unsaved(key.clone(), calibration.clone());
+
+        let plan = store.dispatch_plan(&key, 50).expect("smooth maps");
+
+        assert_eq!(Some(plan.mapped), calibration.true_to_device(50));
+        assert_eq!(plan.kick_duration_ms, 750);
+        assert!(plan.walk_after_kick);
+
+        let mut overridden = sample_calibration();
+        overridden.kick_duration_override_ms = Some(1200);
+        overridden.walk_after_kick_override = Some(false);
+        store.insert_unsaved(key.clone(), overridden);
+
+        let plan = store.dispatch_plan(&key, 50).expect("smooth maps");
+
+        assert_eq!(plan.kick_duration_ms, 1200);
+        assert!(plan.walk_after_kick.not());
+    }
+
+    #[test]
+    fn dispatch_plan_none_for_uncalibrated_and_stepped() {
+        // Goal: both cases must return None so the dispatcher passes the
+        // duty through unchanged. Stepped channels have no forward map.
+        let store = CalibrationStore::empty();
+        let key: ChannelKey = ("dev-a".to_string(), "fan1".to_string());
+        assert!(store.dispatch_plan(&key, 50).is_none());
+
+        let mut stepped = sample_calibration();
+        stepped.curve_kind = CurveKind::Stepped;
+        store.insert_unsaved(key.clone(), stepped);
+        assert!(store.dispatch_plan(&key, 50).is_none());
     }
 
     #[test]

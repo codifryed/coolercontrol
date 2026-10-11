@@ -79,7 +79,7 @@ function sensorTreeNode(deviceUID: string, channelName: string, ctx: FlowContext
             to: { name: 'device-custom-sensor', params: { customSensorID: channelName } },
             // Custom sensors combine several sources; one level is expanded.
             children: custom.sources.map((source) =>
-                plainSensorNode(source.temp_source.device_uid, source.temp_source.temp_name, ctx),
+                plainSensorNode(source.deviceUID, source.name, ctx),
             ),
         }
     }

@@ -70,6 +70,7 @@ const rebuild = (): void => {
         channelLabel: (uid: UID, channelName: string) =>
             settingsStore.allUIDeviceSettings.get(uid)?.sensorsAndChannels.get(channelName)?.name ??
             channelName,
+        channelUnit: settingsStore.channelUnit,
         profiles: settingsStore.profiles,
         functions: settingsStore.functions,
         modes: settingsStore.modes,

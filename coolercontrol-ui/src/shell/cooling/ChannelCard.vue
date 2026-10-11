@@ -6,10 +6,11 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiAlert, mdiAutoFix, mdiFanAlert } from '@mdi/js'
+import { mdiAutoFix, mdiFanAlert } from '@mdi/js'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 import { useFailAlert } from '@/composables/useFailAlert.ts'
 import UiTooltip from '@/shell/ui/UiTooltip.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -21,6 +22,7 @@ import ChannelMiniGraph from '@/shell/cooling/ChannelMiniGraph.vue'
 import ChannelSetupMenu from '@/shell/cooling/ChannelSetupMenu.vue'
 import { HealthEntityType } from '@/models/DeviceHealth.ts'
 import type { CoolingChannel } from '@/shell/cooling/channels.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 
 const props = defineProps<{ channel: CoolingChannel }>()
 
@@ -72,12 +74,9 @@ const assignedSummary = computed<string>(() => {
     return t('common.unmanaged')
 })
 
-const failsafeRef = computed(() =>
-    settingsStore.healthFailsafe.find(
-        (entry) =>
-            entry.device_uid === props.channel.deviceUID &&
-            entry.name === props.channel.channelName,
-    ),
+const health = useDeviceHealth()
+const channelUnhealthy = computed(() =>
+    health.isUnhealthy(props.channel.deviceUID, props.channel.channelName),
 )
 
 // A fan running a profile whose temp source is missing or stale is degraded
@@ -107,14 +106,13 @@ const profileStaleSource = computed(
 )
 
 const isUnhealthy = computed(
-    () => failsafeRef.value != null || profileMissingSource.value || profileStaleSource.value,
+    () => channelUnhealthy.value || profileMissingSource.value || profileStaleSource.value,
 )
 
-const failsafeTooltip = computed((): string => {
+const healthTooltip = computed((): string => {
     const lines: Array<string> = []
-    if (failsafeRef.value != null) {
-        const base = t('views.appInfo.failsafeActive')
-        lines.push(failsafeRef.value.reason ? `${base}: ${failsafeRef.value.reason}` : base)
+    if (channelUnhealthy.value) {
+        lines.push(health.healthTooltip(props.channel.deviceUID, props.channel.channelName))
     }
     if (profileMissingSource.value) lines.push(t('views.appInfo.missingTempSource'))
     if (profileStaleSource.value) lines.push(t('views.appInfo.staleTempSource'))
@@ -135,10 +133,10 @@ const failsafeTooltip = computed((): string => {
             <div class="min-w-0">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate font-medium text-text-color">{{ channelLabel }}</span>
-                    <UiTooltip v-if="isUnhealthy" :text="failsafeTooltip">
+                    <UiTooltip v-if="isUnhealthy" :text="healthTooltip">
                         <svg-icon
                             type="mdi"
-                            :path="mdiAlert"
+                            :path="health.healthIcon(channel.deviceUID)"
                             :size="14"
                             class="shrink-0 text-error"
                         />
@@ -200,7 +198,8 @@ const failsafeTooltip = computed((): string => {
                     v-if="liveRpm != null"
                     class="ml-2 text-sm font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ liveRpm }} rpm
+                    {{ groupDigits(liveRpm) }}
+                    {{ settingsStore.rpmUnit(channel.deviceUID, channel.channelName) }}
                 </span>
             </div>
         </div>

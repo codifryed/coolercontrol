@@ -346,6 +346,13 @@ pub async fn grant_admin_session(session: &Session) {
         .unwrap();
 }
 
+/// Builds a Basic `Authorization` header value. Tests encode at runtime so that the source
+/// holds no encoded credentials for secret scanners to flag.
+#[cfg(test)]
+pub fn encode_basic(username: &str, password: &str) -> String {
+    format!("Basic {}", BASE64.encode(format!("{username}:{password}")))
+}
+
 pub async fn login(
     NoApi(auth_header): NoApi<BasicAuth>,
     NoApi(session): NoApi<Session>,
@@ -732,10 +739,6 @@ mod tests {
             promotes(&app, request("/admin")).await,
             (StatusCode::OK, true)
         );
-    }
-
-    fn encode_basic(username: &str, password: &str) -> String {
-        format!("Basic {}", BASE64.encode(format!("{username}:{password}")))
     }
 
     #[test]

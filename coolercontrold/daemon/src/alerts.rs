@@ -702,6 +702,23 @@ impl AlertController {
         (alerts, logs)
     }
 
+    /// Names of the alerts watching the channel, in list order, disabled ones included.
+    /// The metric is not compared: the caller asks on behalf of a channel that is going away.
+    pub fn alerts_watching(&self, device_uid: &str, channel_name: &str) -> Vec<AlertName> {
+        debug_assert!(device_uid.is_empty().not());
+        debug_assert!(channel_name.is_empty().not());
+        self.alerts
+            .borrow()
+            .values()
+            .filter(|alert| {
+                alert.channel_sources.iter().any(|source| {
+                    source.device_uid == device_uid && source.channel_name == channel_name
+                })
+            })
+            .map(|alert| alert.name.clone())
+            .collect()
+    }
+
     /// Creates a new Alert
     pub async fn create(&self, mut alert: Alert) -> Result<()> {
         alert.normalize_sources();
@@ -3241,6 +3258,27 @@ mod tests {
         }
     }
 
+    /// For tests of other modules, which cannot reach the fields.
+    impl AlertController {
+        /// A controller whose one alert, named `Alert-watching`, watches the channel.
+        pub fn for_test_watching(device_uid: &str, channel_name: &str) -> Self {
+            let registry = Rc::new(DiagnosisRegistry::new());
+            let controller = make_test_controller(make_test_device(&[], 30.0), &registry);
+            let mut alert = make_alert("watching", 0.0, 100.0, AlertState::Inactive);
+            alert.channel_sources = vec![ChannelSource {
+                device_uid: device_uid.to_string(),
+                channel_name: channel_name.to_string(),
+                channel_metric: ChannelMetric::Temp,
+            }];
+            alert.normalize_sources();
+            controller
+                .alerts
+                .borrow_mut()
+                .insert(alert.uid.clone(), alert);
+            controller
+        }
+    }
+
     /// An RPM alert over the given fan channels with warmup 0 (two-tick fire).
     fn rpm_alert(device_uid: &str, channels: &[&str], min: f64, max: f64) -> Alert {
         let mut alert = make_alert("rpm-alert", min, max, AlertState::Inactive);
@@ -3254,6 +3292,54 @@ mod tests {
             .collect();
         alert.normalize_sources();
         alert
+    }
+
+    #[test]
+    fn alerts_watching_names_every_alert_on_the_channel() {
+        // Goal: the Custom Sensor delete guard asks which alerts still watch a channel. A
+        // disabled alert and one watching it as a second source both count; a same-named
+        // channel of another device and another channel of the same device do not.
+        // Method: five alerts in the list, then ask for one device's channel.
+        let registry = Rc::new(DiagnosisRegistry::new());
+        let controller = make_test_controller(make_test_device(&[], 30.0), &registry);
+        let source = |device_uid: &str, channel_name: &str| ChannelSource {
+            device_uid: device_uid.to_string(),
+            channel_name: channel_name.to_string(),
+            channel_metric: ChannelMetric::RPM,
+        };
+        let alert_on = |uid: &str, sources: Vec<ChannelSource>| {
+            let mut alert = make_alert(uid, 0.0, 100.0, AlertState::Inactive);
+            alert.channel_sources = sources;
+            alert.normalize_sources();
+            alert
+        };
+        let mut disabled = alert_on("disabled", vec![source("cs", "sensor1")]);
+        disabled.enabled = false;
+        let alerts = [
+            alert_on("first", vec![source("cs", "sensor1")]),
+            alert_on("other-device", vec![source("dev1", "sensor1")]),
+            disabled,
+            alert_on("other-channel", vec![source("cs", "sensor2")]),
+            alert_on(
+                "second-source",
+                vec![source("dev1", "fan1"), source("cs", "sensor1")],
+            ),
+        ];
+        for alert in alerts {
+            controller
+                .alerts
+                .borrow_mut()
+                .insert(alert.uid.clone(), alert);
+        }
+
+        let watching = controller.alerts_watching("cs", "sensor1");
+        let unwatched = controller.alerts_watching("cs", "sensor9");
+
+        assert_eq!(
+            watching,
+            vec!["Alert-first", "Alert-disabled", "Alert-second-source"]
+        );
+        assert!(unwatched.is_empty());
     }
 
     #[test]

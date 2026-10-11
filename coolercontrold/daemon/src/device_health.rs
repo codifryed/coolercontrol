@@ -13,15 +13,15 @@
 //! - `failsafe`: a present channel/temp currently serving failsafe values.
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
-use crate::device::{DeviceType, DeviceUID, TempName, UID};
+use crate::device::{DeviceType, DeviceUID, Status, UID};
 use crate::hardware_support::{ChannelVerdictRef, SystemFinding};
 use crate::overrides::OverridesController;
-use crate::setting::{CustomSensor, Profile, SettingKind, TempSource};
+use crate::setting::{CustomSensor, CustomSensorMetric, Profile, SettingKind, TempSource};
 use crate::{AllDevices, Repos};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::Not;
 use std::rc::Rc;
 
@@ -163,6 +163,14 @@ struct LcdRef {
     source: TempSource,
 }
 
+/// A config reference to watch, with the metric that says where its source lives: among the
+/// device's temps, or as that value of a channel. A non-temperature Custom Sensor's
+/// `source.temp_name` holds the channel name.
+struct Candidate {
+    reference: SourceRef,
+    metric: CustomSensorMetric,
+}
+
 /// Tracks which device references and channels are currently unhealthy, diffs
 /// the set each tick, and broadcasts transitions. Runtime-derived state only,
 /// never persisted.
@@ -177,9 +185,9 @@ pub struct DeviceHealthController {
     failsafe: RefCell<Vec<FailsafeRef>>,
     unreachable: RefCell<Vec<UnreachableRef>>,
     hardware_support: Option<Rc<crate::hardware_support::HardwareSupportController>>,
-    /// Temp-source references extracted from config. Re-extracted only when the
+    /// Source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
-    candidates: RefCell<Vec<SourceRef>>,
+    candidates: RefCell<Vec<Candidate>>,
     config_generation_seen: Cell<Option<u64>>,
 }
 
@@ -269,7 +277,8 @@ impl DeviceHealthController {
         self.collect_profile_candidates(&mut candidates).await;
         self.collect_lcd_candidates(&mut candidates);
         for candidate in &mut candidates {
-            candidate.source_device_name = self.source_device_name(&candidate.source.device_uid);
+            let reference = &mut candidate.reference;
+            reference.source_device_name = self.source_device_name(&reference.source.device_uid);
         }
         self.candidates.replace(candidates);
         self.config_generation_seen.set(Some(generation));
@@ -309,8 +318,12 @@ impl DeviceHealthController {
     }
 
     fn scan_missing(&self) -> Vec<SourceRef> {
-        let present = self.build_present_temps();
-        Self::filter_missing(&present, &self.candidates.borrow())
+        self.candidates
+            .borrow()
+            .iter()
+            .filter(|candidate| self.is_missing(candidate))
+            .map(|candidate| candidate.reference.clone())
+            .collect()
     }
 
     /// References whose target temp is currently failsafed. Disjoint from
@@ -320,24 +333,29 @@ impl DeviceHealthController {
         Self::filter_stale_sources(failsafe, &self.candidates.borrow())
     }
 
-    /// A device with no current status contributes nothing, so its references
-    /// read as missing.
-    fn build_present_temps(&self) -> HashMap<DeviceUID, HashSet<TempName>> {
-        let mut present = HashMap::with_capacity(self.all_devices.len());
-        for (device_uid, device_lock) in self.all_devices.iter() {
-            let Some(status) = device_lock.borrow().status_current() else {
-                continue;
-            };
-            let mut temps = HashSet::with_capacity(status.temps.len());
-            for temp in &status.temps {
-                temps.insert(temp.name.clone());
-            }
-            present.insert(device_uid.clone(), temps);
-        }
-        present
+    /// A reference is missing when its device is gone or the device's newest status lacks
+    /// the source.
+    fn is_missing(&self, candidate: &Candidate) -> bool {
+        let source = &candidate.reference.source;
+        let Some(device_lock) = self.all_devices.get(&source.device_uid) else {
+            return true;
+        };
+        let device = device_lock.borrow();
+        Self::is_absent(
+            device.status_history.back(),
+            candidate.metric,
+            &source.temp_name,
+        )
     }
 
-    fn collect_custom_sensor_candidates(&self, candidates: &mut Vec<SourceRef>) {
+    /// Whether `status` lacks the source. Read with the reference's own metric, as the
+    /// Custom Sensors repository reads it, so the two cannot disagree. A device with no
+    /// status yet has nothing, so its references read as missing.
+    fn is_absent(status: Option<&Status>, metric: CustomSensorMetric, name: &str) -> bool {
+        status.is_none_or(|status| metric.read(status, name).is_none())
+    }
+
+    fn collect_custom_sensor_candidates(&self, candidates: &mut Vec<Candidate>) {
         let Ok(sensors) = self.config.get_custom_sensors() else {
             return;
         };
@@ -349,23 +367,24 @@ impl DeviceHealthController {
             return;
         };
         for candidate in &mut candidates[first_new..] {
+            let reference = &mut candidate.reference;
             if let Some(label) = self
                 .overrides
-                .channel_label_override(&cs_device_uid, &candidate.entity_uid)
+                .channel_label_override(&cs_device_uid, &reference.entity_uid)
             {
-                candidate.entity_name = label;
+                reference.entity_name = label;
             }
         }
     }
 
-    async fn collect_profile_candidates(&self, candidates: &mut Vec<SourceRef>) {
+    async fn collect_profile_candidates(&self, candidates: &mut Vec<Candidate>) {
         let Ok(profiles) = self.config.get_profiles().await else {
             return;
         };
         Self::profile_candidates(&profiles, candidates);
     }
 
-    fn collect_lcd_candidates(&self, candidates: &mut Vec<SourceRef>) {
+    fn collect_lcd_candidates(&self, candidates: &mut Vec<Candidate>) {
         let refs = self.lcd_refs();
         Self::lcd_candidates(&refs, candidates);
     }
@@ -398,85 +417,89 @@ impl DeviceHealthController {
         refs
     }
 
-    fn custom_sensor_candidates(sensors: &[CustomSensor], candidates: &mut Vec<SourceRef>) {
+    fn custom_sensor_candidates(sensors: &[CustomSensor], candidates: &mut Vec<Candidate>) {
         for sensor in sensors {
             for source_data in sensor.sources() {
-                candidates.push(SourceRef {
+                let reference = SourceRef {
                     entity_type: HealthEntityType::CustomSensor,
                     entity_uid: sensor.id.clone(),
                     entity_name: sensor.id.clone(),
                     channel_name: None,
-                    source: source_data.temp_source.clone(),
+                    source: source_data.temp_source(),
                     source_device_name: None,
+                };
+                candidates.push(Candidate {
+                    reference,
+                    metric: sensor.metric,
                 });
             }
         }
     }
 
-    fn profile_candidates(profiles: &[Profile], candidates: &mut Vec<SourceRef>) {
+    fn profile_candidates(profiles: &[Profile], candidates: &mut Vec<Candidate>) {
         for profile in profiles {
             let Some(source) = profile.temp_source() else {
                 continue;
             };
-            candidates.push(SourceRef {
+            let reference = SourceRef {
                 entity_type: HealthEntityType::Profile,
                 entity_uid: profile.uid.clone(),
                 entity_name: profile.name.clone(),
                 channel_name: None,
                 source: source.clone(),
                 source_device_name: None,
+            };
+            candidates.push(Candidate {
+                reference,
+                metric: CustomSensorMetric::Temp,
             });
         }
     }
 
-    fn lcd_candidates(refs: &[LcdRef], candidates: &mut Vec<SourceRef>) {
+    fn lcd_candidates(refs: &[LcdRef], candidates: &mut Vec<Candidate>) {
         for lcd in refs {
-            candidates.push(SourceRef {
+            let reference = SourceRef {
                 entity_type: HealthEntityType::Lcd,
                 entity_uid: lcd.device_uid.clone(),
                 entity_name: lcd.device_name.clone(),
                 channel_name: Some(lcd.channel_name.clone()),
                 source: lcd.source.clone(),
                 source_device_name: None,
+            };
+            candidates.push(Candidate {
+                reference,
+                metric: CustomSensorMetric::Temp,
             });
         }
     }
 
-    fn filter_missing(
-        present: &HashMap<DeviceUID, HashSet<TempName>>,
-        candidates: &[SourceRef],
-    ) -> Vec<SourceRef> {
-        candidates
-            .iter()
-            .filter(|candidate| Self::is_missing(present, &candidate.source))
-            .cloned()
-            .collect()
-    }
-
-    fn is_missing(present: &HashMap<DeviceUID, HashSet<TempName>>, source: &TempSource) -> bool {
-        present
-            .get(&source.device_uid)
-            .is_none_or(|temps| temps.contains(&source.temp_name).not())
-    }
-
-    fn filter_stale_sources(failsafe: &[FailsafeRef], candidates: &[SourceRef]) -> Vec<SourceRef> {
+    /// References whose source is serving failsafe values. Matched by kind as well as name:
+    /// a temp and a channel of one device may share a name.
+    fn filter_stale_sources(failsafe: &[FailsafeRef], candidates: &[Candidate]) -> Vec<SourceRef> {
         if failsafe.is_empty() {
             return Vec::new();
         }
-        let failsafed_temps: HashSet<(&str, &str)> = failsafe
+        let failsafed: HashSet<(bool, &str, &str)> = failsafe
             .iter()
-            .filter(|reference| reference.kind == FailsafeKind::Temp)
-            .map(|reference| (reference.device_uid.as_str(), reference.name.as_str()))
+            .map(|reference| {
+                (
+                    reference.kind == FailsafeKind::Temp,
+                    reference.device_uid.as_str(),
+                    reference.name.as_str(),
+                )
+            })
             .collect();
         candidates
             .iter()
             .filter(|candidate| {
-                failsafed_temps.contains(&(
-                    candidate.source.device_uid.as_str(),
-                    candidate.source.temp_name.as_str(),
+                let source = &candidate.reference.source;
+                failsafed.contains(&(
+                    candidate.metric.is_temp(),
+                    source.device_uid.as_str(),
+                    source.temp_name.as_str(),
                 ))
             })
-            .cloned()
+            .map(|candidate| candidate.reference.clone())
             .collect()
     }
 
@@ -581,10 +604,11 @@ impl DeviceHealthController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::{ChannelStatus, TempStatus};
     use crate::setting::{
-        CustomSensorKind, CustomSensorMixFunctionType, CustomTempSourceData, FunctionUID,
-        ProfileKind,
+        CustomSensorKind, CustomSensorMixFunctionType, FunctionUID, ProfileKind, SensorSource,
     };
+    use std::collections::HashMap;
 
     #[test]
     fn source_device_name_prefers_override_then_live() {
@@ -644,9 +668,36 @@ mod tests {
         });
     }
 
-    fn present_with(device_uid: &str, temps: &[&str]) -> HashMap<DeviceUID, HashSet<TempName>> {
-        let set = temps.iter().map(|t| (*t).to_string()).collect();
-        HashMap::from([(device_uid.to_string(), set)])
+    fn status_with(temps: &[&str]) -> Status {
+        Status {
+            temps: temps
+                .iter()
+                .map(|name| TempStatus {
+                    name: (*name).to_string(),
+                    temp: 40.,
+                })
+                .collect(),
+            channels: vec![ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn candidate(device_uid: &str, temp_name: &str) -> Candidate {
+        Candidate {
+            reference: source_ref(device_uid, temp_name),
+            metric: CustomSensorMetric::Temp,
+        }
+    }
+
+    fn channel_candidate(device_uid: &str, channel_name: &str) -> Candidate {
+        Candidate {
+            reference: source_ref(device_uid, channel_name),
+            metric: CustomSensorMetric::RPM,
+        }
     }
 
     fn source(device_uid: &str, temp_name: &str) -> TempSource {
@@ -681,10 +732,26 @@ mod tests {
         // Goal: a reference whose source temp is in the failsafe set is stale;
         // references to healthy temps are not.
         let failsafe = vec![failsafe_ref("dev1", "temp1", FailsafeKind::Temp)];
-        let candidates = vec![source_ref("dev1", "temp1"), source_ref("dev1", "temp2")];
+        let candidates = vec![candidate("dev1", "temp1"), candidate("dev1", "temp2")];
         let stale = DeviceHealthController::filter_stale_sources(&failsafe, &candidates);
         assert_eq!(stale.len(), 1);
         assert_eq!(stale[0].source, source("dev1", "temp1"));
+    }
+
+    #[test]
+    fn filter_stale_sources_matches_channel_sources_to_failsafed_channels() {
+        // Goal: a channel-metric reference is stale when its channel is failsafed, and
+        // not when a temp of the same name is.
+        let candidates = vec![channel_candidate("dev1", "fan1")];
+        let channel_failsafe = vec![failsafe_ref("dev1", "fan1", FailsafeKind::Channel)];
+        let stale = DeviceHealthController::filter_stale_sources(&channel_failsafe, &candidates);
+        assert_eq!(stale.len(), 1);
+        assert_eq!(stale[0].source, source("dev1", "fan1"));
+
+        let temp_failsafe = vec![failsafe_ref("dev1", "fan1", FailsafeKind::Temp)];
+        assert!(
+            DeviceHealthController::filter_stale_sources(&temp_failsafe, &candidates).is_empty()
+        );
     }
 
     #[test]
@@ -692,76 +759,111 @@ mod tests {
         // Goal: only temp-kind failsafe entries make a source stale; a control
         // channel sharing the temp's name must not match.
         let failsafe = vec![failsafe_ref("dev1", "temp1", FailsafeKind::Channel)];
-        let candidates = vec![source_ref("dev1", "temp1")];
+        let candidates = vec![candidate("dev1", "temp1")];
         assert!(DeviceHealthController::filter_stale_sources(&failsafe, &candidates).is_empty());
     }
 
     #[test]
     fn filter_stale_sources_empty_when_no_failsafe() {
         // Goal: the common healthy tick short-circuits to an empty set.
-        let candidates = vec![source_ref("dev1", "temp1")];
+        let candidates = vec![candidate("dev1", "temp1")];
         assert!(DeviceHealthController::filter_stale_sources(&[], &candidates).is_empty());
     }
 
     #[test]
-    fn is_missing_false_when_device_and_temp_present() {
+    fn is_absent_false_when_the_status_reports_the_temp() {
         // Goal: a reference whose device reports the named temp is not missing.
-        let present = present_with("dev1", &["temp1", "temp2"]);
-        assert!(DeviceHealthController::is_missing(&present, &source("dev1", "temp1")).not());
+        let status = status_with(&["temp1", "temp2"]);
+        let metric = CustomSensorMetric::Temp;
+        assert!(DeviceHealthController::is_absent(Some(&status), metric, "temp1").not());
     }
 
     #[test]
-    fn is_missing_true_when_device_absent() {
-        // Goal: a reference to a device not in the present set is missing.
-        let present = present_with("dev1", &["temp1"]);
-        assert!(DeviceHealthController::is_missing(
-            &present,
-            &source("devX", "temp1")
+    fn is_absent_true_without_a_status() {
+        // Goal: a device with no status yet has nothing, so its references are missing.
+        assert!(DeviceHealthController::is_absent(
+            None,
+            CustomSensorMetric::Temp,
+            "temp1"
         ));
     }
 
     #[test]
-    fn is_missing_true_when_temp_absent_on_present_device() {
-        // Goal: a present device that no longer reports the named temp is missing.
-        let present = present_with("dev1", &["temp1"]);
-        assert!(DeviceHealthController::is_missing(
-            &present,
-            &source("dev1", "tempGone")
+    fn is_absent_true_when_the_status_lacks_the_temp() {
+        // Goal: a present device that no longer reports the named temp is missing,
+        // as is one reporting no temps at all.
+        let metric = CustomSensorMetric::Temp;
+        let status = status_with(&["temp1"]);
+        assert!(DeviceHealthController::is_absent(
+            Some(&status),
+            metric,
+            "tempGone"
+        ));
+        let no_temps = status_with(&[]);
+        assert!(DeviceHealthController::is_absent(
+            Some(&no_temps),
+            metric,
+            "temp1"
         ));
     }
 
     #[test]
-    fn is_missing_true_when_device_reports_no_temps() {
-        // Goal: a device present but reporting an empty temp set is missing.
-        let present = present_with("dev1", &[]);
-        assert!(DeviceHealthController::is_missing(
-            &present,
-            &source("dev1", "temp1")
-        ));
+    fn is_absent_reads_a_channel_source_by_its_metric() {
+        // Goal: a channel source is present only when the channel carries the metric's
+        // value: the fan reports rpm, but no power, and it is no temp.
+        let status = status_with(&["temp1"]);
+        let is_absent =
+            |metric, name| DeviceHealthController::is_absent(Some(&status), metric, name);
+        assert!(is_absent(CustomSensorMetric::RPM, "fan1").not());
+        assert!(is_absent(CustomSensorMetric::Watts, "fan1"));
+        assert!(is_absent(CustomSensorMetric::Temp, "fan1"));
+        assert!(is_absent(CustomSensorMetric::RPM, "temp1"));
     }
 
     #[test]
-    fn filter_missing_keeps_only_unresolved() {
-        // Goal: filtering returns exactly the candidates whose source is absent,
-        // preserving the others' identity.
-        let present = present_with("dev1", &["temp1"]);
-        let candidates = vec![
-            source_ref("dev1", "temp1"),    // present -> dropped
-            source_ref("dev1", "tempGone"), // missing -> kept
-            source_ref("devX", "temp1"),    // device gone -> kept
-        ];
-        let result = DeviceHealthController::filter_missing(&present, &candidates);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].source, source("dev1", "tempGone"));
+    fn scan_missing_keeps_only_unresolved() {
+        // Goal: scanning returns exactly the candidates whose source is absent from the
+        // live devices, temps and channels alike, preserving the others' identity.
+        use crate::device::{Device, DeviceInfo};
+        use crate::repositories::repository::Repositories;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut device = Device::new(
+            "nct6798".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(status_with(&["temp1"]), 1.0);
+        let dev1 = device.uid.clone();
+        let all_devices = Rc::new(HashMap::from([(
+            dev1.clone(),
+            Rc::new(RefCell::new(device)),
+        )]));
+        let controller = DeviceHealthController::new(
+            all_devices,
+            Rc::new(crate::config::Config::init_default_config().unwrap()),
+            Rc::new(Repositories::default()),
+            Rc::new(crate::overrides::OverridesController::empty()),
+        );
+        controller.candidates.replace(vec![
+            candidate(&dev1, "temp1"),        // present -> dropped
+            candidate(&dev1, "tempGone"),     // missing -> kept
+            candidate("devX", "temp1"),       // device gone -> kept
+            channel_candidate(&dev1, "fan1"), // present -> dropped
+            channel_candidate(&dev1, "fan9"), // missing -> kept
+        ]);
+
+        let result = controller.scan_missing();
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].source, source(&dev1, "tempGone"));
         assert_eq!(result[1].source, source("devX", "temp1"));
-    }
-
-    #[test]
-    fn filter_missing_empty_when_all_present() {
-        // Goal: when every candidate resolves, the result is empty.
-        let present = present_with("dev1", &["temp1", "temp2"]);
-        let candidates = vec![source_ref("dev1", "temp1"), source_ref("dev1", "temp2")];
-        assert!(DeviceHealthController::filter_missing(&present, &candidates).is_empty());
+        assert_eq!(result[2].source, source(&dev1, "fan9"));
     }
 
     fn graph_profile(uid: &str, name: &str, temp_source: Option<TempSource>) -> Profile {
@@ -790,10 +892,12 @@ mod tests {
         let mut candidates = Vec::new();
         DeviceHealthController::profile_candidates(&profiles, &mut candidates);
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].entity_type, HealthEntityType::Profile);
-        assert_eq!(candidates[0].entity_uid, "p1");
-        assert_eq!(candidates[0].entity_name, "CPU Fan");
-        assert_eq!(candidates[0].source, source("dev1", "temp1"));
+        assert_eq!(candidates[0].metric, CustomSensorMetric::Temp);
+        let reference = &candidates[0].reference;
+        assert_eq!(reference.entity_type, HealthEntityType::Profile);
+        assert_eq!(reference.entity_uid, "p1");
+        assert_eq!(reference.entity_name, "CPU Fan");
+        assert_eq!(reference.source, source("dev1", "temp1"));
     }
 
     #[test]
@@ -837,17 +941,12 @@ mod tests {
         let sensors = vec![
             CustomSensor {
                 id: "sensor1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::Mix {
                     mix_function: CustomSensorMixFunctionType::Avg,
                     sources: vec![
-                        CustomTempSourceData {
-                            temp_source: source("dev1", "temp1"),
-                            weight: 1,
-                        },
-                        CustomTempSourceData {
-                            temp_source: source("dev2", "temp2"),
-                            weight: 1,
-                        },
+                        SensorSource::from_temp(source("dev1", "temp1"), 1),
+                        SensorSource::from_temp(source("dev2", "temp2"), 1),
                     ],
                 },
                 children: Vec::new(),
@@ -855,6 +954,7 @@ mod tests {
             },
             CustomSensor {
                 id: "file1".to_string(),
+                metric: CustomSensorMetric::Temp,
                 kind: CustomSensorKind::File {
                     file_path: "/tmp/x".into(),
                 },
@@ -865,12 +965,39 @@ mod tests {
         let mut candidates = Vec::new();
         DeviceHealthController::custom_sensor_candidates(&sensors, &mut candidates);
         assert_eq!(candidates.len(), 2);
-        assert_eq!(candidates[0].entity_type, HealthEntityType::CustomSensor);
-        assert_eq!(candidates[0].entity_uid, "sensor1");
-        assert_eq!(candidates[0].entity_name, "sensor1");
-        assert_eq!(candidates[0].channel_name, None);
-        assert_eq!(candidates[0].source, source("dev1", "temp1"));
-        assert_eq!(candidates[1].source, source("dev2", "temp2"));
+        assert_eq!(candidates[0].metric, CustomSensorMetric::Temp);
+        let reference = &candidates[0].reference;
+        assert_eq!(reference.entity_type, HealthEntityType::CustomSensor);
+        assert_eq!(reference.entity_uid, "sensor1");
+        assert_eq!(reference.entity_name, "sensor1");
+        assert_eq!(reference.channel_name, None);
+        assert_eq!(reference.source, source("dev1", "temp1"));
+        assert_eq!(candidates[1].reference.source, source("dev2", "temp2"));
+    }
+
+    #[test]
+    fn custom_sensor_candidates_carry_the_sensor_metric() {
+        // Goal: a non-temperature sensor's source is watched as that metric of a
+        // channel. The reference keeps its shape, with the channel name in `temp_name`.
+        let sensors = vec![CustomSensor {
+            id: "pressure".to_string(),
+            metric: CustomSensorMetric::RPM,
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::Avg,
+                sources: vec![SensorSource {
+                    device_uid: "dev1".to_string(),
+                    name: "fan1".to_string(),
+                    weight: 1,
+                }],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }];
+        let mut candidates = Vec::new();
+        DeviceHealthController::custom_sensor_candidates(&sensors, &mut candidates);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].metric, CustomSensorMetric::RPM);
+        assert_eq!(candidates[0].reference.source, source("dev1", "fan1"));
     }
 
     #[test]
@@ -886,11 +1013,13 @@ mod tests {
         let mut candidates = Vec::new();
         DeviceHealthController::lcd_candidates(&refs, &mut candidates);
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].entity_type, HealthEntityType::Lcd);
-        assert_eq!(candidates[0].entity_uid, "dev1");
-        assert_eq!(candidates[0].entity_name, "Kraken");
-        assert_eq!(candidates[0].channel_name, Some("lcd".to_string()));
-        assert_eq!(candidates[0].source, source("dev2", "temp1"));
+        assert_eq!(candidates[0].metric, CustomSensorMetric::Temp);
+        let reference = &candidates[0].reference;
+        assert_eq!(reference.entity_type, HealthEntityType::Lcd);
+        assert_eq!(reference.entity_uid, "dev1");
+        assert_eq!(reference.entity_name, "Kraken");
+        assert_eq!(reference.channel_name, Some("lcd".to_string()));
+        assert_eq!(reference.source, source("dev2", "temp1"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseSystemPalette, THEME_TOKEN_KEYS } from '../themes.ts'
 
 /** The KDE reading the Qt app produces, used verbatim as the fixture. */
@@ -24,6 +24,14 @@ const FULL = JSON.stringify({
 })
 
 describe('parseSystemPalette', () => {
+    // A refused token set is reported on the console, which is not under test.
+    beforeEach(() => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
     /// Goal: a full desktop palette survives intact, since it drives every
     /// `--colors-*` variable the System theme sets.
     it('accepts a complete palette', () => {

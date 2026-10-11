@@ -924,7 +924,7 @@ impl GpuAMD {
                     .await
                     .map_err(|err| {
                         anyhow!(
-                            "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
+                            "Error setting PMFW device duty of {fixed_speed}% on {} - {err}",
                             amd_driver_info.hwmon.name
                         )
                     })
@@ -963,7 +963,7 @@ impl GpuAMD {
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                    "Error on {}:{channel_name} for device duty {fixed_speed}% - {err}",
                     amd_driver_info.hwmon.name
                 )
             })
@@ -1160,7 +1160,7 @@ impl GpuAMD {
             .await
             .map_err(|err| {
                 anyhow!(
-                    "Error settings PMFW fan curve of {speed_profile:?} on {} - {err}",
+                    "Error setting PMFW fan curve (device duty) of {speed_profile:?} on {} - {err}",
                     amd_driver_info.hwmon.name
                 )
             })
@@ -1301,6 +1301,20 @@ pub struct AMDDriverInfo {
 }
 
 impl AMDDriverInfo {
+    /// A pre-RDNA3 card with only its hwmon side set, for tests outside this module.
+    #[cfg(test)]
+    pub fn for_test(hwmon: HwmonDriverInfo) -> Self {
+        Self {
+            hwmon,
+            device_path: PathBuf::default(),
+            fan_curve_info: None,
+            has_rdna_fan_ctrl: false,
+            overdrive_enabled: false,
+            is_rdna3_or_newer: false,
+            fdinfo_load: None,
+        }
+    }
+
     /// Whether this card uses the RDNA3/4 PMFW fan-curve interface, for which the
     /// legacy hwmon pwm controls are non-functional (EINVAL). True if libdrm
     /// identified it as RDNA3+ or the `gpu_od/fan_ctrl` directory is present.

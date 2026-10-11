@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::device::{DeviceType, Duty, UID};
+use crate::device::{ChannelAttribute, DeviceType, Duty, UID};
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
@@ -123,6 +123,17 @@ pub trait Repository {
     /// clamp behind the daemon's back override this.
     fn duty_floor(&self, _device_uid: &UID, _channel_name: &str) -> Duty {
         0
+    }
+
+    /// Driver-reported attributes (limits, targets, sensor details) for one channel, read on
+    /// demand. Unset or unreadable attributes are left out. Default empty: only repositories
+    /// with hwmon-style attribute files override this.
+    async fn channel_attributes(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<Vec<ChannelAttribute>> {
+        Ok(Vec::new())
     }
 }
 

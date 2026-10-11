@@ -4,22 +4,25 @@
 import type { RouteLocationRaw } from 'vue-router'
 import type { ChannelInfo } from '@/models/ChannelInfo.ts'
 import { type Device, DeviceType, type UID } from '@/models/Device.ts'
+import { isFanChannel, type ChannelUnitOf } from '@/shell/channelUnit.ts'
 
 // Canonical page for a channel/sensor, entity-first: the same target no matter
 // which section links to it. Custom sensors edit under Devices; fan/pump
 // channels (speed_options) live on their Cooling page, which embeds the same
-// chart; everything else is a read-only sensor chart under Monitoring.
+// chart; everything else is a read-only sensor chart under Monitoring. That
+// includes a fan input in another unit, such as a flow meter.
 export function channelRoute(
     devices: Iterable<Device>,
     deviceUID: UID,
     channelName: string,
+    unitOf: ChannelUnitOf,
 ): RouteLocationRaw {
     for (const device of devices) {
         if (device.uid !== deviceUID) continue
         if (device.type === DeviceType.CUSTOM_SENSORS) {
             return { name: 'device-custom-sensor', params: { customSensorID: channelName } }
         }
-        if (device.info?.channels.get(channelName)?.speed_options != null) {
+        if (isFanChannel(device, channelName, unitOf)) {
             return { name: 'cooling-channel', params: { deviceUID, channelName } }
         }
         break
@@ -37,6 +40,7 @@ export function monitoringChannelRoute(
     devices: Iterable<Device>,
     deviceUID: UID,
     channelName: string,
+    unitOf: ChannelUnitOf,
 ): RouteLocationRaw {
     for (const device of devices) {
         if (device.uid !== deviceUID) continue
@@ -48,7 +52,7 @@ export function monitoringChannelRoute(
         }
         break
     }
-    return channelRoute(devices, deviceUID, channelName)
+    return channelRoute(devices, deviceUID, channelName, unitOf)
 }
 
 // Target for a controllable channel listed by its capability rather than by a

@@ -20,9 +20,12 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 use tower_serve_static::include_file;
 
-/// Content-Security-Policy for plugin UI HTML responses.
+/// Content-Security-Policy for plugin UI responses.
 /// `connect-src 'none'` forces plugins to use the pluginFetch relay for all network access.
-const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
+/// `sandbox allow-scripts` keeps a plugin page out of the daemon's origin however it is
+/// loaded, not only inside the UI's sandboxed frame.
+/// `FramePolicy` widens `frame-ancestors` for configured origins.
+pub const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     script-src 'self' 'unsafe-inline'; \
     style-src 'self' 'unsafe-inline'; \
     img-src 'self' data: blob:; \
@@ -31,7 +34,8 @@ const PLUGIN_CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     frame-ancestors 'self'; \
     object-src 'none'; \
     base-uri 'none'; \
-    form-action 'none'";
+    form-action 'none'; \
+    sandbox allow-scripts";
 
 pub async fn get_plugins(
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -87,6 +91,17 @@ pub async fn has_ui(
     )
 }
 
+/// Keeps the whole cause chain. `handle_error` reports the outermost context alone, which
+/// for a lifecycle call names the action that failed and nothing about why.
+fn handle_lifecycle_error(err: anyhow::Error) -> CCError {
+    match err.downcast::<CCError>() {
+        Ok(cc_error) => cc_error,
+        Err(err) => CCError::InternalError {
+            msg: format!("{err:#}"),
+        },
+    }
+}
+
 pub async fn start_plugin(
     Path(path): Path<PluginPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -94,7 +109,7 @@ pub async fn start_plugin(
     plugin_handle
         .start_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn stop_plugin(
@@ -104,7 +119,7 @@ pub async fn stop_plugin(
     plugin_handle
         .stop_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn restart_plugin(
@@ -114,7 +129,17 @@ pub async fn restart_plugin(
     plugin_handle
         .restart_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
+}
+
+pub async fn reload_plugin(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    plugin_handle
+        .reload_plugin(path.plugin_id)
+        .await
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn get_plugin_status(
@@ -145,12 +170,16 @@ pub async fn enable_plugin(
     plugin_handle
         .enable_plugin(path.plugin_id)
         .await
-        .map_err(handle_error)
+        .map_err(handle_lifecycle_error)
 }
 
 pub async fn get_ui_files(
     Path(path): Path<PluginUiPath>,
-    State(AppState { plugin_handle, .. }): State<AppState>,
+    State(AppState {
+        plugin_handle,
+        frame_policy,
+        ..
+    }): State<AppState>,
     request: Request,
 ) -> Result<impl IntoApiResponse, CCError> {
     let safe_path = sanitize_file_path(&path.file_path)?;
@@ -164,12 +193,14 @@ pub async fn get_ui_files(
         .map_err(|_infallible| CCError::InternalError {
             msg: "Failed to serve file".to_string(),
         })?;
+    let headers = response.headers_mut();
+    // Every file, not only HTML: a browser also renders SVG and XML as documents, and one
+    // served without the policy would run its scripts in the daemon's origin.
+    headers.insert(
+        axum::http::HeaderName::from_static("content-security-policy"),
+        frame_policy.plugin_csp,
+    );
     if is_html {
-        let headers = response.headers_mut();
-        headers.insert(
-            axum::http::HeaderName::from_static("content-security-policy"),
-            axum::http::HeaderValue::from_static(PLUGIN_CONTENT_SECURITY_POLICY),
-        );
         headers.insert(
             axum::http::header::CACHE_CONTROL,
             axum::http::HeaderValue::from_static("no-cache, max-age=60"),
@@ -440,6 +471,40 @@ impl From<ServiceStatus> for PluginStatusDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::actor::PluginHandle;
+    use crate::api::frame_policy::FramePolicy;
+    use crate::repositories::service_plugin::plugin_controller::PluginController;
+    use crate::repositories::service_plugin::service_manifest::{
+        ConnectionType, ServiceManifest, ServiceType,
+    };
+    use std::rc::Rc;
+    use tokio_util::sync::CancellationToken;
+
+    /// Goal: a failed start has to say why, since the message is all the UI can show.
+    /// Method: an error built the way the controller builds one, and one that carries an
+    /// API error, which must keep its own status rather than become an internal error.
+    #[test]
+    fn lifecycle_errors_keep_their_cause() {
+        use anyhow::Context;
+        let failed: anyhow::Result<()> = Err(anyhow::anyhow!("stopped right after starting"));
+        let not_found: anyhow::Result<()> = Err(CCError::NotFound {
+            msg: "Plugin not found".to_string(),
+        }
+        .into());
+
+        let failed = handle_lifecycle_error(failed.context("Starting plugin service").unwrap_err());
+        let not_found =
+            handle_lifecycle_error(not_found.context("Starting plugin service").unwrap_err());
+
+        let CCError::InternalError { msg } = failed else {
+            panic!("expected an internal error, got {failed:?}");
+        };
+        assert_eq!(msg, "Starting plugin service: stopped right after starting");
+        assert!(
+            matches!(not_found, CCError::NotFound { .. }),
+            "{not_found:?}"
+        );
+    }
 
     #[test]
     fn test_sanitize_file_path_valid_simple() {
@@ -609,5 +674,164 @@ mod tests {
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("form-action 'none'"));
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("object-src 'none'"));
         assert!(PLUGIN_CONTENT_SECURITY_POLICY.contains("base-uri 'none'"));
+    }
+
+    /// Goal: a plugin page never runs in the daemon's origin, where it would hold the user's
+    /// session, and cannot open a window or leave its frame. Method: the policy sandboxes
+    /// with scripts allowed and nothing else.
+    #[test]
+    fn plugin_csp_sandboxes_with_scripts_only() {
+        let sandbox = PLUGIN_CONTENT_SECURITY_POLICY
+            .split("; ")
+            .find(|directive| directive.starts_with("sandbox"));
+        assert_eq!(sandbox, Some("sandbox allow-scripts"));
+    }
+
+    /// What the real handler answers each of a plugin's UI `files` with. Runs on the
+    /// sidecar, as the servers do, since the file service needs its reactor. Nothing is
+    /// asserted there: a panic would take the shared test sidecar down with it.
+    async fn ui_file_responses(
+        state: AppState,
+        files: &'static [&'static str],
+    ) -> Vec<axum::http::response::Parts> {
+        let serve = move || async move {
+            let app = axum::Router::new()
+                .route(
+                    "/plugins/{plugin_id}/ui/{*file_path}",
+                    axum::routing::get(get_ui_files),
+                )
+                .with_state(state);
+            let mut responses = Vec::with_capacity(files.len());
+            for file in files {
+                let request = Request::get(format!("/plugins/{PLUGIN_ID}/ui/{file}"))
+                    .body(Body::empty())
+                    .unwrap();
+                let response = app.clone().oneshot(request).await.unwrap();
+                responses.push(response.into_parts().0);
+            }
+            responses
+        };
+        let responses = crate::sidecar::handle().run(serve).await.unwrap();
+        assert_eq!(responses.len(), files.len());
+        responses
+    }
+
+    const PLUGIN_ID: &str = "test-plugin";
+
+    /// A plugin with a UI under `plugin_dir`, known to a controller that manages no services.
+    fn controller_with_ui(plugin_dir: &std::path::Path) -> PluginController {
+        let ui_dir = plugin_dir.join("ui");
+        std::fs::create_dir(&ui_dir).unwrap();
+        std::fs::write(ui_dir.join("index.html"), "<html></html>").unwrap();
+        std::fs::write(ui_dir.join("app.js"), "").unwrap();
+        std::fs::write(ui_dir.join("icon.svg"), "<svg/>").unwrap();
+        let manifest = ServiceManifest {
+            id: PLUGIN_ID.to_string(),
+            service_type: ServiceType::Integration,
+            description: None,
+            version: None,
+            url: None,
+            executable: None,
+            args: Vec::new(),
+            envs: Vec::new(),
+            address: ConnectionType::None,
+            tls: None,
+            privileged: false,
+            proxy: None,
+            path: plugin_dir.to_path_buf(),
+        };
+        let controller = PluginController::new_disabled();
+        controller.register(manifest);
+        controller
+    }
+
+    /// Goal: the UI frames a plugin page, and a browser checks every ancestor, so once the UI
+    /// is embedded the page must admit the same ancestors or it renders blank. Method: the
+    /// real handler over a plugin on disk, with and without a configured ancestor. Without
+    /// one the policy is the baseline, byte for byte.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn plugin_pages_admit_the_configured_frame_ancestors() {
+        const ANCESTOR: &str = "https://cockpit.example.com:9090";
+        const FILES: [&str; 1] = ["index.html"];
+        crate::rt::test_runtime(async {
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let controller = Rc::new(controller_with_ui(plugin_dir.path()));
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = AppState {
+                    plugin_handle: PluginHandle::new(controller, cancel_token.clone(), main_scope),
+                    ..crate::api::empty_app_state(&cancel_token, main_scope).await
+                };
+                let framed_state = AppState {
+                    frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
+                    ..state.clone()
+                };
+                let unframed = ui_file_responses(state, &FILES).await;
+                let framed = ui_file_responses(framed_state, &FILES).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                for response in unframed.iter().chain(&framed) {
+                    assert_eq!(response.status, axum::http::StatusCode::OK);
+                }
+                assert_eq!(
+                    unframed[0].headers["content-security-policy"],
+                    PLUGIN_CONTENT_SECURITY_POLICY
+                );
+                let csp = &framed[0].headers["content-security-policy"];
+                let csp = csp.to_str().unwrap();
+                assert!(csp.contains(&format!("; frame-ancestors 'self' {ANCESTOR}; ")));
+                assert_eq!(csp.matches("frame-ancestors").count(), 1);
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Goal: a browser renders more than HTML as a document, SVG among them, and one served
+    /// without the policy would run its scripts in the daemon's origin. Method: the real
+    /// handler over a plugin on disk, with and without a configured ancestor, since the
+    /// policy differs between the two. Every file carries the page's policy.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn every_plugin_ui_file_carries_the_page_policy() {
+        const ANCESTOR: &str = "https://cockpit.example.com:9090";
+        const FILES: [&str; 3] = ["index.html", "app.js", "icon.svg"];
+        crate::rt::test_runtime(async {
+            let plugin_dir = tempfile::tempdir().unwrap();
+            let controller = Rc::new(controller_with_ui(plugin_dir.path()));
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> anyhow::Result<()> {
+                let state = AppState {
+                    plugin_handle: PluginHandle::new(controller, cancel_token.clone(), main_scope),
+                    ..crate::api::empty_app_state(&cancel_token, main_scope).await
+                };
+                let framed_state = AppState {
+                    frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
+                    ..state.clone()
+                };
+                let unframed = ui_file_responses(state, &FILES).await;
+                let framed = ui_file_responses(framed_state, &FILES).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+
+                for responses in [&unframed, &framed] {
+                    let page_csp = &responses[0].headers["content-security-policy"];
+                    for file in &responses[1..] {
+                        assert_eq!(file.status, axum::http::StatusCode::OK);
+                        assert_eq!(&file.headers["content-security-policy"], page_csp);
+                    }
+                }
+                assert_ne!(
+                    unframed[0].headers["content-security-policy"],
+                    framed[0].headers["content-security-policy"]
+                );
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
     }
 }

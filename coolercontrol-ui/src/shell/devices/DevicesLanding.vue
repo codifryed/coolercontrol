@@ -6,7 +6,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiAlert, mdiLanDisconnect, mdiToggleSwitchOffOutline } from '@mdi/js'
+import { mdiToggleSwitchOffOutline } from '@mdi/js'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Device, UID } from '@/models/Device.ts'
@@ -16,6 +16,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { deviceChannelLinks, deviceTypeGroups, hardwareDevices } from '@/shell/devices/devices.ts'
 import { deviceTypeIcon } from '@/shell/deviceIcon.ts'
+import { isFanChannel } from '@/shell/channelUnit.ts'
 import HardwareHelpLine from '@/shell/hardware/HardwareHelpLine.vue'
 import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
@@ -36,11 +37,7 @@ const deviceLabel = (deviceUID: UID): string =>
 const deviceColor = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor || 'rgb(var(--colors-text-color))'
 
-const {
-    isDeviceUnreachable: isUnreachable,
-    isDeviceUnhealthy: isUnhealthy,
-    healthTooltip,
-} = useDeviceHealth()
+const { isUnhealthy, healthIcon, healthTooltip } = useDeviceHealth()
 
 const facts = (device: Device): string => {
     const parts: string[] = [getDeviceTypeDisplayName(device.type)]
@@ -53,8 +50,8 @@ const counts = (device: Device): string => {
     const parts: string[] = []
     const temps = device.info?.temps.size ?? 0
     let fans = 0
-    for (const channelInfo of device.info?.channels.values() ?? []) {
-        if (channelInfo.speed_options != null) fans += 1
+    for (const channelName of device.info?.channels.keys() ?? []) {
+        if (isFanChannel(device, channelName, settingsStore.channelUnit)) fans += 1
     }
     const links = deviceChannelLinks(device)
     const lighting = links.filter((link) => link.kind === 'lighting').length
@@ -122,7 +119,7 @@ const counts = (device: Device): string => {
                         <UiTooltip v-if="isUnhealthy(device.uid)" :text="healthTooltip(device.uid)">
                             <svg-icon
                                 type="mdi"
-                                :path="isUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert"
+                                :path="healthIcon(device.uid)"
                                 :size="16"
                                 class="shrink-0 text-error"
                             />

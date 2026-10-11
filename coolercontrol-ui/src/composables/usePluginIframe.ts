@@ -10,6 +10,7 @@ import { useConfirm } from '@/shell/confirm'
 import { useI18n } from 'vue-i18n'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { validatePluginFetchPath, buildSafeOptions } from '@/composables/pluginFetchValidation.ts'
+import { frameClickOf, usePluginLinks } from '@/composables/usePluginLinks.ts'
 import { THEME_CSS_VAR_NAMES } from '@/shell/themes.ts'
 
 export type PluginIframeMode = 'modal' | 'full_page'
@@ -23,6 +24,7 @@ export function usePluginIframe(pluginId: string, mode: PluginIframeMode) {
     const toast = useToast()
     const confirm = useConfirm()
     const { t } = useI18n()
+    const pluginLinks = usePluginLinks()
     const iframeRef = ref<HTMLIFrameElement | null>(null)
     const nullOriginTarget: string = '*'
 
@@ -182,8 +184,8 @@ export function usePluginIframe(pluginId: string, mode: PluginIframeMode) {
                 handleRestart()
                 break
             case 'restartPlugin': {
-                const success = await deviceStore.daemonClient.restartPlugin(pluginId)
-                postToIframe('pluginRestarted', success)
+                const response = await deviceStore.daemonClient.restartPlugin(pluginId)
+                postToIframe('pluginRestarted', response === undefined)
                 break
             }
             case 'context':
@@ -256,6 +258,9 @@ export function usePluginIframe(pluginId: string, mode: PluginIframeMode) {
                 doPluginFetch(safePath, safeOptions, requestId)
                 break
             }
+            case 'openLink':
+                pluginLinks.requestLink(pluginId, event.data.url, false, frameClickOf(event))
+                break
         }
     }
 

@@ -23,13 +23,14 @@ use std::ops::Not;
 
 pub async fn init(app_state: AppState) -> ApiRouter {
     let token_handle = app_state.token_handle.clone();
+    let document_csp = app_state.frame_policy.document_csp.clone();
     let router = documented_routes().merge(grpc_routes(&app_state).await);
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
     let router = router.route("/api.json", get(base::serve_api_doc));
 
     router
-        .fallback_service(base::web_app_service())
+        .fallback_service(base::web_app_service(document_csp))
         .with_state(app_state)
         // need an extension here for middleware::from_fn to work and not pass app_state everywhere.
         .layer(Extension(token_handle))
@@ -337,6 +338,25 @@ fn device_routes() -> ApiRouter<AppState> {
                 o.summary("All Devices")
                     .description(
                         "Returns a list of all detected devices and their associated information.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/devices/{device_uid}/channels/{channel_name}/attributes",
+            get_with(devices::device_channel_attributes_get, |o| {
+                o.summary("Device Channel Attributes")
+                    .description(
+                        "Returns the extra attributes the driver reports for a temperature, fan \
+                        or power channel, such as its max, critical and emergency limits, fan \
+                        target or power cap, read from the hardware when requested. Each is \
+                        named by its sysfs file, because the meaning varies by driver: on some \
+                        chips min and max are the lowest and highest readings so far. Unset and \
+                        unreadable values are left out. Channels without attribute files return \
+                        an empty list.",
                     )
                     .tag("device")
                     .security_requirement("CookieAuth")
@@ -770,17 +790,6 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
-        .api_route(
-            "/custom-sensors/order",
-            post_with(custom_sensors::save_order, |o| {
-                o.summary("Save Custom Sensor Order")
-                    .description("Saves the order of the Custom Sensors as given.")
-                    .tag("custom-sensor")
-                    .security_requirement("CookieAuth")
-                    .security_requirement("BearerAuth")
-            })
-            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
-        )
 }
 
 /// The system power profile integration: what the system offers, and which Mode each profile
@@ -1140,6 +1149,21 @@ fn plugins_routes() -> ApiRouter<AppState> {
             post_with(plugins::restart_plugin, |o| {
                 o.summary("Restart CoolerControl Plugin")
                     .description("Restarts a managed integration plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/reload",
+            post_with(plugins::reload_plugin, |o| {
+                o.summary("Reload CoolerControl Plugin Manifest")
+                    .description(
+                        "Re-reads the manifest of a plugin that has no service to restart. \
+                        A device plugin's manifest is only checked: applying it takes a daemon \
+                        restart. A managed integration plugin is refused, since restarting it \
+                        re-reads its manifest.",
+                    )
                     .tag("plugins")
                     .security_requirement("CookieAuth")
             })
@@ -1855,7 +1879,7 @@ mod tests {
             let mut builder = Request::builder()
                 .method("POST")
                 .uri("/set-passwd")
-                .header(header::AUTHORIZATION, "Basic Q0NBZG1pbjpuZXc=");
+                .header(header::AUTHORIZATION, auth::encode_basic("CCAdmin", "new"));
             if let Some(value) = cookie {
                 builder = builder.header(header::COOKIE, value);
             }
@@ -1888,13 +1912,16 @@ mod tests {
 
     /// Sends a Basic `/login` on a new pre-auth remote connection, and returns its status
     /// and whether it promoted the connection.
-    async fn login(app: &axum::Router, credentials: &str) -> (StatusCode, bool) {
+    async fn login(app: &axum::Router, password: &str) -> (StatusCode, bool) {
         use axum::extract::ConnectInfo;
         // A TEST-NET peer, allotted beside the throttle statics in `auth_throttle`.
         let peer = std::net::SocketAddr::from(([198, 51, 100, 21], 40000));
         let connection = connection::AdmittedConnection::remote_for_test();
         let mut request = Request::post("/login")
-            .header(header::AUTHORIZATION, format!("Basic {credentials}"))
+            .header(
+                header::AUTHORIZATION,
+                auth::encode_basic("CCAdmin", password),
+            )
             .body(axum::body::Body::empty())
             .unwrap();
         request.extensions_mut().insert(ConnectInfo(peer));
@@ -1916,11 +1943,10 @@ mod tests {
                 let routes = axum::Router::from(auth_routes().with_state(state))
                     .layer(SessionManagerLayer::new(MemorySessionStore::new(4)));
                 let app = crate::api::with_client_addr(routes, std::sync::Arc::default());
-                // "CCAdmin:x", then "CCAdmin:coolAdmin".
-                let (status, promoted) = login(&app, "Q0NBZG1pbjp4").await;
+                let (status, promoted) = login(&app, "x").await;
                 assert_eq!(status, StatusCode::UNAUTHORIZED);
                 assert!(promoted.not());
-                let (status, promoted) = login(&app, "Q0NBZG1pbjpjb29sQWRtaW4=").await;
+                let (status, promoted) = login(&app, crate::admin::DEFAULT_PASS).await;
                 assert_eq!(status, StatusCode::OK);
                 assert!(promoted);
                 // Stops the actors so the scope can finish.

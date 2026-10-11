@@ -24,7 +24,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import type { TablePosition } from '@/models/UISettings.ts'
+import type { OverlayPosition } from '@/models/UISettings.ts'
 import * as echarts from 'echarts/core'
 import {
     DataZoomComponent,
@@ -1110,7 +1110,7 @@ const deletePointFromLine = (params: any) => {
 // Points table position (local state, not persisted)
 // The wizard's profile has no UID yet, so its table position cannot be keyed to one: it opens at
 // the default and a move lasts for this wizard run.
-const tablePosition: Ref<TablePosition> = ref('bottom-right')
+const tablePosition: Ref<OverlayPosition> = ref('bottom-right')
 
 const tablePositionClasses = computed(() => ({
     'top-16 left-[5.5rem]': tablePosition.value === 'top-left',

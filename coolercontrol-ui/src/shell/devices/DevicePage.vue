@@ -94,7 +94,9 @@ const infoRows = computed((): Array<[string, string]> => {
 // Hardware settings, ported from the extension-settings popover.
 const isLiquidctl = computed(() => device.value?.type === DeviceType.LIQUIDCTL)
 const isCustomSensors = computed(() => device.value?.type === DeviceType.CUSTOM_SENSORS)
-const sensorNames = computed(() => (device.value != null ? customSensorNames(device.value) : []))
+const sensorNames = computed(() =>
+    device.value != null ? customSensorNames(device.value, settingsStore.menuOrder) : [],
+)
 const sensorDotColor = (channelName: string): string =>
     settingsStore.allUIDeviceSettings.get(props.deviceUID)?.sensorsAndChannels.get(channelName)
         ?.color || 'rgb(var(--colors-text-color))'
@@ -171,7 +173,7 @@ const sensorLabel = (channelName: string): string =>
 // One complete list of the device's channels and sensors, each linking to the
 // page where it is viewed or controlled.
 const sensorLinks = computed((): DeviceSensorLink[] =>
-    device.value != null ? deviceSensorLinks(device.value) : [],
+    device.value != null ? deviceSensorLinks(device.value, settingsStore.channelUnit) : [],
 )
 const sensorLinkTarget = (
     link: DeviceSensorLink,

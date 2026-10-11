@@ -6,6 +6,7 @@ import axiosRetry, { isNetworkError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { defaultStatsResponse, type StatsResponseDTO } from '@/models/Stats'
+import type { ChannelAttribute, ChannelAttributesResponse } from '@/models/ChannelAttributes'
 import { UISettingsDTO } from '@/models/UISettings'
 import type { NameOverrides } from '@/models/NameOverrides'
 import type { UID } from '@/models/Device'
@@ -389,6 +390,26 @@ export default class DaemonClient {
     }
 
     /**
+     * Reads the extra attributes the driver reports for one channel (limits, fan target).
+     * Returns an empty list on failure, including daemons older than the endpoint.
+     */
+    async getChannelAttributes(
+        deviceUID: UID,
+        channelName: string,
+    ): Promise<Array<ChannelAttribute>> {
+        try {
+            const response = await this.getClient().get(
+                `/devices/${deviceUID}/channels/${channelName}/attributes`,
+            )
+            this.logDaemonResponse(response, 'Channel Attributes')
+            return (response.data as ChannelAttributesResponse).attributes ?? []
+        } catch (err) {
+            this.logError(err)
+            return []
+        }
+    }
+
+    /**
      * Resets all running stats on the daemon and returns the new baseline
      * (count=1, min=max=avg=most-recent-value per channel).
      */
@@ -532,15 +553,16 @@ export default class DaemonClient {
 
     /**
      * Retrieves the system power profiles, the active one, and the profile to Mode mapping.
+     * Undefined when the request fails, which is not the same as a daemon offering no profiles.
      */
-    async getPowerProfiles(): Promise<PowerProfileStateDTO> {
+    async getPowerProfiles(): Promise<PowerProfileStateDTO | undefined> {
         try {
             const response = await this.getClient().get('/power-profiles')
             this.logDaemonResponse(response, 'Get Power Profiles')
             return plainToInstance(PowerProfileStateDTO, response.data as object)
         } catch (err) {
             this.logError(err)
-            return new PowerProfileStateDTO()
+            return undefined
         }
     }
 
@@ -1552,37 +1574,40 @@ export default class DaemonClient {
         }
     }
 
-    async startPlugin(pluginId: string): Promise<boolean> {
+    // The daemon's error says why a lifecycle action failed, which is all a user can act on.
+    private async postPluginAction(
+        pluginId: string,
+        action: string,
+        logName: string,
+    ): Promise<undefined | ErrorResponse> {
         try {
-            const response = await this.getClient().post(`/plugins/${pluginId}/start`)
-            this.logDaemonResponse(response, 'Start Plugin')
-            return true
+            const response = await this.getClient().post(`/plugins/${pluginId}/${action}`)
+            this.logDaemonResponse(response, logName)
+            return undefined
         } catch (err: any) {
             this.logError(err)
-            return false
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
         }
     }
 
-    async stopPlugin(pluginId: string): Promise<boolean> {
-        try {
-            const response = await this.getClient().post(`/plugins/${pluginId}/stop`)
-            this.logDaemonResponse(response, 'Stop Plugin')
-            return true
-        } catch (err: any) {
-            this.logError(err)
-            return false
-        }
+    startPlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'start', 'Start Plugin')
     }
 
-    async restartPlugin(pluginId: string): Promise<boolean> {
-        try {
-            const response = await this.getClient().post(`/plugins/${pluginId}/restart`)
-            this.logDaemonResponse(response, 'Restart Plugin')
-            return true
-        } catch (err: any) {
-            this.logError(err)
-            return false
-        }
+    stopPlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'stop', 'Stop Plugin')
+    }
+
+    restartPlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'restart', 'Restart Plugin')
+    }
+
+    reloadPlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'reload', 'Reload Plugin')
     }
 
     async getPluginStatus(pluginId: string): Promise<PluginStatusDto> {
@@ -1596,26 +1621,12 @@ export default class DaemonClient {
         }
     }
 
-    async disablePlugin(pluginId: string): Promise<boolean> {
-        try {
-            const response = await this.getClient().post(`/plugins/${pluginId}/disable`)
-            this.logDaemonResponse(response, 'Disable Plugin')
-            return true
-        } catch (err: any) {
-            this.logError(err)
-            return false
-        }
+    disablePlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'disable', 'Disable Plugin')
     }
 
-    async enablePlugin(pluginId: string): Promise<boolean> {
-        try {
-            const response = await this.getClient().post(`/plugins/${pluginId}/enable`)
-            this.logDaemonResponse(response, 'Enable Plugin')
-            return true
-        } catch (err: any) {
-            this.logError(err)
-            return false
-        }
+    enablePlugin(pluginId: string): Promise<undefined | ErrorResponse> {
+        return this.postPluginAction(pluginId, 'enable', 'Enable Plugin')
     }
 
     /* Access Tokens */

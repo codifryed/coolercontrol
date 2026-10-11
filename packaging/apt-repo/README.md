@@ -21,6 +21,15 @@ cannot hold both. Path prefixes are the same approach download.docker.com uses.
 
 Both trees are published for `amd64` and `arm64`. Architecture never affects which tree a user gets.
 
+`Release` also names `armhf` and `i386`, which nothing is built for. Those are the foreign
+architectures multiarch hosts enable (i386 for Steam and Wine, armhf on 64-bit Raspberry Pi OS), and
+apt prints a "doesn't support architecture" notice on every update for a configured architecture the
+repository does not name. Their indexes hold only the architecture independent packages.
+
+Entries written by `setup.sh` and the postinst pin `Architectures` to the native one, so those hosts
+do not fetch the extra index. Entries written by 5.0.0 and 5.0.1 have no such field and rely on the
+`Release` list above.
+
 The `/ubuntu` tree carries no `arm64` build of `coolercontrol` or `coolercontrold` yet. Those were
 never built: CI produces jammy amd64 only, and the arm64 debs on the Debian side are bookworm
 builds. Its `binary-arm64` index is therefore valid but empty of the two main packages, and an arm64
@@ -53,6 +62,12 @@ Architecture independent packages (the DKMS modules, liquidctl) are published to
 
 The publish script is baked into `registry.gitlab.com/coolercontrol/coolercontrol/apt-publish` as
 `/usr/local/bin/apt-repo-publish`, together with the keyring and `setup.sh`.
+
+The image is tagged `v3`, apart from the build images (`APT_PUBLISH_IMAGE_VERSION` in
+`.gitlab-ci.yml`, `apt_publish_image_tag` in `make/docker.mk`). The sibling package repositories pin
+that tag too, and every publish rewrites `Release` for the trees it touches, so a publisher left on
+another tag would undo an index change made by the rest. A change to the publish script takes effect
+once the image is rebuilt and pushed.
 
 ```sh
 apt-repo-publish --repo debian|ubuntu|both [--keep N] <deb>...

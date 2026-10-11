@@ -13,8 +13,9 @@ import {
     mdiShareVariantOutline,
     mdiSourceFork,
 } from '@mdi/js'
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { RouteLocationRaw } from 'vue-router'
 import { useConfirm } from '@/shell/confirm'
 import { useToast } from '@/shell/toast'
 import { useCalibrationConversion } from '@/composables/useCalibrationConversion.ts'
@@ -46,10 +47,12 @@ import {
     isFlowExpandable,
     type FlowNode,
 } from '@/shell/cooling/controlFlow.ts'
+import MonitoringButton from '@/components/MonitoringButton.vue'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiNumberInput from '@/shell/ui/UiNumberInput.vue'
 import UiGroupedSelect from '@/shell/ui/UiGroupedSelect.vue'
 import { useLibraryGroups } from '@/shell/useLibraryGroups.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import UiSlider from '@/shell/ui/UiSlider.vue'
 import UiToggleGroup from '@/shell/ui/UiToggleGroup.vue'
 
@@ -342,6 +345,13 @@ if (channelDashboard.value.dataTypes.length > 0) {
 }
 // A chart binds its lines to its series at mount, so a changed line set needs a new chart.
 const chartKey = ref<string>(uuidV4())
+// The channel's page under Monitoring, linked from the chart.
+const fullChartRoute: RouteLocationRaw = {
+    name: 'monitoring-sensor',
+    params: { deviceUID: props.deviceUID, channelName: props.channelName },
+}
+// It also reads the line's name and unit at mount, and both follow the label.
+watch(channelLabel, () => (chartKey.value = uuidV4()))
 </script>
 
 <template>
@@ -368,8 +378,9 @@ const chartKey = ref<string>(uuidV4())
                     v-if="liveRpm != null"
                     class="text-base font-numeric tabular-nums text-text-color-secondary"
                 >
-                    {{ liveRpm }} rpm
+                    {{ groupDigits(liveRpm) }} {{ settingsStore.rpmUnit(deviceUID, channelName) }}
                 </span>
+                <MonitoringButton :device-u-i-d="deviceUID" :channel-name="channelName" />
             </div>
         </div>
 
@@ -555,22 +566,22 @@ const chartKey = ref<string>(uuidV4())
         <ChannelVerdictNotice v-else :device-u-i-d="deviceUID" :channel-name="channelName" />
 
         <!-- relative lifts this above the ProfileEditor's empty overhang box,
-             which otherwise swallows pointer events on the link and chart top. -->
+             which otherwise swallows pointer events on the chart top. -->
         <div class="relative shrink-0" style="--time-chart-height: 24rem">
-            <div class="mb-1 flex justify-center">
+            <TimeChart
+                :key="chartKey"
+                :dashboard="channelDashboard"
+                @line-set-changed="chartKey = uuidV4()"
+            />
+            <div class="mt-1 flex justify-center">
                 <RouterLink
-                    :to="{ name: 'monitoring-sensor', params: { deviceUID, channelName } }"
+                    :to="fullChartRoute"
                     class="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-text-color-secondary outline-none hover:bg-surface-hover hover:text-text-color focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     <svg-icon type="mdi" :path="mdiChartLine" :size="16" />
                     {{ t('layout.shell.coolingPage.fullChart') }}
                 </RouterLink>
             </div>
-            <TimeChart
-                :key="chartKey"
-                :dashboard="channelDashboard"
-                @line-set-changed="chartKey = uuidV4()"
-            />
         </div>
     </div>
 </template>

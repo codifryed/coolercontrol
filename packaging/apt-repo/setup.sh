@@ -100,6 +100,8 @@ debian | ubuntu) tree=${TREE} ;;
 esac
 log "using the ${tree} package tree at ${REPO_URL}/${tree}"
 
+arch=$(dpkg --print-architecture 2>/dev/null) || die "dpkg is not available, is this a Debian based system?"
+
 log "installing signing key to ${KEYRING}"
 mkdir -p "$(dirname "${KEYRING}")"
 fetch "${REPO_URL}/coolercontrol-archive-keyring.gpg" "${KEYRING}.new"
@@ -109,13 +111,14 @@ mv "${KEYRING}.new" "${KEYRING}"
 
 log "writing ${SOURCES}"
 mkdir -p "$(dirname "${SOURCES}")"
-# No Architectures field: apt takes the supported set from our signed Release file and skips
-# the rest, so listing them here only makes every machine fetch the other one's index.
+# The native architecture only. Without the field a multiarch host asks for every foreign
+# architecture too, and apt prints a notice for each one the repository does not name.
 cat >"${SOURCES}" <<EOF
 Types: deb
 URIs: ${REPO_URL}/${tree}
 Suites: stable
 Components: main
+Architectures: ${arch}
 Signed-By: ${KEYRING}
 EOF
 

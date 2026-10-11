@@ -85,6 +85,32 @@ impl SystemdManager {
             .await
     }
 
+    /// Clears a unit's failed state and its start limiter ahead of a deliberate start.
+    ///
+    /// A plugin that crash loops runs into `StartLimitBurst`, and systemd then refuses every
+    /// start until the interval has passed, including one requested after the cause was
+    /// fixed. The limiter is there to bound automatic restarts, which it still does.
+    async fn reset_failed(service_id: &ServiceId) {
+        // Fails only for a unit that is not loaded, which has no limiter to clear.
+        let _ = Self::systemctl("reset-failed", service_id).await;
+    }
+
+    /// Why a stopped unit is down, or `None` if it cannot be read or the unit stopped cleanly.
+    async fn stop_reason(service_id: &ServiceId) -> Option<String> {
+        let (code, stdout, _) = DirectCommand::new(SYSTEMCTL, SYSTEMCTL_TIMEOUT)
+            .arg("show")
+            .arg("--property=Result")
+            .arg("--value")
+            .arg(service_id.to_service_name())
+            .run_with_code()
+            .await
+            .ok()?;
+        if code != 0 {
+            return None;
+        }
+        stop_reason_from(&stdout)
+    }
+
     /// Waits until the unit is no longer running, so no caller acts on a stop that has
     /// been reported but has not finished.
     async fn await_stopped(&self, service_id: &ServiceId) -> Result<()> {
@@ -149,6 +175,7 @@ impl ServiceManager for SystemdManager {
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {
+        Self::reset_failed(service_id).await;
         let (code, _, stderr) = Self::systemctl("start", service_id).await?;
         if code != 0 {
             Err(anyhow!(
@@ -172,6 +199,7 @@ impl ServiceManager for SystemdManager {
     }
 
     async fn restart(&self, service_id: &ServiceId) -> Result<()> {
+        Self::reset_failed(service_id).await;
         let (code, _, stderr) = Self::systemctl("restart", service_id).await?;
         if code != 0 {
             Err(anyhow!(
@@ -188,11 +216,21 @@ impl ServiceManager for SystemdManager {
         let (code, _, _) = Self::systemctl("status", service_id).await?;
         match code {
             4 => Ok(ServiceStatus::Unmanaged),
-            3 => Ok(ServiceStatus::Stopped(None)),
+            3 => Ok(ServiceStatus::Stopped(Self::stop_reason(service_id).await)),
             0 => Ok(ServiceStatus::Running),
             _ => Err(anyhow!("Unexpected systemctl status exit code: {code}")),
         }
     }
+}
+
+/// The unit's `Result` property as a stop reason, such as `exit-code` or `start-limit-hit`.
+/// `success` is a unit that was stopped on purpose, which needs no explaining.
+fn stop_reason_from(result: &str) -> Option<String> {
+    let result = result.trim();
+    if result.is_empty() || result == "success" {
+        return None;
+    }
+    Some(result.to_string())
 }
 
 fn create_unit_file(
@@ -569,6 +607,23 @@ mod tests {
             unit.contains("User=").not(),
             "a privileged plugin runs as root: {unit}"
         );
+    }
+
+    /// Goal: a unit that failed says why, and one that was stopped on purpose says nothing,
+    /// since the reason is shown next to the plugin's status.
+    /// Method: feed the values `systemctl show --property=Result --value` prints.
+    #[test]
+    fn stop_reason_names_a_failure_and_stays_silent_on_a_clean_stop() {
+        assert_eq!(
+            stop_reason_from("exit-code\n").as_deref(),
+            Some("exit-code")
+        );
+        assert_eq!(
+            stop_reason_from("start-limit-hit\n").as_deref(),
+            Some("start-limit-hit")
+        );
+        assert_eq!(stop_reason_from("success\n"), None);
+        assert_eq!(stop_reason_from("\n"), None);
     }
 
     /// Goal: pin the exact strings written to `Restart=` in a generated unit

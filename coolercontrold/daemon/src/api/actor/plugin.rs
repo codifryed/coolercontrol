@@ -46,6 +46,10 @@ enum PluginMessage {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<()>>,
     },
+    ReloadPlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
     GetStatus {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<PluginStatusDto>>,
@@ -79,23 +83,24 @@ impl PluginActor {
     }
 
     fn collect_all_plugins(&self) -> PluginsDto {
-        let mut plugins = Vec::with_capacity(self.plugin_controller.plugins.len());
-        for manifest in self.plugin_controller.plugins.values() {
-            let address = match &manifest.address {
+        let manifests = self.plugin_controller.manifests();
+        let mut plugins = Vec::with_capacity(manifests.len());
+        for manifest in manifests {
+            let address = match manifest.address {
                 ConnectionType::None => String::new(),
                 ConnectionType::Uds(uds_path) => uds_path.display().to_string(),
-                ConnectionType::Tcp(addr) => addr.clone(),
+                ConnectionType::Tcp(addr) => addr,
             };
             plugins.push(PluginDto {
-                id: manifest.id.clone(),
+                disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
+                id: manifest.id,
                 service_type: manifest.service_type.to_string(),
-                description: manifest.description.clone(),
-                version: manifest.version.clone(),
-                url: manifest.url.clone(),
+                description: manifest.description,
+                version: manifest.version,
+                url: manifest.url,
                 address,
                 privileged: manifest.privileged,
                 path: manifest.path.display().to_string(),
-                disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
             });
         }
         PluginsDto { plugins }
@@ -111,9 +116,12 @@ impl ApiActor<PluginMessage> for PluginActor {
         &mut self.receiver
     }
 
+    // A flat dispatch with one short arm per message: splitting it would only hide the list.
+    #[allow(clippy::too_many_lines)]
     async fn handle_message(&mut self, message: PluginMessage) {
         match message {
             PluginMessage::GetAll { respond_to } => {
+                self.plugin_controller.discover_plugins().await;
                 let _ = respond_to.send(self.collect_all_plugins());
             }
             PluginMessage::GetConfig {
@@ -163,6 +171,13 @@ impl ApiActor<PluginMessage> for PluginActor {
                 respond_to,
             } => {
                 let result = self.plugin_controller.restart_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::ReloadPlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.reload_plugin(&plugin_id).await;
                 let _ = respond_to.send(result);
             }
             PluginMessage::GetStatus {
@@ -286,6 +301,16 @@ impl PluginHandle {
     pub async fn restart_plugin(&self, plugin_id: String) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::RestartPlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn reload_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::ReloadPlugin {
             plugin_id,
             respond_to: tx,
         };

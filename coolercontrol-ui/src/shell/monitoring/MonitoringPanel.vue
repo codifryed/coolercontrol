@@ -8,7 +8,6 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { v4 as uuidV4 } from 'uuid'
 import {
-    mdiAlert,
     mdiBellOffOutline,
     mdiBellOutline,
     mdiBellPlusOutline,
@@ -52,11 +51,11 @@ import { channelRoute, monitoringChannelRoute } from '@/shell/channelRoute.ts'
 import PanelHeader from '@/shell/PanelHeader.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import TagChips from '@/shell/TagChips.vue'
-import UiTooltip from '@/shell/ui/UiTooltip.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
 import type { RouteLocationRaw } from 'vue-router'
-import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -145,12 +144,18 @@ const sensorIcon = (sensor: MonitoringSensor): string =>
             devicesByUid.value.get(sensor.deviceUID),
             sensor.channelName,
             sensorValues(sensor),
+            settingsStore.channelUnit,
         ),
     )
 const sensorSpins = (sensor: MonitoringSensor): boolean => {
     const values = sensorValues(sensor)
     return channelSpins(
-        channelKind(devicesByUid.value.get(sensor.deviceUID), sensor.channelName, values),
+        channelKind(
+            devicesByUid.value.get(sensor.deviceUID),
+            sensor.channelName,
+            values,
+            settingsStore.channelUnit,
+        ),
         values,
         settingsStore.eyeCandy,
     )
@@ -170,17 +175,12 @@ const liveValue = (sensor: MonitoringSensor): string => {
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
     if (values.duty != null) return `${values.duty} ${t('common.percentUnit')}`
-    if (values.rpm != null) return `${values.rpm} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) {
+        const unit = settingsStore.rpmUnit(sensor.deviceUID, sensor.channelName)
+        return `${groupDigits(values.rpm)} ${unit}`
+    }
     return ''
 }
-
-const { isDeviceUnreachable, healthTooltip } = useDeviceHealth()
-
-const isUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    isDeviceUnreachable(deviceUID) ||
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
 
 const isPinned = (sensor: MonitoringSensor): boolean =>
     settingsStore.pinnedIds.includes(pinId(sensor.deviceUID, sensor.channelName))
@@ -194,12 +194,14 @@ const togglePin = (sensor: MonitoringSensor): void => {
 
 // Alert convenience: temp sensors get a plain new-alert button; fan channels
 // (those reporting rpm) get a "fail alert" prefilled to catch 0 rpm; other
-// value types (duty/load/watts/freq) get no button.
+// value types (duty/load/watts/freq) get no button. Nor does a sensor in another
+// unit: a flow or a pressure of 0 is not a failed fan.
 type AlertKind = 'temp' | 'fan'
 const alertKind = (sensor: MonitoringSensor): AlertKind | null => {
     if (sensor.isTemp) return 'temp'
     const values = currentDeviceStatus.value.get(sensor.deviceUID)?.get(sensor.channelName)
-    return values?.rpm != null ? 'fan' : null
+    if (values?.rpm == null) return null
+    return settingsStore.isUnitSensor(sensor.deviceUID, sensor.channelName) ? null : 'fan'
 }
 const createAlert = (sensor: MonitoringSensor): void => {
     const kind = alertKind(sensor)
@@ -343,11 +345,21 @@ const onTagOpen = (rowKey: string, open: boolean): void => {
 
 // Pinned rows are shortcuts, so they go to the channel's canonical page.
 const sensorRoute = (sensor: MonitoringSensor) =>
-    channelRoute(deviceStore.allDevices(), sensor.deviceUID, sensor.channelName)
+    channelRoute(
+        deviceStore.allDevices(),
+        sensor.deviceUID,
+        sensor.channelName,
+        settingsStore.channelUnit,
+    )
 
 // The section's own listing keeps fans on their Monitoring chart instead.
 const listedSensorRoute = (sensor: MonitoringSensor) =>
-    monitoringChannelRoute(deviceStore.allDevices(), sensor.deviceUID, sensor.channelName)
+    monitoringChannelRoute(
+        deviceStore.allDevices(),
+        sensor.deviceUID,
+        sensor.channelName,
+        settingsStore.channelUnit,
+    )
 
 // The row wrapper needs the same target its link uses, so both read it here.
 const dashboardTarget = (dashboardUID: UID): RouteLocationRaw => ({
@@ -438,6 +450,10 @@ const isRouteActive = useRouteActive()
                             <span class="shrink-[9999] truncate text-xs text-text-color-secondary">
                                 {{ deviceLabel(row.sensor.deviceUID) }}
                             </span>
+                            <ChannelHealthIcon
+                                :device-u-i-d="row.sensor.deviceUID"
+                                :channel-name="row.sensor.channelName"
+                            />
                             <span
                                 class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{
@@ -794,17 +810,10 @@ const isRouteActive = useRouteActive()
                                 :device-u-i-d="sensor.deviceUID"
                                 :channel-name="sensor.channelName"
                             />
-                            <UiTooltip
-                                v-if="isUnhealthy(sensor.deviceUID, sensor.channelName)"
-                                :text="healthTooltip(sensor.deviceUID, sensor.channelName)"
-                            >
-                                <svg-icon
-                                    type="mdi"
-                                    :path="mdiAlert"
-                                    :size="14"
-                                    class="shrink-0 text-error"
-                                />
-                            </UiTooltip>
+                            <ChannelHealthIcon
+                                :device-u-i-d="sensor.deviceUID"
+                                :channel-name="sensor.channelName"
+                            />
                             <span
                                 class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
                                 :class="{

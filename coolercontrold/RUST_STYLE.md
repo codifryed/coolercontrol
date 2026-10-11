@@ -43,6 +43,18 @@ machines are consistent.
   (`elapsed >= delay`) does not flake on slow hosts, so it can stay in the normal suite; only an
   upper-bound latency assertion needs gating.
 
+### Log Output in Tests
+
+Do not write a test that captures log output to assert that a line was logged, was not logged, or
+was logged at a given level.
+
+- The logger is process-wide and tests run on parallel threads, so a capturing logger also records
+  what unrelated tests log in the meantime. Such a test flakes, and `#[serial]` does not help: it
+  only serializes against other serial tests.
+- Test the state or decision that drives the line instead, such as the flag that marks an outage as
+  reported. The log call itself stays untested.
+- A log line on its own is not worth a test.
+
 ## Safety
 
 ### Control Flow

@@ -169,7 +169,12 @@ const option = {
                 color: colors.themeColors.text_color,
                 offsetCenter: [0, '80%'],
                 formatter: function (value: string) {
-                    return `${value} rpm`
+                    // Read per draw: the unit follows the label, which can be renamed.
+                    const unit = settingsStore.rpmUnit(
+                        props.currentDeviceUID,
+                        props.currentSensorName,
+                    )
+                    return `${value} ${unit}`
                 },
             },
             silent: true,

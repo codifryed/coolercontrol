@@ -247,6 +247,20 @@ export function sourceTempDisplayName(ref: SourceRef, allSettings: AllDeviceSett
     return deviceName ? `${deviceName} | ${tempLabel}` : tempLabel
 }
 
+// Translation keys for a lost source. A Custom Sensor reads temps or channels, so its
+// source is named without a metric.
+export function missingSourceKey(ref: SourceRef): string {
+    return ref.entity_type === HealthEntityType.CustomSensor
+        ? 'views.appInfo.missingSource'
+        : 'views.appInfo.missingTempSource'
+}
+
+export function staleSourceKey(ref: SourceRef): string {
+    return ref.entity_type === HealthEntityType.CustomSensor
+        ? 'views.appInfo.staleSource'
+        : 'views.appInfo.staleTempSource'
+}
+
 export function sourceKey(ref: SourceRef): string {
     return `${ref.entity_type}/${ref.entity_uid}/${ref.channel_name ?? ''}/${ref.source.device_uid}/${ref.source.temp_name}`
 }

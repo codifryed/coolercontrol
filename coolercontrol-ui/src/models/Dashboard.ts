@@ -11,6 +11,13 @@ export enum ChartType {
     TABLE = 'Table',
 }
 
+// A saved chart type this version cannot draw (a removed one, or one from a newer version)
+// reads as Time Chart, so the dashboard never renders without a chart.
+export function knownChartType(saved: string): ChartType {
+    const known: ReadonlyArray<string> = Object.values(ChartType)
+    return known.includes(saved) ? (saved as ChartType) : ChartType.TIME_CHART
+}
+
 // Get localized chart type names
 export function getLocalizedChartType(type: ChartType): string {
     const { t } = i18n.global
@@ -93,6 +100,12 @@ export class Dashboard {
 
     wattsMax: number = 800
     wattsMin: number = 0
+
+    // Time Chart only: a table of each line's now/min/max/avg under the chart.
+    showStatsLegend: boolean = false
+
+    // Individual channel charts: draw the driver's limits (max, critical, fan min/max).
+    showLimitLines: boolean = true
 
     // Selected data types to filter by
     dataTypes: Array<DataType> = []

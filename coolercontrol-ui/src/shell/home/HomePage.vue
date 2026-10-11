@@ -32,14 +32,17 @@ import {
     HealthEntityType,
     type SourceRef,
     failsafeKey,
+    missingSourceKey,
     sourceKey,
     sourceTempDisplayName,
+    staleSourceKey,
 } from '@/models/DeviceHealth.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { alertIsSilenced, getAlertStateClass, getAlertStateDisplayName } from '@/models/Alert.ts'
 import { useToolWizards } from '@/composables/useToolWizards.ts'
+import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
 import { useShortcutsDialog } from '@/composables/useShortcutsDialog.ts'
 import { features } from '@/features'
@@ -58,6 +61,7 @@ const { t } = useI18n({ useScope: 'global' })
 const { openCalibrationWizard, openGenerateWizard } = useToolWizards()
 const { openShortcutsDialog } = useShortcutsDialog()
 const { findingDetail } = useHardwareText()
+const { failsafeText, unreachableText } = useDeviceHealth()
 
 // Read from the store rather than awaiting here: a top-level await makes this an
 // async-setup component behind Suspense, so a slow /health blocks navigation to Home
@@ -114,7 +118,7 @@ interface HealthRow {
 }
 
 const failsafeRoute = (ref: FailsafeRef): RouteLocationRaw =>
-    channelRoute(deviceStore.allDevices(), ref.device_uid, ref.name)
+    channelRoute(deviceStore.allDevices(), ref.device_uid, ref.name, settingsStore.channelUnit)
 
 const sourceRoute = (ref: SourceRef): RouteLocationRaw => {
     switch (ref.entity_type) {
@@ -141,6 +145,8 @@ const entityTypeLabel = (type: HealthEntityType): string => {
     }
 }
 
+const missingSourceText = (ref: SourceRef): string => t(missingSourceKey(ref))
+const staleSourceText = (ref: SourceRef): string => t(staleSourceKey(ref))
 const customSensorsDeviceUID = computed((): string | undefined => {
     for (const device of deviceStore.allDevices()) {
         if (device.type === DeviceType.CUSTOM_SENSORS) return device.uid
@@ -176,11 +182,6 @@ const sourceEntityLabel = (ref: SourceRef): string => {
 const sourceTempLabel = (ref: SourceRef): string =>
     sourceTempDisplayName(ref, settingsStore.allUIDeviceSettings)
 
-const failsafeDetail = (ref: FailsafeRef): string =>
-    ref.reason
-        ? `${t('views.appInfo.failsafeActive')}: ${ref.reason}`
-        : t('views.appInfo.failsafeActive')
-
 const healthRows = computed((): Array<HealthRow> => {
     const rows: Array<HealthRow> = []
     const failsafedCustomSensors = new Set<string>()
@@ -194,7 +195,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `unreachable/${ref.device_uid}`,
             label: deviceSettings?.name ?? ref.device_name,
-            detail: `${t('views.appInfo.deviceUnreachable')}: ${t('views.appInfo.deviceUnreachableDetail')}`,
+            detail: unreachableText(),
             to: { name: 'devices-device', params: { deviceUID: ref.device_uid } },
         })
     }
@@ -208,7 +209,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `failsafe/${failsafeKey(ref)}`,
             label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
-            detail: failsafeDetail(ref),
+            detail: failsafeText(ref.reason),
             to: failsafeRoute(ref),
         })
     }
@@ -224,7 +225,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `missing/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.missingTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${missingSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }
@@ -232,7 +233,7 @@ const healthRows = computed((): Array<HealthRow> => {
         rows.push({
             key: `stale-source/${sourceKey(ref)}`,
             label: `${entityTypeLabel(ref.entity_type)}: ${sourceEntityLabel(ref)}`,
-            detail: `${t('views.appInfo.staleTempSource')}: ${sourceTempLabel(ref)}`,
+            detail: `${staleSourceText(ref)}: ${sourceTempLabel(ref)}`,
             to: sourceRoute(ref),
         })
     }
@@ -289,6 +290,8 @@ const supportRows = computed((): Array<SupportRow> => {
         })
     }
     for (const ref of settingsStore.healthChannelCapabilities) {
+        // Not being drivable is no finding for a flow meter or a pressure gauge.
+        if (settingsStore.isUnitSensor(ref.device_uid, ref.channel_name)) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(ref.device_uid)
         const channelName =
             deviceSettings?.sensorsAndChannels.get(ref.channel_name)?.name ?? ref.channel_name
@@ -296,7 +299,12 @@ const supportRows = computed((): Array<SupportRow> => {
             key: `capability/${ref.device_uid}/${ref.channel_name}`,
             label: `${deviceSettings?.name ?? ref.device_uid} | ${channelName}`,
             detail: capabilityDetail(ref.verdict),
-            to: channelRoute(deviceStore.allDevices(), ref.device_uid, ref.channel_name),
+            to: channelRoute(
+                deviceStore.allDevices(),
+                ref.device_uid,
+                ref.channel_name,
+                settingsStore.channelUnit,
+            ),
         })
     }
     return rows

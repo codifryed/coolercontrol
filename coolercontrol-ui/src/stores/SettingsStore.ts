@@ -18,8 +18,9 @@ import {
     ONBOARDING_TOUR_VERSION,
     SensorAndChannelSettings,
     StartupPage,
+    type StatsLegendScope,
     TagSettings,
-    type TablePosition,
+    type OverlayPosition,
     ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
@@ -35,6 +36,7 @@ import {
     THEME_TOKEN_VARS,
     themeCssVars,
 } from '@/shell/themes.ts'
+import { requestEmbedderPalette } from '@/shell/embed.ts'
 import type { Color, UID } from '@/models/Device'
 import { Device } from '@/models/Device'
 import setDefaultSensorAndChannelColors from '@/stores/DeviceColorCreator'
@@ -42,6 +44,10 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { buildPinnedSensors } from '@/shell/qtPinnedSensors.ts'
 import { channelRoute } from '@/shell/channelRoute.ts'
+import {
+    channelUnit as unitFromLabels,
+    isUnitSensor as isUnitSensorOf,
+} from '@/shell/channelUnit.ts'
 import router from '@/router'
 import type { AllDaemonDeviceSettings } from '@/models/DaemonSettings'
 import type { NameOverrides } from '@/models/NameOverrides'
@@ -59,7 +65,11 @@ import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/mode
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
-import { PowerProfileModesDTO, SystemEventDTO } from '@/models/PowerProfile.ts'
+import {
+    PowerProfileModesDTO,
+    PowerProfileStateDTO,
+    SystemEventDTO,
+} from '@/models/PowerProfile.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
@@ -115,6 +125,8 @@ export const useSettingsStore = defineStore('settings', () => {
     const powerProfilesAvailable: Ref<Array<string>> = ref([])
     const powerProfileActive: Ref<string | undefined> = ref()
     const powerProfileModes: Ref<Record<string, UID>> = ref({})
+    // Unset until the whole state has arrived once: until then the mapping is unknown, not empty.
+    let powerProfilesLoaded = false
     const modeActivePrevious: Ref<UID | undefined> = ref()
 
     const modeInEdit: Ref<UID | undefined> = ref()
@@ -191,6 +203,8 @@ export const useSettingsStore = defineStore('settings', () => {
      * what it cannot drive.
      */
     function channelVerdict(deviceUID: UID, channelName: string): ChannelVerdictRef | undefined {
+        // Not being drivable is no verdict on a flow meter or a pressure gauge.
+        if (isUnitSensor(deviceUID, channelName)) return undefined
         const matches = (ref: ChannelVerdictRef): boolean =>
             ref.device_uid === deviceUID && ref.channel_name === channelName
         return (
@@ -223,8 +237,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
     const themeMode: Ref<string> = ref(ThemeMode.SYSTEM)
-    // The desktop's own colors, pushed by the Qt app. Null in a browser and on any
-    // desktop that publishes none, and read only while themeMode is System.
+    // Colors from outside the UI: the desktop's, pushed by the Qt app, or an
+    // embedding page's. Null in a plain browser tab and on any desktop that
+    // publishes none, and read only while themeMode is System.
     const systemPalette: Ref<SystemPalette | null> = ref(null)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
@@ -255,7 +270,10 @@ export const useSettingsStore = defineStore('settings', () => {
                         ?.color ?? '',
                 ),
             (deviceUID, channelName) =>
-                router.resolve(channelRoute(deviceStore.allDevices(), deviceUID, channelName)).href,
+                router.resolve(
+                    channelRoute(deviceStore.allDevices(), deviceUID, channelName, channelUnit),
+                ).href,
+            channelUnit,
         )
         // @ts-ignore - window.ipc is the QWebChannel bridge, present only in the Qt app.
         window.ipc?.setPinnedSensors?.(JSON.stringify(sensors))
@@ -271,17 +289,20 @@ export const useSettingsStore = defineStore('settings', () => {
     const entityColors: Ref<Array<[string, string]>> = ref([])
     const eyeCandy: Ref<boolean> = ref(false)
     // The corner each profile's points overlay table was last moved to, by profile UID.
-    const pointsOverlayTablePositions: Ref<Array<[UID, TablePosition]>> = ref([])
-    const pointsTablePosition = (profileUID: UID): TablePosition =>
+    const pointsOverlayTablePositions: Ref<Array<[UID, OverlayPosition]>> = ref([])
+    const pointsTablePosition = (profileUID: UID): OverlayPosition =>
         pointsOverlayTablePositions.value.find(([uid]) => uid === profileUID)?.[1] ?? 'bottom-right'
     // Replaces the array rather than mutating it: the settings saver watches this ref without
     // deep: true, so only a new value reaches it.
-    const setPointsTablePosition = (profileUID: UID, position: TablePosition): void => {
+    const setPointsTablePosition = (profileUID: UID, position: OverlayPosition): void => {
         pointsOverlayTablePositions.value = [
             ...pointsOverlayTablePositions.value.filter(([uid]) => uid !== profileUID),
             [profileUID, position],
         ]
     }
+    const sensorStatsPanelVisible: Ref<boolean> = ref(true)
+    const sensorStatsPanelPosition: Ref<OverlayPosition> = ref('top-left')
+    const statsLegendScope: Ref<StatsLegendScope> = ref('window')
     const interfaceFont: Ref<InterfaceFont> = ref(InterfaceFont.BUNDLED)
     // The chosen language, not the resolved one: `system` follows the browser.
     const language: Ref<string> = ref(SYSTEM_LANGUAGE)
@@ -407,6 +428,12 @@ export const useSettingsStore = defineStore('settings', () => {
             } catch (err: any) {
                 console.error('Failed to get desktop setting: ', err)
             }
+        } else {
+            // browser UI
+            const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+            const contrastQuery = window.matchMedia('(prefers-contrast: more)')
+            colorSchemeQuery.addEventListener('change', applyThemeMode)
+            contrastQuery.addEventListener('change', applyThemeMode)
         }
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
@@ -428,6 +455,9 @@ export const useSettingsStore = defineStore('settings', () => {
         entityColors.value = uiSettings.entityColors
         eyeCandy.value = uiSettings.eyeCandy
         pointsOverlayTablePositions.value = uiSettings.pointsOverlayTablePositions ?? []
+        sensorStatsPanelVisible.value = uiSettings.sensorStatsPanelVisible ?? true
+        sensorStatsPanelPosition.value = uiSettings.sensorStatsPanelPosition ?? 'top-left'
+        statsLegendScope.value = uiSettings.statsLegendScope ?? 'window'
         interfaceFont.value = uiSettings.interfaceFont ?? InterfaceFont.BUNDLED
         applyInterfaceFont()
         persistedLanguage = uiSettings.language
@@ -566,6 +596,25 @@ export const useSettingsStore = defineStore('settings', () => {
         return label ?? deviceStore.toTitleCase(channelName)
     }
 
+    /** The unit a label gives a channel's rpm value, undefined when the value is rpm. */
+    function channelUnit(deviceUID: UID, channelName: string): string | undefined {
+        const displayedLabel = allUIDeviceSettings.value
+            .get(deviceUID)
+            ?.sensorsAndChannels.get(channelName)?.channelLabel
+        const overrides = nameOverrides.value.devices[deviceUID]?.channels?.[channelName]
+        return unitFromLabels(displayedLabel, overrides)
+    }
+
+    /** An uncontrollable channel in another unit is a sensor, not a fan. */
+    function isUnitSensor(deviceUID: UID, channelName: string): boolean {
+        return isUnitSensorOf(findDevice(deviceUID), channelName, channelUnit)
+    }
+
+    /** The unit text to show next to a channel's rpm value. */
+    function rpmUnit(deviceUID: UID, channelName: string): string {
+        return channelUnit(deviceUID, channelName) ?? t('common.rpmAbbr')
+    }
+
     function setDisplayNames(
         devices: Array<Device>,
         deviceSettings: Map<UID, DeviceUISettings>,
@@ -653,6 +702,7 @@ export const useSettingsStore = defineStore('settings', () => {
             const detected = defaultChannelLabel(deviceUID, channelName)
             delete nameOverrides.value.devices[deviceUID]?.channels?.[channelName]?.label
             if (channelSettings != null) channelSettings.channelLabel = detected
+            pushTrayPinnedSensors()
             return true
         }
         const deviceOverrides = (nameOverrides.value.devices[deviceUID] ??= {})
@@ -668,6 +718,8 @@ export const useSettingsStore = defineStore('settings', () => {
         if (channelSettings != null) {
             channelSettings.channelLabel = label
         }
+        // The tray caches the label, and the unit and route that follow from it.
+        pushTrayPinnedSensors()
         return true
     }
 
@@ -814,9 +866,34 @@ export const useSettingsStore = defineStore('settings', () => {
     async function loadPowerProfiles(): Promise<void> {
         console.debug('Loading Power Profiles')
         const state = await deviceStore.daemonClient.getPowerProfiles()
+        // A failed request keeps what is shown: an empty list would hide the mapping card.
+        if (state == null) return
+        applyPowerProfileState(state)
+    }
+
+    function applyPowerProfileState(state: PowerProfileStateDTO): void {
         powerProfilesAvailable.value = state.available
         powerProfileActive.value = state.active ?? undefined
         powerProfileModes.value = state.modes
+        powerProfilesLoaded = true
+    }
+
+    /**
+     * Refetches only the profiles the system offers. The active profile and the mapping have
+     * their own writers, which a response that was already under way must not overwrite.
+     * Until a first load has succeeded there is nothing newer to overwrite, and the whole
+     * state is taken: a mapping left empty would be saved over the one the daemon holds.
+     */
+    async function refreshAvailablePowerProfiles(): Promise<void> {
+        console.debug('Refreshing available Power Profiles')
+        const state = await deviceStore.daemonClient.getPowerProfiles()
+        // A failed request keeps what is shown: an empty list would hide the mapping card.
+        if (state == null) return
+        if (powerProfilesLoaded) {
+            powerProfilesAvailable.value = state.available
+        } else {
+            applyPowerProfileState(state)
+        }
     }
 
     /**
@@ -1134,7 +1211,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 severity: 'error',
                 summary: t('common.error'),
                 detail: response.error,
-                life: 4000,
+                // A refusal names everything that still uses the sensor.
+                life: 8000,
             })
         }
     }
@@ -1361,6 +1439,9 @@ export const useSettingsStore = defineStore('settings', () => {
                 entityColors.value,
                 eyeCandy,
                 pointsOverlayTablePositions,
+                sensorStatsPanelVisible,
+                sensorStatsPanelPosition,
+                statsLegendScope,
                 interfaceFont,
                 language,
                 onboardingSeenVersion,
@@ -1422,6 +1503,9 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.entityColors = entityColors.value
                     uiSettings.eyeCandy = eyeCandy.value
                     uiSettings.pointsOverlayTablePositions = pointsOverlayTablePositions.value
+                    uiSettings.sensorStatsPanelVisible = sensorStatsPanelVisible.value
+                    uiSettings.sensorStatsPanelPosition = sensorStatsPanelPosition.value
+                    uiSettings.statsLegendScope = statsLegendScope.value
                     uiSettings.interfaceFont = interfaceFont.value
                     uiSettings.language = language.value
                     uiSettings.showOnboarding = onboardingSeenVersion.value
@@ -1472,6 +1556,18 @@ export const useSettingsStore = defineStore('settings', () => {
             'system-fonts',
             interfaceFont.value === InterfaceFont.SYSTEM,
         )
+    }
+
+    /**
+     * Lets a page that shows the UI in a frame supply the System palette. Meant
+     * to run before the login: the theme is System until the saved one loads, so
+     * the login dialog and the loading screen wear the palette too.
+     */
+    function followEmbedderPalette(): void {
+        requestEmbedderPalette((palette) => {
+            systemPalette.value = palette
+            applyThemeMode()
+        })
     }
 
     function applyThemeMode(): void {
@@ -1817,6 +1913,9 @@ export const useSettingsStore = defineStore('settings', () => {
         saveChannelName,
         defaultDeviceName,
         defaultChannelLabel,
+        channelUnit,
+        isUnitSensor,
+        rpmUnit,
         predefinedColorOptions,
         profiles,
         functions,
@@ -1826,6 +1925,7 @@ export const useSettingsStore = defineStore('settings', () => {
         powerProfileActive,
         powerProfileModes,
         loadPowerProfiles,
+        refreshAvailablePowerProfiles,
         savePowerProfileModes,
         applySystemEvent,
         modeActivePrevious,
@@ -1854,6 +1954,9 @@ export const useSettingsStore = defineStore('settings', () => {
         eyeCandy,
         pointsTablePosition,
         setPointsTablePosition,
+        sensorStatsPanelVisible,
+        sensorStatsPanelPosition,
+        statsLegendScope,
         interfaceFont,
         language,
         showOnboarding,
@@ -1928,6 +2031,7 @@ export const useSettingsStore = defineStore('settings', () => {
         applyMissingDelta,
         applyStaleSourceDelta,
         applyThemeMode,
+        followEmbedderPalette,
         applyInterfaceFont,
         applyLanguage,
         tags,

@@ -13,9 +13,11 @@
 // Colour and route are resolved here rather than in Qt: the colour falls back through
 // the same accessor the Monitoring panel uses, and channelRoute deliberately sends a
 // controllable fan to its Cooling page and a custom sensor to its editor. Duplicating
-// either rule in C++ would let the tray drift away from the rest of the UI.
+// either rule in C++ would let the tray drift away from the rest of the UI. The unit of a
+// speed value is read from the label here for the same reason.
 
 import type { Device, UID } from '@/models/Device'
+import type { ChannelUnitOf } from '@/shell/channelUnit.ts'
 import { monitoringSensors } from '@/shell/monitoring/sensors.ts'
 import { pinId } from '@/shell/cooling/channels.ts'
 
@@ -32,6 +34,8 @@ export interface QtPinnedSensor {
     color: string
     /** Resolved canonical target, so Qt never has to reimplement channelRoute. */
     route: string
+    /** Unit of the speed value when the label names one. Absent means rpm. */
+    unit?: string
 }
 
 export function buildPinnedSensors(
@@ -40,6 +44,7 @@ export function buildPinnedSensors(
     label: (deviceUid: UID, channelName: string) => string,
     color: (deviceUid: UID, channelName: string) => string,
     route: (deviceUid: UID, channelName: string) => string,
+    unit: ChannelUnitOf,
 ): QtPinnedSensor[] {
     const known = new Map<string, { deviceUID: UID; channelName: string; isTemp: boolean }>()
     for (const group of monitoringSensors(devices)) {
@@ -58,5 +63,6 @@ export function buildPinnedSensors(
             isTemp: s.isTemp,
             color: color(s.deviceUID, s.channelName),
             route: route(s.deviceUID, s.channelName),
+            unit: s.isTemp ? undefined : unit(s.deviceUID, s.channelName),
         }))
 }

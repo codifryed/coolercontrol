@@ -37,7 +37,7 @@ import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared'
 import _ from 'lodash'
 import { UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import type { TablePosition } from '@/models/UISettings.ts'
+import type { OverlayPosition } from '@/models/UISettings.ts'
 
 echarts.use([
     GridComponent,
@@ -891,7 +891,7 @@ const MIN_DUTY_SEPARATION = 1
 // the shape of that profile's curve.
 const tablePosition = computed({
     get: () => settingsStore.pointsTablePosition(props.profileUID),
-    set: (position: TablePosition) =>
+    set: (position: OverlayPosition) =>
         settingsStore.setPointsTablePosition(props.profileUID, position),
 })
 

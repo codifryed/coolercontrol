@@ -138,8 +138,6 @@ pub struct CoolerControlSettingsDto {
     compress: Option<bool>,
     poll_rate: Option<f64>,
     drivetemp_suspend: Option<bool>,
-    /// Custom origins to allow in CORS (for reverse proxy setups)
-    origins: Option<Vec<String>>,
     /// Allow unencrypted HTTP connections from non-localhost addresses
     allow_unencrypted: Option<bool>,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
@@ -185,8 +183,9 @@ impl CoolerControlSettingsDto {
             tls_enabled: current.tls_enabled,
             tls_cert_path: current.tls_cert_path,
             tls_key_path: current.tls_key_path,
-            origins: self.origins.clone().unwrap_or(current.origins),
-            // config.toml only: the API neither shows nor changes it.
+            // config.toml only: the API neither shows nor changes these. Both decide which
+            // other origins get at the UI, which an access token must not widen.
+            origins: current.origins,
             frame_ancestors: current.frame_ancestors,
             allow_unencrypted: self.allow_unencrypted.unwrap_or(current.allow_unencrypted),
             protocol_header: self
@@ -241,7 +240,6 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             compress: Some(settings.compress),
             poll_rate: Some(settings.poll_rate),
             drivetemp_suspend: Some(settings.drivetemp_suspend),
-            origins: Some(settings.origins),
             allow_unencrypted: Some(settings.allow_unencrypted),
             protocol_header: settings.protocol_header,
             sensors_auto_detect: Some(settings.sensors_auto_detect),
@@ -303,7 +301,6 @@ mod tests {
                 compress: None,
                 poll_rate: None,
                 drivetemp_suspend: None,
-                origins: None,
                 allow_unencrypted: None,
                 protocol_header: None,
                 sensors_auto_detect: None,
@@ -381,6 +378,33 @@ mod tests {
         assert_eq!(dto.merge(current.clone()).trusted_proxies, ["127.0.0.1"]);
         let reported = serde_json::to_value(CoolerControlSettingsDto::from(current)).unwrap();
         assert!(reported.get("trusted_proxies").is_none());
+    }
+
+    /// Goal: a settings PATCH can neither read nor widen which origins reach the UI. Both
+    /// lists live in config.toml only, since this route also takes access tokens. Method:
+    /// a PATCH naming both keys parses, as any unknown key does, and changes neither, and
+    /// neither is part of what the API reports.
+    #[test]
+    fn origins_and_frame_ancestors_are_config_file_only() {
+        let current = CoolerControlSettings {
+            origins: vec!["https://proxy.example.com".to_string()],
+            frame_ancestors: vec!["https://cockpit.example.com:9090".to_string()],
+            ..Default::default()
+        };
+        let patch = serde_json::json!({
+            "apply_on_boot": true,
+            "origins": ["https://evil.example"],
+            "frame_ancestors": ["https://evil.example"],
+        });
+        let dto: CoolerControlSettingsDto = serde_json::from_value(patch).unwrap();
+        let merged = dto.merge(current.clone());
+        assert!(merged.apply_on_boot);
+        assert_eq!(merged.origins, ["https://proxy.example.com"]);
+        assert_eq!(merged.frame_ancestors, ["https://cockpit.example.com:9090"]);
+
+        let reported = serde_json::to_value(CoolerControlSettingsDto::from(current)).unwrap();
+        assert!(reported.get("origins").is_none());
+        assert!(reported.get("frame_ancestors").is_none());
     }
 
     #[test]

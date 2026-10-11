@@ -39,6 +39,8 @@ import CCColorPicker from '@/components/CCColorPicker.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import UiSeparator from '@/shell/ui/UiSeparator.vue'
 import { useRouteActive } from '@/shell/routeActive.ts'
+import { groupDigits } from '@/shell/digitGroups.ts'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -60,8 +62,7 @@ interface PinnedRow {
     icon?: string
     spins?: boolean
     to: RouteLocationRaw
-    deviceUID?: UID
-    channelName?: string
+    channel?: { deviceUID: UID; channelName: string }
     alertKind?: 'temp' | 'fan'
 }
 
@@ -88,7 +89,9 @@ const liveValue = (deviceUID: UID, channelName: string): string => {
             ? `${values.freq} ${t('common.mhzAbbr')}`
             : `${(Number(values.freq) / precision).toFixed(2)} ${t('common.ghzAbbr')}`
     }
-    if (values.rpm != null) return `${values.rpm} ${t('common.rpmAbbr')}`
+    if (values.rpm != null) {
+        return `${groupDigits(values.rpm)} ${settingsStore.rpmUnit(deviceUID, channelName)}`
+    }
     return ''
 }
 
@@ -101,7 +104,7 @@ const buildPinnedRows = (): PinnedRow[] => {
     const devicesByUid = new Map<UID, Device>()
     for (const device of deviceStore.allDevices()) devicesByUid.set(device.uid, device)
     const fanIds = new Set(
-        coolingChannels(deviceStore.allDevices()).flatMap((group) =>
+        coolingChannels(deviceStore.allDevices(), settingsStore.channelUnit).flatMap((group) =>
             group.channels.map((channel) => pinId(channel.deviceUID, channel.channelName)),
         ),
     )
@@ -133,9 +136,13 @@ const buildPinnedRows = (): PinnedRow[] => {
             sublabel: deviceLabel(deviceUID),
             color: color(deviceUID, channelName),
             value: liveValue(deviceUID, channelName),
-            deviceUID,
-            channelName,
-            to: channelRoute(deviceStore.allDevices(), deviceUID, channelName),
+            channel: { deviceUID, channelName },
+            to: channelRoute(
+                deviceStore.allDevices(),
+                deviceUID,
+                channelName,
+                settingsStore.channelUnit,
+            ),
         }
         if (fanIds.has(id)) {
             rows.push({
@@ -145,7 +152,12 @@ const buildPinnedRows = (): PinnedRow[] => {
                 alertKind: values?.rpm != null ? 'fan' : undefined,
             })
         } else if (sensorIds.has(id)) {
-            const kind = channelKind(devicesByUid.get(deviceUID), channelName, values)
+            const kind = channelKind(
+                devicesByUid.get(deviceUID),
+                channelName,
+                values,
+                settingsStore.channelUnit,
+            )
             rows.push({
                 ...base,
                 icon: channelKindIcon(kind),
@@ -177,16 +189,18 @@ const unpin = (row: PinnedRow): void => {
 }
 
 const setRowColor = (row: PinnedRow, newColor: Color): void => {
+    if (row.channel == null) return
     const setting = settingsStore.allUIDeviceSettings
-        .get(row.deviceUID!)
-        ?.sensorsAndChannels.get(row.channelName!)
+        .get(row.channel.deviceUID)
+        ?.sensorsAndChannels.get(row.channel.channelName)
     if (setting != null) setting.userColor = newColor
 }
 
 const createAlert = (row: PinnedRow): void => {
-    if (row.alertKind == null) return
+    if (row.alertKind == null || row.channel == null) return
+    const { deviceUID, channelName } = row.channel
     if (row.alertKind === 'fan') {
-        createFailAlert(row.deviceUID!, row.channelName!, row.label)
+        createFailAlert(deviceUID, channelName, row.label)
         return
     }
     router.push({
@@ -194,8 +208,8 @@ const createAlert = (row: PinnedRow): void => {
         // `key` forces a remount: the path is identical between two create-alert clicks,
         // so without it the editor keeps the previous sensor's prefill.
         query: {
-            device: row.deviceUID!,
-            channel: row.channelName!,
+            device: deviceUID,
+            channel: channelName,
             metric: ChannelMetric.Temp,
             key: uuidV4(),
         },
@@ -282,6 +296,11 @@ const isRouteActive = useRouteActive()
                         >
                             {{ row.sublabel }}
                         </span>
+                        <ChannelHealthIcon
+                            v-if="row.channel != null"
+                            :device-u-i-d="row.channel.deviceUID"
+                            :channel-name="row.channel.channelName"
+                        />
                         <span
                             v-if="row.value"
                             class="ml-auto whitespace-nowrap font-numeric tabular-nums text-text-color group-hover:hidden group-has-[:focus-visible]:hidden"
@@ -294,7 +313,7 @@ const isRouteActive = useRouteActive()
                         class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex"
                         :class="{ '!flex': openTagRow === row.key }"
                     >
-                        <template v-if="row.deviceUID != null && row.channelName != null">
+                        <template v-if="row.channel != null">
                             <button
                                 v-if="row.alertKind != null"
                                 type="button"
@@ -315,8 +334,8 @@ const isRouteActive = useRouteActive()
                                 />
                             </button>
                             <TagPopover
-                                :device-u-i-d="row.deviceUID"
-                                :channel-name="row.channelName"
+                                :device-u-i-d="row.channel.deviceUID"
+                                :channel-name="row.channel.channelName"
                                 @open="(open: boolean) => onTagOpen(row.key, open)"
                             />
                             <span class="flex w-6 shrink-0 justify-center">

@@ -760,7 +760,7 @@ fn guard_fan_rpm(rpm: u32, caps: &HwmonChannelCapabilities) -> u32 {
 const LABEL_UNIT_CHARS_MAX: usize = 10;
 
 /// The unit a label names in its trailing brackets, e.g. `ubar` in `Pressure [ubar]`.
-fn label_unit(label: &str) -> Option<&str> {
+pub fn label_unit(label: &str) -> Option<&str> {
     let inner = label.trim_end().strip_suffix(']')?;
     let unit = &inner[inner.rfind('[')? + 1..];
     let unit_char_count = unit.chars().count();

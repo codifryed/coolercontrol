@@ -5,3 +5,8 @@
 # id = "GHSA-xxxx-xxxx-xxxx"
 # ignoreUntil = 2026-12-31
 # reason = "Why it does not apply, or what blocks the fix."
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2027-01-06
+reason = "braces: disputed upstream, no fixed release. Reached only through tailwindcss 3, which feeds it our own content globs at build time."

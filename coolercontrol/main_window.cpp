@@ -183,10 +183,17 @@ MainWindow::MainWindow(QWidget* parent)
   const auto paletteWatcher = new system_palette::Watcher(this);
   connect(paletteWatcher, &system_palette::Watcher::changed, this,
           &MainWindow::refreshSystemPalette);
-  // This allows external links in our app to be opened by the external browser:
+  // This allows external links in our app to be opened by the external browser. Web links
+  // only: any other scheme would be handed to whatever local handler is registered for it.
   connect(m_page, &QWebEnginePage::newWindowRequested,
           [](QWebEngineNewWindowRequest const& request) {
-            QDesktopServices::openUrl(request.requestedUrl());
+            const QUrl url = request.requestedUrl();
+            const QString scheme = url.scheme();
+            if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) {
+              qWarning() << "Blocked a new window for a non-web link:" << url.toDisplayString();
+              return;
+            }
+            QDesktopServices::openUrl(url);
           });
   connect(m_page, &QWebEnginePage::fullScreenRequested,
           [this](QWebEngineFullScreenRequest request) {
@@ -774,13 +781,17 @@ void MainWindow::buildTraySensorRows(const QJsonArray& sensors) {
       m_trayIconMenu->insertAction(m_sensorsTrayMenu->menuAction(), action);
     }
     m_traySensors.append(TraySensor{sensor.value("deviceUid").toString(),
-                                    sensor.value("channelName").toString(), label, action});
+                                    sensor.value("channelName").toString(), label,
+                                    sensor.value("unit").toString(), action});
   }
 }
 
 // Formats whichever fields the daemon reported for this channel. A fan reports both rpm
 // and duty, a PSU rail only watts, a temp only its value, so nothing can be assumed.
-static QString formatSensorReading(const QJsonObject& status, const QString& channelName) {
+// The daemon reports every speed value as rpm; `unit` is what the channel's label says
+// it really is, and is empty for an actual fan speed.
+static QString formatSensorReading(const QJsonObject& status, const QString& channelName,
+                                   const QString& unit) {
   QStringList parts;
   for (const auto tempValue : status.value("temps").toArray()) {
     const auto temp = tempValue.toObject();
@@ -795,7 +806,8 @@ static QString formatSensorReading(const QJsonObject& status, const QString& cha
       continue;
     }
     if (channel.contains("rpm")) {
-      parts << QString::number(channel.value("rpm").toInt()) % " RPM";
+      parts << QString::number(channel.value("rpm").toInt()) % " " %
+                   (unit.isEmpty() ? QStringLiteral("RPM") : unit);
     }
     if (channel.contains("duty")) {
       parts << QString::number(channel.value("duty").toDouble(), 'f', 0) % "%";
@@ -840,7 +852,8 @@ void MainWindow::pollTraySensors() const {
         if (history.isEmpty()) {
           break;
         }
-        const auto reading = formatSensorReading(history.last().toObject(), sensor.channelName);
+        const auto reading =
+            formatSensorReading(history.last().toObject(), sensor.channelName, sensor.unit);
         if (!reading.isEmpty()) {
           sensor.action->setText(sensor.label % "   " % reading);
         }

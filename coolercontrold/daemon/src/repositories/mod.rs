@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod cpu;
+pub mod custom_sensor_attributes;
 pub mod custom_sensors_repo;
 pub mod device_summary;
 pub mod failsafe;

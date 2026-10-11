@@ -131,13 +131,13 @@ const setAlreadyAppliedChannels = (): void => {
 }
 setAlreadyAppliedChannels()
 
-const valueSuffix = (metric: ChannelMetric | undefined): string => {
-    switch (metric) {
+const valueSuffix = (channel: AvailableChannel): string => {
+    switch (channel.metric) {
         case ChannelMetric.Duty:
         case ChannelMetric.Load:
             return ` ${t('common.percentUnit')}`
         case ChannelMetric.RPM:
-            return ` ${t('common.rpmAbbr')}`
+            return ` ${settingsStore.rpmUnit(channel.deviceUID, channel.channelName)}`
         case ChannelMetric.Freq:
             return ` ${t('common.mhzAbbr')}`
         case ChannelMetric.Temp:
@@ -154,7 +154,7 @@ const channelGroups = computed<UiOptionGroup[]>(() =>
             label: ch.channelFrontendName,
             value: channelKey(ch.deviceUID, ch.channelName),
             color: ch.lineColor,
-            rightText: `${ch.value}${valueSuffix(ch.metric)}`,
+            rightText: `${ch.value}${valueSuffix(ch)}`,
         })),
     })),
 )

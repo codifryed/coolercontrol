@@ -16,7 +16,7 @@ addressing your issue, assessing changes, and helping you finalize your pull req
   - [Issues](#issues)
   - [Merge Requests](#merge-requests)
     - [Development Environment](#development-environment)
-- [AI-Assisted Contributions](#ai-assisted-contributions)
+- [AI Policy](#ai-policy)
 - [Getting Help](#getting-help)
 
 ## Code of Conduct
@@ -50,7 +50,8 @@ that cover both:
 Issues should be used to report problems with the application, request a new feature, or to discuss
 potential changes **before** a PR is created. When you create a new Issue, choosing a Bug or Feature
 Request template will help guide you through collecting and providing the information we need to
-investigate.
+investigate. Write the report in your own words, and see the [AI Policy](AI_POLICY.md) if an AI tool
+helped.
 
 If you find an Issue that addresses the problem you're having, please add your own reproduction
 information to the existing issue rather than creating a new one. Adding a
@@ -114,30 +115,17 @@ it from the file's first commit. Check your work with `make copyright-check`.
 
 Both targets need the `reuse` tool: `pipx install "reuse[charset-normalizer]"`.
 
-## AI-Assisted Contributions
+## AI Policy
 
-AI coding assistants (such as GitHub Copilot, Claude, or ChatGPT) are welcome as tools to help you
-contribute. They do not lower the standards your contribution is held to, and a few expectations
-apply.
+Our [AI Policy](AI_POLICY.md) covers issues, merge requests, and all communication in the project.
+In short:
 
-- **You are the author, the AI is a tool.** AI may assist you, but it does not contribute on its own
-  behalf.
-- **You are fully accountable.** You own every line you submit, including any bug, regression, or
-  security flaw it introduces. "The AI wrote it" is never an explanation in review.
-- **No purely machine-generated submissions.** Unreviewed, drive-by AI output is not accepted and
-  may be closed without review. We would rather have a small, well-understood change than a large
-  one nobody can stand behind.
-- **You understand and have tested it.** You can explain every change during review, and you have
-  built, run, and tested it yourself rather than trusting the model's word.
-- **You are responsible for licensing.** Make sure AI-suggested code does not introduce material
-  under a license incompatible with this project's GPL-3.0-or-later license, or verbatim copyrighted
-  code. Generated code can reproduce its training data.
-- **Disclose AI use.** Note in your merge request description that AI was used and roughly where. If
-  you want to be precise, you may also add an `Assisted-by:` trailer to your commits, for example
-  `Assisted-by: Claude:claude-opus-4`.
+- **Communication is human-written.** Describe issues and changes in your own words.
+- **You must understand your code.** AI tools may help you write it, and you answer for it.
+- **AI-assisted merge requests are held to a higher standard** and need an agreed issue first.
+- **Label AI use** in the merge request description or with an `Assisted-by:` trailer.
 
-In short: use whatever tools help you, but the work, the understanding, and the responsibility are
-yours.
+Submissions that do not follow it may be closed without review.
 
 ## Getting Help
 

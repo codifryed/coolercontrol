@@ -280,6 +280,8 @@ export default {
                     noMode: 'Aucun mode',
                     saveFailed:
                         "L'association des profils d'alimentation n'a pas pu etre enregistree.",
+                    modeNotActive: "{mode} est associé au profil actuel, mais n'est pas actif.",
+                    modeNotActiveRestart: 'Il sera réactivé au prochain démarrage du daemon.',
                     profileNames: {
                         'power-saver': "Economie d'energie",
                         balanced: 'Equilibre',
@@ -511,7 +513,7 @@ export default {
                 "Les plugins étendent CoolerControl avec une prise en charge supplémentaire des appareils, des intégrations et de l'automatisation. Ils peuvent fournir de nouveaux capteurs et commandes d'appareils, se connecter à des services externes ou ajouter des pages d'interface personnalisées.",
             findPlugins: 'Trouver et installer des Plugins',
             restartNote:
-                "Si vous avez récemment ajouté un nouveau plugin et qu'il n'apparaît pas ici, redémarrez le démon CoolerControl.",
+                "Un plugin récemment ajouté apparaît ici à l'ouverture de cette page. Un plugin d'appareil nécessite aussi un redémarrage du démon CoolerControl avant que ses appareils soient chargés.",
             containerNote:
                 "Lorsque CoolerControl s'exécute dans un conteneur, les plugins doivent être placés dans le dossier partagé virtuel persistant afin qu'ils survivent aux redémarrages du conteneur.",
             installedPlugins: 'Plugins Installés',
@@ -526,8 +528,18 @@ export default {
             pluginEnabledRestart: 'Plugin activé. Redémarrez le daemon pour appliquer.',
             disableFailed: 'Impossible de désactiver le plugin',
             enableFailed: "Impossible d'activer le plugin",
+            reloadManifest: 'Recharger le manifeste',
+            manifestReloaded: 'Manifeste rechargé.',
+            manifestValidRestart: 'Le manifeste est valide. Redémarrez le daemon pour appliquer.',
+            reloadFailed: 'Impossible de recharger le manifeste',
             serviceLogs: 'Journaux du service',
             commandCopied: 'Commande copiee dans le presse-papiers',
+            openLinkHeader: 'Ouvrir le lien externe ?',
+            openLinkMessage:
+                "Ce lien provient du plugin {plugin} et s'ouvre dans votre navigateur :",
+            openLink: 'Ouvrir le lien',
+            linkBlocked: 'Lien bloqué',
+            linkBlockedDetail: "Un plugin ne peut ouvrir que des liens web vers d'autres sites.",
         },
         add: {
             profile: 'Profil',
@@ -554,36 +566,51 @@ export default {
         },
         customSensors: {
             missingSourcesNotice:
-                'Les sources de température suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
+                'Les sources suivantes ne sont plus présentes et seront supprimées lors de la sauvegarde: {sources}',
+            metric: 'Métrique',
+            metricTooltip:
+                'Ce que le capteur mesure. Toutes ses sources la partagent.<br/><i>Remarque : la métrique ne peut plus être modifiée une fois le capteur enregistré.</i>',
+            rpmUnitHint:
+                "Cette métrique accepte aussi des valeurs dans d'autres unités. Terminez le nom du capteur par l'unité entre crochets pour l'afficher, p. ex. Pression [mbar].",
             sensorType: 'Type de Capteur',
             mixFunction: 'Fonction de Mélange',
             howCalculateValue: 'Comment calculer la valeur résultante du capteur',
-            tempFile: 'Fichier de Température',
+            sensorFile: 'Fichier du Capteur',
             filePathTooltip:
-                'Entrez le chemin absolu vers le fichier de température à utiliser pour ce capteur.\nLe fichier doit utiliser le format de données sysfs standard :\nUn nombre à virgule fixe en millidegrés Celsius.\np. ex. 80000 pour 80°C.\nLe fichier est vérifié lors de la soumission.',
+                'Entrez le chemin absolu vers le fichier à utiliser pour ce capteur.\nLe fichier doit contenir un nombre entier au format de données sysfs de la métrique.\nLe fichier est vérifié lors de la soumission.',
+            fileUnit: {
+                temp: 'Millidegrés Celsius, p. ex. 80000 pour 80°C',
+                duty: 'Valeur PWM de 0 à 255',
+                rpm: "RPM, ou un nombre entier dans l'unité indiquée par le nom du capteur",
+                freq: 'Hertz, p. ex. 3600000000 pour 3600 MHz',
+                watts: 'Microwatts, p. ex. 65000000 pour 65 W',
+            },
             browse: 'Parcourir',
             browseCustomSensorFile: 'Parcourir pour un fichier de capteur personnalisé',
-            tempSources: 'Sources de Température',
-            tempSource: 'Source de Température',
-            tempSourcesTooltip:
-                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            sources: 'Sources',
+            source: 'Source',
+            sourcesTooltip:
+                'Sources à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            scale: 'Échelle',
+            scaleTooltip:
+                "Saisissez le facteur par lequel la source est multipliée avant l'ajout du décalage.<br/><i>Remarque : un facteur négatif inverse la valeur. Il ne peut pas être 0.</i>",
             offset: 'Décalage',
             offsetTooltip:
-                'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
+                "Saisissez un décalage négatif ou positif à ajouter à la source mise à l'échelle.<br/><i>Remarque : un résultat de température est limité aux plages de température normales.</i>",
             timeWindow: 'Fenêtre de Lissage',
             timeWindowTooltip:
                 'Nombre de secondes des échantillons récents à lisser ensemble.<br/><i>Remarque : doit être compris entre 1 et 300 secondes.</i>',
             helpText: {
-                mix: 'Combine plusieurs sources de température via la fonction choisie (Min/Max/Moyenne/Delta/Moyenne Pondérée). À utiliser pour piloter les ventilateurs depuis le plus chaud de plusieurs capteurs, ou pour équilibrer entre les zones.',
-                file: 'Lit la température depuis un chemin de fichier. À utiliser pour les capteurs non détectés automatiquement par CoolerControl.',
-                offset: "Ajoute ou soustrait une valeur fixe d'une source de température. À utiliser pour calibrer une imprécision connue du capteur.",
+                mix: 'Combine plusieurs sources via la fonction choisie (Min/Max/Moyenne/Delta/Moyenne Pondérée/Somme). À utiliser pour piloter les ventilateurs depuis le plus chaud de plusieurs capteurs, pour équilibrer entre les zones ou pour additionner la consommation électrique.',
+                file: 'Lit une valeur depuis un chemin de fichier. À utiliser pour les capteurs non détectés automatiquement par CoolerControl.',
+                offset: 'Multiplie une source par un facteur, puis ajoute une valeur fixe. À utiliser pour calibrer une imprécision connue du capteur ou pour convertir une valeur dans une autre unité.',
                 timeAverage:
                     "Moyenne arithmétique sur une fenêtre temporelle fixe. La sortie est bornée par la plage d'entrée et ne dépasse jamais. Pour les ventilateurs qui doivent ignorer les pics de température brefs.",
                 exponentialMovingAvg:
                     'Moyenne pondérée favorisant les lectures récentes. Plus lisse que la Moyenne Temporelle pour la même fenêtre, mais nécessite environ 3 fois la longueur de la fenêtre pour suivre complètement un changement durable. Pour les ventilateurs qui doivent suivre les vraies tendances sans gigue.',
             },
-            tempWeights: 'Poids des Températures',
-            tempName: 'Nom de la Température',
+            sourceWeights: 'Poids des Sources',
+            sourceName: 'Nom de la Source',
             weight: 'Poids',
             saveCustomSensor: 'Enregistrer le Capteur Personnalisé',
             unsavedChanges:
@@ -688,6 +715,8 @@ export default {
                 'Le pilote ne répond plus, ce périphérique ne peut donc être ni lu ni contrôlé. Nouvelle tentative périodique.',
             missingTempSource: 'Source de température manquante',
             staleTempSource: 'La source de température utilise des valeurs de secours',
+            missingSource: 'Source manquante',
+            staleSource: 'La source utilise des valeurs de secours',
             stressTest: 'Tests de stress thermique',
             stressTestTooltip:
                 'Génère une charge thermique soutenue pour valider\nles courbes de ventilateur et les profils de refroidissement.\nLes résultats peuvent varier selon le matériel.\nInstallez stress-ng pour des backends supplémentaires.',
@@ -763,6 +792,23 @@ export default {
             disabledLabel: 'Désactivée',
             greaterThan: 'supérieur à',
             lessThan: 'inférieur à',
+            reference: 'Valeurs de référence',
+            referenceHelp:
+                "Ce que les sources sélectionnées ont relevé et les limites indiquées par leurs pilotes. Sélectionnez une valeur pour l'utiliser comme seuil.",
+            driverLimitsHelp:
+                "La signification d'une limite du pilote dépend du pilote : sur certaines puces, Min et Max sont les relevés les plus bas et les plus hauts jusqu'ici.",
+            referenceEmpty:
+                'Sélectionnez une source de canal pour voir ici ses relevés et ses limites.',
+            allSources: 'Toutes les sources',
+            useAsGreaterThan: 'Utiliser comme « supérieur à »',
+            useAsLessThan: 'Utiliser comme « inférieur à »',
+            crossesOtherThreshold: "Franchirait l'autre seuil",
+            outsideRange: 'Hors de la plage autorisée',
+            above: 'Au-dessus',
+            below: 'En dessous',
+            longest: 'Plus longue',
+            outsideHelp:
+                "Combien de temps les relevés récents de chaque source ont été au-dessus ou en dessous des seuils tels qu'ils sont réglés maintenant, et la plus longue période ininterrompue. Cette période est mise en évidence lorsqu'elle dure assez longtemps pour déclencher l'alerte.",
             newAlert: 'Nouvelle Alerte',
             warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
@@ -1078,6 +1124,100 @@ export default {
             rpmMhz: 'tr/min / MHz',
             krpmGhz: 'k tr/min / GHz',
             watts: 'watts',
+        },
+        chartDisplayOptions: {
+            limitLines: 'Lignes de limite',
+            statsPanel: 'Panneau des statistiques',
+            title: "Options d'affichage",
+            statsLegend: 'Légende des statistiques',
+        },
+        chartStats: {
+            title: 'Statistiques',
+            series: 'Série',
+            now: 'Actuel',
+            min: 'Min',
+            max: 'Max',
+            avg: 'Moy',
+            lastMinutes: 'Dernières {minutes}\u00a0min',
+            visibleRange: 'Visible {duration}',
+            sinceStart: 'Depuis le démarrage',
+            sinceStartHelp:
+                'Depuis le démarrage du daemon, ou depuis la dernière réinitialisation des statistiques dans la vue Tableau.',
+            scope: 'Période des statistiques',
+        },
+        channelAttributes: {
+            title: 'Attributs du pilote',
+            help: "Valeurs supplémentaires que le pilote matériel indique pour ce canal, lues à l'ouverture de cette page. Leur signification dépend du pilote : sur certaines puces, Min et Max sont les relevés les plus bas et les plus hauts jusqu'ici, et Cible peut être la cible actuelle. Les valeurs non définies sont masquées.",
+            refresh: 'Relire',
+            empty: "Le pilote n'indique aucun attribut supplémentaire pour ce canal.",
+            offChart: 'hors graphique',
+            kinds: {
+                tempMax: 'Max',
+                tempMaxHyst: 'Hystérésis max',
+                tempCrit: 'Critique',
+                tempCritHyst: 'Hystérésis critique',
+                tempEmergency: 'Urgence',
+                tempEmergencyHyst: "Hystérésis d'urgence",
+                tempMin: 'Min',
+                tempMinHyst: 'Hystérésis min',
+                tempLcrit: 'Critique bas',
+                tempLcritHyst: 'Hystérésis critique basse',
+                tempLowest: 'Plus basse',
+                tempHighest: 'Plus haute',
+                tempRatedMin: 'Min nominal',
+                tempRatedMax: 'Max nominal',
+                tempOffset: 'Décalage',
+                tempType: 'Type de capteur',
+                fanMin: 'Min',
+                fanMax: 'Max',
+                fanTarget: 'Cible',
+                fanDiv: 'Diviseur',
+                fanPulses: 'Impulsions par tour',
+                powerMax: 'Max',
+                powerCrit: 'Critique',
+                powerMin: 'Min',
+                powerLcrit: 'Critique bas',
+                powerCap: 'Limite de puissance',
+                powerCapHyst: 'Hystérésis de la limite de puissance',
+                powerCapMax: 'Limite de puissance max',
+                powerCapMin: 'Limite de puissance min',
+                powerRatedMin: 'Min nominal',
+                powerRatedMax: 'Max nominal',
+            },
+            tempTypes: {
+                cpuDiode: 'Diode CPU',
+                transistor: 'Transistor',
+                thermalDiode: 'Diode thermique',
+                thermistor: 'Thermistance',
+                amdAmdsi: 'AMD AMDSI',
+                intelPeci: 'Intel PECI',
+            },
+        },
+        statsPanel: {
+            moveCorner: "Déplacer dans l'autre coin",
+            hide: 'Masquer',
+            jitter: 'Fluctuation',
+            jitterHelp:
+                'Variation moyenne entre une mesure et la suivante sur cette fenêtre. Pour une température, réglez le Seuil de la Fonction (Hystérésis Avancée) au-dessus de cette valeur pour que les ventilateurs ignorent le bruit du capteur. Pour le cycle ou les tr/min, une valeur élevée signifie que le ventilateur change sans cesse de vitesse.',
+            directionChanges: 'Changements de Sens',
+            directionChangesHelp:
+                "Nombre de fois où le cycle est passé de la hausse à la baisse ou l'inverse sur cette fenêtre. Des changements fréquents signifient que le ventilateur change sans cesse de vitesse, ce qui s'entend. Un Seuil ou un Délai plus grand dans l'Hystérésis Avancée de la Fonction le calme.",
+            changesValue: '{count} ({rate}/min)',
+            stopped: 'Arrêté',
+            stoppedHelp:
+                'Part de la fenêtre à 0 tr/min. Normal pour les ventilateurs avec un mode zéro tr/min.',
+            stalls: 'Blocages',
+            stallsHelp:
+                "Nombre de fois où le ventilateur a indiqué 0 tr/min pendant {polls} relevés ou plus alors que son cycle était d'au moins {duty} %, avec leur durée totale. Un ventilateur défaillant ou débranché, ou un cycle minimal trop bas, apparaît ici.",
+            stallsNone: 'Aucun',
+            stallsValue: '{count} ({duration})',
+            timeInRange: 'Temps par Plage',
+            timeInRangeHelp:
+                "Les cinq plages où cette ligne a passé le plus de temps sur la fenêtre, et la part de toutes les autres. Chaque plage fait environ un dixième de l'écart, par pas de 1, 2 ou 5.",
+            line: 'Ligne',
+            band: '{from} à {to}',
+            otherBands: 'Autres Plages',
+            noReadings: "Aucune mesure sur cette fenêtre pour l'instant.",
         },
         sensorTable: {
             device: 'Appareil',
@@ -1580,7 +1720,7 @@ export default {
             sensorType: {
                 mix: 'Mélange',
                 file: 'Fichier',
-                offset: 'Décalage',
+                offset: 'Échelle et Décalage',
                 timeAverage: 'Moyenne Temporelle',
                 exponentialMovingAvg: 'Moyenne Mobile Exponentielle',
             },
@@ -1590,6 +1730,7 @@ export default {
                 delta: 'Delta',
                 avg: 'Moyenne',
                 weightedAvg: 'Moyenne Pondérée',
+                sum: 'Somme',
             },
         },
         themeMode: {

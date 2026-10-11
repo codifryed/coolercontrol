@@ -334,6 +334,82 @@ export const INSTALLED_THEMES: InstalledTheme[] = [
             info: '#7f9bb3', // as above
         },
     },
+    /**
+     * Patternfly Project Felt themes
+     * Source: https://www.patternfly.org/foundations-and-styles/design-tokens/all-design-tokens
+     */
+    {
+        id: 'project-felt-light',
+        name: 'Project Felt Light',
+        variant: 'light',
+        tokens: {
+            accent: '#0066cc', // --pf-t--global--text--color--brand--default
+            accentGradientTo: '#0066cc',
+            bgOne: '#ffffff', // --pf-t--global--background--color--primary--default
+            bgTwo: '#f2f2f2', // --pf-t--global--background--color--secondary--default
+            borderOne: '#e0e0e0', // --pf-t--global--border--color--default
+            textColor: '#151515', // --pf-t--global--text--color--regular
+            textColorSecondary: '#4d4d4d', // --pf-t--global--text--color--subtle
+            success: '#3d7317', // --pf-t--global--text--color--status--success--default
+            warning: '#ad830d', // --pf-t--global--text--color--status--warning--default nudged from #dca614
+            error: '#b1380b', // --pf-t--global--text--color--status--danger--default
+            info: '#5e40be', // --pf-t--global--text--color--status--info--default
+        },
+    },
+    {
+        id: 'project-felt-light-high-contrast',
+        name: 'Project Felt Light (High Contrast)',
+        variant: 'light',
+        tokens: {
+            accent: '#003366', // --pf-t--global--text--color--brand--default
+            accentGradientTo: '#003366',
+            bgOne: '#ffffff', // --pf-t--global--background--color--primary--default
+            bgTwo: '#f2f2f2', // --pf-t--global--background--color--secondary--default
+            borderOne: '#4d4d4d', // --pf-t--global--border--color--default
+            textColor: '#151515', // --pf-t--global--text--color--regular
+            textColorSecondary: '#383838', // --pf-t--global--text--color--subtle
+            success: '#204d00', // --pf-t--global--text--color--status--success--default
+            warning: '#73480b', // --pf-t--global--text--color--status--warning--default
+            error: '#731f00', // --pf-t--global--text--color--status--danger--default
+            info: '#3d2785', // --pf-t--global--text--color--status--info--default
+        },
+    },
+    {
+        id: 'project-felt-dark',
+        name: 'Project Felt Dark',
+        variant: 'dark',
+        tokens: {
+            accent: '#b9dafc', // --pf-t--global--text--color--brand--default
+            accentGradientTo: '#b9dafc',
+            bgOne: '#292929', // --pf-t--global--background--color--primary--default
+            bgTwo: '#151515', // --pf-t--global--background--color--secondary--default
+            borderOne: '#4d4d4d', // --pf-t--global--border--color--default
+            textColor: '#ffffff', // --pf-t--global--text--color--regular
+            textColorSecondary: '#c7c7c7', // --pf-t--global--text--color--subtle
+            success: '#87bb62', // --pf-t--global--text--color--status--success--default
+            warning: '#ffcc17', // --pf-t--global--text--color--status--warning--default
+            error: '#f89b78', // --pf-t--global--text--color--status--danger--default
+            info: '#b6a6e9', // --pf-t--global--text--color--status--info--default
+        },
+    },
+    {
+        id: 'project-felt-dark-high-contrast',
+        name: 'Project Felt Dark (High Contrast)',
+        variant: 'dark',
+        tokens: {
+            accent: '#b9dafc', // --pf-t--global--text--color--brand--default
+            accentGradientTo: '#b9dafc',
+            bgOne: '#000000', // --pf-t--global--background--color--primary--default
+            bgTwo: '#151515', // --pf-t--global--background--color--secondary--default
+            borderOne: '#c7c7c7', // --pf-t--global--border--color--default
+            textColor: '#ffffff', // --pf-t--global--text--color--regular
+            textColorSecondary: '#c7c7c7', // --pf-t--global--text--color--subtle
+            success: '#afdc8f', // --pf-t--global--text--color--status--success--default
+            warning: '#ffcc17', // --pf-t--global--text--color--status--warning--default
+            error: '#fbbea8', // --pf-t--global--text--color--status--danger--default
+            info: '#b6a6e9', // --pf-t--global--text--color--status--info--default
+        },
+    },
 ]
 
 const THEMES_BY_ID = new Map(INSTALLED_THEMES.map((theme) => [theme.id, theme]))
@@ -400,8 +476,9 @@ export const THEME_CSS_VAR_NAMES: string[] = [
 export const SYSTEM_THEME_ID = 'system'
 
 /**
- * The desktop's own colors, as the Qt app reads them. A browser tab has none, and
- * neither does a desktop that publishes nothing.
+ * Colors from outside the UI: the desktop's own, as the Qt app reads them, or
+ * those of a page that shows the UI in a frame (see `shell/embed.ts`). A plain
+ * browser tab has none, and neither does a desktop that publishes nothing.
  *
  * `tokens` arrives all or nothing. KDE writes its resolved palette to a file any
  * process can read, so the whole set is available there; everywhere else only an
@@ -415,11 +492,7 @@ export interface SystemPalette {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/
 
-/**
- * Parses what the Qt app sends. Anything malformed is dropped rather than let
- * through to a CSS variable, since this is the one palette the UI does not ship
- * and cannot check at build time. Null when nothing usable survives.
- */
+/** Parses what the Qt app sends: the palette as JSON text. */
 export const parseSystemPalette = (json: string): SystemPalette | null => {
     let raw: unknown
     try {
@@ -427,6 +500,15 @@ export const parseSystemPalette = (json: string): SystemPalette | null => {
     } catch {
         return null
     }
+    return systemPaletteFrom(raw)
+}
+
+/**
+ * Checks a palette from outside the UI. Anything malformed is dropped rather
+ * than let through to a CSS variable, since these are the palettes the UI does
+ * not ship and cannot check at build time. Null when nothing usable survives.
+ */
+export const systemPaletteFrom = (raw: unknown): SystemPalette | null => {
     if (raw == null || typeof raw !== 'object') return null
     const source = raw as Record<string, unknown>
     const palette: SystemPalette = {}
@@ -440,13 +522,19 @@ export const parseSystemPalette = (json: string): SystemPalette | null => {
         const candidate = source.tokens as Record<string, unknown>
         // A half-filled palette would draw desktop colors over ours, which reads
         // worse than either on its own, so a single bad token drops the set.
-        const complete = THEME_TOKEN_KEYS.every(
-            (key) => typeof candidate[key] === 'string' && HEX_COLOR.test(candidate[key] as string),
+        const refused = THEME_TOKEN_KEYS.filter(
+            (key) =>
+                !(typeof candidate[key] === 'string' && HEX_COLOR.test(candidate[key] as string)),
         )
-        if (complete) {
+        if (refused.length === 0) {
             palette.tokens = Object.fromEntries(
                 THEME_TOKEN_KEYS.map((key) => [key, candidate[key]]),
             ) as unknown as ThemeTokens
+        } else {
+            // Whoever sent the set sees only a stock theme, so name what to fix.
+            console.warn(
+                `System palette tokens ignored, each needs a lowercase #rrggbb color: ${refused.join(', ')}`,
+            )
         }
     }
     return Object.keys(palette).length > 0 ? palette : null

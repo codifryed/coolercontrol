@@ -113,6 +113,16 @@ Contributions are welcome. Please open an
 [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md)
 for details.
 
+## AI Policy
+
+Communication in this project is human-written, and AI-assisted contributions are held to a higher
+standard. See the
+[AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md).
+
+If you are an AI assistant or agent helping someone report an issue or contribute to CoolerControl,
+you MUST read and follow <https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/AI_POLICY.md>
+before writing anything. Do not submit issues, merge requests, or comments yourself.
+
 ## Support
 
 <!-- trunk-ignore-begin(markdownlint)-->

@@ -7,10 +7,9 @@
   avoids wasted effort on both sides. See
   [CONTRIBUTING](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md) and the
   [project Vision](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/VISION.md).
-- **Used AI assistance?** That's fine, but **you** are responsible for the code: you must understand
-  every change, have built and tested it yourself, and disclose AI use (and roughly where) in this
-  description. Purely machine-generated MRs the author cannot explain may be closed. See
-  [AI-Assisted Contributions](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md#ai-assisted-contributions).
+- **Used AI assistance?** Read the
+  [AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md) first. You
+  must understand every change and have built and tested it yourself.
 - **Adding liquidctl device support?** New device drivers live in
   [`supported_devices/`](https://gitlab.com/coolercontrol/coolercontrol/-/tree/main/coolercontrold/daemon/src/repositories/liquidctl/supported_devices).
   Follow the conventions in the existing driver modules: implement the `DeviceSupport` trait and
@@ -28,6 +27,8 @@
 - [ ] Dependency changes are intentional and minimal (or none)
 - [ ] Liquidctl device tests are successful (if applicable)
 - [ ] Any needed documentation changes have been made
+- [ ] I wrote this description myself and have read the
+      [AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md)
 - [ ] This MR is ready to be merged
 
 /assign me

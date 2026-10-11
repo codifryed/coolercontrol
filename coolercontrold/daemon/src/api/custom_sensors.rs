@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::{CustomSensor, CustomSensorKind, CustomTempSourceData};
+use crate::setting::{CustomSensor, CustomSensorId, CustomSensorKind, SensorSource};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::ops::Not;
 
 use super::validate_name_string;
 
@@ -35,20 +36,6 @@ pub async fn get(
         .get(path.custom_sensor_id)
         .await
         .map(Json)
-        .map_err(handle_error)
-}
-
-/// Set the custom sensors order in the array of custom sensors
-pub async fn save_order(
-    State(AppState {
-        custom_sensor_handle,
-        ..
-    }): State<AppState>,
-    Json(cs_dto): Json<CustomSensorsDto>,
-) -> Result<(), CCError> {
-    custom_sensor_handle
-        .save_order(cs_dto.custom_sensors)
-        .await
         .map_err(handle_error)
 }
 
@@ -99,16 +86,29 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     // for File, offset for Offset, time_window_seconds for the smoothing variants), so only
     // the value ranges and source cardinality the type cannot express remain here.
     match &custom_sensor.kind {
-        CustomSensorKind::Mix { sources, .. } => validate_custom_sensor_sources(sources),
+        CustomSensorKind::Mix { sources, .. } => {
+            // An empty Mix can only ever report its failsafe.
+            if sources.is_empty() {
+                return Err(CCError::UserError {
+                    msg: "Custom Sensor Mix type must have at least 1 source".to_string(),
+                });
+            }
+            validate_custom_sensor_sources(sources)
+        }
         CustomSensorKind::File { .. } => Ok(()),
-        CustomSensorKind::Offset { offset, sources } => {
+        CustomSensorKind::Offset {
+            offset, sources, ..
+        } => {
             validate_single_source(sources)?;
-            if (-100..=100).contains(offset) {
+            let limit = custom_sensor.metric.offset_limit();
+            // A NaN offset is in no range, so it is refused here too.
+            if (-limit..=limit).contains(offset) {
                 Ok(())
             } else {
                 Err(CCError::UserError {
-                    msg: "Custom Sensor Offset type offset must be between -100 and 100"
-                        .to_string(),
+                    msg: format!(
+                        "Custom Sensor Offset type offset must be between -{limit} and {limit}"
+                    ),
                 })
             }
         }
@@ -134,27 +134,28 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
 
 /// Validates the `sources` constraints the type cannot express: a cap that protects the API,
 /// per-source weight, and non-empty source identifiers.
-fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+fn validate_custom_sensor_sources(sources: &[SensorSource]) -> Result<(), CCError> {
     // Not a hard limit, just protects the API.
     if sources.len() > 50 {
         return Err(CCError::UserError {
-            msg: "sources cannot have more than 50 temps".to_string(),
+            msg: "a Custom Sensor cannot have more than 50 sources".to_string(),
         });
     }
     for source in sources {
-        if source.weight > 254 {
+        // A weight of 0 would divide the weighted average by zero.
+        if (1..=254).contains(&source.weight).not() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a weight greater than 254".to_string(),
+                msg: "sources must have a weight between 1 and 254".to_string(),
             });
         }
-        if source.temp_source.device_uid.is_empty() {
+        if source.device_uid.is_empty() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a temp_source with an empty device UID".to_string(),
+                msg: "sources cannot have an empty device UID".to_string(),
             });
         }
-        if source.temp_source.temp_name.is_empty() {
+        if source.name.is_empty() {
             return Err(CCError::UserError {
-                msg: "sources cannot have a temp_source with an empty Temp Name".to_string(),
+                msg: "sources cannot have an empty temp or channel name".to_string(),
             });
         }
     }
@@ -163,10 +164,10 @@ fn validate_custom_sensor_sources(sources: &[CustomTempSourceData]) -> Result<()
 
 /// Validates the variants derived from a single source: exactly one source, plus the shared
 /// source constraints.
-fn validate_single_source(sources: &[CustomTempSourceData]) -> Result<(), CCError> {
+fn validate_single_source(sources: &[SensorSource]) -> Result<(), CCError> {
     if sources.len() != 1 {
         return Err(CCError::UserError {
-            msg: "Custom Sensor must have exactly 1 temp source".to_string(),
+            msg: "Custom Sensor must have exactly 1 source".to_string(),
         });
     }
     validate_custom_sensor_sources(sources)
@@ -179,27 +180,43 @@ pub struct CustomSensorsDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CSPath {
-    custom_sensor_id: String,
+    custom_sensor_id: CustomSensorId,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::TempSource;
+    use crate::setting::{CustomSensorMetric, CustomSensorMixFunctionType, Scale};
 
-    fn source() -> CustomTempSourceData {
-        CustomTempSourceData {
-            temp_source: TempSource {
-                device_uid: "device-uid".to_string(),
-                temp_name: "cpu_temp".to_string(),
-            },
+    fn source() -> SensorSource {
+        SensorSource {
+            device_uid: "device-uid".to_string(),
+            name: "cpu_temp".to_string(),
             weight: 1,
         }
     }
 
-    fn time_average(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn weighted(weight: u8) -> SensorSource {
+        SensorSource { weight, ..source() }
+    }
+
+    fn mix(sources: Vec<SensorSource>) -> CustomSensor {
+        CustomSensor {
+            id: "mix".to_string(),
+            metric: CustomSensorMetric::Temp,
+            kind: CustomSensorKind::Mix {
+                mix_function: CustomSensorMixFunctionType::WeightedAvg,
+                sources,
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    fn time_average(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ta".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::TimeAverage {
                 time_window_seconds,
                 sources,
@@ -209,9 +226,10 @@ mod tests {
         }
     }
 
-    fn ema(time_window_seconds: u16, sources: Vec<CustomTempSourceData>) -> CustomSensor {
+    fn ema(time_window_seconds: u16, sources: Vec<SensorSource>) -> CustomSensor {
         CustomSensor {
             id: "ema".to_string(),
+            metric: CustomSensorMetric::Temp,
             kind: CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
                 sources,
@@ -219,6 +237,108 @@ mod tests {
             children: Vec::new(),
             parents: Vec::new(),
         }
+    }
+
+    // Every metric is accepted, with the same rules for its sources.
+    #[test]
+    fn accepts_every_metric() {
+        for metric in [
+            CustomSensorMetric::Temp,
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            let mut sensor = mix(vec![source()]);
+            sensor.metric = metric;
+            assert!(validate_custom_sensor(&sensor).is_ok(), "{metric}");
+            sensor.metric = metric;
+            sensor.sources_mut().unwrap().clear();
+            assert!(validate_custom_sensor(&sensor).is_err(), "{metric}");
+        }
+    }
+
+    // A non-temperature offset has the wide range: a temperature's bound is well inside
+    // it, and it ends at a million in either direction.
+    #[test]
+    fn offset_range_for_channel_metrics() {
+        for metric in [
+            CustomSensorMetric::Duty,
+            CustomSensorMetric::RPM,
+            CustomSensorMetric::Freq,
+            CustomSensorMetric::Watts,
+        ] {
+            for valid in [-1_000_000., -100.1, 0.5, 100.1, 1_000_000.] {
+                let mut sensor = scale_offset(valid);
+                sensor.metric = metric;
+                assert!(validate_custom_sensor(&sensor).is_ok(), "{metric} {valid}");
+            }
+            for invalid in [-1_000_000.1, 1_000_000.1, f64::NAN] {
+                let mut sensor = scale_offset(invalid);
+                sensor.metric = metric;
+                assert!(
+                    validate_custom_sensor(&sensor).is_err(),
+                    "{metric} {invalid}"
+                );
+            }
+        }
+    }
+
+    fn scale_offset(offset: f64) -> CustomSensor {
+        CustomSensor {
+            id: "scaled".to_string(),
+            metric: CustomSensorMetric::Temp,
+            kind: CustomSensorKind::Offset {
+                scale: Scale::default(),
+                offset,
+                sources: vec![source()],
+            },
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
+
+    // A temperature offset keeps its -100 to 100 range, decimals included. Past either
+    // bound, and a NaN, are rejected.
+    #[test]
+    fn offset_range_for_temperature() {
+        for valid in [-100., -0.5, 0., 99.9, 100.] {
+            assert!(
+                validate_custom_sensor(&scale_offset(valid)).is_ok(),
+                "{valid}"
+            );
+        }
+        for invalid in [-100.1, 100.1, 1000., f64::NAN, f64::INFINITY] {
+            assert!(
+                validate_custom_sensor(&scale_offset(invalid)).is_err(),
+                "{invalid}"
+            );
+        }
+    }
+
+    // Weights 1 and 254 are the bounds and must pass.
+    #[test]
+    fn mix_accepts_weight_bounds() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(1), weighted(254)])).is_ok());
+    }
+
+    // A weight of 0 is rejected: it would zero the weighted average's divisor.
+    #[test]
+    fn mix_rejects_zero_weight() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(1), weighted(0)])).is_err());
+    }
+
+    // A Mix needs something to mix: no sources is rejected, one is enough.
+    #[test]
+    fn mix_rejects_zero_sources() {
+        assert!(validate_custom_sensor(&mix(vec![])).is_err());
+        assert!(validate_custom_sensor(&mix(vec![source()])).is_ok());
+    }
+
+    // A weight above 254 is rejected: 255 is past the upper bound.
+    #[test]
+    fn mix_rejects_weight_above_254() {
+        assert!(validate_custom_sensor(&mix(vec![weighted(255)])).is_err());
     }
 
     // Note: "missing time_window_seconds" is no longer testable here because the type makes

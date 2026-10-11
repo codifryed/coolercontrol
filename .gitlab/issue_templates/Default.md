@@ -13,7 +13,7 @@
 
 ## Description
 
-Describe the issue you are experiencing and the steps needed to reproduce it.
+Describe the issue you are experiencing and the steps needed to reproduce it, in your own words.
 
 ## Logs and/or Screenshots
 
@@ -34,11 +34,27 @@ output in a code block below:
 journalctl -e -u coolercontrold
 ```
 
+## AI Assistance
+
+If an AI tool helped you investigate or write this report, it must follow the
+[AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md). Give your tool
+this link before it writes anything:
+`https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/AI_POLICY.md`
+
+The description above must be your own words. The tool's analysis goes here:
+
+<details>
+<summary>AI analysis (unverified)</summary>
+
+</details>
+
 ## Checklist
 
 - [ ] I have not found another existing issue that deals with this problem.
 - [ ] I have filled out all sections of this template
 - [ ] I have attached log output and/or screenshots
+- [ ] I wrote the description myself, and any AI assistance follows the
+      [AI Policy](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/AI_POLICY.md).
 - [ ] I have read the [Hardware Support](https://docs.coolercontrol.org/hardware-support.html)
       section of the readme and applied all available steps.
 - [x] I have not read any of the above

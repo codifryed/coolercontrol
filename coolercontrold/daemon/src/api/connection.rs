@@ -21,12 +21,17 @@ use futures_util::future::BoxFuture;
 use hyper_util::rt::{TokioExecutor, TokioTimer};
 use hyper_util::server::conn::auto::Builder;
 use log::{debug, info};
+use nix::sys::socket::{
+    bind, listen, setsockopt, socket, sockopt, AddressFamily, Backlog, SockFlag, SockProtocol,
+    SockType, SockaddrStorage,
+};
 use pin_project_lite::pin_project;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io::{self, ErrorKind, IoSlice};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Not;
+use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -90,6 +95,49 @@ const TIMEOUTS: ConnectionTimeouts = ConnectionTimeouts {
 };
 
 const _: () = assert!(TIMEOUTS.first_bytes_timeout.as_secs() <= TIMEOUTS.header_read.as_secs());
+
+/// Pending connections the kernel queues per listener. The value std and tokio use.
+const LISTEN_BACKLOG: i32 = 128;
+
+/// A non-blocking listener on `address`, ready for `server`. Needs no reactor.
+///
+/// An IPv6 listener takes IPv6 traffic only. Linux otherwise makes `::` dual-stack, which
+/// claims the port for IPv4 too, so it and a `0.0.0.0` listener cannot share a port:
+/// whichever binds second gets `EADDRINUSE`. Each family has its own setting and listener.
+///
+/// The exception is an IPv4-mapped address such as `::ffff:192.0.2.1`: it names an IPv4
+/// address, which an IPv6-only socket cannot bind, so its socket is dual-stack.
+///
+/// Both cases set the option, since its default is the `net.ipv6.bindv6only` sysctl.
+pub fn listener(address: SocketAddr) -> io::Result<std::net::TcpListener> {
+    let family = match address {
+        SocketAddr::V4(_) => AddressFamily::Inet,
+        SocketAddr::V6(_) => AddressFamily::Inet6,
+    };
+    let socket_fd = socket(
+        family,
+        SockType::Stream,
+        SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
+        SockProtocol::Tcp,
+    )?;
+    if let Some(is_ipv6_only) = ipv6_only_option(address) {
+        setsockopt(&socket_fd, sockopt::Ipv6V6Only, &is_ipv6_only)?;
+    }
+    // A restarted daemon rebinds while its old connections are still in TIME_WAIT.
+    setsockopt(&socket_fd, sockopt::ReuseAddr, &true)?;
+    bind(socket_fd.as_raw_fd(), &SockaddrStorage::from(address))?;
+    listen(&socket_fd, Backlog::new(LISTEN_BACKLOG)?)?;
+    Ok(std::net::TcpListener::from(socket_fd))
+}
+
+/// What `IPV6_V6ONLY` must be set to on the socket for `address`. `None` for IPv4, which
+/// has no such option.
+fn ipv6_only_option(address: SocketAddr) -> Option<bool> {
+    match address {
+        SocketAddr::V4(_) => None,
+        SocketAddr::V6(ipv6) => Some(ipv6.ip().to_ipv4_mapped().is_none()),
+    }
+}
 
 /// The API server for `listener`, with every connection admitted by `limiter`, accepted
 /// through `acceptor`, then bounded by the guard. Taking both here keeps the guard on every
@@ -596,6 +644,9 @@ mod tests {
     use axum::Router;
     use axum_server::accept::DefaultAcceptor;
     use axum_server::tls_rustls::RustlsConfig;
+    use nix::errno::Errno;
+    use nix::sys::socket::getsockopt;
+    use std::net::Ipv6Addr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::timeout;
     use tonic_health::pb::health_client::HealthClient;
@@ -618,6 +669,105 @@ mod tests {
             > 2 * TEST_TIMEOUTS.header_read.as_millis()
     );
 
+    /// Attempts at a port free for both families. The kernel picks one that is free for
+    /// IPv4, which another process may still hold for IPv6.
+    const SHARED_PORT_ATTEMPTS: usize = 8;
+
+    fn socket_address(text: &str) -> SocketAddr {
+        text.parse().unwrap()
+    }
+
+    /// Whether `error` is a kernel without IPv6, as when booted with `ipv6.disable=1`: it
+    /// cannot open an `AF_INET6` socket at all. The only case an IPv6 test may skip, since
+    /// every other failure is the daemon's.
+    fn kernel_lacks_ipv6(error: &io::Error) -> bool {
+        error.raw_os_error() == Some(Errno::EAFNOSUPPORT as i32)
+    }
+
+    /// Goal: `0.0.0.0` and `::` listen on one port together, as a config that sets both
+    /// expects. A dual-stack `::` claims the IPv4 port as well and fails with `EADDRINUSE`.
+    /// Method: bind `0.0.0.0` on a kernel-chosen port, then `::` on the same port, and read
+    /// `IPV6_V6ONLY` back as set. Retries while another process holds the port for IPv6, and
+    /// skips on a kernel without IPv6.
+    #[test]
+    fn ipv4_and_ipv6_wildcards_share_a_port() {
+        for _ in 0..SHARED_PORT_ATTEMPTS {
+            let ipv4 = listener(socket_address("0.0.0.0:0")).unwrap();
+            let port = ipv4.local_addr().unwrap().port();
+            let ipv6_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, port));
+            match listener(ipv6_address) {
+                Ok(ipv6) => {
+                    assert_eq!(ipv6.local_addr().unwrap(), ipv6_address);
+                    assert!(getsockopt(&ipv6, sockopt::Ipv6V6Only).unwrap());
+                    return;
+                }
+                Err(err) if kernel_lacks_ipv6(&err) => return,
+                Err(err) => assert_eq!(err.kind(), ErrorKind::AddrInUse, "{err}"),
+            }
+        }
+        panic!("`::` never shared a port with `0.0.0.0`");
+    }
+
+    /// Goal: an IPv4-mapped `ipv6_address` still binds, as it did before IPv6 listeners
+    /// became IPv6-only. The kernel rejects it on an IPv6-only socket with `EINVAL`, so the
+    /// socket must be dual-stack even where `net.ipv6.bindv6only` defaults it to IPv6-only.
+    /// Method: bind `::ffff:127.0.0.1` on a kernel-chosen port, then check the bound address
+    /// and read `IPV6_V6ONLY` back as cleared. Skips on a kernel without IPv6.
+    #[test]
+    fn ipv4_mapped_ipv6_address_binds() {
+        let mapped_address = socket_address("[::ffff:127.0.0.1]:0");
+        let mapped = match listener(mapped_address) {
+            Ok(mapped) => mapped,
+            Err(err) if kernel_lacks_ipv6(&err) => return,
+            Err(err) => panic!("{err}"),
+        };
+        let bound = mapped.local_addr().unwrap();
+        assert_eq!(bound.ip(), mapped_address.ip());
+        assert_ne!(bound.port(), 0);
+        assert!(getsockopt(&mapped, sockopt::Ipv6V6Only).unwrap().not());
+    }
+
+    /// Goal: `IPV6_V6ONLY` is set explicitly for every IPv6 address, false included, and
+    /// never for IPv4. Checks the decision alone, since a host whose `net.ipv6.bindv6only`
+    /// is 0 hides a dual-stack socket that was left on the default.
+    #[test]
+    fn ipv6_only_option_is_explicit_for_every_ipv6_address() {
+        assert_eq!(ipv6_only_option(socket_address("0.0.0.0:80")), None);
+        assert_eq!(ipv6_only_option(socket_address("127.0.0.1:80")), None);
+        assert_eq!(ipv6_only_option(socket_address("[::]:80")), Some(true));
+        assert_eq!(ipv6_only_option(socket_address("[::1]:80")), Some(true));
+        assert_eq!(
+            ipv6_only_option(socket_address("[2001:db8::1]:80")),
+            Some(true)
+        );
+        assert_eq!(
+            ipv6_only_option(socket_address("[::ffff:127.0.0.1]:80")),
+            Some(false)
+        );
+    }
+
+    /// Goal: only a kernel without IPv6 skips the IPv6 tests. The errors a broken
+    /// `listener` returns must still fail them. Method: `kernel_lacks_ipv6` is given
+    /// `EAFNOSUPPORT`, then three errnos a failed bind can return.
+    #[test]
+    fn only_missing_ipv6_support_skips_ipv6_tests() {
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EAFNOSUPPORT)));
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EINVAL)).not());
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EADDRINUSE)).not());
+        assert!(kernel_lacks_ipv6(&io::Error::from(Errno::EADDRNOTAVAIL)).not());
+    }
+
+    /// Goal: the port still belongs to one listener per family. `SO_REUSEADDR` must not let
+    /// a second daemon listen on an address the first already serves. Method: bind loopback
+    /// on a kernel-chosen port, then bind the address it got again and expect `EADDRINUSE`.
+    #[test]
+    fn listening_address_cannot_be_bound_twice() {
+        let first = listener(socket_address("127.0.0.1:0")).unwrap();
+        let taken = first.local_addr().unwrap();
+        let error = listener(taken).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::AddrInUse);
+    }
+
     /// Serves `router` through the production server, the way `create_api_server` does.
     async fn serve(router: Router) -> SocketAddr {
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
@@ -635,17 +785,10 @@ mod tests {
         timeouts: ConnectionTimeouts,
         peer_ip: fn(SocketAddr) -> IpAddr,
     ) -> SocketAddr {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
+        let tcp_listener = listener(socket_address("127.0.0.1:0")).unwrap();
+        let address = tcp_listener.local_addr().unwrap();
         let acceptor = DefaultAcceptor::new();
-        let server = server_with(
-            listener.into_std().unwrap(),
-            acceptor,
-            limiter,
-            timeouts,
-            peer_ip,
-        )
-        .unwrap();
+        let server = server_with(tcp_listener, acceptor, limiter, timeouts, peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())
@@ -664,18 +807,12 @@ mod tests {
         )
         .await
         .unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
+        let tcp_listener = listener(socket_address("127.0.0.1:0")).unwrap();
+        let address = tcp_listener.local_addr().unwrap();
         let acceptor = DualProtocolAcceptor::new(config);
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
-        let server = server_with(
-            listener.into_std().unwrap(),
-            acceptor,
-            limiter,
-            TEST_TIMEOUTS,
-            tcp_peer_ip,
-        )
-        .unwrap();
+        let server =
+            server_with(tcp_listener, acceptor, limiter, TEST_TIMEOUTS, tcp_peer_ip).unwrap();
         tokio::spawn(async move {
             server
                 .serve(router.into_make_service_with_connect_info::<SocketAddr>())

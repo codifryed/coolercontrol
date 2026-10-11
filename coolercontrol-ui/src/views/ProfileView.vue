@@ -20,7 +20,7 @@ import {
     mdiPlusCircleOutline,
 } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import type { TablePosition } from '@/models/UISettings.ts'
+import type { OverlayPosition } from '@/models/UISettings.ts'
 import {
     Function,
     FunctionType,
@@ -1450,7 +1450,7 @@ const deletePointFromLine = (params: any) => {
 // the shape of that profile's curve.
 const tablePosition = computed({
     get: () => settingsStore.pointsTablePosition(props.profileUID),
-    set: (position: TablePosition) =>
+    set: (position: OverlayPosition) =>
         settingsStore.setPointsTablePosition(props.profileUID, position),
 })
 

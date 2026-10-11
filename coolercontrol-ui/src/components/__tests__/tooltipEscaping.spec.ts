@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type uPlot from 'uplot'
 import { escapeHtml, safeColor } from '@/components/htmlEscaping.ts'
+import { type DeviceLineProperties, tooltipPlugin } from '@/components/u-plot-plugins.ts'
+
+// uPlot reads matchMedia at import, which jsdom lacks. The tooltip only needs its types.
+vi.mock('uplot', () => ({ default: {} }))
 
 // The chart tooltip is built as a markup string and assigned to innerHTML. Its line name
 // is a sensor or channel label, which originates from hwmon, a liquidctl device, a service
@@ -48,5 +53,31 @@ describe('chart tooltip escaping', () => {
         expect(safeColor('red;" onload="alert(1)')).toBe('currentColor')
         expect(safeColor('url(javascript:alert(1))')).toBe('currentColor')
         expect(safeColor(undefined)).toBe('currentColor')
+    })
+
+    it('neutralises markup in a unit taken from a label', () => {
+        // An rpm line's unit is the bracket text of a channel label, as untrusted as the name.
+        const lineName = 'uid_flow_rpm'
+        const lines = new Map<string, DeviceLineProperties>([
+            [lineName, { color: '#fff', name: 'Flow', unit: '<b>x</b>' }],
+        ])
+        const plugin = tooltipPlugin(lines, (key: string) => key, 1)
+        const over = document.createElement('div')
+        const chart = {
+            over,
+            cursor: { idx: 0, top: 10, left: 10 },
+            scales: { rpm: { min: 0, max: 100 } },
+            series: [{}, { show: true, scale: 'rpm', label: lineName }],
+            data: [[0], [50]],
+            posToVal: () => 50,
+            width: 400,
+            height: 300,
+        } as unknown as uPlot
+        plugin.hooks.init[0](chart, {} as uPlot.Options, [] as unknown as uPlot.AlignedData)
+        plugin.hooks.setCursor[0](chart)
+
+        const tooltip = over.querySelector('.u-plot-tooltip')!
+        expect(tooltip.textContent).toContain('50 <b>x</b>')
+        expect(tooltip.querySelector('b')).toBeNull()
     })
 })

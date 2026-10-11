@@ -6,10 +6,8 @@ import { v4 as uuidV4 } from 'uuid'
 import { useRouter } from 'vue-router'
 import { ChannelMetric } from '@/models/ChannelSource.ts'
 
-// Above any real fan; matches the alert editor's RPM ceiling.
-const FAIL_ALERT_RPM_MAX = 30000
-
-// Opens the alert editor prefilled to fire when a fan drops to 0 rpm.
+// Opens the alert editor prefilled to fire when a fan drops to 0 rpm. The editor picks the
+// upper threshold, which depends on the fan's current reading.
 export function useFailAlert() {
     const { t } = useI18n()
     const router = useRouter()
@@ -21,7 +19,6 @@ export function useFailAlert() {
                 channel: channelName,
                 metric: ChannelMetric.RPM,
                 min: '1',
-                max: String(FAIL_ALERT_RPM_MAX),
                 name: `${label} ${t('layout.shell.monitoringPanel.failAlertSuffix')}`,
                 // The router-view is keyed on path plus this, and the path does not change
                 // between two create-alert clicks. Without it the editor is not remounted

@@ -113,8 +113,8 @@ describe('device unreachable health state', () => {
         healthUnreachable.push({ device_uid: 'dev1' })
 
         const flags = callInSetup((api) => ({
-            wedged: api.isDeviceUnhealthy('dev1'),
-            other: api.isDeviceUnhealthy('dev2'),
+            wedged: api.isUnhealthy('dev1'),
+            other: api.isUnhealthy('dev2'),
         }))
 
         expect(flags.wedged).toBe(true)

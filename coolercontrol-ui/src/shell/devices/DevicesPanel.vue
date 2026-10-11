@@ -7,18 +7,16 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
-    mdiAlert,
-    mdiLanDisconnect,
     mdiDragVertical,
     mdiLightbulbOutline,
     mdiPinOff,
     mdiPinOutline,
     mdiPlus,
     mdiTelevision,
-    mdiThermometer,
 } from '@mdi/js'
 import { VueDraggable } from 'vue-draggable-plus'
 import { computed, ref, watchEffect } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import {
     type Color,
@@ -31,11 +29,13 @@ import CCColorPicker from '@/components/CCColorPicker.vue'
 import PanelHeader from '@/shell/PanelHeader.vue'
 import TagPopover from '@/shell/monitoring/TagPopover.vue'
 import UiTooltip from '@/shell/ui/UiTooltip.vue'
+import ChannelHealthIcon from '@/shell/ChannelHealthIcon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { customSensorNames, deviceChannelLinks, hardwareDevices } from '@/shell/devices/devices.ts'
 import { deviceTypeIcon } from '@/shell/deviceIcon.ts'
+import { channelKind, channelKindIcon } from '@/shell/channelIcon.ts'
 import { pinId } from '@/shell/cooling/channels.ts'
 import { setDeviceChildrenSubset, setTopLevelOrder } from '@/shell/panelOrder.ts'
 import { useRouteActive } from '@/shell/routeActive.ts'
@@ -44,6 +44,7 @@ import { useDeviceHealth } from '@/composables/useDeviceHealth.ts'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colorStore = useThemeColorsStore()
 
@@ -65,7 +66,7 @@ watchEffect(() => {
     const map = new Map<UID, string[]>()
     for (const device of devicesList.value) {
         if (device.type === DeviceType.CUSTOM_SENSORS) {
-            map.set(device.uid, customSensorNames(device))
+            map.set(device.uid, customSensorNames(device, settingsStore.menuOrder))
         }
     }
     sensorNamesByDevice.value = map
@@ -109,15 +110,10 @@ const channelLabel = (deviceUID: UID, channelName: string): string =>
 
 // The virtual CustomSensors device shows health on the affected sensor rows
 // instead of the device row.
-const { isDeviceUnreachable, isDeviceUnhealthy: isUnhealthyUid, healthTooltip } = useDeviceHealth()
+const { isUnhealthy, healthIcon, healthTooltip } = useDeviceHealth()
 
 const isDeviceUnhealthy = (device: Device): boolean =>
-    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthyUid(device.uid)
-
-const isChannelUnhealthy = (deviceUID: UID, channelName: string): boolean =>
-    settingsStore.healthFailsafe.some(
-        (ref) => ref.device_uid === deviceUID && ref.name === channelName,
-    )
+    device.type !== DeviceType.CUSTOM_SENSORS && isUnhealthy(device.uid)
 
 const setDeviceColor = (deviceUID: UID, newColor: Color): void => {
     const setting = settingsStore.allUIDeviceSettings.get(deviceUID)
@@ -162,6 +158,16 @@ const deviceTarget = (deviceUID: UID): RouteLocationRaw => ({
     name: 'devices-device',
     params: { deviceUID },
 })
+// A custom sensor shows the icon of what it measures.
+const sensorIcon = (device: Device, sensorName: string): string =>
+    channelKindIcon(
+        channelKind(
+            device,
+            sensorName,
+            currentDeviceStatus.value.get(device.uid)?.get(sensorName),
+            settingsStore.channelUnit,
+        ),
+    )
 const customSensorTarget = (customSensorID: string): RouteLocationRaw => ({
     name: 'device-custom-sensor',
     params: { customSensorID },
@@ -209,9 +215,7 @@ const isRouteActive = useRouteActive()
                         >
                             <svg-icon
                                 type="mdi"
-                                :path="
-                                    isDeviceUnreachable(device.uid) ? mdiLanDisconnect : mdiAlert
-                                "
+                                :path="healthIcon(device.uid)"
                                 :size="14"
                                 class="shrink-0 text-error"
                             />
@@ -289,7 +293,7 @@ const isRouteActive = useRouteActive()
                             >
                                 <svg-icon
                                     type="mdi"
-                                    :path="mdiThermometer"
+                                    :path="sensorIcon(device, sensorName)"
                                     :size="18"
                                     class="shrink-0"
                                     :style="{
@@ -299,17 +303,10 @@ const isRouteActive = useRouteActive()
                                 <span class="truncate">
                                     {{ channelLabel(device.uid, sensorName) }}
                                 </span>
-                                <UiTooltip
-                                    v-if="isChannelUnhealthy(device.uid, sensorName)"
-                                    :text="healthTooltip(device.uid, sensorName)"
-                                >
-                                    <svg-icon
-                                        type="mdi"
-                                        :path="mdiAlert"
-                                        :size="14"
-                                        class="shrink-0 text-error"
-                                    />
-                                </UiTooltip>
+                                <ChannelHealthIcon
+                                    :device-u-i-d="device.uid"
+                                    :channel-name="sensorName"
+                                />
                             </RouterLink>
                             <div
                                 class="ml-auto hidden items-center gap-0.5 pr-1 group-hover:flex group-has-[:focus-visible]:flex group-has-[[data-state=open]]:flex"

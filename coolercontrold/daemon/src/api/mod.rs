@@ -14,6 +14,7 @@ mod detect;
 mod device_health;
 pub mod devices;
 mod dual_protocol;
+mod frame_policy;
 mod functions;
 mod hardware_report;
 mod metrics;
@@ -41,6 +42,7 @@ use crate::api::actor::{
     TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
+use crate::api::frame_policy::FramePolicy;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
 use crate::device_health::DeviceHealthController;
@@ -57,19 +59,20 @@ use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
 };
+use aide::axum::ApiRouter;
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::multipart::MultipartError;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json, Router, ServiceExt};
+use axum::{Json, Router, ServiceExt};
 use axum_server::accept::DefaultAcceptor;
 use axum_server::tls_rustls::RustlsConfig;
 use log::{debug, info, warn, Level};
@@ -84,7 +87,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
-use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::predicate::{And, DefaultPredicate, Predicate};
@@ -163,6 +165,7 @@ pub async fn start_server<'s>(
         notification_handle,
         system_event_handle,
         power_profiles,
+        FramePolicy::from_config(&settings.frame_ancestors),
         &cancel_token,
         main_scope,
     )
@@ -212,7 +215,6 @@ pub async fn start_server<'s>(
         tls_config,
         cancel_token,
         cors_origins: settings.origins.clone(),
-        frame_ancestors: settings.frame_ancestors.clone(),
         allow_unencrypted: settings.allow_unencrypted,
         protocol_header: settings.protocol_header.clone(),
     };
@@ -237,7 +239,6 @@ struct ApiServerConfig {
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
     cors_origins: Vec<String>,
-    frame_ancestors: Vec<String>,
     allow_unencrypted: bool,
     protocol_header: Option<String>,
 }
@@ -252,11 +253,11 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
 
     // REST API servers
     if let Some(addr) = config.ipv4 {
-        let server = create_api_server(SocketAddr::from(addr), config.clone());
+        let server = run_api_server(SocketAddr::from(addr), config.clone());
         handles.push(tokio::task::spawn_local(server));
     }
     if let Some(addr) = config.ipv6 {
-        let server = create_api_server(SocketAddr::from(addr), config);
+        let server = run_api_server(SocketAddr::from(addr), config);
         handles.push(tokio::task::spawn_local(server));
     }
 
@@ -265,6 +266,14 @@ async fn run_all_api_servers(config: ApiServerConfig, expired_deletion_store: Fi
         if let Err(e) = handle.await {
             log::error!("API server task error: {e}");
         }
+    }
+}
+
+/// Runs one listener's server to its end. A failure is logged here, as it happens: the
+/// servers are only joined at shutdown, in order, so a join would report it late or never.
+async fn run_api_server(addr: SocketAddr, config: ApiServerConfig) {
+    if let Err(err) = create_api_server(addr, config).await {
+        log::error!("API server on {addr} failed: {err:#}");
     }
 }
 
@@ -342,134 +351,6 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
     response
 }
 
-fn hostname_is_valid(hostname: &str) -> bool {
-    if hostname.is_empty() || hostname.len() > 253 {
-        return false;
-    }
-    hostname.split('.').all(|label| {
-        if label.is_empty() || label.len() > 63 {
-            return false;
-        }
-        if label.starts_with('-') {
-            return false;
-        }
-        if label.ends_with('-') {
-            return false;
-        }
-        label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-    })
-}
-
-struct CspFrameAncestorParts<'a> {
-    /// "http://", "https://", etc.
-    scheme: &'a str,
-    host: &'a str,
-    /// port, not including ':'
-    port: Option<&'a str>,
-    /// path after host (and port), not including leading '/'
-    path: Option<&'a str>,
-}
-
-fn csp_frame_ancestor_parse(ancestor: &str) -> Option<CspFrameAncestorParts<'_>> {
-    let (scheme, after_scheme) = ancestor.split_once("://")?;
-    let (origin, path) = after_scheme
-        .split_once('/')
-        .map_or((after_scheme, None), |(origin, path)| (origin, Some(path)));
-    let (host, port) = (if origin.starts_with('[') {
-        origin.find(']').and_then(|host_end_index| {
-            let host = &origin[0..=host_end_index];
-            let after_host = &origin[host_end_index + 1..];
-            match after_host {
-                s if s.starts_with(':') => Some((host, after_host.strip_prefix(':'))),
-                "" => Some((host, None)),
-                _ => None,
-            }
-        })
-    } else {
-        Some(
-            origin
-                .split_once(':')
-                .map_or((origin, None), |(host, port)| (host, Some(port))),
-        )
-    })?;
-    Some(CspFrameAncestorParts {
-        scheme,
-        host,
-        port,
-        path,
-    })
-}
-
-fn csp_frame_ancestor_is_valid(ancestor: &str) -> bool {
-    let Some(parsed) = csp_frame_ancestor_parse(ancestor) else {
-        return false;
-    };
-    // validate scheme
-    if ["http", "https"].contains(&parsed.scheme).not() {
-        return false;
-    }
-    // validate host
-    let host_valid = parsed
-        .host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .map_or_else(
-            || parsed.host.parse::<Ipv4Addr>().is_ok() || hostname_is_valid(parsed.host),
-            |ipv6addr| ipv6addr.parse::<Ipv6Addr>().is_ok(),
-        );
-    if host_valid.not() {
-        return false;
-    }
-    // validate port
-    if let Some(port) = parsed.port {
-        if port.parse::<u16>().is_err() {
-            return false;
-        }
-    }
-    // validate path
-    if let Some(path) = parsed.path {
-        // only allow no path or bare /
-        if path.is_empty().not() {
-            return false;
-        }
-    }
-    true
-}
-
-fn csp_frame_ancestors_value(frame_ancestors: Vec<String>) -> String {
-    let exact_frame_ancestors: Vec<String> = frame_ancestors
-        .into_iter()
-        .filter(|a: &String| csp_frame_ancestor_is_valid(a))
-        .collect();
-    if exact_frame_ancestors.is_empty() {
-        "'none'".to_string()
-    } else {
-        exact_frame_ancestors.join(" ")
-    }
-}
-
-async fn csp_frame_ancestors_middleware(
-    State(frame_ancestors): State<String>,
-    req: Request,
-    next: middleware::Next,
-) -> Response {
-    const CSP_KEY: HeaderName = HeaderName::from_static("content-security-policy");
-    let mut response = next.run(req).await;
-    let headers = response.headers_mut();
-
-    let Some(csp) = headers.get(CSP_KEY) else {
-        return response;
-    };
-    let Ok(csp) = csp.to_str() else {
-        return response;
-    };
-    let Ok(csp) = HeaderValue::try_from(format!("{csp}; frame-ancestors {frame_ancestors}")) else {
-        return response;
-    };
-    headers.insert(CSP_KEY, csp);
-    response
-}
-
 async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<()> {
     let router = api_router(config.app_state, config.trusted_proxies).await;
     let base_router = with_base_layers(
@@ -477,11 +358,10 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
         config.compression_layer,
         config.session_layer,
         cors_layer(config.ipv4, config.ipv6, config.cors_origins),
-        csp_frame_ancestors_value(config.frame_ancestors),
     );
     let connection_limiter = config.connection_limiter;
 
-    let listener = TcpListener::bind(addr).await?;
+    let listener = connection::listener(addr)?;
     let handle = shutdown_handle(config.cancel_token);
 
     if let Some(tls) = config.tls_config {
@@ -501,7 +381,7 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
 
         let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
-        connection::server(listener.into_std()?, acceptor, connection_limiter)?
+        connection::server(listener, acceptor, connection_limiter)?
             .handle(handle)
             .serve(
                 ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
@@ -516,18 +396,14 @@ async fn create_api_server(addr: SocketAddr, config: ApiServerConfig) -> Result<
         // Connect info matches the TLS path above: the auth throttle keys on the peer
         // address, and without this it would have nothing to key on in the default
         // (TLS-disabled) configuration.
-        connection::server(
-            listener.into_std()?,
-            DefaultAcceptor::new(),
-            connection_limiter,
-        )?
-        .handle(handle)
-        .serve(
-            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
-                normalized_router,
-            ),
-        )
-        .await?;
+        connection::server(listener, DefaultAcceptor::new(), connection_limiter)?
+            .handle(handle)
+            .serve(
+                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                    normalized_router,
+                ),
+            )
+            .await?;
     }
     Ok(())
 }
@@ -548,12 +424,24 @@ async fn api_router(app_state: AppState, trusted_proxies: Arc<peer::TrustedProxi
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
     });
-    let mut open_api = OpenApi::default();
-    let router = router::init(app_state)
-        .await
-        .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(Arc::new(open_api)));
+    let router = finish_api(router::init(app_state).await);
     with_client_addr(router, trusted_proxies)
+}
+
+/// Debug builds serve the `OpenAPI` document at `/api.json`, so they build and keep it.
+#[cfg(debug_assertions)]
+fn finish_api(router: ApiRouter) -> Router {
+    let mut open_api = OpenApi::default();
+    router
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(axum::Extension(Arc::new(open_api)))
+}
+
+/// Release builds have no `/api.json` route, so nothing would read the document. Each
+/// listener's copy holds about 3 MB.
+#[cfg(not(debug_assertions))]
+fn finish_api(router: ApiRouter) -> Router {
+    Router::from(router)
 }
 
 /// Outside the router, so the client is known before its auth throttles read it.
@@ -573,7 +461,6 @@ fn with_base_layers(
     compression_layer: Option<ApiCompressionLayer>,
     session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     cors_layer: cors::CorsLayer,
-    frame_ancestors: String,
 ) -> Router {
     optional_layers(compression_layer, router)
         // Limits the size of the payload in bytes: (Max 50MB for image files)
@@ -589,10 +476,6 @@ fn with_base_layers(
                 StatusCode::REQUEST_TIMEOUT,
                 Duration::from_secs(API_TIMEOUT_SECS),
             ),
-        ))
-        .layer(middleware::from_fn_with_state(
-            frame_ancestors,
-            csp_frame_ancestors_middleware,
         ))
         // Outermost of everything, so the timeout's 408 and the throttle's 429 both reach
         // gRPC clients as statuses they can read. Inside the timeout layer it would never
@@ -767,6 +650,7 @@ async fn create_app_state<'s>(
     notification_handle: crate::notifier::NotificationHandle,
     system_event_handle: crate::system_event::SystemEventHandle,
     power_profiles: crate::power_profile_listener::PowerProfiles,
+    frame_policy: FramePolicy,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
@@ -808,6 +692,8 @@ async fn create_app_state<'s>(
         engine.clone(),
         config.clone(),
         overrides_controller.clone(),
+        alert_controller.clone(),
+        modes_controller.clone(),
         cancel_token.clone(),
         main_scope,
     );
@@ -853,6 +739,7 @@ async fn create_app_state<'s>(
         notification_handle,
         system_event_handle,
         power_profiles,
+        frame_policy,
     }
 }
 
@@ -923,6 +810,7 @@ async fn empty_app_state<'s>(
         crate::notifier::NotificationHandle::new(cancel_token.clone()),
         crate::system_event::SystemEventHandle::new(cancel_token.clone()),
         power_profiles,
+        FramePolicy::default(),
         cancel_token,
         main_scope,
     )
@@ -1123,11 +1011,12 @@ pub fn is_forbidden_name_char(c: char) -> bool {
     ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c)
 }
 
-/// Probes whether `addrs` can be bound. Uses a synchronous std bind so it needs no reactor: it runs
-/// on the main thread (which may be compio) during API init, before the server moves to the sidecar.
+/// Probes whether `address` can be bound, the same way the server binds it. The bind is
+/// synchronous so it needs no reactor: it runs on the main thread (which may be compio) during
+/// API init, before the server moves to the sidecar.
 /// The actual server listener is bound on the sidecar (see `create_api_server`).
-fn can_bind_tcp<A: std::net::ToSocketAddrs>(addrs: A) -> bool {
-    std::net::TcpListener::bind(addrs).is_ok()
+fn can_bind_tcp(address: impl Into<SocketAddr>) -> bool {
+    connection::listener(address.into()).is_ok()
 }
 
 fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
@@ -1514,12 +1403,135 @@ pub struct AppState {
     pub notification_handle: crate::notifier::NotificationHandle,
     pub system_event_handle: crate::system_event::SystemEventHandle,
     pub power_profiles: crate::power_profile_listener::PowerProfiles,
+    /// Fixed at startup, for the routes that serve HTML.
+    pub frame_policy: FramePolicy,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Extension;
     use tower::ServiceExt as _;
+
+    /// Goal: only debug builds build and keep the `OpenAPI` document. Release builds have no
+    /// route that reads it, so there it is dead weight on every listener.
+    /// Method: `finish_api` attaches the document as a request extension, so a probe route
+    /// run through it reports whether its request carries one.
+    #[tokio::test]
+    async fn api_doc_is_kept_only_by_debug_builds() {
+        const KEPT: StatusCode = StatusCode::OK;
+        const SKIPPED: StatusCode = StatusCode::NO_CONTENT;
+        let probe = |request: Request| async move {
+            if request.extensions().get::<Arc<OpenApi>>().is_some() {
+                KEPT
+            } else {
+                SKIPPED
+            }
+        };
+        let app = finish_api(ApiRouter::new().route("/probe", axum::routing::get(probe)));
+        let request = Request::get("/probe")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let expected = if cfg!(debug_assertions) {
+            KEPT
+        } else {
+            SKIPPED
+        };
+        assert_eq!(response.status(), expected);
+    }
+
+    /// Goal: the `/api.json` route and the document stay paired: debug builds serve the
+    /// document, release builds have no route. A route without the document answers 500.
+    /// Method: the real `api_router` over an empty app state, asked for `/api.json`.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_doc_is_served_only_by_debug_builds() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let app = api_router(state, Arc::default()).await;
+                let request = Request::get("/api.json").body(axum::body::Body::empty())?;
+                let response = app.oneshot(request).await?;
+                if cfg!(debug_assertions) {
+                    assert_eq!(response.status(), StatusCode::OK);
+                    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+                    let served: OpenApi = serde_json::from_slice(&body)?;
+                    assert!(served
+                        .paths
+                        .is_some_and(|paths| paths.paths.is_empty().not()));
+                } else {
+                    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+                }
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    /// Far beyond a failed bind, so a server that starts serving fails the test instead of
+    /// hanging it.
+    const BIND_FAILURE_DEADLINE: Duration = Duration::from_secs(10);
+
+    /// A plain HTTP server config over `app_state`, with no listener address of its own.
+    fn server_config(app_state: AppState, cancel_token: CancellationToken) -> ApiServerConfig {
+        let sessions = CachingSessionStore::new(
+            MemorySessionStore::new(1),
+            FileSessionStore::new(std::env::temp_dir().join("cc-api-server-test-sessions")),
+        );
+        let session_key = tower_sessions::cookie::Key::generate();
+        ApiServerConfig {
+            ipv4: None,
+            ipv6: None,
+            app_state,
+            session_layer: SessionManagerLayer::new(sessions).with_private(session_key),
+            compression_layer: None,
+            connection_limiter: connection::process_limiter(Arc::default()),
+            trusted_proxies: Arc::default(),
+            tls_config: None,
+            cancel_token,
+            cors_origins: Vec::new(),
+            allow_unencrypted: false,
+            protocol_header: None,
+        }
+    }
+
+    /// Goal: a listener that cannot bind ends `create_api_server` with the bind error at
+    /// once, which is the error `run_api_server` logs. It must not hang or be swallowed.
+    /// Method: hold a loopback port with `connection::listener`, then start the real server
+    /// on that same address.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn api_server_returns_the_bind_failure() {
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let holder = connection::listener(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))?;
+                let taken = holder.local_addr()?;
+                assert_ne!(taken.port(), 0);
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let config = server_config(state, cancel_token.clone());
+                let server = create_api_server(taken, config);
+                let error = crate::rt::timeout(BIND_FAILURE_DEADLINE, server)
+                    .await
+                    .expect("a failed bind must not leave the server running")
+                    .expect_err("the address is already held");
+                let io_error = error
+                    .downcast_ref::<std::io::Error>()
+                    .expect("the bind failure keeps its io::Error");
+                assert_eq!(io_error.kind(), std::io::ErrorKind::AddrInUse, "{error:#}");
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
 
     /// Goal: the auth throttles key on the client a trusted proxy forwarded, not on the proxy.
     /// Method: a password route wrapped as `api_router` wraps the real ones, called through a
@@ -1540,7 +1552,10 @@ mod tests {
         let app = with_client_addr(routes, Arc::new(trusted));
         for client in clients {
             let mut request = Request::post("/login")
-                .header(axum::http::header::AUTHORIZATION, "Basic Q0NBZG1pbjp4")
+                .header(
+                    axum::http::header::AUTHORIZATION,
+                    auth::encode_basic("CCAdmin", "x"),
+                )
                 .header("x-forwarded-for", client)
                 .body(axum::body::Body::empty())
                 .unwrap();
@@ -1913,96 +1928,6 @@ mod tests {
         assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
     }
 
-    #[test]
-    fn test_csp_frame_ancestor_is_valid() {
-        let valid_schemes = vec!["https://", "http://"];
-        let valid_hosts = vec![
-            "192.168.0.1",
-            "[2001:db8::1]",
-            "example.com",
-            "sub.example.com",
-        ];
-        let valid_ports = vec!["", ":9090", ":65535"];
-        let valid_paths = vec!["", "/"];
-
-        for scheme in &valid_schemes {
-            for host in &valid_hosts {
-                for port in &valid_ports {
-                    for path in &valid_paths {
-                        assert!(csp_frame_ancestor_is_valid(&format!(
-                            "{scheme}{host}{port}{path}"
-                        )));
-                    }
-                }
-            }
-        }
-
-        let invalid_hosts = [
-            "",
-            "[2001:db8::1",
-            "[invalid]",
-            "example.com.",
-            "-example.com",
-            "example-.com",
-            "example..com",
-        ];
-        for host in invalid_hosts {
-            assert!(!csp_frame_ancestor_is_valid(&format!(
-                "https://{host}:9090/test"
-            )));
-        }
-
-        let invalid_ports = [":", ":abc", ":65536", ":-1", ":9090x"];
-        for port in invalid_ports {
-            assert!(!csp_frame_ancestor_is_valid(&format!(
-                "https://example.com{port}/test"
-            )));
-        }
-
-        let invalid_paths = [
-            "/test",
-            "/a/b/123/test_path/~/./",
-            "/ABC",
-            "//",
-            "/test//",
-            "/test//sdf",
-            "/@#$%^",
-            "/with space",
-        ];
-        for path in invalid_paths {
-            assert!(
-                !csp_frame_ancestor_is_valid(&format!("https://example.com:9090{path}")),
-                "failed on path {path}"
-            );
-        }
-
-        assert!(!csp_frame_ancestor_is_valid("https://[::1]junk"));
-    }
-
-    #[test]
-    fn test_csp_frame_ancestors_value() {
-        assert_eq!(csp_frame_ancestors_value(vec![]), "'none'");
-        assert_eq!(
-            csp_frame_ancestors_value(vec!["https://localhost:9090".to_string()]),
-            "https://localhost:9090"
-        );
-        assert_eq!(
-            csp_frame_ancestors_value(vec![
-                "https://localhost:9090".to_string(),
-                "http://192.168.2.1:1234".to_string(),
-            ]),
-            "https://localhost:9090 http://192.168.2.1:1234"
-        );
-        assert_eq!(
-            csp_frame_ancestors_value(vec![
-                "https://localhost:9090".to_string(),
-                "bad.value".to_string(),
-                "http://192.168.2.1:1234".to_string(),
-            ]),
-            "https://localhost:9090 http://192.168.2.1:1234"
-        );
-    }
-
     // validate_name_string tests
     #[test]
     fn test_validate_name_valid() {
@@ -2202,71 +2127,89 @@ mod tests {
             .is_none());
     }
 
-    #[tokio::test]
-    async fn test_frame_origins_appended_to_csp() {
-        use axum::body::Body;
-        use axum::http;
-        use axum::routing::get;
-
-        let app = Router::new()
-            .route(
-                "/test",
-                get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
-            )
-            .layer(middleware::from_fn_with_state(
-                csp_frame_ancestors_value(vec![
-                    "https://cockpit.example.com".to_string(),
-                    "http://localhost:9090".to_string(),
-                ]),
-                csp_frame_ancestors_middleware,
-            ));
-
-        let response = app
-            .oneshot(
-                http::Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.headers().get("content-security-policy").unwrap(),
-            "default-src 'self'; frame-ancestors https://cockpit.example.com http://localhost:9090"
-        );
+    /// The headers the production stack answers each of `paths` with: the real routes and
+    /// fallback over `state`, behind every base layer, compression aside. Runs on the
+    /// sidecar, as the servers do, since the timeout layer needs its reactor.
+    async fn served_headers(
+        state: AppState,
+        paths: &'static [&'static str],
+    ) -> Vec<axum::http::HeaderMap> {
+        let sessions_dir = tempfile::tempdir().unwrap();
+        let sessions_path = sessions_dir.path().to_path_buf();
+        let serve = move || async move {
+            let session_store = CachingSessionStore::new(
+                MemorySessionStore::new(4),
+                FileSessionStore::new(sessions_path),
+            );
+            let session_layer = SessionManagerLayer::new(session_store)
+                .with_private(tower_sessions::cookie::Key::generate());
+            let app = with_base_layers(
+                api_router(state, Arc::default()).await,
+                None,
+                session_layer,
+                cors_layer(None, None, Vec::new()),
+            );
+            let mut headers = Vec::with_capacity(paths.len());
+            for path in paths {
+                let request = axum::http::Request::get(*path)
+                    .body(axum::body::Body::empty())
+                    .unwrap();
+                let response = app.clone().oneshot(request).await.unwrap();
+                headers.push(response.headers().clone());
+            }
+            headers
+        };
+        let headers = crate::sidecar::handle().run(serve).await.unwrap();
+        assert_eq!(headers.len(), paths.len());
+        headers
     }
 
-    #[tokio::test]
-    async fn test_no_frame_origins_appended_to_csp() {
-        use axum::body::Body;
-        use axum::http;
-        use axum::routing::get;
+    /// Goal: what a browser receives decides who may frame the UI, so pin it on the
+    /// production stack rather than on a stand-in route. Method: the real router over an
+    /// empty app state, with and without a configured ancestor. The document must carry the
+    /// composed policy, and an API response must keep `X-Frame-Options` and gain no policy.
+    #[test]
+    #[serial_test::serial(modes_file)]
+    fn frame_policy_reaches_the_served_document() {
+        const ANCESTOR: &str = "https://cockpit.example.com:9090";
+        const PATHS: [&str; 3] = ["/", "/index.html", "/handshake"];
+        crate::rt::test_runtime(async {
+            let cancel_token = CancellationToken::new();
+            moro_local::async_scope!(|main_scope| -> Result<()> {
+                let state = empty_app_state(&cancel_token, main_scope).await;
+                let framed_state = AppState {
+                    frame_policy: FramePolicy::from_config(&[ANCESTOR.to_string()]),
+                    ..state.clone()
+                };
+                let unframed = served_headers(state, &PATHS).await;
+                let framed = served_headers(framed_state, &PATHS).await;
+                // Stops the actors so the scope can finish.
+                cancel_token.cancel();
 
-        let app = Router::new()
-            .route(
-                "/test",
-                get(|| async { ([("content-security-policy", "default-src 'self'")], "ok") }),
-            )
-            .layer(middleware::from_fn_with_state(
-                csp_frame_ancestors_value(vec![]),
-                csp_frame_ancestors_middleware,
-            ));
-
-        let response = app
-            .oneshot(
-                http::Request::builder()
-                    .uri("/test")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+                for document in &unframed[..2] {
+                    assert_eq!(
+                        document["content-security-policy"],
+                        base::CONTENT_SECURITY_POLICY
+                    );
+                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                }
+                for document in &framed[..2] {
+                    let csp = document["content-security-policy"].to_str().unwrap();
+                    assert!(csp.contains(&format!("; frame-ancestors {ANCESTOR}; ")));
+                    assert_eq!(csp.matches("frame-ancestors").count(), 1);
+                    // Browsers ignore this where the policy names ancestors. It keeps the
+                    // document same-origin only if that policy is ever lost.
+                    assert_eq!(document["x-frame-options"], "SAMEORIGIN");
+                }
+                for api_response in [&unframed[2], &framed[2]] {
+                    assert_eq!(api_response["x-frame-options"], "SAMEORIGIN");
+                    assert!(api_response.get("content-security-policy").is_none());
+                }
+                Ok(())
+            })
             .await
             .unwrap();
-
-        assert_eq!(
-            response.headers().get("content-security-policy").unwrap(),
-            "default-src 'self'; frame-ancestors 'none'"
-        );
+        });
     }
 
     #[test]
