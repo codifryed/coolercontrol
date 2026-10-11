@@ -1,25 +1,28 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Picks the Apple fan driver behind a hwmon device and hands its fan work to that driver's
-//! module.
+//! Fan control for Apple Macs: picks the driver behind a hwmon device and hands off to it.
 //!
 //! Each driver has its own sysfs files and its own way of taking and returning control, so each
 //! has its own module. This file decides which module applies, remembers which fans the daemon
 //! has taken, and holds the few file helpers the modules share.
 
+pub mod apple_smc_7_3;
+pub mod apple_smc_legacy;
+pub mod macsmc_hwmon;
+
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::hardware_support::{self, ChannelDiagnosis};
-use crate::repositories::hwmon::apple_smc_7_3::AppleSmc73;
-use crate::repositories::hwmon::apple_smc_legacy::AppleMacSMC;
+use crate::repositories::hwmon::apple::apple_smc_7_3::AppleSmc73;
+use crate::repositories::hwmon::apple::apple_smc_legacy::AppleMacSMC;
+use crate::repositories::hwmon::apple::macsmc_hwmon::MacSmcHwmon;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
     HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
-use crate::repositories::hwmon::macsmc_hwmon::MacSmcHwmon;
 use anyhow::{anyhow, Context, Result};
 use log::log_enabled;
 use serde::{Deserialize, Serialize};
