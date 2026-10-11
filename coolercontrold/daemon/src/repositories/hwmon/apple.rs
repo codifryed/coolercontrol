@@ -20,7 +20,7 @@ use crate::repositories::hwmon::hwmon_repo::{
     HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use crate::repositories::hwmon::macsmc_hwmon::MacSmcHwmon;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use log::log_enabled;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -324,6 +324,42 @@ pub async fn write_number(path: &Path, value: u32, io: &DeviceIo) -> Result<()> 
         .map_err(|err| anyhow!("Unable to write {value} to {}: {err}", path.display()))
 }
 
+/// Every fan in the directory of a driver that controls its fans through `fanN_target`.
+///
+/// `files_allow_control` is the driver's own answer for one such fan. The fan is controllable
+/// when they do and its speed reads, since the duty shown for it is derived from that speed.
+/// Every other fan is still listed with its speed.
+pub async fn detect_target_fans(
+    base_path: &Path,
+    io: &DeviceIo,
+    files_allow_control: impl AsyncFn(u8) -> bool,
+) -> Result<Vec<HwmonChannelInfo>> {
+    let no_caps = HwmonChannelCapabilities::empty();
+    let mut fan_caps = HashMap::new();
+    for entry in cc_fs::read_dir(base_path)? {
+        let os_file_name = entry?.file_name();
+        let file_name = os_file_name.to_str().context("File Name should be a str")?;
+        if let Some(channel_number) = file_number(file_name, "fan", "_target") {
+            let is_controllable = files_allow_control(channel_number).await
+                && fans::get_fan_rpm(io, base_path, &channel_number, &no_caps, None, None, false)
+                    .await
+                    .is_some();
+            if is_controllable {
+                fan_caps
+                    .entry(channel_number)
+                    .or_insert(HwmonChannelCapabilities::empty())
+                    .insert(
+                        HwmonChannelCapabilities::APPLE_SMC
+                            | HwmonChannelCapabilities::FAN_WRITABLE
+                            | HwmonChannelCapabilities::RPM,
+                    );
+            }
+        }
+        fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
+    }
+    Ok(fan_channels(base_path, fan_caps).await)
+}
+
 /// The channels of the fans found, in fan order. Every one has a readable speed.
 pub async fn fan_channels(
     base_path: &Path,
@@ -488,6 +524,44 @@ mod tests {
                     None,
                 ]
             );
+        });
+    }
+
+    /// Goal: a driver is asked only about a fan with a target file, and its yes counts only
+    /// when the fan's speed reads, while every fan with a speed is listed either way. Method:
+    /// one fan per case, detected with a driver that allows all but the last.
+    #[test]
+    #[serial]
+    fn a_target_fan_is_controllable_when_allowed_and_its_speed_reads() {
+        cc_fs::test_runtime(async {
+            let dir = test_dir();
+            let files = [
+                ("fan1_target", "0"),
+                ("fan1_input", "1500"),
+                ("fan2_target", "0"),
+                ("fan3_input", "1500"),
+                ("fan4_target", "0"),
+                ("fan4_input", "1500"),
+            ];
+            seed(&dir, &files).await;
+            let asked = RefCell::new(Vec::with_capacity(3));
+
+            let fans = detect_target_fans(&dir, &DeviceIo::default(), async |channel_number| {
+                asked.borrow_mut().push(channel_number);
+                channel_number != 4
+            })
+            .await
+            .unwrap();
+
+            cc_fs::remove_dir_all(&dir).await.unwrap();
+            let mut asked = asked.into_inner();
+            asked.sort_unstable();
+            assert_eq!(asked, [1, 2, 4]);
+            let detected: Vec<(u8, bool)> = fans
+                .iter()
+                .map(|fan| (fan.number, fan.caps.is_fan_controllable()))
+                .collect();
+            assert_eq!(detected, [(1, true), (3, false), (4, false)]);
         });
     }
 

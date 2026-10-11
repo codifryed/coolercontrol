@@ -11,14 +11,10 @@
 //! `fanN_target` is writable only when the module was loaded with `fan_control=1`.
 //! See: `https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c`
 
-use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::repositories::hwmon::apple;
 use crate::repositories::hwmon::device_io::DeviceIo;
-use crate::repositories::hwmon::fans;
-use crate::repositories::hwmon::hwmon_repo::{
-    HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
-};
+use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -121,19 +117,18 @@ impl MacSmcHwmon {
         self.write_targets(channel_number, targets, io).await
     }
 
-    /// Every fan the driver exposes, including ones the user has disabled.
+    /// Every fan the driver exposes, including ones the user has disabled. A fan's files allow
+    /// control when the driver would accept a target for it, which it does not with
+    /// `fan_control` off, and reports the limits a duty is mapped onto.
     ///
     /// Says nothing about a fan it cannot control, and leaves an error to the caller: the
     /// hardware report calls this too.
     pub async fn init_fans(base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
-        let mut fan_caps = HashMap::new();
-        for entry in cc_fs::read_dir(base_path)? {
-            let os_file_name = entry?.file_name();
-            let file_name = os_file_name.to_str().context("File Name should be a str")?;
-            detect_controllable_fan(base_path, file_name, &mut fan_caps, io).await;
-            fans::detect_rpm(base_path, file_name, &mut fan_caps, io).await?;
-        }
-        Ok(apple::fan_channels(base_path, fan_caps).await)
+        apple::detect_target_fans(base_path, io, async |channel_number| {
+            apple::is_writable(&base_path.join(format_fan_target!(channel_number)))
+                && read_limits(base_path, channel_number, io).await.is_some()
+        })
+        .await
     }
 
     /// Says why this device's fans are read-only. Repository init only, so it is logged once
@@ -201,45 +196,6 @@ impl MacSmcHwmon {
         }
         Ok(())
     }
-}
-
-/// Marks the fan behind a `fanN_target` file as controllable, when the driver would accept a
-/// target for it and reports the limits a duty is mapped onto.
-async fn detect_controllable_fan(
-    base_path: &Path,
-    file_name: &str,
-    fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
-    io: &DeviceIo,
-) {
-    let Some(channel_number) = apple::file_number(file_name, "fan", "_target") else {
-        return;
-    };
-    if apple::is_writable(&base_path.join(format_fan_target!(channel_number))).not() {
-        return; // `fan_control` is off.
-    }
-    if read_limits(base_path, channel_number, io).await.is_none() {
-        return;
-    }
-    // The duty shown for a fan is derived from its speed, so the speed must be readable.
-    let rpm = fans::get_fan_rpm(
-        io,
-        base_path,
-        &channel_number,
-        &HwmonChannelCapabilities::empty(),
-        None,
-        None,
-        false,
-    )
-    .await;
-    if rpm.is_none() {
-        return;
-    }
-    let caps = fan_caps
-        .entry(channel_number)
-        .or_insert(HwmonChannelCapabilities::empty());
-    caps.insert(HwmonChannelCapabilities::APPLE_SMC);
-    caps.insert(HwmonChannelCapabilities::FAN_WRITABLE);
-    caps.insert(HwmonChannelCapabilities::RPM);
 }
 
 /// True when a fan has a target file the driver registered read-only, which it does unless
@@ -311,6 +267,8 @@ fn duty_from_rpm(limits: FanLimits, rpm: RPM) -> f64 {
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::cc_fs;
+    use crate::repositories::hwmon::hwmon_repo::HwmonChannelCapabilities;
     use serial_test::serial;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt;
