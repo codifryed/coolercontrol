@@ -80,7 +80,6 @@ describe('channel verdicts', () => {
         expect(verdictDocsLink(verdict, 'platform', 'applesmc')).toBe(intel)
         expect(verdictDocsLink(verdict, undefined, 'MacBook Fans')).toBe(general)
         expect(verdictDocsLink(verdict, 'nct6775', 'nct6798')).toBe(general)
-        expect(verdictDocsLink(ChannelVerdict.Controllable, 'applesmc', 'x')).toBeUndefined()
     })
 
     it('gives an Apple device no link where the verdict has none', () => {
