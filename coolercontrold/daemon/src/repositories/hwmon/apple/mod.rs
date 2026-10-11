@@ -15,7 +15,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::hardware_support::{self, ChannelDiagnosis};
 use crate::repositories::hwmon::apple::apple_smc_7_3::AppleSmc73;
-use crate::repositories::hwmon::apple::apple_smc_legacy::AppleMacSMC;
+use crate::repositories::hwmon::apple::apple_smc_legacy::AppleSmcLegacy;
 use crate::repositories::hwmon::apple::macsmc_hwmon::MacSmcHwmon;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
@@ -55,7 +55,7 @@ pub struct AppleFans {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum AppleHandler {
-    IntelLegacy(AppleMacSMC),
+    IntelLegacy(AppleSmcLegacy),
     IntelLinux73(AppleSmc73),
     Silicon(MacSmcHwmon),
 }
@@ -103,7 +103,7 @@ impl AppleDriver {
     /// caller's to log: the repository does, the hardware report does not.
     pub async fn init_fans(self, base_path: &Path, io: &DeviceIo) -> Result<Vec<HwmonChannelInfo>> {
         let mut fans = match self {
-            Self::IntelLegacy => AppleMacSMC::init_fans(base_path, io).await,
+            Self::IntelLegacy => AppleSmcLegacy::init_fans(base_path, io).await,
             Self::IntelLinux73 => AppleSmc73::init_fans(base_path, io).await,
             Self::Silicon => MacSmcHwmon::init_fans(base_path, io).await,
         }?;
@@ -159,8 +159,8 @@ impl AppleDriver {
     ) -> AppleFans {
         let handler = match self {
             Self::IntelLegacy => {
-                AppleMacSMC::log_fan_limits(base_path, channels).await;
-                AppleHandler::IntelLegacy(AppleMacSMC::new(base_path, channels).await)
+                AppleSmcLegacy::log_fan_limits(base_path, channels).await;
+                AppleHandler::IntelLegacy(AppleSmcLegacy::new(base_path, channels).await)
             }
             Self::IntelLinux73 => {
                 AppleHandler::IntelLinux73(AppleSmc73::new(base_path, channels, io).await)

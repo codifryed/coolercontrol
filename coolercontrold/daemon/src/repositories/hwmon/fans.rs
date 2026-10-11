@@ -2401,7 +2401,7 @@ mod tests {
 
     /// Goal: an Apple SMC fan is driven through `fanN_output` and never has a
     /// `pwmN`, so the pwm-shaped evidence must not condemn it. Method: build
-    /// the capability set `AppleMacSMC::detect_apple_smc_fans` produces and
+    /// the capability set `AppleSmcLegacy::detect_apple_smc_fans` produces and
     /// check the verdict, which in a debug build also exercises the assertion
     /// that a writable pwm implies a pwm.
     #[test]

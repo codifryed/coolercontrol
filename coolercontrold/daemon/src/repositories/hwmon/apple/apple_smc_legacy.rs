@@ -43,12 +43,12 @@ macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($ar
 ///
 /// Apple Silicon has its own module, `macsmc_hwmon`.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct AppleMacSMC {
+pub struct AppleSmcLegacy {
     path: PathBuf,
     fans: HashMap<u8, AppleFanInfo>,
 }
 
-impl AppleMacSMC {
+impl AppleSmcLegacy {
     pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>) -> Self {
         let mut fans = HashMap::new();
         for channel in channels {
@@ -590,7 +590,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -614,7 +614,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -638,7 +638,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -662,7 +662,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -678,7 +678,7 @@ mod tests {
     #[serial]
     fn test_interpolate_duty_from_rpm_not_found() {
         // given:
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans: HashMap::new(),
         };
@@ -702,7 +702,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -726,7 +726,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -750,7 +750,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans,
         };
@@ -766,7 +766,7 @@ mod tests {
     #[serial]
     fn test_interpolate_rpm_from_duty_not_found() {
         // given:
-        let apple_smc = AppleMacSMC {
+        let apple_smc = AppleSmcLegacy {
             path: PathBuf::new(),
             fans: HashMap::new(),
         };
@@ -789,7 +789,7 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps)
+                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps)
                     .await;
 
             // then:
@@ -825,7 +825,7 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
+                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
                     .await;
 
             // then:
@@ -862,7 +862,7 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
+                AppleSmcLegacy::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
                     .await;
 
             // then:
@@ -876,8 +876,8 @@ mod tests {
     /// does.
     async fn both_verdicts(dir: &Path) -> (bool, bool) {
         (
-            AppleMacSMC::is_controllable(dir, 1, false).await,
-            AppleMacSMC::is_controllable(dir, 1, true).await,
+            AppleSmcLegacy::is_controllable(dir, 1, false).await,
+            AppleSmcLegacy::is_controllable(dir, 1, true).await,
         )
     }
 
@@ -989,7 +989,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default()).await;
+            let result = AppleSmcLegacy::init_fans(test_base_path, &DeviceIo::default()).await;
 
             // then:
             teardown(&ctx).await;
@@ -1028,7 +1028,7 @@ mod tests {
                 .await
                 .unwrap();
             // when:
-            let channels = AppleMacSMC::init_fans(test_base_path, &DeviceIo::default())
+            let channels = AppleSmcLegacy::init_fans(test_base_path, &DeviceIo::default())
                 .await
                 .unwrap();
 
@@ -1051,7 +1051,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
+            let result = AppleSmcLegacy::get_fan_min(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx).await;
@@ -1074,7 +1074,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
+            let result = AppleSmcLegacy::get_fan_min(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx).await;
@@ -1094,7 +1094,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
+            let result = AppleSmcLegacy::get_fan_max(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx).await;
@@ -1117,7 +1117,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
+            let result = AppleSmcLegacy::get_fan_max(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx).await;
@@ -1146,7 +1146,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1189,7 +1189,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1231,7 +1231,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1267,7 +1267,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1311,7 +1311,7 @@ mod tests {
                     default_min_rpm: 700,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1404,7 +1404,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
 
             // then:
             teardown(&ctx).await;
@@ -1439,7 +1439,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
 
             // then:
             teardown(&ctx).await;
@@ -1462,7 +1462,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1, true);
+            let result = AppleSmcLegacy::fan_output_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1479,7 +1479,7 @@ mod tests {
             let test_base_path = &ctx.test_base_path;
 
             // when:
-            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1, true);
+            let result = AppleSmcLegacy::fan_output_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1499,7 +1499,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1, true);
+            let result = AppleSmcLegacy::fan_manual_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1516,7 +1516,7 @@ mod tests {
             let test_base_path = &ctx.test_base_path;
 
             // when:
-            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1, true);
+            let result = AppleSmcLegacy::fan_manual_is_writable(test_base_path, 1, true);
 
             // then:
             teardown(&ctx).await;
@@ -1536,7 +1536,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
+            let result = AppleSmcLegacy::fan_min_is_writable(test_base_path, 1);
 
             // then:
             teardown(&ctx).await;
@@ -1553,7 +1553,7 @@ mod tests {
             let test_base_path = &ctx.test_base_path;
 
             // when:
-            let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
+            let result = AppleSmcLegacy::fan_min_is_writable(test_base_path, 1);
 
             // then:
             teardown(&ctx).await;
@@ -1574,7 +1574,7 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::set_fan_output(test_base_path, 1, 3000, &DeviceIo::default()).await;
+                AppleSmcLegacy::set_fan_output(test_base_path, 1, 3000, &DeviceIo::default()).await;
 
             // then:
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
@@ -1603,7 +1603,7 @@ mod tests {
             fan_caps.insert(2, HwmonChannelCapabilities::RPM);
 
             // when:
-            let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+            let result = AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps).await;
 
             // then:
             teardown(&ctx).await;
@@ -1632,7 +1632,7 @@ mod tests {
             );
 
             // when:
-            let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+            let result = AppleSmcLegacy::caps_to_hwmon_fans(test_base_path, fan_caps).await;
 
             // then:
             teardown(&ctx).await;
@@ -1680,7 +1680,7 @@ mod tests {
             ];
 
             // when:
-            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleSmcLegacy::new(test_base_path, &channels).await;
 
             // then:
             teardown(&ctx).await;
@@ -1706,7 +1706,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1772,7 +1772,7 @@ mod tests {
             cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
                 .await
                 .unwrap();
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans: HashMap::new(),
             };
@@ -1844,7 +1844,7 @@ mod tests {
                     default_min_rpm: 700,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1928,7 +1928,7 @@ mod tests {
                     default_min_rpm: 700,
                 },
             );
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans,
             };
@@ -1993,7 +1993,7 @@ mod tests {
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
-            let apple_smc = AppleMacSMC {
+            let apple_smc = AppleSmcLegacy {
                 path: test_base_path.clone(),
                 fans: HashMap::new(),
             };
