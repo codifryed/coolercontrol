@@ -42,8 +42,6 @@ pub struct AppleMacSMC {
     fans: HashMap<u8, AppleFanInfo>,
 }
 
-impl AppleMacSMC {}
-
 impl AppleMacSMC {
     pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>) -> Self {
         let mut fans = HashMap::new();
