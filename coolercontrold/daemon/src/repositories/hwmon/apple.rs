@@ -11,8 +11,8 @@
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
 use crate::hardware_support::{self, ChannelDiagnosis};
-use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::apple_smc_7_3::AppleSmc73;
+use crate::repositories::hwmon::apple_smc_legacy::AppleMacSMC;
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, DEVICE_NAME_MAC_SMC};
 use crate::repositories::hwmon::fans;

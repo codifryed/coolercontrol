@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod apple;
-pub mod apple_mac_smc;
 pub mod apple_smc_7_3;
+pub mod apple_smc_legacy;
 pub mod attributes;
 pub mod auto_curve;
 pub mod chip_name;

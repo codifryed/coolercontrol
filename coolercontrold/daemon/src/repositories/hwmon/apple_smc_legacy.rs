@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! Fan control on Intel Macs through the `applesmc` driver, as it is before Linux 7.3.
+//!
+//! Up to Linux 7.2 the driver has fan files of its own: `fanN_output` for the speed,
+//! `fanN_manual` for the mode, and a writable `fanN_min`. Linux 7.3 replaced them with the
+//! standard hwmon files, and `apple_smc_7_3` handles the driver from there on.
+
 use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::device::{ChannelStatus, Duty, RPM};
