@@ -7385,7 +7385,8 @@ mod uid_migration_tests {
     #[serial]
     fn migration_moves_an_i2c_clients_settings_off_its_bus_number() {
         cc_fs::test_runtime(async {
-            let root = PathBuf::from(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string());
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
             let adapter = root.join("devices/pci0000:00/0000:00:14.0/i2c-15");
             let client = adapter.join("15-0050");
             let path = root.join("hwmon/hwmon1");
@@ -7405,7 +7406,6 @@ mod uid_migration_tests {
 
             repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
                 .await;
-            cc_fs::remove_dir_all(&root).await.unwrap();
 
             assert!(legacy_id.contains("/i2c-15/"), "got {legacy_id}");
             assert!(our_id.contains("/i2c-15/").not(), "got {our_id}");

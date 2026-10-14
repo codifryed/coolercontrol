@@ -704,6 +704,18 @@ mod tests {
 
     async fn setup() -> HwmonDeviceContext {
         let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
+        cc_fs::create_dir_all(&test_dir).await.unwrap();
+        setup_in(Path::new(&test_dir)).await
+    }
+
+    /// Builds the fixture inside `dir`, which the caller owns and removes.
+    async fn setup_in(dir: &Path) -> HwmonDeviceContext {
+        // Identities are read through canonical paths, so `test_dir` must be canonical too.
+        let test_dir = cc_fs::canonicalize(dir)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
         let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
         let base_path_centos_str = test_dir.clone() + "/hwmon/hwmon2/device/";
         let hwmon_path = Path::new(&base_path_str).to_path_buf();
@@ -1362,17 +1374,17 @@ mod tests {
     fn i2c_client_id_survives_a_bus_renumber() {
         cc_fs::test_runtime(async {
             let name = "SMBus PIIX4 adapter port 0 at 0b00";
-            let ctx_low = setup().await;
+            let dir_low = tempfile::tempdir().unwrap();
+            let ctx_low = setup_in(dir_low.path()).await;
             setup_i2c_client(&ctx_low, "15", "0050", name).await;
             let low = get_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
             let low_legacy = get_legacy_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
-            teardown(&ctx_low).await;
 
-            let ctx_high = setup().await;
+            let dir_high = tempfile::tempdir().unwrap();
+            let ctx_high = setup_in(dir_high.path()).await;
             setup_i2c_client(&ctx_high, "16", "0050", name).await;
             let high = get_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
             let high_legacy = get_legacy_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
-            teardown(&ctx_high).await;
 
             assert!(low.ends_with(&format!("/{name}/0050")), "got {low}");
             assert_eq!(
@@ -1394,21 +1406,19 @@ mod tests {
     #[serial]
     fn i2c_clients_on_two_ports_do_not_collide() {
         cc_fs::test_runtime(async {
-            let ctx_a = setup().await;
+            let dir_a = tempfile::tempdir().unwrap();
+            let ctx_a = setup_in(dir_a.path()).await;
             setup_i2c_client(&ctx_a, "15", "0050", "SMBus PIIX4 adapter port 0 at 0b00").await;
             let port_zero = get_device_unique_id(&ctx_a.hwmon_path, "spd5118").await;
-            let dir_a = ctx_a.test_dir.clone();
-            teardown(&ctx_a).await;
 
-            let ctx_b = setup().await;
+            let dir_b = tempfile::tempdir().unwrap();
+            let ctx_b = setup_in(dir_b.path()).await;
             setup_i2c_client(&ctx_b, "15", "0050", "SMBus PIIX4 adapter port 2 at 0b00").await;
             let port_two = get_device_unique_id(&ctx_b.hwmon_path, "spd5118").await;
-            let dir_b = ctx_b.test_dir.clone();
-            teardown(&ctx_b).await;
 
             assert_ne!(
-                strip_test_dir(&port_zero, &dir_a),
-                strip_test_dir(&port_two, &dir_b),
+                strip_test_dir(&port_zero, &ctx_a.test_dir),
+                strip_test_dir(&port_two, &ctx_b.test_dir),
                 "the adapter port must be part of the identity"
             );
         });
@@ -1420,7 +1430,8 @@ mod tests {
     #[serial]
     fn a_non_i2c_device_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = setup_in(dir.path()).await;
             let device_dir = ctx.hwmon_path.join("device");
             cc_fs::create_dir_all(&device_dir).await.unwrap();
 
@@ -1428,7 +1439,6 @@ mod tests {
             let current = get_device_unique_id(&ctx.hwmon_path, "nct6799").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "nct6799").await;
 
-            teardown(&ctx).await;
             assert_eq!(i2c, None, "a plain device is not an i2c client");
             assert_eq!(current, legacy, "an unaffected device must not move");
         });
@@ -1441,15 +1451,15 @@ mod tests {
     fn firmware_named_i2c_client_survives_a_bus_renumber() {
         cc_fs::test_runtime(async {
             let name = "Synopsys DesignWare I2C adapter";
-            let ctx_low = setup().await;
+            let dir_low = tempfile::tempdir().unwrap();
+            let ctx_low = setup_in(dir_low.path()).await;
             link_i2c_device(&ctx_low, "i2c-0", "i2c-ITE8853:00", name).await;
             let low = get_device_unique_id(&ctx_low.hwmon_path, "lm75").await;
-            teardown(&ctx_low).await;
 
-            let ctx_high = setup().await;
+            let dir_high = tempfile::tempdir().unwrap();
+            let ctx_high = setup_in(dir_high.path()).await;
             link_i2c_device(&ctx_high, "i2c-3", "i2c-ITE8853:00", name).await;
             let high = get_device_unique_id(&ctx_high.hwmon_path, "lm75").await;
-            teardown(&ctx_high).await;
 
             assert!(
                 low.ends_with(&format!("/{name}/i2c-ITE8853:00")),
@@ -1469,14 +1479,14 @@ mod tests {
     #[serial]
     fn muxed_i2c_client_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = setup_in(dir.path()).await;
             link_i2c_device(&ctx, "i2c-3/i2c-7", "7-0048", "i2c-3-mux (chan_id 0)").await;
 
             let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
             let current = get_device_unique_id(&ctx.hwmon_path, "lm75").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "lm75").await;
 
-            teardown(&ctx).await;
             assert_eq!(i2c, None, "a nested adapter has no stable identity");
             assert_eq!(current, legacy, "a muxed client must not move");
         });
@@ -1488,14 +1498,14 @@ mod tests {
     #[serial]
     fn i2c_client_without_an_adapter_name_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = setup_in(dir.path()).await;
             setup_i2c_client(&ctx, "15", "0050", "").await;
 
             let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
             let current = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "spd5118").await;
 
-            teardown(&ctx).await;
             assert_eq!(i2c, None);
             assert_eq!(current, legacy);
         });
@@ -1508,10 +1518,10 @@ mod tests {
     #[serial]
     fn i2c_client_id_matches_the_uid_running_daemons_hold() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let dir = tempfile::tempdir().unwrap();
+            let ctx = setup_in(dir.path()).await;
             setup_i2c_client(&ctx, "11", "0051", "SMBus PIIX4 adapter port 0 at 0b00").await;
             let id = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
-            teardown(&ctx).await;
 
             let on_real_sysfs = format!("/sys{}", strip_test_dir(&id, &ctx.test_dir));
             assert_eq!(
