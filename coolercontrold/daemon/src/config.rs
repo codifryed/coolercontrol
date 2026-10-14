@@ -171,12 +171,12 @@ impl Config {
             .with_context(|| format!("Reading configuration file {}", path.display()))
     }
 
-    /// Loads the default Config (Used for Testing)
-    #[allow(dead_code)]
+    /// Loads the default Config, for tests. A save lands in the per-process test sandbox, next
+    /// to the sandbox's own config files but never on them.
+    #[cfg(test)]
     pub fn init_default_config() -> Result<Self> {
-        // We rarely should write these files during testing, but just in case:
-        let path = Path::new("/tmp/config.toml").to_path_buf();
-        let path_ui = Path::new("/tmp/config-ui.json").to_path_buf();
+        let path = crate::paths::config_dir().join("default-config.toml");
+        let path_ui = crate::paths::config_dir().join("default-config-ui.json");
         let config_content = String::from_utf8(DEFAULT_CONFIG_FILE_BYTES.to_vec())?;
         let document = config_content
             .parse::<DocumentMut>()
@@ -3102,7 +3102,6 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::ops::Not;
-    use std::path::Path;
     use toml_edit::{DocumentMut, Item};
 
     #[test]
@@ -3127,8 +3126,8 @@ mod tests {
             .parse::<DocumentMut>()
             .unwrap();
         let config = Config {
-            path: Path::new("/tmp/config.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/config-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("config.toml"),
+            path_ui: crate::paths::config_dir().join("config-ui.json"),
             document: RefCell::new(document),
             generation: Cell::new(0),
         };
@@ -3142,8 +3141,8 @@ mod tests {
 
     fn config_from(document: &str) -> Config {
         Config {
-            path: Path::new("/tmp/config.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/config-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("config.toml"),
+            path_ui: crate::paths::config_dir().join("config-ui.json"),
             document: RefCell::new(document.parse::<DocumentMut>().unwrap()),
             generation: Cell::new(0),
         }
@@ -3605,8 +3604,8 @@ mod tests {
                 .parse::<DocumentMut>()
                 .unwrap();
             let config = Config {
-                path: Path::new("/tmp/config.toml").to_path_buf(),
-                path_ui: Path::new("/tmp/config-ui.json").to_path_buf(),
+                path: crate::paths::config_dir().join("config.toml"),
+                path_ui: crate::paths::config_dir().join("config-ui.json"),
                 document: RefCell::new(document),
                 generation: Cell::new(0),
             };
@@ -3623,8 +3622,9 @@ mod tests {
     #[serial]
     fn verify_default_config() {
         cc_fs::test_runtime(async {
-            let path = Path::new("/tmp/config.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("config.toml");
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -3663,9 +3663,6 @@ mod tests {
                 config.get_all_lcd_shutdown_settings().is_ok(),
                 "LCD shutdown settings"
             );
-
-            // teardown:
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -3694,8 +3691,8 @@ mod tests {
             parents: vec![],
         };
         let config = Config {
-            path: Path::new("/tmp/cs-roundtrip.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/cs-roundtrip-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("cs-roundtrip.toml"),
+            path_ui: crate::paths::config_dir().join("cs-roundtrip-ui.json"),
             document: RefCell::new(DocumentMut::new()),
             generation: Cell::new(0),
         };
@@ -4040,8 +4037,8 @@ mix_function = "Min"
 offset = 5
 "#;
         let config = Config {
-            path: Path::new("/tmp/cs-legacy.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/cs-legacy-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("cs-legacy.toml"),
+            path_ui: crate::paths::config_dir().join("cs-legacy-ui.json"),
             document: RefCell::new(legacy.parse::<DocumentMut>().unwrap()),
             generation: Cell::new(0),
         };
@@ -4061,8 +4058,8 @@ offset = 5
         use std::path::PathBuf;
 
         let config = Config {
-            path: Path::new("/tmp/cs-change.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/cs-change-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("cs-change.toml"),
+            path_ui: crate::paths::config_dir().join("cs-change-ui.json"),
             document: RefCell::new(DocumentMut::new()),
             generation: Cell::new(0),
         };
@@ -4118,8 +4115,11 @@ offset = 5
         cc_fs::test_runtime(async {
             use crate::setting::{LcdModeKind, LcdModeName, LcdSettings};
 
-            let path = Path::new("/tmp/config-lcd-shutdown-test.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-lcd-shutdown-test.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+
+            let path = tmp.path().join("config.toml");
+
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4180,9 +4180,6 @@ offset = 5
             // Verify it's gone
             let all = config.get_all_lcd_shutdown_settings().unwrap();
             assert!(all.is_empty(), "should be empty after removal");
-
-            // teardown:
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4190,8 +4187,9 @@ offset = 5
     #[serial]
     fn test_disabled_plugins_missing_key_returns_empty() {
         cc_fs::test_runtime(async {
-            let path = Path::new("/tmp/config-disabled-plugins-empty.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-empty.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("config.toml");
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4206,8 +4204,6 @@ offset = 5
                 result.is_empty(),
                 "should return empty vec when key missing"
             );
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4215,8 +4211,9 @@ offset = 5
     #[serial]
     fn test_disabled_plugins_roundtrip() {
         cc_fs::test_runtime(async {
-            let path = Path::new("/tmp/config-disabled-plugins-roundtrip.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-roundtrip.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("config.toml");
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4230,8 +4227,6 @@ offset = 5
             config.set_disabled_plugins(&ids);
             let result = config.get_disabled_plugins();
             assert_eq!(result, ids);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4243,8 +4238,11 @@ offset = 5
         cc_fs::test_runtime(async {
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
-            let path = Path::new("/tmp/config-default-profile-legacy.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-default-profile-legacy.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+
+            let path = tmp.path().join("config.toml");
+
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4268,8 +4266,6 @@ offset = 5
                 .find(|p| p.uid == *DEFAULT_PROFILE_UID)
                 .expect("default profile should be present");
             assert_eq!(default_profile.name, "Unmanaged");
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4281,8 +4277,11 @@ offset = 5
         cc_fs::test_runtime(async {
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
-            let path = Path::new("/tmp/config-default-profile-idempotent.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-default-profile-idempotent.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+
+            let path = tmp.path().join("config.toml");
+
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4303,8 +4302,6 @@ offset = 5
                 .find(|p| p.uid == *DEFAULT_PROFILE_UID)
                 .expect("default profile should be present");
             assert_eq!(default_profile.name, "Unmanaged");
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4316,8 +4313,11 @@ offset = 5
         cc_fs::test_runtime(async {
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
-            let path = Path::new("/tmp/config-default-profile-custom.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-default-profile-custom.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+
+            let path = tmp.path().join("config.toml");
+
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4339,8 +4339,6 @@ offset = 5
                 .find(|p| p.uid == *DEFAULT_PROFILE_UID)
                 .expect("default profile should be present");
             assert_eq!(default_profile.name, "My Custom Default");
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4348,8 +4346,9 @@ offset = 5
     #[serial]
     fn test_disabled_plugins_empty_list_removes_key() {
         cc_fs::test_runtime(async {
-            let path = Path::new("/tmp/config-disabled-plugins-remove.toml").to_path_buf();
-            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-remove.json").to_path_buf();
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("config.toml");
+            let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
             let config = Config {
@@ -4377,7 +4376,6 @@ offset = 5
                     "key should be removed from document"
                 );
             }
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4397,8 +4395,8 @@ offset = 5
             ..Default::default()
         };
         let config = Config {
-            path: Path::new("/tmp/fn-roundtrip.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/fn-roundtrip-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("fn-roundtrip.toml"),
+            path_ui: crate::paths::config_dir().join("fn-roundtrip-ui.json"),
             document: RefCell::new(DocumentMut::new()),
             generation: Cell::new(0),
         };
@@ -4447,8 +4445,8 @@ duty_maximum = 100
 sample_window = 10
 "#;
         let config = Config {
-            path: Path::new("/tmp/fn-ema-convert.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/fn-ema-convert-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("fn-ema-convert.toml"),
+            path_ui: crate::paths::config_dir().join("fn-ema-convert-ui.json"),
             document: RefCell::new(DocumentMut::from_str(legacy_toml).unwrap()),
             generation: Cell::new(0),
         };
@@ -4484,8 +4482,8 @@ sample_window = 10
         use std::ops::Not;
 
         let config = Config {
-            path: Path::new("/tmp/fn-scrub.toml").to_path_buf(),
-            path_ui: Path::new("/tmp/fn-scrub-ui.json").to_path_buf(),
+            path: crate::paths::config_dir().join("fn-scrub.toml"),
+            path_ui: crate::paths::config_dir().join("fn-scrub-ui.json"),
             document: RefCell::new(DocumentMut::new()),
             generation: Cell::new(0),
         };
@@ -4525,18 +4523,19 @@ sample_window = 10
         assert!(table.contains_key("response_delay").not());
     }
 
-    async fn make_test_config(tag: &str) -> (Config, std::path::PathBuf) {
-        let path = Path::new(&format!("/tmp/config-setting-kind-{tag}.toml")).to_path_buf();
-        let path_ui = Path::new(&format!("/tmp/config-ui-setting-kind-{tag}.json")).to_path_buf();
+    async fn make_test_config() -> (Config, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        let path_ui = tmp.path().join("config-ui.json");
         let config_content = Config::create_new_config_file(&path).await.unwrap();
         let document = config_content.parse::<DocumentMut>().unwrap();
         let config = Config {
-            path: path.clone(),
+            path,
             path_ui,
             document: RefCell::new(document),
             generation: Cell::new(0),
         };
-        (config, path)
+        (config, tmp)
     }
 
     /// Round-trips a `SpeedFixed` setting through the TOML writer and reader to
@@ -4547,7 +4546,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{Setting, SettingKind};
 
-            let (config, path) = make_test_config("speed-fixed").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-speed";
             let original = Setting {
                 channel_name: "fan1".to_string(),
@@ -4558,8 +4557,6 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], original);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4571,7 +4568,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{Setting, SettingKind};
 
-            let (config, path) = make_test_config("profile").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-profile";
             let original = Setting {
                 channel_name: "fan1".to_string(),
@@ -4584,8 +4581,6 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], original);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4597,7 +4592,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{LightingSettings, Setting, SettingKind};
 
-            let (config, path) = make_test_config("lighting").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-lighting";
             let original = Setting {
                 channel_name: "ring".to_string(),
@@ -4615,8 +4610,6 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], original);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4628,7 +4621,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{LcdModeKind, LcdSettings, Setting, SettingKind};
 
-            let (config, path) = make_test_config("lcd").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-lcd";
             let original = Setting {
                 channel_name: "lcd1".to_string(),
@@ -4648,8 +4641,6 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], original);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4662,7 +4653,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{Setting, SettingKind};
 
-            let (config, path) = make_test_config("reset-true").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-reset";
             let written = Setting {
                 channel_name: "fan1".to_string(),
@@ -4684,8 +4675,6 @@ sample_window = 10
                 config.get_device_settings(device_uid).unwrap().is_empty(),
                 "Reset {{ true }} should drop the channel from device-settings"
             );
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4697,7 +4686,7 @@ sample_window = 10
         cc_fs::test_runtime(async {
             use crate::setting::{Setting, SettingKind};
 
-            let (config, path) = make_test_config("reset-false").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-reset-noop";
             let written = Setting {
                 channel_name: "fan1".to_string(),
@@ -4717,8 +4706,6 @@ sample_window = 10
             let loaded = config.get_device_settings(device_uid).unwrap();
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0], written);
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4750,7 +4737,7 @@ sample_window = 10
     #[serial]
     fn setting_change_detection_ignores_identical_settings() {
         cc_fs::test_runtime(async {
-            let (config, path) = make_test_config("change-identical").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-change";
             let lighting = LightingSettings {
                 mode: "fixed".to_string(),
@@ -4806,8 +4793,6 @@ sample_window = 10
                     "Saved setting must compare equal: {setting:?}"
                 );
             }
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4818,7 +4803,7 @@ sample_window = 10
     #[serial]
     fn setting_change_detection_sees_differences() {
         cc_fs::test_runtime(async {
-            let (config, path) = make_test_config("change-differs").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-change";
             let saved = lcd_setting("lcd", 80, lcd_image_mode("/tmp/img.png"));
             config.set_device_setting(device_uid, &saved);
@@ -4833,8 +4818,6 @@ sample_window = 10
             assert!(config.is_device_setting_changed(device_uid, &other_image));
             assert!(config.is_device_setting_changed(device_uid, &other_channel));
             assert!(config.is_device_setting_changed("dev-other", &saved));
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4845,7 +4828,7 @@ sample_window = 10
     #[serial]
     fn setting_change_detection_for_resets() {
         cc_fs::test_runtime(async {
-            let (config, path) = make_test_config("change-reset").await;
+            let (config, _dir) = make_test_config().await;
             let device_uid = "dev-change";
             let reset = |reset_to_default| Setting {
                 channel_name: "fan1".to_string(),
@@ -4872,8 +4855,6 @@ sample_window = 10
             assert!(config
                 .is_device_setting_changed(device_uid, &reset(true))
                 .not());
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4887,7 +4868,7 @@ sample_window = 10
         use toml_edit::Table;
 
         cc_fs::test_runtime(async {
-            let (config, path) = make_test_config("legacy").await;
+            let (config, _dir) = make_test_config().await;
             {
                 let mut doc = config.document.borrow_mut();
                 let mut device_table = Table::new();
@@ -4909,8 +4890,6 @@ sample_window = 10
                 SettingKind::Profile { profile_uid } => assert_eq!(profile_uid, "prof-xyz"),
                 other => panic!("expected Profile, got {other:?}"),
             }
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 
@@ -4924,7 +4903,7 @@ sample_window = 10
         use toml_edit::Table;
 
         cc_fs::test_runtime(async {
-            let (config, path) = make_test_config("multi-key").await;
+            let (config, _dir) = make_test_config().await;
             {
                 let mut doc = config.document.borrow_mut();
                 let mut device_table = Table::new();
@@ -4940,8 +4919,6 @@ sample_window = 10
                 matches!(loaded[0].kind, SettingKind::SpeedFixed { speed_fixed: 22 }),
                 "speed_fixed must win over profile_uid by declared precedence"
             );
-
-            cc_fs::remove_file(path).await.unwrap();
         });
     }
 }
