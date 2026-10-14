@@ -7491,6 +7491,7 @@ mod uid_migration_tests {
     }
 
     // Goal: pin the production store list, since the migration test runs on tempdir copies.
+    // Method: compare default_uid_side_stores() with the four crate::paths accessors, in order.
     #[test]
     fn default_uid_side_stores_cover_every_json_store() {
         let expected = [
