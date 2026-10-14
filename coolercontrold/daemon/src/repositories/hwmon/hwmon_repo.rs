@@ -1391,8 +1391,9 @@ impl HwmonRepo {
         );
     }
 
-    /// Overrides are already in memory so they move through their controller; alerts are still
-    /// on disk. Failures are swallowed: a stale entry beats aborting startup.
+    /// Overrides are already in memory so they move through their controller; the JSON stores
+    /// load after device detection and are still on disk. Failures are swallowed: a stale entry
+    /// beats aborting startup.
     async fn migrate_legacy_uid_side_stores(
         &self,
         legacy_uid: &DeviceUID,
@@ -1407,9 +1408,20 @@ impl HwmonRepo {
             Ok(moved) => migrated |= moved,
             Err(err) => warn!("Could not migrate label overrides to the new device UID: {err}"),
         }
-        match crate::alerts::migrate_device_uid_in_file(legacy_uid, device_uid).await {
-            Ok(moved) => migrated |= moved,
-            Err(err) => warn!("Could not migrate alerts to the new device UID: {err}"),
+        let json_stores = [
+            crate::paths::alert_config_file(),
+            crate::paths::mode_config_file(),
+            crate::paths::calibration_config_file(),
+            crate::paths::ui_config_file(),
+        ];
+        for store in json_stores {
+            match crate::device_uid::migrate_uid_in_file(store, legacy_uid, device_uid).await {
+                Ok(moved) => migrated |= moved,
+                Err(err) => warn!(
+                    "Could not migrate {} to the new device UID: {err}",
+                    store.display()
+                ),
+            }
         }
         migrated
     }
