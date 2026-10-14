@@ -4116,9 +4116,7 @@ offset = 5
             use crate::setting::{LcdModeKind, LcdModeName, LcdSettings};
 
             let tmp = tempfile::tempdir().unwrap();
-
             let path = tmp.path().join("config.toml");
-
             let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
@@ -4239,9 +4237,7 @@ offset = 5
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
             let tmp = tempfile::tempdir().unwrap();
-
             let path = tmp.path().join("config.toml");
-
             let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
@@ -4278,9 +4274,7 @@ offset = 5
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
             let tmp = tempfile::tempdir().unwrap();
-
             let path = tmp.path().join("config.toml");
-
             let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
@@ -4314,9 +4308,7 @@ offset = 5
             use crate::setting::{Profile, DEFAULT_PROFILE_UID};
 
             let tmp = tempfile::tempdir().unwrap();
-
             let path = tmp.path().join("config.toml");
-
             let path_ui = tmp.path().join("config-ui.json");
             let config_content = Config::create_new_config_file(&path).await.unwrap();
             let document = config_content.parse::<DocumentMut>().unwrap();
