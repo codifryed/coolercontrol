@@ -2761,27 +2761,24 @@ mod preload_tests {
     use crate::repositories::failsafe::{self, MISSING_DUTY_FAILSAFE, MISSING_RPM_FAILSAFE};
     use serial_test::serial;
     use std::path::Path;
-    use uuid::Uuid;
 
     const TEST_TYPE_INDEX: TypeIndex = 1;
     /// A second registered device, for tests that must keep two devices genuinely apart.
     const TEST_TYPE_INDEX_B: TypeIndex = 2;
 
     struct PreloadContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> PreloadContext {
-        let base = format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4());
-        let path = Path::new(&base).to_path_buf();
-        cc_fs::create_dir_all(&path).await.unwrap();
+    fn setup() -> PreloadContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
         PreloadContext {
-            test_base_path: path,
+            _dir: dir,
+            test_base_path,
         }
-    }
-
-    async fn teardown(ctx: &PreloadContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     fn new_test_repo() -> HwmonRepo {
@@ -2959,7 +2956,7 @@ mod preload_tests {
     #[serial]
     fn a_wedged_device_does_not_stop_a_healthy_one() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3042,7 +3039,6 @@ mod preload_tests {
                 );
                 assert!(fsd.channel_state["fan1"].is_failsafed.not());
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3052,7 +3048,7 @@ mod preload_tests {
         // Two successive preloads with fresh fan readings must replace
         // the cache entry in place rather than duplicating it.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3080,7 +3076,6 @@ mod preload_tests {
                 assert_eq!(channels[0].name, "fan1");
                 assert_eq!(channels[0].rpm, Some(1800));
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3091,7 +3086,7 @@ mod preload_tests {
         // other succeeds, the successful entry updates and the failing
         // entry keeps its prior last-known-good value.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             // both readable in the initial tick
             cc_fs::write(base.join("pwm1"), b"64".to_vec())
@@ -3136,7 +3131,6 @@ mod preload_tests {
                 let fan2 = channels.iter().find(|c| c.name == "fan2").unwrap();
                 assert_eq!(fan2.rpm, Some(2500));
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3147,7 +3141,7 @@ mod preload_tests {
         // repeated failing preloads. Once active, the overlay replaces
         // the absent channel's cache entry with its failsafe value.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3191,7 +3185,6 @@ mod preload_tests {
                 assert_eq!(fan1.rpm, Some(MISSING_RPM_FAILSAFE));
                 assert_eq!(fan1.duty, Some(MISSING_DUTY_FAILSAFE));
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3203,7 +3196,7 @@ mod preload_tests {
         // a fully successful preload must reset the counter to 0 and
         // the fresh read's values must replace the failsafe values.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3264,7 +3257,6 @@ mod preload_tests {
                 let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
                 assert_eq!(fan1.rpm, Some(2000));
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3412,7 +3404,7 @@ mod preload_tests {
         // with `fresh_this_tick` flags cleared, so flags left over
         // from a prior attempt cannot pretend to be fresh.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3445,7 +3437,6 @@ mod preload_tests {
                 assert_eq!(fsd.channel_state["fan1"].stale_ticks, 0);
                 assert!(fsd.channel_state["fan1"].fresh_this_tick);
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3458,7 +3449,7 @@ mod preload_tests {
         // the read pass mid-flight. After preload_device_statuses
         // returns the permit must be free again.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             for n in 1..=2 {
                 cc_fs::write(base.join(format!("pwm{n}")), b"128".to_vec())
@@ -3512,7 +3503,6 @@ mod preload_tests {
                 sem.try_acquire().is_ok(),
                 "device permit must be free after preload_device_statuses returns"
             );
-            teardown(&ctx).await;
         });
     }
 
@@ -3526,7 +3516,7 @@ mod preload_tests {
         // We simulate the "in-flight" condition by setting the flag
         // directly so the test stays deterministic.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3563,7 +3553,6 @@ mod preload_tests {
                 flag.get(),
                 "the coalesced caller must not clear a flag it did not set"
             );
-            teardown(&ctx).await;
         });
     }
 
@@ -3575,7 +3564,7 @@ mod preload_tests {
         // every subsequent tick on the same device would coalesce-
         // skip and never read the device again.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3622,7 +3611,6 @@ mod preload_tests {
                     "second preload must run, not coalesce-skip"
                 );
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3635,7 +3623,7 @@ mod preload_tests {
         // tick per-channel staleness so a sustained slow condition
         // eventually trips the failsafe overlay.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3701,7 +3689,6 @@ mod preload_tests {
                     .not(),
                 "RAII guard must clear flag on the permit-timeout exit"
             );
-            teardown(&ctx).await;
         });
     }
 
@@ -3734,7 +3721,7 @@ mod preload_tests {
         // any channel and without upserting into preloaded_statuses.
         // This is what shortens the moro scope's wait at shutdown.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3763,7 +3750,6 @@ mod preload_tests {
                     "no channel/temp upserts must occur after shutdown_token is cancelled"
                 );
             }
-            teardown(&ctx).await;
         });
     }
 
@@ -3776,7 +3762,7 @@ mod preload_tests {
         // the underlying sysfs files have changed. Confirms the
         // entry guard short-circuits the read loop entirely.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("pwm1"), b"128".to_vec())
                 .await
@@ -3815,7 +3801,6 @@ mod preload_tests {
                     "post-shutdown preload must not overwrite the seeded cache"
                 );
             }
-            teardown(&ctx).await;
         });
     }
 }
@@ -7275,16 +7260,13 @@ mod uid_migration_tests {
     use crate::config::Config;
     use crate::setting::{Setting, SettingKind};
     use serial_test::serial;
-    use uuid::Uuid;
 
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
     const SHARED_SERIAL: &str = "SHARED-SERIAL";
 
-    /// An hwmon dir whose `device/serial` is the shared serial, so the legacy chain
-    /// resolves to it exactly as it did before the wwid rung existed.
-    async fn seed_device_with_serial() -> PathBuf {
-        let path = Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-            .join("hwmon/hwmon1");
+    /// An hwmon dir inside `dir` whose `device/serial` is the shared serial, so the legacy
+    /// chain resolves to it exactly as it did before the wwid rung existed.
+    async fn seed_device_with_serial(dir: &Path) -> PathBuf {
+        let path = dir.join("hwmon/hwmon1");
         cc_fs::create_dir_all(path.join("device")).await.unwrap();
         cc_fs::write(
             path.join("device").join("serial"),
@@ -7318,7 +7300,8 @@ mod uid_migration_tests {
     #[serial]
     fn migration_skips_a_legacy_uid_another_device_claims() {
         cc_fs::test_runtime(async {
-            let path = seed_device_with_serial().await;
+            let dir = tempfile::tempdir().unwrap();
+            let path = seed_device_with_serial(dir.path()).await;
             let legacy_uid = Device::create_uid_from(
                 "drivetemp",
                 DeviceType::Hwmon,
@@ -7359,7 +7342,8 @@ mod uid_migration_tests {
     #[serial]
     fn migration_moves_settings_when_the_legacy_uid_is_unclaimed() {
         cc_fs::test_runtime(async {
-            let path = seed_device_with_serial().await;
+            let dir = tempfile::tempdir().unwrap();
+            let path = seed_device_with_serial(dir.path()).await;
             let legacy_uid = Device::create_uid_from(
                 "drivetemp",
                 DeviceType::Hwmon,

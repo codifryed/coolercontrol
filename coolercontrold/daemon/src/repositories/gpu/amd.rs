@@ -1651,25 +1651,20 @@ mod tests {
     use crate::cc_fs;
     use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
     use serial_test::serial;
-    use std::path::Path;
-    use uuid::Uuid;
-
-    const LOAD_TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct LoadFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn load_setup() -> LoadFileContext {
-        let test_base_path =
-            Path::new(&(LOAD_TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        LoadFileContext { test_base_path }
-    }
-
-    async fn load_teardown(ctx: &LoadFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn load_setup() -> LoadFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        LoadFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
@@ -1678,7 +1673,7 @@ mod tests {
         // Verifies a readable gpu_busy_percent results in a channel status
         // with the expected duty.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: gpu_busy_percent sysfs file is present and parseable.
             cc_fs::write(ctx.test_base_path.join("gpu_busy_percent"), b"42".to_vec())
                 .await
@@ -1704,7 +1699,6 @@ mod tests {
             let result = GpuAMD::extract_load_status(&driver).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result.len(), 1);
             assert_eq!(result[0].name, "load");
             assert_eq!(result[0].duty, Some(42.0));
@@ -1718,7 +1712,7 @@ mod tests {
         // status is emitted at all. Fabricating a 0% duty would lie to
         // downstream GPU fan curves.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: load channel configured but sysfs file absent.
             let driver = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
@@ -1741,7 +1735,6 @@ mod tests {
             let result = GpuAMD::extract_load_status(&driver).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result.len(), 0);
         });
     }
@@ -1751,7 +1744,7 @@ mod tests {
     fn extract_load_status_ignores_non_load_channels() {
         // Verifies that non-Load channel types never emit load entries.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: only a Temp channel exists; no Load channels.
             cc_fs::write(ctx.test_base_path.join("gpu_busy_percent"), b"50".to_vec())
                 .await
@@ -1777,7 +1770,6 @@ mod tests {
             let result = GpuAMD::extract_load_status(&driver).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result.len(), 0);
         });
     }
@@ -1838,7 +1830,7 @@ mod tests {
         // Verifies a curve file that parses into nothing is rejected rather than yielding a
         // zero-length curve, which would underflow cap_speed_profile's `fan_curve_length - 1`.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: a fan_curve carrying only its range lines.
             write_fan_ctrl_file(
                 &ctx,
@@ -1852,7 +1844,6 @@ mod tests {
             let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert!(result.is_err());
         });
     }
@@ -1863,7 +1854,7 @@ mod tests {
         // Verifies a curve with no OD_RANGE is rejected. Keeping it would leave both ranges at
         // 0..=0, silently clamping every applied duty and temperature to zero.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: points but no limits.
             write_fan_ctrl_file(&ctx, "fan_curve", "OD_FAN_CURVE:\n0: 40C 30%\n1: 60C 50%\n").await;
 
@@ -1871,7 +1862,6 @@ mod tests {
             let result = GpuAMD::get_fan_curve_with_ranges(&ctx.test_base_path).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert!(result.is_err());
         });
     }
@@ -1881,7 +1871,7 @@ mod tests {
     fn zero_rpm_enable_found_when_driver_reports_support() {
         // Verifies a card whose driver emits the header is detected as supporting Zero RPM.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: fan_zero_rpm_enable holds real content.
             let expected =
                 write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_SUPPORTED).await;
@@ -1890,7 +1880,6 @@ mod tests {
             let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result, Some(expected));
         });
     }
@@ -1901,7 +1890,7 @@ mod tests {
         // Verifies the R9700 case: the attribute exists and reads without error, but is empty
         // because the feature is unsupported. Writing to it would return ENOTSUPP.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: fan_zero_rpm_enable is present but empty.
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_enable", ZERO_RPM_ENABLE_UNSUPPORTED).await;
 
@@ -1909,7 +1898,6 @@ mod tests {
             let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1919,14 +1907,13 @@ mod tests {
     fn zero_rpm_enable_rejected_when_file_absent() {
         // Verifies pre-6.13 kernels, where the attribute does not exist at all.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: no gpu_od/fan_ctrl tree at all.
 
             // when:
             let result = GpuAMD::get_zero_rpm_enable_path(&ctx.test_base_path).await;
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1936,7 +1923,7 @@ mod tests {
     fn zero_rpm_stop_temp_found_with_range_when_supported() {
         // Verifies the stop temperature is accepted and its OD_RANGE parsed when present.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: fan_zero_rpm_stop_temperature holds real content.
             let expected = write_fan_ctrl_file(
                 &ctx,
@@ -1951,7 +1938,6 @@ mod tests {
                 .unwrap();
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(path, Some(expected));
             assert_eq!(range, 25..=100);
         });
@@ -1964,7 +1950,7 @@ mod tests {
         // empty file must not be treated as supported, or every write returns an error and the
         // parsed range silently stays 0..=0.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: the attribute is present but empty.
             write_fan_ctrl_file(&ctx, "fan_zero_rpm_stop_temperature", "\n").await;
 
@@ -1974,7 +1960,6 @@ mod tests {
                 .unwrap();
 
             // then:
-            load_teardown(&ctx).await;
             assert_eq!(path, None);
             assert_eq!(range, 0..=0);
         });
@@ -1986,7 +1971,7 @@ mod tests {
         // Verifies the commit is the last thing written, so the firmware receives the whole
         // table in one upload.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: a writable fan_curve file.
             let path = write_fan_ctrl_file(&ctx, "fan_curve", "").await;
             let fan_curve = FanCurve {
@@ -1998,7 +1983,6 @@ mod tests {
             let last_written = cc_fs::read_txt(&path).await.unwrap();
 
             // then:
-            load_teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(last_written, "c\n");
         });
@@ -2011,7 +1995,7 @@ mod tests {
         // half-staged table is what the firmware rejects with EIO (OD_FAN_CURVE_PWM_ERROR),
         // because the points never written keep the 0C/0% defaults left by the last reset.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: a fan_curve path that cannot be written, because its parent is a file.
             let blocker = ctx.test_base_path.join("not_a_dir");
             cc_fs::write(&blocker, b"x".to_vec()).await.unwrap();
@@ -2024,7 +2008,6 @@ mod tests {
             let result = GpuAMD::set_fan_curve(fan_curve, &path, &DeviceIo::default()).await;
 
             // then:
-            load_teardown(&ctx).await;
             let err = result.unwrap_err().to_string();
             assert!(err.contains("Error applying '0 25 25'"), "actual: {err}");
             assert!(err.contains("committing").not(), "actual: {err}");
@@ -2092,7 +2075,7 @@ mod tests {
         // point, so a reset first would only add an upload and drop the card into firmware
         // automatic mode with an all-zero table in between.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: a device with both Zero RPM endpoints present.
             let info = fan_curve_info_with_paths(&ctx).await;
 
@@ -2107,7 +2090,6 @@ mod tests {
             let stop_temp = cc_fs::read_txt(info.zero_rpm_stop_temp.as_ref().unwrap())
                 .await
                 .unwrap();
-            load_teardown(&ctx).await;
             assert_eq!(curve, "OD_FAN_CURVE:\n", "the fan curve must not be reset");
             assert_eq!(zero_rpm, "r\n");
             assert_eq!(stop_temp, "r\n");
@@ -2121,14 +2103,13 @@ mod tests {
     #[serial]
     fn resetting_a_wedged_device_fails_instead_of_blocking() {
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             let info = fan_curve_info_with_paths(&ctx).await;
             let (wedged, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(20));
 
             let result = GpuAMD::reset_fan_curve_and_zero_rpm(&info, &wedged).await;
 
             let curve = cc_fs::read_txt(&info.path).await.unwrap();
-            load_teardown(&ctx).await;
             assert!(result.is_err(), "a wedged device must not report success");
             assert!(curve.contains('r').not(), "nothing may reach the card");
         });
@@ -2140,7 +2121,7 @@ mod tests {
         // Verifies the reset-to-default and shutdown path still hands the curve back to the
         // firmware, which is the one case where resetting it is the whole point.
         cc_fs::test_runtime(async {
-            let ctx = load_setup().await;
+            let ctx = load_setup();
             // given: a device with both Zero RPM endpoints present.
             let info = fan_curve_info_with_paths(&ctx).await;
 
@@ -2152,7 +2133,6 @@ mod tests {
             let zero_rpm = cc_fs::read_txt(info.zero_rpm.as_ref().unwrap())
                 .await
                 .unwrap();
-            load_teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(curve, "r\n");
             assert_eq!(zero_rpm, "r\n");

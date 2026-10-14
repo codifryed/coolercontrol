@@ -188,25 +188,21 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::ops::Not;
-    use std::path::{Path, PathBuf};
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+    use std::path::PathBuf;
 
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
@@ -214,7 +210,7 @@ mod tests {
     fn extract_freq_all_channels_succeed() {
         // Verifies freq channels return real MHz values when readable.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two freq channels, both readable (hertz values).
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -254,7 +250,6 @@ mod tests {
             let freqs = extract_freq_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(freqs.len(), 2);
             assert_eq!(freqs[0].name, "freq1");
             assert_eq!(freqs[0].freq, Some(3500));
@@ -269,7 +264,7 @@ mod tests {
         // Verifies a missing sysfs file omits the entry entirely rather
         // than fabricating a 0 MHz reading.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: single freq channel with no sysfs file.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -289,7 +284,6 @@ mod tests {
             let freqs = extract_freq_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(freqs.len(), 0);
         });
     }
@@ -300,7 +294,7 @@ mod tests {
         // Verifies that when one freq channel reads successfully and
         // another fails, only the successful one is returned.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two freq channels, only the first one readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -334,7 +328,6 @@ mod tests {
             let freqs = extract_freq_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(freqs.len(), 1);
             assert_eq!(freqs[0].name, "freq1");
             assert_eq!(freqs[0].freq, Some(2500));
@@ -347,7 +340,7 @@ mod tests {
         // Verifies non-Freq channels are ignored so their sysfs paths are
         // never queried here.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: one Freq and one non-Freq channel.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("freq1_input"), b"1000000000".to_vec())
@@ -378,7 +371,6 @@ mod tests {
             let freqs = extract_freq_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(freqs.len(), 1);
             assert_eq!(freqs[0].name, "freq1");
             // Sanity: only one entry despite two channels.

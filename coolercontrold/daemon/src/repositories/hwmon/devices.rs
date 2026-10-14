@@ -602,12 +602,9 @@ pub struct PciDeviceNames {
 mod tests {
     use serial_test::serial;
     use std::path::Path;
-    use uuid::Uuid;
 
     use super::*;
     use crate::device::{Device, DeviceType};
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     /// Goal: the k10temp node id must come from the PCI slot, since that is what the kernel
     /// itself derives it from and it does not move with probe order. Method: the real device
@@ -696,6 +693,8 @@ mod tests {
     }
 
     struct HwmonDeviceContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_dir: String,
         hwmon_path: PathBuf,
         hwmon_path_centos: PathBuf,
@@ -703,15 +702,9 @@ mod tests {
     }
 
     async fn setup() -> HwmonDeviceContext {
-        let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
-        cc_fs::create_dir_all(&test_dir).await.unwrap();
-        setup_in(Path::new(&test_dir)).await
-    }
-
-    /// Builds the fixture inside `dir`, which the caller owns and removes.
-    async fn setup_in(dir: &Path) -> HwmonDeviceContext {
+        let dir = tempfile::tempdir().unwrap();
         // Identities are read through canonical paths, so `test_dir` must be canonical too.
-        let test_dir = cc_fs::canonicalize(dir)
+        let test_dir = cc_fs::canonicalize(dir.path())
             .unwrap()
             .to_str()
             .unwrap()
@@ -759,6 +752,7 @@ mod tests {
             .replace("hwmon2", "hwmon*")
             + "fan*_input";
         HwmonDeviceContext {
+            _dir: dir,
             test_dir,
             hwmon_path,
             hwmon_path_centos,
@@ -773,10 +767,6 @@ mod tests {
         }
     }
 
-    async fn teardown(ctx: &HwmonDeviceContext) {
-        cc_fs::remove_dir_all(&ctx.test_dir).await.unwrap();
-    }
-
     #[test]
     #[serial]
     fn find_device_empty() {
@@ -786,7 +776,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(hwmon_paths.is_empty());
         });
     }
@@ -808,7 +797,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -831,7 +819,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -854,7 +841,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -877,7 +863,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -900,7 +885,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -923,7 +907,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -952,7 +935,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -981,7 +963,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -1010,7 +991,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -1040,7 +1020,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -1064,7 +1043,6 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -1086,7 +1064,6 @@ mod tests {
 
             let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
 
-            teardown(&ctx).await;
             assert_eq!(wwid, Some("naa.5000c500a1b2c3d4".to_string()));
         });
     }
@@ -1111,7 +1088,6 @@ mod tests {
 
             let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
 
-            teardown(&ctx).await;
             assert_eq!(
                 wwid,
                 Some("t10.JMicron Tech            DD5641988389C".to_string())
@@ -1135,7 +1111,6 @@ mod tests {
 
             let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
 
-            teardown(&ctx).await;
             assert_eq!(wwid, None);
         });
     }
@@ -1153,7 +1128,6 @@ mod tests {
 
             let wwid = get_scsi_device_wwid(&ctx.hwmon_path).await;
 
-            teardown(&ctx).await;
             assert_eq!(wwid, None);
         });
     }
@@ -1186,7 +1160,6 @@ mod tests {
             let id_two = get_device_unique_id(&boot_two, "ST6000VN0033-2EE").await;
             let id_other = get_device_unique_id(&other, "ST6000VN0033-2EE").await;
 
-            teardown(&ctx).await;
             assert_eq!(id_one, id_two);
             assert_ne!(id_one, id_other);
         });
@@ -1260,7 +1233,6 @@ mod tests {
             let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
 
-            teardown(&ctx).await;
             assert_eq!(vpd_serial, Some("WCC34KL1".to_string()));
             assert_eq!(current, "naa.5000c500a9068285".to_string());
             assert!(
@@ -1290,7 +1262,6 @@ mod tests {
 
             let unique_id = get_device_unique_id(&ctx.hwmon_path, "ST6000VN0033-2EE").await;
 
-            teardown(&ctx).await;
             assert_eq!(unique_id, "WD-WCC4N0803777".to_string());
         });
     }
@@ -1315,7 +1286,6 @@ mod tests {
             let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
 
-            teardown(&ctx).await;
             assert_eq!(current, legacy, "no serial-bearing device may be re-keyed");
         });
     }
@@ -1337,7 +1307,6 @@ mod tests {
             let current = get_device_unique_id(&ctx.hwmon_path, "drive").await;
             let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "drive").await;
 
-            teardown(&ctx).await;
             assert_eq!(current, "naa.5000c500a1b2c3d4".to_string());
             assert_ne!(current, legacy, "the affected cohort must move");
             assert!(legacy.contains("hwmon"), "legacy resolved by sysfs path");
@@ -1374,14 +1343,12 @@ mod tests {
     fn i2c_client_id_survives_a_bus_renumber() {
         cc_fs::test_runtime(async {
             let name = "SMBus PIIX4 adapter port 0 at 0b00";
-            let dir_low = tempfile::tempdir().unwrap();
-            let ctx_low = setup_in(dir_low.path()).await;
+            let ctx_low = setup().await;
             setup_i2c_client(&ctx_low, "15", "0050", name).await;
             let low = get_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
             let low_legacy = get_legacy_device_unique_id(&ctx_low.hwmon_path, "spd5118").await;
 
-            let dir_high = tempfile::tempdir().unwrap();
-            let ctx_high = setup_in(dir_high.path()).await;
+            let ctx_high = setup().await;
             setup_i2c_client(&ctx_high, "16", "0050", name).await;
             let high = get_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
             let high_legacy = get_legacy_device_unique_id(&ctx_high.hwmon_path, "spd5118").await;
@@ -1406,13 +1373,11 @@ mod tests {
     #[serial]
     fn i2c_clients_on_two_ports_do_not_collide() {
         cc_fs::test_runtime(async {
-            let dir_a = tempfile::tempdir().unwrap();
-            let ctx_a = setup_in(dir_a.path()).await;
+            let ctx_a = setup().await;
             setup_i2c_client(&ctx_a, "15", "0050", "SMBus PIIX4 adapter port 0 at 0b00").await;
             let port_zero = get_device_unique_id(&ctx_a.hwmon_path, "spd5118").await;
 
-            let dir_b = tempfile::tempdir().unwrap();
-            let ctx_b = setup_in(dir_b.path()).await;
+            let ctx_b = setup().await;
             setup_i2c_client(&ctx_b, "15", "0050", "SMBus PIIX4 adapter port 2 at 0b00").await;
             let port_two = get_device_unique_id(&ctx_b.hwmon_path, "spd5118").await;
 
@@ -1430,8 +1395,7 @@ mod tests {
     #[serial]
     fn a_non_i2c_device_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let ctx = setup_in(dir.path()).await;
+            let ctx = setup().await;
             let device_dir = ctx.hwmon_path.join("device");
             cc_fs::create_dir_all(&device_dir).await.unwrap();
 
@@ -1451,13 +1415,11 @@ mod tests {
     fn firmware_named_i2c_client_survives_a_bus_renumber() {
         cc_fs::test_runtime(async {
             let name = "Synopsys DesignWare I2C adapter";
-            let dir_low = tempfile::tempdir().unwrap();
-            let ctx_low = setup_in(dir_low.path()).await;
+            let ctx_low = setup().await;
             link_i2c_device(&ctx_low, "i2c-0", "i2c-ITE8853:00", name).await;
             let low = get_device_unique_id(&ctx_low.hwmon_path, "lm75").await;
 
-            let dir_high = tempfile::tempdir().unwrap();
-            let ctx_high = setup_in(dir_high.path()).await;
+            let ctx_high = setup().await;
             link_i2c_device(&ctx_high, "i2c-3", "i2c-ITE8853:00", name).await;
             let high = get_device_unique_id(&ctx_high.hwmon_path, "lm75").await;
 
@@ -1480,8 +1442,7 @@ mod tests {
     #[serial]
     fn muxed_i2c_client_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let ctx = setup_in(dir.path()).await;
+            let ctx = setup().await;
             link_i2c_device(&ctx, "i2c-3/i2c-7", "7-0048", "i2c-3-mux (chan_id 0)").await;
 
             let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
@@ -1499,8 +1460,7 @@ mod tests {
     #[serial]
     fn i2c_client_without_an_adapter_name_keeps_its_path_identity() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let ctx = setup_in(dir.path()).await;
+            let ctx = setup().await;
             setup_i2c_client(&ctx, "15", "0050", "").await;
 
             let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
@@ -1519,8 +1479,7 @@ mod tests {
     #[serial]
     fn i2c_client_id_matches_the_uid_running_daemons_hold() {
         cc_fs::test_runtime(async {
-            let dir = tempfile::tempdir().unwrap();
-            let ctx = setup_in(dir.path()).await;
+            let ctx = setup().await;
             setup_i2c_client(&ctx, "11", "0051", "SMBus PIIX4 adapter port 0 at 0b00").await;
             let id = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
 

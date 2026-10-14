@@ -112,34 +112,29 @@ mod tests {
     };
     use crate::setting::CoolerControlSettings;
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::rc::Rc;
 
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
-
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
     #[serial]
     fn thinkpad_apply_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -188,7 +183,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string());
             assert_eq!(current_duty, 50.);
@@ -200,7 +194,7 @@ mod tests {
     #[serial]
     fn thinkpad_apply_speed_error_carries_hint() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: no pwm files, so every write fails like a locked ThinkPad
             let channel_info = HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
@@ -225,7 +219,6 @@ mod tests {
             let result = apply_speed_fixed(&config, &hwmon_info, &channel_info, 50).await;
 
             // then:
-            teardown(&ctx).await;
             let err = result.unwrap_err().to_string();
             assert!(err.contains(FAN_CONTROL_HINT), "error: {err}");
         });
@@ -235,7 +228,7 @@ mod tests {
     #[serial]
     fn thinkpad_apply_speed_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -284,7 +277,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(
                 current_pwm_enable,
@@ -298,7 +290,7 @@ mod tests {
     #[serial]
     fn thinkpad_apply_speed_after_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -347,7 +339,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string(),);
             assert_eq!(current_duty, 50.);
@@ -358,7 +349,7 @@ mod tests {
     #[serial]
     fn thinkpad_set_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -397,7 +388,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(
                 current_pwm_enable,
