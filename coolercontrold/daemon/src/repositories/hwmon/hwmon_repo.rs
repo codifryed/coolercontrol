@@ -7423,6 +7423,72 @@ mod uid_migration_tests {
             );
         });
     }
+
+    // Goal: every JSON store that names a device follows it onto the new UID, so no saved
+    // setting is orphaned. Method: seed each sandboxed store with the legacy UID, migrate the
+    // i2c fixture, then assert each store names only the new UID.
+    #[test]
+    #[serial]
+    fn migration_moves_every_json_store_off_the_legacy_uid() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
+            let adapter = root.join("devices/pci0000:00/0000:00:14.0/i2c-15");
+            let client = adapter.join("15-0050");
+            let path = root.join("hwmon/hwmon1");
+            cc_fs::create_dir_all(&client).await.unwrap();
+            cc_fs::create_dir_all(&path).await.unwrap();
+            cc_fs::write(adapter.join("name"), b"SMBus PIIX4 adapter\n".to_vec())
+                .await
+                .unwrap();
+            std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
+            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
+            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_uid =
+                Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
+            let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
+            let stores = [
+                crate::paths::alert_config_file(),
+                crate::paths::mode_config_file(),
+                crate::paths::calibration_config_file(),
+                crate::paths::ui_config_file(),
+            ];
+            let mut prior = Vec::with_capacity(stores.len());
+            for store in stores {
+                prior.push(cc_fs::read_txt(store).await.ok());
+                cc_fs::create_dir_all(store.parent().unwrap())
+                    .await
+                    .unwrap();
+                let contents = format!(r#"{{"device_uid":"{legacy_uid}"}}"#);
+                cc_fs::write(store, contents.into_bytes()).await.unwrap();
+            }
+            let repo = repo_with_setting(&legacy_uid);
+            let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
+
+            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
+                .await;
+
+            let mut after = Vec::with_capacity(stores.len());
+            for (store, contents) in stores.into_iter().zip(prior) {
+                after.push((store, cc_fs::read_txt(store).await.unwrap()));
+                match contents {
+                    Some(contents) => cc_fs::write(store, contents.into_bytes()).await.unwrap(),
+                    None => cc_fs::remove_file(store).await.unwrap(),
+                }
+            }
+            for (store, contents) in after {
+                let name = store.display();
+                assert!(
+                    contents.contains(our_uid.as_str()),
+                    "{name} names the new UID"
+                );
+                assert!(
+                    contents.contains(legacy_uid.as_str()).not(),
+                    "{name} drops the legacy UID"
+                );
+            }
+        });
+    }
 }
 
 #[cfg(test)]
