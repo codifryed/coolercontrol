@@ -472,6 +472,16 @@ const DUTY_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(30);
 
 const _: () = assert!(DUTY_CACHE_VERIFY_INTERVAL.as_secs() > 0);
 
+/// Every JSON store that names a device by UID.
+fn default_uid_side_stores() -> Vec<PathBuf> {
+    vec![
+        crate::paths::alert_config_file().to_path_buf(),
+        crate::paths::mode_config_file().to_path_buf(),
+        crate::paths::calibration_config_file().to_path_buf(),
+        crate::paths::ui_config_file().to_path_buf(),
+    ]
+}
+
 pub struct HwmonRepo {
     config: Rc<Config>,
     /// Owns both the user's own name overrides and the lm-sensors labels under them.
@@ -528,6 +538,9 @@ pub struct HwmonRepo {
 
     device_delays: HashMap<DeviceUID, u16>,
 
+    /// JSON stores rewritten when a device moves off its legacy UID.
+    uid_side_stores: Vec<PathBuf>,
+
     /// Permit timeouts and init threshold are derived from
     /// `poll_rate` and frozen in `new()`; `poll_rate` is restart-only.
     device_read_permit_timeout: Duration,
@@ -569,6 +582,7 @@ impl HwmonRepo {
                 .filter_map(|loc| cc_fs::canonicalize(loc).ok())
                 .collect(),
             device_delays: HashMap::new(),
+            uid_side_stores: default_uid_side_stores(),
             hardware_support: None,
             device_read_permit_timeout,
             device_write_permit_timeout,
@@ -587,6 +601,13 @@ impl HwmonRepo {
         hardware_support: Rc<HardwareSupportController>,
     ) -> Self {
         self.hardware_support = Some(hardware_support);
+        self
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    fn with_uid_side_stores(mut self, uid_side_stores: Vec<PathBuf>) -> Self {
+        self.uid_side_stores = uid_side_stores;
         self
     }
 
@@ -1408,13 +1429,7 @@ impl HwmonRepo {
             Ok(moved) => migrated |= moved,
             Err(err) => warn!("Could not migrate label overrides to the new device UID: {err}"),
         }
-        let json_stores = [
-            crate::paths::alert_config_file(),
-            crate::paths::mode_config_file(),
-            crate::paths::calibration_config_file(),
-            crate::paths::ui_config_file(),
-        ];
-        for store in json_stores {
+        for store in &self.uid_side_stores {
             match crate::device_uid::migrate_uid_in_file(store, legacy_uid, device_uid).await {
                 Ok(moved) => migrated |= moved,
                 Err(err) => warn!(
@@ -7425,10 +7440,9 @@ mod uid_migration_tests {
     }
 
     // Goal: every JSON store that names a device follows it onto the new UID, so no saved
-    // setting is orphaned. Method: seed each sandboxed store with the legacy UID, migrate the
-    // i2c fixture, then assert each store names only the new UID.
+    // setting is orphaned. Method: seed one store per production entry in a tempdir with the
+    // legacy UID, migrate the i2c fixture, then assert each store names only the new UID.
     #[test]
-    #[serial]
     fn migration_moves_every_json_store_off_the_legacy_uid() {
         cc_fs::test_runtime(async {
             let dir = tempfile::tempdir().unwrap();
@@ -7447,36 +7461,22 @@ mod uid_migration_tests {
             let legacy_uid =
                 Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
             let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
-            let stores = [
-                crate::paths::alert_config_file(),
-                crate::paths::mode_config_file(),
-                crate::paths::calibration_config_file(),
-                crate::paths::ui_config_file(),
-            ];
-            let mut prior = Vec::with_capacity(stores.len());
-            for store in stores {
-                prior.push(cc_fs::read_txt(store).await.ok());
-                cc_fs::create_dir_all(store.parent().unwrap())
-                    .await
-                    .unwrap();
+            let stores: Vec<PathBuf> = default_uid_side_stores()
+                .iter()
+                .map(|store| root.join(store.file_name().unwrap()))
+                .collect();
+            for store in &stores {
                 let contents = format!(r#"{{"device_uid":"{legacy_uid}"}}"#);
                 cc_fs::write(store, contents.into_bytes()).await.unwrap();
             }
-            let repo = repo_with_setting(&legacy_uid);
+            let repo = repo_with_setting(&legacy_uid).with_uid_side_stores(stores.clone());
             let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
 
             repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
                 .await;
 
-            let mut after = Vec::with_capacity(stores.len());
-            for (store, contents) in stores.into_iter().zip(prior) {
-                after.push((store, cc_fs::read_txt(store).await.unwrap()));
-                match contents {
-                    Some(contents) => cc_fs::write(store, contents.into_bytes()).await.unwrap(),
-                    None => cc_fs::remove_file(store).await.unwrap(),
-                }
-            }
-            for (store, contents) in after {
+            for store in &stores {
+                let contents = cc_fs::read_txt(store).await.unwrap();
                 let name = store.display();
                 assert!(
                     contents.contains(our_uid.as_str()),
@@ -7488,6 +7488,18 @@ mod uid_migration_tests {
                 );
             }
         });
+    }
+
+    // Goal: pin the production store list, since the migration test runs on tempdir copies.
+    #[test]
+    fn default_uid_side_stores_cover_every_json_store() {
+        let expected = [
+            crate::paths::alert_config_file(),
+            crate::paths::mode_config_file(),
+            crate::paths::calibration_config_file(),
+            crate::paths::ui_config_file(),
+        ];
+        assert_eq!(default_uid_side_stores(), expected);
     }
 }
 
