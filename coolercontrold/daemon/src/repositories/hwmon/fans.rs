@@ -9,7 +9,7 @@ use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
     HwmonDriverInfo,
 };
-use crate::repositories::hwmon::{auto_curve, devices, probe};
+use crate::repositories::hwmon::{apple, auto_curve, devices, probe};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, log_enabled, trace, warn};
@@ -66,12 +66,11 @@ pub fn diagnose_fan_channel(
     firmware_override_observed: bool,
 ) -> ChannelDiagnosis {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
-    if channel.caps.has_pwm().not() && channel.caps.is_fan_controllable() {
-        // Apple SMC fans are driven through `fanN_output`, not `pwmN`, so the
-        // pwm-shaped evidence below would condemn a channel we are writing to.
-        // There is no pwm file to state facts about, so the diagnosis carries
-        // none rather than four misleading booleans.
-        return hardware_support::diagnose_driver_channel(true);
+    if let Some(diagnosis) = apple::diagnose_fan(hwmon_name, channel) {
+        // Apple fans are driven through `fanN_output` or `fanN_target`, not `pwmN`, so the
+        // pwm-shaped evidence below would condemn a channel we are writing to, and would blame
+        // a read-only one on a file its driver never has.
+        return diagnosis;
     }
     let evidence = ChannelEvidence {
         has_pwm: channel.caps.has_pwm(),
@@ -99,7 +98,16 @@ pub fn log_uncontrollable_channel(
     if diagnosis.verdict.is_controllable() {
         return;
     }
-    let evidence = diagnosis.evidence.clone().unwrap_or_default();
+    let Some(evidence) = diagnosis.evidence.as_ref() else {
+        // A driver-level verdict has no pwm facts to print.
+        info!(
+            "Fan channel {} at {} is not controllable: {:?}",
+            channel.name,
+            base_path.display(),
+            diagnosis.verdict,
+        );
+        return;
+    };
     info!(
         "Fan channel {} at {} is not controllable: {:?} (pwm: {}, writable: {}, rpm: {})",
         channel.name,
@@ -109,6 +117,42 @@ pub fn log_uncontrollable_channel(
         evidence.pwm_writable,
         evidence.has_rpm,
     );
+}
+
+/// Says why a fan's speed is missing. Repository init only, for the same reason as
+/// `log_uncontrollable_channel`: detection stays quiet because the hardware report runs it too.
+pub async fn log_unreadable_fan_speeds(base_path: &Path, fans: &[HwmonChannelInfo], io: &DeviceIo) {
+    let caps = HwmonChannelCapabilities::empty();
+    for channel_number in unread_fan_inputs(base_path, fans) {
+        // Detection could not read this one. Reading it again, aloud, gives the reason.
+        let _ = get_fan_rpm(io, base_path, &channel_number, &caps, None, None, true).await;
+    }
+}
+
+/// The fans whose speed file is there and was not readable at detection, in fan order. Detection
+/// gives a fan its speed whenever the file reads, so a file without one is a file that did not.
+fn unread_fan_inputs(base_path: &Path, fans: &[HwmonChannelInfo]) -> Vec<u8> {
+    let Ok(regex_fan_input_file) = Regex::new(PATTERN_FAN_INPUT_FILE_NUMBER) else {
+        return Vec::new();
+    };
+    let Ok(dir_entries) = cc_fs::read_dir(base_path) else {
+        return Vec::new();
+    };
+    let mut channel_numbers: Vec<u8> = dir_entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let os_file_name = entry.file_name();
+            let captures = regex_fan_input_file.captures(os_file_name.to_str()?)?;
+            captures.name("number")?.as_str().parse().ok()
+        })
+        .filter(|channel_number| {
+            fans.iter()
+                .any(|fan| fan.number == *channel_number && fan.caps.has_rpm())
+                .not()
+        })
+        .collect();
+    channel_numbers.sort_unstable();
+    channel_numbers
 }
 
 /// Detects if a fan has pwm capability and pwm-write capabilities.
@@ -176,9 +220,9 @@ pub async fn detect_rpm(
     })
     .await
     .is_err()
-        // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say,
-        // including the warning.
-        && get_fan_rpm(io, base_path, &channel_number, &caps, Some(&rpm_path), None, true)
+        // Retries exhausted, or the failure was never transient. `get_fan_rpm` has the final say.
+        // Quiet: the hardware report detects too. `log_unreadable_fan_speeds` warns at start.
+        && get_fan_rpm(io, base_path, &channel_number, &caps, Some(&rpm_path), None, false)
             .await
             .is_none()
     {
@@ -1112,6 +1156,63 @@ mod tests {
         });
     }
 
+    /// Detection is quiet, so the start-up warning has to find by itself the speeds detection
+    /// could not read. Detects a device with a readable speed, unreadable ones with and
+    /// without a pwm, and files that only look like a speed, then asks which are unread.
+    #[test]
+    #[serial]
+    fn only_a_speed_detection_could_not_read_is_unread() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let dir = &ctx.test_base_path;
+            for (name, value) in [
+                ("fan1_input", "1200"),
+                ("fan2_input", "not a number"),
+                ("pwm3", "128"),
+                ("fan3_input", "not a number"),
+                ("fan10_input", ""),
+                ("fan4_label", "no speed file"),
+                ("temp1_input", "not a number"),
+            ] {
+                cc_fs::write(dir.join(name), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+
+            let fans = init_fans(dir, "Test Driver", &DeviceIo::default())
+                .await
+                .unwrap();
+            let unread = unread_fan_inputs(dir, &fans);
+            let unread_with_no_fans = unread_fan_inputs(dir, &[]);
+
+            teardown(&ctx).await;
+            let detected: Vec<(u8, bool)> = fans
+                .iter()
+                .map(|fan| (fan.number, fan.caps.has_rpm()))
+                .collect();
+            assert_eq!(detected, [(1, true), (3, false)]);
+            assert_eq!(unread, [2, 3, 10]);
+            assert_eq!(unread_with_no_fans, [1, 2, 3, 10]);
+        });
+    }
+
+    /// A device that is gone has nothing to warn about, and must not fail the start-up that
+    /// asks. Asks about a directory that does not exist.
+    #[test]
+    #[serial]
+    fn a_missing_device_has_no_unread_speeds() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let missing = ctx.test_base_path.join("missing");
+
+            let unread = unread_fan_inputs(&missing, &[]);
+            log_unreadable_fan_speeds(&missing, &[], &DeviceIo::default()).await;
+
+            teardown(&ctx).await;
+            assert!(unread.is_empty());
+        });
+    }
+
     #[test]
     #[serial]
     fn find_fan_rpm_only() {
@@ -1802,7 +1903,7 @@ mod tests {
             u_id: String::new(),
             channels,
             drivetemp: drivetemp::DrivetempState::default(),
-            apple_smc: crate::repositories::hwmon::apple_mac_smc::AppleMacSMC::default(),
+            apple_fans: None,
             io: DeviceIo::default(),
         }
         .with_read_registry()
@@ -2300,7 +2401,7 @@ mod tests {
 
     /// Goal: an Apple SMC fan is driven through `fanN_output` and never has a
     /// `pwmN`, so the pwm-shaped evidence must not condemn it. Method: build
-    /// the capability set `AppleMacSMC::detect_apple_smc_fans` produces and
+    /// the capability set `AppleSmcLegacy::detect_apple_smc_fans` produces and
     /// check the verdict, which in a debug build also exercises the assertion
     /// that a writable pwm implies a pwm.
     #[test]
@@ -2315,11 +2416,40 @@ mod tests {
             ..Default::default()
         };
 
-        let diagnosis = diagnose_fan_channel("macsmc-hwmon", &channel, false);
+        let diagnosis = diagnose_fan_channel("macsmc_hwmon", &channel, false);
 
         assert_eq!(diagnosis.verdict, ChannelVerdict::Controllable);
         // No pwm file means no pwm facts to report, not four false ones.
         assert!(diagnosis.evidence.is_none());
+    }
+
+    /// Goal: an Apple fan that cannot be driven is not blamed on a missing `pwmN`, a file its
+    /// driver never has. Method: a fan whose control file is read-only and one with no control
+    /// at all, under an Apple name.
+    #[test]
+    fn an_uncontrollable_apple_fan_is_not_judged_by_pwm() {
+        let read_only = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: "fan1".to_string(),
+            caps: HwmonChannelCapabilities::RPM | HwmonChannelCapabilities::APPLE_SMC_READ_ONLY,
+            ..Default::default()
+        };
+        let speed_only = HwmonChannelInfo {
+            caps: HwmonChannelCapabilities::RPM,
+            ..read_only.clone()
+        };
+
+        let read_only_diagnosis = diagnose_fan_channel("macsmc_hwmon", &read_only, false);
+        let speed_only_diagnosis = diagnose_fan_channel("applesmc", &speed_only, false);
+
+        assert_eq!(read_only_diagnosis.verdict, ChannelVerdict::PwmReadOnly);
+        assert!(read_only_diagnosis.evidence.is_none());
+        assert_eq!(
+            speed_only_diagnosis.verdict,
+            ChannelVerdict::NotSupportedByDriver
+        );
+        assert!(speed_only_diagnosis.evidence.is_none());
     }
 
     /// Goal: the negative space of the case above. A fan that only reports

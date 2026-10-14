@@ -16,6 +16,7 @@ use crate::device::{
     DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
+use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
 use crate::repositories::cpu::association::{
     self, CpuAssociation, CpuDriver, DriverCensus, ZoneID,
 };
@@ -68,6 +69,8 @@ pub struct CpuRepo {
     preloaded_statuses: RefCell<HashMap<CpuAssociation, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     energy_counters: HashMap<PhysicalID, Cell<f64>>,
     poll_rate: f64,
+    /// Set on an Apple Silicon machine only, whose frequencies come from its clusters.
+    apple_silicon: Option<AppleSilicon>,
 }
 
 impl CpuRepo {
@@ -76,6 +79,7 @@ impl CpuRepo {
             config,
             overrides,
             devices: HashMap::new(),
+            apple_silicon: None,
             topology: CpuTopology::default(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
             cpu_load_percents: RefCell::new(Vec::new()),
@@ -153,7 +157,14 @@ impl CpuRepo {
     /// Reads cpuinfo and takes what it says about this machine's processors.
     async fn set_topology(&mut self, cpuinfo_path: &Path) -> Result<()> {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
-        self.topology = CpuTopology::parse(&cpu_info_data)?;
+        let apple_silicon_model = apple_silicon::board_model().await;
+        self.apple_silicon = if apple_silicon_model.is_some() {
+            Some(AppleSilicon::find(apple_silicon::CPUFREQ_POLICY_PATH.as_ref()).await)
+        } else {
+            None
+        };
+        self.topology =
+            CpuTopology::parse_with_board_model(&cpu_info_data, apple_silicon_model.as_deref())?;
         trace!("CPU topology: {:?}", self.topology);
         Ok(())
     }
@@ -306,7 +317,10 @@ impl CpuRepo {
     }
 
     /// The frequencies of every package, read fresh from cpuinfo.
-    async fn collect_freq(cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
+    async fn collect_freq(&self, cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
+        if let Some(apple_silicon) = &self.apple_silicon {
+            return apple_silicon.read_freqs().await;
+        }
         let Ok(cpu_info_data) = cc_fs::read_txt(cpuinfo_path).await else {
             return HashMap::new();
         };
@@ -455,6 +469,9 @@ impl CpuRepo {
         }
         if contains_freq {
             Self::get_filtered_freqs(physical_id, driver, cpu_freqs, &mut status_channels);
+            if let Some(apple_silicon) = &self.apple_silicon {
+                apple_silicon.fill_cluster_freqs(&mut status_channels);
+            }
         }
         status_channels
     }
@@ -595,7 +612,7 @@ impl CpuRepo {
     ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.topology.package_count();
-        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
         if cpu_freqs.is_empty() {
             // should warn for multi-cpus, but info otherwise
             let lvl = if num_of_cpus > 1 {
@@ -750,6 +767,35 @@ impl CpuRepo {
         })
     }
 
+    /// The CPU device of an Apple Silicon machine, which has no CPU hwmon device to build one
+    /// from. None on any other machine, and when the user disabled the device.
+    async fn init_apple_silicon_cpu_device(&self) -> Option<HwmonDriverInfo> {
+        let cluster_channels = self.apple_silicon.as_ref()?.cluster_channels();
+        let association = CpuAssociation::Socket(apple_silicon::PACKAGE);
+        let type_index = association::device_type_index(&self.topology, association)?;
+        let cpu_name = self.topology.model_name(association.physical_id())?;
+        let device_uid = Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None);
+        let cc_device_setting = self
+            .config
+            .get_cc_settings_for_device(&device_uid)
+            .unwrap_or(None);
+        if cc_device_setting.is_some_and(|setting| setting.disable) {
+            info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
+            return None;
+        }
+        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut channels = self
+            .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs)
+            .await;
+        channels.extend(cluster_channels);
+        Some(HwmonDriverInfo {
+            name: apple_silicon::DRIVER_NAME.to_owned(),
+            path: PathBuf::from(apple_silicon::CPU_SYSFS_PATH),
+            channels,
+            ..Default::default()
+        })
+    }
+
     /// Seeds a processor's energy counter with a real reading, which `request_status` needs
     /// before it can take a delta. A failed initial read seeds 0, so the next good read still
     /// produces a valid forward delta.
@@ -793,7 +839,12 @@ impl Repository for CpuRepo {
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
         let num_of_cpus = self.topology.package_count();
-        let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
+        let mut hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
+        if hwmon_devices.is_empty() {
+            if let Some(driver) = self.init_apple_silicon_cpu_device().await {
+                hwmon_devices.insert(CpuAssociation::Socket(apple_silicon::PACKAGE), driver);
+            }
+        }
         if hwmon_devices.is_empty() {
             info!("No CPU specific HWMON devices found.");
         } else {
@@ -812,7 +863,7 @@ impl Repository for CpuRepo {
             }
         }
 
-        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
         // A zone-keyed device has no cpuinfo entry of its own. The name has to be resolved the
         // same way it was when the device was built, or every such device would be dropped here.
         for (association, driver) in hwmon_devices {
@@ -877,11 +928,20 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
-                    driver_info: DriverInfo {
-                        drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&driver.path).await,
-                        version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&driver.path).await,
+                    driver_info: if driver.name == apple_silicon::DRIVER_NAME {
+                        DriverInfo {
+                            drv_type: DriverType::Kernel,
+                            name: apple_silicon::scaling_driver().await,
+                            version: sysinfo::System::kernel_version(),
+                            locations: vec![driver.path.display().to_string()],
+                        }
+                    } else {
+                        DriverInfo {
+                            drv_type: DriverType::Kernel,
+                            name: devices::get_device_driver_name(&driver.path).await,
+                            version: sysinfo::System::kernel_version(),
+                            locations: Self::get_driver_locations(&driver.path).await,
+                        }
                     },
                     ..Default::default()
                 },
@@ -940,7 +1000,7 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
         self.sample_cpu_load().await;
         moro_local::async_scope!(|scope| {
             for cpu_device in self.devices.values() {
@@ -1123,6 +1183,7 @@ mod tests {
     use crate::config::Config;
     use crate::device::{ChannelStatus, TempStatus};
     use crate::overrides::OverridesController;
+    use crate::repositories::cpu::apple_silicon::AppleSilicon;
     use crate::repositories::cpu::association::CpuAssociation;
     use crate::repositories::cpu::cpu_repo::{CpuRepo, SINGLE_CPU_LOAD_NAME};
     use crate::repositories::cpu::fixtures;
@@ -1134,7 +1195,9 @@ mod tests {
     use serial_test::serial;
     use std::cell::Cell;
     use std::collections::HashMap;
+    use std::path::PathBuf;
     use std::rc::Rc;
+    use uuid::Uuid;
 
     /// A repository holding what the given cpuinfo says, which is all these tests need of it.
     /// No temp file and no cpuinfo read: the parsing itself is covered in `topology`.
@@ -1312,6 +1375,85 @@ mod tests {
         let names: Vec<&str> = offline.iter().map(|status| status.name.as_str()).collect();
         assert_eq!(names, vec!["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]);
         assert!(offline.iter().all(|status| status.freq == Some(0)));
+    }
+
+    /// Goal: on Apple Silicon the frequency channels are fed by the clusters and never by
+    /// cpuinfo, and each cluster channel carries its own clock. Method: a repo holding a fake
+    /// cpufreq directory of two clusters, read through the calls a poll makes, with no cpuinfo
+    /// file to fall back on.
+    #[test]
+    #[serial]
+    fn test_apple_silicon_frequencies_come_from_its_clusters() {
+        cc_fs::test_runtime(async {
+            // given:
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let policies = [
+                ("policy0", "2064000", "0 1", "972000"),
+                ("policy2", "3228000", "2 3 4 5", "3036000"),
+            ];
+            for (name, max_khz, cores, current_khz) in policies {
+                let dir = base.join(name);
+                cc_fs::create_dir_all(&dir).await.unwrap();
+                let files = [
+                    ("cpuinfo_max_freq", max_khz),
+                    ("related_cpus", cores),
+                    ("cpuinfo_cur_freq", current_khz),
+                ];
+                for (file, value) in files {
+                    cc_fs::write_string(dir.join(file), format!("{value}\n"))
+                        .await
+                        .unwrap();
+                }
+            }
+            let apple_silicon = AppleSilicon::find(&base).await;
+            let mut channels: Vec<HwmonChannelInfo> =
+                ["CPU Freq Avg", "CPU Freq Max", "CPU Freq Min"]
+                    .into_iter()
+                    .map(|name| HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Freq,
+                        name: name.to_owned(),
+                        ..Default::default()
+                    })
+                    .collect();
+            channels.extend(apple_silicon.cluster_channels());
+            let driver = HwmonDriverInfo {
+                channels,
+                ..Default::default()
+            };
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo =
+                CpuRepo::new(test_config, Rc::new(OverridesController::empty())).unwrap();
+            cpu_repo.apple_silicon = Some(apple_silicon);
+
+            // when:
+            let mut cpu_freqs = cpu_repo.collect_freq(&base.join("cpuinfo")).await;
+            let statuses = cpu_repo
+                .collect_socket_channels(
+                    0,
+                    CpuAssociation::Socket(0),
+                    &driver,
+                    &mut cpu_freqs,
+                    true,
+                )
+                .await;
+            cc_fs::remove_dir_all(&base).await.unwrap();
+
+            // then:
+            let freqs: Vec<(&str, Option<u32>)> = statuses
+                .iter()
+                .map(|status| (status.name.as_str(), status.freq))
+                .collect();
+            assert_eq!(
+                freqs,
+                [
+                    ("CPU Freq Avg", Some(2348)),
+                    ("CPU Freq Max", Some(3036)),
+                    ("CPU Freq Min", Some(972)),
+                    ("CPU Freq Efficiency Cluster", Some(972)),
+                    ("CPU Freq Performance Cluster", Some(3036)),
+                ]
+            );
+        });
     }
 
     /// Goal: the power channel is in every status, even when the counter read fails, and the gap

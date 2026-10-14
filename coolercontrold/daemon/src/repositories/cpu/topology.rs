@@ -44,9 +44,20 @@ pub struct CpuTopology {
 }
 
 impl CpuTopology {
-    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
-    /// is what the caller needs before it can build any CPU device at all.
+    /// Parses cpuinfo text with no board model to fall back on. Test-only: production always
+    /// passes what the device tree says.
+    #[cfg(test)]
     pub fn parse(cpu_info_data: &str) -> Result<Self> {
+        Self::parse_with_board_model(cpu_info_data, None)
+    }
+
+    /// Parses cpuinfo text. Errors when it names no processor that devices can be keyed by, which
+    /// is what the caller needs before it can build any CPU device at all. When cpuinfo names no
+    /// model, as on Apple Silicon, the fallback board model stands in.
+    pub fn parse_with_board_model(
+        cpu_info_data: &str,
+        fallback_board_model: Option<&str>,
+    ) -> Result<Self> {
         let entries = parse_processor_entries(cpu_info_data)?;
         let mut packages = BTreeSet::new();
         let mut model_names = BTreeMap::new();
@@ -63,7 +74,7 @@ impl CpuTopology {
         if packages.is_empty() && model_names.is_empty() {
             // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
             // they do have a model name though.
-            if let Some(board_model) = board_model(cpu_info_data) {
+            if let Some(board_model) = board_model(cpu_info_data).or(fallback_board_model) {
                 packages.insert(0);
                 model_names.insert(0, board_model.to_owned());
             }
@@ -681,5 +692,18 @@ mod tests {
         // then: cpuinfo without frequencies gives none, rather than a fabricated 0.
         assert!(parse_freqs(fixtures::RASPBERRY_PI_5).is_empty());
         assert!(parse_freqs("").is_empty());
+    }
+
+    /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board
+    /// model. Method: an M1 Max cpuinfo parsed without a board model, then with one.
+    #[test]
+    fn apple_silicon_is_named_by_its_device_tree_model() {
+        let model = "Apple MacBook Pro (16-inch, M1 Max, 2021)";
+        assert!(CpuTopology::parse(fixtures::APPLE_M1_MAX).is_err());
+        let topology =
+            CpuTopology::parse_with_board_model(fixtures::APPLE_M1_MAX, Some(model)).unwrap();
+        assert_eq!(topology.package_count(), 1);
+        assert_eq!(topology.model_name(Some(0)).as_deref(), Some(model));
+        assert!(parse_freqs(fixtures::APPLE_M1_MAX).is_empty());
     }
 }

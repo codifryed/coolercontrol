@@ -67,10 +67,10 @@ use crate::hardware_support::{ChannelExclusion, HardwareSupportController, Hwmon
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
-use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+use crate::repositories::hwmon::apple::{self, AppleFans};
 use crate::repositories::hwmon::chip_name::ChipName;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
-use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::drivetemp::DrivetempState;
 use crate::repositories::hwmon::{
     attributes, auto_curve, chip_name, devices, drivetemp, fans, power, temps, thinkpad,
@@ -173,7 +173,7 @@ fn synthesize_initial_statuses(
                 channel_stubs.push(ChannelStatus {
                     name: channel.name.clone(),
                     rpm: channel.caps.has_rpm().then_some(0),
-                    duty: channel.caps.has_pwm().then_some(0.0),
+                    duty: channel.caps.reports_duty().then_some(0.0),
                     ..Default::default()
                 });
             }
@@ -288,6 +288,8 @@ bitflags! {
         const NON_RPM_UNIT = 1 << 4;
         // Specialities
         const APPLE_SMC = 1 << 15;
+        /// An Apple driver exposes a control file for this fan and registered it read-only.
+        const APPLE_SMC_READ_ONLY = 1 << 16;
     }
 }
 
@@ -394,9 +396,14 @@ impl HwmonChannelCapabilities {
         self.contains(HwmonChannelCapabilities::APPLE_SMC)
     }
 
-    pub fn is_non_controllable_rpm_fan(&self) -> bool {
-        self.contains(HwmonChannelCapabilities::RPM)
-            && !self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
+    pub fn is_apple_smc_read_only(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::APPLE_SMC_READ_ONLY)
+    }
+
+    /// A status carries a duty for this channel: read from `pwmN`, or derived from the fan's
+    /// speed by an Apple driver.
+    pub fn reports_duty(&self) -> bool {
+        self.has_pwm() || self.is_apple_smc()
     }
 }
 
@@ -417,7 +424,8 @@ pub struct HwmonDriverInfo {
     pub channels: Vec<HwmonChannelInfo>,
     #[serde(flatten)]
     pub drivetemp: DrivetempState,
-    pub apple_smc: AppleMacSMC,
+    /// Set when an Apple driver's own fan files stand in for the standard hwmon ones.
+    pub apple_fans: Option<AppleFans>,
     /// Descriptors held open for this device's per-tick attributes. Lives here so it shares the
     /// driver's lifetime: dropping the driver info closes them, and the channel set detected with
     /// it bounds how many there can be.
@@ -624,6 +632,7 @@ impl HwmonRepo {
         let poll_rate = self.config.get_settings()?.poll_rate;
         let overrides = Rc::clone(&self.overrides);
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
+            let driver = Rc::new(driver);
             let chip = chip_names.get(&driver.path);
             let temps = driver
                 .channels
@@ -716,8 +725,8 @@ impl HwmonRepo {
             // Wall-clock the init reads; over the slow-device
             // threshold flips this device onto the duty-cache path.
             let extract_start = Instant::now();
-            let Ok((mut channel_statuses, _)) =
-                rt::timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
+            let Ok(mut channel_statuses) =
+                rt::timeout(extract_timeout, extract_initial_fan_statuses(&driver)).await
             else {
                 error!(
                     "Timed out after {extract_timeout:?} extracting initial fan statuses \
@@ -798,7 +807,6 @@ impl HwmonRepo {
             self.delay_logged.insert(type_index, Cell::new(0));
             self.preload_in_flight
                 .insert(type_index, Rc::new(Cell::new(false)));
-            let driver = Rc::new(driver);
             self.publish_channel_verdicts(&device.uid, &driver);
             // Retained so the hardware report can describe this device without
             // re-reading every file we just read.
@@ -861,13 +869,22 @@ impl HwmonRepo {
                     continue;
                 }
             };
-            if let Err(err) = fans::set_pwm_enable_to_default_or_auto(
-                &hwmon_driver.path,
-                channel_info,
-                &hwmon_driver.io,
-            )
-            .await
-            {
+            let reset = match &hwmon_driver.apple_fans {
+                Some(apple_fans) => {
+                    apple_fans
+                        .release_fan(channel_info.number, &hwmon_driver.io)
+                        .await
+                }
+                None => {
+                    fans::set_pwm_enable_to_default_or_auto(
+                        &hwmon_driver.path,
+                        channel_info,
+                        &hwmon_driver.io,
+                    )
+                    .await
+                }
+            };
+            if let Err(err) = reset {
                 error!(
                     "Shutdown reset failed for {}:{}: {err}",
                     hwmon_driver.name, channel_info.name
@@ -1008,7 +1025,7 @@ impl HwmonRepo {
                 return;
             }
             // Apple SMC reads through its own driver quirks, so it stays one channel at a time.
-            if driver.apple_smc.detected {
+            if driver.apple_fans.is_some() {
                 for &channel in &typed_channels {
                     if self.shutdown_token.is_cancelled() {
                         return;
@@ -1647,11 +1664,28 @@ async fn read_one_fan_status_for(
     driver: &Rc<HwmonDriverInfo>,
     channel: &HwmonChannelInfo,
 ) -> Option<ChannelStatus> {
-    if driver.apple_smc.detected {
-        driver.apple_smc.read_one_fan_status(driver, channel).await
-    } else {
-        fans::read_one_fan_status(driver, channel).await
+    match &driver.apple_fans {
+        Some(apple_fans) => apple_fans.read_one_fan_status(driver, channel).await,
+        None => fans::read_one_fan_status(driver, channel).await,
     }
+}
+
+/// Every fan channel's first status. An Apple device reads through its own driver, so the duty
+/// of its fans is there from the first status on, as it is in every later one.
+async fn extract_initial_fan_statuses(driver: &Rc<HwmonDriverInfo>) -> Vec<ChannelStatus> {
+    if driver.apple_fans.is_none() {
+        return fans::extract_fan_statuses(driver).await.0;
+    }
+    let mut statuses = Vec::with_capacity(driver.channels.len());
+    for channel in &driver.channels {
+        if channel.hwmon_type != HwmonChannelType::Fan {
+            continue;
+        }
+        if let Some(status) = read_one_fan_status_for(driver, channel).await {
+            statuses.push(status);
+        }
+    }
+    statuses
 }
 
 /// The rpm half of `read_one_fan_status_for`, for a channel whose duty is still cached.
@@ -1659,13 +1693,9 @@ async fn read_one_fan_rpm_only_for(
     driver: &Rc<HwmonDriverInfo>,
     channel: &HwmonChannelInfo,
 ) -> Option<Option<u32>> {
-    if driver.apple_smc.detected {
-        driver
-            .apple_smc
-            .read_one_fan_rpm_only(driver, channel)
-            .await
-    } else {
-        fans::read_one_fan_rpm_only(driver, channel).await
+    match &driver.apple_fans {
+        Some(apple_fans) => apple_fans.read_one_fan_rpm_only(driver, channel).await,
+        None => fans::read_one_fan_rpm_only(driver, channel).await,
     }
 }
 
@@ -1958,8 +1988,14 @@ fn consume_force_flag(mailbox: &WriterMailbox, channel_name: &str) -> bool {
 
 /// True when the channel's preloaded duty already equals
 /// `target_duty`; a missing entry returns false (proceed with write).
+/// Always false for a driver whose read-back cannot vouch for the last write.
 fn current_duty_matches_target(task: &WriterTask, channel_name: &str, target_duty: Duty) -> bool {
     debug_assert!(target_duty <= 100, "caller must validate target_duty");
+    if let Some(apple_fans) = &task.driver.apple_fans {
+        if apple_fans.read_back_tracks_target().not() {
+            return false;
+        }
+    }
     let map = task.preloaded_statuses.borrow();
     let Some((channels, _)) = map.get(&task.type_index) else {
         return false;
@@ -1996,9 +2032,8 @@ async fn apply_pwm_duty_write(
     };
     if driver.name == devices::DEVICE_NAME_THINK_PAD {
         thinkpad::apply_speed_fixed(config, driver, channel_info, target_duty).await
-    } else if driver.apple_smc.detected {
-        driver
-            .apple_smc
+    } else if let Some(apple_fans) = &driver.apple_fans {
+        apple_fans
             .set_fan_duty(channel_info.number, target_duty, &driver.io)
             .await
     } else {
@@ -2139,16 +2174,16 @@ impl Repository for HwmonRepo {
             // sysfs read first bites (issue 609), so it belongs on the device's own thread.
             let io = DeviceIo::isolated_or_inline(&device_name, self.device_io_reply_timeout);
             let mut channels = vec![];
-            let fans = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::init_fans(&path, &io).await
-            } else {
-                fans::init_fans(&path, &device_name, &io)
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!("Error initializing Hwmon Fans: {err}");
-                        Vec::new()
-                    })
+            let apple_driver = apple::detect(&device_name, &path);
+            let detected_fans = match apple_driver {
+                Some(apple_driver) => apple_driver.init_fans(&path, &io).await,
+                None => fans::init_fans(&path, &device_name, &io).await,
             };
+            let fans = detected_fans.unwrap_or_else(|err| {
+                error!("Error initializing Hwmon Fans: {err}");
+                Vec::new()
+            });
+            fans::log_unreadable_fan_speeds(&path, &fans, &io).await;
             // Recorded for both branches, so the report's hidden count is not
             // silently zero on Apple hardware the user has disabled fans on.
             for fan in &fans {
@@ -2217,10 +2252,9 @@ impl Repository for HwmonRepo {
             } else {
                 DrivetempState::default()
             };
-            let apple_smc = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
-                AppleMacSMC::new(&path, &channels, &device_name).await
-            } else {
-                AppleMacSMC::not_applicable()
+            let apple_fans = match apple_driver {
+                Some(apple_driver) => Some(apple_driver.fans(&path, &channels, &io).await),
+                None => None,
             };
             // Detection is done with this device's channel set, so the per-tick pass can stop
             // sending paths and address the worker's table by slot from here on.
@@ -2239,7 +2273,7 @@ impl Repository for HwmonRepo {
                 u_id,
                 channels,
                 drivetemp,
-                apple_smc,
+                apple_fans,
                 io,
             };
             hwmon_drivers.push(hwmon_driver_info);
@@ -2392,18 +2426,23 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        let result = if hwmon_driver.apple_smc.detected {
-            hwmon_driver
-                .apple_smc
-                .set_to_auto_control(channel_info.number, &hwmon_driver.io)
+        let result = match &hwmon_driver.apple_fans {
+            // A read-only Apple fan was never taken, so there is nothing to hand back, and its
+            // driver would refuse the write.
+            Some(_) if channel_info.caps.is_apple_smc().not() => Ok(()),
+            Some(apple_fans) => {
+                apple_fans
+                    .set_to_auto_control(channel_info.number, &hwmon_driver.io)
+                    .await
+            }
+            None => {
+                fans::set_pwm_enable_to_default_or_auto(
+                    &hwmon_driver.path,
+                    channel_info,
+                    &hwmon_driver.io,
+                )
                 .await
-        } else {
-            fans::set_pwm_enable_to_default_or_auto(
-                &hwmon_driver.path,
-                channel_info,
-                &hwmon_driver.io,
-            )
-            .await
+            }
         };
         apply_device_command_delay(self.device_delay(device_uid)).await;
         result
@@ -2428,9 +2467,8 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        let result = if hwmon_driver.apple_smc.detected {
-            hwmon_driver
-                .apple_smc
+        let result = if let Some(apple_fans) = &hwmon_driver.apple_fans {
+            apple_fans
                 .set_to_manual_control(channel_info.number, &hwmon_driver.io)
                 .await
         } else {
@@ -2775,7 +2813,7 @@ mod preload_tests {
                 u_id: String::new(),
                 channels,
                 drivetemp: DrivetempState::default(),
-                apple_smc: AppleMacSMC::default(),
+                apple_fans: None,
                 io,
             }
             .with_read_registry()
@@ -3977,7 +4015,6 @@ mod coalescer_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
     use uuid::Uuid;
@@ -4034,7 +4071,7 @@ mod coalescer_tests {
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()
@@ -4806,7 +4843,6 @@ mod slow_device_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
     use uuid::Uuid;
@@ -4873,11 +4909,22 @@ mod slow_device_tests {
             channels,
             u_id: format!("test-uid-{name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()
         .await;
+        install_driver(repo, type_index, driver, slow, cached_entries)
+    }
+
+    /// `install_device` for a driver the test built itself.
+    fn install_driver(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver: HwmonDriverInfo,
+        slow: bool,
+        cached_entries: Vec<(&str, Duty, Instant)>,
+    ) -> UID {
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -5244,6 +5291,68 @@ mod slow_device_tests {
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    /// Goal: a write to an Apple Silicon fan is never skipped. Its duty is derived from its
+    /// speed, so a fan held at its minimum reads 0% exactly like one the firmware runs, and
+    /// skipping the 0% write would leave it held. Method: a fake `macsmc_hwmon` fan held at
+    /// its minimum, a preloaded duty of 0, then a 0% write that must reach the target file.
+    #[test]
+    #[serial]
+    fn an_apple_silicon_write_is_never_skipped() {
+        cc_fs::test_runtime(async {
+            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            cc_fs::create_dir_all(&dir).await.unwrap();
+            for (file, value) in [
+                ("fan1_target", "1499"),
+                ("fan1_input", "1499"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ] {
+                cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let io = DeviceIo::default();
+            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
+            let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
+            let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                path: dir.clone(),
+                channels,
+                u_id: "test-uid-macsmc".to_string(),
+                apple_fans: Some(apple_fans),
+                ..Default::default()
+            }
+            .with_read_registry()
+            .await;
+            let mut repo = empty_repo();
+            let uid = install_driver(&mut repo, TEST_TYPE_INDEX, driver, false, vec![]);
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(0.0),
+                        rpm: Some(1499),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+
+            enqueue_write(&repo, &uid, "fan1", 0)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let target = cc_fs::read_sysfs(&dir.join("fan1_target")).await.unwrap();
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&dir).await;
+            assert_eq!(target.trim(), "0", "the fan must be handed to the firmware");
         });
     }
 
@@ -5715,7 +5824,6 @@ mod prepare_for_sleep_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -5762,7 +5870,7 @@ mod prepare_for_sleep_tests {
             channels,
             u_id: format!("test-uid-thinkpad-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         };
         let device = Device::new(
@@ -5904,7 +6012,6 @@ mod shutdown_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::DeviceInfo;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -5978,10 +6085,14 @@ mod shutdown_tests {
             channels,
             u_id: format!("test-uid-{driver_name}-{type_index}"),
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             io,
             ..Default::default()
         };
+        insert_driver(repo, type_index, driver);
+    }
+
+    fn insert_driver(repo: &mut HwmonRepo, type_index: TypeIndex, driver: HwmonDriverInfo) -> UID {
         let device = Device::new(
             driver.name.clone(),
             DeviceType::Hwmon,
@@ -5997,8 +6108,148 @@ mod shutdown_tests {
         repo.delay_logged.insert(type_index, Cell::new(0));
         repo.preload_in_flight
             .insert(type_index, Rc::new(Cell::new(false)));
-        repo.devices
-            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+        repo.devices.insert(
+            uid.clone(),
+            (Rc::new(RefCell::new(device)), Rc::new(driver)),
+        );
+        uid
+    }
+
+    /// A fake `applesmc` device another tool holds in manual, as the daemon would find it.
+    async fn insert_applesmc_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        dir: &Path,
+    ) -> UID {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in [
+            ("fan1_input", "3100"),
+            ("fan1_min", "2000"),
+            ("fan1_max", "6200"),
+            ("fan1_manual", "1"),
+        ] {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        let channels = vec![HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: "fan1".to_string(),
+            caps: HwmonChannelCapabilities::APPLE_SMC
+                | HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::RPM,
+            rpm_path: Some(dir.join("fan1_input")),
+            ..Default::default()
+        }];
+        let apple_fans = apple::detect("applesmc", dir)
+            .unwrap()
+            .fans(dir, &channels, &DeviceIo::default())
+            .await;
+        let driver = HwmonDriverInfo {
+            name: "applesmc".to_string(),
+            path: dir.to_path_buf(),
+            channels,
+            u_id: format!("test-uid-applesmc-{type_index}"),
+            apple_fans: Some(apple_fans),
+            ..Default::default()
+        };
+        insert_driver(repo, type_index, driver)
+    }
+
+    /// Goal: stopping the daemon returns an Apple fan it was driving to automatic with its
+    /// minimum restored, and leaves one it never drove alone. Before, shutdown only reset
+    /// `pwmN_enable`, which these drivers do not have. Method: two fake `applesmc` devices in
+    /// manual, only one taken through the repository.
+    #[test]
+    #[serial]
+    fn shutdown_returns_only_the_apple_fans_the_daemon_took() {
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_taken = base.join("taken");
+            let dir_untouched = base.join("untouched");
+            let mut repo = empty_repo();
+            let uid_taken = insert_applesmc_device(&mut repo, 1, &dir_taken).await;
+            insert_applesmc_device(&mut repo, 2, &dir_untouched).await;
+            repo.apply_setting_manual_control(&uid_taken, "fan1")
+                .await
+                .unwrap();
+            let min_while_manual = cc_fs::read_sysfs(dir_taken.join("fan1_min")).await.unwrap();
+
+            let result = repo.shutdown().await;
+
+            let read = async |dir: &Path, file: &str| {
+                cc_fs::read_sysfs(dir.join(file))
+                    .await
+                    .unwrap()
+                    .trim()
+                    .to_owned()
+            };
+            let taken_manual = read(&dir_taken, "fan1_manual").await;
+            let taken_min = read(&dir_taken, "fan1_min").await;
+            let untouched_manual = read(&dir_untouched, "fan1_manual").await;
+            let _ = cc_fs::remove_dir_all(&base).await;
+            assert!(result.is_ok(), "shutdown should succeed: {result:?}");
+            assert_eq!(min_while_manual.trim(), "0");
+            assert_eq!(
+                taken_manual, "0",
+                "a fan the daemon drove returns to automatic"
+            );
+            assert_eq!(taken_min, "2000", "with its minimum restored");
+            assert_eq!(
+                untouched_manual, "1",
+                "a fan the daemon never drove is left alone"
+            );
+        });
+    }
+
+    /// Goal: resetting a read-only Apple fan succeeds and writes nothing. A fan saved as
+    /// Unmanaged is reset at every start, and with `fan_control` off the driver would refuse
+    /// the write. Method: a fake `macsmc_hwmon` fan with a read-only target holding a value
+    /// the reset must not replace.
+    #[test]
+    #[serial]
+    fn reset_leaves_a_read_only_apple_fan_alone() {
+        cc_fs::test_runtime(async {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            cc_fs::create_dir_all(&dir).await.unwrap();
+            for (file, value) in [
+                ("fan1_target", "1234"),
+                ("fan1_input", "1520"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ] {
+                cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                    .await
+                    .unwrap();
+            }
+            let read_only = std::fs::Permissions::from_mode(0o444);
+            cc_fs::set_permissions(dir.join("fan1_target"), read_only)
+                .await
+                .unwrap();
+            let io = DeviceIo::default();
+            let apple_driver = apple::detect(devices::DEVICE_NAME_MAC_SMC, &dir).unwrap();
+            let channels = apple_driver.init_fans(&dir, &io).await.unwrap();
+            let apple_fans = apple_driver.fans(&dir, &channels, &io).await;
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                path: dir.clone(),
+                channels,
+                u_id: "test-uid-macsmc-read-only".to_string(),
+                apple_fans: Some(apple_fans),
+                ..Default::default()
+            };
+            let mut repo = empty_repo();
+            let uid = insert_driver(&mut repo, 1, driver);
+
+            let result = repo.apply_setting_reset(&uid, "fan1").await;
+
+            let target = cc_fs::read_sysfs(dir.join("fan1_target")).await.unwrap();
+            let _ = cc_fs::remove_dir_all(&dir).await;
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(target.trim(), "1234");
+        });
     }
 
     fn empty_repo() -> HwmonRepo {
@@ -6265,6 +6516,33 @@ mod synthesize_initial_statuses_tests {
         assert_eq!(chans[0].duty, None);
     }
 
+    /// Goal: an Apple fan the daemon can drive gets a duty in its failsafe stub, as its
+    /// statuses carry one, while a read-only Apple fan does not. Method: both channel shapes.
+    #[test]
+    fn an_apple_fan_seeds_a_duty_only_when_it_is_controllable() {
+        let channels = vec![
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                name: "fan1".to_string(),
+                caps: HwmonChannelCapabilities::APPLE_SMC
+                    | HwmonChannelCapabilities::FAN_WRITABLE
+                    | HwmonChannelCapabilities::RPM,
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                name: "fan2".to_string(),
+                caps: HwmonChannelCapabilities::RPM,
+                ..Default::default()
+            },
+        ];
+        let (chans, _) = synthesize_initial_statuses(&channels);
+        assert_eq!(chans[0].rpm, Some(0));
+        assert_eq!(chans[0].duty, Some(0.0));
+        assert_eq!(chans[1].rpm, Some(0));
+        assert_eq!(chans[1].duty, None);
+    }
+
     #[test]
     fn power_and_temp_channels_get_appropriate_stubs() {
         let channels = vec![
@@ -6318,7 +6596,6 @@ mod synthesize_initial_statuses_tests {
 mod init_timeout_tests {
     use super::*;
     use crate::cc_fs;
-    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -6352,7 +6629,7 @@ mod init_timeout_tests {
             path: base.to_path_buf(),
             channels,
             drivetemp: DrivetempState::default(),
-            apple_smc: AppleMacSMC::default(),
+            apple_fans: None,
             ..Default::default()
         }
         .with_read_registry()
@@ -6366,6 +6643,109 @@ mod init_timeout_tests {
             vec![],
             Rc::new(crate::overrides::OverridesController::empty()),
         )
+    }
+
+    /// A fake Apple device taken through detection as the repository does it, with the fans
+    /// and the handler its driver finds in `files`.
+    async fn seed_apple_driver(
+        name: &str,
+        dir: &Path,
+        files: impl Iterator<Item = (&str, &str)>,
+    ) -> HwmonDriverInfo {
+        cc_fs::create_dir_all(dir).await.unwrap();
+        for (file, value) in files {
+            cc_fs::write(dir.join(file), value.as_bytes().to_vec())
+                .await
+                .unwrap();
+        }
+        let io = DeviceIo::default();
+        let apple_driver = apple::detect(name, dir).unwrap();
+        let channels = apple_driver.init_fans(dir, &io).await.unwrap();
+        let apple_fans = apple_driver.fans(dir, &channels, &io).await;
+        HwmonDriverInfo {
+            name: name.to_string(),
+            path: dir.to_path_buf(),
+            channels,
+            u_id: format!("test-uid-{}", dir.display()),
+            apple_fans: Some(apple_fans),
+            ..Default::default()
+        }
+        .with_read_registry()
+        .await
+    }
+
+    /// Goal: an Apple fan's duty is in the device's first status and in its failsafe values,
+    /// for every Apple driver. Before, the first status came from the generic reader, which
+    /// only knows `pwmN`, so the duty appeared one poll late and the failsafe never had one.
+    /// Method: a fake device per driver through detection and the init mapping.
+    #[test]
+    #[serial]
+    fn map_into_model_gives_apple_fans_a_duty_from_the_first_status() {
+        cc_fs::test_runtime(async {
+            let base = setup_dir().await;
+            let intel_limits = [
+                ("fan1_input", "3100"),
+                ("fan1_min", "2000"),
+                ("fan1_max", "6200"),
+            ];
+            let silicon_limits = [
+                ("fan1_input", "3424"),
+                ("fan1_min", "1499"),
+                ("fan1_max", "5348"),
+            ];
+            let devices = [
+                (
+                    "applesmc",
+                    "before_7_3",
+                    [("fan1_output", "0"), ("fan1_manual", "0")],
+                    intel_limits,
+                ),
+                (
+                    "applesmc",
+                    "from_7_3",
+                    [("fan1_target", "0"), ("pwm1_enable", "2")],
+                    intel_limits,
+                ),
+                (
+                    "macsmc_hwmon",
+                    "silicon",
+                    [("fan1_target", "0"), ("fan1_label", "Fan")],
+                    silicon_limits,
+                ),
+            ];
+            let mut drivers = Vec::with_capacity(devices.len());
+            for (name, dir_name, control_files, limit_files) in devices {
+                let files = control_files.into_iter().chain(limit_files);
+                drivers.push(seed_apple_driver(name, &base.join(dir_name), files).await);
+            }
+
+            let mut repo = empty_repo();
+            let result = repo
+                .map_into_our_device_model(drivers, &HashMap::new(), Duration::from_secs(5))
+                .await;
+
+            teardown_dir(&base).await;
+            assert!(result.is_ok());
+            assert_eq!(repo.devices.len(), 3);
+            let preloaded = repo.preloaded_statuses.borrow();
+            let first_duty = |type_index: TypeIndex| preloaded[&type_index].0[0].duty;
+            assert_eq!(first_duty(1), Some(50.0), "applesmc: 3100 of 6200 rpm");
+            assert_eq!(
+                first_duty(2),
+                Some(50.0),
+                "applesmc from 7.3: 3100 of 6200 rpm"
+            );
+            assert_eq!(
+                first_duty(3),
+                Some(50.0),
+                "macsmc_hwmon: halfway from min to max"
+            );
+            let failsafes = repo.failsafe_statuses.borrow();
+            for type_index in [1, 2, 3] {
+                let failsafe = failsafes[&type_index].channel_failsafes.get("fan1");
+                assert_eq!(failsafe.and_then(|status| status.duty), Some(0.0));
+            }
+        });
     }
 
     #[test]
@@ -6820,6 +7200,44 @@ mod verdict_publish_tests {
             assert_eq!(permanent[0].verdict, ChannelVerdict::NoPwm);
             assert_eq!(permanent[0].channel_name, "fan9");
             assert_eq!(permanent[0].device_uid, "dev-uid");
+        });
+    }
+
+    /// Goal: an Apple fan its driver locked reaches the registry as read-only, with no pwm
+    /// evidence for the UI to list. Method: publish a `macsmc_hwmon` driver whose fan was
+    /// detected with a read-only control file, and read the verdicts back.
+    #[test]
+    #[serial]
+    fn publishes_a_read_only_verdict_for_a_locked_apple_fan() {
+        cc_fs::test_runtime(async {
+            let hardware_support = Rc::new(HardwareSupportController::init(None, true).await);
+            let repo = HwmonRepo::new(
+                Rc::new(Config::init_default_config().unwrap()),
+                vec![],
+                Rc::new(crate::overrides::OverridesController::empty()),
+            )
+            .with_hardware_support(Rc::clone(&hardware_support));
+            let driver = HwmonDriverInfo {
+                name: devices::DEVICE_NAME_MAC_SMC.to_string(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    name: "fan1".to_string(),
+                    caps: HwmonChannelCapabilities::RPM
+                        | HwmonChannelCapabilities::APPLE_SMC_READ_ONLY,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            repo.publish_channel_verdicts(&"dev-uid".to_string(), &driver);
+            let (permanent, current) = hardware_support.partitioned_verdicts();
+
+            assert!(current.is_empty(), "unexpected current-state verdicts");
+            assert_eq!(permanent.len(), 1, "expected one published verdict");
+            assert_eq!(permanent[0].verdict, ChannelVerdict::PwmReadOnly);
+            assert_eq!(permanent[0].evidence, None);
+            assert_eq!(permanent[0].channel_name, "fan1");
         });
     }
 }

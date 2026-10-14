@@ -181,7 +181,44 @@ export class DeviceHealthDTO {
  */
 const DOCS_BASE = 'https://docs.coolercontrol.org/hardware-support.html'
 
-export function verdictDocsLink(verdict: ChannelVerdict): string | undefined {
+const APPLE_DOCS = 'https://docs.coolercontrol.org/devices/apple.html'
+
+/**
+ * Devices with a docs page of their own, by the kernel driver's name and by
+ * the hwmon name. Their fans are not driven through a pwm file, so the general
+ * anchors do not describe them. A Map, not an object: a name must never match
+ * an inherited property.
+ */
+const DEVICE_DOCS: ReadonlyMap<string, string> = new Map([
+    ['applesmc', `${APPLE_DOCS}#intel-macs`],
+    // The Apple Silicon driver is named with a hyphen, its hwmon device is not.
+    ['macsmc-hwmon', `${APPLE_DOCS}#apple-silicon`],
+    ['macsmc_hwmon', `${APPLE_DOCS}#apple-silicon`],
+])
+
+/**
+ * Where to read more about a verdict. A device with its own docs page is sent
+ * there instead of to the general anchor, but only for a verdict that has one:
+ * a verdict with nothing to explain gets no link on any device.
+ *
+ * The driver's name decides, since the device's name may be the user's own.
+ * The device's name only stands in when the driver's is missing or unknown.
+ */
+export function verdictDocsLink(
+    verdict: ChannelVerdict,
+    driverName?: string,
+    deviceName?: string,
+): string | undefined {
+    const general = generalDocsLink(verdict)
+    if (general == null) return general
+    return deviceDocsLink(driverName) ?? deviceDocsLink(deviceName) ?? general
+}
+
+function deviceDocsLink(name?: string): string | undefined {
+    return name == null ? undefined : DEVICE_DOCS.get(name)
+}
+
+function generalDocsLink(verdict: ChannelVerdict): string | undefined {
     switch (verdict) {
         case ChannelVerdict.FamilyMayNeedOutOfTree:
         case ChannelVerdict.FirmwareOverride:

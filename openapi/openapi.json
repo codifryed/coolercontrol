@@ -8016,7 +8016,7 @@
             "const": "no_pwm"
           },
           {
-            "description": "`pwmN` exists but the driver cleared its write bit.",
+            "description": "`pwmN` exists but the driver cleared its write bit. An Apple driver's own control file\n in that state gets this verdict too, without evidence.",
             "type": "string",
             "const": "pwm_read_only"
           },

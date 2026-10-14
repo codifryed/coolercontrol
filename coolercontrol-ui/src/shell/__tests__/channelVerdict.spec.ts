@@ -52,6 +52,41 @@ describe('channel verdicts', () => {
         }
     })
 
+    it('sends an Apple device to the Apple page instead', () => {
+        // These fans have no pwm file, so the laptops anchor describes
+        // hardware they are not. Every other device keeps the general anchor.
+        const general = verdictDocsLink(ChannelVerdict.PwmReadOnly)
+        const intel = verdictDocsLink(ChannelVerdict.PwmReadOnly, 'applesmc')
+        const silicon = verdictDocsLink(ChannelVerdict.NotSupportedByDriver, 'macsmc_hwmon')
+        expect(intel).toBe('https://docs.coolercontrol.org/devices/apple.html#intel-macs')
+        expect(silicon).toBe('https://docs.coolercontrol.org/devices/apple.html#apple-silicon')
+        expect(verdictDocsLink(ChannelVerdict.PwmReadOnly, 'nct6798')).toBe(general)
+        // A name that happens to be an Object property must not match either.
+        expect(verdictDocsLink(ChannelVerdict.PwmReadOnly, 'constructor')).toBe(general)
+    })
+
+    it('keeps the Apple page for a device the user renamed', () => {
+        // The daemon sends the user's label as the device name, so only the
+        // driver's name still says what the device is.
+        const general = verdictDocsLink(ChannelVerdict.PwmReadOnly)
+        const verdict = ChannelVerdict.PwmReadOnly
+        const intel = 'https://docs.coolercontrol.org/devices/apple.html#intel-macs'
+        const silicon = 'https://docs.coolercontrol.org/devices/apple.html#apple-silicon'
+        expect(verdictDocsLink(verdict, 'applesmc', 'MacBook Fans')).toBe(intel)
+        // The Apple Silicon driver's name has a hyphen, its hwmon name does not.
+        expect(verdictDocsLink(verdict, 'macsmc-hwmon', 'Mac Studio')).toBe(silicon)
+        // Without a known driver name the device name still decides.
+        expect(verdictDocsLink(verdict, undefined, 'macsmc_hwmon')).toBe(silicon)
+        expect(verdictDocsLink(verdict, 'platform', 'applesmc')).toBe(intel)
+        expect(verdictDocsLink(verdict, undefined, 'MacBook Fans')).toBe(general)
+        expect(verdictDocsLink(verdict, 'nct6775', 'nct6798')).toBe(general)
+    })
+
+    it('gives an Apple device no link where the verdict has none', () => {
+        expect(verdictDocsLink(ChannelVerdict.Controllable, 'applesmc')).toBeUndefined()
+        expect(verdictDocsLink(ChannelVerdict.Unverifiable, 'macsmc_hwmon')).toBeUndefined()
+    })
+
     it('never names a kernel module in a verdict string', () => {
         // The app asserts observations; the docs assert remedies. A module name
         // baked into the binary goes stale and can contradict the maintainers.

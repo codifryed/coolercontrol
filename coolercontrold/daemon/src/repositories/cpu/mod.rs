@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod apple_silicon;
 mod association;
 pub mod cpu_repo;
 mod percent;
@@ -42,6 +43,7 @@ pub mod fixtures {
     cpuinfo!(INTEL_SINGLE_CPU, "intel_single_cpu");
     cpuinfo!(INTEL_DOUBLE_CPU, "intel_double_cpu");
     cpuinfo!(RASPBERRY_PI_5, "raspberry_pi_5");
+    cpuinfo!(APPLE_M1_MAX, "apple_m1_max");
 
     /// Two packages whose physical ids run opposite to their APIC ids. Real firmware rarely does
     /// this, but it is the only shape that tells the two orderings apart.
