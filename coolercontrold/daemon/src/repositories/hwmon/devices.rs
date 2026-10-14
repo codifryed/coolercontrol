@@ -252,7 +252,7 @@ async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
 /// Returns an i2c client's identity as its adapter's parent, the adapter's own name and the
 /// client address, none of which move across boots. The canonical path of an i2c client carries
 /// the kernel-assigned bus number (`.../i2c-15/15-0050`), and that number follows adapter
-/// registration order, so on a machine whose GPU drivers register DDC and AUX adapters the SMBus
+/// registration order, so on a machine whose GPU drivers register DDC and AUX adapters the `SMBus`
 /// adapter and every client on it are re-keyed between boots.
 ///
 /// The adapter's own name is part of the identifier because one controller registers several
