@@ -1350,11 +1350,11 @@ impl HwmonRepo {
         }
     }
 
-    /// Moves settings written under the pre-`wwid` UID onto `device_uid`.
+    /// Moves settings written under the legacy, path-derived UID onto `device_uid`.
     ///
     /// Runs before this device's first settings lookup, so the very first boot after the
     /// change already resolves them. A no-op for every device whose identifier chain is
-    /// unchanged, which is everything that is not an `sd` disk.
+    /// unchanged, which is everything that is not an `sd` disk or an i2c client.
     ///
     /// The document is persisted on the normal save path rather than here. Re-running is
     /// harmless: once the legacy entry is gone there is nothing left to move.
@@ -1386,8 +1386,8 @@ impl HwmonRepo {
             return;
         }
         info!(
-            "Migrated {rewrites} saved setting(s) for {device_name} onto a hardware-derived \
-             identifier, so they no longer depend on a sysfs path that can change between boots"
+            "Migrated {rewrites} saved setting(s) for {device_name} onto a stable identifier, \
+             so they no longer depend on a sysfs path that can change between boots"
         );
     }
 
@@ -7362,6 +7362,52 @@ mod uid_migration_tests {
                 repo.config.get_device_settings(&our_uid).unwrap().len(),
                 1,
                 "our settings arrive under the new UID"
+            );
+        });
+    }
+
+    // Goal: an i2c client's settings, saved under the path that carries its bus number, follow
+    // it onto the adapter identity. Method: derive both UIDs from one fixture the way device
+    // detection does, then migrate.
+    #[test]
+    #[serial]
+    fn migration_moves_an_i2c_clients_settings_off_its_bus_number() {
+        cc_fs::test_runtime(async {
+            let root = PathBuf::from(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string());
+            let adapter = root.join("devices/pci0000:00/0000:00:14.0/i2c-15");
+            let client = adapter.join("15-0050");
+            let path = root.join("hwmon/hwmon1");
+            cc_fs::create_dir_all(&client).await.unwrap();
+            cc_fs::create_dir_all(&path).await.unwrap();
+            cc_fs::write(adapter.join("name"), b"SMBus PIIX4 adapter\n".to_vec())
+                .await
+                .unwrap();
+            std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
+            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
+            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_uid =
+                Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
+            let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
+            let repo = repo_with_setting(&legacy_uid);
+            let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
+
+            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
+                .await;
+            cc_fs::remove_dir_all(&root).await.unwrap();
+
+            assert!(legacy_id.contains("/i2c-15/"), "got {legacy_id}");
+            assert!(our_id.contains("/i2c-15/").not(), "got {our_id}");
+            assert!(
+                repo.config
+                    .get_device_settings(&legacy_uid)
+                    .unwrap()
+                    .is_empty(),
+                "the path-derived entry moves"
+            );
+            assert_eq!(
+                repo.config.get_device_settings(&our_uid).unwrap().len(),
+                1,
+                "the settings arrive under the adapter identity"
             );
         });
     }

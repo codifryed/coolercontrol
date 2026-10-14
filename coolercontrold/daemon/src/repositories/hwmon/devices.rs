@@ -162,7 +162,8 @@ pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
 /// Gets the real device path under /sys. It contains additional sysfs files
 /// outside of hardware monitoring. All `HWMon` devices should have this path.
 ///
-/// NOT stable across boots: SCSI/SAS/SATA disks embed probe-order `hostN` / `ataN`.
+/// NOT stable across boots: SCSI/SAS/SATA disks embed probe-order `hostN` / `ataN`, and i2c
+/// clients embed the registration-order bus number `i2c-N`.
 /// Note: Some 'Virtual' `HWMon` drivers do not have `device` paths, but the `base_path`
 /// is the same as the `device` path of normal drivers (/hwmon/hwmon* not in it).
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
@@ -205,15 +206,16 @@ fn get_canonical_path_str(path: &Path) -> Option<String> {
 ///
 /// 1. device serial number
 /// 2. SCSI wwid (`sd` disks only)
-/// 3. realpath under /sys
-/// 4. PCI ID
-/// 5. device name
+/// 3. i2c adapter and client (i2c clients only)
+/// 4. realpath under /sys
+/// 5. PCI ID
+/// 6. device name
 ///
 /// The purpose of this is to ensure that we have unique IDs for device settings that persist
 /// across boots and hardware changes if possible.
 ///
-/// The wwid sits below the serial so a device that already resolves by serial is not re-keyed
-/// for no gain. Uniqueness is handled separately by `Device::assign_unique`.
+/// The wwid and i2c rungs sit below the serial so a device that already resolves by serial is
+/// not re-keyed for no gain. Uniqueness is handled separately by `Device::assign_unique`.
 pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
     if let Some(serial) = get_device_serial_number(base_path).await {
         return serial;
@@ -227,8 +229,8 @@ pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
     get_location_based_id(base_path, device_name).await
 }
 
-/// What `get_device_unique_id` returned before the `wwid` rung, so the migration can find what
-/// an older release wrote. Identical to the current chain for any device with a serial.
+/// What `get_device_unique_id` returned before the `wwid` and i2c rungs, so the migration can
+/// find what an older release wrote. Identical to the current chain for any device with a serial.
 pub async fn get_legacy_device_unique_id(base_path: &Path, device_name: &str) -> UID {
     if let Some(serial) = get_device_serial_number(base_path).await {
         return serial;
@@ -250,7 +252,7 @@ async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
 }
 
 /// Returns an i2c client's identity as its adapter's parent, the adapter's own name and the
-/// client address, none of which move across boots. The canonical path of an i2c client carries
+/// client's address or firmware name, none of which move across boots. The canonical path carries
 /// the kernel-assigned bus number (`.../i2c-15/15-0050`), and that number follows adapter
 /// registration order, so on a machine whose GPU drivers register DDC and AUX adapters the `SMBus`
 /// adapter and every client on it are re-keyed between boots.
@@ -262,20 +264,43 @@ async fn get_location_based_id(base_path: &Path, device_name: &str) -> UID {
 /// Deliberately absent from `get_legacy_device_unique_id`, so `migrate_legacy_device_uid`
 /// carries an affected device's saved settings onto this identity exactly once.
 pub async fn get_i2c_client_id(base_path: &Path) -> Option<String> {
-    let device = get_canonical_path_str(&device_path(base_path))?;
-    let device = Path::new(&device);
-    let (bus, address) = device.file_name()?.to_str()?.split_once('-')?;
-    if bus.is_empty() || address.is_empty() {
+    // Quiet on failure: the location fallback already reports a device with no `device` link.
+    let device = cc_fs::canonicalize(device_path(base_path)).ok()?;
+    let adapter = device.parent()?;
+    let bus = i2c_bus_number(adapter)?;
+    let controller = adapter.parent()?;
+    // A nested adapter (mux, bridge) keeps an outer bus number in its parent path and in its
+    // own name, so it would only trade one unstable identity for another.
+    if controller
+        .ancestors()
+        .any(|ancestor| i2c_bus_number(ancestor).is_some())
+    {
         return None;
     }
-    let adapter = device.parent()?;
-    if adapter.file_name()?.to_str()? != format!("i2c-{bus}") {
+    let client = device.file_name()?.to_str()?;
+    // A firmware-enumerated client is named for its node (`i2c-ITE8853:00`), not its bus.
+    let client = client
+        .strip_prefix(bus)
+        .and_then(|address| address.strip_prefix('-'))
+        .unwrap_or(client);
+    if client.is_empty() {
         return None;
     }
     let name = cc_fs::read_sysfs(adapter.join("name")).await.ok()?;
     let adapter_name = normalize_sysfs_identifier(&name)?;
-    let controller = adapter.parent()?.to_str()?;
-    Some(format!("{controller}/{adapter_name}/{address}"))
+    let controller = controller.to_str()?;
+    debug_assert!(controller.is_empty().not());
+    debug_assert!(adapter_name.is_empty().not());
+    Some(format!("{controller}/{adapter_name}/{client}"))
+}
+
+/// The bus number of an `i2c-N` adapter directory.
+fn i2c_bus_number(adapter: &Path) -> Option<&str> {
+    let bus = adapter.file_name()?.to_str()?.strip_prefix("i2c-")?;
+    if bus.is_empty() {
+        return None;
+    }
+    bus.bytes().all(|byte| byte.is_ascii_digit()).then_some(bus)
 }
 
 /// Returns the SCSI `wwid`, which only a `scsi_device` exposes, so this doubles as the test
@@ -580,6 +605,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+    use crate::device::{Device, DeviceType};
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
@@ -1309,9 +1335,16 @@ mod tests {
     /// Builds an i2c client under `test_dir`: an adapter directory `i2c-<bus>` holding a `name`
     /// file and a `<bus>-<address>` client, with the hwmon device link pointed at the client.
     async fn setup_i2c_client(ctx: &HwmonDeviceContext, bus: &str, address: &str, name: &str) {
+        let adapter = format!("i2c-{bus}");
+        link_i2c_device(ctx, &adapter, &format!("{bus}-{address}"), name).await;
+    }
+
+    /// As `setup_i2c_client`, with the adapter path and client directory given verbatim, for
+    /// the shapes that are not a plain `<bus>-<address>` client on a top-level adapter.
+    async fn link_i2c_device(ctx: &HwmonDeviceContext, adapter: &str, client: &str, name: &str) {
         let controller = Path::new(&ctx.test_dir).join("devices/pci0000:00/0000:00:14.0");
-        let adapter = controller.join(format!("i2c-{bus}"));
-        let client = adapter.join(format!("{bus}-{address}"));
+        let adapter = controller.join(adapter);
+        let client = adapter.join(client);
         cc_fs::create_dir_all(&client).await.unwrap();
         cc_fs::write(adapter.join("name"), format!("{name}\n").into_bytes())
             .await
@@ -1398,6 +1431,97 @@ mod tests {
             teardown(&ctx).await;
             assert_eq!(i2c, None, "a plain device is not an i2c client");
             assert_eq!(current, legacy, "an unaffected device must not move");
+        });
+    }
+
+    // Goal: a firmware-enumerated client is named for its ACPI node, not its bus, yet its path
+    // still carries the adapter's number. Method: the same node under i2c-0 and under i2c-3.
+    #[test]
+    #[serial]
+    fn firmware_named_i2c_client_survives_a_bus_renumber() {
+        cc_fs::test_runtime(async {
+            let name = "Synopsys DesignWare I2C adapter";
+            let ctx_low = setup().await;
+            link_i2c_device(&ctx_low, "i2c-0", "i2c-ITE8853:00", name).await;
+            let low = get_device_unique_id(&ctx_low.hwmon_path, "lm75").await;
+            teardown(&ctx_low).await;
+
+            let ctx_high = setup().await;
+            link_i2c_device(&ctx_high, "i2c-3", "i2c-ITE8853:00", name).await;
+            let high = get_device_unique_id(&ctx_high.hwmon_path, "lm75").await;
+            teardown(&ctx_high).await;
+
+            assert!(
+                low.ends_with(&format!("/{name}/i2c-ITE8853:00")),
+                "got {low}"
+            );
+            assert_eq!(
+                strip_test_dir(&low, &ctx_low.test_dir),
+                strip_test_dir(&high, &ctx_high.test_dir),
+                "the identity must not follow the bus number"
+            );
+        });
+    }
+
+    // Goal: a client behind a mux keeps its path identity. The mux adapter's parent path and
+    // its name both carry the outer bus number, so the adapter identity would be no steadier.
+    #[test]
+    #[serial]
+    fn muxed_i2c_client_keeps_its_path_identity() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            link_i2c_device(&ctx, "i2c-3/i2c-7", "7-0048", "i2c-3-mux (chan_id 0)").await;
+
+            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
+            let current = get_device_unique_id(&ctx.hwmon_path, "lm75").await;
+            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "lm75").await;
+
+            teardown(&ctx).await;
+            assert_eq!(i2c, None, "a nested adapter has no stable identity");
+            assert_eq!(current, legacy, "a muxed client must not move");
+        });
+    }
+
+    // Goal: an adapter with no readable name gives nothing to tell two ports apart, so its
+    // client keeps the path identity. Method: a blank `name` file.
+    #[test]
+    #[serial]
+    fn i2c_client_without_an_adapter_name_keeps_its_path_identity() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "15", "0050", "").await;
+
+            let i2c = get_i2c_client_id(&ctx.hwmon_path).await;
+            let current = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
+            let legacy = get_legacy_device_unique_id(&ctx.hwmon_path, "spd5118").await;
+
+            teardown(&ctx).await;
+            assert_eq!(i2c, None);
+            assert_eq!(current, legacy);
+        });
+    }
+
+    // Goal: pin the identity to the UID that daemons already running this rung hold, so a
+    // change of format cannot orphan their settings unnoticed. Method: DIMM 0x51 on the AMD
+    // SMBus, whose UID was read from two real machines.
+    #[test]
+    #[serial]
+    fn i2c_client_id_matches_the_uid_running_daemons_hold() {
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            setup_i2c_client(&ctx, "11", "0051", "SMBus PIIX4 adapter port 0 at 0b00").await;
+            let id = get_device_unique_id(&ctx.hwmon_path, "spd5118").await;
+            teardown(&ctx).await;
+
+            let on_real_sysfs = format!("/sys{}", strip_test_dir(&id, &ctx.test_dir));
+            assert_eq!(
+                on_real_sysfs,
+                "/sys/devices/pci0000:00/0000:00:14.0/SMBus PIIX4 adapter port 0 at 0b00/0051"
+            );
+            assert_eq!(
+                Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&on_real_sysfs)),
+                "1a1f27e4c9a6f31abd2493cf107df416caa9c9605d453cc9e83e4d32cf7572b1"
+            );
         });
     }
 
