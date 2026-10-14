@@ -63,6 +63,8 @@ pub async fn migrate_uid_in_file(path: &Path, legacy: &UID, current: &UID) -> Re
         return Ok(false);
     }
     let migrated = contents.replace(legacy.as_str(), current.as_str());
+    debug_assert!(migrated.contains(legacy.as_str()).not());
+    debug_assert!(migrated.contains(current.as_str()));
     cc_fs::write(path, migrated.into_bytes()).await?;
     Ok(true)
 }
