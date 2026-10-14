@@ -394,8 +394,9 @@ mod tests {
 
     /// A cpufreq directory with one policy per entry: its name, top frequency, cores and,
     /// where it can be read, its clock. A `boost` file sits beside them, as on a real machine.
-    async fn fake_cpufreq(policies: &[(&str, &str, &str, Option<&str>)]) -> PathBuf {
-        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+    async fn fake_cpufreq(policies: &[(&str, &str, &str, Option<&str>)]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().to_path_buf();
         for (name, max_khz, cores, current_khz) in policies {
             let dir = base.join(name);
             cc_fs::create_dir_all(&dir).await.unwrap();
@@ -411,7 +412,7 @@ mod tests {
         cc_fs::write_string(base.join("boost"), "1\n".to_string())
             .await
             .unwrap();
-        base
+        tmp
     }
 
     fn channel(name: &str) -> ChannelStatus {
@@ -429,16 +430,16 @@ mod tests {
     #[serial]
     fn clusters_are_found_once_and_read_one_clock_each() {
         cc_fs::test_runtime(async {
-            let base = fake_cpufreq(&[
+            let tmp = fake_cpufreq(&[
                 ("policy0", "2064000", "0 1", Some("972000")),
                 ("policy2", "3228000", "2 3 4 5", Some("3036000")),
                 ("policy6", "3228000", "6 7 8 9", None),
             ])
             .await;
+            let base = tmp.path().to_path_buf();
 
             let apple_silicon = AppleSilicon::find(&base).await;
             let freqs = apple_silicon.read_freqs().await;
-            cc_fs::remove_dir_all(&base).await.unwrap();
 
             let core_counts: Vec<u32> = apple_silicon
                 .clusters
@@ -493,11 +494,12 @@ mod tests {
     #[serial]
     fn a_poll_keeps_no_clock_from_the_poll_before() {
         cc_fs::test_runtime(async {
-            let base = fake_cpufreq(&[
+            let tmp = fake_cpufreq(&[
                 ("policy0", "2064000", "0 1", Some("972000")),
                 ("policy2", "3228000", "2 3 4 5", Some("3036000")),
             ])
             .await;
+            let base = tmp.path().to_path_buf();
             let apple_silicon = AppleSilicon::find(&base).await;
             let names = [
                 "CPU Freq Efficiency Cluster",
@@ -514,7 +516,6 @@ mod tests {
             let performance_clock = base.join("policy2").join(POLICY_CURRENT_FREQ_FILE);
             cc_fs::remove_file(&performance_clock).await.unwrap();
             let second = poll().await;
-            cc_fs::remove_dir_all(&base).await.unwrap();
 
             assert_eq!(first, [Some(972), Some(3036)]);
             assert_eq!(second, [Some(972), Some(0)]);

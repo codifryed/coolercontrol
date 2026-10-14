@@ -423,8 +423,6 @@ mod tests {
     use serial_test::serial;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
-    use uuid::Uuid;
 
     async fn seed(dir: &Path, files: &[(&str, &str)]) {
         cc_fs::create_dir_all(dir).await.unwrap();
@@ -454,10 +452,6 @@ mod tests {
             rpm_path: Some(dir.join(format!("fan{number}_input"))),
             ..Default::default()
         }
-    }
-
-    fn test_dir() -> PathBuf {
-        PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()))
     }
 
     /// Goal: only a file of the exact shape names a fan. Method: a target file's neighbours in
@@ -494,7 +488,8 @@ mod tests {
     #[serial]
     fn applesmc_generations_are_told_apart_by_their_files() {
         cc_fs::test_runtime(async {
-            let base = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let before_7_3 = base.join("before");
             let from_7_3 = base.join("from");
             let both = base.join("both");
@@ -515,7 +510,6 @@ mod tests {
                 detect("nct6798", &from_7_3),
             ];
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             assert_eq!(
                 detected,
                 [
@@ -537,7 +531,8 @@ mod tests {
     #[serial]
     fn a_target_fan_is_controllable_when_allowed_and_its_speed_reads() {
         cc_fs::test_runtime(async {
-            let dir = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             let files = [
                 ("fan1_target", "0"),
                 ("fan1_input", "1500"),
@@ -556,7 +551,6 @@ mod tests {
             .await
             .unwrap();
 
-            cc_fs::remove_dir_all(&dir).await.unwrap();
             let mut asked = asked.into_inner();
             asked.sort_unstable();
             assert_eq!(asked, [1, 2, 4]);
@@ -575,7 +569,8 @@ mod tests {
     #[serial]
     fn an_unreadable_device_is_an_error_for_the_caller() {
         cc_fs::test_runtime(async {
-            let base = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let empty = base.join("empty");
             let missing = base.join("missing");
             seed(&empty, &[]).await;
@@ -593,7 +588,6 @@ mod tests {
                 results.push((driver, from_empty, from_missing));
             }
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             for (driver, from_empty, from_missing) in results {
                 assert!(from_empty.is_ok_and(|fans| fans.is_empty()), "{driver:?}");
                 assert!(from_missing.is_err(), "{driver:?}");
@@ -664,7 +658,8 @@ mod tests {
     #[serial]
     fn a_read_only_control_file_is_recorded_on_the_fan() {
         cc_fs::test_runtime(async {
-            let base = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let io = DeviceIo::default();
             let mut complete = Vec::new();
             let mut locked = Vec::new();
@@ -690,7 +685,6 @@ mod tests {
                 }
             }
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             for (driver, state) in complete {
                 assert_eq!(state, (true, false, vec![]), "{driver:?}");
             }
@@ -746,7 +740,8 @@ mod tests {
     #[serial]
     fn release_only_returns_fans_the_daemon_took() {
         cc_fs::test_runtime(async {
-            let dir = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             let files = [
                 ("fan1_input", "3100"),
                 ("fan1_min", "2000"),
@@ -773,7 +768,6 @@ mod tests {
             seed(&dir, &held_by_another_tool).await;
             let returned = apple_fans.release_fan(1, &io).await;
             let returned_manual = read(&dir, "fan1_manual").await;
-            cc_fs::remove_dir_all(&dir).await.unwrap();
 
             assert!(untouched.is_ok());
             assert_eq!(untouched_manual, "1");
@@ -794,7 +788,8 @@ mod tests {
     #[serial]
     fn a_failed_silicon_reset_is_retried_at_shutdown() {
         cc_fs::test_runtime(async {
-            let dir = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             let (files, _) = complete_fan(AppleDriver::Silicon);
             seed(&dir, files).await;
             let io = DeviceIo::default();
@@ -817,7 +812,6 @@ mod tests {
             seed(&dir, &[("fan1_target", "3000")]).await;
             let released_again = apple_fans.release_fan(1, &io).await;
             let untouched_target = read(&dir, "fan1_target").await;
-            cc_fs::remove_dir_all(&dir).await.unwrap();
 
             assert!(failed_reset.is_err());
             assert!(taken_after_failure);
@@ -836,7 +830,8 @@ mod tests {
     #[serial]
     fn a_duty_write_takes_the_fan_and_a_reset_always_returns_it() {
         cc_fs::test_runtime(async {
-            let dir = test_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             let files = [
                 ("fan1_input", "3100"),
                 ("fan1_min", "2000"),
@@ -858,7 +853,6 @@ mod tests {
             let released = apple_fans.release_fan(1, &io).await;
             let released_manual = read(&dir, "fan1_manual").await;
             let fan_output = read(&dir, "fan1_output").await;
-            cc_fs::remove_dir_all(&dir).await.unwrap();
 
             assert!(reset.is_ok());
             assert_eq!(reset_manual, "0");

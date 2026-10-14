@@ -1195,9 +1195,7 @@ mod tests {
     use serial_test::serial;
     use std::cell::Cell;
     use std::collections::HashMap;
-    use std::path::PathBuf;
     use std::rc::Rc;
-    use uuid::Uuid;
 
     /// A repository holding what the given cpuinfo says, which is all these tests need of it.
     /// No temp file and no cpuinfo read: the parsing itself is covered in `topology`.
@@ -1386,7 +1384,8 @@ mod tests {
     fn test_apple_silicon_frequencies_come_from_its_clusters() {
         cc_fs::test_runtime(async {
             // given:
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let policies = [
                 ("policy0", "2064000", "0 1", "972000"),
                 ("policy2", "3228000", "2 3 4 5", "3036000"),
@@ -1436,7 +1435,6 @@ mod tests {
                     true,
                 )
                 .await;
-            cc_fs::remove_dir_all(&base).await.unwrap();
 
             // then:
             let freqs: Vec<(&str, Option<u32>)> = statuses
@@ -1632,7 +1630,6 @@ mod sensors_conf_tests {
 mod channel_attributes_tests {
     use super::*;
     use serial_test::serial;
-    use uuid::Uuid;
 
     #[test]
     #[serial]
@@ -1641,8 +1638,8 @@ mod channel_attributes_tests {
         // non-temp channel or unknown device behaves as documented. Method: a k10temp-style
         // device with a crit limit, registered by hand.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-            cc_fs::create_dir_all(&base).await.unwrap();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             cc_fs::write(base.join("temp1_crit"), b"105000".to_vec())
                 .await
                 .unwrap();
@@ -1688,7 +1685,6 @@ mod channel_attributes_tests {
             assert_eq!(temp1[0].value, 105.0);
             assert!(load.is_empty());
             assert!(unknown.is_err());
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }

@@ -4029,7 +4029,6 @@ mod coalescer_tests {
     use crate::device::DeviceInfo;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
-    use uuid::Uuid;
 
     fn fan_channel(number: u8, name: &str, base: &Path) -> HwmonChannelInfo {
         HwmonChannelInfo {
@@ -4163,7 +4162,8 @@ mod coalescer_tests {
         // last-written duty regardless of how the burst is sliced
         // between in-flight and pending.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4203,7 +4203,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4216,7 +4215,8 @@ mod coalescer_tests {
         // and exactly one waiter. Older waiters resolve Ok on the
         // spot since the latest write supplants their intent.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4273,7 +4273,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4292,7 +4291,8 @@ mod coalescer_tests {
         cc_fs::test_runtime(async {
             // Skip seeding pwm1: set_pwm_duty's write fails because
             // the parent path doesn't exist.
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("missing-dev");
             cc_fs::create_dir_all(&base).await.unwrap();
 
@@ -4339,7 +4339,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4350,7 +4349,8 @@ mod coalescer_tests {
         // the permit released, both channel writes complete and
         // their pwm files reflect the requested values.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1, 2]).await;
 
@@ -4376,7 +4376,6 @@ mod coalescer_tests {
             assert_eq!(pwm2.trim(), duty_to_pwm_value(75).to_string());
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4389,7 +4388,8 @@ mod coalescer_tests {
         // second write only starts after the first's delay elapses.
         cc_fs::test_runtime(async {
             const DELAY_MS: u16 = 100;
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1, 2]).await;
 
@@ -4421,7 +4421,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4434,7 +4433,8 @@ mod coalescer_tests {
         // silently merging into the in-flight write.
         cc_fs::test_runtime(async {
             const DELAY_MS: u16 = 100;
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4470,7 +4470,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4482,7 +4481,8 @@ mod coalescer_tests {
         // to device B, since each device owns its own permit, mailbox
         // and writer task.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir_a = base.join("dev_a");
             let dir_b = base.join("dev_b");
             seed_fan_files(&dir_a, &[1]).await;
@@ -4528,7 +4528,6 @@ mod coalescer_tests {
             h_a.await.unwrap().unwrap();
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4542,7 +4541,8 @@ mod coalescer_tests {
         // plus one waiting regardless of caller pressure.
         cc_fs::test_runtime(async {
             const FLOOD: usize = 200;
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4595,7 +4595,6 @@ mod coalescer_tests {
             surviving.await.unwrap().unwrap();
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4612,7 +4611,8 @@ mod coalescer_tests {
         // must end at the latest target, with the in-flight
         // waiter resolved Ok via the re-check supersession.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4658,7 +4658,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4755,7 +4754,8 @@ mod coalescer_tests {
         // (not an error) so the engine's error-log path stays quiet
         // during shutdown.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4788,7 +4788,6 @@ mod coalescer_tests {
             assert!(h3.await.unwrap().is_ok(), "shutdown waiter must resolve Ok");
 
             drop(permit_hold);
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -4809,7 +4808,8 @@ mod coalescer_tests {
         const ATTEMPTS: u32 = 5;
         const _: () = assert!(ATTEMPTS > 0, "best stays unset without an attempt");
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1]).await;
 
@@ -4845,7 +4845,6 @@ mod coalescer_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
@@ -4857,7 +4856,6 @@ mod slow_device_tests {
     use crate::device::DeviceInfo;
     use crate::repositories::hwmon::fans::duty_to_pwm_value;
     use serial_test::serial;
-    use uuid::Uuid;
 
     const TEST_TYPE_INDEX: TypeIndex = 1;
 
@@ -5026,7 +5024,8 @@ mod slow_device_tests {
         // updates in place; we want to observe the iteration
         // order, not the long-lived order.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1, 2, 3], 128).await;
 
@@ -5071,7 +5070,6 @@ mod slow_device_tests {
             assert_eq!(orders[2], vec!["fan3", "fan1", "fan2"]);
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5085,7 +5083,8 @@ mod slow_device_tests {
     #[serial]
     fn batched_fan_read_honours_each_channels_verify_deadline() {
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             // Both pwm files say 255 (100%). A cached channel must not show 100.
             seed_fan_files(&dir, &[1, 2], 255).await;
@@ -5147,7 +5146,6 @@ mod slow_device_tests {
             }
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5158,7 +5156,8 @@ mod slow_device_tests {
         // (no PWM read) while next_verify_at is in the future,
         // and triggers a real PWM read once it elapses.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             // pwm1 file says duty=255 (=> 100%); cache says 50.
             // If preload uses the cache, we see 50 in the upsert.
@@ -5221,7 +5220,6 @@ mod slow_device_tests {
             }
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5232,7 +5230,8 @@ mod slow_device_tests {
         // entry so the next preload re-reads the real value
         // rather than serving a stale cached duty.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 128).await;
             let mut repo = empty_repo();
@@ -5261,7 +5260,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5272,7 +5270,8 @@ mod slow_device_tests {
         // device returns to auto mode, so the cached "what we
         // last set" no longer reflects the live duty.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 128).await;
             // Channel needs pwm_enable_default for set_pwm_enable_to_default_or_auto.
@@ -5302,7 +5301,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5314,8 +5312,8 @@ mod slow_device_tests {
     #[serial]
     fn an_apple_silicon_write_is_never_skipped() {
         cc_fs::test_runtime(async {
-            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-            cc_fs::create_dir_all(&dir).await.unwrap();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             for (file, value) in [
                 ("fan1_target", "1499"),
                 ("fan1_input", "1499"),
@@ -5363,7 +5361,6 @@ mod slow_device_tests {
 
             let target = cc_fs::read_sysfs(&dir.join("fan1_target")).await.unwrap();
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&dir).await;
             assert_eq!(target.trim(), "0", "the fan must be handed to the firmware");
         });
     }
@@ -5377,7 +5374,8 @@ mod slow_device_tests {
         // sentinel before the test runs; if the writer skips,
         // the sentinel survives.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
             // Place a sentinel in pwm1 we'll detect afterwards.
@@ -5425,7 +5423,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5441,7 +5438,8 @@ mod slow_device_tests {
         // sentinel in pwm1, seed preloaded duty = target = 50; if
         // the force flag works, the sentinel is overwritten.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
             cc_fs::write(dir.join("pwm1"), b"42".to_vec())
@@ -5508,7 +5506,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5522,7 +5519,8 @@ mod slow_device_tests {
         // sentinel, enqueue the same duty again, expect sentinel
         // to survive.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
             cc_fs::write(dir.join("pwm1"), b"42".to_vec())
@@ -5586,7 +5584,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5599,7 +5596,8 @@ mod slow_device_tests {
         // skip-eligible write to fan2; pwm2 sentinel must survive
         // because fan2's flag was never armed.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1, 2], 99).await;
             cc_fs::write(dir.join("pwm1"), b"42".to_vec())
@@ -5673,7 +5671,6 @@ mod slow_device_tests {
             );
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5684,7 +5681,8 @@ mod slow_device_tests {
         // the writer issues a real sysfs write (so pwm1 reflects
         // duty_to_pwm_value(60), not the sentinel).
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
             cc_fs::write(dir.join("pwm1"), b"42".to_vec())
@@ -5725,7 +5723,6 @@ mod slow_device_tests {
             assert_eq!(pwm.trim(), duty_to_pwm_value(60).to_string());
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5736,7 +5733,8 @@ mod slow_device_tests {
         // duty unknown"; the writer falls through to the real
         // sysfs write rather than spuriously skipping.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
 
@@ -5763,7 +5761,6 @@ mod slow_device_tests {
             assert_eq!(pwm.trim(), duty_to_pwm_value(70).to_string());
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5774,7 +5771,8 @@ mod slow_device_tests {
         // cache's last_known so the next preload tick can use it
         // without hitting the slow PWM read again.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_fan_files(&dir, &[1], 99).await;
 
@@ -5826,7 +5824,6 @@ mod slow_device_tests {
             }
 
             repo.shutdown_token.cancel();
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
@@ -5837,7 +5834,6 @@ mod prepare_for_sleep_tests {
     use crate::cc_fs;
     use crate::device::DeviceInfo;
     use serial_test::serial;
-    use uuid::Uuid;
 
     async fn seed_pwm_dir(base: &Path, pwm_enable_initial: &[u8]) {
         cc_fs::create_dir_all(base).await.unwrap();
@@ -5919,7 +5915,8 @@ mod prepare_for_sleep_tests {
         // Happy path: a ThinkPad fan with a controllable permit is
         // switched to auto mode for suspend.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_pwm_dir(&dir, b"1").await;
 
@@ -5939,8 +5936,6 @@ mod prepare_for_sleep_tests {
                 "2",
                 "fan should be set to auto mode for sleep"
             );
-
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -5953,7 +5948,8 @@ mod prepare_for_sleep_tests {
         // prepare_for_sleep returns well within the suspend budget
         // rather than waiting on the kernel indefinitely.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             cc_fs::create_dir_all(&dir).await.unwrap();
             // pwm1_enable is a FIFO — a write-open call on a FIFO
@@ -6013,8 +6009,6 @@ mod prepare_for_sleep_tests {
                 elapsed < PREPARE_FOR_SLEEP_WRITE_TIMEOUT + Duration::from_millis(500),
                 "prepare_for_sleep ran past the write timeout: {elapsed:?}"
             );
-
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
@@ -6025,7 +6019,6 @@ mod shutdown_tests {
     use crate::cc_fs;
     use crate::device::DeviceInfo;
     use serial_test::serial;
-    use uuid::Uuid;
 
     fn fan_channel(
         number: u8,
@@ -6177,7 +6170,8 @@ mod shutdown_tests {
     #[serial]
     fn shutdown_returns_only_the_apple_fans_the_daemon_took() {
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir_taken = base.join("taken");
             let dir_untouched = base.join("untouched");
             let mut repo = empty_repo();
@@ -6200,7 +6194,6 @@ mod shutdown_tests {
             let taken_manual = read(&dir_taken, "fan1_manual").await;
             let taken_min = read(&dir_taken, "fan1_min").await;
             let untouched_manual = read(&dir_untouched, "fan1_manual").await;
-            let _ = cc_fs::remove_dir_all(&base).await;
             assert!(result.is_ok(), "shutdown should succeed: {result:?}");
             assert_eq!(min_while_manual.trim(), "0");
             assert_eq!(
@@ -6224,8 +6217,8 @@ mod shutdown_tests {
     fn reset_leaves_a_read_only_apple_fan_alone() {
         cc_fs::test_runtime(async {
             use std::os::unix::fs::PermissionsExt;
-            let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-            cc_fs::create_dir_all(&dir).await.unwrap();
+            let tmp = tempfile::tempdir().unwrap();
+            let dir = tmp.path().to_path_buf();
             for (file, value) in [
                 ("fan1_target", "1234"),
                 ("fan1_input", "1520"),
@@ -6258,7 +6251,6 @@ mod shutdown_tests {
             let result = repo.apply_setting_reset(&uid, "fan1").await;
 
             let target = cc_fs::read_sysfs(dir.join("fan1_target")).await.unwrap();
-            let _ = cc_fs::remove_dir_all(&dir).await;
             assert!(result.is_ok(), "{result:?}");
             assert_eq!(target.trim(), "1234");
         });
@@ -6281,7 +6273,8 @@ mod shutdown_tests {
         // proceeds to reset device B's channels rather than
         // bubbling out of the loop.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir_a = base.join("dev_a");
             let dir_b = base.join("dev_b");
             seed_pwm_dir(&dir_a, b"1").await;
@@ -6333,7 +6326,6 @@ mod shutdown_tests {
             assert_eq!(b_after.trim(), "2", "dev_b should have been reset");
 
             drop(permit_a);
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -6347,7 +6339,8 @@ mod shutdown_tests {
     #[serial]
     fn shutdown_bounds_a_wedged_device_and_still_resets_the_others() {
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir_wedged = base.join("dev_wedged");
             let dir_healthy = base.join("dev_healthy");
             seed_pwm_dir(&dir_wedged, b"1").await;
@@ -6398,8 +6391,6 @@ mod shutdown_tests {
                 .await
                 .unwrap();
             assert_eq!(healthy_after.trim(), "2", "healthy device should be reset");
-
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -6414,7 +6405,8 @@ mod shutdown_tests {
     #[serial]
     fn unreachable_devices_reports_only_the_wedged_one() {
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir_wedged = base.join("dev_wedged");
             let dir_healthy = base.join("dev_healthy");
             seed_pwm_dir(&dir_wedged, b"1").await;
@@ -6452,8 +6444,6 @@ mod shutdown_tests {
                 reported[0].consecutive_timeouts,
                 device_io::UNREACHABLE_AFTER_TIMEOUTS
             );
-
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -6463,7 +6453,8 @@ mod shutdown_tests {
         // Regression: shutdown returns Ok and resets the channel
         // when no permit is contended and the writes succeed.
         cc_fs::test_runtime(async {
-            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let dir = base.join("dev");
             seed_pwm_dir(&dir, b"1").await;
 
@@ -6484,8 +6475,6 @@ mod shutdown_tests {
             );
             let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
             assert_eq!(after.trim(), "2", "channel should be reset to default");
-
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
@@ -6609,17 +6598,6 @@ mod init_timeout_tests {
     use super::*;
     use crate::cc_fs;
     use serial_test::serial;
-    use uuid::Uuid;
-
-    async fn setup_dir() -> PathBuf {
-        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-        cc_fs::create_dir_all(&base).await.unwrap();
-        base
-    }
-
-    async fn teardown_dir(base: &Path) {
-        let _ = cc_fs::remove_dir_all(base).await;
-    }
 
     fn temp_channel(number: u8, name: &str, temp_path: PathBuf) -> HwmonChannelInfo {
         HwmonChannelInfo {
@@ -6694,7 +6672,8 @@ mod init_timeout_tests {
     #[serial]
     fn map_into_model_gives_apple_fans_a_duty_from_the_first_status() {
         cc_fs::test_runtime(async {
-            let base = setup_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let intel_limits = [
                 ("fan1_input", "3100"),
                 ("fan1_min", "2000"),
@@ -6736,7 +6715,6 @@ mod init_timeout_tests {
                 .map_into_our_device_model(drivers, &HashMap::new(), Duration::from_secs(5))
                 .await;
 
-            teardown_dir(&base).await;
             assert!(result.is_ok());
             assert_eq!(repo.devices.len(), 3);
             let preloaded = repo.preloaded_statuses.borrow();
@@ -6767,7 +6745,8 @@ mod init_timeout_tests {
         // timeout, the device is registered normally. Guards against
         // the timeout machinery breaking the happy path.
         cc_fs::test_runtime(async {
-            let base = setup_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             cc_fs::write(base.join("temp1_input"), b"40000".to_vec())
                 .await
                 .unwrap();
@@ -6788,8 +6767,6 @@ mod init_timeout_tests {
                 "map should succeed on happy path: {result:?}"
             );
             assert_eq!(repo.devices.len(), 1, "one device should be registered");
-
-            teardown_dir(&base).await;
         });
     }
 
@@ -6803,7 +6780,8 @@ mod init_timeout_tests {
         // The test pairs the FIFO afterward so the leaked blocking
         // task completes cleanly.
         cc_fs::test_runtime(async {
-            let base = setup_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let fifo_path = base.join("temp1_input");
             let path_c = std::ffi::CString::new(fifo_path.to_str().unwrap()).unwrap();
             // SAFETY: path is a valid CString; mode is a standard
@@ -6869,8 +6847,6 @@ mod init_timeout_tests {
                 }
             })
             .await;
-
-            teardown_dir(&base).await;
         });
     }
 
@@ -6896,7 +6872,8 @@ mod init_timeout_tests {
         // A fan whose first read fails at init still gets a
         // per-channel failsafe entry via the synth-based seed.
         cc_fs::test_runtime(async {
-            let base = setup_dir().await;
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let driver = driver_for_test(
                 "test_no_files",
                 &base,
@@ -6925,8 +6902,6 @@ mod init_timeout_tests {
                     "fan1 should have a failsafe value even if it never read successfully"
                 );
             }
-
-            teardown_dir(&base).await;
         });
     }
 }
@@ -7493,7 +7468,6 @@ mod channel_attributes_tests {
     use super::*;
     use crate::cc_fs;
     use serial_test::serial;
-    use uuid::Uuid;
 
     const TYPE_INDEX: TypeIndex = 1;
 
@@ -7507,9 +7481,9 @@ mod channel_attributes_tests {
     }
 
     /// A temp1 with one real limit and one nvme-style placeholder, and a capped power1.
-    async fn seeded_dir() -> PathBuf {
-        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-        cc_fs::create_dir_all(&base).await.unwrap();
+    async fn seeded_dir() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().to_path_buf();
         for (name, contents) in [
             ("temp1_input", "45000"),
             ("temp1_crit", "100000"),
@@ -7521,7 +7495,7 @@ mod channel_attributes_tests {
                 .await
                 .unwrap();
         }
-        base
+        tmp
     }
 
     /// Registers one device with a temp1 and a power1 channel in `base`, skipping init.
@@ -7573,7 +7547,8 @@ mod channel_attributes_tests {
         // Goal: the repository resolves the channel and returns its sanitized attributes.
         // Method: a registered device whose temp1 has one real limit and one placeholder.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
 
@@ -7582,7 +7557,6 @@ mod channel_attributes_tests {
             assert_eq!(attributes.len(), 1, "placeholder must be dropped");
             assert_eq!(attributes[0].name, "temp1_crit");
             assert_eq!(attributes[0].value, 100.0);
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7593,7 +7567,8 @@ mod channel_attributes_tests {
         // resolves to the channel's `power1_` attributes. Method: query `power1_average`,
         // then the bare feature name, which is not a channel.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
 
@@ -7611,7 +7586,6 @@ mod channel_attributes_tests {
             );
             assert_eq!(attributes[0].value, 230.0);
             assert!(feature_name.is_empty());
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7621,7 +7595,8 @@ mod channel_attributes_tests {
         // Goal: a channel this driver does not have yields an empty list, while an unknown
         // device is an error. Method: query both against one registered device.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
 
@@ -7630,7 +7605,6 @@ mod channel_attributes_tests {
 
             assert!(unknown_channel.is_empty());
             assert!(unknown_device.is_err());
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7640,7 +7614,8 @@ mod channel_attributes_tests {
         // Goal: a device busy past the permit timeout fails the request instead of blocking
         // the API actor. Method: hold the permit and shorten the read permit timeout.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
             repo.device_read_permit_timeout = Duration::from_millis(100);
@@ -7653,7 +7628,6 @@ mod channel_attributes_tests {
             let err = result.expect_err("held permit must time out");
             assert!(err.to_string().contains("TIMEOUT"), "{err}");
             assert!(started.elapsed() >= Duration::from_millis(100));
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7664,7 +7638,8 @@ mod channel_attributes_tests {
         // instead of a timeout error. Method: hold the permit, cancel the shutdown token, and
         // ask for attributes; a permit timeout would surface as an error, not an empty list.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
             repo.device_read_permit_timeout = Duration::from_secs(2);
@@ -7675,7 +7650,6 @@ mod channel_attributes_tests {
             let attributes = repo.channel_attributes(&uid, "temp1").await.unwrap();
 
             assert!(attributes.is_empty());
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7686,7 +7660,8 @@ mod channel_attributes_tests {
         // spin it up. Method: a device whose attribute files exist, with its permit held and a
         // short permit timeout; reaching the read path would fail with a timeout instead.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let uid = insert_device(&mut repo, &base, DeviceIo::default());
             repo.device_read_permit_timeout = Duration::from_millis(100);
@@ -7707,7 +7682,6 @@ mod channel_attributes_tests {
 
             assert!(suspended.is_empty());
             assert_eq!(awake.len(), 1, "the same files are returned once awake");
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -7718,7 +7692,8 @@ mod channel_attributes_tests {
         // spending a reply budget per attribute. Method: wedge its IO until it is marked
         // unreachable, then ask for attributes.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let mut repo = empty_repo();
             let (wedged_io, _rx) = DeviceIo::wedged_for_test(Duration::from_millis(10));
             let uid = insert_device(&mut repo, &base, wedged_io.clone());
@@ -7731,7 +7706,6 @@ mod channel_attributes_tests {
 
             let err = result.expect_err("unreachable device must error");
             assert!(err.to_string().contains("not responding"), "{err}");
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
