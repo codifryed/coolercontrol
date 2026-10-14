@@ -612,7 +612,8 @@ mod tests {
     }
 
     // Goal: negative space. A file that already names the new UID is left untouched, so a
-    // half-applied migration is never merged into an ambiguous state.
+    // half-applied migration is never merged into an ambiguous state. Method: seed both UIDs
+    // and assert the file is unchanged.
     #[test]
     #[serial_test::serial]
     fn migrate_uid_in_file_skips_when_current_present() {
@@ -632,7 +633,8 @@ mod tests {
     }
 
     // Goal: the overwhelmingly common case. Nothing references this device, so the file
-    // must be left byte-identical rather than rewritten on every boot.
+    // must be left byte-identical rather than rewritten on every boot. Method: seed another UID
+    // and assert the file is unchanged.
     #[test]
     #[serial_test::serial]
     fn migrate_uid_in_file_leaves_unrelated_entries_alone() {
@@ -649,7 +651,8 @@ mod tests {
         });
     }
 
-    // Goal: a store that was never written is the first-run case, not an error.
+    // Goal: a store that was never written is the first-run case, not an error. Method: migrate
+    // a path that does not exist and assert nothing moved.
     #[test]
     #[serial_test::serial]
     fn migrate_uid_in_file_ignores_a_missing_file() {

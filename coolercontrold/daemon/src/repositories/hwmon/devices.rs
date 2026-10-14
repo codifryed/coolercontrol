@@ -1475,6 +1475,7 @@ mod tests {
 
     // Goal: a client behind a mux keeps its path identity. The mux adapter's parent path and
     // its name both carry the outer bus number, so the adapter identity would be no steadier.
+    // Method: nest the client's adapter under another adapter and compare both identities.
     #[test]
     #[serial]
     fn muxed_i2c_client_keeps_its_path_identity() {
