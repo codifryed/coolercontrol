@@ -240,18 +240,10 @@ impl LcdCommander {
                     }
                 })?;
             let temp = device_read_lock
-                .status_history
-                .iter()
-                .last()
-                .and_then(|status| {
-                    status
-                        .temps
-                        .iter()
-                        .rfind(|temp_status| temp_status.name == setting_temp_source.temp_name)
-                })
-                .map(|temp_status|
+                .latest_temp(&setting_temp_source.temp_name)
+                .map(|temp|
                     // rounded to nearest 10th degree to avoid updating on minuscule degree changes
-                    (temp_status.temp * 10.).round() / 10.)?;
+                    (temp * 10.).round() / 10.)?;
             Some(TempData { temp, label })
         } else {
             error!(

@@ -107,8 +107,7 @@ impl From<&Device> for DeviceStatusDto {
             d_type: device.d_type,
             type_index: device.type_index,
             uid: device.uid.clone(),
-            // Clone the Arc pointer, not the data - O(1) operation
-            status_history: Arc::clone(&device.status_history),
+            status_history: device.snapshot_all(),
         }
     }
 }

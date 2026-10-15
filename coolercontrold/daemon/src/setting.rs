@@ -12,10 +12,11 @@ use strum::{Display, EnumString};
 use thiserror::Error;
 
 use crate::device::ChannelName;
+use crate::device::ChannelSample;
+use crate::device::Device;
 use crate::device::DeviceName;
 use crate::device::DeviceUID;
 use crate::device::Duty;
-use crate::device::Status;
 use crate::device::Temp;
 use crate::device::TempName;
 use crate::device::UID;
@@ -724,20 +725,31 @@ impl CustomSensorMetric {
         self == Self::Temp
     }
 
-    /// This metric's value of the temp or channel `name` in `status`. The last entry wins
-    /// should a name repeat. `None` when the name is absent or carries no such value.
-    pub fn read(self, status: &Status, name: &str) -> Option<f64> {
-        let channel = || status.channels.iter().rfind(|channel| channel.name == name);
+    /// This metric's value of the temp or channel `name` in `device`'s history entry `index`
+    /// (0 is the oldest). `None` when the name is absent or carries no such value.
+    pub fn read_at(self, device: &Device, index: usize, name: &str) -> Option<f64> {
         match self {
-            Self::Temp => status
-                .temps
-                .iter()
-                .rfind(|temp| temp.name == name)
-                .map(|temp| temp.temp),
-            Self::Duty => channel()?.duty,
-            Self::RPM => channel()?.rpm.map(f64::from),
-            Self::Freq => channel()?.freq.map(f64::from),
-            Self::Watts => channel()?.watts,
+            Self::Temp => device.temp_at(index, name),
+            Self::Duty | Self::RPM | Self::Freq | Self::Watts => {
+                self.of_channel(device.channel_at(index, name)?)
+            }
+        }
+    }
+
+    /// This metric's value of the temp or channel `name` in `device`'s newest entry.
+    pub fn read_latest(self, device: &Device, name: &str) -> Option<f64> {
+        let index = device.history_len().checked_sub(1)?;
+        self.read_at(device, index, name)
+    }
+
+    /// This metric's value in one channel sample. A channel carries no temp.
+    pub fn of_channel(self, sample: ChannelSample) -> Option<f64> {
+        match self {
+            Self::Temp => None,
+            Self::Duty => sample.duty,
+            Self::RPM => sample.rpm.map(f64::from),
+            Self::Freq => sample.freq.map(f64::from),
+            Self::Watts => sample.watts,
         }
     }
 
@@ -1967,7 +1979,7 @@ mod tests {
     // or present without that value, reads as nothing: rpm is not duty, a channel is no temp.
     #[test]
     fn metric_reads_its_own_value() {
-        use crate::device::{ChannelStatus, TempStatus};
+        use crate::device::{ChannelStatus, DeviceInfo, DeviceType, Status, TempStatus};
 
         let status = Status {
             temps: vec![TempStatus {
@@ -1990,18 +2002,29 @@ mod tests {
             ],
             ..Default::default()
         };
+        let mut device = Device::new(
+            "device".to_string(),
+            DeviceType::Hwmon,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(status, 1.0);
+        let read = |metric: CustomSensorMetric, name: &str| metric.read_latest(&device, name);
 
-        assert_eq!(CustomSensorMetric::Temp.read(&status, "temp1"), Some(42.5));
-        assert_eq!(CustomSensorMetric::RPM.read(&status, "fan1"), Some(1200.));
-        assert_eq!(CustomSensorMetric::Duty.read(&status, "fan1"), Some(40.));
-        assert_eq!(CustomSensorMetric::Freq.read(&status, "cpu"), Some(3600.));
-        assert_eq!(CustomSensorMetric::Watts.read(&status, "cpu"), Some(65.5));
+        assert_eq!(read(CustomSensorMetric::Temp, "temp1"), Some(42.5));
+        assert_eq!(read(CustomSensorMetric::RPM, "fan1"), Some(1200.));
+        assert_eq!(read(CustomSensorMetric::Duty, "fan1"), Some(40.));
+        assert_eq!(read(CustomSensorMetric::Freq, "cpu"), Some(3600.));
+        assert_eq!(read(CustomSensorMetric::Watts, "cpu"), Some(65.5));
 
-        assert_eq!(CustomSensorMetric::Watts.read(&status, "fan1"), None);
-        assert_eq!(CustomSensorMetric::RPM.read(&status, "cpu"), None);
-        assert_eq!(CustomSensorMetric::Temp.read(&status, "fan1"), None);
-        assert_eq!(CustomSensorMetric::Duty.read(&status, "temp1"), None);
-        assert_eq!(CustomSensorMetric::RPM.read(&status, "missing"), None);
+        assert_eq!(read(CustomSensorMetric::Watts, "fan1"), None);
+        assert_eq!(read(CustomSensorMetric::RPM, "cpu"), None);
+        assert_eq!(read(CustomSensorMetric::Temp, "fan1"), None);
+        assert_eq!(read(CustomSensorMetric::Duty, "temp1"), None);
+        assert_eq!(read(CustomSensorMetric::RPM, "missing"), None);
     }
 
     // Temperatures keep the offset range they always had; every other metric gets the wide one.

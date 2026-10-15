@@ -248,7 +248,7 @@ pub struct Device {
     device_id: Option<String>,
 
     /// A double-sided Vector of statuses wrapped in Arc for efficient sharing
-    pub status_history: Arc<VecDeque<Status>>,
+    status_history: Arc<VecDeque<Status>>,
 
     /// Specific Liquidctl device information
     pub lc_info: Option<LcInfo>,
@@ -287,7 +287,7 @@ impl Debug for Device {
             self.d_type,
             self.type_index,
             self.uid,
-            self.status_current(),
+            self.status_history.back(),
             self.lc_info,
             self.info,
         )
@@ -337,13 +337,204 @@ impl Device {
         (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
     }
 
-    /// Returns the most recent status in the status history, if it exists.
-    ///
-    /// Returns:
-    ///
-    /// an `Option<Status>`.
-    pub fn status_current(&self) -> Option<Status> {
+    /// Entries in the status history. Index 0 is the oldest.
+    pub fn history_len(&self) -> usize {
+        self.status_history.len()
+    }
+
+    pub fn latest_timestamp(&self) -> Option<DateTime<Local>> {
+        self.status_history.back().map(|status| status.timestamp)
+    }
+
+    /// The newest entry's value of temp `name`.
+    pub fn latest_temp(&self, name: &str) -> Option<Temp> {
+        let index = self.history_len().checked_sub(1)?;
+        self.temp_at(index, name)
+    }
+
+    /// The newest entry's values of channel `name`.
+    pub fn latest_channel(&self, name: &str) -> Option<ChannelSample> {
+        let index = self.history_len().checked_sub(1)?;
+        self.channel_at(index, name)
+    }
+
+    /// The newest entry's temps, in entry order.
+    pub fn latest_temps(&self) -> impl Iterator<Item = (&str, Temp)> {
+        self.status_history
+            .back()
+            .into_iter()
+            .flat_map(|status| status.temps.iter())
+            .map(|temp| (temp.name.as_str(), temp.temp))
+    }
+
+    /// The newest entry's channels, in entry order.
+    pub fn latest_channels(&self) -> impl Iterator<Item = (&str, ChannelSample)> {
+        self.status_history
+            .back()
+            .into_iter()
+            .flat_map(|status| status.channels.iter())
+            .map(|channel| (channel.name.as_str(), ChannelSample::of(channel)))
+    }
+
+    /// Temp `name` at history `index`. The last one wins should a name repeat in an entry.
+    pub fn temp_at(&self, index: usize, name: &str) -> Option<Temp> {
+        self.status_history
+            .get(index)?
+            .temps
+            .iter()
+            .rfind(|temp| temp.name == name)
+            .map(|temp| temp.temp)
+    }
+
+    /// Channel `name` at history `index`. The last one wins should a name repeat in an entry.
+    pub fn channel_at(&self, index: usize, name: &str) -> Option<ChannelSample> {
+        self.status_history
+            .get(index)?
+            .channels
+            .iter()
+            .rfind(|channel| channel.name == name)
+            .map(ChannelSample::of)
+    }
+
+    /// Temp `name` over the newest `count` entries, oldest first. Entries without it are
+    /// skipped.
+    pub fn temp_tail(&self, name: &str, count: usize) -> impl Iterator<Item = Temp> {
+        let len = self.history_len();
+        (len.saturating_sub(count)..len).filter_map(move |index| self.temp_at(index, name))
+    }
+
+    /// Fills the duty of channel `name` wherever an entry has its rpm but no duty, with
+    /// `duty_for_rpm`. Returns whether any entry was filled.
+    pub fn backfill_channel_duty(
+        &mut self,
+        name: &str,
+        duty_for_rpm: impl Fn(RPM) -> Option<f64>,
+    ) -> bool {
+        let history = Arc::make_mut(&mut self.status_history);
+        let mut filled_any = false;
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name != name || channel.duty.is_some() {
+                    continue;
+                }
+                let Some(duty) = channel.rpm.and_then(&duty_for_rpm) else {
+                    continue;
+                };
+                channel.duty = Some(duty);
+                filled_any = true;
+            }
+        }
+        filled_any
+    }
+
+    /// Removes the duty of channel `name` from every entry.
+    pub fn clear_channel_duty(&mut self, name: &str) {
+        let history = Arc::make_mut(&mut self.status_history);
+        for status in history.iter_mut() {
+            for channel in &mut status.channels {
+                if channel.name == name {
+                    channel.duty = None;
+                }
+            }
+        }
+    }
+
+    /// Adds temp `name` to every entry, with `values[index]` at history `index`.
+    pub fn add_temp_column(&mut self, name: &str, values: &[Temp]) {
+        assert_eq!(values.len(), self.history_len());
+        let history = Arc::make_mut(&mut self.status_history);
+        for (status, value) in history.iter_mut().zip(values) {
+            status.temps.push(TempStatus {
+                name: name.to_string(),
+                temp: *value,
+            });
+        }
+    }
+
+    /// Adds channel `name` to every entry, with `samples[index]` at history `index`.
+    pub fn add_channel_column(&mut self, name: &str, samples: &[ChannelSample]) {
+        assert_eq!(samples.len(), self.history_len());
+        let history = Arc::make_mut(&mut self.status_history);
+        for (status, sample) in history.iter_mut().zip(samples) {
+            status.channels.push(sample.to_status(name));
+        }
+    }
+
+    /// Removes the temp or channel `name` from every entry.
+    pub fn remove_status_name(&mut self, name: &str) {
+        let history = Arc::make_mut(&mut self.status_history);
+        for status in history.iter_mut() {
+            status.temps.retain(|temp| temp.name != name);
+            status.channels.retain(|channel| channel.name != name);
+        }
+    }
+
+    /// The whole history, for the API.
+    pub fn snapshot_all(&self) -> Arc<VecDeque<Status>> {
+        Arc::clone(&self.status_history)
+    }
+
+    /// The entries stamped after `after`, judged entry by entry.
+    pub fn snapshot_since(&self, after: DateTime<Local>) -> Arc<VecDeque<Status>> {
+        let history = self
+            .status_history
+            .iter()
+            .filter(|status| status.timestamp > after)
+            .cloned()
+            .collect();
+        Arc::new(history)
+    }
+
+    /// The newest entry, for the API.
+    pub fn snapshot_recent(&self) -> Arc<VecDeque<Status>> {
+        Arc::new(self.status_history.back().cloned().into_iter().collect())
+    }
+
+    /// Every entry's timestamp with only the temp or channel `name`.
+    pub fn snapshot_name(&self, name: &str) -> Vec<Status> {
+        self.status_history
+            .iter()
+            .map(|status| Self::only_name(status, name))
+            .collect()
+    }
+
+    /// The newest entry's timestamp with only the temp or channel `name`.
+    pub fn snapshot_name_recent(&self, name: &str) -> Vec<Status> {
+        self.status_history
+            .back()
+            .map(|status| Self::only_name(status, name))
+            .into_iter()
+            .collect()
+    }
+
+    fn only_name(status: &Status, name: &str) -> Status {
+        Status {
+            timestamp: status.timestamp,
+            temps: status
+                .temps
+                .iter()
+                .filter(|temp| temp.name == name)
+                .cloned()
+                .collect(),
+            channels: status
+                .channels
+                .iter()
+                .filter(|channel| channel.name == name)
+                .cloned()
+                .collect(),
+        }
+    }
+
+    /// The newest entry as a `Status`. Allocates; tests only.
+    #[cfg(test)]
+    pub fn latest_status(&self) -> Option<Status> {
         self.status_history.back().cloned()
+    }
+
+    /// The whole history as `Status`es, oldest first. Allocates; tests only.
+    #[cfg(test)]
+    pub fn history_statuses(&self) -> Vec<Status> {
+        self.status_history.iter().cloned().collect()
     }
 
     /// Reset `status_history` and seed it with zeroed entries plus `status`
@@ -379,12 +570,24 @@ impl Device {
         self.push_and_augment(status);
     }
 
-    /// Replace the entire status history with synthetic zeroed entries. Used
-    /// on wake from sleep when cached values are stale but no real reading
-    /// is available yet. Does NOT record stats; the zeroed wake template
-    /// is not a real reading and would taint min/avg.
+    /// Re-seed the history from its newest entry, as `initialize_status_history_with` would
+    /// from a fresh reading. No-op on an empty history.
+    pub fn initialize_status_history_from_latest(&mut self, poll_rate: f64) {
+        let Some(latest) = self.status_history.back().cloned() else {
+            return;
+        };
+        self.initialize_status_history_with(latest, poll_rate);
+    }
+
+    /// Replace the entire status history with zeroed copies of the newest entry, the newest
+    /// stamped `timestamp`. Used on wake from sleep when cached values are stale but no real
+    /// reading is available yet. Does NOT record stats; the zeroed wake template is not a
+    /// real reading and would taint min/avg. No-op on an empty history.
     #[allow(clippy::cast_precision_loss)]
-    pub fn zero_status_history(&mut self, template: &Status, poll_rate: f64) {
+    pub fn zero_status_history(&mut self, timestamp: DateTime<Local>, poll_rate: f64) {
+        let Some(template) = self.status_history.back() else {
+            return;
+        };
         let zeroed_temps = build_zeroed_temps(&template.temps);
         let zeroed_channels = build_zeroed_channels(&template.channels);
         let history = Arc::make_mut(&mut self.status_history);
@@ -392,13 +595,13 @@ impl Device {
         let status_stack_size = Self::calc_history_stack_size(poll_rate);
         for pos in (1..status_stack_size).rev() {
             history.push_back(Status {
-                timestamp: template.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
+                timestamp: timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             });
         }
         history.push_back(Status {
-            timestamp: template.timestamp,
+            timestamp,
             temps: zeroed_temps,
             channels: zeroed_channels,
         });
@@ -546,6 +749,39 @@ pub struct ChannelStatus {
     pub watts: Option<Watts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
+}
+
+/// One channel's values in one history entry. A field is `None` when the entry lacks it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ChannelSample {
+    pub rpm: Option<RPM>,
+    pub duty: Option<f64>,
+    pub freq: Option<Mhz>,
+    pub watts: Option<Watts>,
+    pub pwm_mode: Option<u8>,
+}
+
+impl ChannelSample {
+    fn of(channel: &ChannelStatus) -> Self {
+        Self {
+            rpm: channel.rpm,
+            duty: channel.duty,
+            freq: channel.freq,
+            watts: channel.watts,
+            pwm_mode: channel.pwm_mode,
+        }
+    }
+
+    pub fn to_status(self, name: &str) -> ChannelStatus {
+        ChannelStatus {
+            name: name.to_string(),
+            rpm: self.rpm,
+            duty: self.duty,
+            freq: self.freq,
+            watts: self.watts,
+            pwm_mode: self.pwm_mode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -1105,14 +1341,8 @@ mod tests {
             vec![("cpu", 40.0)],
             vec![channel("fan1", Some(50.0), Some(1200))],
         ));
-        // Wake-from-sleep: engine passes a zeroed template. Stats must be untouched.
-        device.zero_status_history(
-            &status_with(
-                vec![("cpu", 0.0)],
-                vec![channel("fan1", Some(0.0), Some(0))],
-            ),
-            POLL_RATE,
-        );
+        // Wake-from-sleep zeroes the history. Stats must be untouched.
+        device.zero_status_history(Local::now(), POLL_RATE);
         let stats = device.stats();
         assert_eq!(stats.temps.get("cpu").unwrap().count, 1);
         assert_eq!(stats.temps.get("cpu").unwrap().min, 40.0);
@@ -1277,7 +1507,7 @@ mod tests {
             POLL_RATE,
         );
         assert_eq!(*augmenter.invocations.borrow(), 1);
-        let latest = device.status_current().unwrap();
+        let latest = device.latest_status().unwrap();
         let fan1 = latest.channels.iter().find(|c| c.name == "fan1").unwrap();
         assert_eq!(fan1.duty, Some(77.0));
     }

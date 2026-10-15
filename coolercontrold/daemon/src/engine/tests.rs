@@ -2276,7 +2276,7 @@ mod engine_tests {
                 .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
             push_channel_status(&device, channel.clone(), Some(1000), 50.0);
 
-            let observed = device.borrow().status_current().unwrap();
+            let observed = device.borrow().latest_status().unwrap();
             let chan = observed
                 .channels
                 .iter()
@@ -2307,7 +2307,7 @@ mod engine_tests {
                 .initialize_status_history_with(Status::default(), 1.0);
             push_channel_status(&device, channel.clone(), Some(1000), 50.0);
 
-            let observed = device.borrow().status_current().unwrap();
+            let observed = device.borrow().latest_status().unwrap();
             let chan = observed
                 .channels
                 .iter()
@@ -2337,7 +2337,7 @@ mod engine_tests {
                 .insert_unsaved((device_uid, channel.clone()), sample_smooth_calibration());
             push_channel_status(&device, channel.clone(), None, 50.0);
 
-            let observed = device.borrow().status_current().unwrap();
+            let observed = device.borrow().latest_status().unwrap();
             let chan = observed
                 .channels
                 .iter()
@@ -2374,7 +2374,7 @@ mod engine_tests {
             // device-derived value rather than dropping to 0%.
             push_channel_status(&device, channel.clone(), Some(0), 50.0);
 
-            let observed = device.borrow().status_current().unwrap();
+            let observed = device.borrow().latest_status().unwrap();
             let chan = observed
                 .channels
                 .iter()
@@ -2743,7 +2743,7 @@ mod engine_tests {
             calibration_store.insert_unsaved((device_uid, channel.clone()), cal);
             push_channel_status(&device, channel.clone(), Some(1000), 50.0);
 
-            let observed = device.borrow().status_current().unwrap();
+            let observed = device.borrow().latest_status().unwrap();
             let chan = observed
                 .channels
                 .iter()
@@ -2800,11 +2800,8 @@ mod engine_tests {
             assert!(filled, "backfill must report filling entries");
 
             let observed = device.borrow();
-            assert!(
-                observed.status_history.is_empty().not(),
-                "history must be populated"
-            );
-            for status in observed.status_history.iter() {
+            assert!(observed.history_len() > 0, "history must be populated");
+            for status in observed.history_statuses().iter() {
                 let chan = status
                     .channels
                     .iter()
@@ -2840,7 +2837,7 @@ mod engine_tests {
             assert!(filled.not(), "stepped calibration must not fill anything");
 
             let observed = device.borrow();
-            for status in observed.status_history.iter() {
+            for status in observed.history_statuses().iter() {
                 let chan = status
                     .channels
                     .iter()
@@ -2898,7 +2895,7 @@ mod engine_tests {
                 "with no rpm available, backfill must report false"
             );
             let observed = device.borrow();
-            for status in observed.status_history.iter() {
+            for status in observed.history_statuses().iter() {
                 let chan = status
                     .channels
                     .iter()
@@ -2942,11 +2939,8 @@ mod engine_tests {
             engine.clear_history_duties_for_channel(&(device_uid, channel.clone()));
 
             let observed = device.borrow();
-            assert!(
-                observed.status_history.is_empty().not(),
-                "history must be populated"
-            );
-            for status in observed.status_history.iter() {
+            assert!(observed.history_len() > 0, "history must be populated");
+            for status in observed.history_statuses().iter() {
                 let chan = status
                     .channels
                     .iter()
@@ -2988,7 +2982,7 @@ mod engine_tests {
             engine.clear_history_duties_for_channel(&(device_uid, "fan1".to_string()));
 
             let observed = device.borrow();
-            for status in observed.status_history.iter() {
+            for status in observed.history_statuses().iter() {
                 let fan1 = status
                     .channels
                     .iter()

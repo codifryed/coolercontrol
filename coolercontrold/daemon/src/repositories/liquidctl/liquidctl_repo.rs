@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelKind, ChannelName, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp,
-    TempInfo, TypeIndex, UID,
+    ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
+    Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
@@ -1480,9 +1480,19 @@ impl LiquidctlRepo {
         let poll_rate = self.config.get_settings()?.poll_rate;
         for device_lock in self.devices.values() {
             let device = device_lock.borrow();
-            let recent_status = device.status_current().unwrap();
+            let channels: Vec<ChannelStatus> = device
+                .latest_channels()
+                .map(|(name, sample)| sample.to_status(name))
+                .collect();
+            let temps: Vec<TempStatus> = device
+                .latest_temps()
+                .map(|(name, temp)| TempStatus {
+                    name: name.to_string(),
+                    temp,
+                })
+                .collect();
             let (channel_failsafes, temp_failsafes) =
-                failsafe::create_failsafe_data(&recent_status.channels, &recent_status.temps);
+                failsafe::create_failsafe_data(&channels, &temps);
             if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
                 self.failsafe_statuses
                     .borrow_mut()
@@ -1491,7 +1501,7 @@ impl LiquidctlRepo {
             drop(device);
             device_lock
                 .borrow_mut()
-                .initialize_status_history_with(recent_status, poll_rate);
+                .initialize_status_history_from_latest(poll_rate);
         }
         Ok(())
     }

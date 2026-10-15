@@ -1083,24 +1083,15 @@ impl AlertController {
             return Err("Device not found");
         };
         let device_borrow = device.borrow();
-        // Read the newest status in place: cloning the full Status per source
-        // per tick would be hot-path allocation for a single scalar.
-        let Some(most_recent_status) = device_borrow.status_history.back() else {
+        if device_borrow.history_len() == 0 {
             return Err("Device has no current status");
-        };
+        }
         if source.channel_metric == ChannelMetric::Temp {
-            return most_recent_status
-                .temps
-                .iter()
-                .find(|temp| temp.name == source.channel_name)
-                .map(|temp| temp.temp)
+            return device_borrow
+                .latest_temp(&source.channel_name)
                 .ok_or("Device Channel not found");
         }
-        let Some(channel_status) = most_recent_status
-            .channels
-            .iter()
-            .find(|channel| channel.name == source.channel_name)
-        else {
+        let Some(channel_status) = device_borrow.latest_channel(&source.channel_name) else {
             return Err("Device Channel not found");
         };
         match source.channel_metric {

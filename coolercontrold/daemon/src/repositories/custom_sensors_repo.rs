@@ -11,14 +11,13 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::string::ToString;
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelSample, ChannelStatus, Device, DeviceInfo,
+    DeviceType, DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus, UID,
 };
 use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::overrides::OverridesController;
@@ -391,38 +390,60 @@ impl CustomSensorsRepo {
             }
             _ => None,
         };
-        let mut status_history = self
+        // Computed before the device is borrowed mutably: a parent's backfill reads its
+        // children's history on the same device.
+        let history_len = self
             .custom_sensor_device
             .as_ref()
             .unwrap()
             .borrow()
-            .status_history
-            .clone();
-        // Get mutable access to the VecDeque (will clone if there are other Arc refs)
-        let history = Arc::make_mut(&mut status_history);
-        let newest_index = history.len().saturating_sub(1);
-        for (index, status) in history.iter_mut().enumerate() {
+            .history_len();
+        let newest_index = history_len.saturating_sub(1);
+        let mut values = Vec::with_capacity(history_len);
+        for index in 0..history_len {
             let raw = match file_value {
                 Some(value) if index == newest_index => value,
                 Some(_) => 0.,
                 None => self.backfill_value(sensor, index)?,
             };
-            let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
-            Self::push_value(
-                status,
-                SensorValue {
-                    id: sensor.id.clone(),
-                    metric: sensor.metric,
-                    value,
-                },
-            );
+            values.push(Self::reported_value(sensor.metric, raw).unwrap_or(0.));
         }
-        self.custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow_mut()
-            .status_history = status_history;
+        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        if sensor.metric.is_temp() {
+            device.add_temp_column(&sensor.id, &values);
+        } else {
+            let samples: Vec<ChannelSample> = values
+                .iter()
+                .map(|value| Self::channel_sample(sensor.metric, *value))
+                .collect();
+            device.add_channel_column(&sensor.id, &samples);
+        }
         Ok(())
+    }
+
+    /// A channel sensor's value as the channel the device reports. `reported_value` left
+    /// rpm and freq whole and inside the u32 range.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn channel_sample(metric: CustomSensorMetric, value: f64) -> ChannelSample {
+        match metric {
+            CustomSensorMetric::Temp => unreachable!("a temp sensor reports no channel"),
+            CustomSensorMetric::Duty => ChannelSample {
+                duty: Some(value),
+                ..Default::default()
+            },
+            CustomSensorMetric::RPM => ChannelSample {
+                rpm: Some(value as u32),
+                ..Default::default()
+            },
+            CustomSensorMetric::Freq => ChannelSample {
+                freq: Some(value as u32),
+                ..Default::default()
+            },
+            CustomSensorMetric::Watts => ChannelSample {
+                watts: Some(value),
+                ..Default::default()
+            },
+        }
     }
 
     /// A new sensor's computed value at history `index`, from its sources' values there.
@@ -492,11 +513,9 @@ impl CustomSensorsRepo {
             let Some(source_device) = some_source_device else {
                 continue;
             };
-            let some_value = source_device
-                .borrow()
-                .status_history
-                .get(index)
-                .and_then(|status| sensor.metric.read(status, &source.name));
+            let some_value = sensor
+                .metric
+                .read_at(&source_device.borrow(), index, &source.name);
             let Some(value) = some_value else {
                 let msg = format!(
                     "Source not found for Custom Sensor: \"{}\" has no {} value",
@@ -678,9 +697,7 @@ impl CustomSensorsRepo {
             return Self::child_value(metric, &source.name, values);
         }
         let source_device = self.all_devices.get(&source.device_uid)?;
-        let device = source_device.borrow();
-        let status = device.status_history.back()?;
-        metric.read(status, &source.name)
+        metric.read_latest(&source_device.borrow(), &source.name)
     }
 
     /// A child sensor's value this tick. A child of another metric is no source.
@@ -709,29 +726,19 @@ impl CustomSensorsRepo {
         debug_assert!(sample_count >= 1);
         let mut samples: VecDeque<Option<f64>> = VecDeque::with_capacity(sample_count);
         // Collect newest-first as the old walk did, then reverse into window order.
+        let push_newest = |samples: &mut VecDeque<Option<f64>>, device: &Device, count: usize| {
+            let len = device.history_len();
+            for index in (len.saturating_sub(count)..len).rev() {
+                samples.push_back(metric.read_at(device, index, &source.name));
+            }
+        };
         if source.device_uid == self.device_uid {
             samples.push_back(Self::child_value(metric, &source.name, values));
             if let Some(cs_device) = self.custom_sensor_device.as_ref() {
-                for status in cs_device
-                    .borrow()
-                    .status_history
-                    .iter()
-                    .rev()
-                    .take(sample_count - 1)
-                {
-                    samples.push_back(metric.read(status, &source.name));
-                }
+                push_newest(&mut samples, &cs_device.borrow(), sample_count - 1);
             }
         } else if let Some(source_device) = self.all_devices.get(&source.device_uid) {
-            for status in source_device
-                .borrow()
-                .status_history
-                .iter()
-                .rev()
-                .take(sample_count)
-            {
-                samples.push_back(metric.read(status, &source.name));
-            }
+            push_newest(&mut samples, &source_device.borrow(), sample_count);
         }
         samples.make_contiguous().reverse();
         SampleWindow {
@@ -762,14 +769,12 @@ impl CustomSensorsRepo {
             return samples;
         };
         let device_ref = source_device.borrow();
-        let history_len = device_ref.status_history.len();
+        let history_len = device_ref.history_len();
         let end = index.saturating_add(1).min(history_len);
         let start = end.saturating_sub(sample_count);
         for k in start..end {
-            if let Some(status) = device_ref.status_history.get(k) {
-                if let Some(sample) = metric.read(status, &source.name) {
-                    samples.push(sample);
-                }
+            if let Some(sample) = metric.read_at(&device_ref, k, &source.name) {
+                samples.push(sample);
             }
         }
         samples
@@ -1084,16 +1089,11 @@ impl CustomSensorsRepo {
     }
 
     fn remove_status_history_for_sensor(&self, sensor_id: &str) {
-        let mut device_lock = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
-        let history = Arc::make_mut(&mut device_lock.status_history);
-        for status in history {
-            status
-                .temps
-                .retain(|temp_status| temp_status.name != sensor_id);
-            status
-                .channels
-                .retain(|channel_status| channel_status.name != sensor_id);
-        }
+        self.custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .remove_status_name(sensor_id);
     }
 
     /// Verifies that the sensor is not already a child of another sensor
@@ -1551,18 +1551,11 @@ impl Repository for CustomSensorsRepo {
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(Rc::new(RefCell::new(custom_sensor_device)));
         self.update_statuses().await?;
-        let recent_status = self
-            .custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow()
-            .status_current()
-            .unwrap();
         self.custom_sensor_device
             .as_ref()
             .unwrap()
             .borrow_mut()
-            .initialize_status_history_with(recent_status, poll_rate);
+            .initialize_status_history_from_latest(poll_rate);
         if log::max_level() == log::LevelFilter::Debug {
             info!(
                 "Initialized Custom Sensors Device: {:?}",
@@ -3053,7 +3046,7 @@ mod tests {
                 .custom_sensor_device
                 .unwrap()
                 .borrow()
-                .status_current()
+                .latest_status()
                 .unwrap()
                 .temps;
             assert!(all_status_temps
@@ -3131,8 +3124,8 @@ mod tests {
             assert!(result.is_err());
             assert_eq!(repo.sensors.borrow().len(), 1);
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-            assert!(device.status_history.is_empty().not());
-            for status in device.status_history.iter() {
+            assert!(device.history_len() > 0);
+            for status in device.history_statuses().iter() {
                 let entry_count = status.temps.iter().filter(|t| t.name == "sensor").count();
                 assert_eq!(entry_count, 1);
             }
@@ -3391,7 +3384,7 @@ mod tests {
     /// Reads the latest temp the Custom Sensors device is reporting for `cs_id`.
     fn current_temp_for(repo: &CustomSensorsRepo, cs_id: &str) -> f64 {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-        let status = device.status_current().unwrap();
+        let status = device.latest_status().unwrap();
         status
             .temps
             .iter()
@@ -3977,7 +3970,7 @@ mod tests {
             // status_history entries for mix_bf (all backfilled) must be 0, not failsafe.
             // The sensor must NOT be in the failsafing set: backfill bypasses emit_failsafe.
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-            for status in device.status_history.iter() {
+            for status in device.history_statuses().iter() {
                 let entry = status
                     .temps
                     .iter()
@@ -4050,7 +4043,7 @@ mod tests {
     ) -> Option<f64> {
         let device = device.borrow();
         let mut temps: Vec<f64> = device
-            .status_history
+            .history_statuses()
             .iter()
             .rev()
             .take(sample_count)
@@ -4490,7 +4483,7 @@ mod tests {
     /// The channel the Custom Sensors device currently reports for `cs_id`.
     fn current_channel_for(repo: &CustomSensorsRepo, cs_id: &str) -> ChannelStatus {
         let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-        let status = device.status_current().unwrap();
+        let status = device.latest_status().unwrap();
         assert!(status.temps.iter().all(|temp| temp.name != cs_id));
         status
             .channels
@@ -4722,7 +4715,7 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.channels.is_empty());
             assert!(device
-                .status_history
+                .history_statuses()
                 .iter()
                 .all(|status| status.channels.is_empty()));
         });
@@ -4814,14 +4807,14 @@ mod tests {
                 .unwrap();
             {
                 let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
-                assert!(device.status_history.is_empty().not());
-                for status in device.status_history.iter() {
+                assert!(device.history_len() > 0);
+                for status in device.history_statuses().iter() {
                     assert_eq!(status.channels.len(), 1);
                     assert_eq!(status.channels[0].name, "rpm");
                     assert_eq!(status.temps.len(), 1);
                     assert_eq!(status.temps[0].name, "temp");
                 }
-                let newest = device.status_current().unwrap();
+                let newest = device.latest_status().unwrap();
                 assert_eq!(newest.channels[0].rpm, Some(1200));
                 assert_eq!(device.info.channels.len(), 1);
                 assert_eq!(device.info.temps.len(), 1);
@@ -4832,7 +4825,7 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.channels.is_empty());
             assert_eq!(device.info.temps.len(), 1);
-            for status in device.status_history.iter() {
+            for status in device.history_statuses().iter() {
                 assert!(status.channels.is_empty());
                 assert_eq!(status.temps.len(), 1);
             }
@@ -4860,8 +4853,8 @@ mod tests {
             let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
             assert!(device.info.temps.is_empty());
             assert!(device.info.channels.contains_key("watts"));
-            assert!(device.status_history.len() > 1);
-            for status in device.status_history.iter() {
+            assert!(device.history_len() > 1);
+            for status in device.history_statuses().iter() {
                 assert_eq!(status.channels.len(), 1);
                 assert!(status.channels[0].watts.is_some());
             }
