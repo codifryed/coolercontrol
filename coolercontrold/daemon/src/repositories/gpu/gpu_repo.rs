@@ -746,13 +746,12 @@ mod channel_attributes_tests {
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
     use serial_test::serial;
-    use std::path::{Path, PathBuf};
-    use uuid::Uuid;
+    use std::path::Path;
 
     /// amdgpu junction limits as reported on real hardware, hysteresis unset.
-    async fn seeded_dir() -> PathBuf {
-        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-        cc_fs::create_dir_all(&base).await.unwrap();
+    async fn seeded_dir() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().to_path_buf();
         for (name, contents) in [
             ("temp2_crit", "110000"),
             ("temp2_crit_hyst", "-273150"),
@@ -762,7 +761,7 @@ mod channel_attributes_tests {
                 .await
                 .unwrap();
         }
-        base
+        tmp
     }
 
     fn repo_with_amd_gpu(base: &Path, uid: &UID) -> GpuRepo {
@@ -793,7 +792,8 @@ mod channel_attributes_tests {
         // device that is not an AMD GPU (NVIDIA) reports none. Method: one AMD card registered
         // by hand, then a query for an unregistered uid.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let uid = "amd-gpu".to_string();
             let repo = repo_with_amd_gpu(&base, &uid);
 
@@ -807,7 +807,6 @@ mod channel_attributes_tests {
             assert_eq!(names, ["temp2_crit", "temp2_emergency"]);
             assert_eq!(temp2[1].value, 115.0);
             assert!(other.is_empty());
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 
@@ -817,7 +816,8 @@ mod channel_attributes_tests {
         // Goal: a busy AMD GPU fails the request after the permit timeout instead of blocking
         // the API actor. Method: hold its permit with a shortened read permit timeout.
         cc_fs::test_runtime(async {
-            let base = seeded_dir().await;
+            let tmp = seeded_dir().await;
+            let base = tmp.path().to_path_buf();
             let uid = "amd-gpu".to_string();
             let mut repo = repo_with_amd_gpu(&base, &uid);
             repo.device_read_permit_timeout = Duration::from_millis(100);
@@ -832,7 +832,6 @@ mod channel_attributes_tests {
 
             let err = result.expect_err("held permit must time out");
             assert!(err.to_string().contains("TIMEOUT"), "{err}");
-            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }

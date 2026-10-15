@@ -432,22 +432,22 @@ mod tests {
     /// reference would be executed or expanded as root. Each must arrive as literal text.
     #[test]
     fn arguments_are_never_expanded_or_executed_by_the_eval() {
+        let tmp = tempfile::tempdir().unwrap();
+        let probe = tmp.path().join("injection-probe");
         for payload in [
-            "`id`",
-            "$(id)",
-            "$HOME",
-            "${HOME}",
-            "a\";id;\"b",
-            "a';id;'b",
-            "$(touch /tmp/coolercontrol-openrc-injection-probe)",
+            "`id`".to_string(),
+            "$(id)".to_string(),
+            "$HOME".to_string(),
+            "${HOME}".to_string(),
+            "a\";id;\"b".to_string(),
+            "a';id;'b".to_string(),
+            format!("$(touch {})", probe.display()),
         ] {
-            let words = args_as_the_plugin_sees_them(vec![payload.to_string()]);
-            assert_eq!(words, vec![payload.to_string()], "for {payload}");
+            let words = args_as_the_plugin_sees_them(vec![payload.clone()]);
+            assert_eq!(words, vec![payload.clone()], "for {payload}");
         }
         assert!(
-            std::path::Path::new("/tmp/coolercontrol-openrc-injection-probe")
-                .exists()
-                .not(),
+            probe.exists().not(),
             "the eval executed a command substitution"
         );
     }

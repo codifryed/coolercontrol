@@ -2280,7 +2280,8 @@ mod tests {
     fn test_file_temp_status_valid() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"30000".to_vec(), // millidegree temp
@@ -2336,7 +2337,8 @@ mod tests {
     fn test_file_temp_valid() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"30000".to_vec(), // millidegree temp
@@ -2360,7 +2362,8 @@ mod tests {
     fn test_file_temp_valid_with_return() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" 30000\n\r".to_vec())
                 .await
                 .unwrap();
@@ -2399,7 +2402,8 @@ mod tests {
     fn test_file_temp_invalid_out_of_range_1() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"-1000".to_vec(), // millidegree temp
@@ -2425,7 +2429,8 @@ mod tests {
     fn test_file_temp_invalid_out_of_range_2() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"1000000".to_vec(), // millidegree temp
@@ -2451,7 +2456,8 @@ mod tests {
     fn test_file_temp_invalid_format() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2472,7 +2478,8 @@ mod tests {
     fn test_file_temp_invalid_beyond_32_bits() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
                 .await
                 .unwrap();
@@ -2495,7 +2502,8 @@ mod tests {
     fn test_file_temp_invalid_file_size_too_large() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(
                 &test_file,
                 b"100000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -2521,7 +2529,8 @@ mod tests {
     fn test_file_temp_invalid_number_format() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2540,7 +2549,8 @@ mod tests {
     fn test_file_temp_invalid_empty() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2559,7 +2569,8 @@ mod tests {
     fn test_file_temp_invalid_blank() {
         cc_fs::test_runtime(async {
             // given:
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
             // when:
             let temp_result =
@@ -2584,7 +2595,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2632,7 +2644,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let mut child_sensor = mix_sensor("child_sensor", vec![]);
             let parent_sensor = mix_sensor(
@@ -2686,7 +2699,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file.clone());
             let second_child_sensor = file_sensor("second_child_sensor", test_file);
@@ -2735,7 +2749,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             repo.set_custom_sensor(file_sensor("shared_child", test_file.clone()))
                 .await
@@ -2795,7 +2810,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2845,7 +2861,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file.clone());
             let second_child_sensor = file_sensor("second_child_sensor", test_file);
@@ -2945,7 +2962,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2987,7 +3005,8 @@ mod tests {
                 .await
                 .expect("Failed to initialize devices");
 
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"80000".to_vec()).await.unwrap();
             let child_sensor = file_sensor("child_sensor", test_file);
             let parent_sensor = mix_sensor(
@@ -2998,7 +3017,7 @@ mod tests {
                     name: "child_sensor".to_string(),
                 }],
             );
-            let second_test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let second_test_file = dir.path().join("second-sensor");
             cc_fs::write(&second_test_file, b"90000".to_vec())
                 .await
                 .unwrap();
@@ -3740,7 +3759,8 @@ mod tests {
     #[serial]
     fn file_sensor_recovers_from_failsafe() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
 
             let test_config = Rc::new(Config::init_default_config().unwrap());
@@ -3790,7 +3810,8 @@ mod tests {
     #[serial]
     fn file_sensor_holds_last_good_value_on_transient_failure() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3816,7 +3837,8 @@ mod tests {
     #[serial]
     fn file_sensor_failsafes_immediately_when_never_read_successfully() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3844,7 +3866,8 @@ mod tests {
     #[serial]
     fn file_sensor_failure_run_resets_after_a_good_read() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3877,7 +3900,8 @@ mod tests {
     #[serial]
     fn delete_custom_sensor_clears_failsafing_state() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -3906,7 +3930,8 @@ mod tests {
     #[serial]
     fn update_custom_sensor_clears_failsafing_state() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"45000".to_vec()).await.unwrap();
             let test_config = Rc::new(Config::init_default_config().unwrap());
             let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
@@ -5239,7 +5264,8 @@ mod tests {
     #[serial]
     fn file_value_reads_a_number_beyond_32_bits() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"100000000000\n".to_vec())
                 .await
                 .unwrap();
@@ -5261,7 +5287,8 @@ mod tests {
     #[serial]
     fn file_sensor_reports_holds_and_failsafes_a_channel_metric() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"3600500000".to_vec())
                 .await
                 .unwrap();
@@ -5296,7 +5323,8 @@ mod tests {
     #[serial]
     fn file_sensor_is_checked_against_its_metric_on_create() {
         cc_fs::test_runtime(async {
-            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            let dir = tempfile::tempdir().unwrap();
+            let test_file = dir.path().join("sensor");
             cc_fs::write(&test_file, b"1200".to_vec()).await.unwrap();
             let repo = repo_with(vec![]).await;
             let file = |id: &str, metric| {

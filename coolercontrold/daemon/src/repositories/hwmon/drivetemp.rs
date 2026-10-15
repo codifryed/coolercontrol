@@ -488,29 +488,21 @@ mod tests {
     use crate::cc_fs;
     use crate::repositories::hwmon::hwmon_repo::HwmonChannelInfo;
     use serial_test::serial;
-    use std::path::Path;
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct HwmonDeviceContext {
-        test_dir: String,
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         hwmon_path: PathBuf,
     }
 
     async fn setup() -> HwmonDeviceContext {
-        let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
-        let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
-        let hwmon_path = Path::new(&base_path_str).to_path_buf();
+        let dir = tempfile::tempdir().unwrap();
+        let hwmon_path = dir.path().join("hwmon/hwmon1");
         cc_fs::create_dir_all(&hwmon_path).await.unwrap();
         HwmonDeviceContext {
-            test_dir,
+            _dir: dir,
             hwmon_path,
         }
-    }
-
-    async fn teardown(ctx: &HwmonDeviceContext) {
-        cc_fs::remove_dir_all(&ctx.test_dir).await.unwrap();
     }
 
     #[test]
@@ -522,7 +514,6 @@ mod tests {
             let dev_result = get_block_device_path(&ctx.hwmon_path);
 
             // then:
-            teardown(&ctx).await;
             assert!(
                 dev_result.is_err(),
                 "Block device path is not empty: {dev_result:?}"
@@ -544,7 +535,6 @@ mod tests {
             let dev_result = get_block_device_path(&ctx.hwmon_path);
 
             // then:
-            teardown(&ctx).await;
             assert!(
                 dev_result.is_ok(),
                 "Block device path is empty: {dev_result:?}"
@@ -642,7 +632,6 @@ mod tests {
     #[ignore = "requires a real block device & sudo privileges"]
     fn get_driver_power_state() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
             // given:
             let local_dev_path = PathBuf::from("/dev/sda");
 
@@ -650,7 +639,6 @@ mod tests {
             let dev_result = drive_power_state(&local_dev_path, Duration::from_secs(1)).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(
                 dev_result.is_ok(),
                 "Error retrieving device power state: {dev_result:?}"

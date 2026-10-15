@@ -255,26 +255,22 @@ mod tests {
     use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
-    use uuid::Uuid;
 
     use super::*;
 
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
-
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
@@ -299,7 +295,7 @@ mod tests {
     #[serial]
     fn init_power_average() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -316,7 +312,6 @@ mod tests {
             let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -331,7 +326,7 @@ mod tests {
     #[serial]
     fn init_power_input() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
@@ -348,7 +343,6 @@ mod tests {
             let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -363,7 +357,7 @@ mod tests {
     #[serial]
     fn init_power_not_usable() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"ABC".to_vec()) // wrong format
@@ -377,7 +371,6 @@ mod tests {
             let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(power_result.is_ok());
             println!("{power_result:?}");
             assert!(power_result.unwrap().is_empty());
@@ -389,7 +382,7 @@ mod tests {
     fn init_only_power_average() {
         // test that given both powerN_average and powerN_input, that we prefer & use only _average
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -409,7 +402,6 @@ mod tests {
             let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -424,7 +416,7 @@ mod tests {
     #[serial]
     fn init_multiple_powers() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -451,7 +443,6 @@ mod tests {
             let power_result = init_power(test_base_path, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(3, powers.len());
@@ -474,7 +465,7 @@ mod tests {
     #[serial]
     fn extract_power_average_status() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -499,7 +490,6 @@ mod tests {
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(1, power_result.len());
             assert_eq!(Some(36.), power_result[0].watts);
@@ -510,7 +500,7 @@ mod tests {
     #[serial]
     fn extract_power_input_status() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -535,7 +525,6 @@ mod tests {
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(1, power_result.len());
             assert_eq!(Some(6.123_456), power_result[0].watts);
@@ -546,7 +535,7 @@ mod tests {
     #[serial]
     fn extract_no_power_channels() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -560,7 +549,6 @@ mod tests {
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(0, power_result.len());
         });
@@ -574,7 +562,7 @@ mod tests {
         // Fabricating a 0.0 watts entry would lie to downstream; the
         // upstream failsafe merge handles the missing entry.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: power channel exists but sysfs file does not.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -593,7 +581,6 @@ mod tests {
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(0, power_result.len());
         });
@@ -607,7 +594,7 @@ mod tests {
         // Verifies the streaming variant invokes the sink once per
         // successful channel in the order channels are defined.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: three power channels, all readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
@@ -648,7 +635,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(
                 received,
@@ -664,7 +650,7 @@ mod tests {
         // read fails; any_failure is set and the successful channel
         // alone is streamed.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: power1 readable, power2 missing.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_input"), b"4000000".to_vec())
@@ -694,7 +680,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(received, vec!["power1_input"]);
         });
@@ -706,7 +691,7 @@ mod tests {
         // Verifies the sink is never invoked for a driver with no
         // power channels, and any_failure is false.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
@@ -716,7 +701,6 @@ mod tests {
 
             let (statuses, any_failure) = extract_power_status(&driver_info).await;
 
-            teardown(&ctx).await;
             assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
@@ -729,7 +713,7 @@ mod tests {
         // another fails, only the successful one is returned and
         // any_failure is set.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two power channels, one readable, one not.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -761,7 +745,6 @@ mod tests {
             let (power_result, any_failure) = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(1, power_result.len());
             assert_eq!("power1_input", power_result[0].name);

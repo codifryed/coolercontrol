@@ -428,24 +428,20 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
@@ -473,8 +469,8 @@ mod tests {
     fn find_temp() {
         cc_fs::test_runtime(async {
             // given:
-            let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
-            cc_fs::create_dir_all(&test_base_path).await.unwrap();
+            let ctx = setup();
+            let test_base_path = &ctx.test_base_path;
             cc_fs::write(
                 test_base_path.join("temp1_input"),
                 b"30000".to_vec(), // temp
@@ -490,14 +486,10 @@ mod tests {
             let device_name = "Test Driver".to_string();
 
             // when:
-            let temps_result =
-                init_temps(&test_base_path, &device_name, &DeviceIo::default()).await;
+            let temps_result = init_temps(test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            cc_fs::remove_dir_all(test_base_path.parent().unwrap())
-                .await
-                .unwrap();
             assert!(temps_result.is_ok());
             let temps = temps_result.unwrap();
             assert_eq!(temps.len(), 1);
@@ -515,7 +507,7 @@ mod tests {
         // Verifies a successful read yields one entry per channel and
         // clears the failure indicator.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, both readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"35000".to_vec())
@@ -549,7 +541,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(temps.len(), 2);
             assert_eq!(temps[0].name, "temp1");
@@ -567,7 +558,7 @@ mod tests {
     #[serial]
     fn extract_temp_reuses_descriptors_across_ticks() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"35000".to_vec())
                 .await
@@ -607,7 +598,6 @@ mod tests {
                 .unwrap();
             let (third_temps, _) = extract_temp_statuses(&driver_info).await;
 
-            teardown(&ctx).await;
             // Both temp files stay open in the fd cache across ticks.
             let expected_held = 2;
             assert_eq!(held_after_first_tick, expected_held);
@@ -630,7 +620,7 @@ mod tests {
         // omitted and the failure indicator being set. Fabricating 0.0
         // would be read by downstream as "very cold, drop fan duty".
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: single temp channel but no sysfs file.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -650,7 +640,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 0);
         });
@@ -662,7 +651,7 @@ mod tests {
         // Verifies working sensors keep serving real values while the
         // failing sensor is simply absent from the result.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, only the first one readable.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"50000".to_vec())
@@ -693,7 +682,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");
@@ -707,7 +695,7 @@ mod tests {
         // Verifies a device with all failing reads returns an empty vec
         // rather than one fabricated entry per channel.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: two temp channels, neither readable.
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -735,7 +723,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 0);
         });
@@ -748,7 +735,7 @@ mod tests {
         // Verifies the streaming variant invokes the sink once per
         // successful temp channel in channel-number order.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             for number in 1u8..=3 {
                 cc_fs::write(
@@ -790,7 +777,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(received, vec!["temp1", "temp2", "temp3"]);
         });
@@ -802,7 +788,7 @@ mod tests {
         // Verifies the sink is not invoked for a temp channel whose
         // sysfs file is missing, and any_failure is set.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
                 .await
@@ -833,7 +819,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(received, vec!["temp1"]);
         });
@@ -845,7 +830,7 @@ mod tests {
         // Verifies the sink is never invoked when there are no temp
         // channels, and any_failure is false.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let driver_info = HwmonDriverInfo {
                 path: ctx.test_base_path.clone(),
                 ..Default::default()
@@ -855,7 +840,6 @@ mod tests {
 
             let (statuses, any_failure) = extract_temp_statuses(&driver_info).await;
 
-            teardown(&ctx).await;
             assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
@@ -952,7 +936,7 @@ mod tests {
     fn extract_temp_ignores_non_temp_channels() {
         // Verifies non-Temp channels are ignored even if named similarly.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: one Temp and one non-Temp channel.
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
@@ -983,7 +967,6 @@ mod tests {
             let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(temps.len(), 1);
             assert_eq!(temps[0].name, "temp1");

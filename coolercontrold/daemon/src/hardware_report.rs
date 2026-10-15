@@ -1400,10 +1400,6 @@ mod tests {
         }
     }
 
-    fn temp_dir() -> PathBuf {
-        PathBuf::from(format!("/tmp/coolercontrol-tests-{}", uuid::Uuid::new_v4()))
-    }
-
     /// Goal: the full report finds a device whose name and attributes live on
     /// the parent device, which is how `applesmc` registered before Linux 7.3.
     /// Reading only `hwmonN/name` left it out. Method: one entry of each
@@ -1412,7 +1408,8 @@ mod tests {
     #[serial]
     fn a_device_named_on_its_parent_is_still_found() {
         crate::rt::test_runtime(async {
-            let base = temp_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let modern = base.join("hwmon1");
             let old_style = base.join("hwmon2");
             let nameless = base.join("hwmon3");
@@ -1424,7 +1421,6 @@ mod tests {
             let found_old_style = attribute_dir(&old_style).await;
             let found_nameless = attribute_dir(&nameless).await;
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             assert_eq!(found_modern, Some((modern, "nct6798".to_string())));
             assert_eq!(
                 found_old_style,
@@ -1442,7 +1438,8 @@ mod tests {
     #[serial]
     fn the_driver_resolves_from_the_entry_and_from_its_device_directory() {
         crate::rt::test_runtime(async {
-            let base = temp_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let entry = base.join("hwmon2");
             let driver_dir = base.join("drivers").join("applesmc");
             cc_fs::create_dir_all(&entry.join("device")).await.unwrap();
@@ -1452,7 +1449,6 @@ mod tests {
             let from_entry = resolve_driver(&entry);
             let from_device_dir = resolve_driver(&entry.join("device"));
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             assert_eq!(from_entry.as_deref(), Some("applesmc"));
             assert_eq!(from_device_dir.as_deref(), Some("applesmc"));
         });
@@ -1464,7 +1460,8 @@ mod tests {
     #[test]
     fn an_unreadable_device_has_no_fans() {
         crate::rt::test_runtime(async {
-            let missing = temp_dir().join("missing");
+            let tmp = tempfile::tempdir().unwrap();
+            let missing = tmp.path().join("missing");
 
             let apple_fans = read_fans(&missing, "applesmc").await;
             let apple_silicon_fans = read_fans(&missing, "macsmc_hwmon").await;
@@ -1483,7 +1480,8 @@ mod tests {
     #[serial]
     fn a_locked_apple_fan_names_its_read_only_file() {
         crate::rt::test_runtime(async {
-            let base = temp_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let limits = [
                 ("fan1_input", "1500"),
                 ("fan1_min", "1499"),
@@ -1534,7 +1532,6 @@ mod tests {
                 notes.push(summary_notes(&device).await);
             }
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             let expected = [
                 "    fan1: fan control is read-only (pwm=- pwm_enable=- rpm=1500 \
                  target=0(read-only) min=1499 max=5348)\n",
@@ -1557,7 +1554,8 @@ mod tests {
     #[serial]
     fn an_apple_device_is_read_through_its_own_driver() {
         crate::rt::test_runtime(async {
-            let base = temp_dir();
+            let tmp = tempfile::tempdir().unwrap();
+            let base = tmp.path().to_path_buf();
             let intel = base.join("applesmc");
             let intel_7_3 = base.join("applesmc_7_3");
             let silicon = base.join("macsmc_hwmon");
@@ -1590,7 +1588,6 @@ mod tests {
                 lines.push(channel_lines(&device).await);
             }
 
-            cc_fs::remove_dir_all(&base).await.unwrap();
             let expected = [
                 "fan1: verdict=controllable pwm=- pwm_enable=- rpm=3100 output=3100 manual=1 \
                  min=2000 max=6200 writable=true",

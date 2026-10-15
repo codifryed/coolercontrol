@@ -1046,24 +1046,20 @@ mod tests {
     use crate::repositories::hwmon::drivetemp;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
-    use uuid::Uuid;
-
-    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct HwmonFileContext {
+        /// Owns the fixture directory, which is removed when the context drops.
+        _dir: tempfile::TempDir,
         test_base_path: PathBuf,
     }
 
-    async fn setup() -> HwmonFileContext {
-        let test_base_path =
-            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).await.unwrap();
-        HwmonFileContext { test_base_path }
-    }
-
-    async fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    fn setup() -> HwmonFileContext {
+        let dir = tempfile::tempdir().unwrap();
+        let test_base_path = dir.path().to_path_buf();
+        HwmonFileContext {
+            _dir: dir,
+            test_base_path,
+        }
     }
 
     #[test]
@@ -1089,7 +1085,7 @@ mod tests {
     #[serial]
     fn find_fan() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -1111,7 +1107,6 @@ mod tests {
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -1128,7 +1123,7 @@ mod tests {
     #[serial]
     fn find_fan_pwm_only() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -1143,7 +1138,6 @@ mod tests {
             let fans_result = init_fans(test_base_path, &device_name, &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -1163,7 +1157,7 @@ mod tests {
     #[serial]
     fn only_a_speed_detection_could_not_read_is_unread() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let dir = &ctx.test_base_path;
             for (name, value) in [
                 ("fan1_input", "1200"),
@@ -1185,7 +1179,6 @@ mod tests {
             let unread = unread_fan_inputs(dir, &fans);
             let unread_with_no_fans = unread_fan_inputs(dir, &[]);
 
-            teardown(&ctx).await;
             let detected: Vec<(u8, bool)> = fans
                 .iter()
                 .map(|fan| (fan.number, fan.caps.has_rpm()))
@@ -1202,13 +1195,12 @@ mod tests {
     #[serial]
     fn a_missing_device_has_no_unread_speeds() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let missing = ctx.test_base_path.join("missing");
 
             let unread = unread_fan_inputs(&missing, &[]);
             log_unreadable_fan_speeds(&missing, &[], &DeviceIo::default()).await;
 
-            teardown(&ctx).await;
             assert!(unread.is_empty());
         });
     }
@@ -1217,7 +1209,7 @@ mod tests {
     #[serial]
     fn find_fan_rpm_only() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -1233,7 +1225,6 @@ mod tests {
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -1250,7 +1241,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"1".to_vec())
@@ -1282,7 +1273,6 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "2");
         });
@@ -1292,7 +1282,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default_doesnt_exist() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             let channel_info = HwmonChannelInfo {
@@ -1321,7 +1311,6 @@ mod tests {
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .is_err();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
         });
@@ -1331,7 +1320,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default_auto() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             // current value is already auto (2)
@@ -1365,7 +1354,6 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             // remains on auto (2)
             assert_eq!(current_pwm_enable, "2");
@@ -1376,7 +1364,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
@@ -1409,7 +1397,6 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "1");
         });
@@ -1420,7 +1407,7 @@ mod tests {
     fn test_set_pwm_enable_doesnt_exist() {
         // test to make sure we don't return an Err if pwm_enable doesn't exist
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             let channel_info = HwmonChannelInfo {
@@ -1450,7 +1437,6 @@ mod tests {
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .is_err();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
         });
@@ -1460,7 +1446,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_if_not_already_set() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"0".to_vec())
@@ -1493,7 +1479,6 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "1");
         });
@@ -1503,7 +1488,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -1533,7 +1518,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(format!("{current_duty:.1}"), "50.0");
         });
@@ -1543,7 +1527,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty_using_path() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -1573,7 +1557,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(format!("{current_duty:.1}"), "50.0");
         });
@@ -1583,7 +1566,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty_no_pwm_enable() {
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -1613,7 +1596,6 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_duty.to_string(), "50");
         });
@@ -1625,7 +1607,7 @@ mod tests {
         // Verifies the happy path: a readable pwm file with a valid u8 value is converted to
         // a duty percentage and returned as Some.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 = 255 (full speed)
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"255".to_vec())
                 .await
@@ -1643,7 +1625,6 @@ mod tests {
             .await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(result, Some(100.0));
         });
     }
@@ -1654,7 +1635,7 @@ mod tests {
         // Verifies the negative space: when the pwm sysfs file does not exist (ENOENT),
         // the function returns None without panicking.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: no pwm1 file exists
 
             // when:
@@ -1669,7 +1650,6 @@ mod tests {
             .await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1680,7 +1660,7 @@ mod tests {
         // Verifies that a pwm file containing non-numeric content (parse error) returns None
         // rather than propagating the error upward.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 contains text that cannot be parsed as u8
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"not_a_number".to_vec())
                 .await
@@ -1698,7 +1678,6 @@ mod tests {
             .await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1751,7 +1730,7 @@ mod tests {
         // Verifies the happy path: when pwm is readable in auto mode, the normal duty value
         // is returned without triggering the fallback.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 = 128, pwm1_enable = 2 (auto)
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
                 .await
@@ -1772,7 +1751,6 @@ mod tests {
             .await;
 
             // then: normal read succeeds, no fallback needed
-            teardown(&ctx).await;
             assert_eq!(result, Some(pwm_value_to_duty(128)));
         });
     }
@@ -1783,7 +1761,7 @@ mod tests {
         // Verifies that ENOENT (file missing) is excluded from the auto-mode fallback.
         // A missing pwm file means the channel doesn't exist, not a driver refusal.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: no pwm1 file, but pwm1_enable = 2 (auto)
             cc_fs::write(ctx.test_base_path.join("pwm1_enable"), b"2".to_vec())
                 .await
@@ -1801,7 +1779,6 @@ mod tests {
             .await;
 
             // then: ENOENT is not a kernel refusal — must return None
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1811,7 +1788,7 @@ mod tests {
     fn get_pwm_duty_none_when_file_missing_no_pwm_enable() {
         // Verifies that ENOENT returns None even when pwm_enable doesn't exist.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: no pwm1 file, no pwm1_enable file
 
             // when:
@@ -1826,7 +1803,6 @@ mod tests {
             .await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1837,7 +1813,7 @@ mod tests {
         // Verifies that parse errors (InvalidData) are excluded from the auto-mode fallback.
         // A garbled file is not a kernel driver refusal.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 has non-numeric content, pwm1_enable = 2 (auto)
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"bad".to_vec())
                 .await
@@ -1858,7 +1834,6 @@ mod tests {
             .await;
 
             // then: parse error has no raw_os_error — must return None
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1868,7 +1843,7 @@ mod tests {
     fn get_pwm_duty_none_when_parse_error_and_manual_mode() {
         // Verifies that parse errors return None regardless of pwm_enable value.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 has non-numeric content, pwm1_enable = 1 (manual)
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"bad".to_vec())
                 .await
@@ -1889,7 +1864,6 @@ mod tests {
             .await;
 
             // then: parse error + manual mode = no fallback
-            teardown(&ctx).await;
             assert_eq!(result, None);
         });
     }
@@ -1932,7 +1906,7 @@ mod tests {
         // Verifies that when all fan channels read successfully, the failure
         // indicator is false and values are populated.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 and fan1_input exist with valid values.
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
                 .await
@@ -1947,7 +1921,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(statuses.len(), 1);
             assert!(statuses[0].duty.is_some());
@@ -1962,7 +1935,7 @@ mod tests {
         // triggers a failure and is omitted from the returned statuses
         // so the upstream failsafe overlay can substitute safe values.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1_input exists, but no pwm1.
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"1200".to_vec())
                 .await
@@ -1974,7 +1947,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert!(statuses.is_empty());
         });
@@ -1987,7 +1959,7 @@ mod tests {
         // file triggers a failure and is omitted from the returned
         // statuses, for the same reason as the PWM-missing case.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: pwm1 exists, but no fan1_input.
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
                 .await
@@ -1999,7 +1971,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert!(statuses.is_empty());
         });
@@ -2014,7 +1985,7 @@ mod tests {
         // the configured failsafe values and the channel disappeared
         // from downstream status views.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: neither pwm1 nor fan1_input exist.
             let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
             let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]).await;
@@ -2023,7 +1994,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert!(statuses.is_empty());
         });
@@ -2035,7 +2005,7 @@ mod tests {
         // Verifies that a channel without PWM capability does not trigger
         // a failure when pwm returns None (that is expected).
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1_input exists, no pwm1, and channel only has RPM cap.
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"900".to_vec())
                 .await
@@ -2047,7 +2017,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(statuses.len(), 1);
             assert!(statuses[0].duty.is_none());
@@ -2063,7 +2032,7 @@ mod tests {
         // successful channel in channel-number order, matching the
         // buffered version's Vec order.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: three successive fan channels, all readable.
             for number in 1u8..=3 {
                 cc_fs::write(
@@ -2095,7 +2064,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(received, vec!["fan1", "fan2", "fan3"]);
         });
@@ -2107,7 +2075,7 @@ mod tests {
         // Verifies the sink is not invoked for a channel whose
         // expected read fails, and any_failure reflects it.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1 readable, fan2 missing its pwm file.
             cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
                 .await
@@ -2131,7 +2099,6 @@ mod tests {
             let received: Vec<String> = statuses.into_iter().map(|s| s.name).collect();
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(received, vec!["fan1"]);
         });
@@ -2143,12 +2110,11 @@ mod tests {
         // Verifies the sink is never invoked for a driver with no
         // fan channels, and any_failure is false.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             let driver = make_driver(&ctx.test_base_path, vec![]).await;
 
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
-            teardown(&ctx).await;
             assert!(statuses.is_empty());
             assert!(any_failure.not());
         });
@@ -2160,7 +2126,7 @@ mod tests {
         // Verifies that an empty channel list produces no statuses
         // and no failure.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: driver with no channels.
             let driver = make_driver(&ctx.test_base_path, vec![]).await;
 
@@ -2168,7 +2134,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert!(statuses.is_empty());
         });
@@ -2227,7 +2192,7 @@ mod tests {
         // Goal: detection marks an input as non-rpm only when its driver label names a unit.
         // Method: a Leakshield-style pressure channel next to a plainly labelled fan.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1 is a pressure in ubar, fan2 a real fan.
             let base = &ctx.test_base_path;
             cc_fs::write(base.join("fan1_input"), b"438300".to_vec())
@@ -2247,7 +2212,6 @@ mod tests {
             let fans = init_fans(base, "leakshield", &DeviceIo::default()).await;
 
             // then:
-            teardown(&ctx).await;
             let fans = fans.unwrap();
             assert_eq!(fans.len(), 2);
             assert!(fans[0].caps.has_rpm());
@@ -2263,7 +2227,7 @@ mod tests {
         // Goal: the batched read keeps a labelled pressure intact instead of zeroing it.
         // Method: a NON_RPM_UNIT channel holding a Leakshield-sized pressure.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
                 .await
@@ -2275,7 +2239,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(statuses.len(), 1);
             assert_eq!(statuses[0].rpm, Some(438_300));
@@ -2288,7 +2251,7 @@ mod tests {
         // Goal: the single-channel read keeps a labelled pressure intact, matching the batch.
         // Method: read a Leakshield-sized pressure through `read_one_fan_status`.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
                 .await
@@ -2300,7 +2263,6 @@ mod tests {
             let status = read_one_fan_status(&driver, &driver.channels[0]).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(status.and_then(|status| status.rpm), Some(438_300));
         });
     }
@@ -2311,7 +2273,7 @@ mod tests {
         // Goal: the per-tick batched read applies the same rpm guard as the single-channel read.
         // Method: a fan input holding a count-based overflow value must come back as 0 rpm.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1_input holds 1350000, a value no fan can spin at.
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"1350000".to_vec())
                 .await
@@ -2323,7 +2285,6 @@ mod tests {
             let (statuses, any_failure) = extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx).await;
             assert!(any_failure.not());
             assert_eq!(statuses.len(), 1);
             assert_eq!(statuses[0].rpm, Some(0));
@@ -2336,7 +2297,7 @@ mod tests {
         // Goal: the single-channel read keeps the rpm guard, matching the batched read.
         // Method: read the spin-up value u16::MAX through `read_one_fan_status`.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1_input holds the spin-up value.
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
                 .await
@@ -2348,7 +2309,6 @@ mod tests {
             let status = read_one_fan_status(&driver, &driver.channels[0]).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(status.and_then(|status| status.rpm), Some(0));
         });
     }
@@ -2359,7 +2319,7 @@ mod tests {
         // Goal: the slow-device rpm-only read keeps a labelled pressure intact.
         // Method: read a Leakshield-sized pressure through `read_one_fan_rpm_only`.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given:
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"438300".to_vec())
                 .await
@@ -2371,7 +2331,6 @@ mod tests {
             let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(rpm, Some(Some(438_300)));
         });
     }
@@ -2382,7 +2341,7 @@ mod tests {
         // Goal: the slow-device rpm-only read keeps the rpm guard.
         // Method: read the spin-up value u16::MAX through `read_one_fan_rpm_only`.
         cc_fs::test_runtime(async {
-            let ctx = setup().await;
+            let ctx = setup();
             // given: fan1_input holds the spin-up value.
             cc_fs::write(ctx.test_base_path.join("fan1_input"), b"65535".to_vec())
                 .await
@@ -2394,7 +2353,6 @@ mod tests {
             let rpm = read_one_fan_rpm_only(&driver, &driver.channels[0]).await;
 
             // then:
-            teardown(&ctx).await;
             assert_eq!(rpm, Some(Some(0)));
         });
     }

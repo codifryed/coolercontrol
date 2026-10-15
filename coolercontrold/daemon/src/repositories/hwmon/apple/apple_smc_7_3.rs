@@ -210,16 +210,15 @@ mod tests {
     use serial_test::serial;
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt;
-    use uuid::Uuid;
 
     /// The `fanN_max` of the MacBookPro9,2 fan, from the reporter of issue 622.
     const MAX_RPM: RPM = 6200;
 
     /// A fake hwmon directory with one fan, as the driver shows it from Linux 7.3: in automatic
     /// mode at the firmware's floor.
-    async fn seed_fan() -> PathBuf {
-        let dir = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
-        cc_fs::create_dir_all(&dir).await.unwrap();
+    async fn seed_fan() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
         for (file, value) in [
             ("fan1_target", "2000"),
             ("fan1_input", "3100"),
@@ -231,7 +230,7 @@ mod tests {
                 .await
                 .unwrap();
         }
-        dir
+        tmp
     }
 
     async fn read(dir: &Path, file: &str) -> String {
@@ -279,12 +278,12 @@ mod tests {
     #[serial]
     fn a_fan_with_a_target_and_a_mode_is_controllable() {
         cc_fs::test_runtime(async {
-            let dir = seed_fan().await;
+            let tmp = seed_fan().await;
+            let dir = tmp.path().to_path_buf();
             let io = DeviceIo::default();
 
             let (handler, channels) = handler_for(&dir, &io).await;
 
-            cc_fs::remove_dir_all(&dir).await.unwrap();
             assert_eq!(channels.len(), 1);
             assert_eq!(channels[0].name, "fan1");
             assert!(channels[0].caps.is_apple_smc());
@@ -305,14 +304,16 @@ mod tests {
     #[serial]
     fn a_fan_that_cannot_be_switched_or_scaled_is_not_controllable() {
         cc_fs::test_runtime(async {
-            let fixed_mode = seed_fan().await;
+            let fixed_mode_tmp = seed_fan().await;
+            let fixed_mode = fixed_mode_tmp.path().to_path_buf();
             cc_fs::set_permissions(
                 fixed_mode.join("pwm1_enable"),
                 Permissions::from_mode(0o444),
             )
             .await
             .unwrap();
-            let no_maximum = seed_fan().await;
+            let no_maximum_tmp = seed_fan().await;
+            let no_maximum = no_maximum_tmp.path().to_path_buf();
             cc_fs::write(no_maximum.join("fan1_max"), b"0".to_vec())
                 .await
                 .unwrap();
@@ -321,8 +322,6 @@ mod tests {
             let fixed_mode_fans = AppleSmc73::init_fans(&fixed_mode, &io).await.unwrap();
             let no_maximum_fans = AppleSmc73::init_fans(&no_maximum, &io).await.unwrap();
 
-            cc_fs::remove_dir_all(&fixed_mode).await.unwrap();
-            cc_fs::remove_dir_all(&no_maximum).await.unwrap();
             assert_eq!(fixed_mode_fans.len(), 1);
             assert!(fixed_mode_fans[0].caps.has_rpm());
             assert!(fixed_mode_fans[0].caps.is_fan_controllable().not());
@@ -338,7 +337,8 @@ mod tests {
     #[serial]
     fn a_fan_is_taken_driven_and_returned() {
         cc_fs::test_runtime(async {
-            let dir = seed_fan().await;
+            let tmp = seed_fan().await;
+            let dir = tmp.path().to_path_buf();
             let io = DeviceIo::default();
             let (handler, _) = handler_for(&dir, &io).await;
 
@@ -354,7 +354,6 @@ mod tests {
             let returned_min = read(&dir, "fan1_min").await;
             let returned_mode = read(&dir, "pwm1_enable").await;
 
-            cc_fs::remove_dir_all(&dir).await.unwrap();
             assert!(taken.is_ok());
             assert_eq!(taken_min, "0");
             assert_eq!(taken_mode, "1");
@@ -378,7 +377,8 @@ mod tests {
     #[serial]
     fn a_failed_minimum_write_does_not_fail_the_mode_switch() {
         cc_fs::test_runtime(async {
-            let dir = seed_fan().await;
+            let tmp = seed_fan().await;
+            let dir = tmp.path().to_path_buf();
             let io = DeviceIo::default();
             let (handler, _) = handler_for(&dir, &io).await;
             cc_fs::remove_file(dir.join("fan1_min")).await.unwrap();
@@ -396,7 +396,6 @@ mod tests {
                 .unwrap();
             let mode_failure = handler.set_to_manual_control(1, &io).await;
 
-            cc_fs::remove_dir_all(&dir).await.unwrap();
             assert!(taken.is_ok(), "{taken:?}");
             assert_eq!(taken_mode, "1");
             assert!(half.is_ok());
@@ -414,7 +413,8 @@ mod tests {
     #[serial]
     fn a_status_carries_the_speed_and_its_duty() {
         cc_fs::test_runtime(async {
-            let dir = seed_fan().await;
+            let tmp = seed_fan().await;
+            let dir = tmp.path().to_path_buf();
             let io = DeviceIo::default();
             let (handler, channels) = handler_for(&dir, &io).await;
             let driver = HwmonDriverInfo {
@@ -427,7 +427,6 @@ mod tests {
             cc_fs::remove_file(dir.join("fan1_input")).await.unwrap();
             let unreadable = handler.read_one_fan_status(&driver, &channels[0]).await;
 
-            cc_fs::remove_dir_all(&dir).await.unwrap();
             let readable = readable.unwrap();
             assert_eq!(readable.rpm, Some(3100));
             assert_eq!(readable.duty, Some(50.));
