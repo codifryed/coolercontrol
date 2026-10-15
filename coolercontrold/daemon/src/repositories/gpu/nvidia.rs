@@ -790,10 +790,12 @@ impl GpuNVidia {
             .map_err(anyhow::Error::from)
     }
 
+    /// One GPU's NVML readings. `None` when the GPU did not answer: the caller keeps its
+    /// last-known-good values.
     pub async fn request_nvml_status(
         &self,
         nv_info: &Rc<NvidiaDeviceInfo>,
-    ) -> StatusNvidiaDeviceNvml {
+    ) -> Option<StatusNvidiaDeviceNvml> {
         // Two small allocations per GPU per tick, bounded by the device's channel count. Cheap
         // next to the NVML calls themselves, and what lets the whole pass cross in one hop.
         let temps: Vec<NvmlTemp> = nv_info
@@ -813,15 +815,11 @@ impl GpuNVidia {
             read_power: nv_info.power,
             freqs: nv_info.freqs.clone().into_boxed_slice(),
         };
-        let Some(readings) = self.read_nvml_bounded(nv_info.gpu_index, plan).await else {
-            // The device did not answer. Reporting nothing leaves the last-known-good values in
-            // place and lets the usual staleness and failsafe path take over.
-            return StatusNvidiaDeviceNvml::default();
-        };
-        StatusNvidiaDeviceNvml {
+        let readings = self.read_nvml_bounded(nv_info.gpu_index, plan).await?;
+        Some(StatusNvidiaDeviceNvml {
             temps: self.assemble_temps(nv_info, &readings),
             channels: Self::assemble_channels(&readings),
-        }
+        })
     }
 
     /// Rebuilds the temp list in the device's own order. Hotspot comes from nvapi rather than
@@ -1489,6 +1487,21 @@ pub struct NvidiaDeviceInfo {
 }
 
 impl NvidiaDeviceInfo {
+    /// A GPU with no fans or sensors found, for tests.
+    #[cfg(test)]
+    pub fn for_test(gpu_index: GpuIndex) -> Self {
+        Self {
+            gpu_index,
+            display_id: 0,
+            fan_indices: Vec::new(),
+            fan_ranges: HashMap::new(),
+            temps: Vec::new(),
+            freqs: Vec::new(),
+            power: false,
+            pci_bus: None,
+        }
+    }
+
     pub fn get_fan_range(&self, fan_index: FanIndex) -> Result<&NvidiaFanRange> {
         self.fan_ranges
             .get(&fan_index)

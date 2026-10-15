@@ -281,18 +281,20 @@ impl GpuRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 scope.spawn(async move {
-                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
-                    self.gpus_nvidia
-                        .nvidia_preloaded_statuses
-                        .borrow_mut()
-                        .insert(
-                            type_index,
-                            StatusNvidiaDeviceSMI {
-                                temps: nvml_status.temps,
-                                channels: nvml_status.channels,
-                                ..Default::default()
-                            },
-                        );
+                    // A GPU that did not answer keeps its last-known-good values.
+                    if let Some(nvml_status) = self.gpus_nvidia.request_nvml_status(nv_info).await {
+                        self.gpus_nvidia
+                            .nvidia_preloaded_statuses
+                            .borrow_mut()
+                            .insert(
+                                type_index,
+                                StatusNvidiaDeviceSMI {
+                                    temps: nvml_status.temps,
+                                    channels: nvml_status.channels,
+                                    ..Default::default()
+                                },
+                            );
+                    }
                     apply_device_command_delay(delay).await;
                 });
             }
@@ -734,6 +736,62 @@ mod verdict_publish_tests {
             assert_eq!(permanent.len(), 1, "expected one published verdict");
             assert_eq!(permanent[0].channel_name, "fan1");
             assert_eq!(permanent[0].verdict, ChannelVerdict::NotSupportedByDriver);
+        });
+    }
+}
+
+#[cfg(test)]
+mod nvml_status_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::{Device, DeviceInfo, TempStatus};
+    use crate::repositories::gpu::nvidia::{NvidiaDeviceInfo, StatusNvidiaDeviceSMI};
+    use serial_test::serial;
+    use std::cell::RefCell;
+
+    /// Goal: a GPU whose NVML read gets no answer keeps reporting its last-known-good
+    /// values instead of an empty status. Method: no NVML worker serves the GPU, so its read
+    /// finds no one to answer, as with a wedged driver.
+    #[test]
+    #[serial]
+    fn an_unanswered_nvml_read_keeps_the_last_values() {
+        cc_fs::test_runtime(async {
+            let mut repo = GpuRepo::new(Rc::new(Config::init_default_config().unwrap()), false);
+            let device = Device::new(
+                "Test GPU".to_string(),
+                DeviceType::GPU,
+                1,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            );
+            let uid = device.uid.clone();
+            repo.devices
+                .insert(uid.clone(), Rc::new(RefCell::new(device)));
+            repo.gpus_nvidia
+                .nvidia_device_infos
+                .insert(uid, Rc::new(NvidiaDeviceInfo::for_test(0)));
+            let last_good = vec![TempStatus {
+                name: "GPU Temp".to_string(),
+                temp: 60.0,
+            }];
+            repo.gpus_nvidia
+                .nvidia_preloaded_statuses
+                .borrow_mut()
+                .insert(
+                    1,
+                    StatusNvidiaDeviceSMI {
+                        temps: last_good.clone(),
+                        ..Default::default()
+                    },
+                );
+            let repo = Rc::new(repo);
+
+            moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
+
+            let cache = repo.gpus_nvidia.nvidia_preloaded_statuses.borrow();
+            assert_eq!(cache.get(&1).unwrap().temps, last_good);
         });
     }
 }
