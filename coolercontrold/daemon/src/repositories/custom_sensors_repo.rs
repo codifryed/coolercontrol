@@ -18,8 +18,8 @@ use chrono::{DateTime, Local};
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelSample, ChannelStatus, Device, DeviceInfo,
-    DeviceType, DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelSample, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, StatusWriter, TempInfo, TempName, UID,
 };
 use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::overrides::OverridesController;
@@ -1370,38 +1370,15 @@ impl CustomSensorsRepo {
         Some(value)
     }
 
-    /// Appends a sensor's value to `status`: a temperature among the temps, any other metric
-    /// as a channel carrying that one value.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn push_value(status: &mut Status, sensor_value: SensorValue) {
+    /// Writes a sensor's value into `writer`'s entry: a temperature among the temps, any other
+    /// metric as a channel carrying that one value.
+    fn write_value(writer: &mut StatusWriter<'_>, sensor_value: &SensorValue) {
         let SensorValue { id, metric, value } = sensor_value;
         debug_assert!(value.is_finite());
-        let channel = |name: ChannelName| ChannelStatus {
-            name,
-            ..Default::default()
-        };
-        match metric {
-            CustomSensorMetric::Temp => status.temps.push(TempStatus {
-                name: id,
-                temp: value,
-            }),
-            CustomSensorMetric::Duty => status.channels.push(ChannelStatus {
-                duty: Some(value),
-                ..channel(id)
-            }),
-            // `reported_value` left these whole and inside the u32 range.
-            CustomSensorMetric::RPM => status.channels.push(ChannelStatus {
-                rpm: Some(value as u32),
-                ..channel(id)
-            }),
-            CustomSensorMetric::Freq => status.channels.push(ChannelStatus {
-                freq: Some(value as u32),
-                ..channel(id)
-            }),
-            CustomSensorMetric::Watts => status.channels.push(ChannelStatus {
-                watts: Some(value),
-                ..channel(id)
-            }),
+        if metric.is_temp() {
+            writer.temp(id, *value);
+        } else {
+            writer.channel(id, Self::channel_sample(*metric, *value));
         }
     }
 
@@ -1628,19 +1605,12 @@ impl Repository for CustomSensorsRepo {
                 self.process_live_sensor(sensor, &mut values, &mut file_sensors);
             });
         debug_assert_eq!(values.len(), sensor_count);
-        let mut status = Status {
-            timestamp,
-            temps: Vec::with_capacity(values.len()),
-            channels: Vec::new(),
-        };
-        for value in values {
-            Self::push_value(&mut status, value);
+        let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        let mut writer = device.write_status(timestamp);
+        for value in &values {
+            Self::write_value(&mut writer, value);
         }
-        self.custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .borrow_mut()
-            .set_status(status);
+        drop(device);
         trace!(
             "STATUS SNAPSHOT Time taken for CUSTOM_SENSORS device: {:?}",
             start_update.elapsed()
