@@ -147,17 +147,6 @@ impl GpuNVidia {
         }
     }
 
-    /// Builds the failsafe values of NVML GPU `type_index` from its init status.
-    pub fn seed_nvml_failsafe(&self, type_index: TypeIndex, status: &Status) {
-        let (channel_failsafes, temp_failsafes) =
-            failsafe::create_failsafe_data(&status.channels, &status.temps);
-        if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
-            self.nvml_failsafe_statuses
-                .borrow_mut()
-                .insert(type_index, fsd);
-        }
-    }
-
     /// Records that NVML GPU `type_index` answered its read, ending any failsafe.
     pub fn record_nvml_answer(&self, type_index: TypeIndex) {
         let mut failsafes = self.nvml_failsafe_statuses.borrow_mut();
@@ -186,31 +175,6 @@ impl GpuNVidia {
                 self.device_name(type_index)
             );
         }
-    }
-
-    /// The channels and temps currently held at their failsafe values.
-    pub fn failsafing(&self) -> Vec<FailsafeRef> {
-        let failsafes = self.nvml_failsafe_statuses.borrow();
-        let mut refs = Vec::new();
-        for (type_index, device_lock) in &self.nvidia_devices {
-            if let Some(fsd) = failsafes.get(type_index) {
-                refs.extend(fsd.device_failsafe_refs(&device_lock.borrow().uid));
-            }
-        }
-        refs
-    }
-
-    fn device_name(&self, type_index: TypeIndex) -> String {
-        self.nvidia_devices.get(&type_index).map_or_else(
-            || format!("#{type_index}"),
-            |device| device.borrow().name.clone(),
-        )
-    }
-
-    /// Adds `device` as the NVIDIA GPU `type_index`, for tests.
-    #[cfg(test)]
-    pub fn insert_device_for_test(&mut self, type_index: TypeIndex, device: DeviceLock) {
-        self.nvidia_devices.insert(type_index, device);
     }
 
     pub async fn reset_devices(&self) {
@@ -695,6 +659,17 @@ impl GpuNVidia {
         }
         self.start_nvml_workers(starting_nvidia_index, poll_rate);
         Ok(devices)
+    }
+
+    /// Builds the failsafe values of NVML GPU `type_index` from its init status.
+    pub fn seed_nvml_failsafe(&self, type_index: TypeIndex, status: &Status) {
+        let (channel_failsafes, temp_failsafes) =
+            failsafe::create_failsafe_data(&status.channels, &status.temps);
+        if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
+            self.nvml_failsafe_statuses
+                .borrow_mut()
+                .insert(type_index, fsd);
+        }
     }
 
     /// Whether this GPU is driven through NVML rather than the `nvidia-settings` CLI.
@@ -1496,6 +1471,31 @@ impl GpuNVidia {
             ));
         }
         self.send_command_to_nvidia_settings(&command).await
+    }
+
+    /// The channels and temps currently held at their failsafe values.
+    pub fn failsafing(&self) -> Vec<FailsafeRef> {
+        let failsafes = self.nvml_failsafe_statuses.borrow();
+        let mut refs = Vec::new();
+        for (type_index, device_lock) in &self.nvidia_devices {
+            if let Some(fsd) = failsafes.get(type_index) {
+                refs.extend(fsd.device_failsafe_refs(&device_lock.borrow().uid));
+            }
+        }
+        refs
+    }
+
+    fn device_name(&self, type_index: TypeIndex) -> String {
+        self.nvidia_devices.get(&type_index).map_or_else(
+            || format!("#{type_index}"),
+            |device| device.borrow().name.clone(),
+        )
+    }
+
+    /// Adds `device` as the NVIDIA GPU `type_index`, for tests.
+    #[cfg(test)]
+    pub fn insert_device_for_test(&mut self, type_index: TypeIndex, device: DeviceLock) {
+        self.nvidia_devices.insert(type_index, device);
     }
 }
 
