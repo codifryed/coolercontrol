@@ -720,29 +720,45 @@ impl StatusRing {
 
     /// A copy of the newest entry, for the API. At most one allocation.
     pub fn snapshot_latest(&self, filter: SnapshotFilter) -> StatusSnapshot {
-        let Some(index) = self.len.checked_sub(1) else {
-            return StatusSnapshot {
-                layout: Arc::clone(&self.layout),
-                capacity: 1,
-                head: 0,
-                len: 0,
-                bytes: Box::default(),
-                filter,
-            };
-        };
-        let slot = self.slot(index);
-        // At capacity 1 every lane starts at its `start`.
-        let mut bytes = vec![0; self.layout.stride].into_boxed_slice();
-        for lane in self.layout.lanes() {
-            let from = lane.start * self.capacity + slot * lane.width;
-            bytes[lane.start..lane.start + lane.width]
-                .copy_from_slice(&self.bytes[from..from + lane.width]);
+        let latest = self.len.checked_sub(1);
+        self.snapshot_of(latest.into_iter(), usize::from(latest.is_some()), filter)
+    }
+
+    /// A copy of the entries stamped strictly after `after_ns`, judged entry by entry: a
+    /// clock step can leave the history out of order. At most one allocation.
+    pub fn snapshot_after(&self, after_ns: i64) -> StatusSnapshot {
+        let after = |index: &usize| self.timestamp_ns(*index) > after_ns;
+        let count = (0..self.len).filter(after).count();
+        self.snapshot_of((0..self.len).filter(after), count, SnapshotFilter::All)
+    }
+
+    /// A compact copy of the `count` entries at history `indices`, oldest first. At capacity
+    /// `count` and head 0, entry `n` sits in slot `n`.
+    fn snapshot_of(
+        &self,
+        indices: impl Iterator<Item = usize>,
+        count: usize,
+        filter: SnapshotFilter,
+    ) -> StatusSnapshot {
+        assert!(count <= self.len);
+        let mut bytes = vec![0; self.layout.stride * count].into_boxed_slice();
+        let mut copied = 0;
+        for index in indices {
+            let slot = self.slot(index);
+            for lane in self.layout.lanes() {
+                let from = lane.start * self.capacity + slot * lane.width;
+                let to = lane.start * count + copied * lane.width;
+                bytes[to..to + lane.width].copy_from_slice(&self.bytes[from..from + lane.width]);
+            }
+            copied += 1;
         }
+        assert_eq!(copied, count);
         StatusSnapshot {
             layout: Arc::clone(&self.layout),
-            capacity: 1,
+            // A snapshot without entries still needs a nonzero modulus.
+            capacity: count.max(1),
             head: 0,
-            len: 1,
+            len: count,
             bytes,
             filter,
         }
@@ -775,12 +791,10 @@ impl Debug for StatusRing {
     }
 }
 
-/// Which entries, and which names in them, a snapshot serializes.
+/// Which names a snapshot serializes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotFilter {
     All,
-    /// Entries stamped strictly after these UTC nanoseconds, judged entry by entry.
-    After(i64),
     /// Every entry, with only the temp and the channel at these column indices.
     Name {
         temp: Option<usize>,
@@ -810,24 +824,17 @@ impl StatusSnapshot {
         i64::from_le_bytes(read(&self.bytes, self.capacity, TIMESTAMPS, slot))
     }
 
-    fn keeps(&self, slot: usize) -> bool {
-        match self.filter {
-            SnapshotFilter::After(after) => self.timestamp_ns(slot) > after,
-            SnapshotFilter::All | SnapshotFilter::Name { .. } => true,
-        }
-    }
-
     fn keeps_temp(&self, column: usize) -> bool {
         match self.filter {
             SnapshotFilter::Name { temp, .. } => temp == Some(column),
-            SnapshotFilter::All | SnapshotFilter::After(_) => true,
+            SnapshotFilter::All => true,
         }
     }
 
     fn keeps_channel(&self, column: usize) -> bool {
         match self.filter {
             SnapshotFilter::Name { channel, .. } => channel == Some(column),
-            SnapshotFilter::All | SnapshotFilter::After(_) => true,
+            SnapshotFilter::All => true,
         }
     }
 
@@ -888,18 +895,12 @@ impl Debug for StatusSnapshot {
 
 impl Serialize for StatusSnapshot {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let kept = (0..self.len)
-            .filter(|index| self.keeps(self.slot(*index)))
-            .count();
-        let mut seq = serializer.serialize_seq(Some(kept))?;
+        let mut seq = serializer.serialize_seq(Some(self.len))?;
         for index in 0..self.len {
-            let slot = self.slot(index);
-            if self.keeps(slot) {
-                seq.serialize_element(&Entry {
-                    snapshot: self,
-                    slot,
-                })?;
-            }
+            seq.serialize_element(&Entry {
+                snapshot: self,
+                slot: self.slot(index),
+            })?;
         }
         seq.end()
     }
@@ -1218,12 +1219,44 @@ mod tests {
     }
 
     #[test]
+    fn a_since_snapshot_holds_only_the_entries_after_it() {
+        // Goal: a `since` snapshot copies only the entries stamped after the bound, judged
+        // entry by entry, and serializes exactly as the whole history filtered by hand would.
+        // Method: a full ring with a clock step back, then compare against a filtered copy.
+        let mut ring = StatusRing::new(4);
+        for (at, rpm) in [
+            (1, None),
+            (2, Some(1200)),
+            (5, None),
+            (3, Some(1300)),
+            (6, None),
+        ] {
+            push(&mut ring, at, f64::from(u8::try_from(at).unwrap()), rpm);
+        }
+        let since = ring.snapshot_after(2);
+        assert_eq!(since.len, 3);
+        assert_eq!(since.bytes.len(), ring.layout.stride * 3);
+        let mut expected = StatusRing::new(3);
+        for (at, rpm) in [(5, None), (3, Some(1300)), (6, None)] {
+            push(&mut expected, at, f64::from(u8::try_from(at).unwrap()), rpm);
+        }
+        assert_eq!(
+            serde_json::to_string(&since).unwrap(),
+            serde_json::to_string(&expected.snapshot(SnapshotFilter::All)).unwrap()
+        );
+        let none = ring.snapshot_after(6);
+        assert_eq!(none.bytes.len(), 0);
+        assert_eq!(serde_json::to_string(&none).unwrap(), "[]");
+    }
+
+    #[test]
     fn an_empty_ring_snapshots_to_no_entries() {
         // Goal: a device without status yet answers with an empty array, as before.
         let ring = StatusRing::new(3);
         let json = |snapshot: &StatusSnapshot| serde_json::to_string(snapshot).unwrap();
         assert_eq!(json(&ring.snapshot(SnapshotFilter::All)), "[]");
         assert_eq!(json(&ring.snapshot_latest(SnapshotFilter::All)), "[]");
+        assert_eq!(json(&ring.snapshot_after(i64::MIN)), "[]");
     }
 
     #[test]

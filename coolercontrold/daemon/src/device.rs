@@ -432,8 +432,7 @@ impl Device {
 
     /// The entries stamped after `after`, judged entry by entry.
     pub fn snapshot_since(&self, after: DateTime<Local>) -> StatusSnapshot {
-        self.history
-            .snapshot(SnapshotFilter::After(timestamp_ns(after)))
+        self.history.snapshot_after(timestamp_ns(after))
     }
 
     /// The newest entry, for the API.
