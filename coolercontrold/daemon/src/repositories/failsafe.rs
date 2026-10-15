@@ -7,7 +7,8 @@ use std::collections::HashSet;
 use std::ops::Not;
 
 use crate::device::{
-    ChannelName, ChannelStatus, DeviceUID, Mhz, Status, Temp, TempStatus, Watts, RPM,
+    ChannelName, ChannelSample, ChannelStatus, DeviceUID, Mhz, StatusWriter, Temp, TempStatus,
+    Watts, RPM,
 };
 use crate::device_health::{FailsafeKind, FailsafeRef};
 
@@ -417,20 +418,13 @@ impl FailsafeStatusData {
         }
     }
 
-    /// Builds a complete `Status` from the stored failsafe data.
-    pub fn build_failsafe_status(&self) -> Status {
-        let channel_count = self.channel_failsafes.len();
-        let temp_count = self.temp_failsafes.len();
-        let mut channels = Vec::with_capacity(channel_count);
-        channels.extend(self.channel_failsafes.values().cloned());
-        let mut temps = Vec::with_capacity(temp_count);
-        temps.extend(self.temp_failsafes.values().cloned());
-        debug_assert_eq!(channels.len(), channel_count);
-        debug_assert_eq!(temps.len(), temp_count);
-        Status {
-            temps,
-            channels,
-            ..Default::default()
+    /// Writes every stored failsafe value into `writer`'s entry.
+    pub fn write_failsafe_status(&self, writer: &mut StatusWriter<'_>) {
+        for temp in self.temp_failsafes.values() {
+            writer.temp(&temp.name, temp.temp);
+        }
+        for channel in self.channel_failsafes.values() {
+            writer.channel(&channel.name, ChannelSample::from(channel));
         }
     }
 }
@@ -477,6 +471,7 @@ pub fn create_failsafe_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::Status;
     use std::ops::Not;
 
     fn sample_channels() -> Vec<ChannelStatus> {
@@ -710,13 +705,50 @@ mod tests {
     }
 
     #[test]
-    fn build_failsafe_status_contains_all_entries() {
-        // The built status must include all failsafe channels and temps.
+    fn write_failsafe_status_contains_all_entries() {
+        // The written entry must include all failsafe channels and temps.
         let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
         let fsd = FailsafeStatusData::new(ch, te).unwrap();
-        let status = fsd.build_failsafe_status();
+        let status = written_failsafe_status(&fsd);
         assert_eq!(status.channels.len(), 2);
         assert_eq!(status.temps.len(), 1);
+    }
+
+    fn failsafe_test_device() -> crate::device::Device {
+        crate::device::Device::new(
+            "device".to_string(),
+            crate::device::DeviceType::Liquidctl,
+            1,
+            None,
+            crate::device::DeviceInfo::default(),
+            None,
+            1.0,
+        )
+    }
+
+    /// The entry a device stores when `fsd`'s failsafe status is written to it.
+    fn written_failsafe_status(fsd: &FailsafeStatusData) -> Status {
+        let mut device = failsafe_test_device();
+        fsd.write_failsafe_status(&mut device.write_status(chrono::Local::now()));
+        device.latest_status().unwrap()
+    }
+
+    #[test]
+    fn writing_the_failsafe_status_allocates_nothing_once_warm() {
+        // A device held in failsafe writes its substitutes every tick, so after the first
+        // tick named them it must not allocate.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut device = failsafe_test_device();
+        fsd.write_failsafe_status(&mut device.write_status(chrono::Local::now()));
+        let tick = chrono::Local::now();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            fsd.write_failsafe_status(&mut device.write_status(tick));
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.latest_timestamp(), Some(tick));
     }
 
     // --- threshold boundary: negative space ---
@@ -1098,12 +1130,12 @@ mod tests {
     }
 
     #[test]
-    fn build_failsafe_status_has_correct_values() {
-        // The built status must contain the actual failsafe constant
+    fn write_failsafe_status_has_correct_values() {
+        // The written entry must contain the actual failsafe constant
         // values, not the original device readings.
         let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
         let fsd = FailsafeStatusData::new(ch, te).unwrap();
-        let status = fsd.build_failsafe_status();
+        let status = written_failsafe_status(&fsd);
         for temp in &status.temps {
             assert!((temp.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
         }

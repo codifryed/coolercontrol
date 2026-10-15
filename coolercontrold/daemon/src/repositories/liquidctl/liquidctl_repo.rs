@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
-    Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelKind, ChannelName, ChannelSample, ChannelStatus, DeviceInfo, DeviceType, DeviceUID,
+    Duty, LcInfo, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
@@ -1629,27 +1629,28 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        let fsd_map = self.failsafe_statuses.borrow();
         for device_lock in self.devices.values() {
-            let mut status = {
-                let device = device_lock.borrow();
-                let fsd_map = self.failsafe_statuses.borrow();
-                let failsafe_status = fsd_map
-                    .get(&device.type_index)
-                    .filter(|fsd| fsd.threshold_exceeded())
-                    .map(FailsafeStatusData::build_failsafe_status);
-                if let Some(status) = failsafe_status {
-                    trace!("Device: {} using failsafe status", device.name);
-                    status
-                } else {
-                    drop(fsd_map);
-                    match self.build_normal_status(&device) {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    }
-                }
+            let mut device = device_lock.borrow_mut();
+            let failsafe = fsd_map
+                .get(&device.type_index)
+                .filter(|fsd| fsd.threshold_exceeded());
+            if let Some(fsd) = failsafe {
+                trace!("Device: {} using failsafe status", device.name);
+                fsd.write_failsafe_status(&mut device.write_status(timestamp));
+                continue;
+            }
+            // The driver mapping builds a status from the allocated liquidctl message.
+            let Ok(status) = self.build_normal_status(&device) else {
+                continue;
             };
-            status.timestamp = timestamp;
-            device_lock.borrow_mut().set_status(status);
+            let mut writer = device.write_status(timestamp);
+            for temp in &status.temps {
+                writer.temp(&temp.name, temp.temp);
+            }
+            for channel in &status.channels {
+                writer.channel(&channel.name, ChannelSample::from(channel));
+            }
         }
         Ok(())
     }
