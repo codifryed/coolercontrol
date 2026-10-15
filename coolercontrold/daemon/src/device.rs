@@ -427,10 +427,10 @@ impl Device {
     /// * `status`: The `Status` to be consumed and added to the history stack.
     pub fn set_status(&mut self, status: Status) {
         self.push_and_augment(status);
-        let Some(latest) = self.status_history.back().cloned() else {
+        let Some(latest) = self.status_history.back() else {
             return;
         };
-        self.record_stats(&latest);
+        Self::record_stats(&mut self.stats, latest);
     }
 
     /// Borrow the per-channel running stats.
@@ -441,17 +441,26 @@ impl Device {
     /// Fold a `Status` into the running stats. Channels and temps absent
     /// from `status` are not touched (no zero pollution from a tick where
     /// hwmon dropped a channel). Called from `set_status` after the
-    /// augmenter runs.
-    fn record_stats(&mut self, status: &Status) {
+    /// augmenter runs. Names are cloned into the maps on first sight only.
+    fn record_stats(device_stats: &mut DeviceStats, status: &Status) {
         for temp in &status.temps {
-            self.stats
-                .temps
-                .entry(temp.name.clone())
-                .or_default()
-                .fold(temp.temp);
+            match device_stats.temps.get_mut(&temp.name) {
+                Some(temp_stats) => temp_stats.fold(temp.temp),
+                None => device_stats
+                    .temps
+                    .entry(temp.name.clone())
+                    .or_default()
+                    .fold(temp.temp),
+            }
         }
         for channel in &status.channels {
-            let by_type = self.stats.channels.entry(channel.name.clone()).or_default();
+            let by_type = match device_stats.channels.get_mut(&channel.name) {
+                Some(by_type) => by_type,
+                None => device_stats
+                    .channels
+                    .entry(channel.name.clone())
+                    .or_default(),
+            };
             if let Some(duty) = channel.duty {
                 by_type.entry(ChannelDataType::Duty).or_default().fold(duty);
             }
@@ -1144,6 +1153,36 @@ mod tests {
         assert_eq!(duty_stats.count, 1);
         assert_eq!(duty_stats.avg, 99.0);
         assert_eq!(duty_stats.min, 99.0);
+    }
+
+    /// A tick on a warm device must not allocate: `set_status` borrows the
+    /// newest entry and finds stats by name instead of cloning the status
+    /// and its names. Counts this thread's allocations around one call,
+    /// with the status built beforehand. A name seen for the first time
+    /// still gets its own entry.
+    #[test]
+    fn set_status_on_a_warm_device_does_not_allocate() {
+        let reading = || {
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            )
+        };
+        let mut device = make_test_device();
+        device.initialize_status_history_with(reading(), POLL_RATE);
+        // The first tick seeds the stats maps, which allocates their keys once.
+        device.set_status(reading());
+        let next = reading();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| device.set_status(next));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
+        let fan1 = device.stats().channels.get("fan1").unwrap();
+        assert_eq!(fan1.get(&ChannelDataType::Rpm).unwrap().count, 2);
+        device.set_status(status_with(vec![("nvme", 35.0)], vec![]));
+        assert_eq!(device.stats().temps.get("nvme").unwrap().count, 1);
+        assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
     }
 
     /// `reset_stats` clears everything then reseeds from the most recent
