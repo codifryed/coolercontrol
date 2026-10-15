@@ -43,10 +43,25 @@ pub type RPM = u32;
 pub type Mhz = u32;
 pub type Watts = f64;
 
-/// Hook run by `Device::set_status` on each incoming status before it is stored. Lets a single
-/// consumer (today: the calibration true-duty rewrite) adjust the values every reader sees.
+/// Hook run on each channel a device stores, before it is stored. Lets a single consumer
+/// (today: the calibration true-duty rewrite) adjust the values every reader sees.
 pub trait StatusAugmenter {
-    fn augment(&self, status: &mut Status, device_uid: &DeviceUID);
+    /// Adjusts the values of channel `channel_name`.
+    fn augment_channel(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+        sample: &mut ChannelSample,
+    );
+
+    /// Adjusts every channel of `status`.
+    fn augment(&self, status: &mut Status, device_uid: &DeviceUID) {
+        for channel in &mut status.channels {
+            let mut sample = ChannelSample::from(&*channel);
+            self.augment_channel(device_uid, &channel.name, &mut sample);
+            sample.apply_to(channel);
+        }
+    }
 }
 
 /// Running min/max/avg/count for a single (channel, `data_type`) or temp pair.
@@ -490,7 +505,7 @@ impl Device {
             status
                 .channels
                 .iter()
-                .map(|channel| (channel.name.as_str(), ChannelSample::of(channel).zeroed())),
+                .map(|channel| (channel.name.as_str(), ChannelSample::from(channel).zeroed())),
         );
         // Zeroed entries at offsets [-(N-1), ..., -1] * poll_rate, then the real
         // status at offset 0.
@@ -627,44 +642,62 @@ impl Device {
     /// augmenter runs. Names are cloned into the maps on first sight only.
     fn record_stats(device_stats: &mut DeviceStats, status: &Status) {
         for temp in &status.temps {
-            match device_stats.temps.get_mut(&temp.name) {
-                Some(temp_stats) => temp_stats.fold(temp.temp),
-                None => device_stats
-                    .temps
-                    .entry(temp.name.clone())
-                    .or_default()
-                    .fold(temp.temp),
-            }
+            Self::record_temp(device_stats, &temp.name, temp.temp);
         }
         for channel in &status.channels {
-            let by_type = match device_stats.channels.get_mut(&channel.name) {
-                Some(by_type) => by_type,
-                None => device_stats
-                    .channels
-                    .entry(channel.name.clone())
-                    .or_default(),
-            };
-            if let Some(duty) = channel.duty {
-                by_type.entry(ChannelDataType::Duty).or_default().fold(duty);
-            }
-            if let Some(rpm) = channel.rpm {
-                by_type
-                    .entry(ChannelDataType::Rpm)
-                    .or_default()
-                    .fold(f64::from(rpm));
-            }
-            if let Some(freq) = channel.freq {
-                by_type
-                    .entry(ChannelDataType::Freq)
-                    .or_default()
-                    .fold(f64::from(freq));
-            }
-            if let Some(watts) = channel.watts {
-                by_type
-                    .entry(ChannelDataType::Watts)
-                    .or_default()
-                    .fold(watts);
-            }
+            Self::record_channel(device_stats, &channel.name, ChannelSample::from(channel));
+        }
+    }
+
+    fn record_temp(device_stats: &mut DeviceStats, name: &str, temp: Temp) {
+        match device_stats.temps.get_mut(name) {
+            Some(temp_stats) => temp_stats.fold(temp),
+            None => device_stats
+                .temps
+                .entry(name.to_string())
+                .or_default()
+                .fold(temp),
+        }
+    }
+
+    fn record_channel(device_stats: &mut DeviceStats, name: &str, sample: ChannelSample) {
+        let by_type = match device_stats.channels.get_mut(name) {
+            Some(by_type) => by_type,
+            None => device_stats.channels.entry(name.to_string()).or_default(),
+        };
+        if let Some(duty) = sample.duty {
+            by_type.entry(ChannelDataType::Duty).or_default().fold(duty);
+        }
+        if let Some(rpm) = sample.rpm {
+            by_type
+                .entry(ChannelDataType::Rpm)
+                .or_default()
+                .fold(f64::from(rpm));
+        }
+        if let Some(freq) = sample.freq {
+            by_type
+                .entry(ChannelDataType::Freq)
+                .or_default()
+                .fold(f64::from(freq));
+        }
+        if let Some(watts) = sample.watts {
+            by_type
+                .entry(ChannelDataType::Watts)
+                .or_default()
+                .fold(watts);
+        }
+    }
+
+    /// Starts the newest entry, stamped `timestamp`, overwriting the oldest once the history
+    /// is full. Every name starts absent from it: write the ones this tick reports. Each
+    /// value passes the augmenter and is folded into the running stats as it is written.
+    pub fn write_status(&mut self, timestamp: DateTime<Local>) -> StatusWriter<'_> {
+        let slot = self.history.push(timestamp_ns(timestamp));
+        StatusWriter {
+            device: self,
+            slot,
+            next_temp: 0,
+            next_channel: 0,
         }
     }
 
@@ -710,6 +743,45 @@ impl Device {
     }
 }
 
+/// Writes one history entry in place. Made by [`Device::write_status`].
+pub struct StatusWriter<'a> {
+    device: &'a mut Device,
+    slot: usize,
+    /// The columns expected next. A source reports its names in the same order every tick,
+    /// so a lookup almost always matches on its first comparison.
+    next_temp: usize,
+    next_channel: usize,
+}
+
+impl StatusWriter<'_> {
+    pub fn temp(&mut self, name: &str, temp: Temp) {
+        let Some(column) = self.device.history.temp_column_from(self.next_temp, name) else {
+            self.device.note_refused_name();
+            return;
+        };
+        self.next_temp = column + 1;
+        self.device.history.set_temp(self.slot, column, temp);
+        Device::record_temp(&mut self.device.stats, name, temp);
+    }
+
+    pub fn channel(&mut self, name: &str, mut sample: ChannelSample) {
+        if let Some(augmenter) = self.device.status_augmenter.as_ref() {
+            augmenter.augment_channel(&self.device.uid, name, &mut sample);
+        }
+        let Some(column) = self
+            .device
+            .history
+            .channel_column_from(self.next_channel, name)
+        else {
+            self.device.note_refused_name();
+            return;
+        };
+        self.next_channel = column + 1;
+        self.device.history.set_channel(self.slot, column, sample);
+        Device::record_channel(&mut self.device.stats, name, sample);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempStatus {
     pub name: TempName,
@@ -741,8 +813,8 @@ pub struct ChannelSample {
     pub pwm_mode: Option<u8>,
 }
 
-impl ChannelSample {
-    fn of(channel: &ChannelStatus) -> Self {
+impl From<&ChannelStatus> for ChannelSample {
+    fn from(channel: &ChannelStatus) -> Self {
         Self {
             rpm: channel.rpm,
             duty: channel.duty,
@@ -750,6 +822,17 @@ impl ChannelSample {
             watts: channel.watts,
             pwm_mode: channel.pwm_mode,
         }
+    }
+}
+
+impl ChannelSample {
+    /// Writes these values over `channel`'s.
+    fn apply_to(self, channel: &mut ChannelStatus) {
+        channel.rpm = self.rpm;
+        channel.duty = self.duty;
+        channel.freq = self.freq;
+        channel.watts = self.watts;
+        channel.pwm_mode = self.pwm_mode;
     }
 
     /// Every present value set to zero, keeping which fields are present. `pwm_mode` is a
@@ -1162,16 +1245,20 @@ mod tests {
     /// values, not the pre-augmenter status passed into `set_status`.
     struct FixedDutyAugmenter {
         target_duty: f64,
+        /// Channels augmented.
         invocations: RefCell<u32>,
     }
 
     impl StatusAugmenter for FixedDutyAugmenter {
-        fn augment(&self, status: &mut Status, _device_uid: &DeviceUID) {
+        fn augment_channel(
+            &self,
+            _device_uid: &DeviceUID,
+            _channel_name: &str,
+            sample: &mut ChannelSample,
+        ) {
             *self.invocations.borrow_mut() += 1;
-            for channel in &mut status.channels {
-                if channel.duty.is_some() {
-                    channel.duty = Some(self.target_duty);
-                }
+            if sample.duty.is_some() {
+                sample.duty = Some(self.target_duty);
             }
         }
     }
@@ -1405,6 +1492,97 @@ mod tests {
         device.set_status(status_with(vec![("nvme", 35.0)], vec![]));
         assert_eq!(device.stats().temps.get("nvme").unwrap().count, 1);
         assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
+    }
+
+    /// A tick written in place on a warm device allocates nothing: no `Status`, no names.
+    #[test]
+    fn write_status_on_a_warm_device_does_not_allocate() {
+        let mut device = make_test_device();
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let tick = |device: &mut Device, temp: f64| {
+            let mut writer = device.write_status(Local::now());
+            writer.temp("cpu", temp);
+            writer.temp("gpu", 61.0);
+            writer.channel(
+                "fan1",
+                ChannelSample {
+                    rpm: Some(1300),
+                    duty: Some(55.0),
+                    ..Default::default()
+                },
+            );
+        };
+        // The first tick seeds the stats maps, which allocates their keys once.
+        tick(&mut device, 41.0);
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| tick(&mut device, 42.0));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.latest_temp("cpu"), Some(42.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().duty, Some(55.0));
+        assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
+    }
+
+    /// The writer stores what `set_status` would: names in any order land in their own
+    /// columns, names not written this tick are absent, and every channel passes the
+    /// augmenter before it is stored and folded into the stats.
+    #[test]
+    fn write_status_matches_set_status() {
+        let augmenter = Rc::new(FixedDutyAugmenter {
+            target_duty: 99.0,
+            invocations: RefCell::new(0),
+        });
+        let mut device = make_test_device();
+        device.set_status_augmenter(augmenter.clone());
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let at = Local::now();
+        let mut writer = device.write_status(at);
+        writer.temp("gpu", 61.0);
+        writer.channel(
+            "fan1",
+            ChannelSample {
+                rpm: Some(1300),
+                duty: Some(55.0),
+                ..Default::default()
+            },
+        );
+        writer.temp("nvme", 35.0);
+
+        let latest = device.latest_status().unwrap();
+        assert_eq!(latest.timestamp, at);
+        assert_eq!(
+            latest.temps,
+            vec![
+                TempStatus {
+                    name: "gpu".to_string(),
+                    temp: 61.0
+                },
+                TempStatus {
+                    name: "nvme".to_string(),
+                    temp: 35.0
+                },
+            ]
+        );
+        assert_eq!(
+            latest.channels,
+            vec![channel("fan1", Some(99.0), Some(1300))]
+        );
+        assert_eq!(*augmenter.invocations.borrow(), 2);
+        let fan1 = device.stats().channels.get("fan1").unwrap();
+        assert_eq!(fan1.get(&ChannelDataType::Duty).unwrap().avg, 99.0);
+        assert!(device.stats().temps.contains_key("cpu").not());
     }
 
     /// An API copy of the history is one allocation per device, and a tick taken while that

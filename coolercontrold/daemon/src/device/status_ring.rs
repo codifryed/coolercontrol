@@ -394,6 +394,24 @@ impl StatusRing {
         Some(index)
     }
 
+    /// The column of temp `name`, trying column `hint` first. See `temp_column`.
+    pub fn temp_column_from(&mut self, hint: usize, name: &str) -> Option<usize> {
+        let at_hint = self.layout.temps.get(hint);
+        if at_hint.is_some_and(|column| &*column.name == name) {
+            return Some(hint);
+        }
+        self.temp_column(name)
+    }
+
+    /// The column of channel `name`, trying column `hint` first. See `channel_column`.
+    pub fn channel_column_from(&mut self, hint: usize, name: &str) -> Option<usize> {
+        let at_hint = self.layout.channels.get(hint);
+        if at_hint.is_some_and(|column| &*column.name == name) {
+            return Some(hint);
+        }
+        self.channel_column(name)
+    }
+
     /// A column unwritten for `capacity` pushes. Every slot has been pushed since, which
     /// cleared its presence there, so no held entry has a value in it.
     fn unwritten_column(&self, written: &[u64]) -> Option<usize> {
@@ -428,7 +446,7 @@ impl StatusRing {
         }
         for channel in &status.channels {
             match self.channel_column(&channel.name) {
-                Some(column) => self.set_channel(slot, column, ChannelSample::of(channel)),
+                Some(column) => self.set_channel(slot, column, ChannelSample::from(channel)),
                 None => kept_all = false,
             }
         }
