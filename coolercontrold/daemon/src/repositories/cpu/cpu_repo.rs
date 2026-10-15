@@ -76,6 +76,21 @@ pub struct CpuRepo {
 }
 
 impl CpuRepo {
+    pub fn new(config: Rc<Config>, overrides: Rc<OverridesController>) -> Result<Self> {
+        Ok(Self {
+            config,
+            overrides,
+            devices: HashMap::new(),
+            apple_silicon: None,
+            topology: CpuTopology::default(),
+            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
+            cpu_load_percents: RefCell::new(Vec::new()),
+            preloaded_statuses: RefCell::new(HashMap::new()),
+            energy_counters: HashMap::new(),
+            poll_rate: 0.,
+        })
+    }
+
     /// Writes each device's preloaded status into its history, stamped `timestamp`.
     fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
         let preloaded_statuses_map = self.preloaded_statuses.borrow();
@@ -99,21 +114,6 @@ impl CpuRepo {
                 writer.channel(&channel.name, ChannelSample::from(channel));
             }
         }
-    }
-
-    pub fn new(config: Rc<Config>, overrides: Rc<OverridesController>) -> Result<Self> {
-        Ok(Self {
-            config,
-            overrides,
-            devices: HashMap::new(),
-            apple_silicon: None,
-            topology: CpuTopology::default(),
-            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
-            cpu_load_percents: RefCell::new(Vec::new()),
-            preloaded_statuses: RefCell::new(HashMap::new()),
-            energy_counters: HashMap::new(),
-            poll_rate: 0.,
-        })
     }
 
     /// The temp label to show for a CPU sensor.

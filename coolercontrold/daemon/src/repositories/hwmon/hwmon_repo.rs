@@ -552,30 +552,6 @@ pub struct HwmonRepo {
 }
 
 impl HwmonRepo {
-    /// Writes each device's preloaded status into its history, stamped `timestamp`.
-    fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
-        let preloaded_statuses_map = self.preloaded_statuses.borrow();
-        for (device, _) in self.devices.values() {
-            let device_index = device.borrow().type_index;
-            let Some((channels, temps)) = preloaded_statuses_map.get(&device_index) else {
-                error!("There is no status preloaded for this device: {device_index}");
-                continue;
-            };
-            let mut device = device.borrow_mut();
-            trace!(
-                "Hwmon device: {} status was updated with: {temps:?} {channels:?}",
-                device.name
-            );
-            let mut writer = device.write_status(timestamp);
-            for temp in temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
-        }
-    }
-
     pub fn new(
         config: Rc<Config>,
         lc_locations: Vec<String>,
@@ -635,6 +611,30 @@ impl HwmonRepo {
     fn with_uid_side_stores(mut self, uid_side_stores: Vec<PathBuf>) -> Self {
         self.uid_side_stores = uid_side_stores;
         self
+    }
+
+    /// Writes each device's preloaded status into its history, stamped `timestamp`.
+    fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.preloaded_statuses.borrow();
+        for (device, _) in self.devices.values() {
+            let device_index = device.borrow().type_index;
+            let Some((channels, temps)) = preloaded_statuses_map.get(&device_index) else {
+                error!("There is no status preloaded for this device: {device_index}");
+                continue;
+            };
+            let mut device = device.borrow_mut();
+            trace!(
+                "Hwmon device: {} status was updated with: {temps:?} {channels:?}",
+                device.name
+            );
+            let mut writer = device.write_status(timestamp);
+            for temp in temps {
+                writer.temp(&temp.name, temp.temp);
+            }
+            for channel in channels {
+                writer.channel(&channel.name, ChannelSample::from(channel));
+            }
+        }
     }
 
     fn load_device_delays(&mut self) {
