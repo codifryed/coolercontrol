@@ -30,14 +30,44 @@
 //! indistinguishable devices (identical model, no serial, no distinct path) can derive the same
 //! UID. `assign_unique` enforces uniqueness within a detection batch so that such a collision never
 //! silently drops a device from a uid-keyed map.
+//!
+//! When a repository does move a device onto a better identifier, `migrate_uid_in_file` re-keys
+//! the JSON stores that name the old UID.
 
 use std::collections::HashSet;
 use std::ops::Not;
+use std::path::Path;
 
+use anyhow::Result;
 use log::info;
 use sha2::{Digest, Sha256};
 
+use crate::cc_fs;
 use crate::device::{Device, DeviceType, UID};
+
+/// Repoints every reference to `legacy` in a JSON store that has not been loaded yet, so no
+/// reload is needed. A textual replacement is sound: a UID is 64 hex chars and cannot be a
+/// substring of anything else in these files. A file that already names `current` is left
+/// alone: merging would pick a winner.
+pub async fn migrate_uid_in_file(path: &Path, legacy: &UID, current: &UID) -> Result<bool> {
+    debug_assert_eq!(legacy.len(), 64);
+    debug_assert_eq!(current.len(), 64);
+    debug_assert_ne!(legacy, current);
+    let Ok(contents) = cc_fs::read_txt(path).await else {
+        return Ok(false);
+    };
+    if contents.contains(legacy.as_str()).not() {
+        return Ok(false);
+    }
+    if contents.contains(current.as_str()) {
+        return Ok(false);
+    }
+    let migrated = contents.replace(legacy.as_str(), current.as_str());
+    debug_assert!(migrated.contains(legacy.as_str()).not());
+    debug_assert!(migrated.contains(current.as_str()));
+    cc_fs::write(path, migrated.into_bytes()).await?;
+    Ok(true)
+}
 
 impl Device {
     /// Returns a sha256 hash string of an attempted unique identifier for a device.
@@ -494,5 +524,146 @@ mod tests {
         let distinct: HashSet<&UID> = uids.iter().collect();
         assert_eq!(distinct.len(), uids.len());
         assert_eq!(assigned.len(), uids.len());
+    }
+
+    // -- migrate_uid_in_file: the JSON store re-key ------------------------------------------
+
+    const LEGACY_UID: &str = "8ef08515338cc1f7727415a1d6bc45e84d5a818e94bd2072ac34b9d8d87f4210";
+    const CURRENT_UID: &str = "67ada747f6820bb2e4a9b5b639657e0971998a6f5ca5f50480ecf36b46c7ec29";
+
+    async fn write_store(tmp: &tempfile::TempDir, contents: &str) -> std::path::PathBuf {
+        let path = tmp.path().join("store.json");
+        cc_fs::write(&path, contents.as_bytes().to_vec())
+            .await
+            .unwrap();
+        path
+    }
+
+    async fn migrate_store(path: &Path) -> bool {
+        migrate_uid_in_file(path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
+            .await
+            .unwrap()
+    }
+
+    // Goal: an alert watching a device follows it onto its new UID.
+    // Method: write a realistic alerts file naming the legacy UID in both the
+    // downgrade-compat `channel_source` and the `channel_sources` array, then migrate.
+    #[test]
+    #[serial_test::serial]
+    fn migrate_uid_in_file_repoints_every_reference() {
+        crate::rt::test_runtime(async {
+            let contents = format!(
+                r#"[{{"uid":"a1","name":"Drive hot","channel_source":{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}},"channel_sources":[{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}}]}}]"#
+            );
+            let tmp = tempfile::tempdir().unwrap();
+            let path = write_store(&tmp, &contents).await;
+
+            let migrated = migrate_store(&path).await;
+
+            let after = cc_fs::read_txt(&path).await.unwrap();
+            assert!(migrated);
+            assert!(after.contains(LEGACY_UID).not());
+            assert_eq!(after.matches(CURRENT_UID).count(), 2);
+            assert!(after.contains(r#""name":"Drive hot""#));
+        });
+    }
+
+    // Goal: modes.json keys a device's settings by its UID, so the re-key must reach map keys
+    // and leave a file the real type still loads. Method: serialize a Mode holding a setting
+    // under the legacy UID, migrate, then deserialize it again.
+    #[test]
+    #[serial_test::serial]
+    fn migrate_uid_in_file_repoints_a_uid_used_as_a_map_key() {
+        use crate::modes::Mode;
+        use crate::setting::{Setting, SettingKind};
+        use std::collections::HashMap;
+
+        crate::rt::test_runtime(async {
+            let setting = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 42 },
+            };
+            let mode = Mode {
+                uid: "m1".to_string(),
+                name: "Quiet".to_string(),
+                all_device_settings: HashMap::from([(
+                    LEGACY_UID.to_string(),
+                    HashMap::from([("fan1".to_string(), setting)]),
+                )]),
+            };
+            let contents = serde_json::json!({
+                "modes": [mode],
+                "order": ["m1"],
+                "current_active_mode": null,
+                "previous_active_mode": null,
+            })
+            .to_string();
+            let tmp = tempfile::tempdir().unwrap();
+            let path = write_store(&tmp, &contents).await;
+
+            let migrated = migrate_store(&path).await;
+
+            let after = cc_fs::read_txt(&path).await.unwrap();
+            assert!(migrated);
+            crate::modes::validate(&after).unwrap();
+            let mut file: serde_json::Value = serde_json::from_str(&after).unwrap();
+            let mode: Mode = serde_json::from_value(file["modes"][0].take()).unwrap();
+            assert!(mode.all_device_settings.contains_key(LEGACY_UID).not());
+            assert_eq!(mode.all_device_settings[CURRENT_UID].len(), 1);
+        });
+    }
+
+    // Goal: negative space. A file that already names the new UID is left untouched, so a
+    // half-applied migration is never merged into an ambiguous state. Method: seed both UIDs
+    // and assert the file is unchanged.
+    #[test]
+    #[serial_test::serial]
+    fn migrate_uid_in_file_skips_when_current_present() {
+        crate::rt::test_runtime(async {
+            let contents = format!(
+                r#"[{{"uid":"a1","channel_source":{{"device_uid":"{LEGACY_UID}"}}}},{{"uid":"a2","channel_source":{{"device_uid":"{CURRENT_UID}"}}}}]"#
+            );
+            let tmp = tempfile::tempdir().unwrap();
+            let path = write_store(&tmp, &contents).await;
+
+            let migrated = migrate_store(&path).await;
+
+            let after = cc_fs::read_txt(&path).await.unwrap();
+            assert!(migrated.not());
+            assert_eq!(after, contents);
+        });
+    }
+
+    // Goal: the overwhelmingly common case. Nothing references this device, so the file
+    // must be left byte-identical rather than rewritten on every boot. Method: seed another UID
+    // and assert the file is unchanged.
+    #[test]
+    #[serial_test::serial]
+    fn migrate_uid_in_file_leaves_unrelated_entries_alone() {
+        crate::rt::test_runtime(async {
+            let contents = r#"[{"uid":"a1","channel_source":{"device_uid":"other"}}]"#;
+            let tmp = tempfile::tempdir().unwrap();
+            let path = write_store(&tmp, contents).await;
+
+            let migrated = migrate_store(&path).await;
+
+            let after = cc_fs::read_txt(&path).await.unwrap();
+            assert!(migrated.not());
+            assert_eq!(after, contents);
+        });
+    }
+
+    // Goal: a store that was never written is the first-run case, not an error. Method: migrate
+    // a path that does not exist and assert nothing moved.
+    #[test]
+    #[serial_test::serial]
+    fn migrate_uid_in_file_ignores_a_missing_file() {
+        crate::rt::test_runtime(async {
+            let tmp = tempfile::tempdir().unwrap();
+
+            let migrated = migrate_store(&tmp.path().join("absent.json")).await;
+
+            assert!(migrated.not());
+        });
     }
 }

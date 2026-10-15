@@ -472,6 +472,16 @@ const DUTY_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(30);
 
 const _: () = assert!(DUTY_CACHE_VERIFY_INTERVAL.as_secs() > 0);
 
+/// Every JSON store that names a device by UID.
+fn default_uid_side_stores() -> Vec<PathBuf> {
+    vec![
+        crate::paths::alert_config_file().to_path_buf(),
+        crate::paths::mode_config_file().to_path_buf(),
+        crate::paths::calibration_config_file().to_path_buf(),
+        crate::paths::ui_config_file().to_path_buf(),
+    ]
+}
+
 pub struct HwmonRepo {
     config: Rc<Config>,
     /// Owns both the user's own name overrides and the lm-sensors labels under them.
@@ -528,6 +538,9 @@ pub struct HwmonRepo {
 
     device_delays: HashMap<DeviceUID, u16>,
 
+    /// JSON stores rewritten when a device moves off its legacy UID.
+    uid_side_stores: Vec<PathBuf>,
+
     /// Permit timeouts and init threshold are derived from
     /// `poll_rate` and frozen in `new()`; `poll_rate` is restart-only.
     device_read_permit_timeout: Duration,
@@ -569,6 +582,7 @@ impl HwmonRepo {
                 .filter_map(|loc| cc_fs::canonicalize(loc).ok())
                 .collect(),
             device_delays: HashMap::new(),
+            uid_side_stores: default_uid_side_stores(),
             hardware_support: None,
             device_read_permit_timeout,
             device_write_permit_timeout,
@@ -587,6 +601,13 @@ impl HwmonRepo {
         hardware_support: Rc<HardwareSupportController>,
     ) -> Self {
         self.hardware_support = Some(hardware_support);
+        self
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    fn with_uid_side_stores(mut self, uid_side_stores: Vec<PathBuf>) -> Self {
+        self.uid_side_stores = uid_side_stores;
         self
     }
 
@@ -1350,11 +1371,11 @@ impl HwmonRepo {
         }
     }
 
-    /// Moves settings written under the pre-`wwid` UID onto `device_uid`.
+    /// Moves settings written under the legacy, path-derived UID onto `device_uid`.
     ///
     /// Runs before this device's first settings lookup, so the very first boot after the
     /// change already resolves them. A no-op for every device whose identifier chain is
-    /// unchanged, which is everything that is not an `sd` disk.
+    /// unchanged, which is everything that is not an `sd` disk or an i2c client.
     ///
     /// The document is persisted on the normal save path rather than here. Re-running is
     /// harmless: once the legacy entry is gone there is nothing left to move.
@@ -1386,13 +1407,14 @@ impl HwmonRepo {
             return;
         }
         info!(
-            "Migrated {rewrites} saved setting(s) for {device_name} onto a hardware-derived \
-             identifier, so they no longer depend on a sysfs path that can change between boots"
+            "Migrated {rewrites} saved setting(s) for {device_name} onto a stable identifier, \
+             so they no longer depend on a sysfs path that can change between boots"
         );
     }
 
-    /// Overrides are already in memory so they move through their controller; alerts are still
-    /// on disk. Failures are swallowed: a stale entry beats aborting startup.
+    /// Overrides are already in memory so they move through their controller; the JSON stores
+    /// load after device detection and are still on disk. Failures are swallowed: a stale entry
+    /// beats aborting startup.
     async fn migrate_legacy_uid_side_stores(
         &self,
         legacy_uid: &DeviceUID,
@@ -1407,9 +1429,14 @@ impl HwmonRepo {
             Ok(moved) => migrated |= moved,
             Err(err) => warn!("Could not migrate label overrides to the new device UID: {err}"),
         }
-        match crate::alerts::migrate_device_uid_in_file(legacy_uid, device_uid).await {
-            Ok(moved) => migrated |= moved,
-            Err(err) => warn!("Could not migrate alerts to the new device UID: {err}"),
+        for store in &self.uid_side_stores {
+            match crate::device_uid::migrate_uid_in_file(store, legacy_uid, device_uid).await {
+                Ok(moved) => migrated |= moved,
+                Err(err) => warn!(
+                    "Could not migrate {} to the new device UID: {err}",
+                    store.display()
+                ),
+            }
         }
         migrated
     }
@@ -7364,6 +7391,116 @@ mod uid_migration_tests {
                 "our settings arrive under the new UID"
             );
         });
+    }
+
+    // Goal: an i2c client's settings, saved under the path that carries its bus number, follow
+    // it onto the adapter identity. Method: derive both UIDs from one fixture the way device
+    // detection does, then migrate.
+    #[test]
+    #[serial]
+    fn migration_moves_an_i2c_clients_settings_off_its_bus_number() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
+            let adapter = root.join("devices/pci0000:00/0000:00:14.0/i2c-15");
+            let client = adapter.join("15-0050");
+            let path = root.join("hwmon/hwmon1");
+            cc_fs::create_dir_all(&client).await.unwrap();
+            cc_fs::create_dir_all(&path).await.unwrap();
+            cc_fs::write(adapter.join("name"), b"SMBus PIIX4 adapter\n".to_vec())
+                .await
+                .unwrap();
+            std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
+            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
+            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_uid =
+                Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
+            let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
+            let repo = repo_with_setting(&legacy_uid);
+            let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
+
+            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
+                .await;
+
+            assert!(legacy_id.contains("/i2c-15/"), "got {legacy_id}");
+            assert!(our_id.contains("/i2c-15/").not(), "got {our_id}");
+            assert!(
+                repo.config
+                    .get_device_settings(&legacy_uid)
+                    .unwrap()
+                    .is_empty(),
+                "the path-derived entry moves"
+            );
+            assert_eq!(
+                repo.config.get_device_settings(&our_uid).unwrap().len(),
+                1,
+                "the settings arrive under the adapter identity"
+            );
+        });
+    }
+
+    // Goal: every JSON store that names a device follows it onto the new UID, so no saved
+    // setting is orphaned. Method: seed one store per production entry in a tempdir with the
+    // legacy UID, migrate the i2c fixture, then assert each store names only the new UID.
+    #[test]
+    fn migration_moves_every_json_store_off_the_legacy_uid() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
+            let adapter = root.join("devices/pci0000:00/0000:00:14.0/i2c-15");
+            let client = adapter.join("15-0050");
+            let path = root.join("hwmon/hwmon1");
+            cc_fs::create_dir_all(&client).await.unwrap();
+            cc_fs::create_dir_all(&path).await.unwrap();
+            cc_fs::write(adapter.join("name"), b"SMBus PIIX4 adapter\n".to_vec())
+                .await
+                .unwrap();
+            std::os::unix::fs::symlink(&client, path.join("device")).unwrap();
+            let legacy_id = devices::get_legacy_device_unique_id(&path, "spd5118").await;
+            let our_id = devices::get_device_unique_id(&path, "spd5118").await;
+            let legacy_uid =
+                Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&legacy_id));
+            let our_uid = Device::create_uid_from("spd5118", DeviceType::Hwmon, 0, Some(&our_id));
+            let stores: Vec<PathBuf> = default_uid_side_stores()
+                .iter()
+                .map(|store| root.join(store.file_name().unwrap()))
+                .collect();
+            for store in &stores {
+                let contents = format!(r#"{{"device_uid":"{legacy_uid}"}}"#);
+                cc_fs::write(store, contents.into_bytes()).await.unwrap();
+            }
+            let repo = repo_with_setting(&legacy_uid).with_uid_side_stores(stores.clone());
+            let assigned: HashSet<UID> = [our_uid.clone()].into_iter().collect();
+
+            repo.migrate_legacy_device_uid(&path, "spd5118", &our_uid, &assigned)
+                .await;
+
+            for store in &stores {
+                let contents = cc_fs::read_txt(store).await.unwrap();
+                let name = store.display();
+                assert!(
+                    contents.contains(our_uid.as_str()),
+                    "{name} names the new UID"
+                );
+                assert!(
+                    contents.contains(legacy_uid.as_str()).not(),
+                    "{name} drops the legacy UID"
+                );
+            }
+        });
+    }
+
+    // Goal: pin the production store list, since the migration test runs on tempdir copies.
+    // Method: compare default_uid_side_stores() with the four crate::paths accessors, in order.
+    #[test]
+    fn default_uid_side_stores_cover_every_json_store() {
+        let expected = [
+            crate::paths::alert_config_file(),
+            crate::paths::mode_config_file(),
+            crate::paths::calibration_config_file(),
+            crate::paths::ui_config_file(),
+        ];
+        assert_eq!(default_uid_side_stores(), expected);
     }
 }
 

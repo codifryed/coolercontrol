@@ -53,35 +53,6 @@ const MESSAGE_UNREADABLE_UNWATCHED: &str = "The unreadable sensor is no longer w
 pub type AlertName = String;
 pub type AlertLogMessage = String;
 
-/// Runs before `AlertController` loads the file, so no reload is needed. A textual replacement
-/// is sound: a UID is 64 hex chars and cannot be a substring of anything else here.
-pub async fn migrate_device_uid_in_file(legacy: &UID, current: &UID) -> Result<bool> {
-    migrate_device_uid_in(paths::alert_config_file(), legacy, current).await
-}
-
-/// Target injected so it is testable without writing to the real config directory.
-async fn migrate_device_uid_in(
-    path: &std::path::Path,
-    legacy: &UID,
-    current: &UID,
-) -> Result<bool> {
-    debug_assert_eq!(legacy.len(), 64);
-    debug_assert_eq!(current.len(), 64);
-    debug_assert_ne!(legacy, current);
-    let Ok(contents) = cc_fs::read_txt(path).await else {
-        return Ok(false);
-    };
-    if contents.contains(legacy.as_str()).not() {
-        return Ok(false);
-    }
-    if contents.contains(current.as_str()) {
-        return Ok(false);
-    }
-    let migrated = contents.replace(legacy.as_str(), current.as_str());
-    cc_fs::write(path, migrated.into_bytes()).await?;
-    Ok(true)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 // The bools are independent user toggles persisted in alerts.json, not a state machine
 // that could be folded into an enum: each one is set on its own in the UI.
@@ -1694,87 +1665,6 @@ pub fn validate(contents: &str) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use chrono::Duration;
-
-    const LEGACY_UID: &str = "8ef08515338cc1f7727415a1d6bc45e84d5a818e94bd2072ac34b9d8d87f4210";
-    const CURRENT_UID: &str = "67ada747f6820bb2e4a9b5b639657e0971998a6f5ca5f50480ecf36b46c7ec29";
-
-    async fn write_alert_file(tmp: &tempfile::TempDir, contents: &str) -> std::path::PathBuf {
-        let path = tmp.path().join("alerts.json");
-        cc_fs::write(&path, contents.as_bytes().to_vec())
-            .await
-            .unwrap();
-        path
-    }
-
-    // Goal: an alert watching a drive temp follows the drive onto its wwid-derived UID.
-    // Method: write a realistic alerts file naming the legacy UID in both the
-    // downgrade-compat `channel_source` and the `channel_sources` array, then migrate.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_repoints_every_reference() {
-        crate::rt::test_runtime(async {
-            let contents = format!(
-                r#"[{{"uid":"a1","name":"Drive hot","channel_source":{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}},"channel_sources":[{{"device_uid":"{LEGACY_UID}","channel_name":"temp1"}}]}}]"#
-            );
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, &contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated);
-            assert!(after.contains(LEGACY_UID).not());
-            assert_eq!(after.matches(CURRENT_UID).count(), 2);
-            assert!(after.contains(r#""name":"Drive hot""#));
-        });
-    }
-
-    // Goal: negative space. A file that already names the new UID is left untouched, so a
-    // half-applied migration is never merged into an ambiguous state.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_skips_when_current_present() {
-        crate::rt::test_runtime(async {
-            let contents = format!(
-                r#"[{{"uid":"a1","channel_source":{{"device_uid":"{LEGACY_UID}"}}}},{{"uid":"a2","channel_source":{{"device_uid":"{CURRENT_UID}"}}}}]"#
-            );
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, &contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated.not());
-            assert_eq!(after, contents);
-        });
-    }
-
-    // Goal: the overwhelmingly common case. No alerts reference this device, so the file
-    // must be left byte-identical rather than rewritten on every boot.
-    #[test]
-    #[serial_test::serial]
-    fn migrate_device_uid_in_file_leaves_unrelated_alerts_alone() {
-        crate::rt::test_runtime(async {
-            let contents = r#"[{"uid":"a1","channel_source":{"device_uid":"other"}}]"#;
-            let tmp = tempfile::tempdir().unwrap();
-            let path = write_alert_file(&tmp, contents).await;
-
-            let migrated =
-                migrate_device_uid_in(&path, &LEGACY_UID.to_string(), &CURRENT_UID.to_string())
-                    .await
-                    .unwrap();
-
-            let after = cc_fs::read_txt(&path).await.unwrap();
-            assert!(migrated.not());
-            assert_eq!(after, contents);
-        });
-    }
 
     /// Helper to create a minimal test alert with given uid, min, max, and state.
     fn make_alert(uid: &str, min: f64, max: f64, state: AlertState) -> Alert {
