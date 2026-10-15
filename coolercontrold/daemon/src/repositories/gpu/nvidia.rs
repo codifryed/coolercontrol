@@ -31,6 +31,8 @@ use crate::device::{
     DeviceType, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus,
     TypeIndex, UID,
 };
+use crate::device_health::FailsafeRef;
+use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
     GPU_TEMP_NAME,
@@ -70,6 +72,9 @@ pub struct GpuNVidia {
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
     pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
+    /// Per NVML GPU, the values written once its reads go unanswered past
+    /// `MISSING_STATUS_THRESHOLD`. Seeded from the status read at init.
+    nvml_failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     /// Owned handles, held only until `start_nvml_workers` moves each onto its own thread.
     ///
     /// **Empty once detection finishes.** Never test this to decide whether NVML is in play: it
@@ -91,6 +96,7 @@ impl GpuNVidia {
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
+            nvml_failsafe_statuses: RefCell::new(HashMap::new()),
             nvml_handles_pending_workers: HashMap::new(),
             nvml_io: HashMap::new(),
             xauthority_path: RefCell::new(None),
@@ -114,7 +120,17 @@ impl GpuNVidia {
 
     pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
         let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
+        let failsafes = self.nvml_failsafe_statuses.borrow();
         for (type_index, nv_device_lock) in &self.nvidia_devices {
+            let failsafe = failsafes
+                .get(type_index)
+                .filter(|fsd| fsd.threshold_exceeded());
+            if let Some(fsd) = failsafe {
+                let mut device = nv_device_lock.borrow_mut();
+                trace!("Device: {} using failsafe status", device.name);
+                fsd.write_failsafe_status(&mut device.write_status(timestamp));
+                continue;
+            }
             let Some(nv_status) = preloaded_statuses_map.get(type_index) else {
                 error!("There is no status preloaded for this Nvidia device: {type_index}");
                 continue;
@@ -134,6 +150,72 @@ impl GpuNVidia {
                 writer.channel(&channel.name, ChannelSample::from(channel));
             }
         }
+    }
+
+    /// Builds the failsafe values of NVML GPU `type_index` from its init status.
+    pub fn seed_nvml_failsafe(&self, type_index: TypeIndex, status: &Status) {
+        let (channel_failsafes, temp_failsafes) =
+            failsafe::create_failsafe_data(&status.channels, &status.temps);
+        if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
+            self.nvml_failsafe_statuses
+                .borrow_mut()
+                .insert(type_index, fsd);
+        }
+    }
+
+    /// Records that NVML GPU `type_index` answered its read, ending any failsafe.
+    pub fn record_nvml_answer(&self, type_index: TypeIndex) {
+        let mut failsafes = self.nvml_failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafes.get_mut(&type_index) else {
+            return;
+        };
+        if fsd.record_success() {
+            info!(
+                "Recovered from failsafe for NVIDIA GPU: {}. Resuming normal status reads.",
+                self.device_name(type_index)
+            );
+        }
+    }
+
+    /// Records that NVML GPU `type_index` did not answer its read. Its last values hold until
+    /// more than `MISSING_STATUS_THRESHOLD` reads in a row go unanswered, then its failsafe
+    /// values apply.
+    pub fn record_nvml_no_answer(&self, type_index: TypeIndex) {
+        let mut failsafes = self.nvml_failsafe_statuses.borrow_mut();
+        let Some(fsd) = failsafes.get_mut(&type_index) else {
+            return;
+        };
+        if fsd.record_failure_log_action() == FailureLogAction::FailsafeLatch {
+            error!(
+                "NVIDIA GPU: {} has not answered status reads. Setting failsafe values.",
+                self.device_name(type_index)
+            );
+        }
+    }
+
+    /// The channels and temps currently held at their failsafe values.
+    pub fn failsafing(&self) -> Vec<FailsafeRef> {
+        let failsafes = self.nvml_failsafe_statuses.borrow();
+        let mut refs = Vec::new();
+        for (type_index, device_lock) in &self.nvidia_devices {
+            if let Some(fsd) = failsafes.get(type_index) {
+                refs.extend(fsd.device_failsafe_refs(&device_lock.borrow().uid));
+            }
+        }
+        refs
+    }
+
+    fn device_name(&self, type_index: TypeIndex) -> String {
+        self.nvidia_devices.get(&type_index).map_or_else(
+            || format!("#{type_index}"),
+            |device| device.borrow().name.clone(),
+        )
+    }
+
+    /// Adds `device` as the NVIDIA GPU `type_index`, for tests.
+    #[cfg(test)]
+    pub fn insert_device_for_test(&mut self, type_index: TypeIndex, device: DeviceLock) {
+        self.nvidia_devices.insert(type_index, device);
     }
 
     pub async fn reset_devices(&self) {
@@ -582,6 +664,7 @@ impl GpuNVidia {
                 temps: temp_status,
                 ..Default::default()
             };
+            self.seed_nvml_failsafe(type_index, &status);
             device_raw.initialize_status_history_with(status, poll_rate);
             let uid = device_raw.uid.clone();
 

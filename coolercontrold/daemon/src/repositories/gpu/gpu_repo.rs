@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::device_health::UnreachableRef;
+use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
@@ -281,19 +281,24 @@ impl GpuRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 scope.spawn(async move {
-                    // A GPU that did not answer keeps its last-known-good values.
-                    if let Some(nvml_status) = self.gpus_nvidia.request_nvml_status(nv_info).await {
-                        self.gpus_nvidia
-                            .nvidia_preloaded_statuses
-                            .borrow_mut()
-                            .insert(
-                                type_index,
-                                StatusNvidiaDeviceSMI {
-                                    temps: nvml_status.temps,
-                                    channels: nvml_status.channels,
-                                    ..Default::default()
-                                },
-                            );
+                    // A GPU that did not answer keeps its last-known-good values until its
+                    // failsafe takes over.
+                    match self.gpus_nvidia.request_nvml_status(nv_info).await {
+                        Some(nvml_status) => {
+                            self.gpus_nvidia
+                                .nvidia_preloaded_statuses
+                                .borrow_mut()
+                                .insert(
+                                    type_index,
+                                    StatusNvidiaDeviceSMI {
+                                        temps: nvml_status.temps,
+                                        channels: nvml_status.channels,
+                                        ..Default::default()
+                                    },
+                                );
+                            self.gpus_nvidia.record_nvml_answer(type_index);
+                        }
+                        None => self.gpus_nvidia.record_nvml_no_answer(type_index),
                     }
                     apply_device_command_delay(delay).await;
                 });
@@ -329,6 +334,10 @@ impl GpuRepo {
 impl Repository for GpuRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::GPU
+    }
+
+    fn failsafing(&self) -> Vec<FailsafeRef> {
+        self.gpus_nvidia.failsafing()
     }
 
     async fn initialize_devices(&mut self) -> Result<()> {
@@ -744,7 +753,10 @@ mod verdict_publish_tests {
 mod nvml_status_tests {
     use super::*;
     use crate::cc_fs;
-    use crate::device::{Device, DeviceInfo, TempStatus};
+    use crate::device::{ChannelStatus, Device, DeviceInfo, Status, TempStatus};
+    use crate::repositories::failsafe::{
+        MISSING_DUTY_FAILSAFE, MISSING_RPM_FAILSAFE, MISSING_TEMP_FAILSAFE,
+    };
     use crate::repositories::gpu::nvidia::{NvidiaDeviceInfo, StatusNvidiaDeviceSMI};
     use serial_test::serial;
     use std::cell::RefCell;
@@ -792,6 +804,79 @@ mod nvml_status_tests {
 
             let cache = repo.gpus_nvidia.nvidia_preloaded_statuses.borrow();
             assert_eq!(cache.get(&1).unwrap().temps, last_good);
+        });
+    }
+
+    /// Goal: a GPU whose NVML reads stay unanswered holds its last values only up to the
+    /// threshold, then reports its failsafe values and is listed as failsafing. Method: no
+    /// NVML worker serves the GPU; run threshold preloads, check the hold, then one more.
+    #[test]
+    #[serial]
+    fn an_nvml_gpu_unanswered_past_the_threshold_fails_safe() {
+        cc_fs::test_runtime(async {
+            let mut repo = GpuRepo::new(Rc::new(Config::init_default_config().unwrap()), false);
+            let device = Device::new(
+                "Test GPU".to_string(),
+                DeviceType::GPU,
+                1,
+                None,
+                DeviceInfo::default(),
+                None,
+                1.0,
+            );
+            let uid = device.uid.clone();
+            let device = Rc::new(RefCell::new(device));
+            repo.devices.insert(uid.clone(), Rc::clone(&device));
+            repo.gpus_nvidia
+                .nvidia_device_infos
+                .insert(uid, Rc::new(NvidiaDeviceInfo::for_test(0)));
+            repo.gpus_nvidia
+                .insert_device_for_test(1, Rc::clone(&device));
+            let status = Status {
+                temps: vec![TempStatus {
+                    name: GPU_TEMP_NAME.to_string(),
+                    temp: 60.0,
+                }],
+                channels: vec![ChannelStatus {
+                    name: "fan1".to_string(),
+                    rpm: Some(1200),
+                    duty: Some(40.0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            repo.gpus_nvidia.seed_nvml_failsafe(1, &status);
+            repo.gpus_nvidia
+                .nvidia_preloaded_statuses
+                .borrow_mut()
+                .insert(
+                    1,
+                    StatusNvidiaDeviceSMI {
+                        temps: status.temps.clone(),
+                        channels: status.channels.clone(),
+                        ..Default::default()
+                    },
+                );
+            let repo = Rc::new(repo);
+
+            for _ in 0..MISSING_STATUS_THRESHOLD {
+                moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
+            }
+            repo.update_statuses(Local::now()).await.unwrap();
+            assert_eq!(device.borrow().latest_temp(GPU_TEMP_NAME), Some(60.0));
+            assert!(repo.failsafing().is_empty());
+
+            moro_local::async_scope!(|scope| repo.load_nvml_status(scope)).await;
+            repo.update_statuses(Local::now()).await.unwrap();
+            let device = device.borrow();
+            assert_eq!(
+                device.latest_temp(GPU_TEMP_NAME),
+                Some(MISSING_TEMP_FAILSAFE)
+            );
+            let fan = device.latest_channel("fan1").unwrap();
+            assert_eq!(fan.duty, Some(MISSING_DUTY_FAILSAFE));
+            assert_eq!(fan.rpm, Some(MISSING_RPM_FAILSAFE));
+            assert_eq!(repo.failsafing().len(), 2);
         });
     }
 }
