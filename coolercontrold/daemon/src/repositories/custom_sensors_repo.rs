@@ -382,6 +382,10 @@ impl CustomSensorsRepo {
 
     /// Adds a new sensor's values to every entry of the custom sensor device's status
     /// history, so its chart starts with real values wherever its sources have them.
+    ///
+    /// An entry whose sources lack a value follows the live rule: it holds the last computed
+    /// value for up to `MISSING_STATUS_THRESHOLD` such entries in a row, then reports the
+    /// metric's failsafe, and reports the failsafe at once when there is nothing to hold.
     async fn fill_status_history_for_new_sensor(&self, sensor: &CustomSensor) -> Result<()> {
         // A File sensor is read once: that checks the file and gives the newest entry its
         // value. Older entries are placeholder zeros, as a file has no history (not a
@@ -392,6 +396,7 @@ impl CustomSensorsRepo {
             }
             _ => None,
         };
+        self.verify_sources_report_now(sensor)?;
         // Computed before the device is borrowed mutably: a parent's backfill reads its
         // children's history on the same device.
         let history_len = self
@@ -402,13 +407,27 @@ impl CustomSensorsRepo {
             .history_len();
         let newest_index = history_len.saturating_sub(1);
         let mut values = Vec::with_capacity(history_len);
+        let mut held: Option<f64> = None;
+        let mut misses: usize = 0;
         for index in 0..history_len {
             let raw = match file_value {
-                Some(value) if index == newest_index => value,
-                Some(_) => 0.,
-                None => self.backfill_value(sensor, index)?,
+                Some(value) if index == newest_index => Some(value),
+                Some(_) => Some(0.),
+                None => self.backfill_value(sensor, index),
             };
-            values.push(Self::reported_value(sensor.metric, raw).unwrap_or(0.));
+            let value = if let Some(raw) = raw {
+                let value = Self::reported_value(sensor.metric, raw).unwrap_or(0.);
+                held = Some(value);
+                misses = 0;
+                value
+            } else {
+                misses += 1;
+                match held {
+                    Some(value) if misses <= MISSING_STATUS_THRESHOLD => value,
+                    _ => Self::failsafe_value(sensor.metric),
+                }
+            };
+            values.push(value);
         }
         let mut device = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
         if sensor.metric.is_temp() {
@@ -421,6 +440,48 @@ impl CustomSensorsRepo {
             device.add_channel_column(&sensor.id, &samples);
         }
         Ok(())
+    }
+
+    /// A Mix or Scale & Offset sensor's present source devices must report its value now:
+    /// a source that does not is no source, and the live sensor would only ever failsafe.
+    /// Older entries may lack it; the backfill holds or failsafes those.
+    fn verify_sources_report_now(&self, sensor: &CustomSensor) -> Result<()> {
+        let sources = match &sensor.kind {
+            CustomSensorKind::Mix { sources, .. } | CustomSensorKind::Offset { sources, .. } => {
+                sources
+            }
+            CustomSensorKind::TimeAverage { .. }
+            | CustomSensorKind::ExponentialMovingAvg { .. }
+            | CustomSensorKind::File { .. } => return Ok(()),
+        };
+        for source in sources {
+            let Some(source_device) = self.backfill_source_device(source) else {
+                continue;
+            };
+            if sensor
+                .metric
+                .read_latest(&source_device.borrow(), &source.name)
+                .is_none()
+            {
+                let msg = format!(
+                    "Source not found for Custom Sensor: \"{}\" has no {} value",
+                    self.source_label(source),
+                    sensor.metric
+                );
+                return Err(CCError::UserError { msg }.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// The device a new sensor's source is read from: the Custom Sensors device itself for a
+    /// child, which already has a history, else the source's own device.
+    fn backfill_source_device(&self, source: &SensorSource) -> Option<&DeviceLock> {
+        if source.device_uid == self.device_uid {
+            self.custom_sensor_device.as_ref()
+        } else {
+            self.all_devices.get(&source.device_uid)
+        }
     }
 
     /// A channel sensor's value as the channel the device reports. `reported_value` left
@@ -449,7 +510,8 @@ impl CustomSensorsRepo {
     }
 
     /// A new sensor's computed value at history `index`, from its sources' values there.
-    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Result<f64> {
+    /// `None` when a present source has no value there.
+    fn backfill_value(&self, sensor: &CustomSensor, index: usize) -> Option<f64> {
         let metric = sensor.metric;
         match &sensor.kind {
             CustomSensorKind::Mix {
@@ -469,12 +531,14 @@ impl CustomSensorsRepo {
                 time_window_seconds,
                 sources,
             } => {
-                // The source device's status_history is fully populated, so every
-                // back-filled entry gets a real time-average.
+                if self.backfill_source_device(&sources[0]).is_none() {
+                    // No such device: the placeholder zero, as for an absent Mix source.
+                    return Some(0.);
+                }
                 let sample_count = Self::window_sample_count(*time_window_seconds, self.poll_rate);
                 let samples =
                     self.collect_indexed_source_samples(metric, &sources[0], index, sample_count);
-                Ok(Self::compute_time_average(&samples).unwrap_or(0.))
+                Self::compute_time_average(&samples)
             }
             CustomSensorKind::ExponentialMovingAvg {
                 time_window_seconds,
@@ -482,50 +546,38 @@ impl CustomSensorsRepo {
             } => {
                 // Same strategy as TimeAverage. The samples come oldest first, which is
                 // what compute_ema wants.
+                if self.backfill_source_device(&sources[0]).is_none() {
+                    return Some(0.);
+                }
                 let sample_count = Self::window_sample_count(*time_window_seconds, self.poll_rate);
                 let samples =
                     self.collect_indexed_source_samples(metric, &sources[0], index, sample_count);
-                Ok(Self::compute_ema(&samples, sample_count).unwrap_or(0.))
+                Self::compute_ema(&samples, sample_count)
             }
             // Read once by the caller.
-            CustomSensorKind::File { .. } => Ok(0.),
+            CustomSensorKind::File { .. } => Some(0.),
         }
     }
 
     /// Reduces a Mix or Scale & Offset sensor's sources at history `index` with `reduce`. A
     /// source whose device is absent is skipped; if none resolve, the data is zero-filled
     /// (prior back-fill behavior) so the chart shows a value rather than aborting the fill.
-    /// A present device that lacks the value fails the fill: there is no such source.
+    /// `None` when a present device lacks the value at `index`.
     fn process_reduced_indexed(
         &self,
         sensor: &CustomSensor,
         sources: &[SensorSource],
         index: usize,
         reduce: impl Fn(&[SourceData]) -> f64,
-    ) -> Result<f64> {
+    ) -> Option<f64> {
         let mut source_data = Vec::with_capacity(sources.len());
         for source in sources {
-            let some_source_device = if source.device_uid == self.device_uid {
-                // Only used for NEW sensors, so safe for Parents too: children already have a
-                // built status history.
-                self.custom_sensor_device.as_ref()
-            } else {
-                self.all_devices.get(&source.device_uid)
-            };
-            let Some(source_device) = some_source_device else {
+            let Some(source_device) = self.backfill_source_device(source) else {
                 continue;
             };
-            let some_value = sensor
+            let value = sensor
                 .metric
-                .read_at(&source_device.borrow(), index, &source.name);
-            let Some(value) = some_value else {
-                let msg = format!(
-                    "Source not found for Custom Sensor: \"{}\" has no {} value",
-                    self.source_label(source),
-                    sensor.metric
-                );
-                return Err(CCError::UserError { msg }.into());
-            };
+                .read_at(&source_device.borrow(), index, &source.name)?;
             source_data.push(SourceData {
                 value,
                 weight: f64::from(source.weight),
@@ -541,7 +593,7 @@ impl CustomSensorsRepo {
                 self.sensor_log_name(&sensor.id)
             );
         }
-        Ok(reduce(&source_data))
+        Some(reduce(&source_data))
     }
 
     /// Computes the current-tick value of a Mix or Scale & Offset Custom Sensor by reducing
@@ -3477,6 +3529,104 @@ mod tests {
             // Max(70, 60) = 70
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1").not());
+        });
+    }
+
+    /// Pushes `count` source entries, with `cpu` at `temp` or without it.
+    fn push_source_ticks(source_dev: &DeviceLock, count: usize, cpu: Option<f64>) {
+        for _ in 0..count {
+            let mut temps = vec![TempStatus {
+                name: "gpu".to_string(),
+                temp: 60.0,
+            }];
+            if let Some(temp) = cpu {
+                temps.push(TempStatus {
+                    name: "cpu".to_string(),
+                    temp,
+                });
+            }
+            source_dev.borrow_mut().set_status(Status {
+                timestamp: Local::now(),
+                temps,
+                channels: Vec::new(),
+            });
+        }
+    }
+
+    /// The values a new sensor was backfilled with, oldest first.
+    fn backfilled_temps(repo: &CustomSensorsRepo, cs_id: &str) -> Vec<f64> {
+        let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+        device
+            .history_statuses()
+            .iter()
+            .map(|status| {
+                status
+                    .temps
+                    .iter()
+                    .find(|temp| temp.name == cs_id)
+                    .map(|temp| temp.temp)
+                    .expect("every entry carries the new sensor")
+            })
+            .collect()
+    }
+
+    // A source that stops reporting partway through the history is backfilled as the live
+    // sensor would have reported it: the last value held for `MISSING_STATUS_THRESHOLD`
+    // entries, then the failsafe, then real values again once the source returns.
+    #[test]
+    #[serial]
+    fn backfill_holds_then_failsafes_a_source_that_went_missing() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "cpu".to_string(),
+                temp: 40.0,
+            }]);
+            push_source_ticks(&source_dev, MISSING_STATUS_THRESHOLD + 2, None);
+            push_source_ticks(&source_dev, 3, Some(50.0));
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+
+            let values = backfilled_temps(&repo, "mix1");
+            let tail = &values[values.len() - (MISSING_STATUS_THRESHOLD + 2 + 3 + 1)..];
+            let mut expected = vec![40.0];
+            expected.extend([40.0; MISSING_STATUS_THRESHOLD]);
+            expected.extend([MISSING_TEMP_FAILSAFE; 2]);
+            expected.extend([50.0; 3]);
+            assert_eq!(tail, expected.as_slice());
+            assert!(repo.failsafing_sensors.borrow().contains_key("mix1").not());
+        });
+    }
+
+    // A source first reported recently no longer refuses the sensor. Entries from before it
+    // existed have nothing to hold, so they carry the failsafe, as a live tick would.
+    #[test]
+    #[serial]
+    fn backfill_failsafes_entries_before_a_source_first_reported() {
+        cc_fs::test_runtime(async {
+            let (source_uid, source_dev) = make_mock_source_device(vec![TempStatus {
+                name: "gpu".to_string(),
+                temp: 60.0,
+            }]);
+            push_source_ticks(&source_dev, 5, Some(55.0));
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo =
+                CustomSensorsRepo::new(test_config, vec![source_dev], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+
+            repo.set_custom_sensor(mix_sensor("mix1", vec![temp_source(&source_uid, "cpu")]))
+                .await
+                .unwrap();
+
+            let values = backfilled_temps(&repo, "mix1");
+            let (before, after) = values.split_at(values.len() - 5);
+            assert!(before.iter().all(|temp| *temp == MISSING_TEMP_FAILSAFE));
+            assert_eq!(after, [55.0; 5].as_slice());
         });
     }
 
