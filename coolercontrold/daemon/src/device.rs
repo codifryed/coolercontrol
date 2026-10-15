@@ -336,6 +336,19 @@ impl Device {
         self.history.len()
     }
 
+    /// Starts the newest entry, stamped `timestamp`, overwriting the oldest once the history
+    /// is full. Every name starts absent from it: write the ones this tick reports. Each
+    /// value passes the augmenter and is folded into the running stats as it is written.
+    pub fn write_status(&mut self, timestamp: DateTime<Local>) -> StatusWriter<'_> {
+        let slot = self.history.push(timestamp_ns(timestamp));
+        StatusWriter {
+            device: self,
+            slot,
+            next_temp: 0,
+            next_channel: 0,
+        }
+    }
+
     pub fn latest_timestamp(&self) -> Option<DateTime<Local>> {
         let index = self.history_len().checked_sub(1)?;
         Some(local_time(self.history.timestamp_ns(index)))
@@ -555,57 +568,6 @@ impl Device {
         self.push_zeroed(timestamp, &template);
     }
 
-    /// The columns of a rebuild's names, in order. A refused name gets none.
-    fn template_columns<'a>(
-        &mut self,
-        temps: impl Iterator<Item = &'a str>,
-        channels: impl Iterator<Item = (&'a str, ChannelSample)>,
-    ) -> TemplateColumns {
-        let mut refused = false;
-        let temps = temps
-            .filter_map(|name| {
-                let column = self.history.temp_column(name);
-                refused |= column.is_none();
-                column
-            })
-            .collect();
-        let channels = channels
-            .filter_map(|(name, sample)| {
-                let column = self.history.channel_column(name);
-                refused |= column.is_none();
-                Some((column?, sample))
-            })
-            .collect();
-        if refused {
-            self.note_refused_name();
-        }
-        TemplateColumns { temps, channels }
-    }
-
-    fn push_zeroed(&mut self, timestamp: DateTime<Local>, template: &TemplateColumns) {
-        let slot = self.history.push(timestamp_ns(timestamp));
-        for column in &template.temps {
-            self.history.set_temp(slot, *column, 0.0);
-        }
-        for (column, sample) in &template.channels {
-            self.history.set_channel(slot, *column, *sample);
-        }
-    }
-
-    /// Logs, once per device, that a name went unrecorded: the device reports more names than
-    /// its history keeps.
-    fn note_refused_name(&mut self) {
-        if self.refused_name_logged {
-            return;
-        }
-        self.refused_name_logged = true;
-        warn!(
-            "{} reports more than {MAX_NAMES} temps or channels. Names beyond that are not \
-             recorded in its status history.",
-            self.name
-        );
-    }
-
     /// Run the augmenter on `status` and store it as the newest entry. Does not touch
     /// stats; callers that need stats folded should use `set_status`.
     fn push_and_augment(&mut self, status: &mut Status) {
@@ -683,19 +645,6 @@ impl Device {
         }
     }
 
-    /// Starts the newest entry, stamped `timestamp`, overwriting the oldest once the history
-    /// is full. Every name starts absent from it: write the ones this tick reports. Each
-    /// value passes the augmenter and is folded into the running stats as it is written.
-    pub fn write_status(&mut self, timestamp: DateTime<Local>) -> StatusWriter<'_> {
-        let slot = self.history.push(timestamp_ns(timestamp));
-        StatusWriter {
-            device: self,
-            slot,
-            next_temp: 0,
-            next_channel: 0,
-        }
-    }
-
     /// Clear all stats and reseed each entry from the most recent status
     /// with `count=1` so the UI never sees a zero-count window after a
     /// reset. Channels absent from the most recent status get no entry
@@ -735,6 +684,57 @@ impl Device {
                 self.stats.channels.insert(name.to_string(), by_type);
             }
         }
+    }
+
+    /// The columns of a rebuild's names, in order. A refused name gets none.
+    fn template_columns<'a>(
+        &mut self,
+        temps: impl Iterator<Item = &'a str>,
+        channels: impl Iterator<Item = (&'a str, ChannelSample)>,
+    ) -> TemplateColumns {
+        let mut refused = false;
+        let temps = temps
+            .filter_map(|name| {
+                let column = self.history.temp_column(name);
+                refused |= column.is_none();
+                column
+            })
+            .collect();
+        let channels = channels
+            .filter_map(|(name, sample)| {
+                let column = self.history.channel_column(name);
+                refused |= column.is_none();
+                Some((column?, sample))
+            })
+            .collect();
+        if refused {
+            self.note_refused_name();
+        }
+        TemplateColumns { temps, channels }
+    }
+
+    fn push_zeroed(&mut self, timestamp: DateTime<Local>, template: &TemplateColumns) {
+        let slot = self.history.push(timestamp_ns(timestamp));
+        for column in &template.temps {
+            self.history.set_temp(slot, *column, 0.0);
+        }
+        for (column, sample) in &template.channels {
+            self.history.set_channel(slot, *column, *sample);
+        }
+    }
+
+    /// Logs, once per device, that a name went unrecorded: the device reports more names than
+    /// its history keeps.
+    fn note_refused_name(&mut self) {
+        if self.refused_name_logged {
+            return;
+        }
+        self.refused_name_logged = true;
+        warn!(
+            "{} reports more than {MAX_NAMES} temps or channels. Names beyond that are not \
+             recorded in its status history.",
+            self.name
+        );
     }
 }
 
