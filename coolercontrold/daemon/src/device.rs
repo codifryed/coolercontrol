@@ -620,12 +620,9 @@ impl Device {
         }
     }
 
-    /// Push a new status, run the augmenter, and fold the post-augmenter
-    /// values into running stats. Use this for every main-loop tick.
-    ///
-    /// Arguments:
-    ///
-    /// * `status`: The `Status` to be consumed and added to the history.
+    /// Push a whole `Status` as a tick: run the augmenter and fold the post-augmenter values
+    /// into running stats. Tests only; repositories write their ticks with `write_status`.
+    #[cfg(test)]
     pub fn set_status(&mut self, mut status: Status) {
         self.push_and_augment(&mut status);
         Self::record_stats(&mut self.stats, &status);
@@ -640,6 +637,7 @@ impl Device {
     /// from `status` are not touched (no zero pollution from a tick where
     /// hwmon dropped a channel). Called from `set_status` after the
     /// augmenter runs. Names are cloned into the maps on first sight only.
+    #[cfg(test)]
     fn record_stats(device_stats: &mut DeviceStats, status: &Status) {
         for temp in &status.temps {
             Self::record_temp(device_stats, &temp.name, temp.temp);
