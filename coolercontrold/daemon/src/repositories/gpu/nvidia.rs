@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use chrono::{DateTime, Local};
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -109,7 +110,7 @@ impl GpuNVidia {
         Ok(nvidia_devices)
     }
 
-    pub fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
         for (type_index, nv_device_lock) in &self.nvidia_devices {
             let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(type_index);
@@ -119,9 +120,9 @@ impl GpuNVidia {
             }
             let nv_status = preloaded_statuses.unwrap().clone();
             let status = Status {
+                timestamp,
                 channels: nv_status.channels.clone(),
                 temps: nv_status.temps.clone(),
-                ..Default::default()
             };
             trace!("Device: {} status updated: {:?}", nv_status.name, status);
             nv_device_lock.borrow_mut().set_status(status);

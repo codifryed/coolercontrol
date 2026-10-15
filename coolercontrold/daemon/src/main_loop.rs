@@ -54,6 +54,7 @@ use crate::sleep_listener::SleepListener;
 use crate::watchdog::Watchdog;
 use crate::Repos;
 use anyhow::Result;
+use chrono::Local;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use std::ops::Not;
@@ -216,8 +217,10 @@ async fn fire_snapshots_and_processes<'s>(
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     // snapshots for all devices should be done at the same time. (this is very fast)
+    // One instant for the whole tick, so every device's entry for it carries the same time.
+    let timestamp = Local::now();
     for repo in repos.iter() {
-        if let Err(err) = repo.update_statuses().await {
+        if let Err(err) = repo.update_statuses(timestamp).await {
             error!("Error trying to update status: {err}");
         }
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
+use chrono::{DateTime, Local};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Not, RangeInclusive};
@@ -771,7 +772,7 @@ impl GpuAMD {
         channels
     }
 
-    pub fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
         for (uid, amd_driver) in &self.amd_driver_infos {
             if let Some(device_lock) = self.amd_devices.get(uid) {
                 let device_index = device_lock.borrow().type_index;
@@ -783,9 +784,9 @@ impl GpuAMD {
                 }
                 let (channels, temps) = preloaded_statuses.unwrap().clone();
                 let status = Status {
+                    timestamp,
                     temps,
                     channels,
-                    ..Default::default()
                 };
                 trace!(
                     "Device: {} status updated: {status:?}",

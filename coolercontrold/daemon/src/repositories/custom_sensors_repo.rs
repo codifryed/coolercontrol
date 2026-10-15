@@ -13,6 +13,8 @@ use std::rc::Rc;
 use std::string::ToString;
 use std::time::Instant;
 
+use chrono::{DateTime, Local};
+
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{
@@ -1550,7 +1552,7 @@ impl Repository for CustomSensorsRepo {
         self.reconstruct_relationships();
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(Rc::new(RefCell::new(custom_sensor_device)));
-        self.update_statuses().await?;
+        self.update_statuses(Local::now()).await?;
         self.custom_sensor_device
             .as_ref()
             .unwrap()
@@ -1598,7 +1600,7 @@ impl Repository for CustomSensorsRepo {
         self.sample_windows.borrow_mut().clear();
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         if self.custom_sensor_device.is_none() {
             return Ok(());
         }
@@ -1626,8 +1628,11 @@ impl Repository for CustomSensorsRepo {
                 self.process_live_sensor(sensor, &mut values, &mut file_sensors);
             });
         debug_assert_eq!(values.len(), sensor_count);
-        let mut status = Status::default();
-        status.temps.reserve(values.len());
+        let mut status = Status {
+            timestamp,
+            temps: Vec::with_capacity(values.len()),
+            channels: Vec::new(),
+        };
         for value in values {
             Self::push_value(&mut status, value);
         }
@@ -1743,6 +1748,7 @@ mod tests {
         CustomSensor, CustomSensorKind, CustomSensorMetric, CustomSensorMixFunctionType, Scale,
         SensorSource,
     };
+    use chrono::Local;
     use serial_test::serial;
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
@@ -3038,7 +3044,7 @@ mod tests {
                 .await
                 .expect("Failed to set second parent sensor");
             repo.sensors.borrow_mut().reverse(); // put the parents first, to be sure.
-            let result = repo.update_statuses().await;
+            let result = repo.update_statuses(Local::now()).await;
 
             // then:
             assert!(result.is_ok());
@@ -3414,6 +3420,30 @@ mod tests {
         }
     }
 
+    // A tick's entry carries the tick's timestamp, the one instant the main loop takes for
+    // every device, rather than the moment this repository happened to run.
+    #[test]
+    #[serial]
+    fn update_stamps_the_entry_with_the_tick_timestamp() {
+        cc_fs::test_runtime(async {
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut repo = CustomSensorsRepo::new(test_config, vec![], test_overrides()).unwrap();
+            repo.initialize_devices().await.unwrap();
+            repo.set_custom_sensor(mix_sensor(
+                "mix1",
+                vec![temp_source("nonexistent_device_uid", "any_temp")],
+            ))
+            .await
+            .unwrap();
+            let tick = Local::now() - chrono::TimeDelta::milliseconds(1_234);
+
+            repo.update_statuses(tick).await.unwrap();
+
+            let device = repo.custom_sensor_device.as_ref().unwrap().borrow();
+            assert_eq!(device.latest_timestamp(), Some(tick));
+        });
+    }
+
     // Mix sensor pointing at a non-existent source device short-circuits to
     // MISSING_TEMP_FAILSAFE on the live tick (any-miss-fails-the-sensor per Q6c) and is
     // recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
@@ -3436,7 +3466,7 @@ mod tests {
             // Backfill skips a missing source device and falls through to the empty
             // source_data dummy (0); set_custom_sensor therefore succeeds.
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "mix1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("mix1"));
@@ -3472,7 +3502,7 @@ mod tests {
             );
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // Max(70, 60) = 70
             assert!((current_temp_for(&repo, "mix1") - 70.0).abs() < f64::EPSILON);
@@ -3512,7 +3542,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "delta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3544,7 +3574,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // -25 offset on the failsafe would have been 75 under arithmetic substitution;
             // short-circuit must produce exactly MISSING_TEMP_FAILSAFE.
@@ -3579,7 +3609,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "ta1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ta1"));
@@ -3614,7 +3644,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "ema1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("ema1"));
@@ -3648,7 +3678,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ema_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3686,7 +3716,7 @@ mod tests {
             };
 
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let temp = current_temp_for(&repo, "ema_ok");
             assert!(
@@ -3735,7 +3765,7 @@ mod tests {
             };
             repo.sensors.borrow_mut().push(sensor);
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "ta_bad") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3763,7 +3793,7 @@ mod tests {
             repo.set_custom_sensor(sensor).await.unwrap();
 
             // Tick 1: file readable, real value
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
 
@@ -3771,14 +3801,14 @@ mod tests {
             // rather than commanding a fan curve to 100 C on one unlucky read.
             cc_fs::remove_file(&test_file).await.ok();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
                 assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
             }
 
             // One more failure passes the threshold: now it failsafes, and the repository
             // must report the ref with the reason from the entry transition.
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
             );
@@ -3790,7 +3820,7 @@ mod tests {
 
             // Restore the file with a new value: next tick recovers.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -3812,11 +3842,11 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // A truncated file reads as unparseable, exactly like the mid-write race.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!((current_temp_for(&repo, "file1") - 45.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
@@ -3843,7 +3873,7 @@ mod tests {
                 .unwrap();
             cc_fs::remove_file(&test_file).await.ok();
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert!(
                 (current_temp_for(&repo, "file1") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON
@@ -3868,20 +3898,20 @@ mod tests {
             repo.set_custom_sensor(file_sensor("file1", test_file.clone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             for _ in 0..MISSING_STATUS_THRESHOLD {
                 cc_fs::write(&test_file, Vec::new()).await.unwrap();
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             // A good read clears the run.
             cc_fs::write(&test_file, b"55000".to_vec()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
 
             // The very next failure is therefore the first of a fresh run, not the ninth.
             cc_fs::write(&test_file, Vec::new()).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "file1") - 55.0).abs() < f64::EPSILON);
             assert!(repo.failsafing_sensors.borrow().contains_key("file1").not());
         });
@@ -4119,7 +4149,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 for (label, window) in windows {
                     let sample_count = usize::from(window);
                     let avg_ref =
@@ -4193,7 +4223,7 @@ mod tests {
             ];
             for temp in stream {
                 push_source_tick(&source_dev, "cpu", temp);
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 let avg_ref = reference_windowed(&source_dev, "cpu", 5, false).unwrap();
                 let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
                 assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
@@ -4202,7 +4232,7 @@ mod tests {
             // Drain the whole window with gaps: all-None slots must failsafe.
             for _ in 0..5 {
                 push_source_tick(&source_dev, "cpu", None);
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             for id in ["avg", "ema"] {
                 assert!(
@@ -4241,7 +4271,7 @@ mod tests {
             .unwrap();
             for temp in [70.0, 72.0, 74.0, 76.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             repo.update_custom_sensor(time_average_sensor(
                 "avg",
@@ -4252,7 +4282,7 @@ mod tests {
             .unwrap();
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             push_source_tick(&source_dev, "cpu", Some(78.0));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             let avg_ref = reference_windowed(&source_dev, "cpu", 3, false).unwrap();
             assert_eq!(current_temp_for(&repo, "avg").to_bits(), avg_ref.to_bits());
             assert_eq!(
@@ -4289,7 +4319,7 @@ mod tests {
                     sample_count: 5,
                 },
             );
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!((current_temp_for(&repo, "avg") - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
             assert!(repo.sample_windows.borrow().contains_key("avg").not());
             assert!(repo.failsafing_sensors.borrow().contains_key("avg"));
@@ -4316,11 +4346,11 @@ mod tests {
                 .unwrap();
             for temp in [70.0, 71.0, 72.0, 73.0, 74.0, 75.0] {
                 push_source_tick(&source_dev, "cpu", Some(temp));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
             repo.sample_windows.borrow_mut().clear();
             push_source_tick(&source_dev, "cpu", Some(69.5));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             let ema_ref = reference_windowed(&source_dev, "cpu", 5, true).unwrap();
             assert_eq!(current_temp_for(&repo, "ema").to_bits(), ema_ref.to_bits());
         });
@@ -4349,7 +4379,7 @@ mod tests {
             .await
             .unwrap();
             push_source_tick(&source_dev, "cpu", Some(70.0));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert!(repo.sample_windows.borrow().is_empty().not());
             repo.prepare_for_sleep().await;
             assert!(repo.sample_windows.borrow().is_empty());
@@ -4380,7 +4410,7 @@ mod tests {
             .unwrap();
             for tick in 0..15 {
                 push_source_tick(&source_dev, "cpu", Some(70.0 + f64::from(tick)));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 let windows = repo.sample_windows.borrow();
                 let window = windows.get("avg").unwrap();
                 assert!(window.samples.len() <= window.sample_count);
@@ -4519,7 +4549,7 @@ mod tests {
             ))
             .await
             .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let channel = current_channel_for(&repo, "pressure");
             assert_eq!(channel.rpm, Some(438));
@@ -4553,7 +4583,7 @@ mod tests {
                     .await
                     .unwrap();
             }
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let blank = |name: &str| ChannelStatus {
                 name: name.to_string(),
@@ -4612,7 +4642,7 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(total).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert_eq!(current_channel_for(&repo, "total").watts, Some(345.75));
         });
@@ -4637,7 +4667,7 @@ mod tests {
             ] {
                 repo.set_custom_sensor(sensor).await.unwrap();
             }
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             assert_eq!(current_channel_for(&repo, "duty_high").duty, Some(100.));
             assert_eq!(current_channel_for(&repo, "duty_low").duty, Some(0.));
@@ -4680,17 +4710,17 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 50., source))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1250));
 
             // The fan channel is gone from the source's newest status.
             push_channel_tick(&dev, Vec::new());
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("rpm"));
 
             push_channel_tick(&dev, channel_tick(900, 40., 3600, 65.5));
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(950));
             assert!(repo.failsafing_sensors.borrow().is_empty());
         });
@@ -4748,7 +4778,7 @@ mod tests {
             repo.set_custom_sensor(window("ema", true)).await.unwrap();
             for rpm in [1000, 1100, 1300] {
                 push_channel_tick(&dev, channel_tick(rpm, 40., 3600, 65.5));
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
             }
 
             // (1000 + 1100 + 1300) / 3 = 1133.33
@@ -4774,7 +4804,7 @@ mod tests {
             repo.set_custom_sensor(scaled("parent", CustomSensorMetric::RPM, 10., 0., child()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             // The child reports 438, not 438.4, and that is what the parent scales.
             assert_eq!(current_channel_for(&repo, "child").rpm, Some(438));
@@ -4875,7 +4905,7 @@ mod tests {
             repo.set_custom_sensor(scaled("rpm", CustomSensorMetric::RPM, 1., 0., gone()))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 2);
@@ -4915,7 +4945,7 @@ mod tests {
 
             let rescaled = scaled("fan", CustomSensorMetric::RPM, 2., 0., fan());
             repo.update_custom_sensor(rescaled).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "fan").rpm, Some(2400));
         });
     }
@@ -5069,7 +5099,7 @@ mod tests {
             name_channel(&overrides, &source_uid, "temp1", "Coolant").await;
             source_dev.borrow_mut().set_status(Status::default());
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
 
             let failsafing = repo.failsafing();
             assert_eq!(failsafing.len(), 1);
@@ -5201,7 +5231,7 @@ mod tests {
                 source_names(&test_config.get_custom_sensors().unwrap()),
                 ["temp1"]
             );
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_temp_for(&repo, "parent"), 40.);
         });
     }
@@ -5294,17 +5324,17 @@ mod tests {
                 },
             );
             repo.set_custom_sensor(sensor).await.unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
 
             cc_fs::remove_file(&test_file).await.unwrap();
             for _ in 0..MISSING_STATUS_THRESHOLD {
-                repo.update_statuses().await.unwrap();
+                repo.update_statuses(Local::now()).await.unwrap();
                 assert_eq!(current_channel_for(&repo, "freq").freq, Some(3601));
             }
             assert!(repo.failsafing_sensors.borrow().is_empty());
 
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "freq").freq, Some(0));
             assert!(repo.failsafing_sensors.borrow().contains_key("freq"));
         });
@@ -5337,7 +5367,7 @@ mod tests {
             repo.set_custom_sensor(file("rpm", CustomSensorMetric::RPM))
                 .await
                 .unwrap();
-            repo.update_statuses().await.unwrap();
+            repo.update_statuses(Local::now()).await.unwrap();
             assert_eq!(current_channel_for(&repo, "rpm").rpm, Some(1200));
         });
     }

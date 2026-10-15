@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use chrono::{DateTime, Local};
 use std::cell::{Cell, RefCell};
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
@@ -1627,9 +1628,9 @@ impl Repository for LiquidctlRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         for device_lock in self.devices.values() {
-            let status = {
+            let mut status = {
                 let device = device_lock.borrow();
                 let fsd_map = self.failsafe_statuses.borrow();
                 let failsafe_status = fsd_map
@@ -1647,6 +1648,7 @@ impl Repository for LiquidctlRepo {
                     }
                 }
             };
+            status.timestamp = timestamp;
             device_lock.borrow_mut().set_status(status);
         }
         Ok(())

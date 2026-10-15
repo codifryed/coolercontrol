@@ -1006,7 +1006,7 @@ async fn init_liquidctl_repo(
     let lc_repo = Rc::new(lc_repo);
     Rc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_infos_from_first_status();
-    lc_repo.update_statuses().await?;
+    lc_repo.update_statuses(chrono::Local::now()).await?;
     lc_repo.initialize_all_device_status_histories_with_current_status()?;
     Ok((lc_repo, lc_locations))
 }

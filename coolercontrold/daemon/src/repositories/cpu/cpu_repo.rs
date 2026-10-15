@@ -3,6 +3,7 @@
 
 use crate::device_health::UnreachableRef;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
+use chrono::{DateTime, Local};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
@@ -1030,7 +1031,7 @@ impl Repository for CpuRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         for cpu_device in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let Some((channels, temps)) = preloaded_statuses_map.get(&cpu_device.association)
@@ -1042,9 +1043,9 @@ impl Repository for CpuRepo {
                 continue;
             };
             let status = Status {
+                timestamp,
                 temps: temps.clone(),
                 channels: channels.clone(),
-                ..Default::default()
             };
             let device_id = cpu_device.type_index;
             trace!("CPU device #{device_id} status was updated with: {status:?}");

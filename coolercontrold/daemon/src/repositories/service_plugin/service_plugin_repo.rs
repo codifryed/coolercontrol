@@ -31,6 +31,7 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Local};
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -1048,7 +1049,7 @@ impl Repository for ServicePluginRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         for (device_uid, (device_lock, _)) in &self.devices {
             let (temps, channels) = self
                 .preloaded_statuses
@@ -1057,9 +1058,9 @@ impl Repository for ServicePluginRepo {
                 .map(|data| (data.temps.clone(), data.channels.clone()))
                 .expect("Preloaded Data should always be present");
             let status = Status {
+                timestamp,
                 temps,
                 channels,
-                ..Default::default()
             };
             trace!(
                 "Hwmon device: {} status was updated with: {status:?}",

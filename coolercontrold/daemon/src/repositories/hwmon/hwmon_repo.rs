@@ -84,6 +84,7 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bitflags::bitflags;
+use chrono::{DateTime, Local};
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -2373,7 +2374,7 @@ impl Repository for HwmonRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
         for (device, _) in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let device_index = device.borrow().type_index;
@@ -2383,9 +2384,9 @@ impl Repository for HwmonRepo {
                 continue;
             };
             let status = Status {
+                timestamp,
                 temps,
                 channels,
-                ..Default::default()
             };
             trace!(
                 "Hwmon device: {} status was updated with: {status:?}",

@@ -63,7 +63,7 @@ mod engine_tests {
 
         async fn preload_statuses(self: Rc<Self>) {}
 
-        async fn update_statuses(&self) -> Result<()> {
+        async fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
             Ok(())
         }
 
@@ -3240,7 +3240,7 @@ mod lcd_shutdown_tests {
             Vec::new()
         }
         async fn preload_statuses(self: Rc<Self>) {}
-        async fn update_statuses(&self) -> Result<()> {
+        async fn update_statuses(&self, _timestamp: chrono::DateTime<chrono::Local>) -> Result<()> {
             Ok(())
         }
         async fn shutdown(&self) -> Result<()> {

@@ -3,6 +3,7 @@
 
 use crate::device_health::UnreachableRef;
 use crate::repositories::hwmon::device_io::DeviceHealth;
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::env;
 use std::ops::Not;
@@ -393,9 +394,9 @@ impl Repository for GpuRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
-        self.gpus_amd.update_all_statuses();
-        self.gpus_nvidia.update_all_statuses();
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        self.gpus_amd.update_all_statuses(timestamp);
+        self.gpus_nvidia.update_all_statuses(timestamp);
         Ok(())
     }
 
