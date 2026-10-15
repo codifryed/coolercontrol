@@ -11,7 +11,7 @@ use axum::http::header::CONTENT_TYPE;
 use crate::api::devices::DeviceDto;
 use crate::api::status::DeviceStatusDto;
 use crate::api::{AppState, CCError};
-use crate::device::Status;
+use crate::device::StatusSnapshot;
 
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -71,34 +71,31 @@ fn format_prometheus_metrics(devices: &[DeviceDto], statuses: &[DeviceStatusDto]
         let Some(device) = device_map.get(status.uid.as_str()) else {
             continue;
         };
-        let Some(recent) = status.status_history.back() else {
-            continue;
-        };
-        write_temp_metrics(&mut out, device, recent);
-        write_channel_metrics(&mut out, device, recent);
+        write_temp_metrics(&mut out, device, &status.status_history);
+        write_channel_metrics(&mut out, device, &status.status_history);
     }
 
     out
 }
 
-fn write_temp_metrics(out: &mut String, device: &DeviceDto, status: &Status) {
-    for temp in &status.temps {
+fn write_temp_metrics(out: &mut String, device: &DeviceDto, history: &StatusSnapshot) {
+    for (name, temp) in history.latest_temps() {
         let _ = writeln!(
             out,
             "coolercontrol_temperature_celsius{{device=\"{}\",device_uid=\"{}\",device_type=\"{}\",sensor=\"{}\"}} {}",
             escape_label_value(&device.name),
             device.uid,
             device.d_type,
-            escape_label_value(&temp.name),
-            temp.temp,
+            escape_label_value(name),
+            temp,
         );
     }
 }
 
-fn write_channel_metrics(out: &mut String, device: &DeviceDto, status: &Status) {
-    for ch in &status.channels {
+fn write_channel_metrics(out: &mut String, device: &DeviceDto, history: &StatusSnapshot) {
+    for (name, ch) in history.latest_channels() {
         let dev = escape_label_value(&device.name);
-        let channel = escape_label_value(&ch.name);
+        let channel = escape_label_value(name);
         if let Some(rpm) = ch.rpm {
             let _ = writeln!(
                 out,
@@ -147,8 +144,6 @@ mod tests {
     use crate::api::devices::DeviceDto;
     use crate::api::status::DeviceStatusDto;
     use crate::device::{ChannelStatus, DeviceInfo, DeviceType, Status, TempStatus};
-    use std::collections::VecDeque;
-    use std::sync::Arc;
 
     fn make_device(name: &str, uid: &str, d_type: DeviceType) -> DeviceDto {
         DeviceDto {
@@ -166,17 +161,15 @@ mod tests {
         temps: Vec<TempStatus>,
         channels: Vec<ChannelStatus>,
     ) -> DeviceStatusDto {
-        let mut history = VecDeque::new();
-        history.push_back(Status {
-            timestamp: chrono::Local::now(),
-            temps,
-            channels,
-        });
         DeviceStatusDto {
             d_type: DeviceType::Hwmon,
             type_index: 0,
             uid: uid.to_string(),
-            status_history: Arc::new(history),
+            status_history: StatusSnapshot::from_statuses(&[Status {
+                timestamp: chrono::Local::now(),
+                temps,
+                channels,
+            }]),
         }
     }
 
