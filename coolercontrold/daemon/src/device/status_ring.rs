@@ -24,6 +24,11 @@ use super::{ChannelSample, Status, Temp};
 /// Every entry's UTC timestamp in nanoseconds.
 const TIMESTAMPS: Lane = Lane { start: 0, width: 8 };
 
+/// Temps, and separately channels, one device keeps. Each name holds a lane for every slot, so
+/// this bounds the memory a source that keeps inventing names can take: names absent from every
+/// held entry are dropped first, and only then are new ones refused. Far above any real device.
+pub const MAX_NAMES: usize = 256;
+
 /// Channel flags: the channel is present in the slot, then one bit per present field.
 const CHANNEL: u8 = 1;
 const RPM: u8 = 1 << 1;
@@ -259,18 +264,21 @@ impl StatusRing {
         self.len
     }
 
-    /// Empties the ring and sizes it to `capacity` slots, keeping its names. The buffer is only
-    /// reallocated when the capacity changes.
+    /// Empties the ring, names included, and sizes it to `capacity` slots. The buffer is only
+    /// reallocated when the capacity changes; it is then reserved for the old names, which a
+    /// rebuild usually adds again.
     pub fn reset(&mut self, capacity: usize) {
         assert!(capacity > 0);
         if capacity == self.capacity {
-            self.bytes.fill(0);
+            self.bytes.clear();
         } else {
-            self.bytes = vec![0; self.layout.stride * capacity];
+            self.bytes = Vec::with_capacity(self.layout.stride * capacity);
         }
+        self.layout = Arc::new(Layout::new());
         self.capacity = capacity;
         self.head = 0;
         self.len = 0;
+        self.fit_lanes();
     }
 
     /// Sizes the buffer to the layout after lanes were added. Exact: the ring never grows
@@ -315,10 +323,17 @@ impl StatusRing {
         slot
     }
 
-    /// The column of temp `name`, added absent from every entry on first sight.
-    pub fn temp_column(&mut self, name: &str) -> usize {
+    /// The column of temp `name`, added absent from every entry on first sight. `None` when
+    /// the device already holds `MAX_NAMES` temps with a value in the history.
+    pub fn temp_column(&mut self, name: &str) -> Option<usize> {
         if let Some(index) = self.layout.temp_index(name) {
-            return index;
+            return Some(index);
+        }
+        if self.layout.temps.len() >= MAX_NAMES {
+            self.drop_absent_names();
+            if self.layout.temps.len() >= MAX_NAMES {
+                return None;
+            }
         }
         let layout = Arc::make_mut(&mut self.layout);
         let present = layout.add_lane(1);
@@ -330,13 +345,20 @@ impl StatusRing {
         });
         let index = layout.temps.len() - 1;
         self.fit_lanes();
-        index
+        Some(index)
     }
 
-    /// The column of channel `name`, added absent from every entry on first sight.
-    pub fn channel_column(&mut self, name: &str) -> usize {
+    /// The column of channel `name`, added absent from every entry on first sight. `None` when
+    /// the device already holds `MAX_NAMES` channels with a value in the history.
+    pub fn channel_column(&mut self, name: &str) -> Option<usize> {
         if let Some(index) = self.layout.channel_index(name) {
-            return index;
+            return Some(index);
+        }
+        if self.layout.channels.len() >= MAX_NAMES {
+            self.drop_absent_names();
+            if self.layout.channels.len() >= MAX_NAMES {
+                return None;
+            }
         }
         let layout = Arc::make_mut(&mut self.layout);
         let flags = layout.add_lane(1);
@@ -351,7 +373,26 @@ impl StatusRing {
         });
         let index = layout.channels.len() - 1;
         self.fit_lanes();
-        index
+        Some(index)
+    }
+
+    /// Drops every name absent from all the entries the ring holds, as entries naming it have
+    /// rolled off.
+    fn drop_absent_names(&mut self) {
+        let filled: Vec<usize> = (0..self.len).map(|index| self.slot(index)).collect();
+        let present_in = |lane: Lane| {
+            filled
+                .iter()
+                .any(|slot| read::<1>(&self.bytes, self.capacity, lane, *slot)[0] != 0)
+        };
+        let mut kept = (*self.layout).clone();
+        kept.temps.retain(|column| present_in(column.present));
+        kept.channels.retain(|column| present_in(column.flags));
+        if kept.temps.len() + kept.channels.len()
+            < self.layout.temps.len() + self.layout.channels.len()
+        {
+            self.relayout(&kept);
+        }
     }
 
     /// The lane of a channel field, added on the field's first sight.
@@ -366,17 +407,24 @@ impl StatusRing {
         lane
     }
 
-    /// Writes `status` as the newest entry.
-    pub fn push_status(&mut self, status: &Status) {
+    /// Writes `status` as the newest entry. Returns `false` when a name was refused (see
+    /// `MAX_NAMES`); every other value is still written.
+    pub fn push_status(&mut self, status: &Status) -> bool {
         let slot = self.push(timestamp_ns(status.timestamp));
+        let mut kept_all = true;
         for temp in &status.temps {
-            let column = self.temp_column(&temp.name);
-            self.set_temp(slot, column, temp.temp);
+            match self.temp_column(&temp.name) {
+                Some(column) => self.set_temp(slot, column, temp.temp),
+                None => kept_all = false,
+            }
         }
         for channel in &status.channels {
-            let column = self.channel_column(&channel.name);
-            self.set_channel(slot, column, ChannelSample::of(channel));
+            match self.channel_column(&channel.name) {
+                Some(column) => self.set_channel(slot, column, ChannelSample::of(channel)),
+                None => kept_all = false,
+            }
         }
+        kept_all
     }
 
     pub fn set_temp(&mut self, slot: usize, column: usize, temp: Temp) {
@@ -495,49 +543,52 @@ impl StatusRing {
         filled_any
     }
 
-    /// Sets temp `name` in every entry, `values[index]` at history `index`.
-    pub fn set_temp_everywhere(&mut self, name: &str, values: &[Temp]) {
+    /// Sets temp `name` in every entry, `values[index]` at history `index`. Returns `false`
+    /// when the name was refused (see `MAX_NAMES`).
+    pub fn set_temp_everywhere(&mut self, name: &str, values: &[Temp]) -> bool {
         assert_eq!(values.len(), self.len);
-        let column = self.temp_column(name);
+        let Some(column) = self.temp_column(name) else {
+            return false;
+        };
         for (index, value) in values.iter().enumerate() {
             let slot = self.slot(index);
             self.set_temp(slot, column, *value);
         }
+        true
     }
 
-    /// Sets channel `name` in every entry, `samples[index]` at history `index`.
-    pub fn set_channel_everywhere(&mut self, name: &str, samples: &[ChannelSample]) {
+    /// Sets channel `name` in every entry, `samples[index]` at history `index`. Returns
+    /// `false` when the name was refused (see `MAX_NAMES`).
+    pub fn set_channel_everywhere(&mut self, name: &str, samples: &[ChannelSample]) -> bool {
         assert_eq!(samples.len(), self.len);
-        let column = self.channel_column(name);
+        let Some(column) = self.channel_column(name) else {
+            return false;
+        };
         for (index, sample) in samples.iter().enumerate() {
             let slot = self.slot(index);
             self.set_channel(slot, column, *sample);
         }
+        true
     }
 
-    /// The columns present in history `index`, each channel with its values zeroed.
-    pub fn zeroed_columns_at(&self, index: usize) -> (Vec<usize>, Vec<(usize, ChannelSample)>) {
+    /// The names present in history `index`, each channel with its values zeroed.
+    #[allow(clippy::type_complexity)]
+    pub fn zeroed_names_at(&self, index: usize) -> (Vec<Arc<str>>, Vec<(Arc<str>, ChannelSample)>) {
         let slot = self.slot(index);
-        let temps = (0..self.layout.temps.len())
-            .filter(|column| {
-                temp_in(
-                    &self.bytes,
-                    self.capacity,
-                    &self.layout.temps[*column],
-                    slot,
-                )
-                .is_some()
-            })
+        let temps = self
+            .layout
+            .temps
+            .iter()
+            .filter(|column| temp_in(&self.bytes, self.capacity, column, slot).is_some())
+            .map(|column| Arc::clone(&column.name))
             .collect();
-        let channels = (0..self.layout.channels.len())
+        let channels = self
+            .layout
+            .channels
+            .iter()
             .filter_map(|column| {
-                channel_in(
-                    &self.bytes,
-                    self.capacity,
-                    &self.layout.channels[column],
-                    slot,
-                )
-                .map(|sample| (column, sample.zeroed()))
+                channel_in(&self.bytes, self.capacity, column, slot)
+                    .map(|sample| (Arc::clone(&column.name), sample.zeroed()))
             })
             .collect();
         (temps, channels)
@@ -948,10 +999,10 @@ mod tests {
     /// Pushes an entry stamped `at` with `temp1` and, when given, `fan1`.
     fn push(ring: &mut StatusRing, at: i64, temp: f64, rpm: Option<u32>) {
         let slot = ring.push(at);
-        let column = ring.temp_column("temp1");
+        let column = ring.temp_column("temp1").unwrap();
         ring.set_temp(slot, column, temp);
         if let Some(rpm) = rpm {
-            let column = ring.channel_column("fan1");
+            let column = ring.channel_column("fan1").unwrap();
             ring.set_channel(slot, column, fan(rpm));
         }
     }
@@ -995,7 +1046,7 @@ mod tests {
         let mut ring = StatusRing::new(4);
         push(&mut ring, 1, 40.0, Some(1200));
         let slot = ring.push(2);
-        let fan1 = ring.channel_column("fan1");
+        let fan1 = ring.channel_column("fan1").unwrap();
         ring.set_channel(
             slot,
             fan1,
@@ -1005,7 +1056,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let late = ring.temp_column("late");
+        let late = ring.temp_column("late").unwrap();
         ring.set_temp(slot, late, 30.0);
         assert_eq!(ring.temp_at(0, "late"), None);
         assert_eq!(ring.temp_at(1, "late"), Some(30.0));
@@ -1023,10 +1074,10 @@ mod tests {
         for at in 1..=3 {
             let slot = ring.push(at);
             for name in ["a", "b", "c"] {
-                let column = ring.temp_column(name);
+                let column = ring.temp_column(name).unwrap();
                 ring.set_temp(slot, column, f64::from(u8::try_from(at).unwrap()));
             }
-            let column = ring.channel_column("b");
+            let column = ring.channel_column("b").unwrap();
             ring.set_channel(slot, column, fan(u32::try_from(at).unwrap()));
         }
         let before: Vec<_> = (0..3).map(|index| ring.temp_at(index, "c")).collect();
@@ -1044,6 +1095,47 @@ mod tests {
     }
 
     #[test]
+    fn names_that_rolled_off_make_room_for_new_ones() {
+        // Goal: a source that invents a new name every tick cannot grow the ring past
+        // `MAX_NAMES`: names absent from every held entry are dropped to make room.
+        // Method: four slots, ten times `MAX_NAMES` distinct names, one per entry.
+        let mut ring = StatusRing::new(4);
+        for at in 0..i64::try_from(10 * MAX_NAMES).unwrap() {
+            let slot = ring.push(at);
+            let name = format!("invented{at}");
+            let column = ring.temp_column(&name).expect("room is made");
+            ring.set_temp(slot, column, 1.0);
+            let column = ring.channel_column(&name).expect("room is made");
+            ring.set_channel(slot, column, fan(1));
+        }
+        assert!(ring.layout.temps.len() <= MAX_NAMES);
+        assert!(ring.layout.channels.len() <= MAX_NAMES);
+        assert!(ring.bytes.len() <= (8 + MAX_NAMES * (9 + 5)) * 4);
+        // The newest entries keep their own names.
+        assert_eq!(
+            ring.temp_at(3, &format!("invented{}", 10 * MAX_NAMES - 1)),
+            Some(1.0)
+        );
+    }
+
+    #[test]
+    fn a_new_name_is_refused_while_every_kept_name_is_in_use() {
+        // Goal: past `MAX_NAMES` names that all have values in the history, a new name gets
+        // no column and the names already kept are untouched.
+        let mut ring = StatusRing::new(2);
+        let slot = ring.push(1);
+        for index in 0..MAX_NAMES {
+            let column = ring.temp_column(&format!("t{index}")).unwrap();
+            ring.set_temp(slot, column, 2.0);
+        }
+        assert_eq!(ring.temp_column("one too many"), None);
+        assert_eq!(ring.temp_at(0, "t0"), Some(2.0));
+        assert_eq!(ring.temp_at(0, &format!("t{}", MAX_NAMES - 1)), Some(2.0));
+        // Channels have their own allowance.
+        assert!(ring.channel_column("fan1").is_some());
+    }
+
+    #[test]
     fn duty_backfill_fills_only_rpm_entries_without_duty_and_clear_removes_it() {
         // Goal: the calibration backfill fills duty where the channel has rpm and no duty,
         // reports whether it filled anything, and the clear removes duty everywhere.
@@ -1051,7 +1143,7 @@ mod tests {
         push(&mut ring, 1, 40.0, Some(1000));
         push(&mut ring, 2, 40.0, None);
         let slot = ring.push(3);
-        let fan1 = ring.channel_column("fan1");
+        let fan1 = ring.channel_column("fan1").unwrap();
         ring.set_channel(
             slot,
             fan1,
@@ -1081,7 +1173,7 @@ mod tests {
         let all = ring.snapshot(SnapshotFilter::All);
         let latest = ring.snapshot_latest(SnapshotFilter::All);
         push(&mut ring, 2, 50.0, Some(1300));
-        let column = ring.temp_column("late");
+        let column = ring.temp_column("late").unwrap();
         let slot = ring.push(3);
         ring.set_temp(slot, column, 1.0);
         assert_eq!(all.len, 1);

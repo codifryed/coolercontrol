@@ -14,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
+use log::warn;
 pub use status_ring::StatusSnapshot;
-use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing};
+use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing, MAX_NAMES};
 
 const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of recorded data
 
@@ -240,6 +241,9 @@ pub struct Device {
     /// inside `set_status` after the augmenter runs (so true-duty rewrites
     /// feed stats, not the pre-rewrite values).
     stats: DeviceStats,
+
+    /// Whether a name the history could not keep was logged. See [`MAX_NAMES`].
+    refused_name_logged: bool,
 }
 
 impl PartialEq for Device {
@@ -290,6 +294,7 @@ impl Device {
             info,
             status_augmenter: None,
             stats: DeviceStats::default(),
+            refused_name_logged: false,
         }
     }
 
@@ -388,12 +393,16 @@ impl Device {
 
     /// Adds temp `name` to every entry, with `values[index]` at history `index`.
     pub fn add_temp_column(&mut self, name: &str, values: &[Temp]) {
-        self.history.set_temp_everywhere(name, values);
+        if self.history.set_temp_everywhere(name, values).not() {
+            self.note_refused_name();
+        }
     }
 
     /// Adds channel `name` to every entry, with `samples[index]` at history `index`.
     pub fn add_channel_column(&mut self, name: &str, samples: &[ChannelSample]) {
-        self.history.set_channel_everywhere(name, samples);
+        if self.history.set_channel_everywhere(name, samples).not() {
+            self.note_refused_name();
+        }
     }
 
     /// Removes the temp or channel `name` from every entry.
@@ -476,19 +485,13 @@ impl Device {
     pub fn initialize_status_history_with(&mut self, mut status: Status, poll_rate: f64) {
         let capacity = Self::history_capacity(poll_rate);
         self.history.reset(capacity);
-        let temps: Vec<usize> = status
-            .temps
-            .iter()
-            .map(|temp| self.history.temp_column(&temp.name))
-            .collect();
-        let channels: Vec<(usize, ChannelSample)> = status
-            .channels
-            .iter()
-            .map(|channel| {
-                let column = self.history.channel_column(&channel.name);
-                (column, ChannelSample::of(channel).zeroed())
-            })
-            .collect();
+        let (temps, channels) = self.template_columns(
+            status.temps.iter().map(|temp| temp.name.as_str()),
+            status
+                .channels
+                .iter()
+                .map(|channel| (channel.name.as_str(), ChannelSample::of(channel).zeroed())),
+        );
         // Zeroed entries at offsets [-(N-1), ..., -1] * poll_rate, then the real
         // status at offset 0.
         for pos in (1..capacity).rev() {
@@ -518,14 +521,48 @@ impl Device {
         let Some(latest) = self.history_len().checked_sub(1) else {
             return;
         };
-        let (temps, channels) = self.history.zeroed_columns_at(latest);
+        let (temp_names, channel_names) = self.history.zeroed_names_at(latest);
         let capacity = Self::history_capacity(poll_rate);
         self.history.reset(capacity);
+        let (temps, channels) = self.template_columns(
+            temp_names.iter().map(|name| &**name),
+            channel_names
+                .iter()
+                .map(|(name, sample)| (&**name, *sample)),
+        );
         for pos in (1..capacity).rev() {
             let at = timestamp - Duration::from_secs_f64(pos as f64 * poll_rate);
             self.push_zeroed(at, &temps, &channels);
         }
         self.push_zeroed(timestamp, &temps, &channels);
+    }
+
+    /// The columns of a rebuild's names, in order. A refused name gets none.
+    #[allow(clippy::type_complexity)]
+    fn template_columns<'a>(
+        &mut self,
+        temps: impl Iterator<Item = &'a str>,
+        channels: impl Iterator<Item = (&'a str, ChannelSample)>,
+    ) -> (Vec<usize>, Vec<(usize, ChannelSample)>) {
+        let mut refused = false;
+        let temps = temps
+            .filter_map(|name| {
+                let column = self.history.temp_column(name);
+                refused |= column.is_none();
+                column
+            })
+            .collect();
+        let channels = channels
+            .filter_map(|(name, sample)| {
+                let column = self.history.channel_column(name);
+                refused |= column.is_none();
+                Some((column?, sample))
+            })
+            .collect();
+        if refused {
+            self.note_refused_name();
+        }
+        (temps, channels)
     }
 
     fn push_zeroed(
@@ -543,13 +580,29 @@ impl Device {
         }
     }
 
+    /// Logs, once per device, that a name went unrecorded: the device reports more names than
+    /// its history keeps.
+    fn note_refused_name(&mut self) {
+        if self.refused_name_logged {
+            return;
+        }
+        self.refused_name_logged = true;
+        warn!(
+            "{} reports more than {MAX_NAMES} temps or channels. Names beyond that are not \
+             recorded in its status history.",
+            self.name
+        );
+    }
+
     /// Run the augmenter on `status` and store it as the newest entry. Does not touch
     /// stats; callers that need stats folded should use `set_status`.
     fn push_and_augment(&mut self, status: &mut Status) {
         if let Some(augmenter) = self.status_augmenter.as_ref() {
             augmenter.augment(status, &self.uid);
         }
-        self.history.push_status(status);
+        if self.history.push_status(status).not() {
+            self.note_refused_name();
+        }
     }
 
     /// Push a new status, run the augmenter, and fold the post-augmenter
