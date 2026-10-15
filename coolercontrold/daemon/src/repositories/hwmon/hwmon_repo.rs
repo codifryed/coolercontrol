@@ -58,10 +58,9 @@ use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelSample,
-    ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty,
-    SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES,
-    UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
+    Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
+    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
@@ -627,13 +626,7 @@ impl HwmonRepo {
                 "Hwmon device: {} status was updated with: {temps:?} {channels:?}",
                 device.name
             );
-            let mut writer = device.write_status(timestamp);
-            for temp in temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
+            device.write_status(timestamp).write_all(temps, channels);
         }
     }
 

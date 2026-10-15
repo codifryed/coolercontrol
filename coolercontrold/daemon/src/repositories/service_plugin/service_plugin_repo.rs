@@ -3,8 +3,8 @@
 
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelKind, ChannelSample, ChannelStatus, DeviceInfo, DeviceType,
-    DeviceUID, Status, StatusWriter, TempStatus, UID,
+    ChannelExtensionNames, ChannelKind, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Status,
+    StatusWriter, TempStatus, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
@@ -97,12 +97,7 @@ struct PreloadData {
 impl PreloadData {
     /// Writes every cached value into `writer`'s entry.
     fn write_to(&self, writer: &mut StatusWriter<'_>) {
-        for temp in &self.temps {
-            writer.temp(&temp.name, temp.temp);
-        }
-        for channel in &self.channels {
-            writer.channel(&channel.name, ChannelSample::from(channel));
-        }
+        writer.write_all(&self.temps, &self.channels);
     }
 }
 

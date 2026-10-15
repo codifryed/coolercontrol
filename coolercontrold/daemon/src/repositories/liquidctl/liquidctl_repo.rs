@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelKind, ChannelName, ChannelSample, ChannelStatus, DeviceInfo, DeviceType, DeviceUID,
-    Duty, LcInfo, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
+    Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
@@ -1644,13 +1644,9 @@ impl Repository for LiquidctlRepo {
             let Ok(status) = self.build_normal_status(&device) else {
                 continue;
             };
-            let mut writer = device.write_status(timestamp);
-            for temp in &status.temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in &status.channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
+            device
+                .write_status(timestamp)
+                .write_all(&status.temps, &status.channels);
         }
         Ok(())
     }

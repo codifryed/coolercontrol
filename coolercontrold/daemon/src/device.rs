@@ -756,6 +756,16 @@ pub struct StatusWriter<'a> {
 }
 
 impl StatusWriter<'_> {
+    /// Writes every temp, then every channel, in the order given.
+    pub fn write_all(&mut self, temps: &[TempStatus], channels: &[ChannelStatus]) {
+        for temp in temps {
+            self.temp(&temp.name, temp.temp);
+        }
+        for channel in channels {
+            self.channel(&channel.name, ChannelSample::from(channel));
+        }
+    }
+
     pub fn temp(&mut self, name: &str, temp: Temp) {
         let Some(column) = self.device.history.temp_column_from(self.next_temp, name) else {
             self.device.note_refused_name();

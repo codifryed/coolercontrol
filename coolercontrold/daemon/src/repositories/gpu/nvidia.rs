@@ -27,9 +27,8 @@ use tokio::sync::OnceCell;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelSample, ChannelStatus, Device, DeviceInfo,
-    DeviceType, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus,
-    TypeIndex, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
@@ -142,13 +141,9 @@ impl GpuNVidia {
                 nv_status.channels
             );
             let mut device = nv_device_lock.borrow_mut();
-            let mut writer = device.write_status(timestamp);
-            for temp in &nv_status.temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in &nv_status.channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
+            device
+                .write_status(timestamp)
+                .write_all(&nv_status.temps, &nv_status.channels);
         }
     }
 

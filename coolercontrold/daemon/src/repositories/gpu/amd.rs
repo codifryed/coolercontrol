@@ -15,9 +15,8 @@ use super::amd_fdinfo::{self, FdInfoLoad, FdInfoLoadState};
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, Device,
-    DeviceInfo, DeviceType, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo,
-    TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
@@ -789,13 +788,7 @@ impl GpuAMD {
                 amd_driver.hwmon.name
             );
             let mut device = device_lock.borrow_mut();
-            let mut writer = device.write_status(timestamp);
-            for temp in temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
+            device.write_status(timestamp).write_all(temps, channels);
         }
     }
 

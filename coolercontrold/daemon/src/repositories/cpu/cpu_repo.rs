@@ -13,9 +13,8 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, Device, DeviceInfo,
-    DeviceType, DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts,
-    MAX_CHANNEL_ATTRIBUTES, UID,
+    ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
@@ -106,13 +105,7 @@ impl CpuRepo {
             let device_id = cpu_device.type_index;
             trace!("CPU device #{device_id} status was updated with: {temps:?} {channels:?}");
             let mut device = cpu_device.device.borrow_mut();
-            let mut writer = device.write_status(timestamp);
-            for temp in temps {
-                writer.temp(&temp.name, temp.temp);
-            }
-            for channel in channels {
-                writer.channel(&channel.name, ChannelSample::from(channel));
-            }
+            device.write_status(timestamp).write_all(temps, channels);
         }
     }
 
