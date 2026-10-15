@@ -24,7 +24,8 @@ const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of record
 /// rate to 0.5..=5.0 s).
 const HISTORY_CAPACITY_MIN: usize = 3_600_000_usize.div_ceil(5_000);
 const HISTORY_CAPACITY_MAX: usize = 3_600_000_usize.div_ceil(500);
-const _: () = assert!(HISTORY_CAPACITY_MIN == 720 && HISTORY_CAPACITY_MAX == 7_200);
+const _: () = assert!(HISTORY_CAPACITY_MIN == 720);
+const _: () = assert!(HISTORY_CAPACITY_MAX == 7_200);
 
 #[allow(clippy::upper_case_acronyms)]
 pub type UID = String;

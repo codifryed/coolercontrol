@@ -554,7 +554,13 @@ impl StatusRing {
             let slot = self.slot(index);
             let flags_lane = self.layout.channels[column].flags;
             let [flags] = read(&self.bytes, self.capacity, flags_lane, slot);
-            if flags & CHANNEL == 0 || flags & RPM == 0 || flags & DUTY != 0 {
+            if flags & CHANNEL == 0 {
+                continue;
+            }
+            if flags & RPM == 0 {
+                continue;
+            }
+            if flags & DUTY != 0 {
                 continue;
             }
             let rpm_lane = self.layout.channels[column]
@@ -649,7 +655,7 @@ impl StatusRing {
     pub fn remove_name(&mut self, name: &str) {
         let temp = self.layout.temp_index(name);
         let channel = self.layout.channel_index(name);
-        if temp.is_none() && channel.is_none() {
+        if let (None, None) = (temp, channel) {
             return;
         }
         let mut kept = (*self.layout).clone();
