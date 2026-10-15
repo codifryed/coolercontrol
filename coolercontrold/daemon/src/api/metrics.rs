@@ -235,6 +235,57 @@ mod tests {
     }
 
     #[test]
+    fn prometheus_text_is_golden() {
+        // Goal: the scrape text for the shared status fixture stays byte for byte, NaN and
+        // shortest float formatting included. Method: compare the whole body in both device
+        // orders; the order of devices is not part of the contract.
+        use crate::api::status_golden::{device_dtos, fixture, responses};
+        let fixture = fixture();
+        let responses = responses(&fixture);
+        let output = format_prometheus_metrics(&device_dtos(&fixture), &responses.recent);
+        let header = "\
+# HELP coolercontrol_temperature_celsius Temperature sensor reading in degrees Celsius.
+# TYPE coolercontrol_temperature_celsius gauge
+# HELP coolercontrol_fan_rpm Fan speed in revolutions per minute.
+# TYPE coolercontrol_fan_rpm gauge
+# HELP coolercontrol_duty_percent Channel duty cycle or load percentage (0-100).
+# TYPE coolercontrol_duty_percent gauge
+# HELP coolercontrol_frequency_hertz Channel frequency in Hertz.
+# TYPE coolercontrol_frequency_hertz gauge
+# HELP coolercontrol_power_watts Channel power consumption in Watts.
+# TYPE coolercontrol_power_watts gauge
+";
+        let hwmon = format!(
+            "\
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp1\"}} 41.5
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp2\"}} NaN
+coolercontrol_temperature_celsius{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",sensor=\"temp3\"}} 31.5
+coolercontrol_fan_rpm{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"fan1\"}} 1260
+coolercontrol_duty_percent{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"fan1\"}} 54
+coolercontrol_fan_rpm{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"pump\"}} 2460
+coolercontrol_frequency_hertz{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"power\"}} 1520000000
+coolercontrol_power_watts{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"power\"}} 13.5
+coolercontrol_frequency_hertz{{device=\"Golden Hwmon\",device_uid=\"{uid}\",device_type=\"Hwmon\",channel=\"clock\"}} 4200000000
+",
+            uid = fixture.hwmon_uid,
+        );
+        let gpu = format!(
+            "\
+coolercontrol_duty_percent{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"load\"}} 33.333333333333336
+coolercontrol_frequency_hertz{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"freq\"}} 3030000000
+coolercontrol_power_watts{{device=\"Golden GPU\",device_uid=\"{uid}\",device_type=\"GPU\",channel=\"power\"}} 55.75
+",
+            uid = fixture.gpu_uid,
+        );
+        let one = format!("{header}{hwmon}{gpu}");
+        let other = format!("{header}{gpu}{hwmon}");
+        assert!(
+            output == one || output == other,
+            "scrape text differs:\n{output}\nexpected:\n{one}"
+        );
+    }
+
+    #[test]
     fn test_escape_label_value() {
         assert_eq!(escape_label_value(r#"a"b\c"#), r#"a\"b\\c"#);
         assert_eq!(escape_label_value("line\nnewline"), "line\\nnewline");

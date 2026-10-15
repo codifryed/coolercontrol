@@ -30,6 +30,8 @@ mod settings;
 mod sse;
 pub mod stats;
 pub mod status;
+#[cfg(test)]
+mod status_golden;
 mod stress_test;
 mod tls;
 mod tokens;
