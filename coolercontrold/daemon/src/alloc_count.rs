@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Test-only global allocator that counts heap allocations per thread, so a test can assert that
-//! a hot path allocates nothing. Each test runs on its own thread, so parallel tests never mix
-//! their counts.
+//! a hot path allocates nothing. Counts are taken as a before/after delta on the current thread
+//! around the closure, so allocations on other threads or from other tests are never included.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -58,7 +58,6 @@ pub fn count_allocations<R>(f: impl FnOnce() -> R) -> (R, u64) {
     (result, after - before)
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 
