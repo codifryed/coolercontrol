@@ -26,8 +26,9 @@ use tokio::sync::OnceCell;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelKind, ChannelName, ChannelSample, ChannelStatus, Device, DeviceInfo,
+    DeviceType, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus,
+    TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
@@ -111,21 +112,26 @@ impl GpuNVidia {
     }
 
     pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
         for (type_index, nv_device_lock) in &self.nvidia_devices {
-            let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
-            let preloaded_statuses = preloaded_statuses_map.get(type_index);
-            if preloaded_statuses.is_none() {
+            let Some(nv_status) = preloaded_statuses_map.get(type_index) else {
                 error!("There is no status preloaded for this Nvidia device: {type_index}");
                 continue;
-            }
-            let nv_status = preloaded_statuses.unwrap().clone();
-            let status = Status {
-                timestamp,
-                channels: nv_status.channels.clone(),
-                temps: nv_status.temps.clone(),
             };
-            trace!("Device: {} status updated: {:?}", nv_status.name, status);
-            nv_device_lock.borrow_mut().set_status(status);
+            trace!(
+                "Device: {} status updated: {:?} {:?}",
+                nv_status.name,
+                nv_status.temps,
+                nv_status.channels
+            );
+            let mut device = nv_device_lock.borrow_mut();
+            let mut writer = device.write_status(timestamp);
+            for temp in &nv_status.temps {
+                writer.temp(&temp.name, temp.temp);
+            }
+            for channel in &nv_status.channels {
+                writer.channel(&channel.name, ChannelSample::from(channel));
+            }
         }
     }
 
@@ -1641,6 +1647,60 @@ fn needs_hotspot_register(architecture: Result<DeviceArchitecture, NvmlError>) -
 mod tests {
     use super::*;
     use crate::setting::CCDeviceSettings;
+
+    #[test]
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        let mut gpus = GpuNVidia::new(Rc::new(Config::init_default_config().unwrap()));
+        let status = StatusNvidiaDeviceSMI {
+            temps: vec![TempStatus {
+                name: GPU_TEMP_NAME.to_string(),
+                temp: 60.0,
+            }],
+            channels: vec![ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(40.0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut device = Device::new(
+            "Test GPU".to_string(),
+            DeviceType::GPU,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: status.temps.clone(),
+                channels: status.channels.clone(),
+            },
+            1.0,
+        );
+        let device = Rc::new(RefCell::new(device));
+        gpus.nvidia_devices.insert(1, Rc::clone(&device));
+        gpus.nvidia_preloaded_statuses
+            .borrow_mut()
+            .insert(1, status);
+        gpus.update_all_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| gpus.update_all_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp(GPU_TEMP_NAME), Some(60.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1500));
+    }
 
     fn nv_info_for(gpu_index: GpuIndex) -> NvidiaDeviceInfo {
         NvidiaDeviceInfo {
