@@ -58,9 +58,10 @@ use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
-    Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
-    Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
+    ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelSample,
+    ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty,
+    SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES,
+    UID,
 };
 use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
@@ -551,6 +552,30 @@ pub struct HwmonRepo {
 }
 
 impl HwmonRepo {
+    /// Writes each device's preloaded status into its history, stamped `timestamp`.
+    fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.preloaded_statuses.borrow();
+        for (device, _) in self.devices.values() {
+            let device_index = device.borrow().type_index;
+            let Some((channels, temps)) = preloaded_statuses_map.get(&device_index) else {
+                error!("There is no status preloaded for this device: {device_index}");
+                continue;
+            };
+            let mut device = device.borrow_mut();
+            trace!(
+                "Hwmon device: {} status was updated with: {temps:?} {channels:?}",
+                device.name
+            );
+            let mut writer = device.write_status(timestamp);
+            for temp in temps {
+                writer.temp(&temp.name, temp.temp);
+            }
+            for channel in channels {
+                writer.channel(&channel.name, ChannelSample::from(channel));
+            }
+        }
+    }
+
     pub fn new(
         config: Rc<Config>,
         lc_locations: Vec<String>,
@@ -2375,25 +2400,7 @@ impl Repository for HwmonRepo {
     }
 
     async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
-        for (device, _) in self.devices.values() {
-            let preloaded_statuses_map = self.preloaded_statuses.borrow();
-            let device_index = device.borrow().type_index;
-            let preloaded_statuses = preloaded_statuses_map.get(&device_index);
-            let Some((channels, temps)) = preloaded_statuses.cloned() else {
-                error!("There is no status preloaded for this device: {device_index}");
-                continue;
-            };
-            let status = Status {
-                timestamp,
-                temps,
-                channels,
-            };
-            trace!(
-                "Hwmon device: {} status was updated with: {status:?}",
-                device.borrow().name
-            );
-            device.borrow_mut().set_status(status);
-        }
+        self.store_preloaded_statuses(timestamp);
         Ok(())
     }
 
@@ -2800,6 +2807,69 @@ mod preload_tests {
             repo.delay_logged.insert(type_index, Cell::new(0));
         }
         repo
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        let repo = new_test_repo();
+        let channels = vec![ChannelStatus {
+            name: "fan1".to_string(),
+            rpm: Some(1200),
+            duty: Some(50.0),
+            pwm_mode: Some(1),
+            ..Default::default()
+        }];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 40.0,
+        }];
+        let mut device = Device::new(
+            "test_driver".to_string(),
+            DeviceType::Hwmon,
+            TEST_TYPE_INDEX,
+            None,
+            DeviceInfo::default(),
+            Some("update-test".to_string()),
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: temps.clone(),
+                channels: channels.clone(),
+            },
+            1.0,
+        );
+        let uid = device.uid.clone();
+        let device = Rc::new(RefCell::new(device));
+        let mut devices = HashMap::new();
+        devices.insert(
+            uid,
+            (Rc::clone(&device), Rc::new(HwmonDriverInfo::default())),
+        );
+        let repo = HwmonRepo { devices, ..repo };
+        repo.preloaded_statuses
+            .borrow_mut()
+            .insert(TEST_TYPE_INDEX, (channels, temps));
+        repo.store_preloaded_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| repo.store_preloaded_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp("temp1"), Some(40.0));
+        let fan1 = device.latest_channel("fan1").unwrap();
+        assert_eq!(
+            (fan1.rpm, fan1.duty, fan1.pwm_mode),
+            (Some(1200), Some(50.0), Some(1))
+        );
     }
 
     fn fan_channel_with_paths(number: u8, name: &str, base_path: &Path) -> HwmonChannelInfo {
