@@ -3,8 +3,8 @@
 
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelKind, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Status,
-    TempStatus, UID,
+    ChannelExtensionNames, ChannelKind, ChannelSample, ChannelStatus, DeviceInfo, DeviceType,
+    DeviceUID, Status, StatusWriter, TempStatus, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
@@ -92,6 +92,18 @@ pub struct ServicePluginRepo {
 struct PreloadData {
     channels: Vec<ChannelStatus>,
     temps: Vec<TempStatus>,
+}
+
+impl PreloadData {
+    /// Writes every cached value into `writer`'s entry.
+    fn write_to(&self, writer: &mut StatusWriter<'_>) {
+        for temp in &self.temps {
+            writer.temp(&temp.name, temp.temp);
+        }
+        for channel in &self.channels {
+            writer.channel(&channel.name, ChannelSample::from(channel));
+        }
+    }
 }
 
 /// Replace-or-append a fresh channel reading into the upsert cache.
@@ -1050,23 +1062,19 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        let preloaded_statuses = self.preloaded_statuses.borrow();
         for (device_uid, (device_lock, _)) in &self.devices {
-            let (temps, channels) = self
-                .preloaded_statuses
-                .borrow()
+            let data = preloaded_statuses
                 .get(device_uid)
-                .map(|data| (data.temps.clone(), data.channels.clone()))
                 .expect("Preloaded Data should always be present");
-            let status = Status {
-                timestamp,
-                temps,
-                channels,
-            };
+            let mut device = device_lock.borrow_mut();
             trace!(
-                "Hwmon device: {} status was updated with: {status:?}",
-                device_lock.borrow().name
+                "Device Service device: {} status was updated with: {:?} {:?}",
+                device.name,
+                data.temps,
+                data.channels
             );
-            device_lock.borrow_mut().set_status(status);
+            data.write_to(&mut device.write_status(timestamp));
         }
         Ok(())
     }
@@ -1376,6 +1384,38 @@ mod tests {
     use crate::repositories::failsafe::{self, MISSING_TEMP_FAILSAFE};
     use std::ops::Not;
     use std::path::Path;
+
+    #[test]
+    fn writing_the_preloaded_status_allocates_nothing_once_warm() {
+        // Goal: the update pass writes the cached values into the history in place, stamped
+        // with the tick's timestamp. Method: one tick warms the stats, then count the
+        // allocations of the next.
+        use crate::device::{Device, DeviceType};
+        let data = super::PreloadData {
+            channels: vec![fan("fan1", 1100, 45.0)],
+            temps: vec![temp("temp1", 38.0)],
+        };
+        let mut device = Device::new(
+            "plugin device".to_string(),
+            DeviceType::ServicePlugin,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        data.write_to(&mut device.write_status(chrono::Local::now()));
+        let tick = chrono::Local::now();
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            data.write_to(&mut device.write_status(tick));
+        });
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp("temp1"), Some(38.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1100));
+    }
 
     fn device_info_with(channels: Vec<(&str, ChannelKind)>, temps: Vec<&str>) -> DeviceInfo {
         let mut info = DeviceInfo::default();
