@@ -499,7 +499,7 @@ impl Device {
     pub fn initialize_status_history_with(&mut self, mut status: Status, poll_rate: f64) {
         let capacity = Self::history_capacity(poll_rate);
         self.history.reset(capacity);
-        let (temps, channels) = self.template_columns(
+        let template = self.template_columns(
             status.temps.iter().map(|temp| temp.name.as_str()),
             status
                 .channels
@@ -510,7 +510,7 @@ impl Device {
         // status at offset 0.
         for pos in (1..capacity).rev() {
             let timestamp = status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate);
-            self.push_zeroed(timestamp, &temps, &channels);
+            self.push_zeroed(timestamp, &template);
         }
         self.push_and_augment(&mut status);
     }
@@ -535,29 +535,29 @@ impl Device {
         let Some(latest) = self.history_len().checked_sub(1) else {
             return;
         };
-        let (temp_names, channel_names) = self.history.zeroed_names_at(latest);
+        let names = self.history.zeroed_names_at(latest);
         let capacity = Self::history_capacity(poll_rate);
         self.history.reset(capacity);
-        let (temps, channels) = self.template_columns(
-            temp_names.iter().map(|name| &**name),
-            channel_names
+        let template = self.template_columns(
+            names.temps.iter().map(|name| &**name),
+            names
+                .channels
                 .iter()
                 .map(|(name, sample)| (&**name, *sample)),
         );
         for pos in (1..capacity).rev() {
             let at = timestamp - Duration::from_secs_f64(pos as f64 * poll_rate);
-            self.push_zeroed(at, &temps, &channels);
+            self.push_zeroed(at, &template);
         }
-        self.push_zeroed(timestamp, &temps, &channels);
+        self.push_zeroed(timestamp, &template);
     }
 
     /// The columns of a rebuild's names, in order. A refused name gets none.
-    #[allow(clippy::type_complexity)]
     fn template_columns<'a>(
         &mut self,
         temps: impl Iterator<Item = &'a str>,
         channels: impl Iterator<Item = (&'a str, ChannelSample)>,
-    ) -> (Vec<usize>, Vec<(usize, ChannelSample)>) {
+    ) -> TemplateColumns {
         let mut refused = false;
         let temps = temps
             .filter_map(|name| {
@@ -576,20 +576,15 @@ impl Device {
         if refused {
             self.note_refused_name();
         }
-        (temps, channels)
+        TemplateColumns { temps, channels }
     }
 
-    fn push_zeroed(
-        &mut self,
-        timestamp: DateTime<Local>,
-        temps: &[usize],
-        channels: &[(usize, ChannelSample)],
-    ) {
+    fn push_zeroed(&mut self, timestamp: DateTime<Local>, template: &TemplateColumns) {
         let slot = self.history.push(timestamp_ns(timestamp));
-        for column in temps {
+        for column in &template.temps {
             self.history.set_temp(slot, *column, 0.0);
         }
-        for (column, sample) in channels {
+        for (column, sample) in &template.channels {
             self.history.set_channel(slot, *column, *sample);
         }
     }
@@ -738,6 +733,13 @@ impl Device {
             }
         }
     }
+}
+
+/// The history columns a rebuild fills in every entry: temps set to zero, channels to their
+/// zeroed sample.
+struct TemplateColumns {
+    temps: Vec<usize>,
+    channels: Vec<(usize, ChannelSample)>,
 }
 
 /// Writes one history entry in place. Made by [`Device::write_status`].

@@ -235,6 +235,12 @@ pub fn local_time(timestamp_ns: i64) -> DateTime<Local> {
     Local.from_utc_datetime(&DateTime::<Utc>::from_timestamp_nanos(timestamp_ns).naive_utc())
 }
 
+/// The names one entry holds, each channel with its values zeroed.
+pub struct ZeroedNames {
+    pub temps: Vec<Arc<str>>,
+    pub channels: Vec<(Arc<str>, ChannelSample)>,
+}
+
 #[derive(Clone)]
 pub struct StatusRing {
     capacity: usize,
@@ -600,8 +606,7 @@ impl StatusRing {
     }
 
     /// The names present in history `index`, each channel with its values zeroed.
-    #[allow(clippy::type_complexity)]
-    pub fn zeroed_names_at(&self, index: usize) -> (Vec<Arc<str>>, Vec<(Arc<str>, ChannelSample)>) {
+    pub fn zeroed_names_at(&self, index: usize) -> ZeroedNames {
         let slot = self.slot(index);
         let temps = self
             .layout
@@ -619,7 +624,7 @@ impl StatusRing {
                     .map(|sample| (Arc::clone(&column.name), sample.zeroed()))
             })
             .collect();
-        (temps, channels)
+        ZeroedNames { temps, channels }
     }
 
     /// Removes the duty of channel `name` from every entry.
