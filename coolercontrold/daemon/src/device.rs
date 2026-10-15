@@ -371,18 +371,20 @@ impl Device {
 
     /// Temp `name` at history `index`. `None` past the end of the history.
     pub fn temp_at(&self, index: usize, name: &str) -> Option<Temp> {
-        if index >= self.history_len() {
-            return None;
+        if index < self.history_len() {
+            self.history.temp_at(index, name)
+        } else {
+            None
         }
-        self.history.temp_at(index, name)
     }
 
     /// Channel `name` at history `index`. `None` past the end of the history.
     pub fn channel_at(&self, index: usize, name: &str) -> Option<ChannelSample> {
-        if index >= self.history_len() {
-            return None;
+        if index < self.history_len() {
+            self.history.channel_at(index, name)
+        } else {
+            None
         }
-        self.history.channel_at(index, name)
     }
 
     /// Temp `name` over the newest `count` entries, oldest first. Entries without it are
