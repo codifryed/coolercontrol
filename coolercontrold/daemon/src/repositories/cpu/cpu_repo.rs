@@ -13,8 +13,9 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelAttribute, ChannelInfo, ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType,
-    DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts, MAX_CHANNEL_ATTRIBUTES, UID,
+    ChannelAttribute, ChannelInfo, ChannelKind, ChannelSample, ChannelStatus, Device, DeviceInfo,
+    DeviceType, DriverInfo, DriverType, Status, TempInfo, TempStatus, Watts,
+    MAX_CHANNEL_ATTRIBUTES, UID,
 };
 use crate::overrides::OverridesController;
 use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
@@ -75,6 +76,31 @@ pub struct CpuRepo {
 }
 
 impl CpuRepo {
+    /// Writes each device's preloaded status into its history, stamped `timestamp`.
+    fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.preloaded_statuses.borrow();
+        for cpu_device in self.devices.values() {
+            let Some((channels, temps)) = preloaded_statuses_map.get(&cpu_device.association)
+            else {
+                error!(
+                    "There is no status preloaded for this device: {:?}",
+                    cpu_device.association
+                );
+                continue;
+            };
+            let device_id = cpu_device.type_index;
+            trace!("CPU device #{device_id} status was updated with: {temps:?} {channels:?}");
+            let mut device = cpu_device.device.borrow_mut();
+            let mut writer = device.write_status(timestamp);
+            for temp in temps {
+                writer.temp(&temp.name, temp.temp);
+            }
+            for channel in channels {
+                writer.channel(&channel.name, ChannelSample::from(channel));
+            }
+        }
+    }
+
     pub fn new(config: Rc<Config>, overrides: Rc<OverridesController>) -> Result<Self> {
         Ok(Self {
             config,
@@ -1032,25 +1058,7 @@ impl Repository for CpuRepo {
     }
 
     async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
-        for cpu_device in self.devices.values() {
-            let preloaded_statuses_map = self.preloaded_statuses.borrow();
-            let Some((channels, temps)) = preloaded_statuses_map.get(&cpu_device.association)
-            else {
-                error!(
-                    "There is no status preloaded for this device: {:?}",
-                    cpu_device.association
-                );
-                continue;
-            };
-            let status = Status {
-                timestamp,
-                temps: temps.clone(),
-                channels: channels.clone(),
-            };
-            let device_id = cpu_device.type_index;
-            trace!("CPU device #{device_id} status was updated with: {status:?}");
-            cpu_device.device.borrow_mut().set_status(status);
-        }
+        self.store_preloaded_statuses(timestamp);
         Ok(())
     }
 
@@ -1687,5 +1695,72 @@ mod channel_attributes_tests {
             assert!(load.is_empty());
             assert!(unknown.is_err());
         });
+    }
+
+    #[test]
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let mut repo = CpuRepo::new(config, Rc::new(OverridesController::empty())).unwrap();
+        let channels = vec![
+            ChannelStatus {
+                name: "CPU Load".to_string(),
+                duty: Some(12.5),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "CPU Freq".to_string(),
+                freq: Some(4200),
+                ..Default::default()
+            },
+        ];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 55.0,
+        }];
+        let mut device = Device::new(
+            "cpu".to_string(),
+            DeviceType::CPU,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: temps.clone(),
+                channels: channels.clone(),
+            },
+            1.0,
+        );
+        let device = Rc::new(RefCell::new(device));
+        let uid = device.borrow().uid.clone();
+        repo.devices.insert(
+            uid,
+            CpuDevice {
+                association: CpuAssociation::Socket(0),
+                type_index: 1,
+                device: Rc::clone(&device),
+                driver: Rc::new(HwmonDriverInfo::default()),
+            },
+        );
+        repo.preloaded_statuses
+            .borrow_mut()
+            .insert(CpuAssociation::Socket(0), (channels, temps));
+        repo.store_preloaded_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| repo.store_preloaded_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp("temp1"), Some(55.0));
+        assert_eq!(device.latest_channel("CPU Freq").unwrap().freq, Some(4200));
     }
 }
