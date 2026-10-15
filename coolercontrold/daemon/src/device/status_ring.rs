@@ -340,6 +340,8 @@ impl StatusRing {
         for column in &self.layout.channels {
             write(&mut self.bytes, capacity, column.flags, slot, [0]);
         }
+        debug_assert!(self.len <= self.capacity);
+        debug_assert!(self.head < self.capacity);
         slot
     }
 
@@ -460,6 +462,8 @@ impl StatusRing {
     }
 
     pub fn set_temp(&mut self, slot: usize, column: usize, temp: Temp) {
+        debug_assert!(slot < self.capacity);
+        debug_assert!(column < self.temp_written.len());
         self.temp_written[column] = self.pushes;
         let TempColumn { present, value, .. } = self.layout.temps[column];
         let capacity = self.capacity;
@@ -468,6 +472,8 @@ impl StatusRing {
     }
 
     pub fn set_channel(&mut self, slot: usize, column: usize, sample: ChannelSample) {
+        debug_assert!(slot < self.capacity);
+        debug_assert!(column < self.channel_written.len());
         self.channel_written[column] = self.pushes;
         let mut flags = CHANNEL;
         if let Some(rpm) = sample.rpm {

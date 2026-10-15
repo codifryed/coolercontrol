@@ -772,6 +772,7 @@ impl StatusWriter<'_> {
             return;
         };
         self.next_temp = column + 1;
+        debug_assert!(self.next_temp <= MAX_NAMES);
         self.device.history.set_temp(self.slot, column, temp);
         Device::record_temp(&mut self.device.stats, name, temp);
     }
@@ -789,6 +790,7 @@ impl StatusWriter<'_> {
             return;
         };
         self.next_channel = column + 1;
+        debug_assert!(self.next_channel <= MAX_NAMES);
         self.device.history.set_channel(self.slot, column, sample);
         Device::record_channel(&mut self.device.stats, name, sample);
     }
