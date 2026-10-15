@@ -383,9 +383,10 @@ impl CustomSensorsRepo {
     /// Adds a new sensor's values to every entry of the custom sensor device's status
     /// history, so its chart starts with real values wherever its sources have them.
     ///
-    /// An entry whose sources lack a value follows the live rule: it holds the last computed
-    /// value for up to `MISSING_STATUS_THRESHOLD` such entries in a row, then reports the
-    /// metric's failsafe, and reports the failsafe at once when there is nothing to hold.
+    /// An entry whose sources lack a value holds the last computed value for up to
+    /// `MISSING_STATUS_THRESHOLD` such entries in a row, then reports the metric's failsafe,
+    /// and reports the failsafe at once when there is nothing to hold. Unlike a live Mix or
+    /// Offset tick, one missing source does not fail safe at once.
     async fn fill_status_history_for_new_sensor(&self, sensor: &CustomSensor) -> Result<()> {
         // A File sensor is read once: that checks the file and gives the newest entry its
         // value. Older entries are placeholder zeros, as a file has no history (not a
