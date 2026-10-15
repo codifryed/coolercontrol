@@ -244,6 +244,13 @@ pub struct StatusRing {
     len: usize,
     layout: Arc<Layout>,
     bytes: Vec<u8>,
+    /// Entries pushed since the last reset.
+    pushes: u64,
+    /// Per temp column, the value of `pushes` when it was added or last written. Kept out of
+    /// the shared layout so a write never copies it.
+    temp_written: Vec<u64>,
+    /// Per channel column, as `temp_written`.
+    channel_written: Vec<u64>,
 }
 
 impl StatusRing {
@@ -257,6 +264,9 @@ impl StatusRing {
             len: 0,
             layout: Arc::new(layout),
             bytes,
+            pushes: 0,
+            temp_written: Vec::new(),
+            channel_written: Vec::new(),
         }
     }
 
@@ -278,6 +288,9 @@ impl StatusRing {
         self.capacity = capacity;
         self.head = 0;
         self.len = 0;
+        self.pushes = 0;
+        self.temp_written.clear();
+        self.channel_written.clear();
         self.fit_lanes();
     }
 
@@ -306,6 +319,7 @@ impl StatusRing {
         let slot = self.head;
         self.head = (self.head + 1) % self.capacity;
         self.len = (self.len + 1).min(self.capacity);
+        self.pushes += 1;
         let capacity = self.capacity;
         write(
             &mut self.bytes,
@@ -323,18 +337,20 @@ impl StatusRing {
         slot
     }
 
-    /// The column of temp `name`, added absent from every entry on first sight. `None` when
-    /// the device already holds `MAX_NAMES` temps with a value in the history.
+    /// The column of temp `name`, added absent from every entry on first sight. Past
+    /// `MAX_NAMES` temps a column no held entry has a value in is renamed instead; `None` when
+    /// there is none.
     pub fn temp_column(&mut self, name: &str) -> Option<usize> {
         if let Some(index) = self.layout.temp_index(name) {
             return Some(index);
         }
         if self.layout.temps.len() >= MAX_NAMES {
-            self.drop_absent_names();
-            if self.layout.temps.len() >= MAX_NAMES {
-                return None;
-            }
+            let index = self.unwritten_column(&self.temp_written)?;
+            Arc::make_mut(&mut self.layout).temps[index].name = Arc::from(name);
+            self.temp_written[index] = self.pushes;
+            return Some(index);
         }
+        self.temp_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
         let present = layout.add_lane(1);
         let value = layout.add_lane(8);
@@ -348,18 +364,20 @@ impl StatusRing {
         Some(index)
     }
 
-    /// The column of channel `name`, added absent from every entry on first sight. `None` when
-    /// the device already holds `MAX_NAMES` channels with a value in the history.
+    /// The column of channel `name`, added absent from every entry on first sight. Past
+    /// `MAX_NAMES` channels a column no held entry has a value in is renamed instead; `None`
+    /// when there is none.
     pub fn channel_column(&mut self, name: &str) -> Option<usize> {
         if let Some(index) = self.layout.channel_index(name) {
             return Some(index);
         }
         if self.layout.channels.len() >= MAX_NAMES {
-            self.drop_absent_names();
-            if self.layout.channels.len() >= MAX_NAMES {
-                return None;
-            }
+            let index = self.unwritten_column(&self.channel_written)?;
+            Arc::make_mut(&mut self.layout).channels[index].name = Arc::from(name);
+            self.channel_written[index] = self.pushes;
+            return Some(index);
         }
+        self.channel_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
         let flags = layout.add_lane(1);
         layout.channels.push(ChannelColumn {
@@ -376,23 +394,13 @@ impl StatusRing {
         Some(index)
     }
 
-    /// Drops every name absent from all the entries the ring holds, as entries naming it have
-    /// rolled off.
-    fn drop_absent_names(&mut self) {
-        let filled: Vec<usize> = (0..self.len).map(|index| self.slot(index)).collect();
-        let present_in = |lane: Lane| {
-            filled
-                .iter()
-                .any(|slot| read::<1>(&self.bytes, self.capacity, lane, *slot)[0] != 0)
-        };
-        let mut kept = (*self.layout).clone();
-        kept.temps.retain(|column| present_in(column.present));
-        kept.channels.retain(|column| present_in(column.flags));
-        if kept.temps.len() + kept.channels.len()
-            < self.layout.temps.len() + self.layout.channels.len()
-        {
-            self.relayout(&kept);
-        }
+    /// A column unwritten for `capacity` pushes. Every slot has been pushed since, which
+    /// cleared its presence there, so no held entry has a value in it.
+    fn unwritten_column(&self, written: &[u64]) -> Option<usize> {
+        let capacity = u64::try_from(self.capacity).expect("a capacity fits in u64");
+        written
+            .iter()
+            .position(|written| written + capacity <= self.pushes)
     }
 
     /// The lane of a channel field, added on the field's first sight.
@@ -428,6 +436,7 @@ impl StatusRing {
     }
 
     pub fn set_temp(&mut self, slot: usize, column: usize, temp: Temp) {
+        self.temp_written[column] = self.pushes;
         let TempColumn { present, value, .. } = self.layout.temps[column];
         let capacity = self.capacity;
         write(&mut self.bytes, capacity, value, slot, temp.to_le_bytes());
@@ -435,6 +444,7 @@ impl StatusRing {
     }
 
     pub fn set_channel(&mut self, slot: usize, column: usize, sample: ChannelSample) {
+        self.channel_written[column] = self.pushes;
         let mut flags = CHANNEL;
         if let Some(rpm) = sample.rpm {
             self.write_field(slot, column, Field::Rpm, &rpm.to_le_bytes());
@@ -622,9 +632,11 @@ impl StatusRing {
         let mut kept = (*self.layout).clone();
         if let Some(index) = temp {
             kept.temps.remove(index);
+            self.temp_written.remove(index);
         }
         if let Some(index) = channel {
             kept.channels.remove(index);
+            self.channel_written.remove(index);
         }
         self.relayout(&kept);
     }

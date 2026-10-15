@@ -1439,6 +1439,37 @@ mod tests {
         drop((all, recent, channel));
     }
 
+    /// A device reporting more names than its history keeps still initializes, wakes and
+    /// ticks: the first `MAX_NAMES` temps are kept in every entry, the rest are left out.
+    #[test]
+    fn a_device_with_too_many_names_keeps_the_first_ones() {
+        let too_many: Vec<(String, f64)> = (0..MAX_NAMES + 44)
+            .map(|index| (format!("temp{index}"), 30.0))
+            .collect();
+        let reading = || Status {
+            timestamp: Local::now(),
+            temps: too_many
+                .iter()
+                .map(|(name, temp)| TempStatus {
+                    name: name.clone(),
+                    temp: *temp,
+                })
+                .collect(),
+            channels: vec![channel("fan1", Some(50.0), Some(1200))],
+        };
+        let mut device = make_test_device();
+        device.initialize_status_history_with(reading(), POLL_RATE);
+        device.set_status(reading());
+        device.zero_status_history(Local::now(), POLL_RATE);
+        device.set_status(reading());
+
+        assert_eq!(device.latest_temps().count(), MAX_NAMES);
+        assert_eq!(device.latest_temp("temp0"), Some(30.0));
+        assert_eq!(device.latest_temp(&format!("temp{MAX_NAMES}")), None);
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1200));
+        assert!(device.refused_name_logged);
+    }
+
     /// One hour of entries at every poll rate the config allows, and none outside it.
     #[test]
     fn history_capacity_covers_one_hour_at_every_configurable_poll_rate() {
