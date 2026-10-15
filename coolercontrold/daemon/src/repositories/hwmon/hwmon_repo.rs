@@ -1362,13 +1362,13 @@ impl HwmonRepo {
         let Some(fsd) = fsd_map.get_mut(&type_index) else {
             return;
         };
-        let device_name = self.log_device_name(type_index, driver_name);
         let mut preloaded = self.preloaded_statuses.borrow_mut();
         let (channels, temps) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
         let (newly_failsafing, just_recovered) = fsd.tick_per_channel_staleness(channels, temps);
         if newly_failsafing {
+            let device_name = self.log_device_name(type_index, driver_name);
             error!(
                 "Significant issue retrieving status for hwmon \
                  device: {device_name}. Substituting failsafe \
@@ -1376,6 +1376,7 @@ impl HwmonRepo {
             );
         }
         if just_recovered {
+            let device_name = self.log_device_name(type_index, driver_name);
             info!(
                 "Recovered from failsafe for hwmon device: {device_name}. \
                  Resuming normal status reads."
@@ -2870,6 +2871,35 @@ mod preload_tests {
             (fan1.rpm, fan1.duty, fan1.pwm_mode),
             (Some(1200), Some(50.0), Some(1))
         );
+    }
+
+    #[test]
+    fn a_staleness_tick_without_a_transition_allocates_nothing() {
+        // Goal: the per-tick staleness pass builds the device's log name only when it has
+        // something to log. Method: a fresh device ticks once with nothing going stale.
+        let repo = new_test_repo();
+        let channels = vec![ChannelStatus {
+            name: "fan1".to_string(),
+            rpm: Some(1200),
+            duty: Some(50.0),
+            ..Default::default()
+        }];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 40.0,
+        }];
+        seed_failsafe(&repo, TEST_TYPE_INDEX, &channels, &temps);
+        repo.preloaded_statuses
+            .borrow_mut()
+            .insert(TEST_TYPE_INDEX, (channels, temps));
+        repo.mark_channel_fresh(TEST_TYPE_INDEX, "fan1");
+        repo.mark_temp_fresh(TEST_TYPE_INDEX, "temp1");
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            repo.tick_staleness_and_log(TEST_TYPE_INDEX, "test_driver");
+        });
+
+        assert_eq!(allocations, 0);
     }
 
     fn fan_channel_with_paths(number: u8, name: &str, base_path: &Path) -> HwmonChannelInfo {
