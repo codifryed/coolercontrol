@@ -1662,12 +1662,16 @@ mod tests {
     #[test]
     #[should_panic(expected = "outside the range the config allows")]
     fn a_poll_rate_faster_than_the_config_allows_is_refused() {
+        // Goal: a poll rate below the config's 0.5 s floor fails loudly instead of sizing an
+        // oversized ring. Method: ask for the capacity at 0.25 s.
         let _ = Device::history_capacity(0.25);
     }
 
     #[test]
     #[should_panic(expected = "outside the range the config allows")]
     fn a_poll_rate_slower_than_the_config_allows_is_refused() {
+        // Goal: a poll rate above the config's 5 s ceiling fails loudly instead of sizing an
+        // undersized ring. Method: ask for the capacity at 10 s.
         let _ = Device::history_capacity(10.0);
     }
 
