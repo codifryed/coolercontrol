@@ -382,6 +382,8 @@ impl StatusRing {
         });
         let index = layout.temps.len() - 1;
         self.fit_series();
+        debug_assert_eq!(self.temp_written.len(), self.layout.temps.len());
+        debug_assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
     }
 
@@ -412,6 +414,8 @@ impl StatusRing {
         });
         let index = layout.channels.len() - 1;
         self.fit_series();
+        debug_assert_eq!(self.channel_written.len(), self.layout.channels.len());
+        debug_assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
     }
 
@@ -683,6 +687,8 @@ impl StatusRing {
             kept.channels.remove(index);
             self.channel_written.remove(index);
         }
+        assert_eq!(kept.temps.len(), self.temp_written.len());
+        assert_eq!(kept.channels.len(), self.channel_written.len());
         self.relayout(&kept);
     }
 
@@ -724,6 +730,9 @@ impl StatusRing {
                 pwm_mode,
             });
         }
+        assert!(layout.stride <= kept.stride);
+        assert_eq!(layout.temps.len(), kept.temps.len());
+        assert_eq!(layout.channels.len(), kept.channels.len());
         let mut bytes = vec![0; layout.stride * self.capacity];
         for (old, new) in relocations {
             let series_bytes = old.size * self.capacity;
