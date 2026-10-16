@@ -6,9 +6,9 @@
 //!
 //! Every temp and channel name owns field series, each an array of one value per slot. A series
 //! starts at `start * capacity` bytes, where `start` is the summed value size of the series
-//! added before it. So adding a series only grows the buffer, and a copy of any capacity keeps the same
-//! layout. Presence is explicit: a temp's value pairs with a presence byte per slot and a
-//! channel's fields with a flags byte per slot. Absence is never stored as a sentinel value.
+//! added before it. So adding a series only grows the buffer, and a copy of any capacity keeps
+//! the same layout. Presence is explicit: a temp's value pairs with a presence byte per slot and
+//! a channel's fields with a flags byte per slot. Absence is never stored as a sentinel value.
 
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
