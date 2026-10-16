@@ -5,8 +5,8 @@
 //! buffer.
 //!
 //! Every temp and channel name owns field series, each an array of one value per slot. A series
-//! starts at `start * capacity` bytes, where `start` is the summed width of the series added
-//! before it. So adding a series only grows the buffer, and a copy of any capacity keeps the same
+//! starts at `start * capacity` bytes, where `start` is the summed value size of the series
+//! added before it. So adding a series only grows the buffer, and a copy of any capacity keeps the same
 //! layout. Presence is explicit: a temp's value pairs with a presence byte per slot and a
 //! channel's fields with a flags byte per slot. Absence is never stored as a sentinel value.
 
@@ -22,7 +22,10 @@ use serde::{Serialize, Serializer};
 use super::{ChannelSample, Status, Temp};
 
 /// Every entry's UTC timestamp in nanoseconds.
-const TIMESTAMPS: FieldSeries = FieldSeries { start: 0, width: 8 };
+const TIMESTAMPS: FieldSeries = FieldSeries {
+    start: 0,
+    size: size_of::<i64>(),
+};
 
 /// Temps, and separately channels, one device keeps. Each name holds a value for every slot, so
 /// this bounds the memory a source that keeps inventing names can take: names absent from every
@@ -40,10 +43,11 @@ const PWM_MODE: u8 = 1 << 5;
 /// One field's values, one per slot, e.g. fan1's RPM over the hour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FieldSeries {
-    /// Summed width of the series before this one: this one begins at `start * capacity`.
+    /// Summed value size of the series before this one: this one begins at `start * capacity`.
     start: usize,
-    /// Bytes per slot.
-    width: usize,
+    /// Bytes per value, as `size_of` gives for the stored type. The series spans
+    /// `size * capacity` bytes.
+    size: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -74,11 +78,11 @@ enum Field {
 }
 
 impl Field {
-    fn width(self) -> usize {
+    fn size(self) -> usize {
         match self {
-            Self::Rpm | Self::Freq => 4,
-            Self::Duty | Self::Watts => 8,
-            Self::PwmMode => 1,
+            Self::Rpm | Self::Freq => size_of::<u32>(),
+            Self::Duty | Self::Watts => size_of::<f64>(),
+            Self::PwmMode => size_of::<u8>(),
         }
     }
 }
@@ -120,18 +124,18 @@ struct SensorLayout {
 impl SensorLayout {
     fn new() -> Self {
         Self {
-            stride: TIMESTAMPS.width,
+            stride: TIMESTAMPS.size,
             temps: Vec::new(),
             channels: Vec::new(),
         }
     }
 
-    fn add_series(&mut self, width: usize) -> FieldSeries {
+    fn add_series(&mut self, size: usize) -> FieldSeries {
         let series = FieldSeries {
             start: self.stride,
-            width,
+            size,
         };
-        self.stride += width;
+        self.stride += size;
         series
     }
 
@@ -173,7 +177,7 @@ fn read<const N: usize>(
     series: FieldSeries,
     slot: usize,
 ) -> [u8; N] {
-    debug_assert_eq!(series.width, N);
+    debug_assert_eq!(series.size, N);
     debug_assert!(slot < capacity);
     let at = series.start * capacity + slot * N;
     bytes[at..at + N]
@@ -188,7 +192,7 @@ fn write<const N: usize>(
     slot: usize,
     value: [u8; N],
 ) {
-    debug_assert_eq!(series.width, N);
+    debug_assert_eq!(series.size, N);
     debug_assert!(slot < capacity);
     let at = series.start * capacity + slot * N;
     bytes[at..at + N].copy_from_slice(&value);
@@ -369,8 +373,8 @@ impl StatusRing {
         }
         self.temp_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let present = layout.add_series(1);
-        let value = layout.add_series(8);
+        let present = layout.add_series(size_of::<u8>());
+        let value = layout.add_series(size_of::<f64>());
         layout.temps.push(TempColumn {
             name: Arc::from(name),
             present,
@@ -396,7 +400,7 @@ impl StatusRing {
         }
         self.channel_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let flags = layout.add_series(1);
+        let flags = layout.add_series(size_of::<u8>());
         layout.channels.push(ChannelColumn {
             name: Arc::from(name),
             flags,
@@ -444,7 +448,7 @@ impl StatusRing {
             return series;
         }
         let layout = Arc::make_mut(&mut self.layout);
-        let series = layout.add_series(field.width());
+        let series = layout.add_series(field.size());
         *layout.channels[column].series_mut(field) = Some(series);
         self.fit_series();
         series
@@ -511,9 +515,9 @@ impl StatusRing {
 
     fn write_field(&mut self, slot: usize, column: usize, field: Field, value: &[u8]) {
         let series = self.field_series(column, field);
-        assert_eq!(series.width, value.len());
-        let at = series.start * self.capacity + slot * series.width;
-        self.bytes[at..at + series.width].copy_from_slice(value);
+        assert_eq!(series.size, value.len());
+        let at = series.start * self.capacity + slot * series.size;
+        self.bytes[at..at + series.size].copy_from_slice(value);
     }
 
     pub fn timestamp_ns(&self, index: usize) -> i64 {
@@ -690,7 +694,7 @@ impl StatusRing {
         let mut layout = SensorLayout::new();
         let mut relocations = vec![(TIMESTAMPS, TIMESTAMPS)];
         let mut relocate = |layout: &mut SensorLayout, series: FieldSeries| {
-            let new = layout.add_series(series.width);
+            let new = layout.add_series(series.size);
             relocations.push((series, new));
             new
         };
@@ -724,10 +728,10 @@ impl StatusRing {
         }
         let mut bytes = vec![0; layout.stride * self.capacity];
         for (old, new) in relocations {
-            let size = old.width * self.capacity;
+            let series_bytes = old.size * self.capacity;
             let from = old.start * self.capacity;
             let to = new.start * self.capacity;
-            bytes[to..to + size].copy_from_slice(&self.bytes[from..from + size]);
+            bytes[to..to + series_bytes].copy_from_slice(&self.bytes[from..from + series_bytes]);
         }
         self.layout = Arc::new(layout);
         self.bytes = bytes;
@@ -773,10 +777,9 @@ impl StatusRing {
         for index in indices {
             let slot = self.slot(index);
             for series in self.layout.all_series() {
-                let from = series.start * self.capacity + slot * series.width;
-                let to = series.start * count + copied * series.width;
-                bytes[to..to + series.width]
-                    .copy_from_slice(&self.bytes[from..from + series.width]);
+                let from = series.start * self.capacity + slot * series.size;
+                let to = series.start * count + copied * series.size;
+                bytes[to..to + series.size].copy_from_slice(&self.bytes[from..from + series.size]);
             }
             copied += 1;
         }
