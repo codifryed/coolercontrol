@@ -1093,6 +1093,7 @@ mod tests {
     fn an_overwritten_slot_forgets_the_names_it_held() {
         // Goal: a slot reused by a push starts empty, so a name the new entry lacks is
         // absent rather than the value of the entry it replaced.
+        // Method: three pushes into two slots, the last without fan1, then read fan1 back.
         let mut ring = StatusRing::new(2);
         push(&mut ring, 1, 40.0, Some(1200));
         push(&mut ring, 2, 41.0, Some(1210));
@@ -1105,6 +1106,8 @@ mod tests {
     fn a_name_first_seen_late_is_absent_from_older_entries() {
         // Goal: adding a column marks it absent everywhere before, and a channel field seen
         // for the first time is absent from entries that had the channel without it.
+        // Method: push an entry, then add a temp and a channel field in a second entry and read
+        // both entries back.
         let mut ring = StatusRing::new(4);
         push(&mut ring, 1, 40.0, Some(1200));
         let slot = ring.push(2);
@@ -1132,6 +1135,8 @@ mod tests {
     fn removing_a_name_keeps_every_other_value() {
         // Goal: dropping a column compacts the series without disturbing any other name's
         // values, presence or first-seen order.
+        // Method: fill three entries with three names, remove the middle one, then compare the
+        // rest against a copy taken before and push once more.
         let mut ring = StatusRing::new(3);
         for at in 1..=3 {
             let slot = ring.push(at);
@@ -1184,6 +1189,7 @@ mod tests {
     fn a_new_name_is_refused_while_every_kept_name_is_in_use() {
         // Goal: past `MAX_NAMES` names that all have values in the history, a new name gets
         // no column and the names already kept are untouched.
+        // Method: fill one entry with `MAX_NAMES` temps, ask for one more, then read the kept ones.
         let mut ring = StatusRing::new(2);
         let slot = ring.push(1);
         for index in 0..MAX_NAMES {
@@ -1201,6 +1207,8 @@ mod tests {
     fn duty_backfill_fills_only_rpm_entries_without_duty_and_clear_removes_it() {
         // Goal: the calibration backfill fills duty where the channel has rpm and no duty,
         // reports whether it filled anything, and the clear removes duty everywhere.
+        // Method: entries with rpm only, no fan and rpm plus duty, then backfill, backfill with
+        // no duty and clear.
         let mut ring = StatusRing::new(4);
         push(&mut ring, 1, 40.0, Some(1000));
         push(&mut ring, 2, 40.0, None);
@@ -1230,6 +1238,7 @@ mod tests {
     fn a_snapshot_is_independent_of_later_writes() {
         // Goal: a snapshot owns its copy. Writes and new names after it was taken do not
         // reach it, and the newest-entry copy holds exactly that entry.
+        // Method: take both snapshots of a one-entry ring, write and add a name, then read them.
         let mut ring = StatusRing::new(3);
         push(&mut ring, 1, 40.0, Some(1200));
         let all = ring.snapshot(SnapshotFilter::All);
@@ -1283,6 +1292,7 @@ mod tests {
     #[test]
     fn an_empty_ring_snapshots_to_no_entries() {
         // Goal: a device without status yet answers with an empty array, as before.
+        // Method: serialize every snapshot kind of a fresh ring.
         let ring = StatusRing::new(3);
         let json = |snapshot: &StatusSnapshot| serde_json::to_string(snapshot).unwrap();
         assert_eq!(json(&ring.snapshot(SnapshotFilter::All)), "[]");
@@ -1294,6 +1304,8 @@ mod tests {
     fn timestamps_round_trip_through_nanoseconds() {
         // Goal: storing an instant as UTC nanoseconds and rendering it again yields the same
         // instant with the same local offset.
+        // Method: convert the current local time there and back, then compare instant, offset and
+        // RFC 3339 text.
         let now = Local::now();
         let rendered = local_time(timestamp_ns(now));
         assert_eq!(rendered, now);

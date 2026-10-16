@@ -1509,6 +1509,7 @@ mod tests {
     }
 
     /// A tick written in place on a warm device allocates nothing: no `Status`, no names.
+    /// Counts this thread's allocations around one writer tick after a seeding tick.
     #[test]
     fn write_status_on_a_warm_device_does_not_allocate() {
         let mut device = make_test_device();
@@ -1663,6 +1664,7 @@ mod tests {
     }
 
     /// One hour of entries at every poll rate the config allows, and none outside it.
+    /// Checks the capacity at both config bounds and two rates between them.
     #[test]
     fn history_capacity_covers_one_hour_at_every_configurable_poll_rate() {
         assert_eq!(Device::history_capacity(0.5), HISTORY_CAPACITY_MAX);
