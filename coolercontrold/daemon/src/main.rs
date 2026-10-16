@@ -53,6 +53,7 @@ mod hardware_support;
 mod hashutil;
 mod logger;
 mod main_loop;
+mod malloc_threshold;
 mod modes;
 mod notifier;
 mod open_files;
@@ -309,6 +310,7 @@ impl Args {
 /// latencies.
 #[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
+    malloc_threshold::pin();
     let cmd_args: Args = Args::parse();
     rt::runtime(async {
         let run_token = setup_termination_signals();
