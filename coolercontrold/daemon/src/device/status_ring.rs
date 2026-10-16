@@ -633,22 +633,19 @@ impl StatusRing {
     /// The names present in history `index`, each channel with its values zeroed.
     pub fn zeroed_names_at(&self, index: usize) -> ZeroedNames {
         let slot = self.slot(index);
-        let temps = self
-            .layout
-            .temps
-            .iter()
-            .filter(|column| temp_in(&self.bytes, self.capacity, column, slot).is_some())
-            .map(|column| Arc::clone(&column.name))
-            .collect();
-        let channels = self
-            .layout
-            .channels
-            .iter()
-            .filter_map(|column| {
-                channel_in(&self.bytes, self.capacity, column, slot)
-                    .map(|sample| (Arc::clone(&column.name), sample.zeroed()))
-            })
-            .collect();
+        let mut temps = Vec::with_capacity(self.layout.temps.len());
+        temps.extend(
+            self.layout
+                .temps
+                .iter()
+                .filter(|column| temp_in(&self.bytes, self.capacity, column, slot).is_some())
+                .map(|column| Arc::clone(&column.name)),
+        );
+        let mut channels = Vec::with_capacity(self.layout.channels.len());
+        channels.extend(self.layout.channels.iter().filter_map(|column| {
+            channel_in(&self.bytes, self.capacity, column, slot)
+                .map(|sample| (Arc::clone(&column.name), sample.zeroed()))
+        }));
         ZeroedNames { temps, channels }
     }
 
@@ -692,7 +689,8 @@ impl StatusRing {
     /// Moves every series of `kept` (a subset of the current layout) to a compact layout.
     fn relayout(&mut self, kept: &SensorLayout) {
         let mut layout = SensorLayout::new();
-        let mut relocations = vec![(TIMESTAMPS, TIMESTAMPS)];
+        let mut relocations = Vec::with_capacity(kept.all_series().count());
+        relocations.push((TIMESTAMPS, TIMESTAMPS));
         let mut relocate = |layout: &mut SensorLayout, series: FieldSeries| {
             let new = layout.add_series(series.size);
             relocations.push((series, new));

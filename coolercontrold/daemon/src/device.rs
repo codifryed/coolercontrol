@@ -689,28 +689,29 @@ impl Device {
     /// The columns of a rebuild's names, in order. A refused name gets none.
     fn template_columns<'a>(
         &mut self,
-        temps: impl Iterator<Item = &'a str>,
-        channels: impl Iterator<Item = (&'a str, ChannelSample)>,
+        temps: impl ExactSizeIterator<Item = &'a str>,
+        channels: impl ExactSizeIterator<Item = (&'a str, ChannelSample)>,
     ) -> TemplateColumns {
         let mut refused = false;
-        let temps = temps
-            .filter_map(|name| {
-                let column = self.history.temp_column(name);
-                refused |= column.is_none();
-                column
-            })
-            .collect();
-        let channels = channels
-            .filter_map(|(name, sample)| {
-                let column = self.history.channel_column(name);
-                refused |= column.is_none();
-                Some((column?, sample))
-            })
-            .collect();
+        let mut template_temps = Vec::with_capacity(temps.len());
+        for name in temps {
+            let column = self.history.temp_column(name);
+            refused |= column.is_none();
+            template_temps.extend(column);
+        }
+        let mut template_channels = Vec::with_capacity(channels.len());
+        for (name, sample) in channels {
+            let column = self.history.channel_column(name);
+            refused |= column.is_none();
+            template_channels.extend(column.map(|column| (column, sample)));
+        }
         if refused {
             self.note_refused_name();
         }
-        TemplateColumns { temps, channels }
+        TemplateColumns {
+            temps: template_temps,
+            channels: template_channels,
+        }
     }
 
     fn push_zeroed(&mut self, timestamp: DateTime<Local>, template: &TemplateColumns) {
