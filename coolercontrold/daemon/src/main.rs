@@ -344,7 +344,8 @@ fn main() -> Result<()> {
         }
         paths::ensure_data_dir().await?;
         // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
-        // reactor, so run it on the sidecar. Harmless on the Tokio backend too.
+        // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
+        // unused here: loading it resets a stored file's permissions to 0600.
         sidecar::handle().run(admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
