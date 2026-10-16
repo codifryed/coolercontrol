@@ -64,8 +64,10 @@ mod tests {
         );
     }
 
-    /// A mapped block starts 16 bytes into a page; four heap blocks all landing there by
-    /// chance is negligible.
+    /// Goal: with the threshold pinned, 1 MiB blocks stay mapped after a 4 MiB free. Method:
+    /// free a 4 MiB block, then check four 1 MiB blocks each start 16 bytes into a page, as a
+    /// mapped block does; four heap blocks all landing there by chance is negligible. Returns
+    /// early without `CC_MALLOC_THRESHOLD_PROBE`, so a direct `--ignored` run checks nothing.
     #[test]
     #[ignore = "run in a fresh process by large_blocks_stay_mapped_after_a_larger_free"]
     fn mapped_block_probe() {
