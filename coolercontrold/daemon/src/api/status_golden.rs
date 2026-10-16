@@ -75,6 +75,36 @@ fn channel(name: &str) -> ChannelStatus {
     }
 }
 
+fn fan(name: &str, rpm: u32, duty: Option<f64>) -> ChannelStatus {
+    ChannelStatus {
+        rpm: Some(rpm),
+        duty,
+        ..channel(name)
+    }
+}
+
+fn with_pwm_mode(channel: ChannelStatus, pwm_mode: u8) -> ChannelStatus {
+    ChannelStatus {
+        pwm_mode: Some(pwm_mode),
+        ..channel
+    }
+}
+
+fn freq_watts(name: &str, freq: Option<u32>, watts: Option<f64>) -> ChannelStatus {
+    ChannelStatus {
+        freq,
+        watts,
+        ..channel(name)
+    }
+}
+
+fn duty(name: &str, duty: f64) -> ChannelStatus {
+    ChannelStatus {
+        duty: Some(duty),
+        ..channel(name)
+    }
+}
+
 fn status(at_utc: &str, temps: Vec<TempStatus>, channels: Vec<ChannelStatus>) -> Status {
     Status {
         timestamp: at(at_utc),
@@ -90,50 +120,28 @@ fn hwmon_statuses() -> (Status, Vec<Status>) {
     let init = status(
         INIT_AT,
         vec![temp("temp1", 40.0), temp("temp2", 41.5)],
-        vec![
-            ChannelStatus {
-                rpm: Some(1200),
-                duty: Some(50.0),
-                ..channel("fan1")
-            },
-            ChannelStatus {
-                rpm: Some(2400),
-                ..channel("pump")
-            },
-        ],
+        vec![fan("fan1", 1200, Some(50.0)), fan("pump", 2400, None)],
     );
-    let pushes = vec![
+    let mut pushes = hwmon_pushes_to_t4();
+    pushes.extend(hwmon_pushes_after_t4());
+    assert_eq!(pushes.len(), HWMON_PUSHES);
+    (init, pushes)
+}
+
+fn hwmon_pushes_to_t4() -> Vec<Status> {
+    vec![
         status(
             T1,
             vec![temp("temp1", 40.25), temp("temp2", f64::NAN)],
             vec![
-                ChannelStatus {
-                    rpm: Some(1210),
-                    duty: Some(51.0),
-                    pwm_mode: Some(1),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2410),
-                    ..channel("pump")
-                },
+                with_pwm_mode(fan("fan1", 1210, Some(51.0)), 1),
+                fan("pump", 2410, None),
             ],
         ),
         status(
             T2,
             vec![temp("temp1", 40.5)],
-            vec![
-                ChannelStatus {
-                    rpm: Some(1220),
-                    duty: Some(52.0),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2420),
-                    duty: Some(60.0),
-                    ..channel("pump")
-                },
-            ],
+            vec![fan("fan1", 1220, Some(52.0)), fan("pump", 2420, Some(60.0))],
         ),
         status(
             T3,
@@ -143,20 +151,9 @@ fn hwmon_statuses() -> (Status, Vec<Status>) {
                 temp("temp3", 30.0),
             ],
             vec![
-                ChannelStatus {
-                    rpm: Some(1230),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2430),
-                    duty: Some(61.0),
-                    ..channel("pump")
-                },
-                ChannelStatus {
-                    freq: Some(1500),
-                    watts: Some(12.5),
-                    ..channel("power")
-                },
+                fan("fan1", 1230, None),
+                fan("pump", 2430, Some(61.0)),
+                freq_watts("power", Some(1500), Some(12.5)),
             ],
         ),
         status(
@@ -167,47 +164,25 @@ fn hwmon_statuses() -> (Status, Vec<Status>) {
                 temp("temp3", 30.5),
             ],
             vec![
-                ChannelStatus {
-                    rpm: Some(1240),
-                    duty: Some(53.0),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2440),
-                    duty: Some(62.0),
-                    ..channel("pump")
-                },
-                ChannelStatus {
-                    freq: Some(1510),
-                    watts: Some(13.0),
-                    ..channel("power")
-                },
+                fan("fan1", 1240, Some(53.0)),
+                fan("pump", 2440, Some(62.0)),
+                freq_watts("power", Some(1510), Some(13.0)),
             ],
         ),
+    ]
+}
+
+fn hwmon_pushes_after_t4() -> Vec<Status> {
+    vec![
         status(
             T5,
             vec![temp("temp1", 41.25), temp("temp3", 31.0)],
-            vec![
-                ChannelStatus {
-                    rpm: Some(1250),
-                    duty: Some(53.5),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2450),
-                    duty: Some(62.5),
-                    ..channel("pump")
-                },
-            ],
+            vec![fan("fan1", 1250, Some(53.5)), fan("pump", 2450, Some(62.5))],
         ),
         status(
             T6,
             vec![],
-            vec![ChannelStatus {
-                rpm: Some(1255),
-                duty: Some(33.333_333_333_333_336),
-                ..channel("fan1")
-            }],
+            vec![fan("fan1", 1255, Some(33.333_333_333_333_336))],
         ),
         status(
             T7,
@@ -217,112 +192,39 @@ fn hwmon_statuses() -> (Status, Vec<Status>) {
                 temp("temp3", 31.5),
             ],
             vec![
-                ChannelStatus {
-                    rpm: Some(1260),
-                    duty: Some(54.0),
-                    pwm_mode: Some(1),
-                    ..channel("fan1")
-                },
-                ChannelStatus {
-                    rpm: Some(2460),
-                    ..channel("pump")
-                },
-                ChannelStatus {
-                    freq: Some(1520),
-                    watts: Some(13.5),
-                    ..channel("power")
-                },
-                ChannelStatus {
-                    freq: Some(4200),
-                    ..channel("clock")
-                },
-                ChannelStatus {
-                    pwm_mode: Some(2),
-                    ..channel("led")
-                },
+                with_pwm_mode(fan("fan1", 1260, Some(54.0)), 1),
+                fan("pump", 2460, None),
+                freq_watts("power", Some(1520), Some(13.5)),
+                freq_watts("clock", Some(4200), None),
+                with_pwm_mode(channel("led"), 2),
             ],
         ),
-    ];
-    assert_eq!(pushes.len(), HWMON_PUSHES);
-    (init, pushes)
+    ]
 }
 
 /// A GPU-like device with no temps that skips ticks `T2`, `T5` and `T6` and reports nothing on
 /// `T3`.
 fn gpu_statuses() -> (Status, Vec<Status>) {
-    let init = status(
-        INIT_AT,
-        vec![],
-        vec![
-            ChannelStatus {
-                duty: Some(10.0),
-                ..channel("load")
-            },
-            ChannelStatus {
-                freq: Some(3000),
-                ..channel("freq")
-            },
-            ChannelStatus {
-                watts: Some(55.5),
-                ..channel("power")
-            },
-        ],
-    );
+    let init = gpu_status(INIT_AT, 10.0, 3000, Some(55.5));
     let pushes = vec![
-        status(
-            T1,
-            vec![],
-            vec![
-                ChannelStatus {
-                    duty: Some(11.5),
-                    ..channel("load")
-                },
-                ChannelStatus {
-                    freq: Some(3010),
-                    ..channel("freq")
-                },
-                ChannelStatus {
-                    watts: Some(56.0),
-                    ..channel("power")
-                },
-            ],
-        ),
+        gpu_status(T1, 11.5, 3010, Some(56.0)),
         status(T3, vec![], vec![]),
-        status(
-            T4,
-            vec![],
-            vec![
-                ChannelStatus {
-                    duty: Some(12.0),
-                    ..channel("load")
-                },
-                ChannelStatus {
-                    freq: Some(3020),
-                    ..channel("freq")
-                },
-            ],
-        ),
-        status(
-            T7,
-            vec![],
-            vec![
-                ChannelStatus {
-                    duty: Some(33.333_333_333_333_336),
-                    ..channel("load")
-                },
-                ChannelStatus {
-                    freq: Some(3030),
-                    ..channel("freq")
-                },
-                ChannelStatus {
-                    watts: Some(55.75),
-                    ..channel("power")
-                },
-            ],
-        ),
+        gpu_status(T4, 12.0, 3020, None),
+        gpu_status(T7, 33.333_333_333_333_336, 3030, Some(55.75)),
     ];
     assert_eq!(pushes.len(), GPU_PUSHES);
     (init, pushes)
+}
+
+/// A GPU tick reporting `load` and `freq`, and `power` when `watts` is given.
+fn gpu_status(at_utc: &str, load: f64, freq: u32, watts: Option<f64>) -> Status {
+    let mut channels = Vec::with_capacity(3);
+    channels.push(duty("load", load));
+    channels.push(freq_watts("freq", Some(freq), None));
+    if let Some(watts) = watts {
+        channels.push(freq_watts("power", None, Some(watts)));
+    }
+    status(at_utc, vec![], channels)
 }
 
 fn device_with(name: &str, d_type: DeviceType, statuses: (Status, Vec<Status>)) -> Device {
