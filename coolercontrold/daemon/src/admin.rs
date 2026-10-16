@@ -25,7 +25,10 @@ const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 pub async fn match_passwd(passwd: &str) -> bool {
     let stored_hash = match load_passwd().await {
-        Ok(stored_hash) => stored_hash,
+        Ok(Some(stored_hash)) => stored_hash,
+        // Nothing stored, so only the default matches. It is public, so comparing against it
+        // needs no argon2.
+        Ok(None) => return passwd.as_bytes().ct_eq(DEFAULT_PASS.as_bytes()).into(),
         Err(err) => {
             error!("Error loading password: {err}");
             return false;
@@ -104,14 +107,11 @@ impl DefaultPasswdCheck {
     }
 }
 
-pub async fn load_passwd() -> Result<String> {
-    match read_stored_hash(paths::passwd_file()).await? {
-        Some(stored_hash) => Ok(stored_hash),
-        None => hash_password(DEFAULT_PASS).await,
-    }
+/// The stored hash, or `None` when there is none to read and the default password applies.
+pub async fn load_passwd() -> Result<Option<String>> {
+    read_stored_hash(paths::passwd_file()).await
 }
 
-/// The stored hash, or `None` when there is none to read and the default password applies.
 async fn read_stored_hash(passwd_path: &Path) -> Result<Option<String>> {
     if passwd_path.exists() {
         if let Ok(contents) = sidecar_fs::read_txt(passwd_path).await {
