@@ -10,9 +10,11 @@
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 const MMAP_THRESHOLD_BYTES: i32 = 128 * 1024;
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+const _: () = assert!(MMAP_THRESHOLD_BYTES > 0);
 // glibc refuses a threshold above half its 64 MiB per-thread heap.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
-const _: () = assert!(MMAP_THRESHOLD_BYTES > 0 && MMAP_THRESHOLD_BYTES <= 32 * 1024 * 1024);
+const _: () = assert!(MMAP_THRESHOLD_BYTES <= 32 * 1024 * 1024);
 
 /// Pins the threshold. Call first in `main`, before any thread allocates.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
