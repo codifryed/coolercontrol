@@ -733,7 +733,7 @@ impl Device {
         self.refused_name_logged = true;
         warn!(
             "{} reports more than {MAX_NAMES} temps or channels. Names beyond that are not \
-             recorded in its status history.",
+             recorded in its status history. Please report this as a bug.",
             self.name
         );
     }
