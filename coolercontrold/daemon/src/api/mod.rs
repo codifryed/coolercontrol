@@ -1613,6 +1613,18 @@ mod tests {
         );
     }
 
+    /// Goal: a browser's offer negotiates gzip, never brotli, whose encoder zeroes about
+    /// 1 GB to compress a full status history.
+    #[tokio::test]
+    async fn browser_offers_negotiate_gzip() {
+        assert_eq!(
+            content_encoding(Some("gzip, deflate, br, zstd"), "/json")
+                .await
+                .as_deref(),
+            Some("gzip")
+        );
+    }
+
     /// Goal: a client that offers no encoding gets identity, so compression stays negotiated
     /// rather than imposed.
     #[tokio::test]

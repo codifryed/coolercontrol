@@ -85,9 +85,9 @@ tower-http = { version = "0.7.0", features = [
   "limit",
   "cors",
   "normalize-path",
-  # br + gzip + deflate, deliberately not the `-full` sets: those add zstd, whose
-  # zstd-sys builds bundled C source. Clients that offer zstd negotiate down to br.
-  "compression-br",
+  # gzip + deflate only. zstd-sys builds bundled C source. The brotli encoder regrows
+  # its output buffer every 64 KiB, about 1 GB zeroed for a full status history.
+  # Clients that offer br or zstd negotiate down to gzip.
   "compression-gzip",
   "compression-deflate",
   "fs",
