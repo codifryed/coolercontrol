@@ -382,8 +382,8 @@ impl StatusRing {
         });
         let index = layout.temps.len() - 1;
         self.fit_series();
-        debug_assert_eq!(self.temp_written.len(), self.layout.temps.len());
-        debug_assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
+        assert_eq!(self.temp_written.len(), self.layout.temps.len());
+        assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
     }
 
@@ -414,8 +414,8 @@ impl StatusRing {
         });
         let index = layout.channels.len() - 1;
         self.fit_series();
-        debug_assert_eq!(self.channel_written.len(), self.layout.channels.len());
-        debug_assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
+        assert_eq!(self.channel_written.len(), self.layout.channels.len());
+        assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
     }
 
