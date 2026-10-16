@@ -36,9 +36,11 @@ pub async fn match_passwd(passwd: &str) -> bool {
     };
     let is_legacy = is_legacy_hash(&stored_hash);
     let is_match = verify_stored_hash(passwd, stored_hash).await;
-    if is_match && is_legacy {
-        if let Err(err) = migrate_to_argon2(passwd).await {
-            error!("Failed to migrate password hash to Argon2id: {err}");
+    if is_legacy {
+        if is_match {
+            if let Err(err) = migrate_to_argon2(passwd).await {
+                error!("Failed to migrate password hash to Argon2id: {err}");
+            }
         }
     }
     is_match
