@@ -246,7 +246,9 @@ pub struct StatusRing {
     capacity: usize,
     /// The slot the next entry is written to.
     head: usize,
-    /// Filled slots, at most `capacity`.
+    /// Filled slots, at most `capacity`. Equal to `capacity` once the device fills its history
+    /// at init, and unchanged from then on. Below it only before that fill and in the API's
+    /// partial copies, which share this slot math (see `StatusSnapshot`).
     len: usize,
     layout: Arc<Layout>,
     bytes: Vec<u8>,
