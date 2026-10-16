@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::api::actor::{DeviceHandle, StatusHandle};
+use crate::api::actor::{own_process, DeviceHandle, StatusHandle};
 use crate::api::devices::DeviceDto;
 use crate::api::status::DeviceStatusDto;
 use crate::device::{ChannelInfo, ChannelKind, ChannelSample, TempInfo};
@@ -23,7 +23,6 @@ use crate::grpc_api::device_service::v1::{StatusRequest, StatusResponse};
 use crate::grpc_api::models;
 use crate::grpc_api::models::v1::status::FanSpeed;
 use crate::VERSION;
-use nix::unistd::Pid;
 use tonic::{Request, Response, Status};
 
 pub struct CCDeviceService {
@@ -92,19 +91,14 @@ impl CCDeviceService {
 }
 
 #[tonic::async_trait]
-#[allow(clippy::cast_sign_loss)]
 impl DeviceService for CCDeviceService {
     /// Used to confirm service connection and retrieve service health information.
     async fn health(
         &self,
         _request: Request<HealthRequest>,
     ) -> Result<Response<HealthResponse>, Status> {
-        let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
-        let uptime_seconds = sysinfo::System::new_with_specifics(
-            sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::nothing()),
-        )
-        .process(pid)
-        .map_or(0, sysinfo::Process::run_time);
+        let (pid, system) = own_process(sysinfo::ProcessRefreshKind::nothing());
+        let uptime_seconds = system.process(pid).map_or(0, sysinfo::Process::run_time);
         let reply = HealthResponse {
             name: self.service_id.clone(),
             version: self.version.clone(),
