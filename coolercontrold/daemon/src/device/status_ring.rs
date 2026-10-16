@@ -4,11 +4,11 @@
 //! A device's status history: a fixed-capacity ring of entries, stored column-major in one byte
 //! buffer.
 //!
-//! Every temp and channel name owns lanes, each an array of one value per slot. A lane starts at
-//! `start * capacity` bytes, where `start` is the summed width of the lanes added before it. So
-//! adding a lane only grows the buffer, and a copy of any capacity keeps the same layout.
-//! Presence is explicit: a temp lane pairs with a presence byte per slot and a channel with a
-//! flags byte per slot. Absence is never stored as a sentinel value.
+//! Every temp and channel name owns field series, each an array of one value per slot. A series
+//! starts at `start * capacity` bytes, where `start` is the summed width of the series added
+//! before it. So adding a series only grows the buffer, and a copy of any capacity keeps the same
+//! layout. Presence is explicit: a temp's value pairs with a presence byte per slot and a
+//! channel's fields with a flags byte per slot. Absence is never stored as a sentinel value.
 
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
@@ -22,9 +22,9 @@ use serde::{Serialize, Serializer};
 use super::{ChannelSample, Status, Temp};
 
 /// Every entry's UTC timestamp in nanoseconds.
-const TIMESTAMPS: Lane = Lane { start: 0, width: 8 };
+const TIMESTAMPS: FieldSeries = FieldSeries { start: 0, width: 8 };
 
-/// Temps, and separately channels, one device keeps. Each name holds a lane for every slot, so
+/// Temps, and separately channels, one device keeps. Each name holds a value for every slot, so
 /// this bounds the memory a source that keeps inventing names can take: names absent from every
 /// held entry are dropped first, and only then are new ones refused. Far above any real device.
 pub const MAX_NAMES: usize = 256;
@@ -37,9 +37,10 @@ const FREQ: u8 = 1 << 3;
 const WATTS: u8 = 1 << 4;
 const PWM_MODE: u8 = 1 << 5;
 
+/// One field's values, one per slot, e.g. fan1's RPM over the hour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Lane {
-    /// Summed width of the lanes before this one: the lane begins at `start * capacity`.
+struct FieldSeries {
+    /// Summed width of the series before this one: this one begins at `start * capacity`.
     start: usize,
     /// Bytes per slot.
     width: usize,
@@ -48,19 +49,19 @@ struct Lane {
 #[derive(Debug, Clone)]
 struct TempColumn {
     name: Arc<str>,
-    present: Lane,
-    value: Lane,
+    present: FieldSeries,
+    value: FieldSeries,
 }
 
 #[derive(Debug, Clone)]
 struct ChannelColumn {
     name: Arc<str>,
-    flags: Lane,
-    rpm: Option<Lane>,
-    duty: Option<Lane>,
-    freq: Option<Lane>,
-    watts: Option<Lane>,
-    pwm_mode: Option<Lane>,
+    flags: FieldSeries,
+    rpm: Option<FieldSeries>,
+    duty: Option<FieldSeries>,
+    freq: Option<FieldSeries>,
+    watts: Option<FieldSeries>,
+    pwm_mode: Option<FieldSeries>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -83,7 +84,7 @@ impl Field {
 }
 
 impl ChannelColumn {
-    fn lane(&self, field: Field) -> Option<Lane> {
+    fn series(&self, field: Field) -> Option<FieldSeries> {
         match field {
             Field::Rpm => self.rpm,
             Field::Duty => self.duty,
@@ -93,7 +94,7 @@ impl ChannelColumn {
         }
     }
 
-    fn lane_mut(&mut self, field: Field) -> &mut Option<Lane> {
+    fn series_mut(&mut self, field: Field) -> &mut Option<FieldSeries> {
         match field {
             Field::Rpm => &mut self.rpm,
             Field::Duty => &mut self.duty,
@@ -104,10 +105,11 @@ impl ChannelColumn {
     }
 }
 
-/// The names and lanes of a ring. Shared with its snapshots: offsets do not depend on capacity.
+/// Which temps and channels a device keeps, and where each one's values sit in the buffer.
+/// Shared with its snapshots: offsets do not depend on capacity.
 #[derive(Debug, Clone)]
-struct Layout {
-    /// Bytes per slot over every lane.
+struct SensorLayout {
+    /// Bytes per slot over every series.
     stride: usize,
     /// In first-seen order.
     temps: Vec<TempColumn>,
@@ -115,7 +117,7 @@ struct Layout {
     channels: Vec<ChannelColumn>,
 }
 
-impl Layout {
+impl SensorLayout {
     fn new() -> Self {
         Self {
             stride: TIMESTAMPS.width,
@@ -124,17 +126,17 @@ impl Layout {
         }
     }
 
-    fn add_lane(&mut self, width: usize) -> Lane {
-        let lane = Lane {
+    fn add_series(&mut self, width: usize) -> FieldSeries {
+        let series = FieldSeries {
             start: self.stride,
             width,
         };
         self.stride += width;
-        lane
+        series
     }
 
-    /// Every lane, the timestamps first.
-    fn lanes(&self) -> impl Iterator<Item = Lane> + '_ {
+    /// Every series, the timestamps first.
+    fn all_series(&self) -> impl Iterator<Item = FieldSeries> + '_ {
         let temps = self
             .temps
             .iter()
@@ -165,25 +167,30 @@ impl Layout {
     }
 }
 
-fn read<const N: usize>(bytes: &[u8], capacity: usize, lane: Lane, slot: usize) -> [u8; N] {
-    debug_assert_eq!(lane.width, N);
+fn read<const N: usize>(
+    bytes: &[u8],
+    capacity: usize,
+    series: FieldSeries,
+    slot: usize,
+) -> [u8; N] {
+    debug_assert_eq!(series.width, N);
     debug_assert!(slot < capacity);
-    let at = lane.start * capacity + slot * N;
+    let at = series.start * capacity + slot * N;
     bytes[at..at + N]
         .try_into()
-        .expect("a lane holds whole values")
+        .expect("a series holds whole values")
 }
 
 fn write<const N: usize>(
     bytes: &mut [u8],
     capacity: usize,
-    lane: Lane,
+    series: FieldSeries,
     slot: usize,
     value: [u8; N],
 ) {
-    debug_assert_eq!(lane.width, N);
+    debug_assert_eq!(series.width, N);
     debug_assert!(slot < capacity);
-    let at = lane.start * capacity + slot * N;
+    let at = series.start * capacity + slot * N;
     bytes[at..at + N].copy_from_slice(&value);
 }
 
@@ -202,20 +209,20 @@ fn channel_in(
     if flags & CHANNEL == 0 {
         return None;
     }
-    let lane = |bit: u8, lane: Option<Lane>| {
-        (flags & bit != 0).then(|| lane.expect("a present field has a lane"))
+    let present = |bit: u8, series: Option<FieldSeries>| {
+        (flags & bit != 0).then(|| series.expect("a present field has a series"))
     };
     Some(ChannelSample {
-        rpm: lane(RPM, column.rpm)
-            .map(|lane| u32::from_le_bytes(read(bytes, capacity, lane, slot))),
-        duty: lane(DUTY, column.duty)
-            .map(|lane| f64::from_le_bytes(read(bytes, capacity, lane, slot))),
-        freq: lane(FREQ, column.freq)
-            .map(|lane| u32::from_le_bytes(read(bytes, capacity, lane, slot))),
-        watts: lane(WATTS, column.watts)
-            .map(|lane| f64::from_le_bytes(read(bytes, capacity, lane, slot))),
-        pwm_mode: lane(PWM_MODE, column.pwm_mode)
-            .map(|lane| read::<1>(bytes, capacity, lane, slot)[0]),
+        rpm: present(RPM, column.rpm)
+            .map(|series| u32::from_le_bytes(read(bytes, capacity, series, slot))),
+        duty: present(DUTY, column.duty)
+            .map(|series| f64::from_le_bytes(read(bytes, capacity, series, slot))),
+        freq: present(FREQ, column.freq)
+            .map(|series| u32::from_le_bytes(read(bytes, capacity, series, slot))),
+        watts: present(WATTS, column.watts)
+            .map(|series| f64::from_le_bytes(read(bytes, capacity, series, slot))),
+        pwm_mode: present(PWM_MODE, column.pwm_mode)
+            .map(|series| read::<1>(bytes, capacity, series, slot)[0]),
     })
 }
 
@@ -250,7 +257,7 @@ pub struct StatusRing {
     /// at init, and unchanged from then on. Below it only before that fill and in the API's
     /// partial copies, which share this slot math (see `StatusSnapshot`).
     len: usize,
-    layout: Arc<Layout>,
+    layout: Arc<SensorLayout>,
     bytes: Vec<u8>,
     /// Entries pushed since the last reset.
     pushes: u64,
@@ -264,7 +271,7 @@ pub struct StatusRing {
 impl StatusRing {
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0);
-        let layout = Layout::new();
+        let layout = SensorLayout::new();
         let bytes = vec![0; layout.stride * capacity];
         Self {
             capacity,
@@ -292,19 +299,19 @@ impl StatusRing {
         } else {
             self.bytes = Vec::with_capacity(self.layout.stride * capacity);
         }
-        self.layout = Arc::new(Layout::new());
+        self.layout = Arc::new(SensorLayout::new());
         self.capacity = capacity;
         self.head = 0;
         self.len = 0;
         self.pushes = 0;
         self.temp_written.clear();
         self.channel_written.clear();
-        self.fit_lanes();
+        self.fit_series();
     }
 
-    /// Sizes the buffer to the layout after lanes were added. Exact: the ring never grows
+    /// Sizes the buffer to the layout after series were added. Exact: the ring never grows
     /// again, so amortized slack would be held for good.
-    fn fit_lanes(&mut self) {
+    fn fit_series(&mut self) {
         let size = self.layout.stride * self.capacity;
         debug_assert!(size >= self.bytes.len());
         self.bytes.reserve_exact(size - self.bytes.len());
@@ -362,15 +369,15 @@ impl StatusRing {
         }
         self.temp_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let present = layout.add_lane(1);
-        let value = layout.add_lane(8);
+        let present = layout.add_series(1);
+        let value = layout.add_series(8);
         layout.temps.push(TempColumn {
             name: Arc::from(name),
             present,
             value,
         });
         let index = layout.temps.len() - 1;
-        self.fit_lanes();
+        self.fit_series();
         Some(index)
     }
 
@@ -389,7 +396,7 @@ impl StatusRing {
         }
         self.channel_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let flags = layout.add_lane(1);
+        let flags = layout.add_series(1);
         layout.channels.push(ChannelColumn {
             name: Arc::from(name),
             flags,
@@ -400,7 +407,7 @@ impl StatusRing {
             pwm_mode: None,
         });
         let index = layout.channels.len() - 1;
-        self.fit_lanes();
+        self.fit_series();
         Some(index)
     }
 
@@ -431,16 +438,16 @@ impl StatusRing {
             .position(|written| written + capacity <= self.pushes)
     }
 
-    /// The lane of a channel field, added on the field's first sight.
-    fn field_lane(&mut self, column: usize, field: Field) -> Lane {
-        if let Some(lane) = self.layout.channels[column].lane(field) {
-            return lane;
+    /// The series of a channel field, added on the field's first sight.
+    fn field_series(&mut self, column: usize, field: Field) -> FieldSeries {
+        if let Some(series) = self.layout.channels[column].series(field) {
+            return series;
         }
         let layout = Arc::make_mut(&mut self.layout);
-        let lane = layout.add_lane(field.width());
-        *layout.channels[column].lane_mut(field) = Some(lane);
-        self.fit_lanes();
-        lane
+        let series = layout.add_series(field.width());
+        *layout.channels[column].series_mut(field) = Some(series);
+        self.fit_series();
+        series
     }
 
     /// Writes `status` as the newest entry. Returns `false` when a name was refused (see
@@ -498,15 +505,15 @@ impl StatusRing {
             self.write_field(slot, column, Field::PwmMode, &[pwm_mode]);
             flags |= PWM_MODE;
         }
-        let lane = self.layout.channels[column].flags;
-        write(&mut self.bytes, self.capacity, lane, slot, [flags]);
+        let series = self.layout.channels[column].flags;
+        write(&mut self.bytes, self.capacity, series, slot, [flags]);
     }
 
     fn write_field(&mut self, slot: usize, column: usize, field: Field, value: &[u8]) {
-        let lane = self.field_lane(column, field);
-        assert_eq!(lane.width, value.len());
-        let at = lane.start * self.capacity + slot * lane.width;
-        self.bytes[at..at + lane.width].copy_from_slice(value);
+        let series = self.field_series(column, field);
+        assert_eq!(series.width, value.len());
+        let at = series.start * self.capacity + slot * series.width;
+        self.bytes[at..at + series.width].copy_from_slice(value);
     }
 
     pub fn timestamp_ns(&self, index: usize) -> i64 {
@@ -560,8 +567,8 @@ impl StatusRing {
         let mut filled_any = false;
         for index in 0..self.len {
             let slot = self.slot(index);
-            let flags_lane = self.layout.channels[column].flags;
-            let [flags] = read(&self.bytes, self.capacity, flags_lane, slot);
+            let flags_series = self.layout.channels[column].flags;
+            let [flags] = read(&self.bytes, self.capacity, flags_series, slot);
             if flags & CHANNEL == 0 {
                 continue;
             }
@@ -571,10 +578,10 @@ impl StatusRing {
             if flags & DUTY != 0 {
                 continue;
             }
-            let rpm_lane = self.layout.channels[column]
+            let rpm_series = self.layout.channels[column]
                 .rpm
-                .expect("a present field has a lane");
-            let rpm = u32::from_le_bytes(read(&self.bytes, self.capacity, rpm_lane, slot));
+                .expect("a present field has a series");
+            let rpm = u32::from_le_bytes(read(&self.bytes, self.capacity, rpm_series, slot));
             let Some(duty) = duty_for_rpm(rpm) else {
                 continue;
             };
@@ -582,7 +589,7 @@ impl StatusRing {
             write(
                 &mut self.bytes,
                 self.capacity,
-                flags_lane,
+                flags_series,
                 slot,
                 [flags | DUTY],
             );
@@ -646,20 +653,20 @@ impl StatusRing {
         let Some(column) = self.layout.channel_index(name) else {
             return;
         };
-        let flags_lane = self.layout.channels[column].flags;
+        let flags_series = self.layout.channels[column].flags;
         for slot in 0..self.capacity {
-            let [flags] = read(&self.bytes, self.capacity, flags_lane, slot);
+            let [flags] = read(&self.bytes, self.capacity, flags_series, slot);
             write(
                 &mut self.bytes,
                 self.capacity,
-                flags_lane,
+                flags_series,
                 slot,
                 [flags & !DUTY],
             );
         }
     }
 
-    /// Drops the temp and the channel called `name`, and their lanes.
+    /// Drops the temp and the channel called `name`, and their series.
     pub fn remove_name(&mut self, name: &str) {
         let temp = self.layout.temp_index(name);
         let channel = self.layout.channel_index(name);
@@ -678,13 +685,13 @@ impl StatusRing {
         self.relayout(&kept);
     }
 
-    /// Moves every lane of `kept` (a subset of the current layout) to a compact layout.
-    fn relayout(&mut self, kept: &Layout) {
-        let mut layout = Layout::new();
+    /// Moves every series of `kept` (a subset of the current layout) to a compact layout.
+    fn relayout(&mut self, kept: &SensorLayout) {
+        let mut layout = SensorLayout::new();
         let mut relocations = vec![(TIMESTAMPS, TIMESTAMPS)];
-        let mut relocate = |layout: &mut Layout, lane: Lane| {
-            let new = layout.add_lane(lane.width);
-            relocations.push((lane, new));
+        let mut relocate = |layout: &mut SensorLayout, series: FieldSeries| {
+            let new = layout.add_series(series.width);
+            relocations.push((series, new));
             new
         };
         for column in &kept.temps {
@@ -698,7 +705,8 @@ impl StatusRing {
         }
         for column in &kept.channels {
             let flags = relocate(&mut layout, column.flags);
-            let mut field = |lane: Option<Lane>| lane.map(|lane| relocate(&mut layout, lane));
+            let mut field =
+                |series: Option<FieldSeries>| series.map(|series| relocate(&mut layout, series));
             let rpm = field(column.rpm);
             let duty = field(column.duty);
             let freq = field(column.freq);
@@ -764,10 +772,11 @@ impl StatusRing {
         let mut copied = 0;
         for index in indices {
             let slot = self.slot(index);
-            for lane in self.layout.lanes() {
-                let from = lane.start * self.capacity + slot * lane.width;
-                let to = lane.start * count + copied * lane.width;
-                bytes[to..to + lane.width].copy_from_slice(&self.bytes[from..from + lane.width]);
+            for series in self.layout.all_series() {
+                let from = series.start * self.capacity + slot * series.width;
+                let to = series.start * count + copied * series.width;
+                bytes[to..to + series.width]
+                    .copy_from_slice(&self.bytes[from..from + series.width]);
             }
             copied += 1;
         }
@@ -825,7 +834,7 @@ pub enum SnapshotFilter {
 /// thread. Serializes as the array of `Status` the API has always sent.
 #[derive(Clone)]
 pub struct StatusSnapshot {
-    layout: Arc<Layout>,
+    layout: Arc<SensorLayout>,
     capacity: usize,
     head: usize,
     len: usize,
@@ -1118,7 +1127,7 @@ mod tests {
 
     #[test]
     fn removing_a_name_keeps_every_other_value() {
-        // Goal: dropping a column compacts the lanes without disturbing any other name's
+        // Goal: dropping a column compacts the series without disturbing any other name's
         // values, presence or first-seen order.
         let mut ring = StatusRing::new(3);
         for at in 1..=3 {
