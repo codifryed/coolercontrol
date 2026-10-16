@@ -33,6 +33,8 @@ use tokio_util::sync::CancellationToken;
 
 mod admin;
 mod alerts;
+#[cfg(test)]
+mod alloc_count;
 mod api;
 mod backup;
 mod calibration;
