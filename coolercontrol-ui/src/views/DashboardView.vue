@@ -488,6 +488,21 @@ const saveLegendHeight = (): void => {
     if (sizePx == null) return
     settingsStore.setStatsLegendHeight(dashboard.uid, Math.round((sizePx * 10) / remPx) / 10)
 }
+// A click on the handle also emits dragging, so save only when the size moved.
+let dragStartSizePx: number | undefined
+const onLegendDragging = (dragging: boolean): void => {
+    const sizePx = legendPanelRef.value?.getSize()
+    if (dragging) {
+        dragStartSizePx = sizePx
+        return
+    }
+    if (sizePx !== dragStartSizePx) saveLegendHeight()
+}
+// The keys reka resizes a vertical splitter with.
+const LEGEND_RESIZE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Home', 'End'])
+const onLegendKeyup = (event: KeyboardEvent): void => {
+    if (LEGEND_RESIZE_KEYS.has(event.key)) saveLegendHeight()
+}
 // The splitter keeps a squeezed legend squeezed, so growing room gives the saved height back.
 let splitterHeightPx = 0
 const restoreLegendHeight = (): void => {
@@ -868,8 +883,8 @@ onUnmounted(() => {
                     <template v-if="showLegend">
                         <SplitterResizeHandle
                             class="h-px shrink-0 bg-border-one outline-none focus-visible:bg-accent data-[resize-handle-state=drag]:bg-accent data-[resize-handle-state=hover]:bg-accent"
-                            @dragging="(dragging: boolean) => dragging || saveLegendHeight()"
-                            @keyup="saveLegendHeight"
+                            @dragging="onLegendDragging"
+                            @keyup="onLegendKeyup"
                         />
                         <SplitterPanel
                             id="dashboard-legend"
