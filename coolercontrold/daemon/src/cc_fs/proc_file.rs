@@ -132,23 +132,8 @@ async fn read_all(file: &File, buf: &mut Vec<u8>, max_bytes: usize) -> io::Resul
 
 #[cfg(test)]
 mod tests {
-    use std::future::Future;
-    use std::task::{Context, Poll, Waker};
-
     use super::*;
-
-    /// Polls `future` to completion with a waker that does nothing, and counts the polls. Enough
-    /// for `ProcFile`, whose only pending point is `rt::yield_now`, which wakes itself.
-    fn poll_to_end<F: Future>(future: F) -> (F::Output, u32) {
-        let mut future = std::pin::pin!(future);
-        let mut context = Context::from_waker(Waker::noop());
-        for polls in 1..=1_000 {
-            if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
-                return (output, polls);
-            }
-        }
-        panic!("the read never finished");
-    }
+    use crate::rt::poll_to_end;
 
     /// Goal: a read returns exactly what the file holds now, across growth steps and after the
     /// file shrinks. Method: a file longer than two growth steps, then the same file rewritten

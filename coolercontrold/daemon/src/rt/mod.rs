@@ -51,3 +51,18 @@ pub async fn yield_now() {
     })
     .await;
 }
+
+/// Polls `future` to completion with a waker that does nothing, and counts the polls. For futures
+/// whose only pending points wake themselves, like `yield_now`, so a test can count their
+/// allocations without a runtime, whose own setup allocates.
+#[cfg(test)]
+pub fn poll_to_end<F: std::future::Future>(future: F) -> (F::Output, u32) {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    for polls in 1..=1_000 {
+        if let std::task::Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return (output, polls);
+        }
+    }
+    panic!("the future never finished");
+}
