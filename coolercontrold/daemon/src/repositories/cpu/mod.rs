@@ -4,6 +4,7 @@
 mod apple_silicon;
 mod association;
 pub mod cpu_repo;
+mod cpuinfo_file;
 mod percent;
 mod topology;
 

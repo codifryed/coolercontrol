@@ -340,10 +340,11 @@ fn processor_owners(entries: &[ProcessorEntry]) -> Vec<Option<PhysicalID>> {
 /// The alternatives are `/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq` and
 /// `/sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq`, which have been reported as
 /// significantly slower on some systems, and give no way to tie a frequency to a package.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+///
+/// Frequencies are folded into a slot per physical id as they are read, so a poll allocates only
+/// the map it returns.
 pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
-    let mut cpu_freqs = HashMap::new();
-    let mut cpu_info_freqs: HashMap<PhysicalID, Vec<f64>> = HashMap::new();
+    let mut tallies = [FreqTally::EMPTY; PHYSICAL_ID_SLOTS];
     let mut physical_id: PhysicalID = 0;
     let mut freq: f64 = 0.;
     let mut physical_id_present = false;
@@ -358,41 +359,78 @@ pub fn parse_freqs(cpu_info_data: &str) -> HashMap<PhysicalID, CpuFreqs> {
         };
         if key == "physical id" {
             let Ok(parsed) = value.parse() else {
-                return cpu_freqs;
+                return HashMap::new();
             };
             physical_id = parsed;
             physical_id_present = true;
         }
         if key == "cpu MHz" {
             let Ok(parsed) = value.parse() else {
-                return cpu_freqs;
+                return HashMap::new();
             };
             freq = parsed;
             freq_present = true;
         }
         if physical_id_present && freq_present {
-            // after each processor's entry
-            cpu_info_freqs.entry(physical_id).or_default().push(freq);
+            // After each processor's entry. A package's slot index is its physical id.
+            tallies[usize::from(physical_id)].add(freq);
             physical_id_present = false;
             freq_present = false;
         }
     }
-    for (physical_id, freqs) in cpu_info_freqs {
-        let min = freqs
-            .iter()
-            .min_by(|a, b| a.total_cmp(b))
-            .unwrap_or(&0.)
-            .round() as Mhz;
-        let max = freqs
-            .iter()
-            .max_by(|a, b| a.total_cmp(b))
-            .unwrap_or(&0.)
-            .round() as Mhz;
-        #[allow(clippy::cast_precision_loss)]
-        let avg = (freqs.iter().sum::<f64>() / freqs.len() as f64).round() as Mhz;
-        cpu_freqs.insert(physical_id, CpuFreqs { min, max, avg });
+    let mut cpu_freqs = HashMap::new();
+    // Pairs each slot with the physical id that indexes it.
+    for (physical_id, tally) in (0..=PhysicalID::MAX).zip(&tallies) {
+        if tally.count > 0 {
+            cpu_freqs.insert(physical_id, tally.freqs());
+        }
     }
     cpu_freqs
+}
+
+/// A `PhysicalID` is a `u8`, so one slot per possible value holds every package without a map.
+const PHYSICAL_ID_SLOTS: usize = PhysicalID::MAX as usize + 1;
+
+/// The frequencies one package's processors reported in a poll, folded as they are read.
+#[derive(Clone, Copy)]
+struct FreqTally {
+    min: f64,
+    max: f64,
+    sum: f64,
+    count: u32,
+}
+
+impl FreqTally {
+    const EMPTY: Self = Self {
+        min: 0.,
+        max: 0.,
+        sum: 0.,
+        count: 0,
+    };
+
+    fn add(&mut self, freq: f64) {
+        // The first value is both bounds. `total_cmp` gives every value, NaN included, a place.
+        if self.count == 0 || freq.total_cmp(&self.min).is_lt() {
+            self.min = freq;
+        }
+        if self.count == 0 || freq.total_cmp(&self.max).is_gt() {
+            self.max = freq;
+        }
+        // A running total and count, for the mean `freqs` takes.
+        self.sum += freq;
+        self.count += 1;
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn freqs(&self) -> CpuFreqs {
+        debug_assert!(self.count > 0);
+        CpuFreqs {
+            min: self.min.round() as Mhz,
+            max: self.max.round() as Mhz,
+            // The mean over every processor the package reported.
+            avg: (self.sum / f64::from(self.count)).round() as Mhz,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -692,6 +730,17 @@ mod tests {
         // then: cpuinfo without frequencies gives none, rather than a fabricated 0.
         assert!(parse_freqs(fixtures::RASPBERRY_PI_5).is_empty());
         assert!(parse_freqs("").is_empty());
+    }
+
+    /// Goal: the per-poll parse allocates only the map it returns, however many processors each
+    /// package has. Method: count the allocations of parsing the two-package dump.
+    #[test]
+    fn parsing_frequencies_allocates_only_the_result() {
+        let (freqs, allocations) =
+            crate::alloc_count::count_allocations(|| parse_freqs(fixtures::AMD_DOUBLE_CPU));
+
+        assert_eq!(freqs.len(), 2);
+        assert_eq!(allocations, 1);
     }
 
     /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board
