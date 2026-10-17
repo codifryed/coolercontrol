@@ -44,28 +44,39 @@ mod tests {
     /// Set when the test binary re-runs itself for the probe.
     const PROBE_ENV: &str = "CC_MALLOC_THRESHOLD_PROBE";
     const PROBE_TEST: &str = "malloc_threshold::tests::mapped_block_probe";
+    /// THP heaps grow in 2 MiB steps, and a request that fits a heap's free top is served from
+    /// it before the threshold is consulted, so probe blocks are larger than that.
+    const BLOCK_BYTES: usize = 4 << 20;
+    const FREED_BYTES: usize = 4 * BLOCK_BYTES;
+    /// THP heaps, the aarch64 default since glibc 2.43, opted into so every platform runs them.
+    const THP_TUNABLES: &str = "glibc.malloc.hugetlb=1";
 
     /// Goal: a large block stays in its own mapping after a larger one is freed, which would
-    /// otherwise raise glibc's threshold past it. Method: the probe runs in a fresh test
-    /// process, since free heap space left by other tests serves a request before the
-    /// threshold is consulted.
+    /// otherwise raise glibc's threshold past it, with the platform's malloc defaults and with
+    /// THP heaps. Method: the probe runs in a fresh test process for each, since free heap
+    /// space left by other tests serves a request before the threshold is consulted.
     #[test]
     fn large_blocks_stay_mapped_after_a_larger_free() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", PROBE_TEST, "--ignored", "--test-threads=1"])
-            .env(PROBE_ENV, "1")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(output.status.success(), "{stdout}");
-        assert!(
-            stdout.contains("1 passed"),
-            "the probe did not run: {stdout}"
-        );
+        for tunables in [None, Some(THP_TUNABLES)] {
+            let mut probe = std::process::Command::new(std::env::current_exe().unwrap());
+            probe
+                .args(["--exact", PROBE_TEST, "--ignored", "--test-threads=1"])
+                .env(PROBE_ENV, "1");
+            if let Some(tunables) = tunables {
+                probe.env("GLIBC_TUNABLES", tunables);
+            }
+            let output = probe.output().unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(output.status.success(), "tunables {tunables:?}: {stdout}");
+            assert!(
+                stdout.contains("1 passed"),
+                "the probe did not run with tunables {tunables:?}: {stdout}"
+            );
+        }
     }
 
-    /// Goal: with the threshold pinned, 1 MiB blocks stay mapped after a 4 MiB free. Method:
-    /// free a 4 MiB block, then check four 1 MiB blocks each start 16 bytes into a page, as a
+    /// Goal: with the threshold pinned, 4 MiB blocks stay mapped after a 16 MiB free. Method:
+    /// free a 16 MiB block, then check four 4 MiB blocks each start 16 bytes into a page, as a
     /// mapped block does; four heap blocks all landing there by chance is negligible. Returns
     /// early without `CC_MALLOC_THRESHOLD_PROBE`, so a direct `--ignored` run checks nothing.
     #[test]
@@ -75,9 +86,9 @@ mod tests {
             return;
         }
         pin();
-        drop(black_box(vec![1_u8; 4 << 20]));
+        drop(black_box(vec![1_u8; FREED_BYTES]));
         let blocks: Vec<Vec<u8>> = (0..4)
-            .map(|_| black_box(Vec::with_capacity(1 << 20)))
+            .map(|_| black_box(Vec::with_capacity(BLOCK_BYTES)))
             .collect();
         for block in &blocks {
             assert_eq!(block.as_ptr() as usize % PAGE_BYTES, MAPPED_OFFSET);
