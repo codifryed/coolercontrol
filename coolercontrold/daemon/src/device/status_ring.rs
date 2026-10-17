@@ -8,12 +8,15 @@
 //! starts at `start * capacity` bytes, where `start` is the summed value size of the series
 //! added before it. So adding a series only grows the buffer, and a copy of any capacity keeps
 //! the same layout. Presence is explicit: a temp's value pairs with a presence byte per slot and
-//! a channel's fields with a flags byte per slot. Absence is never stored as a sentinel value.
+//! a channel's fields with a `ChannelFlags` byte per slot. Absence is never stored as a sentinel
+//! value.
 
 use std::borrow::Cow;
 use std::fmt::{Debug, Formatter};
+use std::ops::Not;
 use std::sync::Arc;
 
+use bitflags::bitflags;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::ser::{SerializeSeq, SerializeStruct};
@@ -32,13 +35,19 @@ const TIMESTAMPS: FieldSeries = FieldSeries {
 /// held entry are dropped first, and only then are new ones refused. Far above any real device.
 pub const MAX_NAMES: usize = 256;
 
-/// Channel flags: the channel is present in the slot, then one bit per present field.
-const CHANNEL: u8 = 1;
-const RPM: u8 = 1 << 1;
-const DUTY: u8 = 1 << 2;
-const FREQ: u8 = 1 << 3;
-const WATTS: u8 = 1 << 4;
-const PWM_MODE: u8 = 1 << 5;
+bitflags! {
+    /// What one entry holds of a channel: the channel itself, then one bit per field with a value.
+    #[derive(Debug, Clone, Copy)]
+    struct ChannelFlags: u8 {
+        /// The channel is in the entry.
+        const PRESENT = 1;
+        const RPM = 1 << 1;
+        const DUTY = 1 << 2;
+        const FREQ = 1 << 3;
+        const WATTS = 1 << 4;
+        const PWM_MODE = 1 << 5;
+    }
+}
 
 /// One field's values, one per slot, e.g. fan1's RPM over the hour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,17 +59,47 @@ struct FieldSeries {
     size: usize,
 }
 
+/// Whether a temp is in each entry, one byte per slot.
+#[derive(Debug, Clone, Copy)]
+struct PresenceSeries(FieldSeries);
+
+impl PresenceSeries {
+    fn get(self, bytes: &[u8], capacity: usize, slot: usize) -> bool {
+        let [present] = read(bytes, capacity, self.0, slot);
+        present != 0
+    }
+
+    fn set(self, bytes: &mut [u8], capacity: usize, slot: usize, present: bool) {
+        write(bytes, capacity, self.0, slot, [u8::from(present)]);
+    }
+}
+
+/// A channel's `ChannelFlags` in each entry, one byte per slot.
+#[derive(Debug, Clone, Copy)]
+struct FlagsSeries(FieldSeries);
+
+impl FlagsSeries {
+    fn get(self, bytes: &[u8], capacity: usize, slot: usize) -> ChannelFlags {
+        let [bits] = read(bytes, capacity, self.0, slot);
+        ChannelFlags::from_bits_retain(bits)
+    }
+
+    fn set(self, bytes: &mut [u8], capacity: usize, slot: usize, flags: ChannelFlags) {
+        write(bytes, capacity, self.0, slot, [flags.bits()]);
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TempColumn {
     name: Arc<str>,
-    present: FieldSeries,
+    present: PresenceSeries,
     value: FieldSeries,
 }
 
 #[derive(Debug, Clone)]
 struct ChannelColumn {
     name: Arc<str>,
-    flags: FieldSeries,
+    flags: FlagsSeries,
     rpm: Option<FieldSeries>,
     duty: Option<FieldSeries>,
     freq: Option<FieldSeries>,
@@ -144,10 +183,10 @@ impl SensorLayout {
         let temps = self
             .temps
             .iter()
-            .flat_map(|column| [column.present, column.value]);
+            .flat_map(|column| [column.present.0, column.value]);
         let channels = self.channels.iter().flat_map(|column| {
             [
-                Some(column.flags),
+                Some(column.flags.0),
                 column.rpm,
                 column.duty,
                 column.freq,
@@ -199,8 +238,10 @@ fn write<const N: usize>(
 }
 
 fn temp_in(bytes: &[u8], capacity: usize, column: &TempColumn, slot: usize) -> Option<Temp> {
-    let [present] = read(bytes, capacity, column.present, slot);
-    (present != 0).then(|| f64::from_le_bytes(read(bytes, capacity, column.value, slot)))
+    column
+        .present
+        .get(bytes, capacity, slot)
+        .then(|| f64::from_le_bytes(read(bytes, capacity, column.value, slot)))
 }
 
 fn channel_in(
@@ -209,23 +250,25 @@ fn channel_in(
     column: &ChannelColumn,
     slot: usize,
 ) -> Option<ChannelSample> {
-    let [flags] = read(bytes, capacity, column.flags, slot);
-    if flags & CHANNEL == 0 {
+    let flags = column.flags.get(bytes, capacity, slot);
+    if flags.contains(ChannelFlags::PRESENT).not() {
         return None;
     }
-    let present = |bit: u8, series: Option<FieldSeries>| {
-        (flags & bit != 0).then(|| series.expect("a present field has a series"))
+    let present = |flag: ChannelFlags, series: Option<FieldSeries>| {
+        flags
+            .contains(flag)
+            .then(|| series.expect("a present field has a series"))
     };
     Some(ChannelSample {
-        rpm: present(RPM, column.rpm)
+        rpm: present(ChannelFlags::RPM, column.rpm)
             .map(|series| u32::from_le_bytes(read(bytes, capacity, series, slot))),
-        duty: present(DUTY, column.duty)
+        duty: present(ChannelFlags::DUTY, column.duty)
             .map(|series| f64::from_le_bytes(read(bytes, capacity, series, slot))),
-        freq: present(FREQ, column.freq)
+        freq: present(ChannelFlags::FREQ, column.freq)
             .map(|series| u32::from_le_bytes(read(bytes, capacity, series, slot))),
-        watts: present(WATTS, column.watts)
+        watts: present(ChannelFlags::WATTS, column.watts)
             .map(|series| f64::from_le_bytes(read(bytes, capacity, series, slot))),
-        pwm_mode: present(PWM_MODE, column.pwm_mode)
+        pwm_mode: present(ChannelFlags::PWM_MODE, column.pwm_mode)
             .map(|series| read::<1>(bytes, capacity, series, slot)[0]),
     })
 }
@@ -348,10 +391,12 @@ impl StatusRing {
             timestamp_ns.to_le_bytes(),
         );
         for column in &self.layout.temps {
-            write(&mut self.bytes, capacity, column.present, slot, [0]);
+            column.present.set(&mut self.bytes, capacity, slot, false);
         }
         for column in &self.layout.channels {
-            write(&mut self.bytes, capacity, column.flags, slot, [0]);
+            column
+                .flags
+                .set(&mut self.bytes, capacity, slot, ChannelFlags::empty());
         }
         debug_assert!(self.len <= self.capacity);
         debug_assert!(self.head < self.capacity);
@@ -373,7 +418,7 @@ impl StatusRing {
         }
         self.temp_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let present = layout.add_series(size_of::<u8>());
+        let present = PresenceSeries(layout.add_series(size_of::<bool>()));
         let value = layout.add_series(size_of::<f64>());
         layout.temps.push(TempColumn {
             name: Arc::from(name),
@@ -402,7 +447,7 @@ impl StatusRing {
         }
         self.channel_written.push(self.pushes);
         let layout = Arc::make_mut(&mut self.layout);
-        let flags = layout.add_series(size_of::<u8>());
+        let flags = FlagsSeries(layout.add_series(size_of::<ChannelFlags>()));
         layout.channels.push(ChannelColumn {
             name: Arc::from(name),
             flags,
@@ -485,36 +530,36 @@ impl StatusRing {
         let TempColumn { present, value, .. } = self.layout.temps[column];
         let capacity = self.capacity;
         write(&mut self.bytes, capacity, value, slot, temp.to_le_bytes());
-        write(&mut self.bytes, capacity, present, slot, [1]);
+        present.set(&mut self.bytes, capacity, slot, true);
     }
 
     pub fn set_channel(&mut self, slot: usize, column: usize, sample: ChannelSample) {
         debug_assert!(slot < self.capacity);
         debug_assert!(column < self.channel_written.len());
         self.channel_written[column] = self.pushes;
-        let mut flags = CHANNEL;
+        let mut flags = ChannelFlags::PRESENT;
         if let Some(rpm) = sample.rpm {
             self.write_field(slot, column, Field::Rpm, &rpm.to_le_bytes());
-            flags |= RPM;
+            flags |= ChannelFlags::RPM;
         }
         if let Some(duty) = sample.duty {
             self.write_field(slot, column, Field::Duty, &duty.to_le_bytes());
-            flags |= DUTY;
+            flags |= ChannelFlags::DUTY;
         }
         if let Some(freq) = sample.freq {
             self.write_field(slot, column, Field::Freq, &freq.to_le_bytes());
-            flags |= FREQ;
+            flags |= ChannelFlags::FREQ;
         }
         if let Some(watts) = sample.watts {
             self.write_field(slot, column, Field::Watts, &watts.to_le_bytes());
-            flags |= WATTS;
+            flags |= ChannelFlags::WATTS;
         }
         if let Some(pwm_mode) = sample.pwm_mode {
             self.write_field(slot, column, Field::PwmMode, &[pwm_mode]);
-            flags |= PWM_MODE;
+            flags |= ChannelFlags::PWM_MODE;
         }
         let series = self.layout.channels[column].flags;
-        write(&mut self.bytes, self.capacity, series, slot, [flags]);
+        series.set(&mut self.bytes, self.capacity, slot, flags);
     }
 
     fn write_field(&mut self, slot: usize, column: usize, field: Field, value: &[u8]) {
@@ -576,14 +621,14 @@ impl StatusRing {
         for index in 0..self.len {
             let slot = self.slot(index);
             let flags_series = self.layout.channels[column].flags;
-            let [flags] = read(&self.bytes, self.capacity, flags_series, slot);
-            if flags & CHANNEL == 0 {
+            let flags = flags_series.get(&self.bytes, self.capacity, slot);
+            if flags
+                .contains(ChannelFlags::PRESENT | ChannelFlags::RPM)
+                .not()
+            {
                 continue;
             }
-            if flags & RPM == 0 {
-                continue;
-            }
-            if flags & DUTY != 0 {
+            if flags.contains(ChannelFlags::DUTY) {
                 continue;
             }
             let rpm_series = self.layout.channels[column]
@@ -594,12 +639,11 @@ impl StatusRing {
                 continue;
             };
             self.write_field(slot, column, Field::Duty, &duty.to_le_bytes());
-            write(
+            flags_series.set(
                 &mut self.bytes,
                 self.capacity,
-                flags_series,
                 slot,
-                [flags | DUTY],
+                flags | ChannelFlags::DUTY,
             );
             filled_any = true;
         }
@@ -660,13 +704,12 @@ impl StatusRing {
         };
         let flags_series = self.layout.channels[column].flags;
         for slot in 0..self.capacity {
-            let [flags] = read(&self.bytes, self.capacity, flags_series, slot);
-            write(
+            let flags = flags_series.get(&self.bytes, self.capacity, slot);
+            flags_series.set(
                 &mut self.bytes,
                 self.capacity,
-                flags_series,
                 slot,
-                [flags & !DUTY],
+                flags.difference(ChannelFlags::DUTY),
             );
         }
     }
@@ -703,7 +746,7 @@ impl StatusRing {
             new
         };
         for column in &kept.temps {
-            let present = relocate(&mut layout, column.present);
+            let present = PresenceSeries(relocate(&mut layout, column.present.0));
             let value = relocate(&mut layout, column.value);
             layout.temps.push(TempColumn {
                 name: Arc::clone(&column.name),
@@ -712,7 +755,7 @@ impl StatusRing {
             });
         }
         for column in &kept.channels {
-            let flags = relocate(&mut layout, column.flags);
+            let flags = FlagsSeries(relocate(&mut layout, column.flags.0));
             let mut field =
                 |series: Option<FieldSeries>| series.map(|series| relocate(&mut layout, series));
             let rpm = field(column.rpm);
@@ -1056,7 +1099,6 @@ impl<'a> ChannelOut<'a> {
 #[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
 mod tests {
     use super::*;
-    use std::ops::Not;
 
     fn fan(rpm: u32) -> ChannelSample {
         ChannelSample {
