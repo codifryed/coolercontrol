@@ -45,6 +45,7 @@ mod device;
 mod diagnostics;
 mod engine;
 mod env_vars;
+mod events;
 mod grpc_api;
 mod hashutil;
 mod listeners;
@@ -52,7 +53,6 @@ mod logger;
 mod main_loop;
 mod malloc_threshold;
 mod modes;
-mod notifier;
 mod open_files;
 mod overrides;
 mod paths;
@@ -61,7 +61,6 @@ mod rt;
 mod sensors_conf;
 mod setting;
 mod sidecar;
-mod system_event;
 mod token;
 mod watchdog;
 
@@ -442,8 +441,10 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let notification_handle = notifier::NotificationHandle::new(run_token.clone());
-                let system_event_handle = system_event::SystemEventHandle::new(run_token.clone());
+                let notification_handle =
+                    events::notifier::NotificationHandle::new(run_token.clone());
+                let system_event_handle =
+                    events::system_event::SystemEventHandle::new(run_token.clone());
                 alert_controller.set_notification_handle(notification_handle.clone());
                 engine.set_notification_handle(notification_handle.clone());
                 engine.set_alert_gate(alert_controller.clone());

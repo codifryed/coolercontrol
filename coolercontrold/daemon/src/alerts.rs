@@ -5,7 +5,7 @@ use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::calibration::{CalibrationAlertGate, DiagnosisRegistry};
 use crate::device::UID;
-use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
 #[cfg(not(test))]

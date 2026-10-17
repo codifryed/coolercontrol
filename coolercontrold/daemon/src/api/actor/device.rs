@@ -7,8 +7,8 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
+use crate::events::notifier::NotificationHandle;
 use crate::modes::ModeController;
-use crate::notifier::NotificationHandle;
 use crate::overrides::OverridesController;
 use crate::repositories::gpu::amd_overdrive;
 use crate::setting::{

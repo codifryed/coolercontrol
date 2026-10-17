@@ -3,7 +3,7 @@
 
 use crate::api::actor::ModeHandle;
 use crate::device::UID;
-use crate::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
+use crate::events::system_event::{SystemEvent, SystemEventHandle, SystemEventKind};
 use crate::ENV_DBUS;
 use futures_util::StreamExt;
 use log::{error, info, warn};

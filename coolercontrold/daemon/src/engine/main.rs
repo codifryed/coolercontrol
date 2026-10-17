@@ -26,7 +26,7 @@ use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
 use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
-use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::overrides::OverridesController;
 use crate::paths;
 use crate::repositories::custom_sensor_attributes::{attribute_forward, forward_attributes};
