@@ -12,9 +12,13 @@ use crate::cc_fs::ProcFile;
 /// if /proc/stat is somehow corrupted or pathological.
 pub const MAX_LOGICAL_CPUS: usize = 2048;
 
-/// Bound on /proc/stat, well above `MAX_LOGICAL_CPUS` cpu lines plus the interrupt and softirq
-/// counters that follow them.
+/// Bound on /proc/stat. `MAX_LOGICAL_CPUS` cpu lines fill at most a quarter of it, leaving the
+/// rest for the interrupt and softirq counters that follow them.
 const STAT_MAX_BYTES: usize = 4 * 1024 * 1024;
+const _: () = assert!(STAT_MAX_BYTES >= 4 * MAX_LOGICAL_CPUS * STAT_CPU_LINE_MAX_BYTES);
+
+/// Bound on one cpu line: `cpu` and a `u16` id, `MAX_STAT_FIELDS` space-led `u64`s, a newline.
+const STAT_CPU_LINE_MAX_BYTES: usize = 3 + 5 + MAX_STAT_FIELDS * (1 + 20) + 1;
 
 /// Minimum number of /proc/stat fields required per cpu line.
 /// Fields: user nice system idle (iowait irq softirq steal are optional).

@@ -24,6 +24,7 @@ use crate::rt;
 /// Room added when a read finds the buffer full. procfs hands out about a page per read, so any
 /// step past a page works.
 const GROWTH_BYTES: usize = 16 * 1024;
+const _: () = assert!(GROWTH_BYTES > 4096);
 
 /// Reads a signal may interrupt before a read of the file gives up.
 const MAX_INTERRUPTED_READS: u8 = 8;
