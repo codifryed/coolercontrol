@@ -839,7 +839,7 @@ mod tests {
     use super::*;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
-    use crate::power_profile_listener::PowerProfiles;
+    use crate::listeners::power_profile::PowerProfiles;
     use crate::repositories::repository::Repositories;
     use serial_test::serial;
     use std::collections::HashMap;

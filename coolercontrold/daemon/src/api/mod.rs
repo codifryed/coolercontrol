@@ -132,7 +132,7 @@ pub async fn start_server<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
@@ -651,7 +651,7 @@ async fn create_app_state<'s>(
     status_handle: StatusHandle,
     notification_handle: crate::notifier::NotificationHandle,
     system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     frame_policy: FramePolicy,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
@@ -766,7 +766,7 @@ async fn empty_app_state<'s>(
         Rc::new(FanStateMap::new()),
         Rc::clone(&overrides),
     ));
-    let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    let power_profiles = crate::listeners::power_profile::PowerProfiles::default();
     // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
     if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
@@ -1405,7 +1405,7 @@ pub struct AppState {
     pub log_buf_handle: LogBufHandle,
     pub notification_handle: crate::notifier::NotificationHandle,
     pub system_event_handle: crate::system_event::SystemEventHandle,
-    pub power_profiles: crate::power_profile_listener::PowerProfiles,
+    pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,
 }

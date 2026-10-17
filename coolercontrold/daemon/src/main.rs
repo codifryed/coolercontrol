@@ -42,12 +42,12 @@ mod cc_fs;
 mod config;
 mod config_validate;
 mod device;
-mod device_listener;
 mod diagnostics;
 mod engine;
 mod env_vars;
 mod grpc_api;
 mod hashutil;
+mod listeners;
 mod logger;
 mod main_loop;
 mod malloc_threshold;
@@ -56,13 +56,11 @@ mod notifier;
 mod open_files;
 mod overrides;
 mod paths;
-mod power_profile_listener;
 mod repositories;
 mod rt;
 mod sensors_conf;
 mod setting;
 mod sidecar;
-mod sleep_listener;
 mod system_event;
 mod token;
 mod watchdog;
@@ -390,7 +388,7 @@ fn main() -> Result<()> {
             Rc::clone(&overrides_controller),
         ));
         let power_profiles =
-            power_profile_listener::PowerProfiles::new(config.get_power_profile_modes());
+            listeners::power_profile::PowerProfiles::new(config.get_power_profile_modes());
         let mode_controller = Rc::new(
             ModeController::init(
                 Rc::clone(&config),
@@ -454,7 +452,7 @@ fn main() -> Result<()> {
                     .map_or(setting::DEVICE_LISTENER_ENABLED_DEFAULT, |s| {
                         s.device_listener_enabled
                     });
-                let _device_listener = device_listener::DeviceListener::new(
+                let _device_listener = listeners::hotplug::DeviceListener::new(
                     &config,
                     Rc::clone(&all_devices),
                     lc_repo,
@@ -466,7 +464,7 @@ fn main() -> Result<()> {
                 .await
                 .unwrap_or_else(|err| {
                     info!("Device change listener failed to start: {err}");
-                    device_listener::DeviceListener::deaf()
+                    listeners::hotplug::DeviceListener::deaf()
                 });
                 match api::start_server(
                     Rc::clone(&all_devices),
@@ -497,7 +495,7 @@ fn main() -> Result<()> {
                 // through the actor rather than the !Send controller.
                 if let Some(mode_handle) = mode_controller.mode_handle() {
                     let apply_on_boot = config.get_settings()?.apply_on_boot;
-                    power_profile_listener::start(
+                    listeners::power_profile::start(
                         system_event_handle,
                         mode_handle,
                         power_profiles,
