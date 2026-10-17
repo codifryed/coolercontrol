@@ -5,8 +5,8 @@ use chrono::{DateTime, Local};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::device::health::{FailsafeRef, UnreachableRef};
 use crate::device::{ChannelAttribute, DeviceType, Duty, UID};
-use crate::device_health::{FailsafeRef, UnreachableRef};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::Result;

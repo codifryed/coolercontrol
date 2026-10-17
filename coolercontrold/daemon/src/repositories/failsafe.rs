@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Not;
 
+use crate::device::health::{FailsafeKind, FailsafeRef};
 use crate::device::{
     ChannelName, ChannelSample, ChannelStatus, DeviceUID, Mhz, StatusWriter, Temp, TempStatus,
     Watts, RPM,
 };
-use crate::device_health::{FailsafeKind, FailsafeRef};
 
 /// Consecutive missing status readings before failsafe values activate.
 /// Also the multiplier applied to `poll_rate` by the per-device wait

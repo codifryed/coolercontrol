@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::config::Config;
+use crate::device::health::FailsafeRef;
 use crate::device::{
     ChannelExtensionNames, ChannelKind, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Status,
     StatusWriter, TempStatus, UID,
 };
-use crate::device_health::FailsafeRef;
 use crate::grpc_api::device_service::v1::health_response;
 use crate::hardware_support::HardwareSupportController;
 use crate::overrides::OverridesController;

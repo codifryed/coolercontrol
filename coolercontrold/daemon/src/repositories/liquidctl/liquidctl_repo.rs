@@ -13,11 +13,11 @@ use std::string::ToString;
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
+use crate::device::health::FailsafeRef;
 use crate::device::{
     ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
     Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
-use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;

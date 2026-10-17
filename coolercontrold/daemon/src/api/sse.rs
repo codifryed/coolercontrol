@@ -6,7 +6,7 @@ use crate::api::actor::{AlertHandle, DeviceHealthHandle, ModeHandle, StatusHandl
 use crate::api::modes::ActiveMode;
 use crate::api::status::StatusResponse;
 use crate::api::{AppState, CCError};
-use crate::device_health::{
+use crate::device::health::{
     DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
 };
 use crate::logger::LogBufHandle;

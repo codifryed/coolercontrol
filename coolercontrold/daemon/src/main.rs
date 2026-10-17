@@ -42,9 +42,7 @@ mod cc_fs;
 mod config;
 mod config_validate;
 mod device;
-mod device_health;
 mod device_listener;
-mod device_uid;
 mod engine;
 mod env_vars;
 mod grpc_api;
@@ -434,7 +432,7 @@ fn main() -> Result<()> {
                     .await?,
                 );
                 let device_health_controller = Rc::new(
-                    device_health::DeviceHealthController::new(
+                    device::health::DeviceHealthController::new(
                         Rc::clone(&all_devices),
                         Rc::clone(&config),
                         Rc::clone(&repos),

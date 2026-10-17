@@ -46,7 +46,7 @@
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
-use crate::device_health::DeviceHealthController;
+use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::rt;

@@ -47,7 +47,7 @@ use crate::api::dual_protocol::Protocol;
 use crate::api::frame_policy::FramePolicy;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
-use crate::device_health::DeviceHealthController;
+use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
