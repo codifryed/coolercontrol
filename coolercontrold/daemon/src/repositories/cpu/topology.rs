@@ -394,40 +394,40 @@ const PHYSICAL_ID_SLOTS: usize = PhysicalID::MAX as usize + 1;
 /// The frequencies one package's processors reported in a poll, folded as they are read.
 #[derive(Clone, Copy)]
 struct FreqTally {
-    min: f64,
-    max: f64,
-    sum: f64,
+    freq_mhz_min: f64,
+    freq_mhz_max: f64,
+    freq_mhz_sum: f64,
     count: u32,
 }
 
 impl FreqTally {
     const EMPTY: Self = Self {
-        min: 0.,
-        max: 0.,
-        sum: 0.,
+        freq_mhz_min: 0.,
+        freq_mhz_max: 0.,
+        freq_mhz_sum: 0.,
         count: 0,
     };
 
-    fn add(&mut self, freq: f64) {
+    fn add(&mut self, freq_mhz: f64) {
         if self.count == 0 {
             // The first value is both bounds.
             *self = Self {
-                min: freq,
-                max: freq,
-                sum: freq,
+                freq_mhz_min: freq_mhz,
+                freq_mhz_max: freq_mhz,
+                freq_mhz_sum: freq_mhz,
                 count: 1,
             };
             return;
         }
         // `total_cmp` gives every value, NaN included, a place.
-        if freq.total_cmp(&self.min).is_lt() {
-            self.min = freq;
+        if freq_mhz.total_cmp(&self.freq_mhz_min).is_lt() {
+            self.freq_mhz_min = freq_mhz;
         }
-        if freq.total_cmp(&self.max).is_gt() {
-            self.max = freq;
+        if freq_mhz.total_cmp(&self.freq_mhz_max).is_gt() {
+            self.freq_mhz_max = freq_mhz;
         }
         // A running total and count, for the mean `freqs` takes.
-        self.sum += freq;
+        self.freq_mhz_sum += freq_mhz;
         self.count += 1;
     }
 
@@ -435,10 +435,10 @@ impl FreqTally {
     fn freqs(&self) -> CpuFreqs {
         debug_assert!(self.count > 0);
         CpuFreqs {
-            min: self.min.round() as Mhz,
-            max: self.max.round() as Mhz,
+            min: self.freq_mhz_min.round() as Mhz,
+            max: self.freq_mhz_max.round() as Mhz,
             // The mean over every processor the package reported.
-            avg: (self.sum / f64::from(self.count)).round() as Mhz,
+            avg: (self.freq_mhz_sum / f64::from(self.count)).round() as Mhz,
         }
     }
 }
