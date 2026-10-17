@@ -74,6 +74,8 @@ impl ProcFile {
                 return Err(err.into());
             }
         };
+        debug_assert!(filled <= buf.len());
+        debug_assert!(filled <= self.max_bytes);
         self.file.replace(Some(file));
         let parsed = std::str::from_utf8(&buf[..filled]).map(parse);
         self.buf.replace(buf);
@@ -88,6 +90,8 @@ impl ProcFile {
         if buf.len() < size {
             grow_to(&mut buf, size);
         }
+        assert!(buf.len() >= size);
+        assert!(buf.len() <= self.max_bytes);
     }
 }
 
@@ -100,6 +104,7 @@ async fn read_all(file: &File, buf: &mut Vec<u8>, max_bytes: usize) -> io::Resul
     // spends one of `MAX_INTERRUPTED_READS`.
     loop {
         debug_assert!(filled <= buf.len());
+        debug_assert!(buf.len() <= max_bytes);
         // Full: the file may hold more, so make room before asking for it.
         if filled == buf.len() {
             if buf.len() >= max_bytes {
@@ -134,6 +139,7 @@ fn grow_to(buf: &mut Vec<u8>, size: usize) {
     let missing = size - buf.len();
     buf.reserve_exact(missing);
     buf.resize(size, 0);
+    debug_assert_eq!(buf.len(), size);
 }
 
 #[cfg(test)]

@@ -429,6 +429,8 @@ impl FreqTally {
         // A running total and count, for the mean `freqs` takes.
         self.freq_mhz_sum += freq_mhz;
         self.count += 1;
+        debug_assert!(self.freq_mhz_min.total_cmp(&self.freq_mhz_max).is_le());
+        debug_assert!(self.count > 1);
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]

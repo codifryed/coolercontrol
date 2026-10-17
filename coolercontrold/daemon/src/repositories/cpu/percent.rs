@@ -101,6 +101,8 @@ impl CpuPercentCollector {
         let mut prev = self.prev.borrow_mut();
         let mut next = self.next.borrow_mut();
         compute_percents(&prev, &next, &mut percents);
+        debug_assert!(percents.len() <= next.len());
+        debug_assert!(next.len() <= MAX_LOGICAL_CPUS);
         // The new snapshot becomes the baseline, and the old one's room takes the next parse.
         std::mem::swap(&mut *prev, &mut *next);
         Ok(())
