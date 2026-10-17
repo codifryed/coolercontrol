@@ -488,20 +488,29 @@ const saveLegendHeight = (): void => {
     if (sizePx == null) return
     settingsStore.setStatsLegendHeight(dashboard.uid, Math.round((sizePx * 10) / remPx) / 10)
 }
-// A click on the handle also emits dragging, so save only when the size moved.
-let dragStartSizePx: number | undefined
+// A click or a key at the size limit resizes nothing, so save only when the size moved.
+let resizeStartSizePx: number | undefined
+const startLegendResize = (): void => {
+    resizeStartSizePx = legendPanelRef.value?.getSize()
+}
+const endLegendResize = (): void => {
+    const startSizePx = resizeStartSizePx
+    resizeStartSizePx = undefined
+    if (legendPanelRef.value?.getSize() !== startSizePx) saveLegendHeight()
+}
 const onLegendDragging = (dragging: boolean): void => {
-    const sizePx = legendPanelRef.value?.getSize()
-    if (dragging) {
-        dragStartSizePx = sizePx
-        return
-    }
-    if (sizePx !== dragStartSizePx) saveLegendHeight()
+    if (dragging) startLegendResize()
+    else endLegendResize()
 }
 // The keys reka resizes a vertical splitter with.
 const LEGEND_RESIZE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Home', 'End'])
+const isLegendResizeKey = (event: KeyboardEvent): boolean => LEGEND_RESIZE_KEYS.has(event.key)
+// Our listener runs before reka's keydown resize. Auto-repeat keeps the first start size.
+const onLegendKeydown = (event: KeyboardEvent): void => {
+    if (isLegendResizeKey(event) && resizeStartSizePx === undefined) startLegendResize()
+}
 const onLegendKeyup = (event: KeyboardEvent): void => {
-    if (LEGEND_RESIZE_KEYS.has(event.key)) saveLegendHeight()
+    if (isLegendResizeKey(event) && resizeStartSizePx !== undefined) endLegendResize()
 }
 // The splitter keeps a squeezed legend squeezed, so growing room gives the saved height back.
 let splitterHeightPx = 0
@@ -884,6 +893,7 @@ onUnmounted(() => {
                         <SplitterResizeHandle
                             class="h-px shrink-0 bg-border-one outline-none focus-visible:bg-accent data-[resize-handle-state=drag]:bg-accent data-[resize-handle-state=hover]:bg-accent"
                             @dragging="onLegendDragging"
+                            @keydown="onLegendKeydown"
                             @keyup="onLegendKeyup"
                         />
                         <SplitterPanel
