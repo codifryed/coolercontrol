@@ -409,11 +409,21 @@ impl FreqTally {
     };
 
     fn add(&mut self, freq: f64) {
-        // The first value is both bounds. `total_cmp` gives every value, NaN included, a place.
-        if self.count == 0 || freq.total_cmp(&self.min).is_lt() {
+        if self.count == 0 {
+            // The first value is both bounds.
+            *self = Self {
+                min: freq,
+                max: freq,
+                sum: freq,
+                count: 1,
+            };
+            return;
+        }
+        // `total_cmp` gives every value, NaN included, a place.
+        if freq.total_cmp(&self.min).is_lt() {
             self.min = freq;
         }
-        if self.count == 0 || freq.total_cmp(&self.max).is_gt() {
+        if freq.total_cmp(&self.max).is_gt() {
             self.max = freq;
         }
         // A running total and count, for the mean `freqs` takes.

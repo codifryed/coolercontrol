@@ -121,8 +121,12 @@ async fn read_all(file: &File, buf: &mut Vec<u8>, max_bytes: usize) -> io::Resul
         match file.read_at(&mut buf[filled..], filled as u64) {
             Ok(0) => return Ok(filled),
             Ok(read) => filled += read,
-            Err(err) if err.kind() == ErrorKind::Interrupted && interrupts_left > 0 => {
-                interrupts_left -= 1;
+            Err(err) if err.kind() == ErrorKind::Interrupted => {
+                if interrupts_left > 0 {
+                    interrupts_left -= 1;
+                } else {
+                    return Err(err);
+                }
             }
             Err(err) => return Err(err),
         }
