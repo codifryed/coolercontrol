@@ -268,7 +268,7 @@ test_msrv:
 # test_all runs on amd64, and the arm64 package builds run their tests on older releases, so a
 # newer aarch64 userland went untested until a distro built us: glibc 2.43's malloc THP default
 # broke a test only on OBS. Manual for merge requests, automatic for releases, and nothing needs
-# it. A debug build needs no UI, and gated tests stay off, as in distro builds.
+# it. A debug build needs no UI. Gated tests run too, as in test_all.
 test_arm64_latest:
   stage: test
   image: ubuntu:rolling
@@ -305,7 +305,7 @@ test_arm64_latest:
     - ldd --version | head -n 1
     - cargo --version
   script:
-    - cargo test --locked --manifest-path coolercontrold/Cargo.toml
+    - cargo test --locked --manifest-path coolercontrold/Cargo.toml --features coolercontrold/gated-tests
 
 ####################################### Dependency audit
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
