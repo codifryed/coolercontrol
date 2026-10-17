@@ -23,10 +23,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${REPO_ROOT}"
 
 # coolercontrold daemon (cargo bump is the source of truth for NEW_VER)
+# Only the daemon: the other workspace crates are versioned by hand.
 cd coolercontrold/daemon
 cargo install cargo-edit
 cargo install cargo-get
-cargo set-version --offline --bump "$1"
+cargo set-version --offline --bump "$1" --package coolercontrold
 eval NEW_VER="$(cargo get package.version)"
 cd "${REPO_ROOT}"
 echo "Setting all application version to $NEW_VER"
