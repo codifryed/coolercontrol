@@ -146,6 +146,7 @@ interface TempOption {
     color: string
 }
 interface TempGroup {
+    deviceUID: string
     deviceName: string
     temps: Array<TempOption>
 }
@@ -161,7 +162,11 @@ const fillTemps = (): void => {
         if (device.status.temps.length === 0 || device.info == null) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)
         if (deviceSettings == null) continue
-        const group: TempGroup = { deviceName: deviceSettings.name, temps: [] }
+        const group: TempGroup = {
+            deviceUID: device.uid,
+            deviceName: deviceSettings.name,
+            temps: [],
+        }
         for (const temp of device.status.temps) {
             const sc = deviceSettings.sensorsAndChannels.get(temp.name)
             const option: TempOption = {
@@ -182,6 +187,7 @@ const tempKey = (deviceUID: string, tempName: string): string => `${deviceUID}/$
 const tempOptionGroups = computed<UiOptionGroup[]>(() =>
     tempGroups.value.map((group) => ({
         label: group.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(group.deviceUID)?.userColor,
         options: group.temps.map((temp) => ({
             label: temp.label,
             value: tempKey(temp.deviceUID, temp.tempName),

@@ -416,6 +416,7 @@ const offsetMax = computed(() => offsetLimit(selectedMetric.value))
 const sourceOptionGroups = computed(() =>
     sourceGroups.value.map((group) => ({
         label: group.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(group.deviceUID)?.userColor,
         options: group.sources.map((source) => ({
             label: source.frontendName,
             value: sourceKey(source),
