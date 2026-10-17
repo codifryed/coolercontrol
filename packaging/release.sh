@@ -10,7 +10,7 @@ eval RELEASE_VERSION="$(cargo get package.version)"
 popd
 cd ..
 git add CHANGELOG.md \
-    coolercontrold/Cargo.toml \
+    coolercontrold/daemon/Cargo.toml \
     coolercontrold/Cargo.lock \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
