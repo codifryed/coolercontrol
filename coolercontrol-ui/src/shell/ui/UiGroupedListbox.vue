@@ -29,6 +29,8 @@ export interface UiOptionGroup {
     id?: string
     /** Heading icon; the memory chip when a group does not name one. */
     icon?: string
+    /** Heading icon color, such as the device's color; the text color when unset. */
+    color?: string
 }
 
 // Grouped single- or multi-select option list with optional filtering.
@@ -126,6 +128,7 @@ onMounted(async () => {
                             :path="group.icon ?? mdiMemory"
                             :size="18"
                             class="shrink-0"
+                            :style="group.color ? { color: group.color } : undefined"
                         />
                         {{ group.label }}
                     </slot>

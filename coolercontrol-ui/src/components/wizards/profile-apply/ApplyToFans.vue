@@ -150,6 +150,7 @@ const channelKey = (deviceUID: string, channelName: string): string => `${device
 const channelGroups = computed<UiOptionGroup[]>(() =>
     availableControlChannels.value.map((device) => ({
         label: device.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(device.deviceUID)?.userColor,
         options: device.channels.map((ch) => ({
             label: ch.channelFrontendName,
             value: channelKey(ch.deviceUID, ch.channelName),

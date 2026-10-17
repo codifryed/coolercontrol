@@ -385,6 +385,7 @@ const thresholdSuffix = computed((): string => valueSuffix(selectedChannels.valu
 const sourceGroups = computed(() =>
     channelSources.value.map((source) => ({
         label: source.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(source.deviceUID)?.userColor,
         options: source.channels.map((channel) => ({
             label: channel.channelFrontendName,
             value: channelKey(channel),

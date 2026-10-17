@@ -394,6 +394,7 @@ const tempKey = (deviceUID: string, tempName: string): string => `${deviceUID}/$
 const tempSourceGroups = computed<UiOptionGroup[]>(() =>
     tempSources.value.map((device) => ({
         label: device.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(device.deviceUID)?.userColor,
         options: device.temps.map((temp) => ({
             label: temp.tempFrontendName,
             value: tempKey(temp.deviceUID, temp.tempName),

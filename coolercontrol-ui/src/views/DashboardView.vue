@@ -335,6 +335,7 @@ const sensorKey = (sensor: AvailableSensor): string => `${sensor.deviceUID}/${se
 const sensorGroups = computed(() =>
     filteredSensorSources.value.map((source) => ({
         label: source.deviceName,
+        color: settingsStore.allUIDeviceSettings.get(source.deviceUID)?.userColor,
         options: source.sensors.map((sensor) => ({
             label: sensor.label,
             value: sensorKey(sensor),
