@@ -111,16 +111,16 @@ impl CpuPercentCollector {
         Ref::map(self.percents.borrow(), Vec::as_slice)
     }
 
-    /// Stands in for a sample, for tests of what the load is used for.
-    #[cfg(test)]
-    pub fn set_percents(&self, percents: Vec<CpuPercent>) {
-        *self.percents.borrow_mut() = percents;
-    }
-
     /// The CPUs online at the latest snapshot, ascending.
     pub fn online_cpu_ids(&self) -> impl Iterator<Item = u16> + '_ {
         let prev = self.prev.borrow();
         (0..prev.len()).map(move |index| prev[index].cpu_id)
+    }
+
+    /// Stands in for a sample, for tests of what the load is used for.
+    #[cfg(test)]
+    pub fn set_percents(&self, percents: Vec<CpuPercent>) {
+        *self.percents.borrow_mut() = percents;
     }
 }
 

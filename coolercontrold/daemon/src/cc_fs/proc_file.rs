@@ -50,20 +50,6 @@ impl ProcFile {
         }
     }
 
-    /// Sizes the buffer for a file of `len` bytes, so reads do not grow it.
-    pub fn reserve(&self, len: usize) {
-        let mut buf = self.buf.borrow_mut();
-        // One growth step of headroom lets the file run a little longer than it does now.
-        let size = (len + GROWTH_BYTES).min(self.max_bytes);
-        if buf.len() < size {
-            // Only the missing bytes: the buffer is kept for good, so amortized slack would never
-            // be used.
-            let missing = size - buf.len();
-            buf.reserve_exact(missing);
-            buf.resize(size, 0);
-        }
-    }
-
     /// Reads the whole file and hands its text to `parse`.
     ///
     /// Reads are expected one at a time. An overlapping read still works, but grows a buffer of
@@ -92,6 +78,20 @@ impl ProcFile {
         let parsed = std::str::from_utf8(&buf[..filled]).map(parse);
         self.buf.replace(buf);
         Ok(parsed?)
+    }
+
+    /// Sizes the buffer for a file of `len` bytes, so reads do not grow it.
+    pub fn reserve(&self, len: usize) {
+        let mut buf = self.buf.borrow_mut();
+        // One growth step of headroom lets the file run a little longer than it does now.
+        let size = (len + GROWTH_BYTES).min(self.max_bytes);
+        if buf.len() < size {
+            // Only the missing bytes: the buffer is kept for good, so amortized slack would never
+            // be used.
+            let missing = size - buf.len();
+            buf.reserve_exact(missing);
+            buf.resize(size, 0);
+        }
     }
 }
 
