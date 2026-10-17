@@ -21,7 +21,7 @@ use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
 use crate::repositories::cpu::association::{
     self, CpuAssociation, CpuDriver, DriverCensus, ZoneID,
 };
-use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
+use crate::repositories::cpu::percent::{CpuPercentCollector, MAX_LOGICAL_CPUS};
 use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::device_summary;
@@ -43,6 +43,9 @@ const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
 const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
 const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
+/// Bound on cpuinfo: 8 KiB for each of `MAX_LOGICAL_CPUS`, well above the about 2 KiB each
+/// processor takes on x86 today.
+const CPUINFO_MAX_BYTES: usize = MAX_LOGICAL_CPUS * 8 * 1024;
 
 /// A CPU device and what it was built from. The association is kept rather than recovered from
 /// `type_index`, so the `+ 1` that numbers a device lives in `device_type_index` alone.
@@ -62,9 +65,11 @@ pub struct CpuRepo {
     /// What cpuinfo says about this machine's processors. Empty until `initialize_devices` reads
     /// it, which every other path here runs after.
     topology: CpuTopology,
-    cpu_percent_collector: RefCell<CpuPercentCollector>,
-    /// The latest load sample for every processor, taken once per poll and shared by all packages.
-    cpu_load_percents: RefCell<Vec<CpuPercent>>,
+    /// Read every poll for the package frequencies.
+    cpuinfo: cc_fs::ProcFile,
+    /// Holds the latest load sample for every processor, taken once per poll and shared by all
+    /// packages.
+    cpu_percent_collector: CpuPercentCollector,
     /// Keyed by association, so a zone-keyed device cannot be confused with the socket whose
     /// physical id happens to be the same number.
     preloaded_statuses: RefCell<HashMap<CpuAssociation, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
@@ -82,8 +87,8 @@ impl CpuRepo {
             devices: HashMap::new(),
             apple_silicon: None,
             topology: CpuTopology::default(),
-            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
-            cpu_load_percents: RefCell::new(Vec::new()),
+            cpuinfo: cc_fs::ProcFile::new(Path::new(CPUINFO_PATH), CPUINFO_MAX_BYTES),
+            cpu_percent_collector: CpuPercentCollector::new()?,
             preloaded_statuses: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
             poll_rate: 0.,
@@ -185,6 +190,7 @@ impl CpuRepo {
         };
         self.topology =
             CpuTopology::parse_with_board_model(&cpu_info_data, apple_silicon_model.as_deref())?;
+        self.cpuinfo.reserve(cpu_info_data.len());
         trace!("CPU topology: {:?}", self.topology);
         Ok(())
     }
@@ -195,16 +201,13 @@ impl CpuRepo {
     /// processor map is refreshed here when processors went offline or came online, so load
     /// follows them at runtime.
     async fn sample_cpu_load(&self) {
-        let (percents, owners_are_current) = {
-            let mut collector = self.cpu_percent_collector.borrow_mut();
-            let percents = collector.cpu_percent_per_cpu().unwrap_or_default();
-            let owners_are_current = self.topology.owners_are_current(collector.online_cpu_ids());
-            (percents, owners_are_current)
-        };
+        let collector = &self.cpu_percent_collector;
+        // A failed read leaves no percentages, so every package reports 0 load this poll.
+        let _ = collector.sample().await;
+        let owners_are_current = self.topology.owners_are_current(collector.online_cpu_ids());
         if owners_are_current.not() {
             self.refresh_processor_owners().await;
         }
-        *self.cpu_load_percents.borrow_mut() = percents;
     }
 
     /// Re-reads which physical id each online processor belongs to.
@@ -327,7 +330,7 @@ impl CpuRepo {
     fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> ChannelStatus {
         let load = self
             .topology
-            .package_load_percent(&self.cpu_load_percents.borrow(), physical_id)
+            .package_load_percent(&self.cpu_percent_collector.percents(), physical_id)
             .unwrap_or(0.0);
         ChannelStatus {
             name: channel_name.to_string(),
@@ -337,14 +340,14 @@ impl CpuRepo {
     }
 
     /// The frequencies of every package, read fresh from cpuinfo.
-    async fn collect_freq(&self, cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
+    async fn collect_freq(&self) -> HashMap<PhysicalID, CpuFreqs> {
         if let Some(apple_silicon) = &self.apple_silicon {
             return apple_silicon.read_freqs().await;
         }
-        let Ok(cpu_info_data) = cc_fs::read_txt(cpuinfo_path).await else {
-            return HashMap::new();
-        };
-        topology::parse_freqs(&cpu_info_data)
+        self.cpuinfo
+            .read_with(topology::parse_freqs)
+            .await
+            .unwrap_or_default()
     }
 
     fn get_status_from_freq_output(
@@ -376,7 +379,7 @@ impl CpuRepo {
     /// then on `collect_load` reports it in every poll, as with every other channel.
     fn init_cpu_load(&self, physical_id: PhysicalID) -> Option<HwmonChannelInfo> {
         self.topology
-            .package_load_percent(&self.cpu_load_percents.borrow(), physical_id)?;
+            .package_load_percent(&self.cpu_percent_collector.percents(), physical_id)?;
         Some(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Load,
             number: physical_id,
@@ -632,7 +635,7 @@ impl CpuRepo {
     ) -> HashMap<CpuAssociation, HwmonDriverInfo> {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.topology.package_count();
-        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq().await;
         if cpu_freqs.is_empty() {
             // should warn for multi-cpus, but info otherwise
             let lvl = if num_of_cpus > 1 {
@@ -803,7 +806,7 @@ impl CpuRepo {
             info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
             return None;
         }
-        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq().await;
         let mut channels = self
             .init_socket_channels(apple_silicon::PACKAGE, &mut cpu_freqs)
             .await;
@@ -883,7 +886,7 @@ impl Repository for CpuRepo {
             }
         }
 
-        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq().await;
         // A zone-keyed device has no cpuinfo entry of its own. The name has to be resolved the
         // same way it was when the device was built, or every such device would be dropped here.
         for (association, driver) in hwmon_devices {
@@ -1020,7 +1023,7 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let mut cpu_freqs = self.collect_freq(CPUINFO_PATH.as_ref()).await;
+        let mut cpu_freqs = self.collect_freq().await;
         self.sample_cpu_load().await;
         moro_local::async_scope!(|scope| {
             for cpu_device in self.devices.values() {
@@ -1219,13 +1222,15 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
-            *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
-                .step_by(2)
-                .map(|cpu_id| CpuPercent {
-                    cpu_id,
-                    percent: 50.0,
-                })
-                .collect();
+            cpu_repo.cpu_percent_collector.set_percents(
+                (0..16)
+                    .step_by(2)
+                    .map(|cpu_id| CpuPercent {
+                        cpu_id,
+                        percent: 50.0,
+                    })
+                    .collect(),
+            );
 
             // when:
             let package_0 = cpu_repo.collect_load(0, "CPU Load");
@@ -1252,12 +1257,14 @@ mod tests {
         cc_fs::test_runtime(async {
             // given: package 0 fully loaded, and a driver with a load channel.
             let cpu_repo = repo_from_cpuinfo(fixtures::INTEL_DOUBLE_CPU);
-            *cpu_repo.cpu_load_percents.borrow_mut() = (0..16)
-                .map(|cpu_id| CpuPercent {
-                    cpu_id,
-                    percent: 50.0,
-                })
-                .collect();
+            cpu_repo.cpu_percent_collector.set_percents(
+                (0..16)
+                    .map(|cpu_id| CpuPercent {
+                        cpu_id,
+                        percent: 50.0,
+                    })
+                    .collect(),
+            );
             let driver = HwmonDriverInfo {
                 channels: vec![HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
@@ -1427,7 +1434,7 @@ mod tests {
             cpu_repo.apple_silicon = Some(apple_silicon);
 
             // when:
-            let mut cpu_freqs = cpu_repo.collect_freq(&base.join("cpuinfo")).await;
+            let mut cpu_freqs = cpu_repo.collect_freq().await;
             let statuses = cpu_repo
                 .collect_socket_channels(
                     0,
