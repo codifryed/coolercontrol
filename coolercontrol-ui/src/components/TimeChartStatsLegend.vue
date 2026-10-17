@@ -72,8 +72,10 @@ const sensorRoute = (line: WindowLineStats): RouteLocationRaw =>
 </script>
 
 <template>
-    <div id="time-chart-legend" class="border-t border-border-one">
-        <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-1 pt-2">
+    <div class="flex h-full flex-col">
+        <div
+            class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-1 pt-2"
+        >
             <span class="font-semibold">{{ t('components.chartStats.title') }}</span>
             <span class="inline-flex items-center gap-1.5">
                 <UiToggleGroup
@@ -85,7 +87,7 @@ const sensorRoute = (line: WindowLineStats): RouteLocationRaw =>
                 <HelpIcon :text="t('components.chartStats.sinceStartHelp')" :size="0.9" />
             </span>
         </div>
-        <div class="max-h-[35vh] overflow-auto px-2 pb-2">
+        <div class="min-h-0 flex-1 overflow-auto px-2 pb-2">
             <table class="w-full min-w-[32rem] border-collapse text-sm tabular-nums">
                 <thead>
                     <tr class="text-text-color-secondary">

@@ -49,6 +49,7 @@ import { component as Fullscreen } from 'vue-fullscreen'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useWindowSize } from '@vueuse/core'
+import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { useConfirm } from '@/shell/confirm'
 import UiButton from '@/shell/ui/UiButton.vue'
 import UiMultiSelect from '@/shell/ui/UiMultiSelect.vue'
@@ -205,6 +206,8 @@ const duplicateDashboard = (): void => {
     copy.deviceChannelNames = dashboard.deviceChannelNames.map(
         (ch) => new DashboardDeviceChannel(ch.deviceUID, ch.channelName),
     )
+    const legendHeightRem = settingsStore.statsLegendHeightRem(dashboard.uid)
+    if (legendHeightRem != null) settingsStore.setStatsLegendHeight(copy.uid, legendHeightRem)
     settingsStore.dashboards.push(copy)
     router.push({ name: 'monitoring-dashboard', params: { dashboardUID: copy.uid } })
 }
@@ -470,7 +473,32 @@ const showLegend = computed(
     (): boolean =>
         !sensorMode && dashboard.chartType === ChartType.TIME_CHART && dashboard.showStatsLegend,
 )
-const legendRef = ref<InstanceType<typeof TimeChartStatsLegend> | null>(null)
+// The legend keeps its height in px, so a window resize keeps the same rows in view.
+const remPx = deviceStore.getREMSize(1)
+const minLegendHeightPx = 6 * remPx
+const defaultLegendHeightRem = 20
+const savedLegendHeightPx = (): number =>
+    (settingsStore.statsLegendHeightRem(dashboard.uid) ?? defaultLegendHeightRem) * remPx
+const splitterRef = ref<InstanceType<typeof SplitterGroup>>()
+const legendPanelRef = ref<InstanceType<typeof SplitterPanel>>()
+// Saved on a user resize only: a shrinking window also squeezes the legend, and that must
+// not overwrite the chosen height.
+const saveLegendHeight = (): void => {
+    const sizePx = legendPanelRef.value?.getSize()
+    if (sizePx == null) return
+    settingsStore.setStatsLegendHeight(dashboard.uid, Math.round((sizePx * 10) / remPx) / 10)
+}
+// The splitter keeps a squeezed legend squeezed, so growing room gives the saved height back.
+let splitterHeightPx = 0
+const restoreLegendHeight = (): void => {
+    const heightPx: number = splitterRef.value?.$el?.clientHeight ?? 0
+    const grew = heightPx > splitterHeightPx
+    splitterHeightPx = heightPx
+    const panel = legendPanelRef.value
+    if (!grew || panel == null) return
+    // 1px of slack: the size round-trips through a percent.
+    if (panel.getSize() < savedLegendHeightPx() - 1) panel.resize(savedLegendHeightPx())
+}
 const showPanel = computed(
     (): boolean =>
         sensorMode &&
@@ -508,11 +536,13 @@ const addScrollEventListener = (): void => {
 const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('u-plot-chart')
     if (graphEl != null) {
-        // The stats legend sits under the chart, so the chart leaves room for it.
-        const legend = document.getElementById('time-chart-legend')
-        const legendHeight = legend ? Math.ceil(legend.getBoundingClientRect().height) : 0
+        // With the legend, the splitter sizes the chart.
+        if (showLegend.value) {
+            graphEl.style.height = ''
+            return
+        }
         if (fullPage.value) {
-            graphEl.style.height = `calc(100vh - 1rem - ${legendHeight}px)`
+            graphEl.style.height = 'calc(100vh - 1rem)'
             return
         }
         // Fill the viewport from wherever the chart starts; works both at the page
@@ -521,7 +551,7 @@ const updateResponsiveGraphHeight = (): void => {
         const top = Math.ceil(graphEl.getBoundingClientRect().top)
         const bottomNav = document.getElementById('shell-bottom-nav')
         const bottomNavHeight = bottomNav ? Math.ceil(bottomNav.getBoundingClientRect().height) : 0
-        graphEl.style.height = `calc(100vh - ${top + 12 + bottomNavHeight + legendHeight}px)`
+        graphEl.style.height = `calc(100vh - ${top + 12 + bottomNavHeight}px)`
     }
 }
 
@@ -537,19 +567,6 @@ const toggleFullPage = async (): Promise<void> => {
 const chartKey: Ref<string> = ref(uuidV4())
 const sensorTableRef = ref<InstanceType<typeof SensorTable> | null>(null)
 let panelResizeObserver: ResizeObserver | null = null
-// The legend grows as its rows arrive and when lines are added, so the chart re-fits with it.
-let legendResizeObserver: ResizeObserver | null = null
-watch(legendRef, (legend) => {
-    legendResizeObserver?.disconnect()
-    legendResizeObserver = null
-    const el: Element | undefined = legend?.$el
-    if (el == null) {
-        updateResponsiveGraphHeight()
-        return
-    }
-    legendResizeObserver = new ResizeObserver(() => updateResponsiveGraphHeight())
-    legendResizeObserver.observe(el)
-})
 onMounted(async () => {
     window.addEventListener('resize', updateResponsiveGraphHeight)
     setTimeout(updateResponsiveGraphHeight)
@@ -584,8 +601,6 @@ onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
     panelResizeObserver?.disconnect()
     panelResizeObserver = null
-    legendResizeObserver?.disconnect()
-    legendResizeObserver = null
 })
 </script>
 
@@ -822,34 +837,59 @@ onUnmounted(() => {
                         />
                     </div>
                 </div>
-                <template v-if="dashboard.chartType == ChartType.TIME_CHART">
-                    <TimeChart
-                        ref="timeChartRef"
-                        :dashboard="viewDashboard"
-                        :key="chartKey"
-                        :emit-window-stats="showLegend || showPanel"
-                        :limit-lines="limitLines"
-                        @line-set-changed="chartKey = uuidV4()"
-                        @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
-                    />
-                    <SensorStatsPanel
-                        v-if="showPanel"
-                        :payload="windowStats"
-                        :range-minutes="chartMinutes"
-                        :attributes="attributes"
-                        :limit-lines="limitLines"
-                        @refresh-attributes="loadAttributes"
-                    />
-                    <TimeChartStatsLegend
-                        v-if="showLegend"
-                        ref="legendRef"
-                        :payload="windowStats"
-                        :range-minutes="chartMinutes"
-                        @focus-line="
-                            (seriesIndex: number | null) => timeChartRef?.focusLine(seriesIndex)
-                        "
-                    />
-                </template>
+                <SplitterGroup
+                    v-if="dashboard.chartType == ChartType.TIME_CHART"
+                    ref="splitterRef"
+                    direction="vertical"
+                    class="h-full"
+                    @layout="restoreLegendHeight"
+                >
+                    <SplitterPanel id="dashboard-chart" :order="1" :min-size="20">
+                        <TimeChart
+                            ref="timeChartRef"
+                            class="h-full"
+                            style="--time-chart-height: 100%"
+                            :dashboard="viewDashboard"
+                            :key="chartKey"
+                            :emit-window-stats="showLegend || showPanel"
+                            :limit-lines="limitLines"
+                            @line-set-changed="chartKey = uuidV4()"
+                            @window-stats="(payload: WindowStatsPayload) => (windowStats = payload)"
+                        />
+                        <SensorStatsPanel
+                            v-if="showPanel"
+                            :payload="windowStats"
+                            :range-minutes="chartMinutes"
+                            :attributes="attributes"
+                            :limit-lines="limitLines"
+                            @refresh-attributes="loadAttributes"
+                        />
+                    </SplitterPanel>
+                    <template v-if="showLegend">
+                        <SplitterResizeHandle
+                            class="h-px shrink-0 bg-border-one outline-none focus-visible:bg-accent data-[resize-handle-state=drag]:bg-accent data-[resize-handle-state=hover]:bg-accent"
+                            @dragging="(dragging: boolean) => dragging || saveLegendHeight()"
+                            @keyup="saveLegendHeight"
+                        />
+                        <SplitterPanel
+                            id="dashboard-legend"
+                            ref="legendPanelRef"
+                            :order="2"
+                            size-unit="px"
+                            :default-size="savedLegendHeightPx()"
+                            :min-size="minLegendHeightPx"
+                        >
+                            <TimeChartStatsLegend
+                                :payload="windowStats"
+                                :range-minutes="chartMinutes"
+                                @focus-line="
+                                    (seriesIndex: number | null) =>
+                                        timeChartRef?.focusLine(seriesIndex)
+                                "
+                            />
+                        </SplitterPanel>
+                    </template>
+                </SplitterGroup>
                 <SensorTable
                     v-else-if="dashboard.chartType == ChartType.TABLE"
                     ref="sensorTableRef"
