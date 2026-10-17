@@ -11,6 +11,9 @@ popd
 cd ..
 git add CHANGELOG.md \
     coolercontrold/daemon/Cargo.toml \
+    coolercontrold/cc-detect/Cargo.toml \
+    coolercontrold/cc-image/Cargo.toml \
+    coolercontrold/cc-stress/Cargo.toml \
     coolercontrold/Cargo.lock \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
