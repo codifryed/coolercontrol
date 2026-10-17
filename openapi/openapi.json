@@ -8982,7 +8982,7 @@
             "$ref": "#/components/schemas/DeviceType"
           },
           "status_history": {
-            "description": "Status history wrapped in Arc for O(1) cloning for serialization",
+            "description": "The device's statuses, oldest first. A copy taken on request.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Status"

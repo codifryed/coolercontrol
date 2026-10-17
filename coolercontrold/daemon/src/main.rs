@@ -53,6 +53,7 @@ mod hardware_support;
 mod hashutil;
 mod logger;
 mod main_loop;
+mod malloc_threshold;
 mod modes;
 mod notifier;
 mod open_files;
@@ -309,6 +310,7 @@ impl Args {
 /// latencies.
 #[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
+    malloc_threshold::pin();
     let cmd_args: Args = Args::parse();
     rt::runtime(async {
         let run_token = setup_termination_signals();
@@ -342,7 +344,8 @@ fn main() -> Result<()> {
         }
         paths::ensure_data_dir().await?;
         // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
-        // reactor, so run it on the sidecar. Harmless on the Tokio backend too.
+        // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
+        // unused here: loading it resets a stored file's permissions to 0600.
         sidecar::handle().run(admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
@@ -1006,7 +1009,7 @@ async fn init_liquidctl_repo(
     let lc_repo = Rc::new(lc_repo);
     Rc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_infos_from_first_status();
-    lc_repo.update_statuses().await?;
+    lc_repo.update_statuses(chrono::Local::now()).await?;
     lc_repo.initialize_all_device_status_histories_with_current_status()?;
     Ok((lc_repo, lc_locations))
 }

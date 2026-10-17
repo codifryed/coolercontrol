@@ -4,15 +4,14 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::status::{DeviceChannelStatusDto, DeviceStatusDto};
 use crate::api::CCError;
-use crate::device::{ChannelName, Status, UID};
+use crate::device::{ChannelName, UID};
 use crate::repositories::repository::DeviceLock;
 use crate::AllDevices;
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use moro_local::Scope;
-use std::collections::VecDeque;
 use std::ops::Deref;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -179,31 +178,21 @@ fn get_statuses_since(
 ) -> DeviceStatusDto {
     let timestamp_limit = since_timestamp + *MAX_UPDATE_TIMESTAMP_VARIATION;
     let device = device_lock.borrow();
-    let filtered_history: VecDeque<Status> = device
-        .status_history
-        .iter()
-        .filter(|device_status| device_status.timestamp > timestamp_limit)
-        .cloned()
-        .collect();
     DeviceStatusDto {
         d_type: device.d_type,
         type_index: device.type_index,
         uid: device.uid.clone(),
-        status_history: Arc::new(filtered_history),
+        status_history: device.snapshot_since(timestamp_limit),
     }
 }
 
 fn get_most_recent_status(device_lock: &DeviceLock) -> DeviceStatusDto {
-    let mut status_history: VecDeque<Status> = VecDeque::with_capacity(1);
     let device = device_lock.borrow();
-    if let Some(most_recent_status) = device.status_current() {
-        status_history.push_back(most_recent_status);
-    }
     DeviceStatusDto {
         d_type: device.d_type,
         type_index: device.type_index,
         uid: device.uid.clone(),
-        status_history: Arc::new(status_history),
+        status_history: device.snapshot_recent(),
     }
 }
 
@@ -211,51 +200,18 @@ fn get_all_statuses_for_channel(
     device_lock: &DeviceLock,
     channel_name: &ChannelName,
 ) -> DeviceChannelStatusDto {
-    let device = device_lock.borrow();
-    let status_history = device
-        .status_history
-        .iter()
-        .map(|status| {
-            let mut filtered_status = Status {
-                timestamp: status.timestamp,
-                ..Default::default()
-            };
-            status
-                .temps
-                .iter()
-                .filter(|status| &status.name == channel_name)
-                .for_each(|status| {
-                    filtered_status.temps.push(status.clone());
-                });
-            status
-                .channels
-                .iter()
-                .filter(|status| &status.name == channel_name)
-                .for_each(|status| {
-                    filtered_status.channels.push(status.clone());
-                });
-            filtered_status
-        })
-        .collect();
-    DeviceChannelStatusDto { status_history }
+    DeviceChannelStatusDto {
+        status_history: device_lock.borrow().snapshot_name(channel_name),
+    }
 }
 
 fn get_most_recent_status_for_channel(
     device_lock: &DeviceLock,
     channel_name: &ChannelName,
 ) -> DeviceChannelStatusDto {
-    let mut status_history: Vec<Status> = Vec::with_capacity(1);
-    let device = device_lock.borrow();
-    if let Some(mut most_recent_status) = device.status_current() {
-        most_recent_status
-            .channels
-            .retain(|status| &status.name == channel_name);
-        most_recent_status
-            .temps
-            .retain(|status| &status.name == channel_name);
-        status_history.push(most_recent_status);
+    DeviceChannelStatusDto {
+        status_history: device_lock.borrow().snapshot_name_recent(channel_name),
     }
-    DeviceChannelStatusDto { status_history }
 }
 
 #[derive(Clone)]

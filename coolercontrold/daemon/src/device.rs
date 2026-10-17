@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod status_ring;
+
 use std::fmt::Debug;
 use std::ops::Not;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::{
-    collections::{HashMap, VecDeque},
-    time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
@@ -16,8 +14,18 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
+use log::warn;
+pub use status_ring::StatusSnapshot;
+use status_ring::{local_time, timestamp_ns, SnapshotFilter, StatusRing, MAX_NAMES};
 
 const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of recorded data
+
+/// History slots at the slowest and the fastest poll rate the config allows (it clamps the
+/// rate to 0.5..=5.0 s).
+const HISTORY_CAPACITY_MIN: usize = 3_600_000_usize.div_ceil(5_000);
+const HISTORY_CAPACITY_MAX: usize = 3_600_000_usize.div_ceil(500);
+const _: () = assert!(HISTORY_CAPACITY_MIN == 720);
+const _: () = assert!(HISTORY_CAPACITY_MAX == 7_200);
 
 #[allow(clippy::upper_case_acronyms)]
 pub type UID = String;
@@ -36,13 +44,25 @@ pub type RPM = u32;
 pub type Mhz = u32;
 pub type Watts = f64;
 
-/// Post-push hook invoked inside `Device::set_status` while the
-/// `status_history` `Arc` is being mutated. Lets a single consumer
-/// (today: the calibration true-duty rewrite) piggyback on the
-/// existing `Arc::make_mut` instead of taking a second pass that
-/// would deep-clone the history whenever any reader holds a clone.
+/// Hook run on each channel a device stores, before it is stored. Lets a single consumer
+/// (today: the calibration true-duty rewrite) adjust the values every reader sees.
 pub trait StatusAugmenter {
-    fn augment(&self, status: &mut Status, device_uid: &DeviceUID);
+    /// Adjusts the values of channel `channel_name`.
+    fn augment_channel(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+        sample: &mut ChannelSample,
+    );
+
+    /// Adjusts every channel of `status`.
+    fn augment(&self, status: &mut Status, device_uid: &DeviceUID) {
+        for channel in &mut status.channels {
+            let mut sample = ChannelSample::from(&*channel);
+            self.augment_channel(device_uid, &channel.name, &mut sample);
+            sample.apply_to(channel);
+        }
+    }
 }
 
 /// Running min/max/avg/count for a single (channel, `data_type`) or temp pair.
@@ -203,33 +223,7 @@ pub struct DeviceStats {
     pub channels: HashMap<ChannelName, HashMap<ChannelDataType, ChannelStats>>,
 }
 
-/// Shared helper: clone `temps` with all `temp` fields set to 0.0.
-fn build_zeroed_temps(temps: &[TempStatus]) -> Vec<TempStatus> {
-    temps
-        .iter()
-        .map(|t| TempStatus {
-            temp: 0.0,
-            ..t.clone()
-        })
-        .collect()
-}
-
-/// Shared helper: clone `channels` with every present numeric field zeroed.
-/// Preserves the Some/None shape so the engine sees the same channel layout.
-fn build_zeroed_channels(channels: &[ChannelStatus]) -> Vec<ChannelStatus> {
-    channels
-        .iter()
-        .map(|c| ChannelStatus {
-            rpm: if c.rpm.is_some() { Some(0) } else { None },
-            duty: if c.duty.is_some() { Some(0.0) } else { None },
-            freq: if c.freq.is_some() { Some(0) } else { None },
-            watts: if c.watts.is_some() { Some(0.0) } else { None },
-            ..c.clone()
-        })
-        .collect()
-}
-
-#[derive(Serialize, Deserialize, Clone, JsonSchema)]
+#[derive(Clone)]
 pub struct Device {
     pub name: DeviceName,
 
@@ -247,8 +241,8 @@ pub struct Device {
     #[allow(clippy::struct_field_names)]
     device_id: Option<String>,
 
-    /// A double-sided Vector of statuses wrapped in Arc for efficient sharing
-    pub status_history: Arc<VecDeque<Status>>,
+    /// The last hour of statuses, in a ring allocated for the poll rate.
+    history: StatusRing,
 
     /// Specific Liquidctl device information
     pub lc_info: Option<LcInfo>,
@@ -256,17 +250,16 @@ pub struct Device {
     /// General Device information
     pub info: DeviceInfo,
 
-    /// Optional post-push hook run inside `set_status`. See [`StatusAugmenter`].
-    #[serde(skip)]
-    #[schemars(skip)]
+    /// Optional hook run on each status `set_status` stores. See [`StatusAugmenter`].
     status_augmenter: Option<Rc<dyn StatusAugmenter>>,
 
     /// Running per-channel min/max/avg/count since daemon start. Updated
     /// inside `set_status` after the augmenter runs (so true-duty rewrites
     /// feed stats, not the pre-rewrite values).
-    #[serde(skip)]
-    #[schemars(skip)]
     stats: DeviceStats,
+
+    /// Whether a name the history could not keep was logged. See [`MAX_NAMES`].
+    refused_name_logged: bool,
 }
 
 impl PartialEq for Device {
@@ -287,7 +280,7 @@ impl Debug for Device {
             self.d_type,
             self.type_index,
             self.uid,
-            self.status_current(),
+            self.history,
             self.lc_info,
             self.info,
         )
@@ -306,47 +299,209 @@ impl Device {
         poll_rate: f64,
     ) -> Self {
         let uid = Self::create_uid_from(&name, d_type, type_index, device_id.as_ref());
-        let status_history = Arc::new(VecDeque::with_capacity(Self::calc_history_stack_size(
-            poll_rate,
-        )));
         Device {
             name,
             d_type,
             type_index,
             uid,
             device_id,
-            status_history,
+            history: StatusRing::new(Self::history_capacity(poll_rate)),
             lc_info,
             info,
             status_augmenter: None,
             stats: DeviceStats::default(),
+            refused_name_logged: false,
         }
     }
 
-    /// Install a post-push hook. The hook fires on every `set_status`
-    /// inside the same `Arc::make_mut` that grows the history, so it
-    /// piggybacks for free instead of forcing a second deep clone
-    /// when a reader (REST `GET /status`, gRPC) holds a clone of the
-    /// `Arc`. Calling twice replaces the prior hook.
+    /// Install the hook `set_status` runs on each status before storing it. Calling twice
+    /// replaces the prior hook.
     pub fn set_status_augmenter(&mut self, augmenter: Rc<dyn StatusAugmenter>) {
         self.status_augmenter = Some(augmenter);
     }
 
+    /// History slots for `poll_rate`: one hour of entries.
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    fn calc_history_stack_size(poll_rate: f64) -> usize {
-        (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
+    fn history_capacity(poll_rate: f64) -> usize {
+        let capacity = (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize;
+        assert!(
+            (HISTORY_CAPACITY_MIN..=HISTORY_CAPACITY_MAX).contains(&capacity),
+            "a poll rate of {poll_rate} s is outside the range the config allows"
+        );
+        capacity
     }
 
-    /// Returns the most recent status in the status history, if it exists.
-    ///
-    /// Returns:
-    ///
-    /// an `Option<Status>`.
-    pub fn status_current(&self) -> Option<Status> {
-        self.status_history.back().cloned()
+    /// Entries in the status history. Index 0 is the oldest.
+    pub fn history_len(&self) -> usize {
+        self.history.len()
     }
 
-    /// Reset `status_history` and seed it with zeroed entries plus `status`
+    /// Starts the newest entry, stamped `timestamp`, overwriting the oldest once the history
+    /// is full. Every name starts absent from it: write the ones this tick reports. Each
+    /// value passes the augmenter and is folded into the running stats as it is written.
+    pub fn write_status(&mut self, timestamp: DateTime<Local>) -> StatusWriter<'_> {
+        let slot = self.history.push(timestamp_ns(timestamp));
+        StatusWriter {
+            device: self,
+            slot,
+            next_temp: 0,
+            next_channel: 0,
+        }
+    }
+
+    pub fn latest_timestamp(&self) -> Option<DateTime<Local>> {
+        let index = self.history_len().checked_sub(1)?;
+        Some(local_time(self.history.timestamp_ns(index)))
+    }
+
+    /// The newest entry's value of temp `name`.
+    pub fn latest_temp(&self, name: &str) -> Option<Temp> {
+        let index = self.history_len().checked_sub(1)?;
+        self.temp_at(index, name)
+    }
+
+    /// The newest entry's values of channel `name`.
+    pub fn latest_channel(&self, name: &str) -> Option<ChannelSample> {
+        let index = self.history_len().checked_sub(1)?;
+        self.channel_at(index, name)
+    }
+
+    /// The newest entry's temps, in first-seen order.
+    pub fn latest_temps(&self) -> impl Iterator<Item = (&str, Temp)> {
+        let latest = self.history_len().checked_sub(1);
+        latest
+            .into_iter()
+            .flat_map(|index| self.history.temps_at(index))
+    }
+
+    /// The newest entry's channels, in first-seen order.
+    pub fn latest_channels(&self) -> impl Iterator<Item = (&str, ChannelSample)> {
+        let latest = self.history_len().checked_sub(1);
+        latest
+            .into_iter()
+            .flat_map(|index| self.history.channels_at(index))
+    }
+
+    /// Temp `name` at history `index`. `None` past the end of the history.
+    pub fn temp_at(&self, index: usize, name: &str) -> Option<Temp> {
+        if index < self.history_len() {
+            self.history.temp_at(index, name)
+        } else {
+            None
+        }
+    }
+
+    /// Channel `name` at history `index`. `None` past the end of the history.
+    pub fn channel_at(&self, index: usize, name: &str) -> Option<ChannelSample> {
+        if index < self.history_len() {
+            self.history.channel_at(index, name)
+        } else {
+            None
+        }
+    }
+
+    /// Temp `name` over the newest `count` entries, oldest first. Entries without it are
+    /// skipped.
+    pub fn temp_tail(&self, name: &str, count: usize) -> impl Iterator<Item = Temp> {
+        let len = self.history_len();
+        (len.saturating_sub(count)..len).filter_map(move |index| self.temp_at(index, name))
+    }
+
+    /// Fills the duty of channel `name` wherever an entry has its rpm but no duty, with
+    /// `duty_for_rpm`. Returns whether any entry was filled.
+    pub fn backfill_channel_duty(
+        &mut self,
+        name: &str,
+        duty_for_rpm: impl Fn(RPM) -> Option<f64>,
+    ) -> bool {
+        self.history.backfill_channel_duty(name, duty_for_rpm)
+    }
+
+    /// Removes the duty of channel `name` from every entry.
+    pub fn clear_channel_duty(&mut self, name: &str) {
+        self.history.clear_channel_duty(name);
+    }
+
+    /// Adds temp `name` to every entry, with `values[index]` at history `index`.
+    pub fn add_temp_column(&mut self, name: &str, values: &[Temp]) {
+        if self.history.set_temp_everywhere(name, values).not() {
+            self.note_refused_name();
+        }
+    }
+
+    /// Adds channel `name` to every entry, with `samples[index]` at history `index`.
+    pub fn add_channel_column(&mut self, name: &str, samples: &[ChannelSample]) {
+        if self.history.set_channel_everywhere(name, samples).not() {
+            self.note_refused_name();
+        }
+    }
+
+    /// Removes the temp or channel `name` from every entry.
+    pub fn remove_status_name(&mut self, name: &str) {
+        self.history.remove_name(name);
+    }
+
+    /// The whole history, for the API.
+    pub fn snapshot_all(&self) -> StatusSnapshot {
+        self.history.snapshot(SnapshotFilter::All)
+    }
+
+    /// The entries stamped after `after`, judged entry by entry.
+    pub fn snapshot_since(&self, after: DateTime<Local>) -> StatusSnapshot {
+        self.history.snapshot_after(timestamp_ns(after))
+    }
+
+    /// The newest entry, for the API.
+    pub fn snapshot_recent(&self) -> StatusSnapshot {
+        self.history.snapshot_latest(SnapshotFilter::All)
+    }
+
+    /// Every entry's timestamp with only the temp or channel `name`.
+    pub fn snapshot_name(&self, name: &str) -> StatusSnapshot {
+        self.history.snapshot(self.history.name_filter(name))
+    }
+
+    /// The newest entry's timestamp with only the temp or channel `name`.
+    pub fn snapshot_name_recent(&self, name: &str) -> StatusSnapshot {
+        self.history.snapshot_latest(self.history.name_filter(name))
+    }
+
+    /// History `index` as a `Status`. Allocates.
+    fn status_at(&self, index: usize) -> Status {
+        Status {
+            timestamp: local_time(self.history.timestamp_ns(index)),
+            temps: self
+                .history
+                .temps_at(index)
+                .map(|(name, temp)| TempStatus {
+                    name: name.to_string(),
+                    temp,
+                })
+                .collect(),
+            channels: self
+                .history
+                .channels_at(index)
+                .map(|(name, sample)| sample.to_status(name))
+                .collect(),
+        }
+    }
+
+    /// The newest entry as a `Status`. Allocates; tests only.
+    #[cfg(test)]
+    pub fn latest_status(&self) -> Option<Status> {
+        let index = self.history_len().checked_sub(1)?;
+        Some(self.status_at(index))
+    }
+
+    /// The whole history as `Status`es, oldest first. Allocates; tests only.
+    #[cfg(test)]
+    pub fn history_statuses(&self) -> Vec<Status> {
+        (0..self.history_len())
+            .map(|index| self.status_at(index))
+            .collect()
+    }
+
+    /// Reset the history and seed it with zeroed entries plus `status`
     /// as the newest entry. Runs the augmenter on the pushed entry but does
     /// NOT record stats: some channels (e.g. CPU watts derived from a
     /// joule-counter delta) have no real reading at init, and folding the
@@ -357,80 +512,79 @@ impl Device {
     ///
     /// * `status`: the first real status, appended as the most recent entry.
     #[allow(clippy::cast_precision_loss)]
-    pub fn initialize_status_history_with(&mut self, status: Status, poll_rate: f64) {
-        let zeroed_temps = build_zeroed_temps(&status.temps);
-        let zeroed_channels = build_zeroed_channels(&status.channels);
-        let status_stack_size = Self::calc_history_stack_size(poll_rate);
-        {
-            let history = Arc::make_mut(&mut self.status_history);
-            history.clear();
-            // Pre-fill with `status_stack_size` zeroed entries at offsets
-            // [-N, -(N-1), ..., -1] * poll_rate. push_and_augment below
-            // pops the oldest (-N) and pushes the real status at offset 0,
-            // leaving the canonical [-{N-1}, ..., -1, 0] * poll_rate layout.
-            for pos in (1..=status_stack_size).rev() {
-                history.push_back(Status {
-                    timestamp: status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
-                    temps: zeroed_temps.clone(),
-                    channels: zeroed_channels.clone(),
-                });
-            }
+    pub fn initialize_status_history_with(&mut self, mut status: Status, poll_rate: f64) {
+        let capacity = Self::history_capacity(poll_rate);
+        self.history.reset(capacity);
+        let template = self.template_columns(
+            status.temps.iter().map(|temp| temp.name.as_str()),
+            status
+                .channels
+                .iter()
+                .map(|channel| (channel.name.as_str(), ChannelSample::from(channel).zeroed())),
+        );
+        // Zeroed entries at offsets [-(N-1), ..., -1] * poll_rate, then the real
+        // status at offset 0.
+        for pos in (1..capacity).rev() {
+            let timestamp = status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate);
+            self.push_zeroed(timestamp, &template);
         }
-        self.push_and_augment(status);
+        self.push_and_augment(&mut status);
     }
 
-    /// Replace the entire status history with synthetic zeroed entries. Used
-    /// on wake from sleep when cached values are stale but no real reading
-    /// is available yet. Does NOT record stats; the zeroed wake template
-    /// is not a real reading and would taint min/avg.
-    #[allow(clippy::cast_precision_loss)]
-    pub fn zero_status_history(&mut self, template: &Status, poll_rate: f64) {
-        let zeroed_temps = build_zeroed_temps(&template.temps);
-        let zeroed_channels = build_zeroed_channels(&template.channels);
-        let history = Arc::make_mut(&mut self.status_history);
-        history.clear();
-        let status_stack_size = Self::calc_history_stack_size(poll_rate);
-        for pos in (1..status_stack_size).rev() {
-            history.push_back(Status {
-                timestamp: template.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
-                temps: zeroed_temps.clone(),
-                channels: zeroed_channels.clone(),
-            });
-        }
-        history.push_back(Status {
-            timestamp: template.timestamp,
-            temps: zeroed_temps,
-            channels: zeroed_channels,
-        });
-    }
-
-    /// Push `status` as the newest history entry and run the augmenter on
-    /// it. Uses `Arc::make_mut` so readers holding an `Arc` clone trigger
-    /// copy-on-write; otherwise the push is in-place. Does not touch
-    /// stats; callers that need stats folded should use `set_status`.
-    fn push_and_augment(&mut self, status: Status) {
-        let history = Arc::make_mut(&mut self.status_history);
-        history.pop_front();
-        history.push_back(status);
-        if let Some(augmenter) = self.status_augmenter.as_ref() {
-            if let Some(latest) = history.back_mut() {
-                augmenter.augment(latest, &self.uid);
-            }
-        }
-    }
-
-    /// Push a new status, run the augmenter, and fold the post-augmenter
-    /// values into running stats. Use this for every main-loop tick.
-    ///
-    /// Arguments:
-    ///
-    /// * `status`: The `Status` to be consumed and added to the history stack.
-    pub fn set_status(&mut self, status: Status) {
-        self.push_and_augment(status);
-        let Some(latest) = self.status_history.back() else {
+    /// Re-seed the history from its newest entry, as `initialize_status_history_with` would
+    /// from a fresh reading. No-op on an empty history.
+    pub fn initialize_status_history_from_latest(&mut self, poll_rate: f64) {
+        let Some(index) = self.history_len().checked_sub(1) else {
             return;
         };
-        Self::record_stats(&mut self.stats, latest);
+        let latest = self.status_at(index);
+        self.initialize_status_history_with(latest, poll_rate);
+    }
+
+    /// Replace the entire status history with zeroed copies of the newest entry, the newest
+    /// stamped `timestamp`. Used on wake from sleep when cached values are stale but no real
+    /// reading is available yet. Does NOT record stats; the zeroed wake template is not a
+    /// real reading and would taint min/avg. No-op on an empty history. Reallocates only
+    /// when `poll_rate` changed the slot count.
+    #[allow(clippy::cast_precision_loss)]
+    pub fn zero_status_history(&mut self, timestamp: DateTime<Local>, poll_rate: f64) {
+        let Some(latest) = self.history_len().checked_sub(1) else {
+            return;
+        };
+        let names = self.history.zeroed_names_at(latest);
+        let capacity = Self::history_capacity(poll_rate);
+        self.history.reset(capacity);
+        let template = self.template_columns(
+            names.temps.iter().map(|name| &**name),
+            names
+                .channels
+                .iter()
+                .map(|(name, sample)| (&**name, *sample)),
+        );
+        for pos in (1..capacity).rev() {
+            let at = timestamp - Duration::from_secs_f64(pos as f64 * poll_rate);
+            self.push_zeroed(at, &template);
+        }
+        self.push_zeroed(timestamp, &template);
+    }
+
+    /// Run the augmenter on `status` and store it as the newest entry. Does not touch
+    /// stats; callers that need stats folded should use `set_status`.
+    fn push_and_augment(&mut self, status: &mut Status) {
+        if let Some(augmenter) = self.status_augmenter.as_ref() {
+            augmenter.augment(status, &self.uid);
+        }
+        if self.history.push_status(status).not() {
+            self.note_refused_name();
+        }
+    }
+
+    /// Push a whole `Status` as a tick: run the augmenter and fold the post-augmenter values
+    /// into running stats. Tests only; repositories write their ticks with `write_status`.
+    #[cfg(test)]
+    pub fn set_status(&mut self, mut status: Status) {
+        self.push_and_augment(&mut status);
+        Self::record_stats(&mut self.stats, &status);
     }
 
     /// Borrow the per-channel running stats.
@@ -442,46 +596,52 @@ impl Device {
     /// from `status` are not touched (no zero pollution from a tick where
     /// hwmon dropped a channel). Called from `set_status` after the
     /// augmenter runs. Names are cloned into the maps on first sight only.
+    #[cfg(test)]
     fn record_stats(device_stats: &mut DeviceStats, status: &Status) {
         for temp in &status.temps {
-            match device_stats.temps.get_mut(&temp.name) {
-                Some(temp_stats) => temp_stats.fold(temp.temp),
-                None => device_stats
-                    .temps
-                    .entry(temp.name.clone())
-                    .or_default()
-                    .fold(temp.temp),
-            }
+            Self::record_temp(device_stats, &temp.name, temp.temp);
         }
         for channel in &status.channels {
-            let by_type = match device_stats.channels.get_mut(&channel.name) {
-                Some(by_type) => by_type,
-                None => device_stats
-                    .channels
-                    .entry(channel.name.clone())
-                    .or_default(),
-            };
-            if let Some(duty) = channel.duty {
-                by_type.entry(ChannelDataType::Duty).or_default().fold(duty);
-            }
-            if let Some(rpm) = channel.rpm {
-                by_type
-                    .entry(ChannelDataType::Rpm)
-                    .or_default()
-                    .fold(f64::from(rpm));
-            }
-            if let Some(freq) = channel.freq {
-                by_type
-                    .entry(ChannelDataType::Freq)
-                    .or_default()
-                    .fold(f64::from(freq));
-            }
-            if let Some(watts) = channel.watts {
-                by_type
-                    .entry(ChannelDataType::Watts)
-                    .or_default()
-                    .fold(watts);
-            }
+            Self::record_channel(device_stats, &channel.name, ChannelSample::from(channel));
+        }
+    }
+
+    fn record_temp(device_stats: &mut DeviceStats, name: &str, temp: Temp) {
+        match device_stats.temps.get_mut(name) {
+            Some(temp_stats) => temp_stats.fold(temp),
+            None => device_stats
+                .temps
+                .entry(name.to_string())
+                .or_default()
+                .fold(temp),
+        }
+    }
+
+    fn record_channel(device_stats: &mut DeviceStats, name: &str, sample: ChannelSample) {
+        let by_type = match device_stats.channels.get_mut(name) {
+            Some(by_type) => by_type,
+            None => device_stats.channels.entry(name.to_string()).or_default(),
+        };
+        if let Some(duty) = sample.duty {
+            by_type.entry(ChannelDataType::Duty).or_default().fold(duty);
+        }
+        if let Some(rpm) = sample.rpm {
+            by_type
+                .entry(ChannelDataType::Rpm)
+                .or_default()
+                .fold(f64::from(rpm));
+        }
+        if let Some(freq) = sample.freq {
+            by_type
+                .entry(ChannelDataType::Freq)
+                .or_default()
+                .fold(f64::from(freq));
+        }
+        if let Some(watts) = sample.watts {
+            by_type
+                .entry(ChannelDataType::Watts)
+                .or_default()
+                .fold(watts);
         }
     }
 
@@ -492,15 +652,15 @@ impl Device {
     pub fn reset_stats(&mut self) {
         self.stats.temps.clear();
         self.stats.channels.clear();
-        let Some(latest) = self.status_history.back().cloned() else {
+        let Some(latest) = self.history_len().checked_sub(1) else {
             return;
         };
-        for temp in &latest.temps {
+        for (name, temp) in self.history.temps_at(latest) {
             self.stats
                 .temps
-                .insert(temp.name.clone(), ChannelStats::from_first(temp.temp));
+                .insert(name.to_string(), ChannelStats::from_first(temp));
         }
-        for channel in &latest.channels {
+        for (name, channel) in self.history.channels_at(latest) {
             let mut by_type: HashMap<ChannelDataType, ChannelStats> = HashMap::new();
             if let Some(duty) = channel.duty {
                 by_type.insert(ChannelDataType::Duty, ChannelStats::from_first(duty));
@@ -521,9 +681,119 @@ impl Device {
                 by_type.insert(ChannelDataType::Watts, ChannelStats::from_first(watts));
             }
             if by_type.is_empty().not() {
-                self.stats.channels.insert(channel.name.clone(), by_type);
+                self.stats.channels.insert(name.to_string(), by_type);
             }
         }
+    }
+
+    /// The columns of a rebuild's names, in order. A refused name gets none.
+    fn template_columns<'a>(
+        &mut self,
+        temps: impl ExactSizeIterator<Item = &'a str>,
+        channels: impl ExactSizeIterator<Item = (&'a str, ChannelSample)>,
+    ) -> TemplateColumns {
+        let mut refused = false;
+        let mut template_temps = Vec::with_capacity(temps.len());
+        for name in temps {
+            let column = self.history.temp_column(name);
+            refused |= column.is_none();
+            template_temps.extend(column);
+        }
+        let mut template_channels = Vec::with_capacity(channels.len());
+        for (name, sample) in channels {
+            let column = self.history.channel_column(name);
+            refused |= column.is_none();
+            template_channels.extend(column.map(|column| (column, sample)));
+        }
+        if refused {
+            self.note_refused_name();
+        }
+        TemplateColumns {
+            temps: template_temps,
+            channels: template_channels,
+        }
+    }
+
+    fn push_zeroed(&mut self, timestamp: DateTime<Local>, template: &TemplateColumns) {
+        let slot = self.history.push(timestamp_ns(timestamp));
+        for column in &template.temps {
+            self.history.set_temp(slot, *column, 0.0);
+        }
+        for (column, sample) in &template.channels {
+            self.history.set_channel(slot, *column, *sample);
+        }
+    }
+
+    /// Logs, once per device, that a name went unrecorded: the device reports more names than
+    /// its history keeps.
+    fn note_refused_name(&mut self) {
+        if self.refused_name_logged {
+            return;
+        }
+        self.refused_name_logged = true;
+        warn!(
+            "{} reports more than {MAX_NAMES} temps or channels. Names beyond that are not \
+             recorded in its status history. Please report this as a bug.",
+            self.name
+        );
+    }
+}
+
+/// The history columns a rebuild fills in every entry: temps set to zero, channels to their
+/// zeroed sample.
+struct TemplateColumns {
+    temps: Vec<usize>,
+    channels: Vec<(usize, ChannelSample)>,
+}
+
+/// Writes one history entry in place. Made by [`Device::write_status`].
+pub struct StatusWriter<'a> {
+    device: &'a mut Device,
+    slot: usize,
+    /// The columns expected next. A source reports its names in the same order every tick,
+    /// so a lookup almost always matches on its first comparison.
+    next_temp: usize,
+    next_channel: usize,
+}
+
+impl StatusWriter<'_> {
+    /// Writes every temp, then every channel, in the order given.
+    pub fn write_all(&mut self, temps: &[TempStatus], channels: &[ChannelStatus]) {
+        for temp in temps {
+            self.temp(&temp.name, temp.temp);
+        }
+        for channel in channels {
+            self.channel(&channel.name, ChannelSample::from(channel));
+        }
+    }
+
+    pub fn temp(&mut self, name: &str, temp: Temp) {
+        let Some(column) = self.device.history.temp_column_from(self.next_temp, name) else {
+            self.device.note_refused_name();
+            return;
+        };
+        self.next_temp = column + 1;
+        debug_assert!(self.next_temp <= MAX_NAMES);
+        self.device.history.set_temp(self.slot, column, temp);
+        Device::record_temp(&mut self.device.stats, name, temp);
+    }
+
+    pub fn channel(&mut self, name: &str, mut sample: ChannelSample) {
+        if let Some(augmenter) = self.device.status_augmenter.as_ref() {
+            augmenter.augment_channel(&self.device.uid, name, &mut sample);
+        }
+        let Some(column) = self
+            .device
+            .history
+            .channel_column_from(self.next_channel, name)
+        else {
+            self.device.note_refused_name();
+            return;
+        };
+        self.next_channel = column + 1;
+        debug_assert!(self.next_channel <= MAX_NAMES);
+        self.device.history.set_channel(self.slot, column, sample);
+        Device::record_channel(&mut self.device.stats, name, sample);
     }
 }
 
@@ -546,6 +816,62 @@ pub struct ChannelStatus {
     pub watts: Option<Watts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
+}
+
+/// One channel's values in one history entry. A field is `None` when the entry lacks it.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ChannelSample {
+    pub rpm: Option<RPM>,
+    pub duty: Option<f64>,
+    pub freq: Option<Mhz>,
+    pub watts: Option<Watts>,
+    pub pwm_mode: Option<u8>,
+}
+
+impl From<&ChannelStatus> for ChannelSample {
+    fn from(channel: &ChannelStatus) -> Self {
+        Self {
+            rpm: channel.rpm,
+            duty: channel.duty,
+            freq: channel.freq,
+            watts: channel.watts,
+            pwm_mode: channel.pwm_mode,
+        }
+    }
+}
+
+impl ChannelSample {
+    /// Writes these values over `channel`'s.
+    fn apply_to(self, channel: &mut ChannelStatus) {
+        channel.rpm = self.rpm;
+        channel.duty = self.duty;
+        channel.freq = self.freq;
+        channel.watts = self.watts;
+        channel.pwm_mode = self.pwm_mode;
+    }
+
+    /// Every present value set to zero, keeping which fields are present. `pwm_mode` is a
+    /// mode, not a reading, so it stays.
+    fn zeroed(self) -> Self {
+        Self {
+            rpm: self.rpm.map(|_| 0),
+            duty: self.duty.map(|_| 0.0),
+            freq: self.freq.map(|_| 0),
+            watts: self.watts.map(|_| 0.0),
+            pwm_mode: self.pwm_mode,
+        }
+    }
+
+    pub fn to_status(self, name: &str) -> ChannelStatus {
+        ChannelStatus {
+            name: name.to_string(),
+            rpm: self.rpm,
+            duty: self.duty,
+            freq: self.freq,
+            watts: self.watts,
+            pwm_mode: self.pwm_mode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -934,16 +1260,20 @@ mod tests {
     /// values, not the pre-augmenter status passed into `set_status`.
     struct FixedDutyAugmenter {
         target_duty: f64,
+        /// Channels augmented.
         invocations: RefCell<u32>,
     }
 
     impl StatusAugmenter for FixedDutyAugmenter {
-        fn augment(&self, status: &mut Status, _device_uid: &DeviceUID) {
+        fn augment_channel(
+            &self,
+            _device_uid: &DeviceUID,
+            _channel_name: &str,
+            sample: &mut ChannelSample,
+        ) {
             *self.invocations.borrow_mut() += 1;
-            for channel in &mut status.channels {
-                if channel.duty.is_some() {
-                    channel.duty = Some(self.target_duty);
-                }
+            if sample.duty.is_some() {
+                sample.duty = Some(self.target_duty);
             }
         }
     }
@@ -1105,14 +1435,8 @@ mod tests {
             vec![("cpu", 40.0)],
             vec![channel("fan1", Some(50.0), Some(1200))],
         ));
-        // Wake-from-sleep: engine passes a zeroed template. Stats must be untouched.
-        device.zero_status_history(
-            &status_with(
-                vec![("cpu", 0.0)],
-                vec![channel("fan1", Some(0.0), Some(0))],
-            ),
-            POLL_RATE,
-        );
+        // Wake-from-sleep zeroes the history. Stats must be untouched.
+        device.zero_status_history(Local::now(), POLL_RATE);
         let stats = device.stats();
         assert_eq!(stats.temps.get("cpu").unwrap().count, 1);
         assert_eq!(stats.temps.get("cpu").unwrap().min, 40.0);
@@ -1183,6 +1507,226 @@ mod tests {
         device.set_status(status_with(vec![("nvme", 35.0)], vec![]));
         assert_eq!(device.stats().temps.get("nvme").unwrap().count, 1);
         assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
+    }
+
+    /// A tick written in place on a warm device allocates nothing: no `Status`, no names.
+    /// Counts this thread's allocations around one writer tick after a seeding tick.
+    #[test]
+    fn write_status_on_a_warm_device_does_not_allocate() {
+        let mut device = make_test_device();
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let tick = |device: &mut Device, temp: f64| {
+            let mut writer = device.write_status(Local::now());
+            writer.temp("cpu", temp);
+            writer.temp("gpu", 61.0);
+            writer.channel(
+                "fan1",
+                ChannelSample {
+                    rpm: Some(1300),
+                    duty: Some(55.0),
+                    ..Default::default()
+                },
+            );
+        };
+        // The first tick seeds the stats maps, which allocates their keys once.
+        tick(&mut device, 41.0);
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| tick(&mut device, 42.0));
+
+        assert_eq!(allocations, 0);
+        assert_eq!(device.latest_temp("cpu"), Some(42.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().duty, Some(55.0));
+        assert_eq!(device.stats().temps.get("cpu").unwrap().count, 2);
+    }
+
+    /// The writer stores what `set_status` would: names in any order land in their own
+    /// columns, names not written this tick are absent, and every channel passes the
+    /// augmenter before it is stored and folded into the stats.
+    #[test]
+    fn write_status_matches_set_status() {
+        let augmenter = Rc::new(FixedDutyAugmenter {
+            target_duty: 99.0,
+            invocations: RefCell::new(0),
+        });
+        let mut device = make_test_device();
+        device.set_status_augmenter(augmenter.clone());
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let at = Local::now();
+        let mut writer = device.write_status(at);
+        writer.temp("gpu", 61.0);
+        writer.channel(
+            "fan1",
+            ChannelSample {
+                rpm: Some(1300),
+                duty: Some(55.0),
+                ..Default::default()
+            },
+        );
+        writer.temp("nvme", 35.0);
+
+        let latest = device.latest_status().unwrap();
+        assert_eq!(latest.timestamp, at);
+        assert_eq!(
+            latest.temps,
+            vec![
+                TempStatus {
+                    name: "gpu".to_string(),
+                    temp: 61.0
+                },
+                TempStatus {
+                    name: "nvme".to_string(),
+                    temp: 35.0
+                },
+            ]
+        );
+        assert_eq!(
+            latest.channels,
+            vec![channel("fan1", Some(99.0), Some(1300))]
+        );
+        assert_eq!(*augmenter.invocations.borrow(), 2);
+        let fan1 = device.stats().channels.get("fan1").unwrap();
+        assert_eq!(fan1.get(&ChannelDataType::Duty).unwrap().avg, 99.0);
+        assert!(device.stats().temps.contains_key("cpu").not());
+    }
+
+    /// An API copy of the history is one allocation per device, and a tick taken while that
+    /// copy is still being serialized writes in place. Sharing the history behind an `Arc`
+    /// made such a tick copy every entry on the engine thread.
+    #[test]
+    fn snapshots_copy_once_and_never_make_a_tick_copy_the_history() {
+        let reading = || {
+            status_with(
+                vec![("cpu", 40.0), ("gpu", 60.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            )
+        };
+        let mut device = make_test_device();
+        device.initialize_status_history_with(reading(), POLL_RATE);
+        device.set_status(reading());
+
+        let (all, all_allocations) =
+            crate::alloc_count::count_allocations(|| device.snapshot_all());
+        let (recent, recent_allocations) =
+            crate::alloc_count::count_allocations(|| device.snapshot_recent());
+        let (channel, channel_allocations) =
+            crate::alloc_count::count_allocations(|| device.snapshot_name("fan1"));
+        let next = reading();
+        let ((), tick_allocations) =
+            crate::alloc_count::count_allocations(|| device.set_status(next));
+
+        assert_eq!(all_allocations, 1);
+        assert_eq!(recent_allocations, 1);
+        assert_eq!(channel_allocations, 1);
+        assert_eq!(tick_allocations, 0);
+        drop((all, recent, channel));
+    }
+
+    /// A device reporting more names than its history keeps still initializes, wakes and
+    /// ticks: the first `MAX_NAMES` temps are kept in every entry, the rest are left out.
+    #[test]
+    fn a_device_with_too_many_names_keeps_the_first_ones() {
+        let too_many: Vec<(String, f64)> = (0..MAX_NAMES + 44)
+            .map(|index| (format!("temp{index}"), 30.0))
+            .collect();
+        let reading = || Status {
+            timestamp: Local::now(),
+            temps: too_many
+                .iter()
+                .map(|(name, temp)| TempStatus {
+                    name: name.clone(),
+                    temp: *temp,
+                })
+                .collect(),
+            channels: vec![channel("fan1", Some(50.0), Some(1200))],
+        };
+        let mut device = make_test_device();
+        device.initialize_status_history_with(reading(), POLL_RATE);
+        device.set_status(reading());
+        device.zero_status_history(Local::now(), POLL_RATE);
+        device.set_status(reading());
+
+        assert_eq!(device.latest_temps().count(), MAX_NAMES);
+        assert_eq!(device.latest_temp("temp0"), Some(30.0));
+        assert_eq!(device.latest_temp(&format!("temp{MAX_NAMES}")), None);
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(1200));
+        assert!(device.refused_name_logged);
+    }
+
+    /// One hour of entries at every poll rate the config allows, and none outside it.
+    /// Checks the capacity at both config bounds and two rates between them.
+    #[test]
+    fn history_capacity_covers_one_hour_at_every_configurable_poll_rate() {
+        assert_eq!(Device::history_capacity(0.5), HISTORY_CAPACITY_MAX);
+        assert_eq!(Device::history_capacity(1.0), 3_600);
+        assert_eq!(Device::history_capacity(1.5), 2_400);
+        assert_eq!(Device::history_capacity(5.0), HISTORY_CAPACITY_MIN);
+    }
+
+    #[test]
+    #[should_panic(expected = "outside the range the config allows")]
+    fn a_poll_rate_faster_than_the_config_allows_is_refused() {
+        // Goal: a poll rate below the config's 0.5 s floor fails loudly instead of sizing an
+        // oversized ring. Method: ask for the capacity at 0.25 s.
+        let _ = Device::history_capacity(0.25);
+    }
+
+    #[test]
+    #[should_panic(expected = "outside the range the config allows")]
+    fn a_poll_rate_slower_than_the_config_allows_is_refused() {
+        // Goal: a poll rate above the config's 5 s ceiling fails loudly instead of sizing an
+        // undersized ring. Method: ask for the capacity at 10 s.
+        let _ = Device::history_capacity(10.0);
+    }
+
+    /// Waking at the same poll rate reuses the ring; a new rate resizes it to the new slot
+    /// count. Either way every entry is a zeroed copy of the newest one, `poll_rate` apart.
+    #[test]
+    fn zero_status_history_reallocates_only_for_a_new_slot_count() {
+        let mut device = make_test_device();
+        device.initialize_status_history_with(
+            status_with(
+                vec![("cpu", 40.0)],
+                vec![channel("fan1", Some(50.0), Some(1200))],
+            ),
+            POLL_RATE,
+        );
+        let woke = Local::now();
+        let ((), same_rate) =
+            crate::alloc_count::count_allocations(|| device.zero_status_history(woke, POLL_RATE));
+        assert_eq!(device.history_len(), 3_600);
+        let ((), new_rate) =
+            crate::alloc_count::count_allocations(|| device.zero_status_history(woke, 2.0));
+        assert_eq!(device.history_len(), 1_800);
+        assert_eq!(new_rate, same_rate + 1);
+
+        let history = device.history_statuses();
+        assert_eq!(history.last().unwrap().timestamp, woke);
+        assert_eq!(
+            history[0].timestamp,
+            woke - Duration::from_secs_f64(1_799. * 2.0)
+        );
+        for status in &history {
+            assert_eq!(
+                status.temps,
+                vec![TempStatus {
+                    name: "cpu".to_string(),
+                    temp: 0.0
+                }]
+            );
+            assert_eq!(status.channels, vec![channel("fan1", Some(0.0), Some(0))]);
+        }
     }
 
     /// `reset_stats` clears everything then reseeds from the most recent
@@ -1277,7 +1821,7 @@ mod tests {
             POLL_RATE,
         );
         assert_eq!(*augmenter.invocations.borrow(), 1);
-        let latest = device.status_current().unwrap();
+        let latest = device.latest_status().unwrap();
         let fan1 = latest.channels.iter().find(|c| c.name == "fan1").unwrap();
         assert_eq!(fan1.duty, Some(77.0));
     }

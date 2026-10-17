@@ -30,6 +30,8 @@ mod settings;
 mod sse;
 pub mod stats;
 pub mod status;
+#[cfg(test)]
+mod status_golden;
 mod stress_test;
 mod tls;
 mod tokens;
@@ -1607,6 +1609,18 @@ mod tests {
     async fn api_responses_reach_the_client_compressed() {
         assert_eq!(
             content_encoding(Some("gzip"), "/json").await.as_deref(),
+            Some("gzip")
+        );
+    }
+
+    /// Goal: a browser's offer negotiates gzip, never brotli, whose encoder zeroes about
+    /// 1 GB to compress a full status history. Method: a Chromium `Accept-Encoding` offer.
+    #[tokio::test]
+    async fn browser_offers_negotiate_gzip() {
+        assert_eq!(
+            content_encoding(Some("gzip, deflate, br, zstd"), "/json")
+                .await
+                .as_deref(),
             Some("gzip")
         );
     }

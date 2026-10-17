@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use chrono::{DateTime, Local};
 use std::cell::{Cell, RefCell};
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
@@ -13,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelKind, ChannelName, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp,
-    TempInfo, TypeIndex, UID,
+    ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
+    Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::device_health::FailsafeRef;
 use crate::hardware_support::HardwareSupportController;
@@ -1480,9 +1481,19 @@ impl LiquidctlRepo {
         let poll_rate = self.config.get_settings()?.poll_rate;
         for device_lock in self.devices.values() {
             let device = device_lock.borrow();
-            let recent_status = device.status_current().unwrap();
+            let channels: Vec<ChannelStatus> = device
+                .latest_channels()
+                .map(|(name, sample)| sample.to_status(name))
+                .collect();
+            let temps: Vec<TempStatus> = device
+                .latest_temps()
+                .map(|(name, temp)| TempStatus {
+                    name: name.to_string(),
+                    temp,
+                })
+                .collect();
             let (channel_failsafes, temp_failsafes) =
-                failsafe::create_failsafe_data(&recent_status.channels, &recent_status.temps);
+                failsafe::create_failsafe_data(&channels, &temps);
             if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
                 self.failsafe_statuses
                     .borrow_mut()
@@ -1491,7 +1502,7 @@ impl LiquidctlRepo {
             drop(device);
             device_lock
                 .borrow_mut()
-                .initialize_status_history_with(recent_status, poll_rate);
+                .initialize_status_history_from_latest(poll_rate);
         }
         Ok(())
     }
@@ -1617,27 +1628,25 @@ impl Repository for LiquidctlRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        let fsd_map = self.failsafe_statuses.borrow();
         for device_lock in self.devices.values() {
-            let status = {
-                let device = device_lock.borrow();
-                let fsd_map = self.failsafe_statuses.borrow();
-                let failsafe_status = fsd_map
-                    .get(&device.type_index)
-                    .filter(|fsd| fsd.threshold_exceeded())
-                    .map(FailsafeStatusData::build_failsafe_status);
-                if let Some(status) = failsafe_status {
-                    trace!("Device: {} using failsafe status", device.name);
-                    status
-                } else {
-                    drop(fsd_map);
-                    match self.build_normal_status(&device) {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    }
-                }
+            let mut device = device_lock.borrow_mut();
+            let failsafe = fsd_map
+                .get(&device.type_index)
+                .filter(|fsd| fsd.threshold_exceeded());
+            if let Some(fsd) = failsafe {
+                trace!("Device: {} using failsafe status", device.name);
+                fsd.write_failsafe_status(&mut device.write_status(timestamp));
+                continue;
+            }
+            // The driver mapping builds a status from the allocated liquidctl message.
+            let Ok(status) = self.build_normal_status(&device) else {
+                continue;
             };
-            device_lock.borrow_mut().set_status(status);
+            device
+                .write_status(timestamp)
+                .write_all(&status.temps, &status.channels);
         }
         Ok(())
     }

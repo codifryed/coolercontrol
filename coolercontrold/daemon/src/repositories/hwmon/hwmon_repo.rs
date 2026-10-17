@@ -84,6 +84,7 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use bitflags::bitflags;
+use chrono::{DateTime, Local};
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -609,6 +610,24 @@ impl HwmonRepo {
     fn with_uid_side_stores(mut self, uid_side_stores: Vec<PathBuf>) -> Self {
         self.uid_side_stores = uid_side_stores;
         self
+    }
+
+    /// Writes each device's preloaded status into its history, stamped `timestamp`.
+    fn store_preloaded_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.preloaded_statuses.borrow();
+        for (device, _) in self.devices.values() {
+            let device_index = device.borrow().type_index;
+            let Some((channels, temps)) = preloaded_statuses_map.get(&device_index) else {
+                error!("There is no status preloaded for this device: {device_index}");
+                continue;
+            };
+            let mut device = device.borrow_mut();
+            trace!(
+                "Hwmon device: {} status was updated with: {temps:?} {channels:?}",
+                device.name
+            );
+            device.write_status(timestamp).write_all(temps, channels);
+        }
     }
 
     fn load_device_delays(&mut self) {
@@ -1336,13 +1355,13 @@ impl HwmonRepo {
         let Some(fsd) = fsd_map.get_mut(&type_index) else {
             return;
         };
-        let device_name = self.log_device_name(type_index, driver_name);
         let mut preloaded = self.preloaded_statuses.borrow_mut();
         let (channels, temps) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
         let (newly_failsafing, just_recovered) = fsd.tick_per_channel_staleness(channels, temps);
         if newly_failsafing {
+            let device_name = self.log_device_name(type_index, driver_name);
             error!(
                 "Significant issue retrieving status for hwmon \
                  device: {device_name}. Substituting failsafe \
@@ -1350,6 +1369,7 @@ impl HwmonRepo {
             );
         }
         if just_recovered {
+            let device_name = self.log_device_name(type_index, driver_name);
             info!(
                 "Recovered from failsafe for hwmon device: {device_name}. \
                  Resuming normal status reads."
@@ -2373,26 +2393,8 @@ impl Repository for HwmonRepo {
         );
     }
 
-    async fn update_statuses(&self) -> Result<()> {
-        for (device, _) in self.devices.values() {
-            let preloaded_statuses_map = self.preloaded_statuses.borrow();
-            let device_index = device.borrow().type_index;
-            let preloaded_statuses = preloaded_statuses_map.get(&device_index);
-            let Some((channels, temps)) = preloaded_statuses.cloned() else {
-                error!("There is no status preloaded for this device: {device_index}");
-                continue;
-            };
-            let status = Status {
-                temps,
-                channels,
-                ..Default::default()
-            };
-            trace!(
-                "Hwmon device: {} status was updated with: {status:?}",
-                device.borrow().name
-            );
-            device.borrow_mut().set_status(status);
-        }
+    async fn update_statuses(&self, timestamp: DateTime<Local>) -> Result<()> {
+        self.store_preloaded_statuses(timestamp);
         Ok(())
     }
 
@@ -2799,6 +2801,98 @@ mod preload_tests {
             repo.delay_logged.insert(type_index, Cell::new(0));
         }
         repo
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // exact equality on known test constants is intentional
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        let repo = new_test_repo();
+        let channels = vec![ChannelStatus {
+            name: "fan1".to_string(),
+            rpm: Some(1200),
+            duty: Some(50.0),
+            pwm_mode: Some(1),
+            ..Default::default()
+        }];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 40.0,
+        }];
+        let mut device = Device::new(
+            "test_driver".to_string(),
+            DeviceType::Hwmon,
+            TEST_TYPE_INDEX,
+            None,
+            DeviceInfo::default(),
+            Some("update-test".to_string()),
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: temps.clone(),
+                channels: channels.clone(),
+            },
+            1.0,
+        );
+        let uid = device.uid.clone();
+        let device = Rc::new(RefCell::new(device));
+        let mut devices = HashMap::new();
+        devices.insert(
+            uid,
+            (Rc::clone(&device), Rc::new(HwmonDriverInfo::default())),
+        );
+        let repo = HwmonRepo { devices, ..repo };
+        repo.preloaded_statuses
+            .borrow_mut()
+            .insert(TEST_TYPE_INDEX, (channels, temps));
+        repo.store_preloaded_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| repo.store_preloaded_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp("temp1"), Some(40.0));
+        let fan1 = device.latest_channel("fan1").unwrap();
+        assert_eq!(
+            (fan1.rpm, fan1.duty, fan1.pwm_mode),
+            (Some(1200), Some(50.0), Some(1))
+        );
+    }
+
+    #[test]
+    fn a_staleness_tick_without_a_transition_allocates_nothing() {
+        // Goal: the per-tick staleness pass builds the device's log name only when it has
+        // something to log. Method: a fresh device ticks once with nothing going stale.
+        let repo = new_test_repo();
+        let channels = vec![ChannelStatus {
+            name: "fan1".to_string(),
+            rpm: Some(1200),
+            duty: Some(50.0),
+            ..Default::default()
+        }];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 40.0,
+        }];
+        seed_failsafe(&repo, TEST_TYPE_INDEX, &channels, &temps);
+        repo.preloaded_statuses
+            .borrow_mut()
+            .insert(TEST_TYPE_INDEX, (channels, temps));
+        repo.mark_channel_fresh(TEST_TYPE_INDEX, "fan1");
+        repo.mark_temp_fresh(TEST_TYPE_INDEX, "temp1");
+
+        let ((), allocations) = crate::alloc_count::count_allocations(|| {
+            repo.tick_staleness_and_log(TEST_TYPE_INDEX, "test_driver");
+        });
+
+        assert_eq!(allocations, 0);
     }
 
     fn fan_channel_with_paths(number: u8, name: &str, base_path: &Path) -> HwmonChannelInfo {

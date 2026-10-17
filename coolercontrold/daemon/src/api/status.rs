@@ -6,14 +6,12 @@ use axum::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
-use std::collections::VecDeque;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::api::devices::{DeviceChannelPath, DevicePath};
 use crate::api::{AppState, CCError};
-use crate::device::{DeviceType, Status, UID};
+use crate::device::{DeviceType, StatusSnapshot, UID};
 use crate::Device;
 
 /// Returns the status of all devices with the selected filters from the request body
@@ -86,19 +84,19 @@ pub struct StatusQuery {
     all: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StatusResponse {
     pub devices: Vec<DeviceStatusDto>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DeviceStatusDto {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     pub type_index: u8,
     pub uid: UID,
-    /// Status history wrapped in Arc for O(1) cloning for serialization
-    pub status_history: Arc<VecDeque<Status>>,
+    /// The device's statuses, oldest first. A copy taken on request.
+    pub status_history: StatusSnapshot,
 }
 
 impl From<&Device> for DeviceStatusDto {
@@ -107,15 +105,14 @@ impl From<&Device> for DeviceStatusDto {
             d_type: device.d_type,
             type_index: device.type_index,
             uid: device.uid.clone(),
-            // Clone the Arc pointer, not the data - O(1) operation
-            status_history: Arc::clone(&device.status_history),
+            status_history: device.snapshot_all(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DeviceChannelStatusDto {
-    pub status_history: Vec<Status>,
+    pub status_history: StatusSnapshot,
 }
 
 /// Serde deserialization decorator to map empty Strings to None,

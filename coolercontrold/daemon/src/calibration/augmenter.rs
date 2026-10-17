@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Rewrites each pushed status's `duty` into true-duty space. Runs
-//! inside `set_status`'s `Arc::make_mut`, avoiding a second pass that
-//! would deep-clone the history when a reader holds the Arc.
+//! Rewrites each stored channel's `duty` into true-duty space, as the device stores it.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +9,7 @@ use std::rc::Rc;
 use super::state::FanStateMap;
 use super::store::CalibrationStore;
 use super::ChannelKey;
-use crate::device::{Device, DeviceUID, Duty, Status, StatusAugmenter};
+use crate::device::{ChannelSample, Device, DeviceUID, Duty, StatusAugmenter};
 
 pub struct CalibrationStatusAugmenter {
     calibration_store: Rc<CalibrationStore>,
@@ -32,51 +30,56 @@ impl CalibrationStatusAugmenter {
 }
 
 impl StatusAugmenter for CalibrationStatusAugmenter {
-    fn augment(&self, status: &mut Status, device_uid: &DeviceUID) {
+    fn augment_channel(
+        &self,
+        device_uid: &DeviceUID,
+        channel_name: &str,
+        channel: &mut ChannelSample,
+    ) {
         let mut key = self.key.borrow_mut();
-        key.0.clear();
-        key.0.push_str(device_uid);
-        for channel in &mut status.channels {
-            key.1.clear();
-            key.1.push_str(&channel.name);
-            let key: &ChannelKey = &key;
-            // Sweep is writing raw duty; don't mask it with the prior mapping.
-            if self.fan_state_map.is_under_diagnosis(key) {
-                continue;
+        if key.0 != *device_uid {
+            key.0.clear();
+            key.0.push_str(device_uid);
+        }
+        key.1.clear();
+        key.1.push_str(channel_name);
+        let key: &ChannelKey = &key;
+        // Sweep is writing raw duty; don't mask it with the prior mapping.
+        if self.fan_state_map.is_under_diagnosis(key) {
+            return;
+        }
+        // Three-tier resolution:
+        // 1. Hybrid cache: if the dispatcher recently commanded a
+        //    true-duty AND the hardware's read-back device-duty's
+        //    preimage still contains that commanded value, display
+        //    the commanded value exactly. This closes the cross-fan
+        //    drift the stateless midpoint reverse cannot remove.
+        // 2. Midpoint reverse via `device_to_true_duty`: hardware's
+        //    device-duty alone, used for un-cached channels (fresh
+        //    startup) and when hardware has diverged from command.
+        // 3. RPM-derived: fallback for rpm-only devices with no PWM
+        //    readback, and for a sub-floor device-duty whose rpm says the
+        //    fan is turning anyway.
+        let device_duty = channel.duty.map(clamp_f64_to_duty);
+        let commanded = self.fan_state_map.commanded_true_duty(key);
+        let cache_hit = match (device_duty, commanded) {
+            (Some(dut), Some(cmd))
+                if self
+                    .calibration_store
+                    .preimage_contains_true_duty(key, dut, cmd) =>
+            {
+                Some(cmd)
             }
-            // Three-tier resolution:
-            // 1. Hybrid cache: if the dispatcher recently commanded a
-            //    true-duty AND the hardware's read-back device-duty's
-            //    preimage still contains that commanded value, display
-            //    the commanded value exactly. This closes the cross-fan
-            //    drift the stateless midpoint reverse cannot remove.
-            // 2. Midpoint reverse via `device_to_true_duty`: hardware's
-            //    device-duty alone, used for un-cached channels (fresh
-            //    startup) and when hardware has diverged from command.
-            // 3. RPM-derived: fallback for rpm-only devices with no PWM
-            //    readback, and for a sub-floor device-duty whose rpm says the
-            //    fan is turning anyway.
-            let device_duty = channel.duty.map(clamp_f64_to_duty);
-            let commanded = self.fan_state_map.commanded_true_duty(key);
-            let cache_hit = match (device_duty, commanded) {
-                (Some(dut), Some(cmd))
-                    if self
-                        .calibration_store
-                        .preimage_contains_true_duty(key, dut, cmd) =>
-                {
-                    Some(cmd)
-                }
-                _ => None,
-            };
-            let device_derived =
-                device_duty.and_then(|d| self.calibration_store.device_to_true_duty(key, d));
-            let rpm_derived = channel
-                .rpm
-                .and_then(|r| self.calibration_store.rpm_to_true_duty(key, r));
-            let derived = Self::prefer_rpm_over_stall(device_derived, rpm_derived);
-            if let Some(displayed) = cache_hit.or(derived) {
-                channel.duty = Some(f64::from(displayed));
-            }
+            _ => None,
+        };
+        let device_derived =
+            device_duty.and_then(|d| self.calibration_store.device_to_true_duty(key, d));
+        let rpm_derived = channel
+            .rpm
+            .and_then(|r| self.calibration_store.rpm_to_true_duty(key, r));
+        let derived = Self::prefer_rpm_over_stall(device_derived, rpm_derived);
+        if let Some(displayed) = cache_hit.or(derived) {
+            channel.duty = Some(f64::from(displayed));
         }
     }
 }
@@ -127,7 +130,7 @@ mod tests {
     use super::*;
     use crate::calibration::curve::{Calibration, CurveKind, DutySample};
     use crate::calibration::state::{ChannelEntry, FanState};
-    use crate::device::{ChannelStatus, RPM};
+    use crate::device::{ChannelStatus, Status, RPM};
     use chrono::Local;
 
     fn cal_with_samples(samples: &[(u8, RPM)]) -> Calibration {

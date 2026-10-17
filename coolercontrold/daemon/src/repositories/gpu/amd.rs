@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::repositories::hwmon::device_io::{self, DeviceIo};
+use chrono::{DateTime, Local};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::{Not, RangeInclusive};
@@ -771,28 +772,23 @@ impl GpuAMD {
         channels
     }
 
-    pub fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self, timestamp: DateTime<Local>) {
+        let preloaded_statuses_map = self.amd_preloaded_statuses.borrow();
         for (uid, amd_driver) in &self.amd_driver_infos {
-            if let Some(device_lock) = self.amd_devices.get(uid) {
-                let device_index = device_lock.borrow().type_index;
-                let preloaded_statuses_map = self.amd_preloaded_statuses.borrow();
-                let preloaded_statuses = preloaded_statuses_map.get(&device_index);
-                if preloaded_statuses.is_none() {
-                    error!("There is no status preloaded for this AMD device: {device_index}");
-                    continue;
-                }
-                let (channels, temps) = preloaded_statuses.unwrap().clone();
-                let status = Status {
-                    temps,
-                    channels,
-                    ..Default::default()
-                };
-                trace!(
-                    "Device: {} status updated: {status:?}",
-                    amd_driver.hwmon.name
-                );
-                device_lock.borrow_mut().set_status(status);
-            }
+            let Some(device_lock) = self.amd_devices.get(uid) else {
+                continue;
+            };
+            let device_index = device_lock.borrow().type_index;
+            let Some((channels, temps)) = preloaded_statuses_map.get(&device_index) else {
+                error!("There is no status preloaded for this AMD device: {device_index}");
+                continue;
+            };
+            trace!(
+                "Device: {} status updated: {temps:?} {channels:?}",
+                amd_driver.hwmon.name
+            );
+            let mut device = device_lock.borrow_mut();
+            device.write_status(timestamp).write_all(temps, channels);
         }
     }
 
@@ -1401,6 +1397,68 @@ mod tests {
     use std::ops::RangeInclusive;
     use std::path::PathBuf;
     use std::time::Duration;
+
+    #[test]
+    fn a_warm_update_stores_the_preloaded_status_without_allocating() {
+        // Goal: the update pass writes the preloaded values into the history in place,
+        // stamped with the tick's timestamp. Method: one tick warms the stats, then count
+        // the allocations of the next.
+        use crate::config::Config;
+        use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
+        use chrono::Local;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let mut gpus = GpuAMD::new(Rc::new(Config::init_default_config().unwrap()));
+        let channels = vec![ChannelStatus {
+            name: "fan1".to_string(),
+            rpm: Some(900),
+            duty: Some(30.0),
+            ..Default::default()
+        }];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 50.0,
+        }];
+        let mut device = Device::new(
+            "Test AMD GPU".to_string(),
+            DeviceType::GPU,
+            1,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        );
+        device.initialize_status_history_with(
+            Status {
+                timestamp: Local::now(),
+                temps: temps.clone(),
+                channels: channels.clone(),
+            },
+            1.0,
+        );
+        let uid = device.uid.clone();
+        let device = Rc::new(RefCell::new(device));
+        gpus.amd_devices.insert(uid.clone(), Rc::clone(&device));
+        gpus.amd_driver_infos.insert(
+            uid,
+            Rc::new(AMDDriverInfo::for_test(HwmonDriverInfo::default())),
+        );
+        gpus.amd_preloaded_statuses
+            .borrow_mut()
+            .insert(1, (channels, temps));
+        gpus.update_all_statuses(Local::now());
+        let tick = Local::now();
+
+        let ((), allocations) =
+            crate::alloc_count::count_allocations(|| gpus.update_all_statuses(tick));
+
+        assert_eq!(allocations, 0);
+        let device = device.borrow();
+        assert_eq!(device.latest_timestamp(), Some(tick));
+        assert_eq!(device.latest_temp("temp1"), Some(50.0));
+        assert_eq!(device.latest_channel("fan1").unwrap().rpm, Some(900));
+    }
 
     fn basic_test_fan_curve_info() -> FanCurveInfo {
         FanCurveInfo {
