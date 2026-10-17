@@ -6,10 +6,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import type { UID } from '@/models/Device.ts'
 import type { StatsLegendScope } from '@/models/UISettings.ts'
 import type { ChannelStats } from '@/models/Stats.ts'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { monitoringChannelRoute } from '@/shell/channelRoute.ts'
 import { useLifetimeStats } from '@/composables/useLifetimeStats.ts'
 import { useStatFormat } from '@/composables/useStatFormat.ts'
 import {
@@ -57,6 +60,15 @@ const rows = computed((): Array<LegendRow> =>
 
 const deviceName = (deviceUID: UID): string =>
     settingsStore.allUIDeviceSettings.get(deviceUID)?.name ?? ''
+
+const deviceStore = useDeviceStore()
+const sensorRoute = (line: WindowLineStats): RouteLocationRaw =>
+    monitoringChannelRoute(
+        deviceStore.allDevices(),
+        line.deviceUID,
+        line.channelName,
+        settingsStore.channelUnit,
+    )
 </script>
 
 <template>
@@ -94,7 +106,10 @@ const deviceName = (deviceUID: UID): string =>
                         @mouseenter="emit('focusLine', line.seriesIndex)"
                     >
                         <td class="legend-cell text-left">
-                            <div class="flex min-w-0 items-center gap-2">
+                            <RouterLink
+                                :to="sensorRoute(line)"
+                                class="flex min-w-0 items-center gap-2 rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent"
+                            >
                                 <svg width="22" height="8" class="shrink-0" aria-hidden="true">
                                     <line
                                         x1="1"
@@ -110,7 +125,7 @@ const deviceName = (deviceUID: UID): string =>
                                 <span class="truncate text-xs text-text-color-secondary">{{
                                     deviceName(line.deviceUID)
                                 }}</span>
-                            </div>
+                            </RouterLink>
                         </td>
                         <td class="legend-cell font-semibold">
                             {{ formatStat(line.latest, line) }}
