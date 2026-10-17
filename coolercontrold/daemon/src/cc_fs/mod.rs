@@ -4,8 +4,9 @@
 //! File utilities for `CoolerControl`.
 //!
 //! Specific to `CoolerControl`'s use cases and intended only for ordinary files. Async reads and
-//! writes go through compio (completion-based). Directory and metadata helpers fall back to `std`
-//! where appropriate and should be used sparingly.
+//! writes go through compio (completion-based). Files the kernel generates from memory, like
+//! `/proc/stat`, are the exception: see `ProcFile`. Directory and metadata helpers fall back to
+//! `std` where appropriate and should be used sparingly.
 
 mod errno;
 pub use self::errno::*;
@@ -19,6 +20,8 @@ mod write;
 pub use self::write::*;
 mod open;
 pub use self::open::*;
+mod proc_file;
+pub use self::proc_file::*;
 
 /// Always-Tokio fs for the auth/session/token subsystem (the REST API lives on the Tokio sidecar).
 pub mod sidecar_fs;

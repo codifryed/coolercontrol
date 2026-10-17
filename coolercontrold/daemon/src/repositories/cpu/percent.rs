@@ -2,12 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use anyhow::{Context, Result};
+use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
+
+use crate::cc_fs::ProcFile;
 
 /// Sane upper bound for logical CPUs. Prevents unbounded allocation
 /// if /proc/stat is somehow corrupted or pathological.
 pub const MAX_LOGICAL_CPUS: usize = 2048;
+
+/// Bound on /proc/stat, well above `MAX_LOGICAL_CPUS` cpu lines plus the interrupt and softirq
+/// counters that follow them.
+const STAT_MAX_BYTES: usize = 4 * 1024 * 1024;
 
 /// Minimum number of /proc/stat fields required per cpu line.
 /// Fields: user nice system idle (iowait irq softirq steal are optional).
@@ -37,8 +44,8 @@ pub struct CpuPercent {
 /// Reads /proc/stat and computes per-CPU usage percentages from the
 /// delta between consecutive calls.
 pub struct CpuPercentCollector {
-    stat_path: Box<Path>,
-    prev: Vec<CpuTimes>,
+    stat: ProcFile,
+    prev: RefCell<Vec<CpuTimes>>,
 }
 
 impl CpuPercentCollector {
@@ -53,9 +60,11 @@ impl CpuPercentCollector {
             .with_context(|| format!("reading {}", stat_path.display()))?;
         let prev = parse_stat_content(&content);
         assert!(!prev.is_empty(), "no per-cpu lines found");
+        let stat = ProcFile::new(stat_path, STAT_MAX_BYTES);
+        stat.reserve(content.len());
         Ok(Self {
-            stat_path: stat_path.into(),
-            prev,
+            stat,
+            prev: RefCell::new(prev),
         })
     }
 
@@ -63,19 +72,18 @@ impl CpuPercentCollector {
     ///
     /// Only CPUs online in both snapshots are included: a CPU that came online since has no
     /// baseline yet, and one that went offline has no current reading.
-    #[allow(clippy::cast_precision_loss)]
-    pub fn cpu_percent_per_cpu(&mut self) -> Result<Vec<CpuPercent>> {
-        let content = fs::read_to_string(&self.stat_path)
-            .with_context(|| format!("reading {}", self.stat_path.display()))?;
-        let curr = parse_stat_content(&content);
-        let percents = compute_percents(&self.prev, &curr);
-        self.prev = curr;
+    pub async fn cpu_percent_per_cpu(&self) -> Result<Vec<CpuPercent>> {
+        let curr = self.stat.read_with(parse_stat_content).await?;
+        let mut prev = self.prev.borrow_mut();
+        let percents = compute_percents(&prev, &curr);
+        *prev = curr;
         Ok(percents)
     }
 
     /// The CPUs online at the latest snapshot, ascending.
     pub fn online_cpu_ids(&self) -> impl Iterator<Item = u16> + '_ {
-        self.prev.iter().map(|times| times.cpu_id)
+        let prev = self.prev.borrow();
+        (0..prev.len()).map(move |index| prev[index].cpu_id)
     }
 }
 
@@ -452,5 +460,27 @@ mod tests {
         // Goal: verify a missing file returns an Err, not a panic.
         let result = CpuPercentCollector::with_path(Path::new("/tmp/does_not_exist_proc_stat"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn collector_rereads_its_file_each_poll() {
+        // Goal: each poll reads the file as it is now, through the held descriptor, and measures
+        // against the snapshot before it. Method: start from one fixture, rewrite the file with a
+        // later one, poll, then read the online CPUs back.
+        crate::rt::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("stat");
+            fs::copy(format!("{TEST_DIR}/8_cpu_normal"), &path).unwrap();
+            let collector = CpuPercentCollector::with_path(&path).unwrap();
+            fs::copy(format!("{TEST_DIR}/8_cpu_after_load"), &path).unwrap();
+
+            let percents = collector.cpu_percent_per_cpu().await.unwrap();
+
+            assert_eq!(percents.len(), 8);
+            // cpu0 is 50% busy between the fixtures, as `percent_from_two_fixtures` works out.
+            assert!((percents[0].percent - 50.0).abs() < 0.1);
+            let online: Vec<u16> = collector.online_cpu_ids().collect();
+            assert_eq!(online, (0..8).collect::<Vec<u16>>());
+        });
     }
 }

@@ -21,8 +21,7 @@ use crate::repositories::cpu::apple_silicon::{self, AppleSilicon};
 use crate::repositories::cpu::association::{
     self, CpuAssociation, CpuDriver, DriverCensus, ZoneID,
 };
-use crate::repositories::cpu::cpuinfo_file::CpuInfoFile;
-use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector};
+use crate::repositories::cpu::percent::{CpuPercent, CpuPercentCollector, MAX_LOGICAL_CPUS};
 use crate::repositories::cpu::topology::{self, CpuFreqs, CpuTopology, PhysicalID};
 use crate::repositories::cpu::{CPU_DEVICE_NAMES_ORDERED, CPU_TEMP_NAME, INTEL_DEVICE_NAME};
 use crate::repositories::device_summary;
@@ -44,6 +43,9 @@ const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
 const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
 const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
+/// Bound on cpuinfo: 8 KiB for each of `MAX_LOGICAL_CPUS`, well above the about 2 KiB each
+/// processor takes on x86 today.
+const CPUINFO_MAX_BYTES: usize = MAX_LOGICAL_CPUS * 8 * 1024;
 
 /// A CPU device and what it was built from. The association is kept rather than recovered from
 /// `type_index`, so the `+ 1` that numbers a device lives in `device_type_index` alone.
@@ -64,8 +66,8 @@ pub struct CpuRepo {
     /// it, which every other path here runs after.
     topology: CpuTopology,
     /// Read every poll for the package frequencies.
-    cpuinfo: CpuInfoFile,
-    cpu_percent_collector: RefCell<CpuPercentCollector>,
+    cpuinfo: cc_fs::ProcFile,
+    cpu_percent_collector: CpuPercentCollector,
     /// The latest load sample for every processor, taken once per poll and shared by all packages.
     cpu_load_percents: RefCell<Vec<CpuPercent>>,
     /// Keyed by association, so a zone-keyed device cannot be confused with the socket whose
@@ -85,8 +87,8 @@ impl CpuRepo {
             devices: HashMap::new(),
             apple_silicon: None,
             topology: CpuTopology::default(),
-            cpuinfo: CpuInfoFile::new(Path::new(CPUINFO_PATH)),
-            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
+            cpuinfo: cc_fs::ProcFile::new(Path::new(CPUINFO_PATH), CPUINFO_MAX_BYTES),
+            cpu_percent_collector: CpuPercentCollector::new()?,
             cpu_load_percents: RefCell::new(Vec::new()),
             preloaded_statuses: RefCell::new(HashMap::new()),
             energy_counters: HashMap::new(),
@@ -200,12 +202,9 @@ impl CpuRepo {
     /// processor map is refreshed here when processors went offline or came online, so load
     /// follows them at runtime.
     async fn sample_cpu_load(&self) {
-        let (percents, owners_are_current) = {
-            let mut collector = self.cpu_percent_collector.borrow_mut();
-            let percents = collector.cpu_percent_per_cpu().unwrap_or_default();
-            let owners_are_current = self.topology.owners_are_current(collector.online_cpu_ids());
-            (percents, owners_are_current)
-        };
+        let collector = &self.cpu_percent_collector;
+        let percents = collector.cpu_percent_per_cpu().await.unwrap_or_default();
+        let owners_are_current = self.topology.owners_are_current(collector.online_cpu_ids());
         if owners_are_current.not() {
             self.refresh_processor_owners().await;
         }
@@ -348,6 +347,7 @@ impl CpuRepo {
         }
         self.cpuinfo
             .read_with(topology::parse_freqs)
+            .await
             .unwrap_or_default()
     }
 

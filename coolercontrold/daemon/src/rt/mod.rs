@@ -35,9 +35,9 @@ impl std::fmt::Display for JoinError {
 
 impl std::error::Error for JoinError {}
 
-/// Cooperatively yield to the runtime once. Runtime-agnostic (compio has no `yield_now`). Test-only:
-/// used by tests that need a concurrently-spawned task to make progress before they inspect state.
-#[cfg(test)]
+/// Lets every other ready task run before the caller continues. compio has no `yield_now`: this
+/// wakes the current task and returns `Pending` once, which puts it at the back of the run queue
+/// without allocating.
 pub async fn yield_now() {
     let mut yielded = false;
     std::future::poll_fn(|cx| {
