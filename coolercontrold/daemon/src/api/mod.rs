@@ -125,7 +125,7 @@ pub async fn start_server<'s>(
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
     device_health_controller: Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
@@ -644,7 +644,7 @@ async fn create_app_state<'s>(
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
     device_health_controller: &Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
@@ -792,7 +792,8 @@ async fn empty_app_state<'s>(
     ));
     let custom_sensors =
         CustomSensorsRepo::new(Rc::clone(&config), Vec::new(), Rc::clone(&overrides));
-    let hardware_support = crate::hardware_support::HardwareSupportController::init(None, false);
+    let hardware_support =
+        crate::diagnostics::support::HardwareSupportController::init(None, false);
     let status_handle =
         StatusHandle::new(Rc::clone(&all_devices), cancel_token.clone(), main_scope);
     create_app_state(

@@ -3,7 +3,7 @@
 
 //! Paste-ready hardware report.
 //!
-//! Reuses `fans::init_fans` and `hardware_support::diagnose_channel` rather
+//! Reuses `fans::init_fans` and `support::diagnose_channel` rather
 //! than re-deriving anything, so the report and the running daemon can never
 //! disagree about a verdict.
 //!
@@ -12,7 +12,7 @@
 //! are limited to board and BIOS, which is what actually narrows a diagnosis.
 
 use crate::device::{ChannelName, Device, DeviceInfo, DeviceType};
-use crate::hardware_support::{
+use crate::diagnostics::support::{
     self, ChannelExclusion, ChannelVerdict, DetectedChipRef, HiddenHardware, HwmonExclusion,
     ProbeEnvironment, SystemFinding, SystemInfo,
 };
@@ -514,7 +514,7 @@ fn derive_findings(
     detection: &cc_detect::DetectionResults,
     detection_supported: bool,
 ) -> Vec<SystemFinding> {
-    let bound_drivers = hardware_support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
+    let bound_drivers = support::resolve_bound_drivers(Path::new(HWMON_CLASS_PATH));
     let chips = detection
         .detected_chips
         .iter()
@@ -528,7 +528,7 @@ fn derive_findings(
         is_secure_boot: detection.environment.is_secure_boot,
         has_dev_port: detection.environment.has_dev_port,
     };
-    hardware_support::derive_system_findings(
+    support::derive_system_findings(
         detection_supported,
         &chips,
         &detection.blacklisted,

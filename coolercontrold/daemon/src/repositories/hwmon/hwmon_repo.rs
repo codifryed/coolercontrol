@@ -63,7 +63,7 @@ use crate::device::{
     Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
     Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
 };
-use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
+use crate::diagnostics::support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
@@ -7245,7 +7245,7 @@ mod sensors_conf_tests {
 #[cfg(test)]
 mod verdict_publish_tests {
     use super::*;
-    use crate::hardware_support::{ChannelVerdict, HardwareSupportController};
+    use crate::diagnostics::support::{ChannelVerdict, HardwareSupportController};
     use serial_test::serial;
 
     /// Goal: prove the init-time publish path actually reaches the registry

@@ -13,7 +13,7 @@ pub mod macsmc_hwmon;
 
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Duty, RPM};
-use crate::hardware_support::{self, ChannelDiagnosis};
+use crate::diagnostics::support::{self, ChannelDiagnosis};
 use crate::repositories::hwmon::apple::apple_smc_7_3::AppleSmc73;
 use crate::repositories::hwmon::apple::apple_smc_legacy::AppleSmcLegacy;
 use crate::repositories::hwmon::apple::macsmc_hwmon::MacSmcHwmon;
@@ -296,9 +296,9 @@ pub fn diagnose_fan(device_name: &str, channel: &HwmonChannelInfo) -> Option<Cha
         "a fan with a read-only control file cannot be controllable"
     );
     if channel.caps.is_apple_smc_read_only() {
-        return Some(hardware_support::diagnose_read_only_driver_channel());
+        return Some(support::diagnose_read_only_driver_channel());
     }
-    Some(hardware_support::diagnose_driver_channel(
+    Some(support::diagnose_driver_channel(
         channel.caps.is_fan_controllable(),
     ))
 }
@@ -418,7 +418,7 @@ pub async fn read_fan_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hardware_support::ChannelVerdict;
+    use crate::diagnostics::support::ChannelVerdict;
     use crate::repositories::hwmon::hwmon_repo::{HwmonChannelCapabilities, HwmonChannelType};
     use serial_test::serial;
     use std::fs::Permissions;

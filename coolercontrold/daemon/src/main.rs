@@ -43,11 +43,10 @@ mod config;
 mod config_validate;
 mod device;
 mod device_listener;
+mod diagnostics;
 mod engine;
 mod env_vars;
 mod grpc_api;
-mod hardware_report;
-mod hardware_support;
 mod hashutil;
 mod logger;
 mod main_loop;
@@ -353,7 +352,7 @@ fn main() -> Result<()> {
         let detection_results = run_sensors_detection(&config);
         rt::log_active_backend();
         let hardware_support = Rc::new(
-            hardware_support::HardwareSupportController::init(
+            diagnostics::support::HardwareSupportController::init(
                 detection_results,
                 cc_detect::DETECTION_SUPPORTED,
             )
@@ -884,7 +883,7 @@ async fn initialize_device_repos(
     cmd_args: &Args,
     run_token: CancellationToken,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -996,7 +995,7 @@ async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
     let mut lc_repo = LiquidctlRepo::new(config, run_token, overrides)
         .await?
@@ -1037,7 +1036,7 @@ async fn init_cpu_repo(
 async fn init_gpu_repo(
     config: Rc<Config>,
     nvidia_cli: bool,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<GpuRepo> {
     let mut gpu_repo = GpuRepo::new(config, nvidia_cli).with_hardware_support(hardware_support);
     gpu_repo.initialize_devices().await?;
@@ -1048,7 +1047,7 @@ async fn init_hwmon_repo(
     config: Rc<Config>,
     lc_locations: Vec<String>,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<HwmonRepo> {
     let mut hwmon_repo =
         HwmonRepo::new(config, lc_locations, overrides).with_hardware_support(hardware_support);
@@ -1061,7 +1060,7 @@ async fn init_service_plugin_repo(
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<ServicePluginRepo> {
     let mut external_repo =
         ServicePluginRepo::new(config, api_up_token, reset_plugin_user, overrides)?

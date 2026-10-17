@@ -7,8 +7,8 @@ use crate::device::{
     ChannelExtensionNames, ChannelKind, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Status,
     StatusWriter, TempStatus, UID,
 };
+use crate::diagnostics::support::HardwareSupportController;
 use crate::grpc_api::device_service::v1::health_response;
-use crate::hardware_support::HardwareSupportController;
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData};
@@ -228,7 +228,7 @@ impl ServicePluginRepo {
             // Enabled by construction: a disabled device never reaches this map.
             hardware_support.record_device_summary(
                 device_uid,
-                crate::hardware_report::DeviceSummary::from_device(&device, true),
+                crate::diagnostics::report::DeviceSummary::from_device(&device, true),
             );
         }
     }
