@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::admin;
 use crate::api::actor::{TokenCheck, TokenHandle, TokenValidation};
 use crate::api::auth_throttle::{self, mark, CredentialOutcome};
 use crate::api::connection;
 use crate::api::peer::PeerKey;
 use crate::api::{AppState, CCError};
+use crate::auth::admin;
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
 use anyhow::Result;
@@ -522,12 +522,12 @@ mod tests {
     }
 
     /// A token as stored since 5.0.0 (`digest`) or before it (`legacy`).
-    fn stored_token(raw: &str, digest: bool) -> crate::token::StoredToken {
-        crate::token::StoredToken {
+    fn stored_token(raw: &str, digest: bool) -> crate::auth::token::StoredToken {
+        crate::auth::token::StoredToken {
             id: uuid::Uuid::new_v4().to_string(),
             label: "Test Token".to_string(),
-            hash: crate::token::hash_token(raw).unwrap(),
-            digest: digest.then(|| crate::token::digest_token(raw)),
+            hash: crate::auth::token::hash_token(raw).unwrap(),
+            digest: digest.then(|| crate::auth::token::digest_token(raw)),
             created_at: chrono::Local::now(),
             expires_at: None,
             last_used: None,
@@ -536,13 +536,13 @@ mod tests {
     }
 
     fn legacy_app() -> (axum::Router, String) {
-        let raw = crate::token::generate_token();
+        let raw = crate::auth::token::generate_token();
         let app = token_app(TokenHandle::with_tokens(vec![stored_token(&raw, false)]));
         (app, raw)
     }
 
     fn unknown_token() -> String {
-        crate::token::generate_token()
+        crate::auth::token::generate_token()
     }
 
     /// Goal: a legacy check dropped mid-hash, as by a client reset, stays charged, so a
@@ -571,7 +571,7 @@ mod tests {
     #[tokio::test]
     async fn valid_digest_burst_is_never_charged() {
         let peer = test_peer(41);
-        let raw = crate::token::generate_token();
+        let raw = crate::auth::token::generate_token();
         let tokens = vec![
             stored_token(&unknown_token(), false),
             stored_token(&raw, true),
@@ -642,7 +642,7 @@ mod tests {
     async fn legacy_token_burst_is_a_one_time_cost() {
         use axum::http::StatusCode;
         let peer = test_peer(45);
-        let raw = crate::token::generate_token();
+        let raw = crate::auth::token::generate_token();
         let handle = TokenHandle::with_tokens(vec![stored_token(&raw, false)]);
         let app = token_app(handle.clone());
         let burst = auth_throttle::FAILURE_THRESHOLD + 2;
@@ -677,11 +677,11 @@ mod tests {
     async fn authenticated_tokens_promote_their_connection() {
         use axum::http::StatusCode;
         let peer = test_peer(46);
-        let read_write = crate::token::generate_token();
-        let read_only = crate::token::generate_token();
+        let read_write = crate::auth::token::generate_token();
+        let read_only = crate::auth::token::generate_token();
         let tokens = vec![
             stored_token(&read_write, true),
-            crate::token::StoredToken {
+            crate::auth::token::StoredToken {
                 write_access: false,
                 ..stored_token(&read_only, true)
             },

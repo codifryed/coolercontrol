@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::token::{self, LegacyToken, StoredToken, TokenDigest};
+use crate::auth::token::{self, LegacyToken, StoredToken, TokenDigest};
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use log::{error, trace, warn};

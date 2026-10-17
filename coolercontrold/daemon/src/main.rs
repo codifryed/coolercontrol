@@ -31,11 +31,11 @@ use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
 use tokio_util::sync::CancellationToken;
 
-mod admin;
 mod alerts;
 #[cfg(test)]
 mod alloc_count;
 mod api;
+mod auth;
 mod backup;
 mod calibration;
 mod cc_fs;
@@ -61,7 +61,6 @@ mod rt;
 mod sensors_conf;
 mod setting;
 mod sidecar;
-mod token;
 mod watchdog;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -340,7 +339,7 @@ fn main() -> Result<()> {
         // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
         // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
         // unused here: loading it resets a stored file's permissions to 0600.
-        sidecar::handle().run(admin::load_passwd).await??;
+        sidecar::handle().run(auth::admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
         // not start the watchdog until READY.
@@ -726,7 +725,7 @@ async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
         // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
         match crate::sidecar::handle()
-            .run(admin::reset_passwd)
+            .run(auth::admin::reset_passwd)
             .await
             .unwrap_or_else(Err)
         {
