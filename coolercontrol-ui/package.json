@@ -1,6 +1,6 @@
 {
     "name": "coolercontrol",
-    "version": "5.0.1",
+    "version": "5.1.0",
     "private": true,
     "license": "GPL-3.0-or-later",
     "scripts": {

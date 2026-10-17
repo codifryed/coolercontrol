@@ -10,6 +10,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [5.1.0] - 2026-10-17
+
+### Added
+
+- Custom sensors for any channel metric: temperature, duty, RPM, frequency and power channels can
+  now be a custom sensor's source, File sensors are read in their metric's unit, and a sensor's
+  driver limits carry through to it (#423, !594)
+- A Sum mix function for custom sensors, and a scale on the Offset custom sensor
+- Channel units from labels: a trailing unit in brackets, such as `Flow [dL/h]`, is shown as the
+  channel's unit in panels, charts, tables, alerts, the Cooling pages and the tray, and a channel
+  with such a unit that cannot be controlled is listed as a sensor (#617, !588)
+- liquidctl flow channels are labelled `Flow [dL/h]`
+- Individual chart statistics: a stats panel with window and lifetime values, time in range, jitter,
+  and fan direction changes, stops and stalls, plus driver limit lines for temperature maximum,
+  critical, emergency and minimum and for fan minimum and maximum (#613, !586)
+- A channel's driver limits, including rated and power limits, are read fresh each time they are
+  shown, and Leakshield pressure limits are supported
+- Dashboard time charts have a stats legend with a since-start switch, a draggable height, and
+  sensors that link to their own charts (!603)
+- The alert editor unlocks RPM thresholds above 10,000 up to 9,999,999, groups long numbers, and
+  shows each source's reference values with the time spent outside the thresholds, in a reworked
+  layout (#612, !587)
+- Digit grouping for long numbers in number inputs, dashboards and the side panels, and a higher
+  manual RPM axis maximum
+- A debug logging setting, applied at the next daemon restart, with a Debug chip in the header and a
+  copyable `journalctl` export command on the Logs page
+- Apple Silicon support: a CPU device with the model, load and per-cluster clocks, and fan control
+  through `macsmc_hwmon` when the module allows it, with fans handed back to the firmware on
+  shutdown (#622, !598, @Daaboulex)
+- Intel Mac fans stay controllable on Linux 7.3, which changed the `applesmc` interface (#622)
+- The UI can be embedded in a trusted page, such as Cockpit, through the new `frame_ancestors`
+  setting. The embedding page is told when the UI starts and finishes loading, and can hand its
+  palette to the System theme (#611, !571, !583, !585, !592, @joshuaboud)
+- Project Felt themes in light, dark and high-contrast variants (!582, @joshuaboud)
+- In the browser, the System theme follows light, dark and contrast changes as they happen
+  (@joshuaboud)
+- Plugins added while the daemon runs are found without a restart, and starting, restarting or
+  enabling an integration plugin re-reads its manifest, with a reload button on the plugin page
+- Plugin UIs can open external links after the user confirms them, through `openLink` in the plugin
+  library (!590)
+- Remote device-service plugins can be reached over TLS with a `token` file, with the remote's
+  certificate pinned on first use in a `tls_pin` file, and `tls_strict` to require a pin placed in
+  advance. The daemon's own certificate fingerprint is logged at startup
+- `CC_SERVICE_DIR` sets where plugin service files are written, for distros that mount `/etc` read
+  only, such as NixOS (!569)
+- `trusted_proxies` lets login throttling tell apart clients behind a reverse proxy, using
+  `X-Forwarded-For`
+- The Modes page warns when the Mode mapped to the current power profile is not active
+- A Monitoring button in the channel page and custom sensor editor headers
+- Device icons in selectors are tinted with the device's color
+
+### Changed
+
+- gRPC is served on the REST port, 11987, and needs the same authentication as REST. The separate
+  gRPC port, 11988, is gone, so remote gRPC clients must be pointed at the REST port
+- The IPv6 listener is IPv6 only. Setting `ipv6_address = "::"` with an empty `ipv4_address` no
+  longer serves IPv4 clients through mapped addresses; set `ipv4_address` for that
+- Login throttling is counted per client network instead of globally, with separate budgets for
+  passwords and tokens, and a breaker for remote password failures that clients with a recent
+  successful login bypass
+- API connections are capped per client and in total, unauthenticated remote connections share a
+  pool, and slow or idle connections time out.
+- The UI's static files are compressed with gzip at build time, and API responses use gzip only
+- Lower and steadier daemon memory use: status history is kept in a fixed ring per device and
+  written in place each tick, health checks read only the daemon's own process, release builds no
+  longer keep the OpenAPI document, and CPU `/proc` files are read without allocating
+- The default password check is cached, and needs no password hash when no password is set
+- Logs that print a duty say whether it is the true duty or the device duty, and name devices and
+  channels by their labels
+- Re-applying a channel's current setting no longer deactivates the active Mode
+- New custom sensors get a hashed id, so a deleted sensor's id is never reused
+- Deleting a custom sensor is refused while an alert, an LCD or a parent custom sensor that would be
+  left without a source reads it, and the refusal names what blocks it. A Mode's LCD setting that
+  shows the sensor is removed with it
+- Renamed channels show their current detected name as a hint, including names migrated from
+  `config-ui.json`
+- The full chart link on a channel page moved below the chart
+- The daemon never starts power-profiles-daemon or tuned-ppd itself, and follows their restarts
+
+### Fixed
+
+- With `ipv4_address = "0.0.0.0"` and `ipv6_address = "::"`, only the IPv4 listener came up, and the
+  bind error was hidden. Listener failures are now logged when they happen (#623)
+- An IPv4-mapped `ipv6_address` could not be bound
+- Some API responses were sent uncompressed even with compression enabled
+- DDR5 and other i2c sensors lost their settings between boots because their UID followed the i2c
+  bus number. They are now identified by their adapter and address, and existing settings, Modes,
+  calibrations and UI settings are migrated. Downgrading leaves them orphaned (#625, !599,
+  @Daaboulex)
+- Corsair Commander ST reads timed out, because its reports were sent at 96 bytes to a 64-byte
+  device (#621, !597)
+- Fan readings of 65535 or more, which some drivers report while a fan spins up, were shown as a
+  speed again
+- The tas2764 amplifier temperature on Apple Silicon was treated as failed until its first sample
+  (@Daaboulex)
+- The power profile Mode was not activated at daemon startup
+- The power profile list went stale after power-profiles-daemon restarted, and a blank active
+  profile was taken as a change (!595)
+- A plugin that had crash looped could not be started again until systemd's start limit expired, and
+  a plugin folder added after startup was not made writable for the plugin
+- Starting a plugin reported success when it exited at once, enabling it hid a failed start, and the
+  UI did not say why a plugin action failed or refresh plugin status
+- A service a plugin manifest no longer lists is removed, and a plugin whose user changed is handed
+  its folder
+- A calibrated fan's kick write that failed left the channel stuck, and a skipped write closed a run
+  of failures early
+- NVIDIA GPUs dropped their values when an NVML read went unanswered, and now fail safe once reads
+  keep going unanswered
+- Custom sensor history backfill now follows the same missing-source rule as a live tick
+- The name of a new custom sensor or alert was saved before it existed, and a new custom sensor did
+  not open after saving
+- Pinned rows, Cooling rows and fan cards missed failsafe and not responding warnings, and
+  unreachable channels use a disconnected icon
+- Charts kept the previous theme's colors after a theme switch
+- Page charts and tray sensors did not follow a channel rename
+- A dashboard with a chart type the version cannot draw now shows a time chart
+- Number inputs showed the value before clamping, and RPM axis ticks went missing on large scales
+- Plugin health retries are spaced one second apart, so a plugin gets its full start time
+- `apt update` printed an unsupported architecture notice on hosts with i386 or armhf enabled
+
+### Removed
+
+- The separate gRPC port, 11988
+- The unused API call for reordering custom sensors
+- Brotli response compression
+- The global password lockout, replaced by per-client throttling
+
+### Security
+
+- The gRPC API now requires authentication
+- Plugin UI responses are sandboxed, the plugin manifest link is validated, and the desktop app
+  hands only web links to the browser
+- Plugin files are never secured through a link, a hard-linked plugin credential is removed, and a
+  plugin can no longer replace its own manifest
+- Vulnerable Rust crates and npm dependencies were updated
+
 ## [5.0.1] - 2026-09-16
 
 ### Added
