@@ -17,11 +17,11 @@ use chrono::{DateTime, Local};
 
 use crate::api::CCError;
 use crate::config::Config;
+use crate::device::health::{FailsafeKind, FailsafeRef};
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelName, ChannelSample, Device, DeviceInfo, DeviceType,
     DriverInfo, DriverType, StatusWriter, TempInfo, TempName, UID,
 };
-use crate::device_health::{FailsafeKind, FailsafeRef};
 use crate::overrides::OverridesController;
 use crate::repositories::failsafe::{
     MISSING_DUTY_FAILSAFE, MISSING_FREQ_FAILSAFE, MISSING_RPM_FAILSAFE, MISSING_STATUS_THRESHOLD,
@@ -1756,11 +1756,11 @@ struct SourceData {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
+    use crate::device::health::FailsafeKind;
     use crate::device::{
         ChannelKind, ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempName,
         TempStatus, UID,
     };
-    use crate::device_health::FailsafeKind;
     use crate::overrides::OverridesController;
     use crate::repositories::custom_sensors_repo::{
         CustomSensorsRepo, SampleWindow, SourceData, SAMPLE_WINDOW_MAX_SLOTS,

@@ -57,13 +57,13 @@
 use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::config::Config;
+use crate::device::health::{FailsafeRef, UnreachableRef};
 use crate::device::{
     ChannelAttribute, ChannelExtensionNames, ChannelInfo, ChannelKind, ChannelName, ChannelStatus,
     Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status,
     Temp, TempInfo, TempName, TempStatus, TypeIndex, MAX_CHANNEL_ATTRIBUTES, UID,
 };
-use crate::device_health::{FailsafeRef, UnreachableRef};
-use crate::hardware_support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
+use crate::diagnostics::support::{ChannelExclusion, HardwareSupportController, HwmonExclusion};
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
@@ -1450,7 +1450,7 @@ impl HwmonRepo {
             Err(err) => warn!("Could not migrate label overrides to the new device UID: {err}"),
         }
         for store in &self.uid_side_stores {
-            match crate::device_uid::migrate_uid_in_file(store, legacy_uid, device_uid).await {
+            match crate::device::uid::migrate_uid_in_file(store, legacy_uid, device_uid).await {
                 Ok(moved) => migrated |= moved,
                 Err(err) => warn!(
                     "Could not migrate {} to the new device UID: {err}",
@@ -7245,7 +7245,7 @@ mod sensors_conf_tests {
 #[cfg(test)]
 mod verdict_publish_tests {
     use super::*;
-    use crate::hardware_support::{ChannelVerdict, HardwareSupportController};
+    use crate::diagnostics::support::{ChannelVerdict, HardwareSupportController};
     use serial_test::serial;
 
     /// Goal: prove the init-time publish path actually reaches the registry

@@ -18,8 +18,8 @@ use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, UID};
 use crate::engine::main::Engine;
+use crate::listeners::power_profile::PowerProfiles;
 use crate::paths;
-use crate::power_profile_listener::PowerProfiles;
 use crate::setting::{ProfileUID, Setting, SettingKind};
 use crate::{cc_fs, AllDevices};
 

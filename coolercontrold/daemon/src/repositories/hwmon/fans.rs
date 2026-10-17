@@ -3,7 +3,7 @@
 use crate::cc_fs;
 use crate::cc_fs::ReadIndex;
 use crate::device::ChannelStatus;
-use crate::hardware_support::{self, ChannelDiagnosis, ChannelEvidence};
+use crate::diagnostics::support::{self, ChannelDiagnosis, ChannelEvidence};
 use crate::repositories::hwmon::device_io::DeviceIo;
 use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, ChannelReadSlots, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType,
@@ -80,7 +80,7 @@ pub fn diagnose_fan_channel(
         // `pwmN_enable` file for this channel.
         has_pwm_enable: channel.pwm_enable_default.is_some(),
     };
-    hardware_support::diagnose_channel(evidence, hwmon_name, firmware_override_observed)
+    support::diagnose_channel(evidence, hwmon_name, firmware_override_observed)
 }
 
 /// Logs the reason a channel cannot be driven, replacing the previous bare
@@ -1042,7 +1042,7 @@ pub fn duty_to_pwm_value(speed_duty: u8) -> u8 {
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
-    use crate::hardware_support::ChannelVerdict;
+    use crate::diagnostics::support::ChannelVerdict;
     use crate::repositories::hwmon::drivetemp;
     use serial_test::serial;
     use std::path::{Path, PathBuf};

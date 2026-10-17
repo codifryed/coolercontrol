@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::device_health::{FailsafeRef, UnreachableRef};
+use crate::device::health::{FailsafeRef, UnreachableRef};
 use crate::repositories::hwmon::device_io::DeviceHealth;
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::hardware_support::HardwareSupportController;
+use crate::diagnostics::support::HardwareSupportController;
 use crate::rt;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -151,7 +151,7 @@ impl GpuRepo {
             // Enabled by construction: a disabled device never reaches this map.
             hardware_support.record_device_summary(
                 device_uid,
-                crate::hardware_report::DeviceSummary::from_device(&device, true),
+                crate::diagnostics::report::DeviceSummary::from_device(&device, true),
             );
         }
     }
@@ -699,7 +699,7 @@ mod verdict_publish_tests {
     use super::*;
     use crate::cc_fs;
     use crate::device::{ChannelInfo, ChannelKind, Device, DeviceInfo, SpeedOptions};
-    use crate::hardware_support::ChannelVerdict;
+    use crate::diagnostics::support::ChannelVerdict;
     use serial_test::serial;
     use std::cell::RefCell;
 

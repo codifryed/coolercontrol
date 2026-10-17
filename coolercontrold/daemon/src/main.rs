@@ -31,43 +31,36 @@ use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
 use tokio_util::sync::CancellationToken;
 
-mod admin;
 mod alerts;
 #[cfg(test)]
 mod alloc_count;
 mod api;
+mod auth;
 mod backup;
 mod calibration;
 mod cc_fs;
 mod config;
 mod config_validate;
 mod device;
-mod device_health;
-mod device_listener;
-mod device_uid;
+mod diagnostics;
 mod engine;
 mod env_vars;
+mod events;
 mod grpc_api;
-mod hardware_report;
-mod hardware_support;
 mod hashutil;
+mod listeners;
 mod logger;
 mod main_loop;
 mod malloc_threshold;
 mod modes;
-mod notifier;
 mod open_files;
 mod overrides;
 mod paths;
-mod power_profile_listener;
 mod repositories;
 mod rt;
 mod sensors_conf;
 mod setting;
 mod sidecar;
-mod sleep_listener;
-mod system_event;
-mod token;
 mod watchdog;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -346,7 +339,7 @@ fn main() -> Result<()> {
         // admin uses `sidecar_fs` (always Tokio); on the compio main thread there is no Tokio
         // reactor, so run it on the sidecar. Harmless on the Tokio backend too. The hash is
         // unused here: loading it resets a stored file's permissions to 0600.
-        sidecar::handle().run(admin::load_passwd).await??;
+        sidecar::handle().run(auth::admin::load_passwd).await??;
 
         // The startup pause below is covered by TimeoutStartSec: systemd does
         // not start the watchdog until READY.
@@ -355,7 +348,7 @@ fn main() -> Result<()> {
         let detection_results = run_sensors_detection(&config);
         rt::log_active_backend();
         let hardware_support = Rc::new(
-            hardware_support::HardwareSupportController::init(
+            diagnostics::support::HardwareSupportController::init(
                 detection_results,
                 cc_detect::DETECTION_SUPPORTED,
             )
@@ -393,7 +386,7 @@ fn main() -> Result<()> {
             Rc::clone(&overrides_controller),
         ));
         let power_profiles =
-            power_profile_listener::PowerProfiles::new(config.get_power_profile_modes());
+            listeners::power_profile::PowerProfiles::new(config.get_power_profile_modes());
         let mode_controller = Rc::new(
             ModeController::init(
                 Rc::clone(&config),
@@ -434,7 +427,7 @@ fn main() -> Result<()> {
                     .await?,
                 );
                 let device_health_controller = Rc::new(
-                    device_health::DeviceHealthController::new(
+                    device::health::DeviceHealthController::new(
                         Rc::clone(&all_devices),
                         Rc::clone(&config),
                         Rc::clone(&repos),
@@ -447,8 +440,10 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let notification_handle = notifier::NotificationHandle::new(run_token.clone());
-                let system_event_handle = system_event::SystemEventHandle::new(run_token.clone());
+                let notification_handle =
+                    events::notifier::NotificationHandle::new(run_token.clone());
+                let system_event_handle =
+                    events::system_event::SystemEventHandle::new(run_token.clone());
                 alert_controller.set_notification_handle(notification_handle.clone());
                 engine.set_notification_handle(notification_handle.clone());
                 engine.set_alert_gate(alert_controller.clone());
@@ -457,7 +452,7 @@ fn main() -> Result<()> {
                     .map_or(setting::DEVICE_LISTENER_ENABLED_DEFAULT, |s| {
                         s.device_listener_enabled
                     });
-                let _device_listener = device_listener::DeviceListener::new(
+                let _device_listener = listeners::hotplug::DeviceListener::new(
                     &config,
                     Rc::clone(&all_devices),
                     lc_repo,
@@ -469,7 +464,7 @@ fn main() -> Result<()> {
                 .await
                 .unwrap_or_else(|err| {
                     info!("Device change listener failed to start: {err}");
-                    device_listener::DeviceListener::deaf()
+                    listeners::hotplug::DeviceListener::deaf()
                 });
                 match api::start_server(
                     Rc::clone(&all_devices),
@@ -500,7 +495,7 @@ fn main() -> Result<()> {
                 // through the actor rather than the !Send controller.
                 if let Some(mode_handle) = mode_controller.mode_handle() {
                     let apply_on_boot = config.get_settings()?.apply_on_boot;
-                    power_profile_listener::start(
+                    listeners::power_profile::start(
                         system_event_handle,
                         mode_handle,
                         power_profiles,
@@ -730,7 +725,7 @@ async fn parse_cmd_args(cmd_args: &Args) -> Result<()> {
         // admin uses `sidecar_fs` (always Tokio); run on the sidecar so it works on the compio
         // main thread. `unwrap_or_else(Err)` flattens a dispatch failure into the same exit path.
         match crate::sidecar::handle()
-            .run(admin::reset_passwd)
+            .run(auth::admin::reset_passwd)
             .await
             .unwrap_or_else(Err)
         {
@@ -886,7 +881,7 @@ async fn initialize_device_repos(
     cmd_args: &Args,
     run_token: CancellationToken,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<(
     Repos,
     Rc<CustomSensorsRepo>,
@@ -998,7 +993,7 @@ async fn init_liquidctl_repo(
     config: Rc<Config>,
     run_token: CancellationToken,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
     let mut lc_repo = LiquidctlRepo::new(config, run_token, overrides)
         .await?
@@ -1039,7 +1034,7 @@ async fn init_cpu_repo(
 async fn init_gpu_repo(
     config: Rc<Config>,
     nvidia_cli: bool,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<GpuRepo> {
     let mut gpu_repo = GpuRepo::new(config, nvidia_cli).with_hardware_support(hardware_support);
     gpu_repo.initialize_devices().await?;
@@ -1050,7 +1045,7 @@ async fn init_hwmon_repo(
     config: Rc<Config>,
     lc_locations: Vec<String>,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<HwmonRepo> {
     let mut hwmon_repo =
         HwmonRepo::new(config, lc_locations, overrides).with_hardware_support(hardware_support);
@@ -1063,7 +1058,7 @@ async fn init_service_plugin_repo(
     api_up_token: CancellationToken,
     reset_plugin_user: bool,
     overrides: Rc<overrides::OverridesController>,
-    hardware_support: Rc<hardware_support::HardwareSupportController>,
+    hardware_support: Rc<diagnostics::support::HardwareSupportController>,
 ) -> Result<ServicePluginRepo> {
     let mut external_repo =
         ServicePluginRepo::new(config, api_up_token, reset_plugin_user, overrides)?

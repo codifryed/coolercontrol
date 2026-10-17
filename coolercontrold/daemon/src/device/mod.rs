@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub mod health;
 mod status_ring;
+pub mod uid;
 
 use std::fmt::Debug;
 use std::ops::Not;

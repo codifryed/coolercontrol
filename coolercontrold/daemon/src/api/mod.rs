@@ -47,7 +47,7 @@ use crate::api::dual_protocol::Protocol;
 use crate::api::frame_policy::FramePolicy;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
-use crate::device_health::DeviceHealthController;
+use crate::device::health::DeviceHealthController;
 use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
@@ -56,7 +56,7 @@ use crate::paths;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
-use crate::{admin, cc_fs};
+use crate::{auth::admin, cc_fs};
 use crate::{
     AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
     VERSION,
@@ -125,14 +125,14 @@ pub async fn start_server<'s>(
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
     device_health_controller: Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
-    notification_handle: crate::notifier::NotificationHandle,
-    system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    notification_handle: crate::events::notifier::NotificationHandle,
+    system_event_handle: crate::events::system_event::SystemEventHandle,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
@@ -644,14 +644,14 @@ async fn create_app_state<'s>(
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
     device_health_controller: &Rc<DeviceHealthController>,
-    hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+    hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     overrides_controller: Rc<OverridesController>,
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
-    notification_handle: crate::notifier::NotificationHandle,
-    system_event_handle: crate::system_event::SystemEventHandle,
-    power_profiles: crate::power_profile_listener::PowerProfiles,
+    notification_handle: crate::events::notifier::NotificationHandle,
+    system_event_handle: crate::events::system_event::SystemEventHandle,
+    power_profiles: crate::listeners::power_profile::PowerProfiles,
     frame_policy: FramePolicy,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
@@ -766,7 +766,7 @@ async fn empty_app_state<'s>(
         Rc::new(FanStateMap::new()),
         Rc::clone(&overrides),
     ));
-    let power_profiles = crate::power_profile_listener::PowerProfiles::default();
+    let power_profiles = crate::listeners::power_profile::PowerProfiles::default();
     // Callers hold the `modes_file` lock; a prior modes test may leave the file unparseable.
     if let Err(err) = std::fs::remove_file(paths::mode_config_file()) {
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
@@ -792,7 +792,8 @@ async fn empty_app_state<'s>(
     ));
     let custom_sensors =
         CustomSensorsRepo::new(Rc::clone(&config), Vec::new(), Rc::clone(&overrides));
-    let hardware_support = crate::hardware_support::HardwareSupportController::init(None, false);
+    let hardware_support =
+        crate::diagnostics::support::HardwareSupportController::init(None, false);
     let status_handle =
         StatusHandle::new(Rc::clone(&all_devices), cancel_token.clone(), main_scope);
     create_app_state(
@@ -809,8 +810,8 @@ async fn empty_app_state<'s>(
         Rc::new(PluginController::new_disabled()),
         LogBufHandle::new(cancel_token.clone()),
         status_handle,
-        crate::notifier::NotificationHandle::new(cancel_token.clone()),
-        crate::system_event::SystemEventHandle::new(cancel_token.clone()),
+        crate::events::notifier::NotificationHandle::new(cancel_token.clone()),
+        crate::events::system_event::SystemEventHandle::new(cancel_token.clone()),
         power_profiles,
         FramePolicy::default(),
         cancel_token,
@@ -1402,9 +1403,9 @@ pub struct AppState {
     pub plugin_handle: PluginHandle,
     pub stress_test_handle: StressTestHandle,
     pub log_buf_handle: LogBufHandle,
-    pub notification_handle: crate::notifier::NotificationHandle,
-    pub system_event_handle: crate::system_event::SystemEventHandle,
-    pub power_profiles: crate::power_profile_listener::PowerProfiles,
+    pub notification_handle: crate::events::notifier::NotificationHandle,
+    pub system_event_handle: crate::events::system_event::SystemEventHandle,
+    pub power_profiles: crate::listeners::power_profile::PowerProfiles,
     /// Fixed at startup, for the routes that serve HTML.
     pub frame_policy: FramePolicy,
 }

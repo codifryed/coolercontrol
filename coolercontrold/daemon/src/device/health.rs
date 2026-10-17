@@ -14,7 +14,7 @@
 use crate::api::actor::DeviceHealthHandle;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID, UID};
-use crate::hardware_support::{ChannelVerdictRef, SystemFinding};
+use crate::diagnostics::support::{ChannelVerdictRef, SystemFinding};
 use crate::overrides::OverridesController;
 use crate::setting::{CustomSensor, CustomSensorMetric, Profile, SettingKind, TempSource};
 use crate::{AllDevices, Repos};
@@ -184,7 +184,7 @@ pub struct DeviceHealthController {
     stale_source: RefCell<Vec<SourceRef>>,
     failsafe: RefCell<Vec<FailsafeRef>>,
     unreachable: RefCell<Vec<UnreachableRef>>,
-    hardware_support: Option<Rc<crate::hardware_support::HardwareSupportController>>,
+    hardware_support: Option<Rc<crate::diagnostics::support::HardwareSupportController>>,
     /// Source references extracted from config. Re-extracted only when the
     /// config generation moves, so unchanged ticks parse no config at all.
     candidates: RefCell<Vec<Candidate>>,
@@ -219,7 +219,7 @@ impl DeviceHealthController {
     #[must_use]
     pub fn with_hardware_support(
         mut self,
-        hardware_support: Rc<crate::hardware_support::HardwareSupportController>,
+        hardware_support: Rc<crate::diagnostics::support::HardwareSupportController>,
     ) -> Self {
         self.hardware_support = Some(hardware_support);
         self
@@ -1140,9 +1140,9 @@ mod tests {
     #[test]
     fn verdict_sections_split_permanent_from_current() {
         let controller = crate::rt::test_runtime(async {
-            crate::hardware_support::HardwareSupportController::init(None, true).await
+            crate::diagnostics::support::HardwareSupportController::init(None, true).await
         });
-        let evidence = crate::hardware_support::ChannelEvidence {
+        let evidence = crate::diagnostics::support::ChannelEvidence {
             has_pwm: true,
             pwm_writable: true,
             has_rpm: true,
@@ -1151,9 +1151,9 @@ mod tests {
         controller.record_channel_diagnosis(
             "dev1",
             "fan1",
-            crate::hardware_support::diagnose_channel(evidence.clone(), "nct6687", true),
+            crate::diagnostics::support::diagnose_channel(evidence.clone(), "nct6687", true),
         );
-        let no_pwm = crate::hardware_support::ChannelEvidence {
+        let no_pwm = crate::diagnostics::support::ChannelEvidence {
             has_pwm: false,
             pwm_writable: false,
             has_rpm: true,
@@ -1162,26 +1162,26 @@ mod tests {
         controller.record_channel_diagnosis(
             "dev1",
             "fan2",
-            crate::hardware_support::diagnose_channel(no_pwm, "some_driver", false),
+            crate::diagnostics::support::diagnose_channel(no_pwm, "some_driver", false),
         );
         // A working channel is reported in neither section.
         controller.record_channel_diagnosis(
             "dev1",
             "fan3",
-            crate::hardware_support::diagnose_channel(evidence, "some_driver", false),
+            crate::diagnostics::support::diagnose_channel(evidence, "some_driver", false),
         );
         let (permanent, current) = controller.partitioned_verdicts();
         assert_eq!(current.len(), 1, "expected one current-state verdict");
         assert_eq!(current[0].channel_name, "fan1");
         assert_eq!(
             current[0].verdict,
-            crate::hardware_support::ChannelVerdict::FirmwareOverride
+            crate::diagnostics::support::ChannelVerdict::FirmwareOverride
         );
         assert_eq!(permanent.len(), 1, "expected one permanent verdict");
         assert_eq!(permanent[0].channel_name, "fan2");
         assert_eq!(
             permanent[0].verdict,
-            crate::hardware_support::ChannelVerdict::NoPwm
+            crate::diagnostics::support::ChannelVerdict::NoPwm
         );
     }
 }

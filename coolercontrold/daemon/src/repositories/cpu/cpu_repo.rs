@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Guy Boldon, Eren Simsek and contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::device_health::UnreachableRef;
+use crate::device::health::UnreachableRef;
 use crate::repositories::hwmon::device_io::{self, DeviceHealth, DeviceIo};
 use chrono::{DateTime, Local};
 use std::cell::{Cell, RefCell};

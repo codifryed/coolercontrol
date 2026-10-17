@@ -13,12 +13,12 @@ use std::string::ToString;
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
+use crate::device::health::FailsafeRef;
 use crate::device::{
     ChannelKind, ChannelName, ChannelStatus, DeviceInfo, DeviceType, DeviceUID, Duty, LcInfo,
     Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
-use crate::device_health::FailsafeRef;
-use crate::hardware_support::HardwareSupportController;
+use crate::diagnostics::support::HardwareSupportController;
 use crate::overrides::OverridesController;
 use crate::repositories::device_summary;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
@@ -238,8 +238,8 @@ fn withdraw_lcd_gif_support(device_info: &mut DeviceInfo) {
 /// Starts from the shape every repository shares, then adds the two things
 /// only this one knows: the liquidctl driver class, which is more precise than
 /// the generic driver name, and the device firmware.
-fn liquidctl_summary(device: &Device, enabled: bool) -> crate::hardware_report::DeviceSummary {
-    let mut summary = crate::hardware_report::DeviceSummary::from_device(device, enabled);
+fn liquidctl_summary(device: &Device, enabled: bool) -> crate::diagnostics::report::DeviceSummary {
+    let mut summary = crate::diagnostics::report::DeviceSummary::from_device(device, enabled);
     if let Some(lc_info) = device.lc_info.as_ref() {
         summary.driver = Some(lc_info.driver_type.to_string());
         summary

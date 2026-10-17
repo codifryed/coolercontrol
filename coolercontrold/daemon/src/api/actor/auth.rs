@@ -7,8 +7,8 @@
 //! `api::auth_throttle`. This actor used to keep its own lockout, but that one was global:
 //! any single peer could trip it and lock every login out, the local admin's included.
 
-use crate::admin;
 use crate::api::actor::{run_api_actor, ApiActor};
+use crate::auth::admin;
 use crate::paths;
 use anyhow::Result;
 use tokio::sync::{mpsc, oneshot};

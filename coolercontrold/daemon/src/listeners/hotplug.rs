@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::config::Config;
-use crate::notifier::{self, NotificationHandle, NotificationIcon};
+use crate::events::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::rt;

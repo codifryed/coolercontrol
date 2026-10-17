@@ -1791,7 +1791,7 @@ mod tests {
     use crate::api::actor::TokenHandle;
     use crate::api::auth;
     use crate::api::session_store::MemorySessionStore;
-    use crate::token::{self, StoredToken};
+    use crate::auth::token::{self, StoredToken};
     use axum::Extension;
     use chrono::Local;
     use tokio::net::TcpListener;
@@ -1946,7 +1946,7 @@ mod tests {
                 let (status, promoted) = login(&app, "x").await;
                 assert_eq!(status, StatusCode::UNAUTHORIZED);
                 assert!(promoted.not());
-                let (status, promoted) = login(&app, crate::admin::DEFAULT_PASS).await;
+                let (status, promoted) = login(&app, crate::auth::admin::DEFAULT_PASS).await;
                 assert_eq!(status, StatusCode::OK);
                 assert!(promoted);
                 // Stops the actors so the scope can finish.

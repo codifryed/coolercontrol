@@ -521,7 +521,7 @@ pub struct HardwareSupportController {
     /// Keyed by device rather than appended: a repository that publishes twice
     /// (a re-initialization after sleep, say) must not double every row in the
     /// report.
-    device_summaries: RefCell<HashMap<DeviceUID, crate::hardware_report::DeviceSummary>>,
+    device_summaries: RefCell<HashMap<DeviceUID, crate::diagnostics::report::DeviceSummary>>,
     /// The hwmon channel information the repository built at startup, kept so
     /// the report can describe a device it already knows without walking sysfs
     /// a second time.
@@ -634,7 +634,7 @@ impl HardwareSupportController {
     pub fn record_device_summary(
         &self,
         device_uid: &str,
-        summary: crate::hardware_report::DeviceSummary,
+        summary: crate::diagnostics::report::DeviceSummary,
     ) {
         self.device_summaries
             .borrow_mut()
@@ -645,7 +645,7 @@ impl HardwareSupportController {
     ///
     /// Sorted by name so a report generated twice reads the same way; an
     /// unordered map would shuffle the rows between runs.
-    pub fn device_summaries(&self) -> Vec<crate::hardware_report::DeviceSummary> {
+    pub fn device_summaries(&self) -> Vec<crate::diagnostics::report::DeviceSummary> {
         let mut summaries = self
             .device_summaries
             .borrow()

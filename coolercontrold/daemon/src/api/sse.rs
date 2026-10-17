@@ -6,12 +6,12 @@ use crate::api::actor::{AlertHandle, DeviceHealthHandle, ModeHandle, StatusHandl
 use crate::api::modes::ActiveMode;
 use crate::api::status::StatusResponse;
 use crate::api::{AppState, CCError};
-use crate::device_health::{
+use crate::device::health::{
     DeviceHealthDto, FailsafeDelta, HealthEvent, SourceDelta, UnreachableDelta,
 };
+use crate::events::notifier::{DesktopNotification, NotificationHandle};
+use crate::events::system_event::{SystemEvent, SystemEventHandle};
 use crate::logger::LogBufHandle;
-use crate::notifier::{DesktopNotification, NotificationHandle};
-use crate::system_event::{SystemEvent, SystemEventHandle};
 use aide::generate::GenContext;
 use aide::openapi::{Example, MediaType, Operation, ReferenceOr, Response, SchemaObject};
 use aide::operation::OperationOutput;
@@ -452,8 +452,8 @@ fn system_stream(system_event_handle: &SystemEventHandle) -> EventStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notifier::NotificationIcon;
-    use crate::system_event::SystemEventKind;
+    use crate::events::notifier::NotificationIcon;
+    use crate::events::system_event::SystemEventKind;
 
     use tokio_util::sync::CancellationToken;
 

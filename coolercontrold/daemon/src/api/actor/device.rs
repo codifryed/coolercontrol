@@ -7,8 +7,8 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelAttribute, ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
+use crate::events::notifier::NotificationHandle;
 use crate::modes::ModeController;
-use crate::notifier::NotificationHandle;
 use crate::overrides::OverridesController;
 use crate::repositories::gpu::amd_overdrive;
 use crate::setting::{
@@ -839,7 +839,7 @@ mod tests {
     use super::*;
     use crate::calibration::{CalibrationStore, FanStateMap};
     use crate::device::{ChannelInfo, ChannelKind, DeviceInfo, DeviceType, TempInfo};
-    use crate::power_profile_listener::PowerProfiles;
+    use crate::listeners::power_profile::PowerProfiles;
     use crate::repositories::repository::Repositories;
     use serial_test::serial;
     use std::collections::HashMap;

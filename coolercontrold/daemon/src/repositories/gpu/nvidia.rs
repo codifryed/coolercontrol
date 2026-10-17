@@ -26,11 +26,11 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 
 use crate::config::Config;
+use crate::device::health::FailsafeRef;
 use crate::device::{
     ChannelInfo, ChannelKind, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
-use crate::device_health::FailsafeRef;
 use crate::repositories::failsafe::{self, FailsafeStatusData, FailureLogAction};
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
