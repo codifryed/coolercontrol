@@ -28,8 +28,10 @@ pub fn pin() {
 #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 pub fn pin() {}
 
+// Gated: these probe the build host's glibc, which varies with its version and tunables.
 #[cfg(all(
     test,
+    feature = "gated-tests",
     target_os = "linux",
     target_env = "gnu",
     target_pointer_width = "64"
