@@ -41,6 +41,7 @@ bitflags! {
     struct ChannelFlags: u8 {
         /// The channel is in the entry.
         const PRESENT = 1;
+        // One bit per field, so all of them fit the one stored byte.
         const RPM = 1 << 1;
         const DUTY = 1 << 2;
         const FREQ = 1 << 3;
@@ -66,6 +67,7 @@ struct PresenceSeries(FieldSeries);
 impl PresenceSeries {
     fn get(self, bytes: &[u8], capacity: usize, slot: usize) -> bool {
         let [present] = read(bytes, capacity, self.0, slot);
+        // `set` stores 1 for present and 0 for absent.
         present != 0
     }
 
@@ -81,6 +83,7 @@ struct FlagsSeries(FieldSeries);
 impl FlagsSeries {
     fn get(self, bytes: &[u8], capacity: usize, slot: usize) -> ChannelFlags {
         let [bits] = read(bytes, capacity, self.0, slot);
+        // Only `set` writes this byte, so every bit is a known flag and none needs masking.
         ChannelFlags::from_bits_retain(bits)
     }
 
@@ -170,6 +173,7 @@ impl SensorLayout {
     }
 
     fn add_series(&mut self, size: usize) -> FieldSeries {
+        // The stride sums every earlier series' value size, so the new series starts after them.
         let series = FieldSeries {
             start: self.stride,
             size,
@@ -218,6 +222,7 @@ fn read<const N: usize>(
 ) -> [u8; N] {
     debug_assert_eq!(series.size, N);
     debug_assert!(slot < capacity);
+    // Skip the series before this one, then `slot` values of `N` bytes.
     let at = series.start * capacity + slot * N;
     bytes[at..at + N]
         .try_into()
@@ -233,6 +238,7 @@ fn write<const N: usize>(
 ) {
     debug_assert_eq!(series.size, N);
     debug_assert!(slot < capacity);
+    // As in `read`: skip the series before this one, then `slot` values of `N` bytes.
     let at = series.start * capacity + slot * N;
     bytes[at..at + N].copy_from_slice(&value);
 }
@@ -251,9 +257,11 @@ fn channel_in(
     slot: usize,
 ) -> Option<ChannelSample> {
     let flags = column.flags.get(bytes, capacity, slot);
+    // `push` clears every bit, so an entry without this channel has none set.
     if flags.contains(ChannelFlags::PRESENT).not() {
         return None;
     }
+    // A field's bytes count only while its bit is set; otherwise they are stale.
     let present = |flag: ChannelFlags, series: Option<FieldSeries>| {
         flags
             .contains(flag)
@@ -319,6 +327,7 @@ impl StatusRing {
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0);
         let layout = SensorLayout::new();
+        // Bytes per slot times slots; only the timestamps so far.
         let bytes = vec![0; layout.stride * capacity];
         Self {
             capacity,
@@ -344,6 +353,7 @@ impl StatusRing {
         if capacity == self.capacity {
             self.bytes.clear();
         } else {
+            // The old names' bytes per slot, times the new slot count.
             self.bytes = Vec::with_capacity(self.layout.stride * capacity);
         }
         self.layout = Arc::new(SensorLayout::new());
@@ -359,6 +369,7 @@ impl StatusRing {
     /// Sizes the buffer to the layout after series were added. Exact: the ring never grows
     /// again, so amortized slack would be held for good.
     fn fit_series(&mut self) {
+        // Each series spans size * capacity bytes, so all of them span stride * capacity.
         let size = self.layout.stride * self.capacity;
         debug_assert!(size >= self.bytes.len());
         self.bytes.reserve_exact(size - self.bytes.len());
@@ -372,6 +383,7 @@ impl StatusRing {
             "index {index} beyond {} entries",
             self.len
         );
+        // The oldest is `len` slots behind `head`; `+ capacity` avoids underflow, `%` wraps.
         (self.head + self.capacity - self.len + index) % self.capacity
     }
 
@@ -379,7 +391,9 @@ impl StatusRing {
     /// oldest entry when full. Every name starts absent from it.
     pub fn push(&mut self, timestamp_ns: i64) -> usize {
         let slot = self.head;
+        // Past the last slot, the head wraps to the first.
         self.head = (self.head + 1) % self.capacity;
+        // Grows until full, then stays: each later push replaces the oldest entry.
         self.len = (self.len + 1).min(self.capacity);
         self.pushes += 1;
         let capacity = self.capacity;
@@ -425,8 +439,10 @@ impl StatusRing {
             present,
             value,
         });
+        // The column just pushed.
         let index = layout.temps.len() - 1;
         self.fit_series();
+        // Every column has a write record, and the buffer spans the grown layout.
         assert_eq!(self.temp_written.len(), self.layout.temps.len());
         assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
@@ -457,8 +473,10 @@ impl StatusRing {
             watts: None,
             pwm_mode: None,
         });
+        // The column just pushed.
         let index = layout.channels.len() - 1;
         self.fit_series();
+        // Every column has a write record, and the buffer spans the grown layout.
         assert_eq!(self.channel_written.len(), self.layout.channels.len());
         assert_eq!(self.bytes.len(), self.layout.stride * self.capacity);
         Some(index)
@@ -486,6 +504,7 @@ impl StatusRing {
     /// cleared its presence there, so no held entry has a value in it.
     fn unwritten_column(&self, written: &[u64]) -> Option<usize> {
         let capacity = u64::try_from(self.capacity).expect("a capacity fits in u64");
+        // `capacity` pushes since its last write have reached every slot.
         written
             .iter()
             .position(|written| written + capacity <= self.pushes)
@@ -537,6 +556,7 @@ impl StatusRing {
         debug_assert!(slot < self.capacity);
         debug_assert!(column < self.channel_written.len());
         self.channel_written[column] = self.pushes;
+        // The channel is present, plus one bit for each field written below.
         let mut flags = ChannelFlags::PRESENT;
         if let Some(rpm) = sample.rpm {
             self.write_field(slot, column, Field::Rpm, &rpm.to_le_bytes());
@@ -565,6 +585,7 @@ impl StatusRing {
     fn write_field(&mut self, slot: usize, column: usize, field: Field, value: &[u8]) {
         let series = self.field_series(column, field);
         assert_eq!(series.size, value.len());
+        // As in `read`: skip the series before this one, then `slot` values.
         let at = series.start * self.capacity + slot * series.size;
         self.bytes[at..at + series.size].copy_from_slice(value);
     }
@@ -622,6 +643,7 @@ impl StatusRing {
             let slot = self.slot(index);
             let flags_series = self.layout.channels[column].flags;
             let flags = flags_series.get(&self.bytes, self.capacity, slot);
+            // Both bits: the channel is in the entry and has an rpm to convert.
             if flags
                 .contains(ChannelFlags::PRESENT | ChannelFlags::RPM)
                 .not()
@@ -639,6 +661,7 @@ impl StatusRing {
                 continue;
             };
             self.write_field(slot, column, Field::Duty, &duty.to_le_bytes());
+            // Keep the entry's other bits and mark the new duty present.
             flags_series.set(
                 &mut self.bytes,
                 self.capacity,
@@ -705,6 +728,7 @@ impl StatusRing {
         let flags_series = self.layout.channels[column].flags;
         for slot in 0..self.capacity {
             let flags = flags_series.get(&self.bytes, self.capacity, slot);
+            // Unset only the duty bit; without it, the stale duty bytes are never read.
             flags_series.set(
                 &mut self.bytes,
                 self.capacity,
@@ -778,6 +802,7 @@ impl StatusRing {
         assert_eq!(layout.channels.len(), kept.channels.len());
         let mut bytes = vec![0; layout.stride * self.capacity];
         for (old, new) in relocations {
+            // A series is one contiguous run of size * capacity bytes, so it moves in one copy.
             let series_bytes = old.size * self.capacity;
             let from = old.start * self.capacity;
             let to = new.start * self.capacity;
@@ -801,6 +826,7 @@ impl StatusRing {
 
     /// A copy of the newest entry, for the API. At most one allocation.
     pub fn snapshot_latest(&self, filter: SnapshotFilter) -> StatusSnapshot {
+        // The newest index when there is one, and a count of 1 or 0 to match.
         let latest = self.len.checked_sub(1);
         self.snapshot_of(latest.into_iter(), usize::from(latest.is_some()), filter)
     }
@@ -822,11 +848,13 @@ impl StatusRing {
         filter: SnapshotFilter,
     ) -> StatusSnapshot {
         assert!(count <= self.len);
+        // The same layout over `count` slots instead of `capacity`.
         let mut bytes = vec![0; self.layout.stride * count].into_boxed_slice();
         let mut copied = 0;
         for index in indices {
             let slot = self.slot(index);
             for series in self.layout.all_series() {
+                // The copy's series hold `count` values each, filled in order.
                 let from = series.start * self.capacity + slot * series.size;
                 let to = series.start * count + copied * series.size;
                 bytes[to..to + series.size].copy_from_slice(&self.bytes[from..from + series.size]);
@@ -860,6 +888,7 @@ impl Debug for StatusRing {
         debug
             .field("len", &self.len)
             .field("capacity", &self.capacity);
+        // The newest index, when the ring holds any entry.
         if let Some(index) = self.len.checked_sub(1) {
             debug
                 .field("latest_temps", &self.temps_at(index).collect::<Vec<_>>())
@@ -898,6 +927,7 @@ pub struct StatusSnapshot {
 impl StatusSnapshot {
     fn slot(&self, index: usize) -> usize {
         assert!(index < self.len);
+        // As in `StatusRing::slot`: `len` slots behind `head`, wrapped into the ring.
         (self.head + self.capacity - self.len + index) % self.capacity
     }
 
@@ -944,12 +974,14 @@ impl StatusSnapshot {
 
     /// The newest entry's temps, in first-seen order.
     pub fn latest_temps(&self) -> impl Iterator<Item = (&str, Temp)> {
+        // The newest entry's slot, when the snapshot holds any entry.
         let slot = self.len.checked_sub(1).map(|index| self.slot(index));
         slot.into_iter().flat_map(|slot| self.temps_in(slot))
     }
 
     /// The newest entry's channels, in first-seen order.
     pub fn latest_channels(&self) -> impl Iterator<Item = (&str, ChannelSample)> {
+        // The newest entry's slot, when the snapshot holds any entry.
         let slot = self.len.checked_sub(1).map(|index| self.slot(index));
         slot.into_iter().flat_map(|slot| self.channels_in(slot))
     }
@@ -957,6 +989,7 @@ impl StatusSnapshot {
     /// A snapshot of `statuses`, oldest first, for tests that build API responses by hand.
     #[cfg(test)]
     pub fn from_statuses(statuses: &[Status]) -> Self {
+        // A ring needs at least one slot, even for no statuses.
         let mut ring = StatusRing::new(statuses.len().max(1));
         for status in statuses {
             ring.push_status(status);
@@ -1015,6 +1048,7 @@ impl Serialize for Entry<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let has_temps = self.snapshot.temps_in(self.slot).next().is_some();
         let has_channels = self.snapshot.channels_in(self.slot).next().is_some();
+        // The timestamp, plus temps and channels only when present, as `Status` skips them.
         let fields = 1 + usize::from(has_temps) + usize::from(has_channels);
         let mut state = serializer.serialize_struct("Status", fields)?;
         let timestamp = local_time(self.snapshot.timestamp_ns(self.slot));
@@ -1226,8 +1260,9 @@ mod tests {
         }
         assert!(ring.layout.temps.len() <= MAX_NAMES);
         assert!(ring.layout.channels.len() <= MAX_NAMES);
+        // Timestamp, then per name a temp (1 + 8) and a channel (1 + 4 rpm), over 4 slots.
         assert!(ring.bytes.len() <= (8 + MAX_NAMES * (9 + 5)) * 4);
-        // The newest entries keep their own names.
+        // The newest entry (index 3 of 4) keeps the last name pushed.
         assert_eq!(
             ring.temp_at(3, &format!("invented{}", 10 * MAX_NAMES - 1)),
             Some(1.0)
@@ -1246,6 +1281,7 @@ mod tests {
             ring.set_temp(slot, column, 2.0);
         }
         assert_eq!(ring.temp_column("one too many"), None);
+        // The first and the last kept names.
         assert_eq!(ring.temp_at(0, "t0"), Some(2.0));
         assert_eq!(ring.temp_at(0, &format!("t{}", MAX_NAMES - 1)), Some(2.0));
         // Channels have their own allowance.
@@ -1324,6 +1360,7 @@ mod tests {
         }
         let since = ring.snapshot_after(2);
         assert_eq!(since.len, 3);
+        // Only the three entries after the bound are copied.
         assert_eq!(since.bytes.len(), ring.layout.stride * 3);
         let mut expected = StatusRing::new(3);
         for (at, rpm) in [(5, None), (3, Some(1300)), (6, None)] {
