@@ -86,11 +86,7 @@ impl ProcFile {
         // One growth step of headroom lets the file run a little longer than it does now.
         let size = (len + GROWTH_BYTES).min(self.max_bytes);
         if buf.len() < size {
-            // Only the missing bytes: the buffer is kept for good, so amortized slack would never
-            // be used.
-            let missing = size - buf.len();
-            buf.reserve_exact(missing);
-            buf.resize(size, 0);
+            grow_to(&mut buf, size);
         }
     }
 }
@@ -109,12 +105,9 @@ async fn read_all(file: &File, buf: &mut Vec<u8>, max_bytes: usize) -> io::Resul
             if buf.len() >= max_bytes {
                 return Err(ErrorKind::FileTooLarge.into());
             }
-            // One growth step, never past the bound, and exactly that much since the buffer is
-            // kept.
+            // One growth step, never past the bound.
             let size = (buf.len() + GROWTH_BYTES).min(max_bytes);
-            let missing = size - buf.len();
-            buf.reserve_exact(missing);
-            buf.resize(size, 0);
+            grow_to(buf, size);
         }
         // Each read starts where the last one ended, so the descriptor's own offset never
         // matters and every read of the file starts from the top.
@@ -132,6 +125,15 @@ async fn read_all(file: &File, buf: &mut Vec<u8>, max_bytes: usize) -> io::Resul
         }
         rt::yield_now().await;
     }
+}
+
+/// Grows `buf` to `size` bytes, zero filled. Only the missing bytes are reserved: the buffer is
+/// kept for good, so amortized slack would never be used.
+fn grow_to(buf: &mut Vec<u8>, size: usize) {
+    debug_assert!(buf.len() < size);
+    let missing = size - buf.len();
+    buf.reserve_exact(missing);
+    buf.resize(size, 0);
 }
 
 #[cfg(test)]
