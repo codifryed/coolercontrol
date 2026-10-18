@@ -77,11 +77,17 @@ clippy-tests:
 # The code quality run allows `unknown_lints`: the image's clippy trails local toolchains, so an
 # `#[allow(clippy::..)]` for a lint it has not learned yet is not a finding.
 # Test code is linted with and without `gated-tests`: each build compiles code the other leaves out.
+# RUSTC_BOOTSTRAP, which the JSON format needs, reaches only the test binaries, through a runner.
+# Set for cargo, it reruns the build scripts that watch it (proc-macro2 and others) and rebuilds
+# some 150 crates in every step that lacks it, so no step could reuse another's artifacts. The JSON
+# flags would fail rustdoc's harness, so doctests run apart.
+ci_test_runner := --config "target.'cfg(all())'.runner=[\"env\",\"RUSTC_BOOTSTRAP=1\"]"
 ci-test: test-liqctld
 	@$(CARGO) build --locked $(release)
 	@./target/debug/$(executable) --version
-	@RUSTC_BOOTSTRAP=1 $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
-	@RUSTC_BOOTSTRAP=1 timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
+	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --no-run
+	@timeout -k 30s 15m $(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --lib --bins --tests $(ci_test_runner) -- -Z unstable-options --format json > target/ci-test.json; s=$$?; gitlab-report -p test < target/ci-test.json > report.xml || true; exit $$s
+	@$(CARGO) test --locked --no-fail-fast --features gated-tests $(release) --doc
 	@$(MAKE) clippy-tests
 	@$(MAKE) clippy-tests FEATURES="--features gated-tests"
 	@$(CARGO) clippy --locked $(release) --message-format=json -- -A unknown_lints | gitlab-report -p clippy > gl-code-quality-report.json
