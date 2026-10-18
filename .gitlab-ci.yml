@@ -305,7 +305,7 @@ test_arm64_latest:
     - ldd --version | head -n 1
     - cargo --version
   script:
-    - cargo test --locked --manifest-path coolercontrold/Cargo.toml --features coolercontrold/gated-tests
+    - cargo test --locked --manifest-path coolercontrold/Cargo.toml --features gated-tests
 
 ####################################### Dependency audit
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
