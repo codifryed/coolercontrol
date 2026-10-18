@@ -34,6 +34,11 @@ if ! REF="$(git -C "${REPO_ROOT}" symbolic-ref --short -q HEAD)"; then
     exit 1
 fi
 readonly REF
+# The ref reaches shells and rpm macros, so allow only plain branch-name characters.
+if [[ ! ${REF} =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "unsupported branch name: ${REF}" >&2
+    exit 1
+fi
 readonly SAFE_REF="${REF//\//-}"
 if ! git -C "${REPO_ROOT}" diff --quiet HEAD; then
     echo "Note: uncommitted changes are not tested. This checks the committed ${REF}."
@@ -44,17 +49,19 @@ mkdir -p "${OUT}/export" "${OUT}/sources" "${OUT}/logs" "${OUT}/rpm"
 git -C "${REPO_ROOT}" archive HEAD | tar -x -C "${OUT}/export"
 
 echo "Building the source and vendor tarballs for ${REF}"
+# shellcheck disable=SC2016 # expanded in the container, from its environment
 docker run --rm -v "${REPO_ROOT}":/git:ro -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/out \
-    "${REGISTRY}/pipeline:${IMAGE_TAG}" bash -c "
+    -e REF="${REF}" -e SAFE_REF="${SAFE_REF}" -e UID_GID="${UID_GID}" \
+    "${REGISTRY}/pipeline:${IMAGE_TAG}" bash -c '
         set -e
-        git config --global --add safe.directory '*'
+        git config --global --add safe.directory "*"
         cd /out
-        /repo/packaging/release-source.sh file:///git '${REF}'
+        /repo/packaging/release-source.sh file:///git "${REF}"
         mkdir /tmp/vendor
-        tar -xzf 'coolercontrol-${SAFE_REF}.tar.gz' -C /tmp/vendor --strip-components=1
+        tar -xzf "coolercontrol-${SAFE_REF}.tar.gz" -C /tmp/vendor --strip-components=1
         make -C /tmp/vendor vendor
         cp /tmp/vendor/coolercontrold-vendor.tar.gz /out/
-        chown -R '${UID_GID}' /out" >"${OUT}/logs/sources.log" 2>&1 || {
+        chown -R "${UID_GID}" /out' >"${OUT}/logs/sources.log" 2>&1 || {
     tail -n 30 "${OUT}/logs/sources.log"
     exit 1
 }
@@ -70,13 +77,15 @@ run_test() {
 
 run_rpm() {
     local arch="$1"
+    # shellcheck disable=SC2016 # expanded in the container, from its environment
     docker run --rm --privileged --platform "linux/${arch}" \
         -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/sources:ro -v "${OUT}/rpm/${arch}":/results \
-        -e PRERELEASE_RESULT_DIR=/results fedora:latest bash -c "
-            bash /repo/.gitlab/scripts/prerelease-rpm.sh /sources '${REF}'
-            status=\$?
-            chown -R '${UID_GID}' /results
-            exit \$status"
+        -e PRERELEASE_RESULT_DIR=/results -e REF="${REF}" -e UID_GID="${UID_GID}" \
+        fedora:latest bash -c '
+            bash /repo/.gitlab/scripts/prerelease-rpm.sh /sources "${REF}"
+            status=$?
+            chown -R "${UID_GID}" /results
+            exit "${status}"'
 }
 
 declare -A pids=()

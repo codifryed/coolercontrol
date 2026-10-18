@@ -22,6 +22,11 @@ if [[ $# -ne 2 ]]; then
 fi
 readonly SOURCES_DIR="$1"
 readonly REF="$2"
+# The ref reaches an rpm macro, where %(...) would run.
+if [[ ! ${REF} =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "unsupported ref: ${REF}" >&2
+    exit 2
+fi
 readonly SAFE_REF="${REF//\//-}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 readonly REPO_ROOT
