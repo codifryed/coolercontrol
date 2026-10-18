@@ -46,8 +46,18 @@ workflow:
         SECRET_DETECTION_DISABLED: 'true'
     - when: always
 
+# test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR,
+#                  and every tag.
+# prerelease:      the shipped source tarballs, tested and packaged the way distros build them.
+#                  One manual click on branches and MRs; automatic on tags, where nothing is built
+#                  until it passes.
+# build:           release artifacts and packages.
+# smoke_packages:  install each package and run it once.
+# upload_packages: publish packages: beta builds for branches, releases for tags.
+# release:         the GitLab release.
 stages:
   - test
+  - prerelease
   - build
   - smoke_packages
   - upload_packages
@@ -174,7 +184,7 @@ copyright:
       when: never
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - if: $CI_COMMIT_TAG == null
+    - when: on_success
   before_script:
     # make: copyright-check runs through it. git: reuse only honours .gitignore
     # when it can find a git executable; without one it ignores nothing and
@@ -189,6 +199,8 @@ copyright:
     - make copyright-check
 
 ############################################## Tests
+# The development gate: lint, the gated suite, UI and Qt tests. It runs on tags too, where
+# compile_artifacts waits on it.
 test_all:
   stage: test
   tags:
@@ -201,7 +213,7 @@ test_all:
     # to run for external MRs.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - if: $CI_COMMIT_TAG == null
+    - when: on_success
   needs: []
   variables:
     # this job is the only place a missing liquidctl fails instead of skipping the liqctld tests
@@ -248,7 +260,7 @@ test_msrv:
       when: never
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - if: $CI_COMMIT_TAG == null
+    - when: on_success
   needs: []
   variables:
     # A pure compile check. An older rustc has a different lint set, so the global -Dwarnings
@@ -263,49 +275,6 @@ test_msrv:
     # compio is what sets the floor. No UI build is needed: resources/app ships a tracked
     # .gitignore, so include_dir! still resolves the directory.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
-
-####################################### aarch64 tests on a current distro
-# test_all runs on amd64, and the arm64 package builds run their tests on older releases, so a
-# newer aarch64 userland went untested until a distro built us: glibc 2.43's malloc THP default
-# broke a test only on OBS. Manual for merge requests, automatic for releases, and nothing needs
-# it. A debug build needs no UI. Gated tests run too, as in test_all.
-test_arm64_latest:
-  stage: test
-  image: ubuntu:rolling
-  tags:
-    - saas-linux-large-arm64
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_TAG
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: manual
-      allow_failure: true
-  needs: []
-  timeout: 45m
-  cache:
-    - key:
-        files:
-          - coolercontrold/Cargo.lock
-      paths:
-        - .cargo
-      policy: pull
-  variables:
-    RUSTUP_HOME: /usr/local/rustup
-    # Kept in step with RUST_VERSION in the .gitlab/images build images.
-    RUST_VERSION: 1.96.0
-  before_script:
-    - apt-get update
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
-      build-essential ca-certificates curl libdrm-dev pkg-config
-    # The toolchain stays out of CARGO_HOME, which holds the registry cache the amd64 jobs share.
-    - curl -sSf https://sh.rustup.rs | CARGO_HOME=/usr/local/cargo sh -s -- -y --no-modify-path
-      --profile minimal --default-toolchain "$RUST_VERSION"
-    - export PATH="/usr/local/cargo/bin:$PATH"
-    - ldd --version | head -n 1
-    - cargo --version
-  script:
-    - cargo test --locked --manifest-path coolercontrold/Cargo.toml --features gated-tests
 
 ####################################### Dependency audit
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
@@ -351,9 +320,13 @@ npm:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 
+############################################################################################
+# prerelease: the shipped sources, tested and packaged the way distros build them
+############################################################################################
+
 ####################################### source tarball
 build_source_assets:
-  stage: build
+  stage: prerelease
   # no caching here due to vendoring and for a clean solid build
   <<: [*main_image_template]
   rules:
@@ -389,11 +362,118 @@ build_source_assets:
       - coolercontrold-vendor-*.tar.gz
     expire_in: 14 days
 
+# Branch and MR pipelines add the prerelease jobs behind one manual click on `prerelease`, skipping
+# the duplicate branch pipeline of an open MR. Tags run them automatically, and compile_artifacts
+# waits on them there.
+.prerelease_rules:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_PIPELINE_SOURCE
+
+prerelease:
+  stage: prerelease
+  image: alpine:3
+  tags:
+    - saas-linux-small-amd64
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_PIPELINE_SOURCE
+      when: manual
+      allow_failure: true
+  script:
+    - echo "Starting the prerelease jobs."
+
+####################################### Test suite on old and new distros
+# The source tarball and vendored crates, built offline in release mode: the default suite as
+# distros run it, then the gated tests. The oldest supported userland (the jammy image the release
+# packages are built in) and the newest (ubuntu:rolling), on native amd64 and arm64.
+.prerelease_test:
+  extends: .prerelease_rules
+  stage: prerelease
+  needs:
+    - prerelease
+    - build_source_assets
+  timeout: 1h
+  script:
+    - !reference [.safe_registry_url, script]
+    - .gitlab/scripts/prerelease-test.sh "coolercontrol-${SAFE_REF}.tar.gz" coolercontrold-vendor.tar.gz
+
+prerelease_amd64_ubuntu_22.04:
+  extends: .prerelease_test
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  tags:
+    - saas-linux-xlarge-amd64
+
+prerelease_amd64_ubuntu_rolling:
+  extends: .prerelease_test
+  image: ubuntu:rolling
+  tags:
+    - saas-linux-xlarge-amd64
+
+prerelease_arm64_ubuntu_22.04:
+  extends: .prerelease_test
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  tags:
+    - saas-linux-large-arm64
+
+# glibc 2.43 made THP heaps the aarch64 malloc default, which broke a test only on OBS.
+prerelease_arm64_ubuntu_rolling:
+  extends: .prerelease_test
+  image: ubuntu:rolling
+  tags:
+    - saas-linux-large-arm64
+
+####################################### Fedora RPM specs
+# Both specs built in mock from the source tarballs, offline in a fresh chroot as Copr builds
+# them, so %check runs the default suite under Fedora's Rust. Branches and MRs build the rc1 specs
+# against their own ref; tags build the release specs. mock needs the privileged job container
+# that the docker:dind jobs rely on too.
+.prerelease_rpm:
+  extends: .prerelease_rules
+  stage: prerelease
+  image: fedora:latest
+  needs:
+    - prerelease
+    - build_source_assets
+  timeout: 2h
+  script:
+    - export PRERELEASE_TAG="${CI_COMMIT_TAG:-}"
+    - export PRERELEASE_RESULT_DIR="${CI_PROJECT_DIR}/rpm-results"
+    - .gitlab/scripts/prerelease-rpm.sh "${CI_PROJECT_DIR}" "${CI_COMMIT_REF_NAME}"
+  artifacts:
+    when: always
+    name: 'CoolerControl_rpm_${CI_JOB_NAME}_${CI_COMMIT_SHORT_SHA}'
+    paths:
+      - rpm-results/
+    expire_in: 5 days
+
+prerelease_rpm_x86_64:
+  extends: .prerelease_rpm
+  tags:
+    - saas-linux-xlarge-amd64
+
+prerelease_rpm_aarch64:
+  extends: .prerelease_rpm
+  tags:
+    - saas-linux-large-arm64
+
 ############################################################################################
 # compile all release artifacts
 ############################################################################################
 
-# manual and automatic trigger for all artifacts & packages
+# manual and automatic trigger for all artifacts & packages. Every build hangs off this job, so on
+# a tag nothing is built until the development and prerelease checks pass on the tag itself. The
+# trigger and the source tarballs are needed directly too: a job skipped because its own needs
+# failed would otherwise count as passed.
 compile_artifacts:
   stage: build
   <<: [*main_image_template]
@@ -404,6 +484,29 @@ compile_artifacts:
       when: on_success
     - if: $CI_COMMIT_TAG
       when: on_success
+      needs:
+        - job: test_all
+          artifacts: false
+        - job: test_msrv
+          artifacts: false
+        - job: copyright
+          artifacts: false
+        - job: prerelease
+          artifacts: false
+        - job: build_source_assets
+          artifacts: false
+        - job: prerelease_amd64_ubuntu_22.04
+          artifacts: false
+        - job: prerelease_amd64_ubuntu_rolling
+          artifacts: false
+        - job: prerelease_arm64_ubuntu_22.04
+          artifacts: false
+        - job: prerelease_arm64_ubuntu_rolling
+          artifacts: false
+        - job: prerelease_rpm_x86_64
+          artifacts: false
+        - job: prerelease_rpm_aarch64
+          artifacts: false
     - when: manual
       allow_failure: true
   needs: []
@@ -492,8 +595,8 @@ build_deb_bookworm_amd64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+    # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
-      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
@@ -551,8 +654,8 @@ build_deb_bookworm_arm64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+    # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
-      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
@@ -610,8 +713,8 @@ build_ubuntu:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+    # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
-      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
@@ -675,8 +778,8 @@ build_ubuntu_arm64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+    # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
-      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
