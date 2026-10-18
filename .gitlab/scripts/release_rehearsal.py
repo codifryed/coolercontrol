@@ -42,6 +42,21 @@ def token() -> str:
     return value
 
 
+# HTTP(S) only: a default opener would also read file:, ftp: and data: URLs.
+OPENER = urllib.request.OpenerDirector()
+for handler in (
+    urllib.request.ProxyHandler(),
+    urllib.request.HTTPHandler(),
+    urllib.request.HTTPSHandler(),
+    urllib.request.HTTPRedirectHandler(),
+    urllib.request.HTTPDefaultErrorHandler(),
+    urllib.request.HTTPErrorProcessor(),
+    # Refuses every other scheme with an error, instead of returning None.
+    urllib.request.UnknownHandler(),
+):
+    OPENER.add_handler(handler)
+
+
 def get(path: str, **params: str) -> bytes:
     url = f"{API}/projects/{PROJECT_ID}{path}"
     if params:
@@ -49,7 +64,7 @@ def get(path: str, **params: str) -> bytes:
     request = urllib.request.Request(url)
     # Unredirected: artifacts redirect to object storage, which must never see the token.
     request.add_unredirected_header("PRIVATE-TOKEN", token())
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with OPENER.open(request, timeout=120) as response:
         return response.read()
 
 
@@ -66,7 +81,7 @@ def rehearsal_pipelines(sha: str) -> list[dict]:
 def passed_jobs(pipeline: dict) -> dict[str, dict]:
     jobs = json.loads(
         get(
-            f"/pipelines/{pipeline['id']}/jobs",
+            f"/pipelines/{int(pipeline['id'])}/jobs",
             **{"scope[]": "success"},
             per_page="100",
         )
@@ -115,7 +130,7 @@ def fetch(job_name: str) -> None:
     if job_name not in jobs:
         sys.exit(f"The rehearsal {pipeline['web_url']} has no passed {job_name} job.")
     try:
-        artifacts = get(f"/jobs/{jobs[job_name]['id']}/artifacts")
+        artifacts = get(f"/jobs/{int(jobs[job_name]['id'])}/artifacts")
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
