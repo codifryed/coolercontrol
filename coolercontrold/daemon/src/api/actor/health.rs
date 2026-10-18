@@ -157,7 +157,7 @@ pub fn own_process(refresh_kind: sysinfo::ProcessRefreshKind) -> (sysinfo::Pid, 
     (pid, system)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
 

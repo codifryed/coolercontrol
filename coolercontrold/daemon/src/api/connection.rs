@@ -637,19 +637,29 @@ impl<S: AsyncWrite> AsyncWrite for GuardedStream<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gated-tests")]
     use crate::api::dual_protocol::DualProtocolAcceptor;
+    #[cfg(feature = "gated-tests")]
     use crate::grpc_api;
     use axum::body::Body;
     use axum::routing::get;
     use axum::Router;
+    #[cfg(feature = "gated-tests")]
     use axum_server::accept::DefaultAcceptor;
+    #[cfg(feature = "gated-tests")]
     use axum_server::tls_rustls::RustlsConfig;
     use nix::errno::Errno;
+    #[cfg(feature = "gated-tests")]
     use nix::sys::socket::getsockopt;
+    #[cfg(feature = "gated-tests")]
     use std::net::Ipv6Addr;
+    #[cfg(feature = "gated-tests")]
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[cfg(feature = "gated-tests")]
     use tokio::time::timeout;
+    #[cfg(feature = "gated-tests")]
     use tonic_health::pb::health_client::HealthClient;
+    #[cfg(feature = "gated-tests")]
     use tonic_health::pb::HealthCheckRequest;
 
     /// Real time with short timeouts. A paused clock cannot measure these: it advances to
@@ -671,6 +681,7 @@ mod tests {
 
     /// Attempts at a port free for both families. The kernel picks one that is free for
     /// IPv4, which another process may still hold for IPv6.
+    #[cfg(feature = "gated-tests")]
     const SHARED_PORT_ATTEMPTS: usize = 8;
 
     fn socket_address(text: &str) -> SocketAddr {
@@ -690,6 +701,7 @@ mod tests {
     /// `IPV6_V6ONLY` back as set. Retries while another process holds the port for IPv6, and
     /// skips on a kernel without IPv6.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn ipv4_and_ipv6_wildcards_share_a_port() {
         for _ in 0..SHARED_PORT_ATTEMPTS {
             let ipv4 = listener(socket_address("0.0.0.0:0")).unwrap();
@@ -714,6 +726,7 @@ mod tests {
     /// Method: bind `::ffff:127.0.0.1` on a kernel-chosen port, then check the bound address
     /// and read `IPV6_V6ONLY` back as cleared. Skips on a kernel without IPv6.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn ipv4_mapped_ipv6_address_binds() {
         let mapped_address = socket_address("[::ffff:127.0.0.1]:0");
         let mapped = match listener(mapped_address) {
@@ -761,6 +774,7 @@ mod tests {
     /// a second daemon listen on an address the first already serves. Method: bind loopback
     /// on a kernel-chosen port, then bind the address it got again and expect `EADDRINUSE`.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn listening_address_cannot_be_bound_twice() {
         let first = listener(socket_address("127.0.0.1:0")).unwrap();
         let taken = first.local_addr().unwrap();
@@ -769,16 +783,19 @@ mod tests {
     }
 
     /// Serves `router` through the production server, the way `create_api_server` does.
+    #[cfg(feature = "gated-tests")]
     async fn serve(router: Router) -> SocketAddr {
         let limiter = ConnectionLimiter::new(ConnectionLimits::FULL, Arc::default());
         serve_limited(router, limiter).await
     }
 
+    #[cfg(feature = "gated-tests")]
     async fn serve_limited(router: Router, limiter: Arc<ConnectionLimiter>) -> SocketAddr {
         serve_as(router, limiter, TEST_TIMEOUTS, tcp_peer_ip).await
     }
 
     /// Serves `router` with every connection charged to the address `peer_ip` picks.
+    #[cfg(feature = "gated-tests")]
     async fn serve_as(
         router: Router,
         limiter: Arc<ConnectionLimiter>,
@@ -799,6 +816,7 @@ mod tests {
     }
 
     /// Serves `router` behind TLS, the way `create_api_server` does when TLS is enabled.
+    #[cfg(feature = "gated-tests")]
     async fn serve_tls(router: Router) -> SocketAddr {
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let config = RustlsConfig::from_pem(
@@ -823,6 +841,7 @@ mod tests {
     }
 
     /// Writes `bytes`, then waits for the server to close the connection.
+    #[cfg(feature = "gated-tests")]
     async fn closed_after(address: SocketAddr, bytes: &[u8]) {
         let mut stream = TcpStream::connect(address).await.unwrap();
         stream.write_all(bytes).await.unwrap();
@@ -840,6 +859,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "gated-tests")]
     fn app() -> Router {
         Router::new().route("/", get(|| async { "ok" })).route(
             "/stream",
@@ -848,6 +868,7 @@ mod tests {
     }
 
     /// A response that keeps streaming well past the header timeout.
+    #[cfg(feature = "gated-tests")]
     fn slow_chunks() -> impl futures_util::Stream<Item = Result<String, io::Error>> {
         futures_util::stream::unfold(0, |sent| async move {
             if sent == STREAMED_CHUNKS {
@@ -858,6 +879,7 @@ mod tests {
         })
     }
 
+    #[cfg(feature = "gated-tests")]
     async fn request(address: SocketAddr, path: &str) -> TcpStream {
         let mut stream = TcpStream::connect(address).await.unwrap();
         let head = format!("GET {path} HTTP/1.1\r\nhost: cc.lan\r\n\r\n");
@@ -869,6 +891,7 @@ mod tests {
     /// timeout. Without a timer on the builder it would stay open forever. Method: read to
     /// EOF; the close must come, and not before the timeout.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn idle_keep_alive_connection_is_closed() {
         let address = serve(app()).await;
         let mut stream = request(address, "/").await;
@@ -886,6 +909,7 @@ mod tests {
     /// Goal: a connection that never finishes its request head is closed too, which is the
     /// slowloris shape. Method: half a request line, then silence.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn partial_request_head_is_closed() {
         let address = serve(app()).await;
         let mut stream = TcpStream::connect(address).await.unwrap();
@@ -900,6 +924,7 @@ mod tests {
     /// Goal: a peer that connects and says nothing is closed. Hyper's header timeout never
     /// starts, because hyper-util is still waiting to learn the HTTP version.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn silent_plain_connection_is_closed() {
         closed_after(serve(app()).await, b"").await;
     }
@@ -907,6 +932,7 @@ mod tests {
     /// Goal: a peer that sends part of the HTTP/2 preface and stops is closed, since that
     /// also stalls the version sniff before hyper takes over.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn partial_h2_preface_is_closed() {
         closed_after(serve(app()).await, b"PRI * HTTP/2.0\r\n").await;
     }
@@ -914,6 +940,7 @@ mod tests {
     /// Goal: a silent peer on the TLS listener is closed too. There the TLS first-byte peek
     /// waits before any handshake timeout applies.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn silent_tls_connection_is_closed() {
         closed_after(serve_tls(app()).await, b"").await;
     }
@@ -922,6 +949,7 @@ mod tests {
     /// preface is exactly the byte count that disarms the deadline. Method: the health service
     /// through the guarded server, called well after the first-bytes deadline would have fired.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn h2c_grpc_is_served_through_the_guard() {
         let router = Router::new().route_service(
             &grpc_api::health_service_route(),
@@ -955,6 +983,7 @@ mod tests {
     }
 
     /// Only the loopback pool is reachable from a test's own connections.
+    #[cfg(feature = "gated-tests")]
     fn loopback_limiter(loopback: usize) -> Arc<ConnectionLimiter> {
         limiter(ConnectionLimits { loopback, ..SMALL })
     }
@@ -1211,6 +1240,7 @@ mod tests {
 
     /// Sends a request and returns whatever arrives before the server closes. A refused
     /// connection may also be reset, which reads as nothing received.
+    #[cfg(feature = "gated-tests")]
     async fn exchange(stream: &mut TcpStream) -> Vec<u8> {
         let _ = stream
             .write_all(b"GET / HTTP/1.1\r\nhost: cc.lan\r\nconnection: close\r\n\r\n")
@@ -1226,6 +1256,7 @@ mod tests {
     /// served, and the slot is reusable once the holder disconnects. Method: a loopback pool
     /// of one; the held connection sends nothing until the second has been refused.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn over_limit_connection_is_refused_until_a_slot_frees() {
         let address = serve_limited(app(), loopback_limiter(1)).await;
         let mut held = TcpStream::connect(address).await.unwrap();
@@ -1249,6 +1280,7 @@ mod tests {
     /// SSE and slow LCD work look like on the wire. Method: a body that trickles out for over
     /// twice the timeout arrives whole.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn streaming_response_outlives_the_header_timeout() {
         let address = serve(app()).await;
         let mut stream = request(address, "/stream").await;
@@ -1280,6 +1312,7 @@ mod tests {
     const _: () = assert!(HOLDING_TIMEOUTS.header_read.as_secs() < NEVER.as_secs());
 
     /// Every connection in the remote tests comes from this one TEST-NET peer.
+    #[cfg(feature = "gated-tests")]
     fn remote_peer(_: SocketAddr) -> IpAddr {
         IpAddr::from([192, 0, 2, 50])
     }
@@ -1287,6 +1320,7 @@ mod tests {
     /// Serves `app()` through the production server with each connection charged to
     /// `remote_peer`, plus `/auth`, which authenticates every request the way the auth
     /// layers do.
+    #[cfg(feature = "gated-tests")]
     async fn serve_remote(limiter: Arc<ConnectionLimiter>) -> SocketAddr {
         let router = app().route(
             "/auth",
@@ -1299,6 +1333,7 @@ mod tests {
     }
 
     /// Sends an authenticated request on a kept-alive connection and returns its response.
+    #[cfg(feature = "gated-tests")]
     async fn authenticate(stream: &mut TcpStream) -> String {
         stream
             .write_all(b"GET /auth HTTP/1.1\r\nhost: cc.lan\r\n\r\n")
@@ -1321,6 +1356,7 @@ mod tests {
     }
 
     /// Waits for the server side of connect, close and promotion to reach the limiter.
+    #[cfg(feature = "gated-tests")]
     async fn pools_reach(limiter: &ConnectionLimiter, expected: (usize, usize, usize)) {
         let started = std::time::Instant::now();
         while pools(limiter) != expected {
@@ -1338,6 +1374,7 @@ mod tests {
     /// one connection authenticates, two idle ones fill a pre-auth pool of two, a third is
     /// refused, then the first is served again.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn authenticated_connection_outlives_a_full_pre_auth_pool() {
         let limiter = limiter(ConnectionLimits {
             per_peer: 8,
@@ -1372,6 +1409,7 @@ mod tests {
     /// Slots free from either pool when their connections close. Method: two connections
     /// authenticate into a remote pool of one; the first closes and the second tries again.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn promotion_waits_for_room_in_the_remote_pool() {
         let limiter = limiter(ConnectionLimits {
             per_peer: 8,

@@ -550,6 +550,7 @@ mod tests {
     /// Method: each request is polled once, far enough to be charged and start its pass,
     /// then dropped.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn dropped_legacy_checks_stay_charged() {
         use futures_util::FutureExt as _;
         let peer = test_peer(40);

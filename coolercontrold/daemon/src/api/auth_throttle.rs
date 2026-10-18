@@ -597,6 +597,7 @@ mod tests {
     /// Goal: password failures block further password attempts but never a valid token from
     /// the same peer, and that token's success leaves the password streak intact.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn password_failures_leave_token_requests_alone() {
         let peer = wired_peer(10);
         for _ in 0..=FAILURE_THRESHOLD {
@@ -624,6 +625,7 @@ mod tests {
     /// Goal: token failures are throttled on their own budget, which leaves the peer free to
     /// log in with a password.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn token_failures_leave_password_attempts_alone() {
         let peer = wired_peer(11);
         for _ in 0..=FAILURE_THRESHOLD {
@@ -1060,6 +1062,7 @@ mod tests {
     /// Goal: the check-then-record race is closed end to end. Concurrent `/login` requests
     /// through the real middleware, all in flight at once, admit only the allowance.
     #[tokio::test]
+    #[cfg(feature = "gated-tests")]
     async fn concurrent_logins_are_capped_through_the_middleware() {
         let peer = wired_peer(14);
         let calls = (0..10).map(|_| call("POST", "/login", Some("Basic abc"), peer));

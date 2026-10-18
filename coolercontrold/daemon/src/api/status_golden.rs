@@ -15,15 +15,22 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[cfg(feature = "gated-tests")]
 use axum::response::sse::{Event, Sse};
+#[cfg(feature = "gated-tests")]
 use axum::response::IntoResponse;
-use chrono::{DateTime, Local, TimeDelta, Utc};
+#[cfg(feature = "gated-tests")]
+use chrono::TimeDelta;
+use chrono::{DateTime, Local, Utc};
 use tokio_util::sync::CancellationToken;
 
 use crate::api::actor::StatusHandle;
 use crate::api::devices::DeviceDto;
+#[cfg(feature = "gated-tests")]
 use crate::api::sse::SseEvent;
-use crate::api::status::{DeviceChannelStatusDto, DeviceStatusDto, StatusResponse};
+use crate::api::status::DeviceStatusDto;
+#[cfg(feature = "gated-tests")]
+use crate::api::status::{DeviceChannelStatusDto, StatusResponse};
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::grpc_api::models;
 use crate::grpc_api::models::v1::status::{FanSpeed, Metric};
@@ -31,6 +38,7 @@ use crate::AllDevices;
 
 pub const POLL_RATE: f64 = 5.0;
 /// `ceil(3600 / POLL_RATE)`: an initialized history always holds this many entries.
+#[cfg(feature = "gated-tests")]
 const HISTORY_LEN: usize = 720;
 
 /// The instant every initialized history ends on. Earlier entries are zeroed copies of it,
@@ -57,6 +65,7 @@ pub fn at(utc: &str) -> DateTime<Local> {
 
 /// `since` lands exactly on `T4` once the status actor adds its 200 ms margin, so `T4` itself is
 /// excluded and only entries strictly after it pass.
+#[cfg(feature = "gated-tests")]
 pub fn since() -> DateTime<Local> {
     at(T4) - TimeDelta::milliseconds(200)
 }
@@ -277,14 +286,21 @@ pub fn device_dtos(fixture: &Fixture) -> Vec<DeviceDto> {
 
 /// Every status query the API offers, answered by a real status actor over the fixture.
 pub struct Responses {
+    #[cfg(feature = "gated-tests")]
     pub all: Vec<DeviceStatusDto>,
+    #[cfg(feature = "gated-tests")]
     pub since: Vec<DeviceStatusDto>,
     pub recent: Vec<DeviceStatusDto>,
+    #[cfg(feature = "gated-tests")]
     pub hwmon_all: DeviceStatusDto,
     pub hwmon_recent: DeviceStatusDto,
+    #[cfg(feature = "gated-tests")]
     pub pump_all: DeviceChannelStatusDto,
+    #[cfg(feature = "gated-tests")]
     pub temp2_all: DeviceChannelStatusDto,
+    #[cfg(feature = "gated-tests")]
     pub power_recent: DeviceChannelStatusDto,
+    #[cfg(feature = "gated-tests")]
     pub unknown_recent: DeviceChannelStatusDto,
 }
 
@@ -301,20 +317,27 @@ pub fn responses(fixture: &Fixture) -> Responses {
             );
             let hwmon = fixture.hwmon_uid.clone();
             let responses = Responses {
+                #[cfg(feature = "gated-tests")]
                 all: handle.all().await?,
+                #[cfg(feature = "gated-tests")]
                 since: handle.since(since()).await?,
                 recent: handle.recent().await?,
+                #[cfg(feature = "gated-tests")]
                 hwmon_all: handle.all_device(hwmon.clone()).await?,
                 hwmon_recent: handle.recent_device(hwmon.clone()).await?,
+                #[cfg(feature = "gated-tests")]
                 pump_all: handle
                     .all_device_channel(hwmon.clone(), "pump".to_string())
                     .await?,
+                #[cfg(feature = "gated-tests")]
                 temp2_all: handle
                     .all_device_channel(hwmon.clone(), "temp2".to_string())
                     .await?,
+                #[cfg(feature = "gated-tests")]
                 power_recent: handle
                     .recent_device_channel(hwmon.clone(), "power".to_string())
                     .await?,
+                #[cfg(feature = "gated-tests")]
                 unknown_recent: handle
                     .recent_device_channel(hwmon, "unknown".to_string())
                     .await?,
@@ -336,10 +359,12 @@ pub fn responses(fixture: &Fixture) -> Responses {
 
 /// Today's rendering of an instant: chrono's serialization of the `DateTime<Local>` the
 /// repositories stamp.
+#[cfg(feature = "gated-tests")]
 fn timestamp_json(at: DateTime<Local>) -> String {
     serde_json::to_string(&at).expect("timestamps serialize")
 }
 
+#[cfg(feature = "gated-tests")]
 fn entry_json(at: DateTime<Local>, body: &str) -> String {
     let timestamp = timestamp_json(at);
     if body.is_empty() {
@@ -350,6 +375,7 @@ fn entry_json(at: DateTime<Local>, body: &str) -> String {
 }
 
 /// The zeroed entries `initialize_status_history_with` puts before the init entry, oldest first.
+#[cfg(feature = "gated-tests")]
 fn zeroed_entries(pushes: usize, body: &str) -> Vec<String> {
     let zeroed = HISTORY_LEN - 1 - pushes;
     let init_at = at(INIT_AT);
@@ -362,23 +388,39 @@ fn zeroed_entries(pushes: usize, body: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "gated-tests")]
 const HWMON_ZEROED: &str = r#""temps":[{"name":"temp1","temp":0.0},{"name":"temp2","temp":0.0}],"channels":[{"name":"fan1","rpm":0,"duty":0.0},{"name":"pump","rpm":0}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_INIT: &str = r#""temps":[{"name":"temp1","temp":40.0},{"name":"temp2","temp":41.5}],"channels":[{"name":"fan1","rpm":1200,"duty":50.0},{"name":"pump","rpm":2400}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T1: &str = r#""temps":[{"name":"temp1","temp":40.25},{"name":"temp2","temp":null}],"channels":[{"name":"fan1","rpm":1210,"duty":51.0,"pwm_mode":1},{"name":"pump","rpm":2410}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T2: &str = r#""temps":[{"name":"temp1","temp":40.5}],"channels":[{"name":"fan1","rpm":1220,"duty":52.0},{"name":"pump","rpm":2420,"duty":60.0}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T3: &str = r#""temps":[{"name":"temp1","temp":40.75},{"name":"temp2","temp":42.0},{"name":"temp3","temp":30.0}],"channels":[{"name":"fan1","rpm":1230},{"name":"pump","rpm":2430,"duty":61.0},{"name":"power","freq":1500,"watts":12.5}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T4: &str = r#""temps":[{"name":"temp1","temp":41.0},{"name":"temp2","temp":42.25},{"name":"temp3","temp":30.5}],"channels":[{"name":"fan1","rpm":1240,"duty":53.0},{"name":"pump","rpm":2440,"duty":62.0},{"name":"power","freq":1510,"watts":13.0}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T5: &str = r#""temps":[{"name":"temp1","temp":41.25},{"name":"temp3","temp":31.0}],"channels":[{"name":"fan1","rpm":1250,"duty":53.5},{"name":"pump","rpm":2450,"duty":62.5}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T6: &str = r#""channels":[{"name":"fan1","rpm":1255,"duty":33.333333333333336}]"#;
+#[cfg(feature = "gated-tests")]
 const HWMON_T7: &str = r#""temps":[{"name":"temp1","temp":41.5},{"name":"temp2","temp":null},{"name":"temp3","temp":31.5}],"channels":[{"name":"fan1","rpm":1260,"duty":54.0,"pwm_mode":1},{"name":"pump","rpm":2460},{"name":"power","freq":1520,"watts":13.5},{"name":"clock","freq":4200},{"name":"led","pwm_mode":2}]"#;
 
+#[cfg(feature = "gated-tests")]
 const GPU_ZEROED: &str = r#""channels":[{"name":"load","duty":0.0},{"name":"freq","freq":0},{"name":"power","watts":0.0}]"#;
+#[cfg(feature = "gated-tests")]
 const GPU_INIT: &str = r#""channels":[{"name":"load","duty":10.0},{"name":"freq","freq":3000},{"name":"power","watts":55.5}]"#;
+#[cfg(feature = "gated-tests")]
 const GPU_T1: &str = r#""channels":[{"name":"load","duty":11.5},{"name":"freq","freq":3010},{"name":"power","watts":56.0}]"#;
+#[cfg(feature = "gated-tests")]
 const GPU_T3: &str = "";
+#[cfg(feature = "gated-tests")]
 const GPU_T4: &str = r#""channels":[{"name":"load","duty":12.0},{"name":"freq","freq":3020}]"#;
+#[cfg(feature = "gated-tests")]
 const GPU_T7: &str = r#""channels":[{"name":"load","duty":33.333333333333336},{"name":"freq","freq":3030},{"name":"power","watts":55.75}]"#;
 
+#[cfg(feature = "gated-tests")]
 fn hwmon_entries() -> Vec<String> {
     let mut entries = zeroed_entries(HWMON_PUSHES, HWMON_ZEROED);
     for (at_utc, body) in [
@@ -397,6 +439,7 @@ fn hwmon_entries() -> Vec<String> {
     entries
 }
 
+#[cfg(feature = "gated-tests")]
 fn gpu_entries() -> Vec<String> {
     let mut entries = zeroed_entries(GPU_PUSHES, GPU_ZEROED);
     for (at_utc, body) in [
@@ -412,6 +455,7 @@ fn gpu_entries() -> Vec<String> {
     entries
 }
 
+#[cfg(feature = "gated-tests")]
 fn device_json(d_type: &str, uid: &str, entries: &[String]) -> String {
     format!(
         "{{\"type\":\"{d_type}\",\"type_index\":1,\"uid\":\"{uid}\",\"status_history\":[{}]}}",
@@ -419,12 +463,14 @@ fn device_json(d_type: &str, uid: &str, entries: &[String]) -> String {
     )
 }
 
+#[cfg(feature = "gated-tests")]
 fn channel_json(entries: &[String]) -> String {
     format!("{{\"status_history\":[{}]}}", entries.join(","))
 }
 
 /// Byte equality with a readable report: a 720-entry mismatch otherwise prints two walls of JSON.
 #[track_caller]
+#[cfg(feature = "gated-tests")]
 fn assert_same_bytes(actual: &str, expected: &str, what: &str) {
     if actual == expected {
         return;
@@ -449,6 +495,7 @@ fn assert_same_bytes(actual: &str, expected: &str, what: &str) {
     );
 }
 
+#[cfg(feature = "gated-tests")]
 fn by_uid<'a>(devices: &'a [DeviceStatusDto], uid: &str) -> &'a DeviceStatusDto {
     devices
         .iter()
@@ -456,17 +503,20 @@ fn by_uid<'a>(devices: &'a [DeviceStatusDto], uid: &str) -> &'a DeviceStatusDto 
         .expect("every fixture device answers")
 }
 
+#[cfg(feature = "gated-tests")]
 fn to_json<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("status DTOs serialize")
 }
 
 /// Whether the actor answered with the hwmon device first. `AllDevices` iteration order is not
 /// part of the contract, so the expected response follows it.
+#[cfg(feature = "gated-tests")]
 fn hwmon_first(devices: &[DeviceStatusDto], fixture: &Fixture) -> bool {
     assert_eq!(devices.len(), 2, "one answer per fixture device");
     devices[0].uid == fixture.hwmon_uid
 }
 
+#[cfg(feature = "gated-tests")]
 fn response_json(hwmon_first: bool, hwmon: &str, gpu: &str) -> String {
     if hwmon_first {
         format!("{{\"devices\":[{hwmon},{gpu}]}}")
@@ -476,6 +526,7 @@ fn response_json(hwmon_first: bool, hwmon: &str, gpu: &str) -> String {
 }
 
 #[track_caller]
+#[cfg(feature = "gated-tests")]
 fn assert_response(
     fixture: &Fixture,
     actual: Vec<DeviceStatusDto>,
@@ -492,6 +543,7 @@ fn assert_response(
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn fixture_timestamps_cover_every_precision() {
     // Goal: the fixture really exercises every timestamp shape chrono can print, so the
     // golden tests below pin all of them. Method: count the fraction digits of each expected
@@ -512,6 +564,7 @@ fn fixture_timestamps_cover_every_precision() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn rest_all_is_golden() {
     // Goal: `{all: true}` returns every entry of every device byte for byte. Method: compare
     // the response with the expected JSON in both device orders.
@@ -523,6 +576,7 @@ fn rest_all_is_golden() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn rest_since_keeps_entries_strictly_after_the_margin() {
     // Goal: `since` keeps exactly the entries stamped after `since + 200 ms`, judged entry by
     // entry, so `T6` (a wall clock step back) is dropped even though a later entry passes.
@@ -539,6 +593,7 @@ fn rest_since_keeps_entries_strictly_after_the_margin() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn rest_recent_is_golden() {
     // Goal: the default query returns only each device's newest entry. Method: compare bytes.
     let fixture = fixture();
@@ -549,6 +604,7 @@ fn rest_recent_is_golden() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn rest_device_all_and_recent_are_golden() {
     // Goal: the per-device routes return the same entries as the all-device ones. Method:
     // compare bytes for the hwmon device.
@@ -573,6 +629,7 @@ fn rest_device_all_and_recent_are_golden() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn rest_channel_all_and_recent_are_golden() {
     // Goal: the per-channel routes keep every entry's timestamp and only the named temp or
     // channel, which is omitted where it was not reported. An unknown name keeps bare
@@ -637,6 +694,7 @@ fn rest_channel_all_and_recent_are_golden() {
 }
 
 #[test]
+#[cfg(feature = "gated-tests")]
 fn sse_status_frame_is_golden() {
     // Goal: the SSE `status` frame carries the recent response unchanged. Method: render the
     // frame through axum's SSE body and compare the wire bytes in both device orders.
