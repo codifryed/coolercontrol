@@ -49,7 +49,7 @@ workflow:
 stages:
   - test
   - build
-  - test_packages
+  - smoke_packages
   - upload_packages
   - release
 
@@ -1014,11 +1014,13 @@ push_dh-alpine_arm64:
 
 
 ############################################################################################
-# Test Packages
+# Smoke test packages: install each built package on its target distro and run it once.
+# The test suite itself runs in the prerelease stage and in each package build's %check or
+# dh_auto_test.
 ############################################################################################
 
-test_appimages:
-  stage: test_packages
+smoke_appimages:
+  stage: smoke_packages
   image: ubuntu:jammy
   dependencies:
     - build_appimages
@@ -1034,8 +1036,8 @@ test_appimages:
     - ./CoolerControlD-x86_64.AppImage --version
     #- ./CoolerControl-x86_64.AppImage --version
 
-test_arm64:
-  stage: test_packages
+smoke_arm64:
+  stage: smoke_packages
   image: ubuntu:jammy
   tags:
     - saas-linux-small-arm64
@@ -1051,8 +1053,8 @@ test_arm64:
     - ls -lah ./
     - ./assets-built/coolercontrold --version
 
-test_deb_bookworm_amd64:
-  stage: test_packages
+smoke_deb_bookworm_amd64:
+  stage: smoke_packages
   tags:
     - saas-linux-small-amd64
   image: debian:bookworm
@@ -1071,8 +1073,8 @@ test_deb_bookworm_amd64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-test_deb_bookworm_arm64:
-  stage: test_packages
+smoke_deb_bookworm_arm64:
+  stage: smoke_packages
   tags:
     - saas-linux-small-arm64
   image: debian:bookworm
@@ -1091,8 +1093,8 @@ test_deb_bookworm_arm64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-test_ubuntu_22.04:
-  stage: test_packages
+smoke_ubuntu_22.04:
+  stage: smoke_packages
   tags:
     - saas-linux-small-amd64
   image: ubuntu:jammy
@@ -1111,8 +1113,8 @@ test_ubuntu_22.04:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-test_ubuntu_arm64:
-  stage: test_packages
+smoke_ubuntu_arm64:
+  stage: smoke_packages
   tags:
     - saas-linux-small-arm64
   image: ubuntu:jammy
@@ -1131,8 +1133,8 @@ test_ubuntu_arm64:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
-test_ubuntu_latest:
-  stage: test_packages
+smoke_ubuntu_latest:
+  stage: smoke_packages
   tags:
     - saas-linux-small-amd64
   image: ubuntu:rolling
@@ -1162,7 +1164,7 @@ upload_package_appimage:
     - build_appimages
   needs:
     - build_appimages
-    - test_appimages
+    - smoke_appimages
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1181,7 +1183,7 @@ upload_package_appimage_beta:
     - build_appimages
   needs:
     - build_appimages
-    - test_appimages
+    - smoke_appimages
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1201,7 +1203,7 @@ upload_artifacts_arm64:
     - build_arm64
   needs:
     - build_arm64
-    - test_arm64
+    - smoke_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1218,7 +1220,7 @@ upload_artifacts_arm64_beta:
     - build_arm64
   needs:
     - build_arm64
-    - test_arm64
+    - smoke_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1236,7 +1238,7 @@ upload_package_deb_bookworm_amd64:
     - build_deb_bookworm_amd64
   needs:
     - build_deb_bookworm_amd64
-    - test_deb_bookworm_amd64
+    - smoke_deb_bookworm_amd64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1258,7 +1260,7 @@ upload_package_deb_bookworm_beta_amd64:
     - build_deb_bookworm_amd64
   needs:
     - build_deb_bookworm_amd64
-    - test_deb_bookworm_amd64
+    - smoke_deb_bookworm_amd64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1281,7 +1283,7 @@ upload_package_deb_bookworm_arm64:
     - build_deb_bookworm_arm64
   needs:
     - build_deb_bookworm_arm64
-    - test_deb_bookworm_arm64
+    - smoke_deb_bookworm_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1303,7 +1305,7 @@ upload_package_deb_bookworm_beta_arm64:
     - build_deb_bookworm_arm64
   needs:
     - build_deb_bookworm_arm64
-    - test_deb_bookworm_arm64
+    - smoke_deb_bookworm_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1323,8 +1325,8 @@ upload_package_ubuntu:
     - build_ubuntu
   needs:
     - build_ubuntu
-    - test_ubuntu_22.04
-    - test_ubuntu_latest
+    - smoke_ubuntu_22.04
+    - smoke_ubuntu_latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1346,7 +1348,7 @@ upload_package_ubuntu_arm64:
     - build_ubuntu_arm64
   needs:
     - build_ubuntu_arm64
-    - test_ubuntu_arm64
+    - smoke_ubuntu_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1368,8 +1370,8 @@ upload_package_ubuntu_beta:
     - build_ubuntu
   needs:
     - build_ubuntu
-    - test_ubuntu_22.04
-    - test_ubuntu_latest
+    - smoke_ubuntu_22.04
+    - smoke_ubuntu_latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1402,9 +1404,9 @@ upload_package_r2_debian:
     - build_deb_bookworm_arm64
   needs:
     - build_deb_bookworm_amd64
-    - test_deb_bookworm_amd64
+    - smoke_deb_bookworm_amd64
     - build_deb_bookworm_arm64
-    - test_deb_bookworm_arm64
+    - smoke_deb_bookworm_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1423,10 +1425,10 @@ upload_package_r2_ubuntu:
     - build_ubuntu_arm64
   needs:
     - build_ubuntu
-    - test_ubuntu_22.04
-    - test_ubuntu_latest
+    - smoke_ubuntu_22.04
+    - smoke_ubuntu_latest
     - build_ubuntu_arm64
-    - test_ubuntu_arm64
+    - smoke_ubuntu_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
