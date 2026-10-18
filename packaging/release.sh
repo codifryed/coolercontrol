@@ -25,5 +25,6 @@ git add CHANGELOG.md \
     packaging/fedora/coolercontrold-rc1.spec \
     packaging/debian/changelog \
     openapi/openapi.json
-git commit -S -m "Release ${RELEASE_VERSION}"
+# --allow-empty: after a failed rehearsal, the fixed release gets a new, empty Release commit.
+git commit -S --allow-empty -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"
