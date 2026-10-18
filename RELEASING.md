@@ -41,8 +41,20 @@ automatically. They are included here for reference:
          2. for ex: `make bump v=minor` 1.0.0 -> 1.1.0
       4. run `make release`
       5. check the diff that the changes are correct
-      6. `make push-release`
-      7. make sure build & release pipelines complete successfully
+      6. `make push-release`. It pushes the Release commit alone, waits for that commit's release
+         rehearsal to pass, then pushes the tag. The rehearsal runs every check and build without
+         publishing: the test suite on old and new distros for amd64 and arm64 (the newest with the
+         newest stable Rust, warnings denied), the Fedora RPM specs in mock, and every package and
+         Docker image, which its jobs keep for the tag. `make prerelease-local` runs the tests and
+         RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a read_api
+         token, to watch the rehearsal; the tag pipeline checks it with the masked, protected CI
+         variable `RELEASE_READ_TOKEN` (tags must be protected for it to reach their pipelines).
+         - If the rehearsal fails, the tag has not left this machine. Delete it
+           (`git tag -d X.Y.Z`), push the fix, then `make release` (an empty Release commit) and
+           `make push-release` again.
+      7. make sure the tag pipeline completes successfully. It only checks that its commit was
+         rehearsed, then publishes the rehearsed builds, so a failed job can be retried without
+         retagging.
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
