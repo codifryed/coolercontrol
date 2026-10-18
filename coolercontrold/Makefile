@@ -26,13 +26,13 @@ build: sync-app
 	@$(CARGO) build --locked $(release) $(FEATURES)
 
 test: release += --release
-test: test-liqctld
+test:
 	@$(CARGO) test --locked $(release) $(FEATURES)
 
-# liqctld's tests call liquidctl's own implementations, so they need it installed. This is a
-# Rust daemon and liquidctl is an optional runtime dep, so building it must never require a
-# python package: a missing one skips. Only the pipeline job that installs liquidctl sets
-# LIQCTLD_TESTS_REQUIRED, which turns that skip into the failure CI needs it to be.
+# liqctld's tests call liquidctl's own implementations, so they need it installed. They depend on
+# the host's liquidctl and Pillow, so `test`, which distro builds run, leaves them out. A missing
+# package skips. Only the pipeline job that installs liquidctl sets LIQCTLD_TESTS_REQUIRED, which
+# turns that skip into the failure CI needs it to be.
 test-liqctld:
 	@if python3 -c 'import liquidctl, PIL' 2>/dev/null; then \
 		python3 -m unittest discover -s daemon/resources/liqctld -t daemon/resources/liqctld -p 'test_*.py'; \
