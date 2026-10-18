@@ -10,6 +10,7 @@ Needs RELEASE_READ_TOKEN (CI) or GITLAB_TOKEN, since CI_JOB_TOKEN can list neith
 jobs. See RELEASING.md.
 """
 
+import http.client
 import io
 import json
 import os
@@ -27,6 +28,8 @@ MARKER_JOB = "prerelease_passed"
 REHEARSAL_SOURCES = {"push", "web"}
 FINISHED_UNPASSED = {"failed", "canceled", "skipped"}
 WAIT_TIMEOUT_SECS = 3 * 60 * 60
+# What a missing, expired or underprivileged token gets; any other error is retried.
+TOKEN_REFUSED_CODES = {401, 403, 404}
 WAIT_POLL_SECS = 60
 
 
@@ -139,12 +142,15 @@ def wait(sha: str) -> None:
             if passed_in(pipelines) is not None:
                 return
         except urllib.error.HTTPError as error:
-            if error.code < 500:
+            if error.code in TOKEN_REFUSED_CODES:
                 sys.exit(f"The API refused the request ({error}); check the token.")
             print(f"API error, retrying: {error}", file=sys.stderr)
             pipelines = []
         except OSError as error:
             print(f"API not reachable, retrying: {error}", file=sys.stderr)
+            pipelines = []
+        except (ValueError, http.client.HTTPException) as error:
+            print(f"Unreadable API response, retrying: {error!r}", file=sys.stderr)
             pipelines = []
         if pipelines and pipelines[0]["status"] in FINISHED_UNPASSED:
             sys.exit(
