@@ -36,22 +36,33 @@ variables:
   DH_ORG: "coolercontrol"
   SECRET_DETECTION_ENABLED: 'true'
 
-# The daily schedule runs only the dependency audits, dependabot and the newest-toolchain check. Our jobs skip it in their
-# rules; the included security templates are switched off through their own variables.
+# The daily schedule runs only the dependency audits, dependabot and the newest-toolchain check.
+# Our jobs skip it in their rules; the included security templates are switched off through their
+# own variables. A "Release X.Y.Z" commit on the default branch is a release rehearsal: it runs
+# every check and build without publishing, and its jobs keep what they built for the tag.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
         SAST_DISABLED: 'true'
         SECRET_DETECTION_DISABLED: 'true'
+    - if: ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web") &&
+        $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_TITLE =~ /^Release [0-9]+\.[0-9]+\.[0-9]+$/
+      variables:
+        RELEASE_REHEARSAL: 'true'
     - when: always
 
-# test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR,
-#                  and every tag.
+# Release flow: `make push-release` pushes the "Release X.Y.Z" commit, whose pipeline rehearses
+# the release: every check and build, nothing published. Once it passes, the tag is pushed, and
+# the tag pipeline only verifies that rehearsal through the API, fetches its jobs' builds and
+# publishes them. A tag never reaches downstream packagers before its commit has passed. Needs
+# RELEASE_READ_TOKEN, a read_api token in a masked, protected variable (tags must be protected).
+#
+# test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
 # prerelease:      the shipped source tarballs, tested and packaged the way distros build them.
-#                  One manual click on branches and MRs; automatic on tags, where nothing is built
-#                  until it passes.
-# build:           release artifacts and packages.
+#                  One manual click on branches and MRs, automatic in a release rehearsal. On a
+#                  tag, only the check that this commit's rehearsal passed.
+# build:           release artifacts and packages. A tag fetches the rehearsal's builds.
 # smoke_packages:  install each package and run it once.
 # upload_packages: publish packages: beta builds for branches, releases for tags.
 # release:         the GitLab release.
@@ -184,7 +195,7 @@ copyright:
       when: never
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - when: on_success
+    - if: $CI_COMMIT_TAG == null
   before_script:
     # make: copyright-check runs through it. git: reuse only honours .gitignore
     # when it can find a git executable; without one it ignores nothing and
@@ -199,8 +210,7 @@ copyright:
     - make copyright-check
 
 ############################################## Tests
-# The development gate: lint, the gated suite, UI and Qt tests. It runs on tags too, where
-# compile_artifacts waits on it.
+# The development gate: lint, the gated suite, UI and Qt tests. A release rehearsal needs it.
 test_all:
   stage: test
   tags:
@@ -213,7 +223,7 @@ test_all:
     # to run for external MRs.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - when: on_success
+    - if: $CI_COMMIT_TAG == null
   needs: []
   variables:
     # this job is the only place a missing liquidctl fails instead of skipping the liqctld tests
@@ -260,7 +270,7 @@ test_msrv:
       when: never
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
-    - when: on_success
+    - if: $CI_COMMIT_TAG == null
   needs: []
   variables:
     # A pure compile check. An older rustc has a different lint set, so the global -Dwarnings
@@ -382,13 +392,14 @@ build_source_assets:
     expire_in: 14 days
 
 # Branch and MR pipelines add the prerelease jobs behind one manual click on `prerelease`, skipping
-# the duplicate branch pipeline of an open MR. Tags run them automatically, and compile_artifacts
-# waits on them there.
+# the duplicate branch pipeline of an open MR. A manual run only checks: it builds, stages and
+# publishes nothing. A release rehearsal runs them automatically. Tags skip them: the rehearsal
+# already ran them on the same commit, which verify_prerelease checks.
 .prerelease_rules:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
       when: never
-    - if: $CI_COMMIT_TAG
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_PIPELINE_SOURCE
@@ -400,9 +411,9 @@ prerelease:
     - saas-linux-small-amd64
   needs: []
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
       when: never
-    - if: $CI_COMMIT_TAG
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_PIPELINE_SOURCE
@@ -410,6 +421,21 @@ prerelease:
       allow_failure: true
   script:
     - echo "Starting the prerelease jobs."
+
+# The first job of a tag pipeline: nothing is built or published unless the release rehearsal of
+# this exact commit passed in a pipeline of the default branch.
+verify_prerelease:
+  stage: prerelease
+  image: python:3-slim
+  tags:
+    - saas-linux-small-amd64
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_TAG
+  script:
+    - python3 .gitlab/scripts/release_rehearsal.py verify
 
 ####################################### Test suite on old and new distros
 # The source tarball and vendored crates, built offline in release mode: the default suite as
@@ -462,8 +488,8 @@ prerelease_arm64_ubuntu_rolling:
 ####################################### Fedora RPM specs
 # Both specs built in mock from the source tarballs, offline in a fresh chroot as Copr builds
 # them, so %check runs the default suite under Fedora's Rust. Branches and MRs build the rc1 specs
-# against their own ref; tags build the release specs. mock needs the privileged job container
-# that the docker:dind jobs rely on too.
+# against their own ref; a release rehearsal builds the release specs of its version. mock needs
+# the privileged job container that the docker:dind jobs rely on too.
 .prerelease_rpm:
   extends: .prerelease_rules
   stage: prerelease
@@ -473,7 +499,10 @@ prerelease_arm64_ubuntu_rolling:
     - build_source_assets
   timeout: 2h
   script:
-    - export PRERELEASE_TAG="${CI_COMMIT_TAG:-}"
+    - |
+      if [ "${RELEASE_REHEARSAL:-}" = true ]; then
+        export PRERELEASE_VERSION="${CI_COMMIT_TITLE#Release }"
+      fi
     - export PRERELEASE_RESULT_DIR="${CI_PROJECT_DIR}/rpm-results"
     - .gitlab/scripts/prerelease-rpm.sh "${CI_PROJECT_DIR}" "${CI_COMMIT_REF_NAME}"
   artifacts:
@@ -497,49 +526,37 @@ prerelease_rpm_aarch64:
 # compile all release artifacts
 ############################################################################################
 
-# manual and automatic trigger for all artifacts & packages. Every build hangs off this job, so on
-# a tag nothing is built until the development and prerelease checks pass on the tag itself. The
-# trigger and the source tarballs are needed directly too: a job skipped because its own needs
-# failed would otherwise count as passed.
+# manual and automatic trigger for all artifacts & packages. Every build hangs off this job. A
+# release rehearsal builds everything, in parallel with its checks. A tag builds nothing until
+# verify_prerelease has found this commit's passed rehearsal, and then fetches its builds.
 compile_artifacts:
   stage: build
   <<: [*main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $CI_COMMIT_TAG
+      needs:
+        - verify_prerelease
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: on_success
-    - if: $CI_COMMIT_TAG
-      when: on_success
-      needs:
-        - job: test_all
-          artifacts: false
-        - job: test_msrv
-          artifacts: false
-        - job: copyright
-          artifacts: false
-        - job: prerelease
-          artifacts: false
-        - job: build_source_assets
-          artifacts: false
-        - job: prerelease_amd64_ubuntu_22.04
-          artifacts: false
-        - job: prerelease_amd64_ubuntu_rolling
-          artifacts: false
-        - job: prerelease_arm64_ubuntu_22.04
-          artifacts: false
-        - job: prerelease_arm64_ubuntu_rolling
-          artifacts: false
-        - job: prerelease_rpm_x86_64
-          artifacts: false
-        - job: prerelease_rpm_aarch64
-          artifacts: false
     - when: manual
       allow_failure: true
   needs: []
   script:
     #- make ci-check
     - echo "All release compilation jobs triggered."
+
+# A tag pipeline fetches the artifacts of the same job in its commit's rehearsal instead of
+# building again, so it publishes the very files the rehearsal tested, at the same paths.
+.release_artifacts:
+  fetch:
+    - |
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        python3 .gitlab/scripts/release_rehearsal.py fetch "${CI_JOB_NAME}"
+        exit 0
+      fi
 
 ####################################### AppImages (Ubuntu 22.04)
 build_appimages:
@@ -565,6 +582,7 @@ build_appimages:
     - node --version
     - cmake --version
   script:
+    - !reference [.release_artifacts, fetch]
     - make build-appimages -j1
     - make appimages -j2
     - make assets
@@ -598,6 +616,7 @@ build_arm64:
     - python3 --version
     - cmake --version
   script:
+    - !reference [.release_artifacts, fetch]
     - make build-daemon
     - make assets-daemon
     - make assets-ui
@@ -619,12 +638,14 @@ build_deb_bookworm_amd64:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
     # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
   script:
+    - !reference [.release_artifacts, fetch]
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     # build dependencies:
@@ -678,12 +699,14 @@ build_deb_bookworm_arm64:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
     # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
   script:
+    - !reference [.release_artifacts, fetch]
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     # build dependencies:
@@ -737,12 +760,14 @@ build_ubuntu:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
     # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
   script:
+    - !reference [.release_artifacts, fetch]
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     - apt-get update
@@ -802,12 +827,14 @@ build_ubuntu_arm64:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
     # on_success, not always: a tag builds nothing the gate in compile_artifacts has not passed.
     - if: $CI_COMMIT_TAG
   script:
+    - !reference [.release_artifacts, fetch]
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     - apt-get update
@@ -843,44 +870,21 @@ push_dh-debian:
   stage: build
   services:
     - docker:dind
+  # The two Docker Hub cloud builds fail when they run at the same time.
+  resource_group: dockerhub
   needs:
     - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_TAG
+    - if: $RELEASE_REHEARSAL == "true"
   script:
-    - |
-      if [ "$CI_COMMIT_TAG" ]; then 
-        IMAGE_TAG=$CI_COMMIT_TAG
-      else 
-        IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"
-      fi
-      export IMAGE_TAG
-    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
-    - |
-      apk add curl jq
-      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
-      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
-      mkdir -vp ~/.docker/cli-plugins/
-      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
-      chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
-    - |
-      if [ "$CI_COMMIT_TAG" ]; then
-        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
-      else 
-        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
-      fi
-      export TAG_LINE
-    - |
-      docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_LINE \
-        -f .gitlab/images/dockerhub/debian/Dockerfile \
-        --push \
-        .
-    - echo "Successful. x86_64 & aarch64 Debian images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - .gitlab/scripts/dockerhub-release.sh debian
+  artifacts:
+    paths:
+      - dockerhub-debian.digest
+    expire_in: 5 days
 
 push_dh-debian_amd64:
   image: docker:dind
@@ -896,6 +900,9 @@ push_dh-debian_amd64:
     - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
@@ -996,44 +1003,21 @@ push_dh-alpine:
   stage: build
   services:
     - docker:dind
+  # The two Docker Hub cloud builds fail when they run at the same time.
+  resource_group: dockerhub
   needs:
     - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_TAG
+    - if: $RELEASE_REHEARSAL == "true"
   script:
-    - |
-      if [ "$CI_COMMIT_TAG" ]; then 
-        IMAGE_TAG="alpine-$CI_COMMIT_TAG"
-      else 
-        IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"
-      fi
-      export IMAGE_TAG
-    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
-    - |
-      apk add curl jq
-      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
-      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
-      mkdir -vp ~/.docker/cli-plugins/
-      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
-      chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
-    - |
-      if [ "$CI_COMMIT_TAG" ]; then
-        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:alpine-latest --tag $DH_REGISTRY_IMAGE:alpine"
-      else 
-        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
-      fi
-      export TAG_LINE
-    - |
-      docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_LINE \
-        -f .gitlab/images/dockerhub/alpine/Dockerfile \
-        --push \
-        .
-    - echo "Successful. x86_64 & aarch64 Alpine images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - .gitlab/scripts/dockerhub-release.sh alpine
+  artifacts:
+    paths:
+      - dockerhub-alpine.digest
+    expire_in: 5 days
 
 #push_dh-alpine_amd64:
 #  image: docker:dind
@@ -1100,6 +1084,9 @@ push_dh-alpine_arm64:
     - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
@@ -1283,6 +1270,75 @@ smoke_ubuntu_latest:
     - coolercontrold --version
     - apt remove -y coolercontrold coolercontrol
 
+# The end of a release rehearsal. It runs only once every check, build and smoke test has
+# passed, and verify_prerelease looks for it, so its success is what lets the tag publish. Each
+# job is needed directly: a job skipped because its own needs failed would otherwise count as
+# passed.
+prerelease_passed:
+  stage: smoke_packages
+  image: alpine:3
+  tags:
+    - saas-linux-small-amd64
+  rules:
+    - if: $RELEASE_REHEARSAL == "true"
+  needs:
+    - job: test_all
+      artifacts: false
+    - job: test_msrv
+      artifacts: false
+    - job: copyright
+      artifacts: false
+    - job: prerelease
+      artifacts: false
+    - job: build_source_assets
+      artifacts: false
+    - job: prerelease_amd64_ubuntu_22.04
+      artifacts: false
+    - job: prerelease_amd64_ubuntu_rolling
+      artifacts: false
+    - job: prerelease_arm64_ubuntu_22.04
+      artifacts: false
+    - job: prerelease_arm64_ubuntu_rolling
+      artifacts: false
+    - job: prerelease_rpm_x86_64
+      artifacts: false
+    - job: prerelease_rpm_aarch64
+      artifacts: false
+    - job: compile_artifacts
+      artifacts: false
+    - job: build_appimages
+      artifacts: false
+    - job: build_arm64
+      artifacts: false
+    - job: build_deb_bookworm_amd64
+      artifacts: false
+    - job: build_deb_bookworm_arm64
+      artifacts: false
+    - job: build_ubuntu
+      artifacts: false
+    - job: build_ubuntu_arm64
+      artifacts: false
+    - job: push_dh-debian
+      artifacts: false
+    - job: push_dh-alpine
+      artifacts: false
+    - job: smoke_appimages
+      artifacts: false
+    - job: smoke_arm64
+      artifacts: false
+    - job: smoke_deb_bookworm_amd64
+      artifacts: false
+    - job: smoke_deb_bookworm_arm64
+      artifacts: false
+    - job: smoke_ubuntu_22.04
+      artifacts: false
+    - job: smoke_ubuntu_arm64
+      artifacts: false
+    - job: smoke_ubuntu_latest
+      artifacts: false
+  script:
+    - echo "Release rehearsal of ${CI_COMMIT_SHA} passed."
+
 ############################################################################################
 # Upload Packages
 ############################################################################################
@@ -1316,6 +1372,9 @@ upload_package_appimage_beta:
     - smoke_appimages
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing: its builds are staged for the tag instead.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
@@ -1353,6 +1412,9 @@ upload_artifacts_arm64_beta:
     - smoke_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing: its builds are staged for the tag instead.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
@@ -1393,6 +1455,9 @@ upload_package_deb_bookworm_beta_amd64:
     - smoke_deb_bookworm_amd64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing: its builds are staged for the tag instead.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
@@ -1438,6 +1503,9 @@ upload_package_deb_bookworm_beta_arm64:
     - smoke_deb_bookworm_arm64
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing: its builds are staged for the tag instead.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
@@ -1504,6 +1572,9 @@ upload_package_ubuntu_beta:
     - smoke_ubuntu_latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # A rehearsal publishes nothing: its builds are staged for the tag instead.
+    - if: $RELEASE_REHEARSAL == "true"
       when: never
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
