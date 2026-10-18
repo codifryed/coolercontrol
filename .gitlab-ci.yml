@@ -361,6 +361,10 @@ build_source_assets:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    # A tag uploads its source only once its rehearsal is verified.
+    - if: $CI_COMMIT_TAG
+      needs:
+        - verify_prerelease
     - if: $CI_PIPELINE_SOURCE
   needs: []
   before_script:
