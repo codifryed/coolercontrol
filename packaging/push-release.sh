@@ -3,13 +3,9 @@
 # SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# push-release.sh - push a release commit, wait for its rehearsal to pass, then push its tag.
+# Usage: push-release.sh (through `make push-release`, after release.sh)
 #
-# Run after release.sh, on the default branch. Pushes the "Release X.Y.Z" commit on its own, whose
-# pipeline rehearses the release, and waits through the GitLab API until that rehearsal passed.
-# Only then is the tag pushed, so packagers that build on a new tag never see one whose commit
-# failed. If the rehearsal fails, the tag is still only local: see RELEASING.md. Needs GITLAB_TOKEN,
-# a read_api token.
+# Pushes the Release commit, waits for its rehearsal to pass, then pushes the tag (RELEASING.md).
 
 set -euo pipefail
 

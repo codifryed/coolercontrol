@@ -2,17 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# prerelease-rpm.sh - build the Fedora RPMs from the shipped source tarballs in mock.
-#
 # Usage: prerelease-rpm.sh <sources-dir> <ref>
 #
-# <sources-dir> holds what build_source_assets makes for <ref>: coolercontrol-<ref>.tar.gz and
-# the coolercontrold vendor tarballs. With PRERELEASE_VERSION set (a release rehearsal), builds
-# the release specs after checking that their Version is that version, from <ref>'s tarballs
-# repacked under the version's names. Otherwise builds the rc1 specs against <ref>, as the manual
-# Copr check did. mock builds offline in a fresh chroot, as Copr does, so %check runs the
-# default test suite under Fedora's own Rust. Needs a privileged Fedora container. Shared by the
-# CI prerelease jobs and `make prerelease-local`.
+# Builds the rc1 specs in mock from build_source_assets' tarballs, or with PRERELEASE_VERSION set
+# the release specs from them repacked under that version; needs a privileged Fedora container.
 
 set -euo pipefail
 

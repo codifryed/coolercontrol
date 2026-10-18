@@ -38,8 +38,7 @@ variables:
 
 # The daily schedule runs only the dependency audits, dependabot and the newest-toolchain check.
 # Our jobs skip it in their rules; the included security templates are switched off through their
-# own variables. A "Release X.Y.Z" commit on the default branch is a release rehearsal: it runs
-# every check and build without publishing, and its jobs keep what they built for the tag.
+# own variables. A "Release X.Y.Z" commit on the default branch is a release rehearsal.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -52,12 +51,7 @@ workflow:
         RELEASE_REHEARSAL: 'true'
     - when: always
 
-# Release flow: `make push-release` pushes the "Release X.Y.Z" commit, whose pipeline rehearses
-# the release: every check and build, nothing published. Once it passes, the tag is pushed, and
-# the tag pipeline only verifies that rehearsal through the API, fetches its jobs' builds and
-# publishes them. A tag never reaches downstream packagers before its commit has passed. Needs
-# RELEASE_READ_TOKEN, a Reporter project access token with only read_api, in a masked,
-# protected variable (tags must be protected).
+# Release flow and RELEASE_READ_TOKEN: see RELEASING.md, step 4.
 #
 # test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
 # prerelease:      the shipped source tarballs, tested and packaged the way distros build them.

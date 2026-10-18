@@ -6,19 +6,8 @@
 
 Usage: release_rehearsal.py verify | fetch <job> | wait <sha>
 
-A rehearsal is a push or web pipeline of a "Release X.Y.Z" commit on the default branch whose
-prerelease_passed job passed; that job needs every check, build and smoke test. Only the protected
-default branch can produce one, and a job's artifacts can only be written by that job, so what a
-rehearsal's jobs hold is exactly what was tested.
-
-- verify: fails the tag pipeline unless its commit has a passed rehearsal.
-- fetch:  extracts the artifacts of the rehearsal's job of that name into the working directory,
-          file modes included, so a tag publishes the tested build instead of rebuilding.
-- wait:   for make push-release: polls until the commit's rehearsal passes, and stops early when
-          it fails.
-
-Reads the API with RELEASE_READ_TOKEN in CI, or GITLAB_TOKEN locally: a read_api token, since
-CI_JOB_TOKEN can list neither pipelines nor jobs.
+Needs RELEASE_READ_TOKEN (CI) or GITLAB_TOKEN, since CI_JOB_TOKEN can list neither pipelines nor
+jobs. See RELEASING.md.
 """
 
 import io

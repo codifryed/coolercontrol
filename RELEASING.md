@@ -45,12 +45,19 @@ automatically. They are included here for reference:
          rehearsal to pass, then pushes the tag. The rehearsal runs every check and build without
          publishing: the test suite on old and new distros for amd64 and arm64 (the newest with the
          newest stable Rust, warnings denied), the Fedora RPM specs in mock, and every package and
-         Docker image, which its jobs keep for the tag. `make prerelease-local` runs the tests and
-         RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a read_api
-         token, to watch the rehearsal; the tag pipeline checks it with the masked, protected CI
-         variable `RELEASE_READ_TOKEN` (tags must be protected for it to reach their pipelines).
-         Make that a project access token of this project, not a personal one: Reporter role,
-         `read_api` scope only, with an expiry date. Every main and tag job can read it.
+         Docker image, which its jobs keep for the tag. A rehearsal is a push or web pipeline of a
+         `Release X.Y.Z` commit on the default branch whose `prerelease_passed` job, which needs
+         every other job, passed. Only the protected default branch can produce one, and only a job
+         can write its own artifacts, so what the rehearsal's jobs hold is exactly what was tested.
+         The tag pipeline first verifies that rehearsal through the API (`verify_prerelease`), then
+         fetches its jobs' builds instead of rebuilding and publishes them; Docker images are staged
+         under a commit-keyed tag and given their release tags by digest. A tag never reaches
+         downstream packagers before its commit has passed. `make prerelease-local` runs the tests
+         and RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a
+         read_api token, to watch the rehearsal; the tag pipeline checks it with the masked,
+         protected CI variable `RELEASE_READ_TOKEN` (tags must be protected for it to reach their
+         pipelines). Make that a project access token of this project, not a personal one: Reporter
+         role, `read_api` scope only, with an expiry date. Every main and tag job can read it.
          - If the rehearsal fails, the tag has not left this machine. Delete it
            (`git tag -d X.Y.Z`), push the fix, then `make release` (an empty Release commit) and
            `make push-release` again.

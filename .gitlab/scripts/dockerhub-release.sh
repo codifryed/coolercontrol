@@ -2,16 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# dockerhub-release.sh - stage or publish a Docker Hub image for a release.
-#
 # Usage: dockerhub-release.sh debian|alpine
 #
-# In a release rehearsal, builds the multi-arch image in the Docker Hub cloud builder, pushes it
-# under a commit-keyed staging tag, and keeps its digest as the job's artifact. In the tag
-# pipeline, fetches that digest from the rehearsal's job (release_rehearsal.py) and gives the image
-# with exactly that digest its release tags with `buildx imagetools create`, which copies no layers
-# and builds nothing; anything pushed over the staging tag since is ignored. Then deletes the
-# staging tag. POSIX sh for the docker:dind image.
+# A rehearsal stages the image under a commit-keyed tag; a tag gives the rehearsal's exact digest
+# its release tags (RELEASING.md). POSIX sh for the docker:dind image.
 
 set -eu
 

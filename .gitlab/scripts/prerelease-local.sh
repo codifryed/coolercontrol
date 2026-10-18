@@ -2,19 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# prerelease-local.sh - run the prerelease CI checks on this machine, in docker.
+# Usage: prerelease-local.sh (through `make prerelease-local`)
 #
-# Usage: prerelease-local.sh (normally through `make prerelease-local`)
-#
-# Everything comes from the committed HEAD of the current branch, never the working tree: the
-# scripts and specs from `git archive HEAD`, the source and vendor tarballs built from a clone in
-# the pipeline image, as build_source_assets does. Then prerelease-test.sh runs in each test image
-# and prerelease-rpm.sh in Fedora, all in parallel, as in CI.
-#
-# PRERELEASE_ARCHES (default "amd64 arm64") picks the test architectures, PRERELEASE_RPM_ARCHES
-# (default "amd64") the RPM builds. arm64 runs under QEMU: slow, and its system calls are
-# translated, so it approximates the native CI runners rather than replacing them. Each test
-# image keeps its cargo target directory in a docker volume, cc-prerelease-<name>.
+# Runs the prerelease CI jobs in docker on the committed HEAD, never the working tree;
+# PRERELEASE_ARCHES (default "amd64 arm64") and PRERELEASE_RPM_ARCHES (default "amd64") pick the
+# architectures, arm64 under QEMU.
 
 set -euo pipefail
 
