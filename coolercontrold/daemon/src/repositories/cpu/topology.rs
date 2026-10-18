@@ -752,7 +752,8 @@ mod tests {
             crate::alloc_count::count_allocations(|| parse_freqs(fixtures::AMD_DOUBLE_CPU));
 
         assert_eq!(freqs.len(), 2);
-        assert_eq!(allocations, 1);
+        // At most: the optimizer may elide an allocation, never add one.
+        assert!(allocations <= 1);
     }
 
     /// Goal: Apple Silicon, whose cpuinfo names no model, is one package named by the board

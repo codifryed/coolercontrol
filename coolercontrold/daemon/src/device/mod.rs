@@ -1628,9 +1628,10 @@ mod tests {
         let ((), tick_allocations) =
             crate::alloc_count::count_allocations(|| device.set_status(next));
 
-        assert_eq!(all_allocations, 1);
-        assert_eq!(recent_allocations, 1);
-        assert_eq!(channel_allocations, 1);
+        // At most: the optimizer may elide an allocation, never add one.
+        assert!(all_allocations <= 1);
+        assert!(recent_allocations <= 1);
+        assert!(channel_allocations <= 1);
         assert_eq!(tick_allocations, 0);
         drop((all, recent, channel));
     }
