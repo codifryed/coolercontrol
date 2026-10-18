@@ -122,9 +122,16 @@ def fetch(job_name: str) -> None:
     pipeline, jobs = found
     if job_name not in jobs:
         sys.exit(f"The rehearsal {pipeline['web_url']} has no passed {job_name} job.")
-    archive = zipfile.ZipFile(
-        io.BytesIO(get(f"/jobs/{jobs[job_name]['id']}/artifacts"))
-    )
+    try:
+        artifacts = get(f"/jobs/{jobs[job_name]['id']}/artifacts")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        sys.exit(
+            f"The artifacts of {job_name} in {pipeline['web_url']} have expired or are "
+            "missing. Rehearse the release again."
+        )
+    archive = zipfile.ZipFile(io.BytesIO(artifacts))
     for info in archive.infolist():
         # extract() keeps every path inside the working directory.
         path = archive.extract(info)

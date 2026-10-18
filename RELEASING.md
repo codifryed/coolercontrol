@@ -54,7 +54,8 @@ automatically. They are included here for reference:
            `make push-release` again.
       7. make sure the tag pipeline completes successfully. It only checks that its commit was
          rehearsed, then publishes the rehearsed builds, so a failed job can be retried without
-         retagging.
+         retagging. The rehearsal's builds expire 5 days after it ran: retry before then, or the
+         release has to be rehearsed again.
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
