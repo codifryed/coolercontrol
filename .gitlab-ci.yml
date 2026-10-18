@@ -119,6 +119,20 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         - coolercontrold/target/release/build
       policy: pull-push
 
+# cache_template plus the debug build's compiled dependencies, for test_all. Nothing built from it
+# is released.
+.rust_debug_cache: &rust_debug_cache
+  cache:
+    - *cache_npm
+    - *cache_cargo_home
+    - *cache_job
+    - key: rust-debug-${CI_JOB_NAME}-${IMAGE_VERSION}
+      paths:
+        - coolercontrold/target/debug/deps
+        - coolercontrold/target/debug/.fingerprint
+        - coolercontrold/target/debug/build
+      policy: pull-push
+
 .main_image_template: &main_image_template
   before_script:
     - |
@@ -212,7 +226,7 @@ test_all:
   stage: test
   tags:
     - saas-linux-xlarge-amd64
-  <<: [*cache_template, *main_image_template]
+  <<: [*rust_debug_cache, *main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
