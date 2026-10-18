@@ -344,7 +344,7 @@ impl LegacyWaiter {
     /// Takes a slot, or `None` when all `LEGACY_PASS_MAX_WAITERS` are held.
     fn enter(waiters: &Arc<AtomicUsize>) -> Option<Self> {
         let previous = waiters
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < LEGACY_PASS_MAX_WAITERS).then_some(count + 1)
             })
             .ok()?;
