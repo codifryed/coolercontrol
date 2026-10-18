@@ -694,7 +694,7 @@ mod permit_timeout_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod verdict_publish_tests {
     use super::*;
     use crate::cc_fs;

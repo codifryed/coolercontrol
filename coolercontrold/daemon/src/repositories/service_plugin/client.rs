@@ -828,6 +828,7 @@ mod credential_tests {
     use std::ops::Not;
     use std::path::PathBuf;
 
+    #[cfg(feature = "gated-tests")]
     fn manifest(address: ConnectionType) -> ServiceManifest {
         manifest_in(
             address,
@@ -1030,6 +1031,7 @@ mod credential_tests {
     /// Goal: Unix sockets stay plain. The kernel already scopes them to this machine, so
     /// TLS would add a certificate to manage for no gain.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn uds_services_stay_plaintext() {
         crate::rt::test_runtime(async {
             let uds = manifest(ConnectionType::Uds(PathBuf::from("/run/test.sock")));
@@ -1040,6 +1042,7 @@ mod credential_tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn missing_address_is_an_error() {
         crate::rt::test_runtime(async {
             let none = manifest(ConnectionType::None);

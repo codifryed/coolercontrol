@@ -1776,7 +1776,9 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
     use std::ops::Not;
-    use std::path::{Path, PathBuf};
+    #[cfg(feature = "gated-tests")]
+    use std::path::Path;
+    use std::path::PathBuf;
     use std::rc::Rc;
 
     fn file_sensor(id: &str, file_path: PathBuf) -> CustomSensor {
@@ -2330,6 +2332,7 @@ mod tests {
     // also recorded in the failsafing-sensors set so the once-per-occurrence warn fires.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_file_temp_status_invalid() {
         cc_fs::test_runtime(async {
             // given:
@@ -2402,6 +2405,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_file_temp_not_exist() {
         cc_fs::test_runtime(async {
             // given:

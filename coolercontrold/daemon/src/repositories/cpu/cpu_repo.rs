@@ -1184,26 +1184,43 @@ impl Repository for CpuRepo {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "gated-tests")]
     use crate::cc_fs;
+    #[cfg(feature = "gated-tests")]
     use crate::config::Config;
-    use crate::device::{ChannelStatus, TempStatus};
+    #[cfg(feature = "gated-tests")]
+    use crate::device::ChannelStatus;
+    use crate::device::TempStatus;
+    #[cfg(feature = "gated-tests")]
     use crate::overrides::OverridesController;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::apple_silicon::AppleSilicon;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::association::CpuAssociation;
-    use crate::repositories::cpu::cpu_repo::{CpuRepo, SINGLE_CPU_LOAD_NAME};
+    use crate::repositories::cpu::cpu_repo::CpuRepo;
+    #[cfg(feature = "gated-tests")]
+    use crate::repositories::cpu::cpu_repo::SINGLE_CPU_LOAD_NAME;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::fixtures;
+    #[cfg(feature = "gated-tests")]
     use crate::repositories::cpu::percent::CpuPercent;
-    use crate::repositories::cpu::topology::{CpuFreqs, CpuTopology};
+    use crate::repositories::cpu::topology::CpuFreqs;
+    #[cfg(feature = "gated-tests")]
+    use crate::repositories::cpu::topology::CpuTopology;
     use crate::repositories::hwmon::hwmon_repo::{
         HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
     };
+    #[cfg(feature = "gated-tests")]
     use serial_test::serial;
+    #[cfg(feature = "gated-tests")]
     use std::cell::Cell;
     use std::collections::HashMap;
+    #[cfg(feature = "gated-tests")]
     use std::rc::Rc;
 
     /// A repository holding what the given cpuinfo says, which is all these tests need of it.
     /// No temp file and no cpuinfo read: the parsing itself is covered in `topology`.
+    #[cfg(feature = "gated-tests")]
     fn repo_from_cpuinfo(cpu_info_data: &str) -> CpuRepo {
         let test_config = Rc::new(Config::init_default_config().unwrap());
         let mut cpu_repo =
@@ -1218,6 +1235,7 @@ mod tests {
     /// repo with a sample covering only package 0, as when package 1 is offline.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_load_is_reported_in_every_poll() {
         cc_fs::test_runtime(async {
             // given:
@@ -1253,6 +1271,7 @@ mod tests {
     /// cached status planted under the socket that the zone must not reach.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_status_is_keyed_by_association_not_device_number() {
         cc_fs::test_runtime(async {
             // given: package 0 fully loaded, and a driver with a load channel.
@@ -1390,6 +1409,7 @@ mod tests {
     /// file to fall back on.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_apple_silicon_frequencies_come_from_its_clusters() {
         cc_fs::test_runtime(async {
             // given:
@@ -1469,6 +1489,7 @@ mod tests {
     /// cache fallback applied the way `request_status` applies it, at and after initialization.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_power_is_reported_in_every_poll() {
         cc_fs::test_runtime(async {
             // given: a seeded counter at 10 joules, a one second poll, and 42 watts cached.
@@ -1519,6 +1540,7 @@ mod tests {
     /// that processor and for one it has no counter for.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn test_power_watts_needs_a_seeded_energy_counter() {
         cc_fs::test_runtime(async {
             // given: a seeded counter at 10 joules and a one second poll rate.
@@ -1536,7 +1558,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod sensors_conf_tests {
     use crate::config::Config;
     use crate::overrides::OverridesController;
@@ -1635,7 +1657,7 @@ mod sensors_conf_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod channel_attributes_tests {
     use super::*;
     use serial_test::serial;

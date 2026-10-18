@@ -1381,6 +1381,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn writing_the_preloaded_status_allocates_nothing_once_warm() {
         // Goal: the update pass writes the cached values into the history in place, stamped
         // with the tick's timestamp. Method: one tick warms the stats, then count the

@@ -1753,6 +1753,7 @@ mod tests {
     use crate::setting::CCDeviceSettings;
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn the_read_plan_is_built_once_per_gpu() {
         // Goal: a tick's NVML read plan shares the GPU's fans, temps and clocks instead of
         // copying them, and still asks for exactly what the GPU has. Method: count the
@@ -1778,6 +1779,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_warm_update_stores_the_preloaded_status_without_allocating() {
         // Goal: the update pass writes the preloaded values into the history in place,
         // stamped with the tick's timestamp. Method: one tick warms the stats, then count

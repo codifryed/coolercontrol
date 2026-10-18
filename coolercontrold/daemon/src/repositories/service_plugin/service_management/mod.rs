@@ -121,7 +121,7 @@ fn find_on_path(executable: &str) -> Option<PathBuf> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
 

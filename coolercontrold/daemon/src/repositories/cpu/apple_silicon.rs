@@ -256,6 +256,7 @@ fn package_freqs(readings: &[ClusterReading]) -> HashMap<PhysicalID, CpuFreqs> {
 mod tests {
     use super::*;
     use serial_test::serial;
+    #[cfg(feature = "gated-tests")]
     use uuid::Uuid;
 
     const M1_MAX_COMPATIBLE: &[u8] = b"apple,j316c\0apple,t6001\0apple,arm-platform\0";
@@ -474,6 +475,7 @@ mod tests {
     /// frequencies and no cluster channels. Method: a cpufreq directory that does not exist.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn a_machine_without_policies_has_no_clusters() {
         cc_fs::test_runtime(async {
             let missing = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));

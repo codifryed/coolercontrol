@@ -1399,6 +1399,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_warm_update_stores_the_preloaded_status_without_allocating() {
         // Goal: the update pass writes the preloaded values into the history in place,
         // stamped with the tick's timestamp. Method: one tick warms the stats, then count

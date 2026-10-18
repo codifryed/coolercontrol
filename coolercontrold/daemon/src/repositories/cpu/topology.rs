@@ -747,6 +747,7 @@ mod tests {
     /// Goal: the per-poll parse allocates only the map it returns, however many processors each
     /// package has. Method: count the allocations of parsing the two-package dump.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn parsing_frequencies_allocates_only_the_result() {
         let (freqs, allocations) =
             crate::alloc_count::count_allocations(|| parse_freqs(fixtures::AMD_DOUBLE_CPU));

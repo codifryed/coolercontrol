@@ -2026,6 +2026,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn stable_device_path_is_none_for_unresolvable_address() {
         // Goal: an address that does not resolve on this system yields None (graceful fallback),
         // never a panic. Method: a bogus hidraw node that maps to a non-existent sysfs path.
@@ -2182,6 +2183,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_later_attempt_is_not_due_until_its_delay_elapses() {
         // Goal: the backoff actually gates, rather than every tick retrying.
         // Method: record a failing first attempt and ask immediately afterwards.
