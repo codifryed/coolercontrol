@@ -11,8 +11,9 @@
 # the gated tests, which only our own CI runs. Shared by the CI prerelease jobs and
 # `make prerelease-local`.
 #
-# Installs a toolchain on a Debian-family image that has none, pinned to the build images'
-# RUST_VERSION. CARGO_TARGET_DIR is honoured, so a local run can keep its build between runs.
+# Installs a toolchain on a Debian-family image that has none: RUST_VERSION, or else the build
+# images' pinned one. PRERELEASE_DENY_WARNINGS=1 first checks every target with warnings denied,
+# for the newest toolchain. CARGO_TARGET_DIR is honoured, so a local run can keep its build.
 
 set -euo pipefail
 
@@ -66,6 +67,15 @@ rm -rf "${SOURCE_DIR}"
 mkdir -p "${SOURCE_DIR}"
 tar -xzf "${SOURCE_TARBALL}" -C "${SOURCE_DIR}" --strip-components=1
 tar -xzf "${VENDOR_TARBALL}" -C "${SOURCE_DIR}/coolercontrold"
+
+if [[ ${PRERELEASE_DENY_WARNINGS-} == 1 ]]; then
+    # From the source tree, so cargo finds the vendored crates.
+    (
+        cd "${SOURCE_DIR}/coolercontrold"
+        RUSTFLAGS="-Dwarnings" cargo check --locked --all-targets
+        RUSTFLAGS="-Dwarnings" cargo check --locked --all-targets --features gated-tests
+    )
+fi
 
 # Distro builds do not deny warnings, and a newer compiler's warnings are not test failures.
 export RUSTFLAGS=""

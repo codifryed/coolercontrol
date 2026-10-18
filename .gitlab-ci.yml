@@ -36,7 +36,7 @@ variables:
   DH_ORG: "coolercontrol"
   SECRET_DETECTION_ENABLED: 'true'
 
-# The daily schedule runs only the dependency audits and dependabot. Our jobs skip it in their
+# The daily schedule runs only the dependency audits, dependabot and the newest-toolchain check. Our jobs skip it in their
 # rules; the included security templates are switched off through their own variables.
 workflow:
   rules:
@@ -276,6 +276,25 @@ test_msrv:
     # .gitignore, so include_dir! still resolves the directory.
     - rustup run "$MSRV" cargo check --locked --manifest-path coolercontrold/Cargo.toml -p coolercontrold
 
+####################################### Newest Rust toolchain
+# Arch and AUR users build with the newest stable Rust as soon as it ships, so its new warnings
+# reach them first. Daily, so a Rust release shows up within a day; the rolling prerelease jobs
+# run the same check, so a release rehearsal fails on it too.
+latest_toolchain:
+  stage: test
+  image: rust:latest
+  <<: [*cache_template]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  needs: []
+  before_script:
+    - apt-get update
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libdrm-dev pkg-config
+    - rustc --version
+  script:
+    - cargo check --locked --all-targets --manifest-path coolercontrold/Cargo.toml
+    - cargo check --locked --all-targets --manifest-path coolercontrold/Cargo.toml --features gated-tests
+
 ####################################### Dependency audit
 # Daily schedule only, so a contributor's MR never has to fix unrelated crates. RustSec
 # findings fail the job and open a lockfile-only fix MR, since dependabot's GitHub advisory
@@ -395,7 +414,9 @@ prerelease:
 ####################################### Test suite on old and new distros
 # The source tarball and vendored crates, built offline in release mode: the default suite as
 # distros run it, then the gated tests. The oldest supported userland (the jammy image the release
-# packages are built in) and the newest (ubuntu:rolling), on native amd64 and arm64.
+# packages are built in, with its pinned Rust) and the newest (ubuntu:rolling with the newest
+# stable Rust, as Arch and the AUR build), on native amd64 and arm64. The newest also fails on any
+# compiler warning, which its users would see.
 .prerelease_test:
   extends: .prerelease_rules
   stage: prerelease
@@ -418,6 +439,9 @@ prerelease_amd64_ubuntu_rolling:
   image: ubuntu:rolling
   tags:
     - saas-linux-xlarge-amd64
+  variables:
+    RUST_VERSION: stable
+    PRERELEASE_DENY_WARNINGS: '1'
 
 prerelease_arm64_ubuntu_22.04:
   extends: .prerelease_test
@@ -431,6 +455,9 @@ prerelease_arm64_ubuntu_rolling:
   image: ubuntu:rolling
   tags:
     - saas-linux-large-arm64
+  variables:
+    RUST_VERSION: stable
+    PRERELEASE_DENY_WARNINGS: '1'
 
 ####################################### Fedora RPM specs
 # Both specs built in mock from the source tarballs, offline in a fresh chroot as Copr builds
