@@ -374,8 +374,12 @@ build_source_assets:
     - node --version
   script:
     # On fork merge requests the source branch lives in the contributor's project, not in
-    # CI_PROJECT_URL, so clone the MR source project/branch when those vars are set.
+    # CI_PROJECT_URL, so clone the MR source project/branch when those vars are set. A release
+    # must ship its own commit; merged results pipelines test a merge commit instead.
     - |
+      if [ "${RELEASE_REHEARSAL:-}" = true ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
+        export EXPECTED_SHA="${CI_COMMIT_SHA}"
+      fi
       SOURCE_URL="${CI_MERGE_REQUEST_SOURCE_PROJECT_URL:-$CI_PROJECT_URL}"
       SOURCE_REF="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
       packaging/release-source.sh "$SOURCE_URL" "$SOURCE_REF"

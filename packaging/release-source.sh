@@ -31,6 +31,12 @@ git clone \
     "${REPO_DIR}"
 
 pushd "${REPO_DIR}"
+# The branch may have moved on since the pipeline started.
+CLONED_SHA="$(git rev-parse HEAD)"
+if [[ -n ${EXPECTED_SHA-} && ${CLONED_SHA} != "${EXPECTED_SHA}" ]]; then
+    echo "${REF} is no longer at ${EXPECTED_SHA}" >&2
+    exit 1
+fi
 SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
 
 pushd coolercontrol-ui
