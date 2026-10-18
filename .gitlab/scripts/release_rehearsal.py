@@ -31,6 +31,7 @@ WAIT_TIMEOUT_SECS = 3 * 60 * 60
 # What a missing, expired or underprivileged token gets; any other error is retried.
 TOKEN_REFUSED_CODES = {401, 403, 404}
 WAIT_POLL_SECS = 60
+REHEARSAL_ENV = "rehearsal.env"
 
 
 def token() -> str:
@@ -93,6 +94,24 @@ def passed_rehearsal(sha: str) -> tuple[dict, dict[str, dict]] | None:
     return passed_in(rehearsal_pipelines(sha))
 
 
+def verified_rehearsal(sha: str) -> tuple[dict, dict[str, dict]] | None:
+    """The rehearsal prerelease_verify chose, if it still binds to `sha`."""
+    pipeline_id = os.environ.get("REHEARSAL_PIPELINE_ID", "")
+    if not pipeline_id.isdigit():
+        sys.exit(
+            "REHEARSAL_PIPELINE_ID is not set: this job must need prerelease_verify."
+        )
+    pipeline = json.loads(get(f"/pipelines/{int(pipeline_id)}"))
+    if (
+        pipeline["sha"] != sha
+        or pipeline["ref"] != DEFAULT_BRANCH
+        or pipeline.get("tag")
+        or pipeline["source"] not in REHEARSAL_SOURCES
+    ):
+        return None
+    return passed_in([pipeline])
+
+
 def passed_in(pipelines: list[dict]) -> tuple[dict, dict[str, dict]] | None:
     for pipeline in pipelines:
         if pipeline["status"] != "success":
@@ -118,14 +137,19 @@ def verify() -> None:
             f"No passed release rehearsal for {sha} on {DEFAULT_BRANCH}. Push the release "
             "commit and let its pipeline pass before pushing the tag."
         )
+    # A dotenv report: the jobs that need this one fetch from this pipeline only.
+    with open(REHEARSAL_ENV, "w", encoding="utf-8") as env:
+        env.write(f"REHEARSAL_PIPELINE_ID={int(found[0]['id'])}\n")
     print(f"Rehearsed in {found[0]['web_url']}")
 
 
 def fetch(job_name: str) -> None:
     sha = commit_sha()
-    found = passed_rehearsal(sha)
+    found = verified_rehearsal(sha)
     if found is None:
-        sys.exit(f"No passed release rehearsal for {sha} to fetch {job_name} from.")
+        sys.exit(
+            f"REHEARSAL_PIPELINE_ID is no passed rehearsal of {sha}: no {job_name}."
+        )
     pipeline, jobs = found
     if job_name not in jobs:
         sys.exit(f"The rehearsal {pipeline['web_url']} has no passed {job_name} job.")

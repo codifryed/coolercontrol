@@ -461,6 +461,9 @@ prerelease_verify:
     - if: $CI_COMMIT_TAG
   script:
     - python3 .gitlab/scripts/release_rehearsal.py verify
+  artifacts:
+    reports:
+      dotenv: rehearsal.env
 
 ####################################### Test suite on old and new distros
 # The source tarball and vendored crates, built offline in release mode: the default suite as
@@ -576,7 +579,9 @@ build_start:
     - echo "All release compilation jobs triggered."
 
 # A tag pipeline fetches the artifacts of the same job in its commit's rehearsal instead of
-# building again, so it publishes the very files the rehearsal tested, at the same paths.
+# building again, so it publishes the very files the rehearsal tested, at the same paths. Every
+# fetch uses the one rehearsal prerelease_verify checked (REHEARSAL_PIPELINE_ID), so these jobs
+# need it.
 .release_artifacts:
   fetch:
     - |
@@ -594,6 +599,8 @@ build_appimage_x86_64:
     - saas-linux-xlarge-amd64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -631,6 +638,8 @@ build_binary_aarch64:
     - saas-linux-large-arm64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -662,6 +671,8 @@ build_debian_old_x86_64:
     - saas-linux-xlarge-amd64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -724,6 +735,8 @@ build_debian_old_aarch64:
     - saas-linux-large-arm64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
     # For some reason (emulation?), if the amd64 build is running at the same time, there are problems
     - build_debian_old_x86_64
   rules:
@@ -790,6 +803,8 @@ build_ubuntu_old_x86_64:
     - saas-linux-xlarge-amd64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -858,6 +873,8 @@ build_ubuntu_old_aarch64:
     - saas-linux-large-arm64
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
     # Same reason as build_debian_old_aarch64: running both architectures at once causes trouble.
     - build_ubuntu_old_x86_64
   rules:
@@ -914,6 +931,8 @@ build_docker_debian:
   resource_group: dockerhub
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -1044,6 +1063,8 @@ build_docker_alpine:
   resource_group: dockerhub
   needs:
     - build_start
+    - job: prerelease_verify
+      optional: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
