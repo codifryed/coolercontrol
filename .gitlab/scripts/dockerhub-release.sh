@@ -76,9 +76,10 @@ echo "Published ${IMAGE}@${digest} as ${RELEASE_TAGS}"
 # The release tags keep the image; only the staging name goes. A failure here leaves a stale tag,
 # not a broken release.
 repository="${IMAGE#*/}"
-token=$(curl --silent --header 'Content-Type: application/json' \
-    --data "{\"username\": \"${DH_REGISTRY_USER}\", \"password\": \"${DH_REGISTRY_PASSWORD}\"}" \
-    https://hub.docker.com/v2/users/login/ | jq -r '.token // empty')
+# jq reads the credentials from the environment, so they stay out of every argv.
+token=$(jq -n '{username: env.DH_REGISTRY_USER, password: env.DH_REGISTRY_PASSWORD}' |
+    curl --silent --header 'Content-Type: application/json' --data @- \
+        https://hub.docker.com/v2/users/login/ | jq -r '.token // empty')
 if [ -n "${token}" ] && curl --fail --silent --request DELETE --header "Authorization: JWT ${token}" \
     "https://hub.docker.com/v2/repositories/${repository}/tags/${STAGING_TAG}/"; then
     echo "Deleted the staging tag ${STAGING_TAG}"
