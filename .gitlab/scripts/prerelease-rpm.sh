@@ -4,7 +4,7 @@
 
 # Usage: prerelease-rpm.sh <sources-dir> <ref>
 #
-# Builds the rc1 specs in mock from prerelease_source' tarballs, or with PRERELEASE_VERSION set
+# Builds the rc1 specs in mock from the prerelease_source tarballs, or with PRERELEASE_VERSION set
 # the release specs from them repacked under that version; needs a privileged Fedora container.
 # <ref> may only hold letters, digits, '.', '_', '-' and '/', since it reaches an rpm macro, so a
 # branch named with other characters git allows, such as '+' or '@', cannot be built here.
