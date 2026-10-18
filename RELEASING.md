@@ -49,6 +49,8 @@ automatically. They are included here for reference:
          RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a read_api
          token, to watch the rehearsal; the tag pipeline checks it with the masked, protected CI
          variable `RELEASE_READ_TOKEN` (tags must be protected for it to reach their pipelines).
+         Make that a project access token of this project, not a personal one: Reporter role,
+         `read_api` scope only, with an expiry date. Every main and tag job can read it.
          - If the rehearsal fails, the tag has not left this machine. Delete it
            (`git tag -d X.Y.Z`), push the fix, then `make release` (an empty Release commit) and
            `make push-release` again.

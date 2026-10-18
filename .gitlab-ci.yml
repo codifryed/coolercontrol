@@ -56,7 +56,8 @@ workflow:
 # the release: every check and build, nothing published. Once it passes, the tag is pushed, and
 # the tag pipeline only verifies that rehearsal through the API, fetches its jobs' builds and
 # publishes them. A tag never reaches downstream packagers before its commit has passed. Needs
-# RELEASE_READ_TOKEN, a read_api token in a masked, protected variable (tags must be protected).
+# RELEASE_READ_TOKEN, a Reporter project access token with only read_api, in a masked,
+# protected variable (tags must be protected).
 #
 # test:            development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
 # prerelease:      the shipped source tarballs, tested and packaged the way distros build them.
