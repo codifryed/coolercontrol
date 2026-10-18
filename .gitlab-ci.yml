@@ -650,6 +650,9 @@ build_debian_old_x86_64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+      # Branch builds skip the package's test run; a release rehearsal still runs it.
+      variables:
+        DEB_BUILD_OPTIONS: nocheck
     - if: $CI_COMMIT_TAG
   script:
     - !reference [.release_artifacts, fetch]
@@ -711,6 +714,9 @@ build_debian_old_aarch64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+      # Branch builds skip the package's test run; a release rehearsal still runs it.
+      variables:
+        DEB_BUILD_OPTIONS: nocheck
     - if: $CI_COMMIT_TAG
   script:
     - !reference [.release_artifacts, fetch]
@@ -772,6 +778,9 @@ build_ubuntu_old_x86_64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+      # Branch builds skip the package's test run; a release rehearsal still runs it.
+      variables:
+        DEB_BUILD_OPTIONS: nocheck
     - if: $CI_COMMIT_TAG
   script:
     - !reference [.release_artifacts, fetch]
@@ -839,6 +848,9 @@ build_ubuntu_old_aarch64:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
       allow_failure: true
+      # Branch builds skip the package's test run; a release rehearsal still runs it.
+      variables:
+        DEB_BUILD_OPTIONS: nocheck
     - if: $CI_COMMIT_TAG
   script:
     - !reference [.release_artifacts, fetch]
