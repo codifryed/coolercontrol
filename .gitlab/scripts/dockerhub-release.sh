@@ -74,8 +74,10 @@ repository="${IMAGE#*/}"
 token=$(jq -n '{username: env.DH_REGISTRY_USER, password: env.DH_REGISTRY_PASSWORD}' |
     curl --silent --header 'Content-Type: application/json' --data @- \
         https://hub.docker.com/v2/users/login/ | jq -r '.token // empty')
-if [ -n "${token}" ] && curl --fail --silent --request DELETE --header "Authorization: JWT ${token}" \
-    "https://hub.docker.com/v2/repositories/${repository}/tags/${STAGING_TAG}/"; then
+# The header goes in on stdin (printf is a builtin), keeping the token out of curl's argv.
+if [ -n "${token}" ] && printf 'Authorization: JWT %s\n' "${token}" |
+    curl --fail --silent --request DELETE --header @- \
+        "https://hub.docker.com/v2/repositories/${repository}/tags/${STAGING_TAG}/"; then
     echo "Deleted the staging tag ${STAGING_TAG}"
 else
     echo "Could not delete the staging tag ${STAGING_TAG}; remove it on Docker Hub."
