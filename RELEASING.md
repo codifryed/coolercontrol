@@ -33,8 +33,9 @@ one.
          every other job, passed. Only the protected default branch can produce one, and only a job
          can write its own artifacts, so what the rehearsal's jobs hold is exactly what was tested.
          The tag pipeline first verifies that rehearsal through the API (`prerelease_verify`), then
-         fetches its jobs' builds instead of rebuilding and publishes them; Docker images are staged
-         under a commit-keyed tag and given their release tags by digest. A tag never reaches
+         fetches its jobs' builds instead of rebuilding and publishes them. Only the source and
+         vendor tarballs are rebuilt, from the verified commit (`EXPECTED_SHA`). Docker images are
+         staged under a commit-keyed tag and given their release tags by digest. A tag never reaches
          downstream packagers before its commit has passed. `make prerelease-local` runs the tests
          and RPM builds on this machine beforehand. `make push-release` needs `GITLAB_TOKEN`, a
          read_api token, to watch the rehearsal; the tag pipeline checks it with the masked,
