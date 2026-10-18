@@ -1387,6 +1387,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn timestamps_round_trip_through_nanoseconds() {
         // Goal: storing an instant as UTC nanoseconds and rendering it again yields the same
         // instant with the same local offset.

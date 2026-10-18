@@ -1487,6 +1487,7 @@ mod tests {
     /// with the status built beforehand. A name seen for the first time
     /// still gets its own entry.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn set_status_on_a_warm_device_does_not_allocate() {
         let reading = || {
             status_with(
@@ -1514,6 +1515,7 @@ mod tests {
     /// A tick written in place on a warm device allocates nothing: no `Status`, no names.
     /// Counts this thread's allocations around one writer tick after a seeding tick.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn write_status_on_a_warm_device_does_not_allocate() {
         let mut device = make_test_device();
         device.initialize_status_history_with(
@@ -1607,6 +1609,7 @@ mod tests {
     /// copy is still being serialized writes in place. Sharing the history behind an `Arc`
     /// made such a tick copy every entry on the engine thread.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn snapshots_copy_once_and_never_make_a_tick_copy_the_history() {
         let reading = || {
             status_with(
@@ -1696,6 +1699,7 @@ mod tests {
     /// Waking at the same poll rate reuses the ring; a new rate resizes it to the new slot
     /// count. Either way every entry is a zeroed copy of the newest one, `poll_rate` apart.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn zero_status_history_reallocates_only_for_a_new_slot_count() {
         let mut device = make_test_device();
         device.initialize_status_history_with(

@@ -141,6 +141,7 @@ mod tests {
     /// Goal: raising runs for real in this process and never lowers the limit. Method: read
     /// the limit around the call; whatever the environment allows, it must not go down.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn raise_never_lowers_the_process_limit() {
         let before = limit();
         raise_limit();

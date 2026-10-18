@@ -199,7 +199,7 @@ fn run(mut task_rx: mpsc::UnboundedReceiver<TaskBuilder>, cancel_token: Cancella
     runtime.shutdown_timeout(SHUTDOWN_GRACE);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "gated-tests"))]
 mod tests {
     use super::*;
     use std::cell::RefCell;

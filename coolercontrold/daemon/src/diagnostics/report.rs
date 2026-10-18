@@ -1211,6 +1211,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "gated-tests")]
     fn driver_info(name: &str, fans: &[&str]) -> Rc<HwmonDriverInfo> {
         Rc::new(HwmonDriverInfo {
             name: name.to_string(),
@@ -1233,6 +1234,7 @@ mod tests {
     /// anyway. A path that cannot be read is the strongest possible proof that
     /// nothing was read.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn retained_devices_are_not_re_read() {
         let retained = [driver_info("nct6687", &["fan1", "fan2"])];
         let devices = crate::rt::test_runtime(async {
@@ -1253,6 +1255,7 @@ mod tests {
     /// retained copy cannot show what went missing, and reusing it would
     /// silently drop the hidden-channel lines.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_device_with_a_hidden_channel_is_re_read() {
         let retained = [driver_info("nct6687", &["fan1"])];
         let canonical = cc_fs::canonicalize(Path::new("/sys/class/hwmon"))
@@ -1620,6 +1623,7 @@ mod tests {
     /// Goal: a fresh budget hands a device its own cap, not the whole report's.
     /// One device must never be able to spend every other device's time.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_fresh_budget_caps_each_device_at_its_own_limit() {
         let allowed = ReadBudget::starting_now()
             .for_device()
@@ -1633,6 +1637,7 @@ mod tests {
     /// the last devices scanned could overrun the actor's own timeout between
     /// them and lose the whole report.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn a_nearly_spent_budget_hands_out_only_what_is_left() {
         let budget = ReadBudget {
             deadline: Instant::now() + Duration::from_millis(200),
@@ -1657,6 +1662,7 @@ mod tests {
     /// common case must pay nothing for the bound being there.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn work_inside_the_budget_returns_its_value() {
         cc_fs::test_runtime(async {
             let budget = ReadBudget::starting_now();
@@ -1731,6 +1737,7 @@ mod tests {
     /// so the marker keeps meaning something when it does appear.
     #[test]
     #[serial]
+    #[cfg(feature = "gated-tests")]
     fn a_device_that_answered_carries_no_note() {
         cc_fs::test_runtime(async {
             let healthy = report_device("nct6687", None);

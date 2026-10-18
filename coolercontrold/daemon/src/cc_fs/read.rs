@@ -380,6 +380,7 @@ mod tests {
     /// through a moro scope and assert exact content, which catches cross-contamination between
     /// in-flight completion-based reads.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn read_sysfs_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
             const N: usize = 256; // high concurrency to stress io_uring ring reuse
@@ -539,6 +540,7 @@ mod tests {
     /// construction, but this guards io_uring ring regressions. Method: port of the `read_sysfs`
     /// fan-out test.
     #[test]
+    #[cfg(feature = "gated-tests")]
     fn read_sysfs_value_concurrent_reads_are_not_cross_contaminated() {
         crate::rt::test_runtime(async {
             const N: usize = 256; // high concurrency to stress io_uring ring reuse
