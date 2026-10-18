@@ -6,6 +6,8 @@
 # Fedora's default of one codegen unit compiles the daemon crate on a single core. 6 matches the
 # Cargo release profile.
 %global rustflags_codegen_units 6
+# Full debuginfo drives rustc past the 8 GB of a Copr builder. 1 keeps the line tables.
+%global rustflags_debuginfo 1
 
 Name:           %{project}d
 Version:        5.1.1~rc1
