@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Guy Boldon and contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# prerelease-local.sh - run the prerelease CI checks on this machine, in docker.
+#
+# Usage: prerelease-local.sh (normally through `make prerelease-local`)
+#
+# Everything comes from the committed HEAD of the current branch, never the working tree: the
+# scripts and specs from `git archive HEAD`, the source and vendor tarballs built from a clone in
+# the pipeline image, as build_source_assets does. Then prerelease-test.sh runs in each test image
+# and prerelease-rpm.sh in Fedora, all in parallel, as in CI.
+#
+# PRERELEASE_ARCHES (default "amd64 arm64") picks the test architectures, PRERELEASE_RPM_ARCHES
+# (default "amd64") the RPM builds. arm64 runs under QEMU: slow, and its system calls are
+# translated, so it approximates the native CI runners rather than replacing them. Each test
+# image keeps its cargo target directory in a docker volume, cc-prerelease-<name>.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly REPO_ROOT
+readonly OUT="${PRERELEASE_OUT:-${REPO_ROOT}/.prerelease}"
+readonly IMAGE_TAG="${PRERELEASE_IMAGE_TAG:?set PRERELEASE_IMAGE_TAG to the CI image tag}"
+readonly REGISTRY="registry.gitlab.com/coolercontrol/coolercontrol"
+readonly ARCHES="${PRERELEASE_ARCHES:-amd64 arm64}"
+readonly RPM_ARCHES="${PRERELEASE_RPM_ARCHES:-amd64}"
+uid="$(id -u)"
+gid="$(id -g)"
+readonly UID_GID="${uid}:${gid}"
+
+if ! REF="$(git -C "${REPO_ROOT}" symbolic-ref --short -q HEAD)"; then
+    echo "check out a branch first: the source tarball is built from a branch" >&2
+    exit 1
+fi
+readonly REF
+readonly SAFE_REF="${REF//\//-}"
+if ! git -C "${REPO_ROOT}" diff --quiet HEAD; then
+    echo "Note: uncommitted changes are not tested. This checks the committed ${REF}."
+fi
+
+rm -rf "${OUT}/export" "${OUT}/sources" "${OUT}/logs" "${OUT}/rpm"
+mkdir -p "${OUT}/export" "${OUT}/sources" "${OUT}/logs" "${OUT}/rpm"
+git -C "${REPO_ROOT}" archive HEAD | tar -x -C "${OUT}/export"
+
+echo "Building the source and vendor tarballs for ${REF}"
+docker run --rm -v "${REPO_ROOT}":/git:ro -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/out \
+    "${REGISTRY}/pipeline:${IMAGE_TAG}" bash -c "
+        set -e
+        git config --global --add safe.directory '*'
+        cd /out
+        /repo/packaging/release-source.sh file:///git '${REF}'
+        mkdir /tmp/vendor
+        tar -xzf 'coolercontrol-${SAFE_REF}.tar.gz' -C /tmp/vendor --strip-components=1
+        make -C /tmp/vendor vendor
+        cp /tmp/vendor/coolercontrold-vendor.tar.gz /out/
+        chown -R '${UID_GID}' /out" >"${OUT}/logs/sources.log" 2>&1 || {
+    tail -n 30 "${OUT}/logs/sources.log"
+    exit 1
+}
+
+run_test() {
+    local arch="$1" distro="$2" image="$3"
+    docker run --rm --platform "linux/${arch}" \
+        -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/sources:ro \
+        -v "cc-prerelease-${arch}-${distro}":/cache -e CARGO_TARGET_DIR=/cache/target \
+        "${image}" bash /repo/.gitlab/scripts/prerelease-test.sh \
+        "/sources/coolercontrol-${SAFE_REF}.tar.gz" /sources/coolercontrold-vendor.tar.gz
+}
+
+run_rpm() {
+    local arch="$1"
+    docker run --rm --privileged --platform "linux/${arch}" \
+        -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/sources:ro -v "${OUT}/rpm/${arch}":/results \
+        -e PRERELEASE_RESULT_DIR=/results fedora:latest bash -c "
+            bash /repo/.gitlab/scripts/prerelease-rpm.sh /sources '${REF}'
+            status=\$?
+            chown -R '${UID_GID}' /results
+            exit \$status"
+}
+
+declare -A pids=()
+for arch in ${ARCHES}; do
+    for distro in ubuntu-22.04 ubuntu-rolling; do
+        case "${distro}" in
+        ubuntu-22.04) image="${REGISTRY}/ubuntu:${IMAGE_TAG}" ;;
+        ubuntu-rolling) image="ubuntu:rolling" ;;
+        *)
+            echo "no image for ${distro}" >&2
+            exit 1
+            ;;
+        esac
+        name="test-${arch}-${distro}"
+        run_test "${arch}" "${distro}" "${image}" >"${OUT}/logs/${name}.log" 2>&1 &
+        pids["${name}"]=$!
+    done
+done
+for arch in ${RPM_ARCHES}; do
+    mkdir -p "${OUT}/rpm/${arch}"
+    name="rpm-${arch}"
+    run_rpm "${arch}" >"${OUT}/logs/${name}.log" 2>&1 &
+    pids["${name}"]=$!
+done
+
+echo "Running ${!pids[*]}; logs in ${OUT}/logs"
+failed=0
+for name in $(printf '%s\n' "${!pids[@]}" | sort); do
+    if wait "${pids[${name}]}"; then
+        echo "PASS ${name}"
+    else
+        echo "FAIL ${name} (${OUT}/logs/${name}.log)"
+        failed=1
+    fi
+done
+exit "${failed}"

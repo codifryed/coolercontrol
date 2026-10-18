@@ -13,7 +13,7 @@ docker_build_flags := --provenance=false --sbom=false
 .PHONY: docker-build-images docker-login docker-arm64 docker-push \
 	docker-ci-run docker-ci-run-deb-bookworm docker-ci-run-deb-bookworm-arm64 \
 	docker-ci-run-ubuntu docker-ci-run-ubuntu-arm64 docker-ci-run-appimage \
-	docker-ci-run-cloudsmith-cli docker-ci-run-apt-publish docker-clean
+	docker-ci-run-cloudsmith-cli docker-ci-run-apt-publish docker-clean prerelease-local
 
 docker-build-images:
 	@docker build $(docker_build_flags) -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/images/pipeline/Dockerfile ./
@@ -67,6 +67,12 @@ docker-ci-run-cloudsmith-cli:
 
 docker-ci-run-apt-publish:
 	@docker run --name coolercontrol-ci-apt-publish --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/apt-publish:$(apt_publish_image_tag) bash
+
+# The prerelease CI checks on this machine, in the same images, against the committed HEAD. Faster
+# than CI for amd64; arm64 runs under QEMU. PRERELEASE_ARCHES and PRERELEASE_RPM_ARCHES pick what
+# runs, see .gitlab/scripts/prerelease-local.sh.
+prerelease-local:
+	@PRERELEASE_IMAGE_TAG=$(docker_image_tag) .gitlab/scripts/prerelease-local.sh
 
 # General:
 docker-clean:

@@ -47,7 +47,7 @@ help:
 	@printf '    make install-source   Build + install everything from source (sudo)\n'
 	@printf '    make dev-install      Install release binaries + restart the service\n'
 	@printf '    make clean            Remove all build artifacts\n\n'
-	@printf '  Maintainer targets (appimages, docker-*, bump, release, vendor, assets)\n'
+	@printf '  Maintainer targets (appimages, docker-*, prerelease-local, bump, release, vendor, assets)\n'
 	@printf '  live in make/*.mk.\n\n'
 
 # Release goals
