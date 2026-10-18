@@ -54,7 +54,7 @@ workflow:
         RELEASE_REHEARSAL: 'true'
     - when: always
 
-# Release flow and RELEASE_READ_TOKEN: see RELEASING.md, step 4.
+# Release flow and RELEASE_READ_TOKEN: see the `make push-release` step of RELEASING.md.
 #
 # test:       development checks: lint, the gated suite, MSRV, licensing. Every push and MR.
 # prerelease: the shipped source tarballs, tested and packaged the way distros build them.
