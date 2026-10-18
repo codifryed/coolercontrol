@@ -1,4 +1,5 @@
-%global branch main
+# main unless overridden, as the CI prerelease build does with --define for its own ref.
+%{!?branch:%global branch main}
 %global project_id 30707566
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
