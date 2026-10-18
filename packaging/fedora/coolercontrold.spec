@@ -1,9 +1,6 @@
 %bcond check 1
 %global project coolercontrol
 
-# prevent library files from being installed
-%global cargo_install_lib 0
-
 Name:           %{project}d
 Version:        5.1.0
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
@@ -45,9 +42,8 @@ tar -xzf %{SOURCE1}
 %install
 install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
 install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
-pushd daemon
-%cargo_install
-popd
+# Not %%cargo_install: it ignores Cargo.lock, so it resolves the crates afresh and rebuilds the daemon.
+install -Dpm 755 target/rpm/%{name} -t %{buildroot}%{_bindir}
 
 %if %{with check}
 %check
