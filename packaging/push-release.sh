@@ -10,6 +10,7 @@
 set -euo pipefail
 
 readonly PROJECT_PATH="coolercontrol/coolercontrol"
+readonly PROJECT_ID="30707566"
 readonly DEFAULT_BRANCH="main"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly REPO_ROOT
@@ -39,7 +40,8 @@ git push --no-follow-tags origin "HEAD:refs/heads/${DEFAULT_BRANCH}"
 echo "Rehearsing ${tag} (${sha}):"
 echo "  https://gitlab.com/${PROJECT_PATH}/-/pipelines?ref=${DEFAULT_BRANCH}"
 echo "Waiting for it to pass; the tag stays local if it fails."
-CI_DEFAULT_BRANCH="${DEFAULT_BRANCH}" python3 "${REPO_ROOT}/.gitlab/scripts/release_rehearsal.py" \
-    wait "${sha}"
+CI_API_V4_URL="https://gitlab.com/api/v4" CI_PROJECT_ID="${PROJECT_ID}" \
+    CI_DEFAULT_BRANCH="${DEFAULT_BRANCH}" \
+    python3 "${REPO_ROOT}/.gitlab/scripts/release_rehearsal.py" wait "${sha}"
 echo "Rehearsal passed; pushing ${tag}"
 git push origin "refs/tags/${tag}"
