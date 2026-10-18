@@ -404,13 +404,17 @@ build_source_assets:
 # the duplicate branch pipeline of an open MR. A manual run only checks: it builds, stages and
 # publishes nothing. A release rehearsal runs them automatically. Tags skip them: the rehearsal
 # already ran them on the same commit, which verify_prerelease checks.
-.prerelease_rules:
+.prerelease_rules_common:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
       when: never
     - if: $RELEASE_REHEARSAL == "true"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+
+.prerelease_rules:
+  rules:
+    - !reference [.prerelease_rules_common, rules]
     - if: $CI_PIPELINE_SOURCE
 
 prerelease:
@@ -420,11 +424,7 @@ prerelease:
     - saas-linux-small-amd64
   needs: []
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
-      when: never
-    - if: $RELEASE_REHEARSAL == "true"
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
+    - !reference [.prerelease_rules_common, rules]
     - if: $CI_PIPELINE_SOURCE
       when: manual
       allow_failure: true
