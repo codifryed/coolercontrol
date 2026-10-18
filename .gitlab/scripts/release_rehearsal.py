@@ -138,7 +138,12 @@ def wait(sha: str) -> None:
             if passed_rehearsal(sha) is not None:
                 return
             pipelines = rehearsal_pipelines(sha)
-        except urllib.error.URLError as error:
+        except urllib.error.HTTPError as error:
+            if error.code < 500:
+                sys.exit(f"The API refused the request ({error}); check the token.")
+            print(f"API error, retrying: {error}", file=sys.stderr)
+            pipelines = []
+        except OSError as error:
             print(f"API not reachable, retrying: {error}", file=sys.stderr)
             pipelines = []
         if pipelines and pipelines[0]["status"] in FINISHED_UNPASSED:
