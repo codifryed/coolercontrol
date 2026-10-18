@@ -66,11 +66,13 @@ docker run --rm -v "${REPO_ROOT}":/git:ro -v "${OUT}/export":/repo:ro -v "${OUT}
     exit 1
 }
 
+# Extra arguments after the image are docker options, such as -e.
 run_test() {
     local arch="$1" distro="$2" image="$3"
+    shift 3
     docker run --rm --platform "linux/${arch}" \
         -v "${OUT}/export":/repo:ro -v "${OUT}/sources":/sources:ro \
-        -v "cc-prerelease-${arch}-${distro}":/cache -e CARGO_TARGET_DIR=/cache/target \
+        -v "cc-prerelease-${arch}-${distro}":/cache -e CARGO_TARGET_DIR=/cache/target "$@" \
         "${image}" bash /repo/.gitlab/scripts/prerelease-test.sh \
         "/sources/coolercontrol-${SAFE_REF}.tar.gz" /sources/coolercontrold-vendor.tar.gz
 }
@@ -91,16 +93,21 @@ run_rpm() {
 declare -A pids=()
 for arch in ${ARCHES}; do
     for distro in ubuntu-22.04 ubuntu-rolling; do
+        env_args=()
         case "${distro}" in
         ubuntu-22.04) image="${REGISTRY}/ubuntu:${IMAGE_TAG}" ;;
-        ubuntu-rolling) image="ubuntu:rolling" ;;
+        ubuntu-rolling)
+            image="ubuntu:rolling"
+            # As the CI rolling jobs: the newest stable Rust, warnings denied.
+            env_args=(-e RUST_VERSION=stable -e PRERELEASE_DENY_WARNINGS=1)
+            ;;
         *)
             echo "no image for ${distro}" >&2
             exit 1
             ;;
         esac
         name="test-${arch}-${distro}"
-        run_test "${arch}" "${distro}" "${image}" >"${OUT}/logs/${name}.log" 2>&1 &
+        run_test "${arch}" "${distro}" "${image}" "${env_args[@]}" >"${OUT}/logs/${name}.log" 2>&1 &
         pids["${name}"]=$!
     done
 done
