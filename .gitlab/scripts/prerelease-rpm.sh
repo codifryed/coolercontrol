@@ -69,6 +69,8 @@ echo "mock root - ${ROOT}"
 for spec in "${specs[@]}"; do
     name="$(basename "${spec}" .spec)"
     # simple isolation and no bootstrap image: a container has neither systemd-nspawn nor podman.
+    # Off a terminal, mock writes rpmbuild's output only to build.log unless print_main_output is set.
     mock -r "${ROOT}" --isolation=simple --no-bootstrap-image "${defines[@]}" \
+        --config-opts=print_main_output=True \
         --spec "${spec}" --sources "${STAGING_DIR}" --resultdir "${RESULT_DIR}/${name}"
 done
